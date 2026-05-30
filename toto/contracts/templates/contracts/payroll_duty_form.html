@@ -27,7 +27,7 @@
       {% csrf_token %}
 
       {% if form.non_field_errors %}
-      <div class="rounded-lg bg-red-50 border border-red-200 p-3 text-sm text-red-700">
+      <div class="rounded-lg bg-warn-light/10 border border-warn-light p-3 text-sm text-warn-light">
         {{ form.non_field_errors }}
       </div>
       {% endif %}
@@ -43,7 +43,7 @@
           <p class="text-xs opacity-50">{% trans "Asset:" %} {{ asset.unit_name }} ({{ asset.decimals }} {% trans "decimals" %})</p>
           {% endif %}
           {% if form.amount_base_units.errors %}
-          <p class="text-xs text-red-600">{{ form.amount_base_units.errors.0 }}</p>
+          <p class="text-xs text-warn-light">{{ form.amount_base_units.errors.0 }}</p>
           {% endif %}
         </div>
 
@@ -53,7 +53,7 @@
           </label>
           {{ form.due_at }}
           {% if form.due_at.errors %}
-          <p class="text-xs text-red-600">{{ form.due_at.errors.0 }}</p>
+          <p class="text-xs text-warn-light">{{ form.due_at.errors.0 }}</p>
           {% endif %}
         </div>
 

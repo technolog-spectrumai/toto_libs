@@ -44,7 +44,7 @@
               :disabled="transcribing"
               class="relative flex h-24 w-24 items-center justify-center rounded-full shadow-lg transition focus:outline-none disabled:opacity-40"
               :class="recording
-                ? 'bg-red-500 hover:bg-red-600 animate-pulse'
+                ? 'bg-warn-light hover:bg-warn-light animate-pulse'
                 : (darkMode ? 'bg-accent-dark hover:opacity-90' : 'bg-accent-light hover:opacity-90')">
         <i class="fa-solid text-3xl"
            :class="recording ? 'fa-stop text-white' : 'fa-microphone'"
@@ -64,7 +64,7 @@
       <div x-show="recording"
            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
            class="h-2 w-full max-w-xs overflow-hidden rounded-full border border-current/10">
-        <div class="h-full rounded-full bg-red-500 transition-all duration-500"
+        <div class="h-full rounded-full bg-warn-light transition-all duration-500"
              :style="'width:' + (elapsed / {{ max_seconds }} * 100) + '%'"></div>
       </div>
 
@@ -91,7 +91,7 @@
     </div>
 
     <!-- Error -->
-    <div x-show="errorMsg" class="mt-2 rounded-xl border border-red-500/40 px-4 py-2.5 text-sm text-red-500" x-text="errorMsg"></div>
+    <div x-show="errorMsg" class="mt-2 rounded-xl border border-warn-light/40 px-4 py-2.5 text-sm text-warn-light" x-text="errorMsg"></div>
 
     <!-- Result -->
     <div x-show="result" class="mt-6 space-y-3">

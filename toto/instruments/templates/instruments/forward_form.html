@@ -37,7 +37,7 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
       <div class="space-y-2">
         <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
-          {{ form.name.label }} <span class="text-red-400">*</span>
+          {{ form.name.label }} <span class="text-warn-light">*</span>
         </label>
         {{ form.name }}
         <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
@@ -52,7 +52,7 @@
         <div class="space-y-2">
           <label for="{{ form.buyer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-arrow-right mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-            {{ form.buyer_account.label }} <span class="text-red-400">*</span>
+            {{ form.buyer_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.buyer_account }}
           <p class="text-xs opacity-50">{% trans "Pays and receives the underlying asset." %}</p>
@@ -61,7 +61,7 @@
         <div class="space-y-2">
           <label for="{{ form.seller_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-arrow-left mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            {{ form.seller_account.label }} <span class="text-red-400">*</span>
+            {{ form.seller_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.seller_account }}
           <p class="text-xs opacity-50">{% trans "Delivers the underlying asset and receives payment." %}</p>
@@ -75,12 +75,12 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Underlying Asset" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.underlying_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.underlying_asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.underlying_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.underlying_asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.underlying_asset }}
           {% for e in form.underlying_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.quantity_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.quantity_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.quantity_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.quantity_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.quantity_base_units }}
           <p class="text-xs opacity-50">{% trans "Quantity in base units (before decimals)." %}</p>
           {% for e in form.quantity_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -93,12 +93,12 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Payment" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.payment_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.payment_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.payment_asset }}
           {% for e in form.payment_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.payment_amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_amount_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.payment_amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_amount_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.payment_amount_base_units }}
           <p class="text-xs opacity-50">{% trans "Total payment in base units." %}</p>
           {% for e in form.payment_amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -117,7 +117,7 @@
           {% for e in form.settlement_type.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.settlement_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_at.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.settlement_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.settlement_at.label }} <span class="text-warn-light">*</span></label>
           {{ form.settlement_at }}
           {% for e in form.settlement_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>

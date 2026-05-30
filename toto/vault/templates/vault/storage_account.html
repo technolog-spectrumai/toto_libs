@@ -59,7 +59,7 @@
         </h2>
         <span class="rounded px-2 py-0.5 text-xs font-semibold
           {% if storage_account.active %}
-            :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+            :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
           {% else %}
             :class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
           {% endif %}">
@@ -106,7 +106,7 @@
         {% if storage_account.authorization %}
         <div class="flex items-center justify-between gap-4">
           <div class="flex items-center gap-2 text-sm">
-            <i :class="darkMode ? 'text-green-400' : 'text-green-600'" class="fa-solid fa-shield-check shrink-0"></i>
+            <i :class="darkMode ? 'text-success-light' : 'text-success-light'" class="fa-solid fa-shield-check shrink-0"></i>
             <div>
               <div class="font-semibold">{{ storage_account.authorization.name }}</div>
               <div class="text-xs opacity-55">{% trans "Auto-authorized — no manual confirmation needed" %}</div>

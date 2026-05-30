@@ -80,7 +80,7 @@
           </div>
 
           {% if form.route.errors %}
-            <p class="text-sm text-red-500">{{ form.route.errors }}</p>
+            <p class="text-sm text-warn-light">{{ form.route.errors }}</p>
           {% endif %}
         </div>
 
@@ -96,7 +96,7 @@
             {{ form.participants }}
             <p class="text-xs opacity-60">Hold Ctrl / Cmd to select multiple.</p>
             {% if form.participants.errors %}
-              <p class="text-sm text-red-500">{{ form.participants.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.participants.errors }}</p>
             {% endif %}
           </div>
 
@@ -107,7 +107,7 @@
               </label>
               {{ form.start_date }}
               {% if form.start_date.errors %}
-                <p class="text-sm text-red-500">{{ form.start_date.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.start_date.errors }}</p>
               {% endif %}
             </div>
 
@@ -117,7 +117,7 @@
               </label>
               {{ form.start_time }}
               {% if form.start_time.errors %}
-                <p class="text-sm text-red-500">{{ form.start_time.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.start_time.errors }}</p>
               {% endif %}
             </div>
 
@@ -127,7 +127,7 @@
               </label>
               {{ form.end_date }}
               {% if form.end_date.errors %}
-                <p class="text-sm text-red-500">{{ form.end_date.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.end_date.errors }}</p>
               {% endif %}
             </div>
 
@@ -137,7 +137,7 @@
               </label>
               {{ form.end_time }}
               {% if form.end_time.errors %}
-                <p class="text-sm text-red-500">{{ form.end_time.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.end_time.errors }}</p>
               {% endif %}
             </div>
           </div>
@@ -149,7 +149,7 @@
             {{ form.score }}
             <p class="text-xs opacity-60">Optional. 1–5.</p>
             {% if form.score.errors %}
-              <p class="text-sm text-red-500">{{ form.score.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.score.errors }}</p>
             {% endif %}
           </div>
 
@@ -159,7 +159,7 @@
             </label>
             {{ form.info }}
             {% if form.info.errors %}
-              <p class="text-sm text-red-500">{{ form.info.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.info.errors }}</p>
             {% endif %}
           </div>
 

@@ -64,7 +64,7 @@
 
               <td class="px-4 py-2">
                 <a href="{% url 'socialhub:community_detail' community.slug %}"
-                   class="underline text-blue-600 dark:text-blue-400">
+                   class="underline text-link-light dark:text-link-light">
                   View Community
                 </a>
               </td>
@@ -106,7 +106,7 @@
             <p><strong>Head:</strong> {{ community.head.display_name|default:"—" }}</p>
 
             <a href="{% url 'socialhub:community_detail' community.slug %}"
-               class="block mt-2 underline text-blue-600 dark:text-blue-400">
+               class="block mt-2 underline text-link-light dark:text-link-light">
               View Community
             </a>
           </div>

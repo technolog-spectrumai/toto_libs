@@ -31,9 +31,9 @@
          class="flex items-center justify-between border-t pt-3 first:border-t-0 first:pt-0">
       <div class="flex items-center gap-3">
         {% if s.has_signed %}
-        <i class="fa-solid fa-circle-check text-green-500 text-lg shrink-0"></i>
+        <i class="fa-solid fa-circle-check text-success-light text-lg shrink-0"></i>
         {% elif s.is_required %}
-        <i class="fa-solid fa-circle-exclamation text-yellow-500 text-lg shrink-0"></i>
+        <i class="fa-solid fa-circle-exclamation text-accent-light text-lg shrink-0"></i>
         {% else %}
         <i class="fa-regular fa-circle opacity-40 text-lg shrink-0"></i>
         {% endif %}
@@ -41,7 +41,7 @@
           <p class="text-sm font-semibold flex items-center gap-2">
             {{ s.person }}
             {% if s.is_cryptographically_signed %}
-            <span class="inline-flex items-center gap-1 rounded-full bg-blue-100 text-blue-700 px-1.5 py-0.5 text-xs font-semibold"
+            <span class="inline-flex items-center gap-1 rounded-full bg-link-light/15 text-link-light px-1.5 py-0.5 text-xs font-semibold"
                   title="{{ s.signing_key.key_id }}">
               <i class="fa-solid fa-shield-halved"></i> Ed25519
             </span>
@@ -67,7 +67,7 @@
         {% if contract.status != 'executed' %}
         <form method="post" action="{% url 'contracts:contract_remove_signatory' contract.uuid s.pk %}">
           {% csrf_token %}
-          <button type="submit" class="text-xs opacity-40 hover:opacity-80 hover:text-red-500 transition"
+          <button type="submit" class="text-xs opacity-40 hover:opacity-80 hover:text-warn-light transition"
                   title="{% trans 'Remove signatory' %}">
             <i class="fa-solid fa-xmark"></i>
           </button>

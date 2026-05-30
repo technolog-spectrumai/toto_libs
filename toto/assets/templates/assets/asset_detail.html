@@ -58,8 +58,8 @@
               <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
               <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
             {% elif ledger_status.supply_diff > 0 %}
-              <i class="fa-solid fa-skull-crossbones text-red-500"></i>
-              <span class="ml-1 font-semibold text-red-500">{% trans "FRAUD — oversupply" %}</span>
+              <i class="fa-solid fa-skull-crossbones text-warn-light"></i>
+              <span class="ml-1 font-semibold text-warn-light">{% trans "FRAUD — oversupply" %}</span>
             {% else %}
               <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
               <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>

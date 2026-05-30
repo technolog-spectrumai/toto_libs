@@ -153,7 +153,7 @@
           <button
             type="button"
             @click="openDelete('{{ ws.slug }}', '{{ ws.name|escapejs }}')"
-            class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-red-400/30 text-red-400 transition hover:bg-red-400/10">
+            class="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-warn-light/30 text-warn-light transition hover:bg-warn-light/10">
             <i class="fa-solid fa-trash text-xs"></i>
           </button>
         </div>
@@ -255,7 +255,7 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
       class="w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
       <div class="flex items-start justify-between gap-4">
-        <h2 class="flex items-center gap-2 text-lg font-bold text-red-400">
+        <h2 class="flex items-center gap-2 text-lg font-bold text-warn-light">
           <i class="fa-solid fa-triangle-exclamation"></i>
           {% trans "Delete workspace?" %}
         </h2>
@@ -277,7 +277,7 @@
         </button>
         <button type="button" id="confirmDeleteBtn"
           @click="confirmDelete(deleteSlug); showDeleteModal = false"
-          class="inline-flex items-center gap-2 rounded-lg bg-red-500 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-600">
+          class="inline-flex items-center gap-2 rounded-lg bg-warn-light px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-warn-light">
           <i class="fa-solid fa-trash"></i>
           {% trans "Delete" %}
         </button>

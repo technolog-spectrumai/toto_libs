@@ -917,7 +917,7 @@
 
         <!-- Result -->
         <div x-show="importResult" x-cloak class="space-y-3">
-          <p class="flex items-center gap-2 text-sm font-semibold text-green-500">
+          <p class="flex items-center gap-2 text-sm font-semibold text-success-light">
             <i class="fa-solid fa-circle-check"></i> Import complete
           </p>
           <template x-for="layer in (importResult || [])" :key="layer.slug">

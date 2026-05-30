@@ -42,7 +42,7 @@
           <div>
             <label class="mb-1 block text-sm font-medium opacity-80" for="{{ field.id_for_label }}">
               {{ field.label }}
-              {% if field.field.required %}<span class="ml-1 text-red-500">*</span>{% endif %}
+              {% if field.field.required %}<span class="ml-1 text-warn-light">*</span>{% endif %}
             </label>
             <div>
               {{ field }}
@@ -51,7 +51,7 @@
               <p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>
             {% endif %}
             {% for error in field.errors %}
-              <p class="mt-1 text-xs text-red-500">{{ error }}</p>
+              <p class="mt-1 text-xs text-warn-light">{{ error }}</p>
             {% endfor %}
           </div>
         {% endfor %}
@@ -176,7 +176,7 @@
 
       {% if pricing.has_errors %}
       <div class="rounded-lg border px-4 py-3 text-sm"
-           :class="darkMode ? 'border-red-500/30 bg-red-900/20 text-red-300' : 'border-red-300 bg-red-50 text-red-700'">
+           :class="darkMode ? 'border-warn-light/30 bg-warn-light/20 text-warn-light' : 'border-warn-light bg-warn-light/10 text-warn-light'">
         <i class="fa-solid fa-triangle-exclamation mr-2"></i>
         {% trans "Some lines could not be priced:" %}
         <ul class="mt-2 list-disc pl-5">

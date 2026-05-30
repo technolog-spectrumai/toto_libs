@@ -22,7 +22,7 @@
             <i class="fa-solid fa-money-check-dollar" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
             {{ contract.name }}
           </h2>
-          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 text-xs font-semibold">
+          <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2.5 py-0.5 text-xs font-semibold">
             <i class="fa-solid fa-circle-check"></i> {% trans "Payroll" %}
           </span>
         </div>
@@ -91,7 +91,7 @@
       <p class="font-semibold font-mono">{{ allocation.amount_base_units }}</p>
       <p class="text-xs opacity-60 capitalize">
         {{ allocation.get_kind_display }} ·
-        <span class="{% if allocation.status == 'active' %}text-green-600{% else %}text-gray-500{% endif %}">
+        <span class="{% if allocation.status == 'active' %}text-success-light{% else %}text-gray-500{% endif %}">
           {{ allocation.get_status_display }}
         </span>
       </p>
@@ -111,7 +111,7 @@
         <i class="fa-solid fa-list-check opacity-60"></i>
         {% trans "Duties" %}
         <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
-          {% if duties %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+          {% if duties %}bg-link-light/15 text-link-light{% else %}bg-gray-100 text-gray-500{% endif %}">
           {{ duties|length }}
         </span>
       </h3>
@@ -152,22 +152,22 @@
             <td class="px-4 py-3 text-xs opacity-70">
               {{ duty.obligation.due_at|date:"Y-m-d H:i" }}
               {% if duty.obligation.is_overdue %}
-              <span class="ml-1 inline-block rounded-full bg-red-100 text-red-700 px-1.5 py-0.5 text-xs font-semibold">
+              <span class="ml-1 inline-block rounded-full bg-warn-light/15 text-warn-light px-1.5 py-0.5 text-xs font-semibold">
                 {% trans "Overdue" %}
               </span>
               {% endif %}
             </td>
             <td class="px-4 py-3">
               {% if duty.obligation.status == 'fulfilled' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+              <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2 py-0.5 text-xs font-semibold">
                 <i class="fa-solid fa-circle-check"></i> {% trans "Settled" %}
               </span>
               {% elif duty.obligation.status == 'overdue' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold">
+              <span class="inline-flex items-center gap-1 rounded-full bg-warn-light/15 text-warn-light px-2 py-0.5 text-xs font-semibold">
                 <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Overdue" %}
               </span>
               {% else %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5 text-xs font-semibold">
+              <span class="inline-flex items-center gap-1 rounded-full bg-accent-light/15 text-accent-light px-2 py-0.5 text-xs font-semibold">
                 <i class="fa-solid fa-clock"></i> {% trans "Pending" %}
               </span>
               {% endif %}
@@ -175,11 +175,11 @@
             <td class="px-4 py-3">
               {% if duty.condition %}
                 {% if duty.condition.status == 'satisfied' %}
-                <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+                <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2 py-0.5 text-xs font-semibold">
                   <i class="fa-solid fa-check"></i> {% trans "Approved" %}
                 </span>
                 {% elif duty.condition.status == 'failed' %}
-                <span class="inline-flex items-center gap-1 rounded-full bg-red-100 text-red-700 px-2 py-0.5 text-xs font-semibold">
+                <span class="inline-flex items-center gap-1 rounded-full bg-warn-light/15 text-warn-light px-2 py-0.5 text-xs font-semibold">
                   {% trans "Failed" %}
                 </span>
                 {% else %}
@@ -214,7 +214,7 @@
                     class="inline">
                     {% csrf_token %}
                     <button type="submit"
-                      class="rounded bg-blue-100 text-blue-700 px-2 py-1 text-xs font-semibold transition hover:bg-blue-200"
+                      class="rounded bg-link-light/15 text-link-light px-2 py-1 text-xs font-semibold transition hover:bg-link-light"
                       title="{% trans 'Approve duty' %}">
                       <i class="fa-solid fa-thumbs-up"></i>
                     </button>
@@ -229,7 +229,7 @@
                     onsubmit="return confirm('{% trans "Settle this duty? This will transfer funds." %}')">
                     {% csrf_token %}
                     <button type="submit"
-                      class="rounded bg-green-100 text-green-700 px-2 py-1 text-xs font-semibold transition hover:bg-green-200"
+                      class="rounded bg-success-light/15 text-success-light px-2 py-1 text-xs font-semibold transition hover:bg-success-light"
                       title="{% trans 'Settle (transfer funds)' %}">
                       <i class="fa-solid fa-arrow-right-arrow-left"></i>
                     </button>
@@ -269,15 +269,15 @@
       <div class="px-4 py-3 flex items-start gap-3 text-sm">
         <div class="mt-0.5 shrink-0">
           {% if ev.kind == 'settlement' %}
-          <span class="inline-block rounded-full bg-green-100 text-green-700 p-1.5 text-xs">
+          <span class="inline-block rounded-full bg-success-light/15 text-success-light p-1.5 text-xs">
             <i class="fa-solid fa-arrow-right-arrow-left"></i>
           </span>
           {% elif ev.kind == 'condition_satisfied' %}
-          <span class="inline-block rounded-full bg-blue-100 text-blue-700 p-1.5 text-xs">
+          <span class="inline-block rounded-full bg-link-light/15 text-link-light p-1.5 text-xs">
             <i class="fa-solid fa-check"></i>
           </span>
           {% elif ev.kind == 'payment_due' %}
-          <span class="inline-block rounded-full bg-yellow-100 text-yellow-700 p-1.5 text-xs">
+          <span class="inline-block rounded-full bg-accent-light/15 text-accent-light p-1.5 text-xs">
             <i class="fa-solid fa-bell"></i>
           </span>
           {% elif ev.kind == 'obligation_created' %}

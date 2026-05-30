@@ -52,13 +52,13 @@
       <div class="space-y-2">
         <label for="{{ form.title.id_for_label }}" class="block text-sm font-semibold">{{ form.title.label }}</label>
         {{ form.title }}
-        {% if form.title.errors %}<p class="text-sm text-red-500">{{ form.title.errors }}</p>{% endif %}
+        {% if form.title.errors %}<p class="text-sm text-warn-light">{{ form.title.errors }}</p>{% endif %}
       </div>
 
       <div class="space-y-2">
         <label for="{{ form.content.id_for_label }}" class="block text-sm font-semibold">{{ form.content.label }}</label>
         {{ form.content }}
-        {% if form.content.errors %}<p class="text-sm text-red-500">{{ form.content.errors }}</p>{% endif %}
+        {% if form.content.errors %}<p class="text-sm text-warn-light">{{ form.content.errors }}</p>{% endif %}
       </div>
 
       <div class="grid gap-5 md:grid-cols-2">
@@ -67,7 +67,7 @@
             <div class="space-y-2">
               <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">{{ field.label }}</label>
               {{ field }}
-              {% if field.errors %}<p class="text-sm text-red-500">{{ field.errors }}</p>{% endif %}
+              {% if field.errors %}<p class="text-sm text-warn-light">{{ field.errors }}</p>{% endif %}
             </div>
           {% endif %}
         {% endfor %}

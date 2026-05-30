@@ -322,7 +322,7 @@
             <div>
               <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
               {{ field }}
-              {% if field.errors %}<div class="mt-1 text-xs text-red-500">{{ field.errors }}</div>{% endif %}
+              {% if field.errors %}<div class="mt-1 text-xs text-warn-light">{{ field.errors }}</div>{% endif %}
             </div>
           {% endif %}
         {% endfor %}
@@ -345,7 +345,7 @@
             <div>
               <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
               {{ field }}
-              {% if field.errors %}<div class="mt-1 text-xs text-red-500">{{ field.errors }}</div>{% endif %}
+              {% if field.errors %}<div class="mt-1 text-xs text-warn-light">{{ field.errors }}</div>{% endif %}
             </div>
           {% endif %}
         {% endfor %}

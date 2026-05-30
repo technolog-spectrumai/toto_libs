@@ -103,7 +103,7 @@
       <div class="space-y-5 p-5 sm:p-6">
 
         {% if form.non_field_errors %}
-          <div class="rounded-lg border border-red-400/60 bg-red-500/10 px-4 py-3 text-sm font-medium text-red-500">
+          <div class="rounded-lg border border-warn-light/60 bg-warn-light/10 px-4 py-3 text-sm font-medium text-warn-light">
             {{ form.non_field_errors }}
           </div>
         {% endif %}
@@ -115,7 +115,7 @@
               class="block text-sm font-semibold">
               {{ field.label }}
               {% if field.field.required %}
-                <span class="text-red-500">*</span>
+                <span class="text-warn-light">*</span>
               {% endif %}
             </label>
 
@@ -134,7 +134,7 @@
             {% endif %}
 
             {% if field.errors %}
-              <p class="text-xs font-medium text-red-500">
+              <p class="text-xs font-medium text-warn-light">
                 {{ field.errors|striptags }}
               </p>
             {% endif %}

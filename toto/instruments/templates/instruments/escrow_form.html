@@ -38,7 +38,7 @@
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
           <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.name.label }} <span class="text-red-400">*</span>
+            {{ form.name.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.name }}
           <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
@@ -69,7 +69,7 @@
         <div class="space-y-2">
           <label for="{{ form.buyer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-arrow-right mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-            {{ form.buyer_account.label }} <span class="text-red-400">*</span>
+            {{ form.buyer_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.buyer_account }}
           {% for e in form.buyer_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -77,7 +77,7 @@
         <div class="space-y-2">
           <label for="{{ form.escrow_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-vault mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
-            {{ form.escrow_account.label }} <span class="text-red-400">*</span>
+            {{ form.escrow_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.escrow_account }}
           {% for e in form.escrow_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -85,7 +85,7 @@
         <div class="space-y-2">
           <label for="{{ form.seller_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-arrow-left mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            {{ form.seller_account.label }} <span class="text-red-400">*</span>
+            {{ form.seller_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.seller_account }}
           {% for e in form.seller_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -98,12 +98,12 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Asset & Amount" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.asset }}
           {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.amount_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.amount_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.amount_base_units }}
           <p class="text-xs opacity-50">{% trans "Amount in smallest denomination (base units)." %}</p>
           {% for e in form.amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}

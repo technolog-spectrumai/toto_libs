@@ -92,15 +92,15 @@
         <div class="flex items-center gap-2 text-xs">
           <span class="opacity-50">Last job:</span>
           {% if rj.status == 'succeeded' %}
-          <span class="rounded-full bg-green-500/20 px-2 py-0.5 text-green-400 font-semibold">{{ rj.task_name }}</span>
+          <span class="rounded-full bg-success-light/20 px-2 py-0.5 text-success-light font-semibold">{{ rj.task_name }}</span>
           {% elif rj.status == 'failed' %}
-          <span class="rounded-full bg-red-500/20 px-2 py-0.5 text-red-400 font-semibold">{{ rj.task_name }} failed</span>
+          <span class="rounded-full bg-warn-light/20 px-2 py-0.5 text-warn-light font-semibold">{{ rj.task_name }} failed</span>
           {% elif rj.status == 'running' %}
-          <span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-blue-400 font-semibold">
+          <span class="rounded-full bg-link-light/20 px-2 py-0.5 text-link-light font-semibold">
             <i class="fa-solid fa-spinner fa-spin"></i> {{ rj.task_name }}
           </span>
           {% else %}
-          <span class="rounded-full bg-yellow-500/20 px-2 py-0.5 text-yellow-400 font-semibold">{{ rj.task_name }}</span>
+          <span class="rounded-full bg-accent-light/20 px-2 py-0.5 text-accent-light font-semibold">{{ rj.task_name }}</span>
           {% endif %}
           <a href="{% url 'videomant:job_detail' rj.pk %}" class="underline opacity-50 hover:opacity-100 ml-auto">#{{ rj.pk }}</a>
         </div>

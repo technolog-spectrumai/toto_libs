@@ -26,7 +26,7 @@
           <div class="text-xs opacity-65">{% trans "Pending usage" %}</div>
         </div>
         <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
-          <div class="text-2xl font-bold text-red-500">{{ failed_count }}</div>
+          <div class="text-2xl font-bold text-warn-light">{{ failed_count }}</div>
           <div class="text-xs opacity-65">{% trans "Failed usage" %}</div>
         </div>
       </div>
@@ -87,11 +87,11 @@
               <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ tariff.code }}</span>
               <span class="rounded px-2 py-0.5 text-xs font-semibold
                 {% if tariff.status == 'active' %}
-                  :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+                  :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
                 {% elif tariff.status == 'draft' %}
-                  :class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+                  :class="darkMode ? 'bg-accent-light/20 text-accent-light' : 'bg-accent-light/15 text-accent-light'"
                 {% elif tariff.status == 'paused' %}
-                  :class="darkMode ? 'bg-orange-900/20 text-orange-300' : 'bg-orange-100 text-orange-700'"
+                  :class="darkMode ? 'bg-accent-light/20 text-accent-light' : 'bg-accent-light/15 text-accent-light'"
                 {% else %}
                   :class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
                 {% endif %}">

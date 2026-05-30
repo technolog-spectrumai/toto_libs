@@ -195,7 +195,7 @@
           ? 'bg-bubble-bg-dark border-accent-1 text-white'
           : 'bg-white border-gray-300 text-gray-900',
         importConfig.heightClass,
-        'w-full p-3 rounded border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500'
+        'w-full p-3 rounded border text-sm font-mono focus:outline-none focus:ring-2 focus:ring-link-light'
       ]"
     ></textarea>
 
@@ -212,7 +212,7 @@
             darkMode
               ? 'bg-bubble-bg-dark border-accent-1 text-white'
               : 'bg-white border-gray-300 text-gray-900',
-            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-link-light'
           ]"
         />
       </label>
@@ -229,7 +229,7 @@
             darkMode
               ? 'bg-bubble-bg-dark border-accent-1 text-white'
               : 'bg-white border-gray-300 text-gray-900',
-            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-link-light'
           ]"
         />
       </label>
@@ -246,7 +246,7 @@
             darkMode
               ? 'bg-bubble-bg-dark border-accent-1 text-white'
               : 'bg-white border-gray-300 text-gray-900',
-            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-link-light'
           ]"
         />
       </label>
@@ -263,7 +263,7 @@
             darkMode
               ? 'bg-bubble-bg-dark border-accent-1 text-white'
               : 'bg-white border-gray-300 text-gray-900',
-            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-blue-500'
+            'w-full p-2 rounded border text-sm focus:outline-none focus:ring-2 focus:ring-link-light'
           ]"
         />
       </label>
@@ -282,7 +282,7 @@
 
       <button
         @click="submitImport()"
-        class="bg-blue-600 text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-blue-700"
+        class="bg-link-light text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-link-light"
       >
         <span x-text="importConfig.buttonLabel"></span>
       </button>
@@ -336,19 +336,19 @@
       placeholder="my-drawing.svg"
     />
     <template x-if="exportingSvg">
-      <div class="p-3 rounded bg-blue-100 text-blue-800 text-sm">
+      <div class="p-3 rounded bg-link-light/15 text-link-light text-sm">
         Exporting SVG...
       </div>
     </template>
 
     <!-- Download link after export -->
     <template x-if="exportDownloadUrl">
-      <div class="p-3 rounded bg-green-100 text-green-800 text-sm">
+      <div class="p-3 rounded bg-success-light/15 text-success-light text-sm">
         <p class="font-semibold">Export complete!</p>
         <a
           :href="exportDownloadUrl"
           target="_blank"
-          class="underline text-blue-600 hover:text-blue-800"
+          class="underline text-link-light hover:text-link-light"
         >
           Download SVG
         </a>
@@ -368,7 +368,7 @@
 
       <button
         @click="submitExport()"
-        class="bg-blue-600 text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-blue-700"
+        class="bg-link-light text-white px-4 py-2 rounded shadow-sm text-sm font-semibold hover:bg-link-light"
       >
         <span x-text="hasBucket ? 'Export to Bucket' : 'Download SVG'"></span>
       </button>

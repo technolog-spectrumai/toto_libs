@@ -120,13 +120,13 @@
             <td class="px-5 py-3">
               <span class="rounded px-2 py-0.5 text-xs font-semibold
                 {% if app.status == 'invoiced' %}
-                  :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+                  :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
                 {% elif app.status == 'failed' %}
-                  :class="darkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-100 text-red-700'"
+                  :class="darkMode ? 'bg-warn-light/20 text-warn-light' : 'bg-warn-light/15 text-warn-light'"
                 {% elif app.status == 'cancelled' %}
                   :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
                 {% else %}
-                  :class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+                  :class="darkMode ? 'bg-accent-light/20 text-accent-light' : 'bg-accent-light/15 text-accent-light'"
                 {% endif %}">
                 {{ app.get_status_display }}
               </span>

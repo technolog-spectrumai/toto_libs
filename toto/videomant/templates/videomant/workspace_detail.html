@@ -32,7 +32,7 @@
             onsubmit="return confirm('Delete this workspace? Jobs are kept.')">
         {% csrf_token %}
         <button type="submit"
-          class="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-3 py-2 text-sm font-semibold text-red-400 transition hover:bg-red-500/10"
+          class="inline-flex items-center gap-2 rounded-lg border border-warn-light/40 px-3 py-2 text-sm font-semibold text-warn-light transition hover:bg-warn-light/10"
         ><i class="fa-solid fa-trash"></i> Delete</button>
       </form>
       {% endif %}
@@ -79,11 +79,11 @@
           <div class="flex items-center gap-2 text-xs">
             <span class="opacity-50">Last:</span>
             {% if rj.status == 'succeeded' %}
-            <span class="rounded-full bg-green-500/20 px-2 py-0.5 text-green-400 font-semibold">{{ rj.task_name }}</span>
+            <span class="rounded-full bg-success-light/20 px-2 py-0.5 text-success-light font-semibold">{{ rj.task_name }}</span>
             {% elif rj.status == 'failed' %}
-            <span class="rounded-full bg-red-500/20 px-2 py-0.5 text-red-400 font-semibold">failed</span>
+            <span class="rounded-full bg-warn-light/20 px-2 py-0.5 text-warn-light font-semibold">failed</span>
             {% else %}
-            <span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-blue-400 font-semibold">{{ rj.status }}</span>
+            <span class="rounded-full bg-link-light/20 px-2 py-0.5 text-link-light font-semibold">{{ rj.status }}</span>
             {% endif %}
             <a href="{% url 'videomant:job_detail' rj.pk %}" class="underline opacity-50 hover:opacity-100 ml-auto">#{{ rj.pk }}</a>
           </div>
@@ -136,10 +136,10 @@
               <td class="px-4 py-2 font-mono text-xs">{{ job.task_name }}</td>
               <td class="px-4 py-2 text-xs opacity-60 max-w-[140px] truncate">{{ job.input_file.title|default:"—" }}</td>
               <td class="px-4 py-2">
-                {% if job.status == 'succeeded' %}<span class="rounded-full bg-green-500/20 px-2 py-0.5 text-xs text-green-400 font-semibold">ok</span>
-                {% elif job.status == 'failed' %}<span class="rounded-full bg-red-500/20 px-2 py-0.5 text-xs text-red-400 font-semibold">fail</span>
-                {% elif job.status == 'running' %}<span class="rounded-full bg-blue-500/20 px-2 py-0.5 text-xs text-blue-400 font-semibold"><i class="fa-solid fa-spinner fa-spin"></i></span>
-                {% else %}<span class="rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs text-yellow-400 font-semibold">{{ job.status }}</span>{% endif %}
+                {% if job.status == 'succeeded' %}<span class="rounded-full bg-success-light/20 px-2 py-0.5 text-xs text-success-light font-semibold">ok</span>
+                {% elif job.status == 'failed' %}<span class="rounded-full bg-warn-light/20 px-2 py-0.5 text-xs text-warn-light font-semibold">fail</span>
+                {% elif job.status == 'running' %}<span class="rounded-full bg-link-light/20 px-2 py-0.5 text-xs text-link-light font-semibold"><i class="fa-solid fa-spinner fa-spin"></i></span>
+                {% else %}<span class="rounded-full bg-accent-light/20 px-2 py-0.5 text-xs text-accent-light font-semibold">{{ job.status }}</span>{% endif %}
               </td>
               <td class="px-4 py-2">
                 {% if job.output_file %}

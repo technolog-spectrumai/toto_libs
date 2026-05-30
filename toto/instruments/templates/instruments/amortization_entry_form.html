@@ -63,7 +63,7 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Amount" %}</legend>
       <div>
         <label for="{{ form.amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-          {{ form.amount_base_units.label }} <span class="text-red-400">*</span>
+          {{ form.amount_base_units.label }} <span class="text-warn-light">*</span>
         </label>
         {{ form.amount_base_units }}
         <p class="mt-1 text-xs opacity-50">{{ form.amount_base_units.help_text }}</p>

@@ -2,8 +2,8 @@
 <form method="post" enctype="multipart/form-data" class="space-y-5">
   {% csrf_token %}
   {% if form.non_field_errors %}
-    <div :class="darkMode ? 'border-red-500/50 bg-red-500/10' : 'border-red-400/50 bg-red-50'"
-         class="rounded-xl border p-3 text-sm text-red-500">
+    <div :class="darkMode ? 'border-warn-light/50 bg-warn-light/10' : 'border-warn-light/50 bg-warn-light/10'"
+         class="rounded-xl border p-3 text-sm text-warn-light">
       {{ form.non_field_errors }}
     </div>
   {% endif %}
@@ -16,7 +16,7 @@
         {{ field }}
       {% endif %}
       {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
-      {% for error in field.errors %}<p class="text-xs text-red-500">{{ error }}</p>{% endfor %}
+      {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
     </div>
   {% endfor %}
   <div class="flex gap-3 pt-2">

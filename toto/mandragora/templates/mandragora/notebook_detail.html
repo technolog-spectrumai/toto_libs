@@ -339,8 +339,8 @@ function updateKernelStatus(state, detail) {
   const text = el.querySelector("span");
 
   const states = {
-    running:  ["fa-solid fa-circle text-green-500 text-xs", "Running"],
-    stopped:  ["fa-solid fa-circle text-red-500 text-xs",   "Stopped"],
+    running:  ["fa-solid fa-circle text-success-light text-xs", "Running"],
+    stopped:  ["fa-solid fa-circle text-warn-light text-xs",   "Stopped"],
     starting: ["fa-solid fa-circle-notch fa-spin text-caution-dark text-xs", detail ? `Starting… ${detail}` : "Starting…"],
   };
   const [cls, label] = states[state] ?? ["fa-solid fa-circle text-gray-400 text-xs", "Unknown"];

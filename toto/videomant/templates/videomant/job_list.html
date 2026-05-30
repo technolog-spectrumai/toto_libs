@@ -58,19 +58,19 @@
             <td class="px-4 py-2 font-mono text-xs">{{ job.task_name }}</td>
             <td class="px-4 py-2">
               {% if job.status == 'succeeded' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-green-500/20 px-2 py-0.5 text-xs font-semibold text-green-400">
+              <span class="inline-flex items-center gap-1 rounded-full bg-success-light/20 px-2 py-0.5 text-xs font-semibold text-success-light">
                 <i class="fa-solid fa-check"></i> succeeded
               </span>
               {% elif job.status == 'failed' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-red-500/20 px-2 py-0.5 text-xs font-semibold text-red-400">
+              <span class="inline-flex items-center gap-1 rounded-full bg-warn-light/20 px-2 py-0.5 text-xs font-semibold text-warn-light">
                 <i class="fa-solid fa-xmark"></i> failed
               </span>
               {% elif job.status == 'running' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-blue-500/20 px-2 py-0.5 text-xs font-semibold text-blue-400">
+              <span class="inline-flex items-center gap-1 rounded-full bg-link-light/20 px-2 py-0.5 text-xs font-semibold text-link-light">
                 <i class="fa-solid fa-spinner fa-spin"></i> running
               </span>
               {% elif job.status == 'pending' %}
-              <span class="inline-flex items-center gap-1 rounded-full bg-yellow-500/20 px-2 py-0.5 text-xs font-semibold text-yellow-400">
+              <span class="inline-flex items-center gap-1 rounded-full bg-accent-light/20 px-2 py-0.5 text-xs font-semibold text-accent-light">
                 <i class="fa-solid fa-clock"></i> pending
               </span>
               {% else %}

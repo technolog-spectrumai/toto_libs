@@ -20,19 +20,19 @@
     </h2>
 
     {% if not person %}
-    <div class="rounded-lg border border-red-400 bg-red-50 p-4 text-sm text-red-700">
+    <div class="rounded-lg border border-warn-light bg-warn-light/10 p-4 text-sm text-warn-light">
       {% trans "You need a Person profile linked to your account to sign contracts." %}
     </div>
 
     {% elif not signatory %}
-    <div class="rounded-lg border border-yellow-400 bg-yellow-50 p-4 text-sm text-yellow-800">
+    <div class="rounded-lg border border-accent-light bg-accent-light/10 p-4 text-sm text-accent-light">
       {% trans "You are not listed as a signatory for this contract." %}
     </div>
 
     {% elif signatory.has_signed %}
-    <div class="rounded-lg border border-green-400 bg-green-50 p-4 text-sm text-green-800 space-y-3">
+    <div class="rounded-lg border border-success-light bg-success-light/10 p-4 text-sm text-success-light space-y-3">
       <div class="flex items-center gap-3">
-        <i class="fa-solid fa-circle-check text-green-600 text-xl"></i>
+        <i class="fa-solid fa-circle-check text-success-light text-xl"></i>
         <div>
           <p class="font-semibold">{% trans "Already signed" %}</p>
           <p class="opacity-80">{% trans "Signed on" %} {{ signatory.signed_at|date:"Y-m-d H:i" }}</p>
@@ -78,7 +78,7 @@
         <dt class="opacity-60 font-semibold">{% trans "Signing key" %}</dt>
         <dd>
           {% if existing_signing_key %}
-          <span class="text-green-600 font-semibold">
+          <span class="text-success-light font-semibold">
             <i class="fa-solid fa-key mr-1"></i>{{ existing_signing_key.encrypted_private_key.key_id }}
           </span>
           {% else %}
@@ -89,7 +89,7 @@
     </dl>
 
     <!-- Cryptographic info box -->
-    <div :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-blue-50/40'"
+    <div :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-link-light/10/40'"
          class="rounded-lg border p-3 text-xs space-y-1">
       <p class="font-semibold flex items-center gap-1">
         <i class="fa-solid fa-shield-halved"></i>
@@ -129,7 +129,7 @@
           {% else %}
             {% trans "Strongbox password" %}
           {% endif %}
-          <span class="text-red-500">*</span>
+          <span class="text-warn-light">*</span>
         </label>
         <input type="password" id="strongbox_password" name="strongbox_password"
           required autocomplete="current-password"
@@ -144,7 +144,7 @@
 
       <!-- No strongbox warning -->
       {% if not strongboxes %}
-      <div class="rounded-lg border border-red-400 bg-red-50 p-3 text-sm text-red-700">
+      <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">
         {% trans "No strongbox found. You need to set up a Gervazy strongbox before you can sign." %}
       </div>
       {% endif %}

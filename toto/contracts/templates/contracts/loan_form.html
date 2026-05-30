@@ -29,7 +29,7 @@
           {{ form.name.label }}
         </label>
         {{ form.name }}
-        {% if form.name.errors %}<p class="text-xs text-red-500">{{ form.name.errors.0 }}</p>{% endif %}
+        {% if form.name.errors %}<p class="text-xs text-warn-light">{{ form.name.errors.0 }}</p>{% endif %}
       </div>
 
       <!-- Parties -->
@@ -39,14 +39,14 @@
             {{ form.lender_person.label }}
           </label>
           {{ form.lender_person }}
-          {% if form.lender_person.errors %}<p class="text-xs text-red-500">{{ form.lender_person.errors.0 }}</p>{% endif %}
+          {% if form.lender_person.errors %}<p class="text-xs text-warn-light">{{ form.lender_person.errors.0 }}</p>{% endif %}
         </div>
         <div class="space-y-1">
           <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             {{ form.borrower_person.label }}
           </label>
           {{ form.borrower_person }}
-          {% if form.borrower_person.errors %}<p class="text-xs text-red-500">{{ form.borrower_person.errors.0 }}</p>{% endif %}
+          {% if form.borrower_person.errors %}<p class="text-xs text-warn-light">{{ form.borrower_person.errors.0 }}</p>{% endif %}
         </div>
       </div>
 
@@ -57,14 +57,14 @@
             {{ form.lender_account.label }}
           </label>
           {{ form.lender_account }}
-          {% if form.lender_account.errors %}<p class="text-xs text-red-500">{{ form.lender_account.errors.0 }}</p>{% endif %}
+          {% if form.lender_account.errors %}<p class="text-xs text-warn-light">{{ form.lender_account.errors.0 }}</p>{% endif %}
         </div>
         <div class="space-y-1">
           <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             {{ form.borrower_account.label }}
           </label>
           {{ form.borrower_account }}
-          {% if form.borrower_account.errors %}<p class="text-xs text-red-500">{{ form.borrower_account.errors.0 }}</p>{% endif %}
+          {% if form.borrower_account.errors %}<p class="text-xs text-warn-light">{{ form.borrower_account.errors.0 }}</p>{% endif %}
         </div>
       </div>
 
@@ -75,7 +75,7 @@
         </label>
         <p class="text-xs opacity-50">Both disbursement and repayment use this currency.</p>
         {{ form.loan_asset }}
-        {% if form.loan_asset.errors %}<p class="text-xs text-red-500">{{ form.loan_asset.errors.0 }}</p>{% endif %}
+        {% if form.loan_asset.errors %}<p class="text-xs text-warn-light">{{ form.loan_asset.errors.0 }}</p>{% endif %}
       </div>
 
       <!-- Loan terms -->
@@ -85,7 +85,7 @@
             {{ form.principal_base_units.label }}
           </label>
           {{ form.principal_base_units }}
-          {% if form.principal_base_units.errors %}<p class="text-xs text-red-500">{{ form.principal_base_units.errors.0 }}</p>{% endif %}
+          {% if form.principal_base_units.errors %}<p class="text-xs text-warn-light">{{ form.principal_base_units.errors.0 }}</p>{% endif %}
         </div>
         <div class="space-y-1">
           <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
@@ -93,7 +93,7 @@
           </label>
           <p class="text-xs opacity-50">{{ form.interest_rate_bps.help_text }}</p>
           {{ form.interest_rate_bps }}
-          {% if form.interest_rate_bps.errors %}<p class="text-xs text-red-500">{{ form.interest_rate_bps.errors.0 }}</p>{% endif %}
+          {% if form.interest_rate_bps.errors %}<p class="text-xs text-warn-light">{{ form.interest_rate_bps.errors.0 }}</p>{% endif %}
         </div>
       </div>
 
@@ -103,19 +103,19 @@
             {{ form.repayment_frequency.label }}
           </label>
           {{ form.repayment_frequency }}
-          {% if form.repayment_frequency.errors %}<p class="text-xs text-red-500">{{ form.repayment_frequency.errors.0 }}</p>{% endif %}
+          {% if form.repayment_frequency.errors %}<p class="text-xs text-warn-light">{{ form.repayment_frequency.errors.0 }}</p>{% endif %}
         </div>
         <div class="space-y-1">
           <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             {{ form.term_months.label }}
           </label>
           {{ form.term_months }}
-          {% if form.term_months.errors %}<p class="text-xs text-red-500">{{ form.term_months.errors.0 }}</p>{% endif %}
+          {% if form.term_months.errors %}<p class="text-xs text-warn-light">{{ form.term_months.errors.0 }}</p>{% endif %}
         </div>
       </div>
 
       {% if form.non_field_errors %}
-      <div class="rounded-lg border border-red-300 bg-red-50 px-4 py-3 text-sm text-red-700">
+      <div class="rounded-lg border border-warn-light bg-warn-light/10 px-4 py-3 text-sm text-warn-light">
         {% for error in form.non_field_errors %}<p>{{ error }}</p>{% endfor %}
       </div>
       {% endif %}

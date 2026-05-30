@@ -194,12 +194,12 @@
 
           <!-- Status dot -->
           <span class="h-2 w-2 rounded-full shrink-0
-            {% if run.status == 'success' %}bg-green-500{% elif run.status == 'failed' %}bg-red-400{% elif run.status == 'running' %}bg-yellow-400{% else %}bg-current opacity-30{% endif %}">
+            {% if run.status == 'success' %}bg-success-light{% elif run.status == 'failed' %}bg-warn-light{% elif run.status == 'running' %}bg-accent-light{% else %}bg-current opacity-30{% endif %}">
           </span>
 
           <!-- Status label -->
           <span class="text-xs font-semibold w-14 shrink-0
-            {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-red-400{% else %}opacity-60{% endif %}">
+            {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-warn-light{% else %}opacity-60{% endif %}">
             {{ run.status }}
           </span>
 
@@ -629,7 +629,7 @@ async function loadImages() {
     const res = await fetch(imagesUrl, { credentials: "same-origin" });
     data = await res.json();
   } catch {
-    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-red-400 py-8">Failed to load images.</span>';
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-warn-light py-8">Failed to load images.</span>';
     return;
   }
 

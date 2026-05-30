@@ -157,7 +157,7 @@
                     <button
                       type="button"
                       @click="deleteOpen = true"
-                      :class="darkMode ? 'text-red-400 border-accent-1' : 'text-red-600 border-accent-2'"
+                      :class="darkMode ? 'text-warn-light border-accent-1' : 'text-warn-light border-accent-2'"
                       class="inline-flex items-center gap-1 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
                       <i class="fa-solid fa-trash"></i>
                     </button>
@@ -195,7 +195,7 @@
                         {% csrf_token %}
                         <button
                           type="submit"
-                          class="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-red-700">
+                          class="inline-flex items-center gap-2 rounded-lg bg-warn-light px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:bg-warn-light">
                           <i class="fa-solid fa-trash"></i>
                           Yes, delete
                         </button>

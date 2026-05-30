@@ -23,7 +23,7 @@
         <dd class="font-semibold
           {% if speech_model.download_status == 'done' %}text-emerald-500
           {% elif speech_model.download_status == 'downloading' %}text-amber-500
-          {% elif speech_model.download_status == 'failed' %}text-red-500
+          {% elif speech_model.download_status == 'failed' %}text-warn-light
           {% endif %}">
           {{ speech_model.get_download_status_display }}
         </dd>
@@ -37,7 +37,7 @@
       {% if speech_model.download_error %}
         <div>
           <dt class="opacity-60 mb-1">{% trans "Last error" %}</dt>
-          <dd class="rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-500 font-mono">{{ speech_model.download_error }}</dd>
+          <dd class="rounded-lg bg-warn-light/10 px-3 py-2 text-xs text-warn-light font-mono">{{ speech_model.download_error }}</dd>
         </div>
       {% endif %}
     </dl>
@@ -57,7 +57,7 @@
             <label class="mb-1 block text-xs font-semibold opacity-70">{{ field.label }}</label>
             {{ field }}
             {% if field.help_text %}<p class="mt-1 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
-            {% if field.errors %}<p class="mt-1 text-xs text-red-500">{{ field.errors.as_text }}</p>{% endif %}
+            {% if field.errors %}<p class="mt-1 text-xs text-warn-light">{{ field.errors.as_text }}</p>{% endif %}
           </div>
         {% endfor %}
       </div>

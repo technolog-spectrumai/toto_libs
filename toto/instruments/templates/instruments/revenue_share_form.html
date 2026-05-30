@@ -36,7 +36,7 @@
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
       <div class="space-y-2">
-        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-red-400">*</span></label>
+        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-warn-light">*</span></label>
         {{ form.name }}
         <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
         {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -50,14 +50,14 @@
         <div class="space-y-2">
           <label for="{{ form.revenue_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-building mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            {{ form.revenue_account.label }} <span class="text-red-400">*</span>
+            {{ form.revenue_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.revenue_account }}
           <p class="text-xs opacity-50">{% trans "Account from which revenue is distributed." %}</p>
           {% for e in form.revenue_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.revenue_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.revenue_asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.revenue_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.revenue_asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.revenue_asset }}
           {% for e in form.revenue_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
@@ -69,7 +69,7 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Active Period" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.active_from.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.active_from.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.active_from.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.active_from.label }} <span class="text-warn-light">*</span></label>
           {{ form.active_from }}
           {% for e in form.active_from.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>

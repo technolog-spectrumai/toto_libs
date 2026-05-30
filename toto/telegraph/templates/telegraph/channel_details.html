@@ -451,7 +451,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     recordingChunks = [];
     if (recordingStatusWrap) recordingStatusWrap.classList.add("hidden");
     if (voiceButton) {
-      voiceButton.classList.remove("text-red-500", "border-red-500");
+      voiceButton.classList.remove("text-warn-light", "border-warn-light");
       voiceButton.querySelector("i").className = "fa-solid fa-microphone text-sm";
     }
   }
@@ -491,7 +491,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (recordingStatusWrap) recordingStatusWrap.classList.remove("hidden");
     if (recordingTimerEl)    recordingTimerEl.textContent = "0:00";
     if (voiceButton) {
-      voiceButton.classList.add("text-red-500", "border-red-500");
+      voiceButton.classList.add("text-warn-light", "border-warn-light");
       voiceButton.querySelector("i").className = "fa-solid fa-stop text-sm";
     }
 
@@ -965,7 +965,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
         <div id="recording-status-wrap" class="hidden px-1 pb-1">
           <div class="flex items-center gap-2 text-xs">
-            <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-red-500"></span>
+            <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-warn-light"></span>
             <span class="opacity-70">Recording</span>
             <span id="recording-timer" class="font-mono">0:00</span>
             <button type="button" id="recording-cancel-button"

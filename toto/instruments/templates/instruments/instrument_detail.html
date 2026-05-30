@@ -99,7 +99,7 @@
         </button>
       </form>
       <form method="post" action="{% url 'instruments:escrow_refund' escrow.pk %}">{% csrf_token %}
-        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-red-500 border-red-400 transition hover:opacity-90">
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold text-warn-light border-warn-light transition hover:opacity-90">
           <i class="fa-solid fa-rotate-left"></i> {% trans "Refund" %}
         </button>
       </form>
@@ -158,7 +158,7 @@
         {% for pos in fut.margin_positions.all %}
         <div class="rounded-lg px-3 py-2 text-sm" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
           {{ pos.account.code }} · {% trans "Required" %}: {{ pos.required_margin_base_units }} · {% trans "Deposited" %}: {{ pos.deposited_margin_base_units }}
-          {% if pos.margin_call_active %}<span class="ml-2 text-red-500 font-semibold">{% trans "MARGIN CALL" %}</span>{% endif %}
+          {% if pos.margin_call_active %}<span class="ml-2 text-warn-light font-semibold">{% trans "MARGIN CALL" %}</span>{% endif %}
         </div>
         {% endfor %}
       </div>
@@ -185,12 +185,12 @@
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Settlement" %}</div><div class="font-semibold">{{ opt.get_settlement_type_display }}</div></div>
       <div>
         <div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Expiry" %}</div>
-        <div class="font-semibold {% if opt.is_expired %}text-red-500{% endif %}">
+        <div class="font-semibold {% if opt.is_expired %}text-warn-light{% endif %}">
           {{ opt.expiry_at|date:"M d, Y H:i" }}
           {% if opt.is_expired %}<span class="text-xs ml-1">({% trans "expired" %})</span>{% endif %}
         </div>
       </div>
-      {% if opt.exercised_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Exercised" %}</div><div class="font-semibold text-green-500">{{ opt.exercised_at|date:"M d, Y H:i" }}</div></div>{% endif %}
+      {% if opt.exercised_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Exercised" %}</div><div class="font-semibold text-success-light">{{ opt.exercised_at|date:"M d, Y H:i" }}</div></div>{% endif %}
     </div>
     {% if instrument.status == 'active' and not opt.is_exercised and not opt.is_expired %}
     <form method="post" action="{% url 'instruments:option_exercise' instrument.pk %}">{% csrf_token %}
@@ -216,7 +216,7 @@
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Beneficiary" %}</div><div class="font-semibold">{{ vest.beneficiary_account.code }}</div></div>
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Asset" %}</div><div class="font-semibold">{{ vest.asset.unit_name }}</div></div>
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Total" %}</div><div class="font-semibold">{{ vest.total_amount_base_units }}</div></div>
-      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Released" %}</div><div class="font-semibold text-green-500">{{ vest.released_amount_base_units }}</div></div>
+      <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Released" %}</div><div class="font-semibold text-success-light">{{ vest.released_amount_base_units }}</div></div>
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Remaining" %}</div><div class="font-semibold">{{ vest.remaining_amount_base_units }}</div></div>
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Period" %}</div><div class="font-semibold">{{ vest.start_at|date:"M d, Y" }} – {{ vest.end_at|date:"M d, Y" }}</div></div>
       {% if vest.cliff_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Cliff" %}</div><div class="font-semibold">{{ vest.cliff_at|date:"M d, Y" }}</div></div>{% endif %}
@@ -230,7 +230,7 @@
         <span>{{ vest.released_amount_base_units }} / {{ vest.total_amount_base_units }}</span>
       </div>
       <div class="h-2 rounded-full" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-gray-200'">
-        <div class="h-2 rounded-full bg-green-500"
+        <div class="h-2 rounded-full bg-success-light"
              style="width: {% widthratio vest.released_amount_base_units vest.total_amount_base_units 100 %}%"></div>
       </div>
     </div>
@@ -253,7 +253,7 @@
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Reward asset" %}</div><div class="font-semibold">{{ stk.reward_asset.unit_name }}</div></div>
       <div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Reward rate" %}</div><div class="font-semibold">{{ stk.reward_rate_bps }} bps</div></div>
       {% if stk.locked_until %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Locked until" %}</div><div class="font-semibold">{{ stk.locked_until|date:"M d, Y H:i" }}</div></div>{% endif %}
-      {% if stk.unstaked_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Unstaked" %}</div><div class="font-semibold text-blue-500">{{ stk.unstaked_at|date:"M d, Y H:i" }}</div></div>{% endif %}
+      {% if stk.unstaked_at %}<div><div class="text-xs uppercase opacity-50 mb-0.5">{% trans "Unstaked" %}</div><div class="font-semibold text-link-light">{{ stk.unstaked_at|date:"M d, Y H:i" }}</div></div>{% endif %}
     </div>
     <div class="flex flex-wrap gap-2 pt-1">
       {% if instrument.status == 'draft' %}
@@ -500,7 +500,7 @@
             </div>
           </div>
           {% if payment.failure_reason %}
-          <p class="mt-1 text-xs text-red-500">{{ payment.failure_reason }}</p>
+          <p class="mt-1 text-xs text-warn-light">{{ payment.failure_reason }}</p>
           {% endif %}
         </div>
         {% endfor %}
@@ -547,14 +547,14 @@
           <div class="flex flex-wrap items-center justify-between gap-2">
             <span class="font-semibold">{{ execution.action }}</span>
             <div class="flex items-center gap-2 text-xs opacity-60">
-              <span class="rounded px-1.5 py-0.5 {% if execution.status == 'success' %}bg-green-500/15 text-green-600{% else %}bg-red-500/15 text-red-600{% endif %}">
+              <span class="rounded px-1.5 py-0.5 {% if execution.status == 'success' %}bg-success-light/15 text-success-light{% else %}bg-warn-light/15 text-warn-light{% endif %}">
                 {{ execution.get_status_display }}
               </span>
               {{ execution.created_at|date:"M d, Y H:i" }}
             </div>
           </div>
           {% if execution.error_message %}
-            <p class="mt-1 text-xs text-red-500">{{ execution.error_message }}</p>
+            <p class="mt-1 text-xs text-warn-light">{{ execution.error_message }}</p>
           {% endif %}
           {% if execution.transaction %}
             <p class="mt-1 text-xs opacity-50">

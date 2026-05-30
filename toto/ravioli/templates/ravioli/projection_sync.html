@@ -33,7 +33,7 @@
               x-data="{ going: false }" @submit="going = true">
           {% csrf_token %}
           <button type="submit" :disabled="going"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-green-600 text-white">
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-success-light text-white">
             <i x-show="!going" class="fa-solid fa-rotate"></i>
             <i x-show="going" class="fa-solid fa-spinner fa-spin"></i>
             <span x-text="going ? 'Queuing…' : 'Full Sync'"></span>
@@ -45,7 +45,7 @@
               @submit.prevent="if (confirm('Delete ALL ravioli-owned nodes and relationships from Neo4j?')) { going = true; $el.submit() }">
           {% csrf_token %}
           <button type="submit" :disabled="going"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-red-600 text-white">
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-warn-light text-white">
             <i x-show="!going" class="fa-solid fa-trash-can"></i>
             <i x-show="going" class="fa-solid fa-spinner fa-spin"></i>
             <span x-text="going ? 'Queuing…' : 'Clear DB'"></span>

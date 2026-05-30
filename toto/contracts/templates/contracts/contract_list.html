@@ -49,11 +49,11 @@
           <td class="px-4 py-3 font-semibold">{{ item.contract.name }}</td>
           <td class="px-4 py-3">
             {% if item.contract.status == 'executed' %}
-            <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+            <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2 py-0.5 text-xs font-semibold">
               <i class="fa-solid fa-circle-check"></i> {% trans "Executed" %}
             </span>
             {% elif item.contract.status == 'pending' %}
-            <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2 py-0.5 text-xs font-semibold">
+            <span class="inline-flex items-center gap-1 rounded-full bg-accent-light/15 text-accent-light px-2 py-0.5 text-xs font-semibold">
               <i class="fa-solid fa-pen-nib"></i> {% trans "Pending" %}
             </span>
             {% else %}

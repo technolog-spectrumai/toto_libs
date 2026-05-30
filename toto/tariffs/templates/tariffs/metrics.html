@@ -71,9 +71,9 @@
         <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-lg border p-4 shadow-sm text-center">
           <div class="text-2xl font-bold
-            {% if status_key == 'posted' %}:class="darkMode ? 'text-green-400' : 'text-green-600'"
-            {% elif status_key == 'failed' %}:class="darkMode ? 'text-red-400' : 'text-red-600'"
-            {% elif status_key == 'pending' %}:class="darkMode ? 'text-yellow-400' : 'text-yellow-600'"
+            {% if status_key == 'posted' %}:class="darkMode ? 'text-success-light' : 'text-success-light'"
+            {% elif status_key == 'failed' %}:class="darkMode ? 'text-warn-light' : 'text-warn-light'"
+            {% elif status_key == 'pending' %}:class="darkMode ? 'text-accent-light' : 'text-accent-light'"
             {% endif %}">{{ count }}</div>
           <div class="mt-1 text-xs opacity-60 capitalize">{{ status_key }}</div>
         </div>
@@ -164,10 +164,10 @@
     <!-- Low balances -->
     {% if low_balance_accounts %}
       <div
-        :class="darkMode ? 'border-red-500/30 bg-red-900/10' : 'border-red-300 bg-red-50'"
+        :class="darkMode ? 'border-warn-light/30 bg-warn-light/10' : 'border-warn-light bg-warn-light/10'"
         class="rounded-lg border p-5 shadow-sm">
         <h3 class="mb-3 font-semibold"
-            :class="darkMode ? 'text-red-300' : 'text-red-700'">
+            :class="darkMode ? 'text-warn-light' : 'text-warn-light'">
           <i class="fa-solid fa-triangle-exclamation mr-2"></i>
           {% trans "Low Prepaid Balances" %}
         </h3>
@@ -176,7 +176,7 @@
             <div class="flex items-center justify-between text-sm">
               <span>{{ holding.account.code }} / {{ holding.asset.unit_name }}</span>
               <span class="font-mono font-bold"
-                    :class="darkMode ? 'text-red-300' : 'text-red-700'">
+                    :class="darkMode ? 'text-warn-light' : 'text-warn-light'">
                 {{ holding.balance_display }} {{ holding.asset.unit_name }}
               </span>
             </div>

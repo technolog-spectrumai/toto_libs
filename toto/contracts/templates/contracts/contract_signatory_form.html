@@ -27,7 +27,7 @@
         <label class="block text-sm font-semibold opacity-70">{{ field.label }}</label>
         {{ field }}
         {% if field.errors %}
-        <p class="text-xs text-red-500">{{ field.errors|join:", " }}</p>
+        <p class="text-xs text-warn-light">{{ field.errors|join:", " }}</p>
         {% endif %}
       </div>
       {% endfor %}

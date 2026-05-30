@@ -230,7 +230,7 @@
                   x-text="paymentAmount() + ' ' + (selected ? selected.unit_name : '')"></span>
           </div>
           <p x-show="parseFloat(tokenAmount) > parseFloat(maxTokens())"
-             class="text-xs text-red-500 font-semibold mt-1">
+             class="text-xs text-warn-light font-semibold mt-1">
             <i class="fa-solid fa-triangle-exclamation mr-1"></i>
             {% trans "Insufficient balance." %}
           </p>

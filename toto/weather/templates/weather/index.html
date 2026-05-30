@@ -1141,7 +1141,7 @@
         <!-- Progress / download -->
         <div x-show="exportRunId" x-cloak class="space-y-2">
           <div class="flex items-center gap-2 text-sm">
-            <i class="fa-solid" :class="exportIsBusy ? 'fa-spinner fa-spin opacity-60' : (exportDownloadUrl ? 'fa-circle-check text-green-500' : 'fa-circle-xmark text-red-500')"></i>
+            <i class="fa-solid" :class="exportIsBusy ? 'fa-spinner fa-spin opacity-60' : (exportDownloadUrl ? 'fa-circle-check text-success-light' : 'fa-circle-xmark text-warn-light')"></i>
             <span x-text="exportIsBusy ? 'Exporting…' : (exportDownloadUrl ? 'Export complete' : 'Export failed')" class="font-semibold"></span>
           </div>
           <div x-show="exportDownloadUrl" x-cloak>

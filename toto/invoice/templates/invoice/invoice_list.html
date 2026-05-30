@@ -73,17 +73,17 @@
             <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
                   class="rounded px-2 py-0.5 text-xs font-semibold">{% trans "Pending" %}</span>
             {% elif invoice.status == "paid" %}
-            <span :class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
+            <span :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
                   class="rounded px-2 py-0.5 text-xs font-semibold">{% trans "Paid" %}</span>
             {% elif invoice.status == "overdue" %}
-            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-500">{% trans "Overdue" %}</span>
+            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-warn-light/10 text-warn-light">{% trans "Overdue" %}</span>
             {% elif invoice.status == "cancelled" %}
             <span :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
                   class="rounded px-2 py-0.5 text-xs font-semibold">{% trans "Cancelled" %}</span>
             {% endif %}
 
             {% if invoice.is_overdue %}
-            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-red-500/10 text-red-500">
+            <span class="rounded px-2 py-0.5 text-xs font-semibold bg-warn-light/10 text-warn-light">
               <i class="fa-solid fa-triangle-exclamation mr-0.5"></i>{% trans "Overdue" %}
             </span>
             {% endif %}

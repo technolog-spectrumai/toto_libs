@@ -54,7 +54,7 @@
                   {{ proposal.get_proposal_type_display }}
                   {% if proposal.senate_deadline %}
                     · {% trans "Veto deadline:" %}
-                    <span class="{% if proposal.senate_deadline < now %}text-red-500 font-semibold{% endif %}">
+                    <span class="{% if proposal.senate_deadline < now %}text-warn-light font-semibold{% endif %}">
                       {{ proposal.senate_deadline|date:"Y-m-d H:i" }}
                     </span>
                     {% if proposal.senate_deadline < now %}
@@ -70,17 +70,17 @@
                 {% if proposal.senate_deadline and proposal.senate_deadline > now %}
                   {# Veto button + inline form #}
                   <details class="group">
-                    <summary class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-600 hover:opacity-80">
+                    <summary class="inline-flex cursor-pointer items-center gap-2 rounded-lg border border-warn-light/40 bg-warn-light/10 px-4 py-2 text-sm font-semibold text-warn-light hover:opacity-80">
                       <i class="fa-solid fa-hand text-xs"></i> {% trans "Issue Veto" %}
                     </summary>
-                    <div class="mt-2 rounded-lg border border-red-300/30 bg-red-50/50 p-3 dark:bg-red-900/10">
+                    <div class="mt-2 rounded-lg border border-warn-light/30 bg-warn-light/10/50 p-3 dark:bg-warn-light/10">
                       <form method="post" action="{% url 'assembly:senate_veto' community.slug proposal.pk %}">
                         {% csrf_token %}
                         <label class="mb-1 block text-xs font-semibold uppercase opacity-60">{% trans "Reason (public record)" %}</label>
                         <textarea name="reason" rows="2" placeholder="{% trans "State the grounds for the veto…" %}"
                                   class="w-full rounded border border-current/20 bg-transparent px-3 py-2 text-sm"></textarea>
                         <button type="submit"
-                                class="mt-2 inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-xs font-bold text-white hover:opacity-90">
+                                class="mt-2 inline-flex items-center gap-2 rounded-lg bg-warn-light px-4 py-2 text-xs font-bold text-white hover:opacity-90">
                           <i class="fa-solid fa-ban"></i> {% trans "Confirm Veto" %}
                         </button>
                       </form>

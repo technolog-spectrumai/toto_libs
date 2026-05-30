@@ -64,7 +64,7 @@ window._incidentImportCsrf = "{{ csrf_token }}";
              class="rounded-lg border p-3 text-sm">
           <i class="fa-solid fa-circle-exclamation mr-2"></i><span x-text="error"></span>
         </div>
-        <div x-show="result" class="rounded-lg border border-green-500/30 bg-green-500/10 p-3 text-sm text-green-500 space-y-1">
+        <div x-show="result" class="rounded-lg border border-success-light/30 bg-success-light/10 p-3 text-sm text-success-light space-y-1">
           <p class="font-semibold"><i class="fa-solid fa-circle-check mr-1"></i> Import complete</p>
           <p x-text="`Created: ${result?.created ?? 0} · Skipped: ${result?.skipped ?? 0}`"></p>
           <template x-if="result?.errors?.length"><p class="text-xs opacity-75" x-text="'Errors: ' + result.errors.join('; ')"></p></template>
@@ -117,9 +117,9 @@ window._incidentImportCsrf = "{{ csrf_token }}";
        class="group flex items-start gap-4 rounded-2xl border p-4 shadow-sm transition hover:-translate-y-px hover:shadow-md">
       <span class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-sm font-bold
         {% if sev == 'critical' %}bg-purple-500/20 text-purple-500
-        {% elif sev == 'high' %}bg-red-500/20 text-red-500
+        {% elif sev == 'high' %}bg-warn-light/20 text-warn-light
         {% elif sev == 'medium' %}bg-amber-500/20 text-amber-500
-        {% else %}bg-green-500/20 text-green-500{% endif %}">
+        {% else %}bg-success-light/20 text-success-light{% endif %}">
         <i class="fa-solid fa-triangle-exclamation"></i>
       </span>
       <div class="min-w-0 flex-1">
@@ -129,9 +129,9 @@ window._incidentImportCsrf = "{{ csrf_token }}";
                 class="rounded-full border px-2 py-0.5 text-[11px] font-semibold">{{ incident.get_incident_type_display }}</span>
           <span class="rounded-full px-2 py-0.5 text-[11px] font-semibold
             {% if sev == 'critical' %}bg-purple-500/15 text-purple-500
-            {% elif sev == 'high' %}bg-red-500/15 text-red-500
+            {% elif sev == 'high' %}bg-warn-light/15 text-warn-light
             {% elif sev == 'medium' %}bg-amber-500/15 text-amber-500
-            {% else %}bg-green-500/15 text-green-500{% endif %}">
+            {% else %}bg-success-light/15 text-success-light{% endif %}">
             {{ incident.get_severity_display }}
           </span>
           <span :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"

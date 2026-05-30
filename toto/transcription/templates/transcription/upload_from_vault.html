@@ -55,7 +55,7 @@
       {% csrf_token %}
 
       {% if form.non_field_errors %}
-      <div class="mb-4 rounded-lg border border-red-400/40 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+      <div class="mb-4 rounded-lg border border-warn-light/40 bg-warn-light/10 px-4 py-3 text-sm text-warn-light">
         {% for e in form.non_field_errors %}{{ e }}{% endfor %}
       </div>
       {% endif %}
@@ -64,7 +64,7 @@
       <div class="mb-4">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Collection" %}</label>
         <div x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ form.collection }}</div>
-        {% if form.collection.errors %}<p class="mt-1 text-xs text-red-500">{{ form.collection.errors.0 }}</p>{% endif %}
+        {% if form.collection.errors %}<p class="mt-1 text-xs text-warn-light">{{ form.collection.errors.0 }}</p>{% endif %}
       </div>
 
       <!-- Vault file picker -->
@@ -73,14 +73,14 @@
           <i class="fa-solid fa-vault mr-1 opacity-60"></i>{% trans "Audio / video file" %}
         </label>
         <div x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ form.vault_file }}</div>
-        {% if form.vault_file.errors %}<p class="mt-1 text-xs text-red-500">{{ form.vault_file.errors.0 }}</p>{% endif %}
+        {% if form.vault_file.errors %}<p class="mt-1 text-xs text-warn-light">{{ form.vault_file.errors.0 }}</p>{% endif %}
       </div>
 
       <!-- Title -->
       <div class="mb-4">
         <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Title" %}</label>
         <div x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ form.title }}</div>
-        {% if form.title.errors %}<p class="mt-1 text-xs text-red-500">{{ form.title.errors.0 }}</p>{% endif %}
+        {% if form.title.errors %}<p class="mt-1 text-xs text-warn-light">{{ form.title.errors.0 }}</p>{% endif %}
       </div>
 
       <!-- Description -->

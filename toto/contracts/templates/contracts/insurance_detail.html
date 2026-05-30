@@ -24,11 +24,11 @@
             {{ contract.name }}
           </h2>
           {% if contract.status == 'executed' %}
-          <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2.5 py-0.5 text-xs font-semibold">
+          <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2.5 py-0.5 text-xs font-semibold">
             <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
           </span>
           {% elif contract.status == 'pending' %}
-          <span class="inline-flex items-center gap-1 rounded-full bg-yellow-100 text-yellow-800 px-2.5 py-0.5 text-xs font-semibold">
+          <span class="inline-flex items-center gap-1 rounded-full bg-accent-light/15 text-accent-light px-2.5 py-0.5 text-xs font-semibold">
             <i class="fa-solid fa-pen-nib"></i> {% trans "Awaiting Signatures" %}
           </span>
           {% else %}
@@ -115,7 +115,7 @@
           <i class="fa-solid fa-boxes-stacked opacity-60"></i>
           {% trans "Inventory Assets" %}
           <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
-            {% if insured_items %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+            {% if insured_items %}bg-link-light/15 text-link-light{% else %}bg-gray-100 text-gray-500{% endif %}">
             {{ insured_items|length }}
           </span>
         </h3>
@@ -167,7 +167,7 @@
           <i class="fa-solid fa-coins opacity-60"></i>
           {% trans "Financial Assets (ASA)" %}
           <span class="ml-1 rounded-full px-2 py-0.5 text-xs font-bold
-            {% if insured_financial_assets %}bg-blue-100 text-blue-700{% else %}bg-gray-100 text-gray-500{% endif %}">
+            {% if insured_financial_assets %}bg-link-light/15 text-link-light{% else %}bg-gray-100 text-gray-500{% endif %}">
             {{ insured_financial_assets|length }}
           </span>
         </h3>

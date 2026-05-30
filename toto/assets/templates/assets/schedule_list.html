@@ -30,7 +30,7 @@
           <td class="px-4 py-3">{{ s.get_kind_display }}</td>
           <td class="px-4 py-3">
             <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if s.status == 'active' %}bg-green-100 text-green-800{% elif s.status == 'paused' %}bg-yellow-100 text-yellow-800{% elif s.status == 'cancelled' %}bg-red-100 text-red-800{% else %}bg-gray-100 text-gray-700{% endif %}">
+              {% if s.status == 'active' %}bg-success-light/15 text-success-light{% elif s.status == 'paused' %}bg-accent-light/15 text-accent-light{% elif s.status == 'cancelled' %}bg-warn-light/15 text-warn-light{% else %}bg-gray-100 text-gray-700{% endif %}">
               {{ s.get_status_display }}
             </span>
           </td>

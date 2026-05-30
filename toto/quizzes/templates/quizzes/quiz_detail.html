@@ -91,20 +91,20 @@
                     <div class="flex items-start gap-3 rounded-xl border p-4
                       {% if answer.pk in selected_ids %}
                         {% if answer.is_correct %}
-                          border-green-500 bg-green-500/10
+                          border-success-light bg-success-light/10
                         {% else %}
-                          border-red-500 bg-red-500/10
+                          border-warn-light bg-warn-light/10
                         {% endif %}
                       {% elif answer.is_correct %}
-                        border-green-500/40
-                        {% if darkMode %}border-green-500/40{% endif %}
+                        border-success-light/40
+                        {% if darkMode %}border-success-light/40{% endif %}
                       {% else %}
                         {% if darkMode %}border-accent-1 bg-sunken-dark{% else %}border-accent-2 bg-sunken-light{% endif %}
                       {% endif %}">
                       <i class="mt-0.5 fa-solid text-sm
                         {% if answer.pk in selected_ids %}
-                          {% if answer.is_correct %}fa-circle-check text-green-500{% else %}fa-circle-xmark text-red-500{% endif %}
-                        {% elif answer.is_correct %}fa-circle-check opacity-40 text-green-500
+                          {% if answer.is_correct %}fa-circle-check text-success-light{% else %}fa-circle-xmark text-warn-light{% endif %}
+                        {% elif answer.is_correct %}fa-circle-check opacity-40 text-success-light
                         {% else %}fa-circle opacity-30{% endif %}"></i>
                       <div class="min-w-0">
                         <p class="text-sm font-semibold">{{ answer.text }}</p>

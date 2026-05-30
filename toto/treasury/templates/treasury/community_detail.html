@@ -36,17 +36,17 @@
     {% endfor %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-4 text-center shadow-sm">
-      <div class="text-xl font-bold text-green-500">{{ inflow_total }}</div>
+      <div class="text-xl font-bold text-success-light">{{ inflow_total }}</div>
       <div class="mt-1 text-xs opacity-60">{% trans "Total In" %}</div>
     </div>
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-4 text-center shadow-sm">
-      <div class="text-xl font-bold text-red-500">{{ outflow_total }}</div>
+      <div class="text-xl font-bold text-warn-light">{{ outflow_total }}</div>
       <div class="mt-1 text-xs opacity-60">{% trans "Total Out" %}</div>
     </div>
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-4 text-center shadow-sm">
-      <div class="text-xl font-bold {% if net >= 0 %}text-green-500{% else %}text-red-500{% endif %}">{{ net }}</div>
+      <div class="text-xl font-bold {% if net >= 0 %}text-success-light{% else %}text-warn-light{% endif %}">{{ net }}</div>
       <div class="mt-1 text-xs opacity-60">{% trans "Net" %}</div>
     </div>
   </div>
@@ -111,7 +111,7 @@
             <td class="px-5 py-3 font-mono text-xs opacity-70">{{ entry.transaction.reference|truncatechars:30 }}</td>
             <td class="px-5 py-3 text-xs">{{ entry.transaction.transaction_type }}</td>
             <td class="px-5 py-3 text-xs opacity-70">{{ entry.transaction.description|truncatechars:50|default:"—" }}</td>
-            <td class="px-5 py-3 text-right font-mono text-xs {% if entry.amount_base_units > 0 %}text-green-500{% else %}text-red-500{% endif %}">
+            <td class="px-5 py-3 text-right font-mono text-xs {% if entry.amount_base_units > 0 %}text-success-light{% else %}text-warn-light{% endif %}">
               {% if entry.amount_base_units > 0 %}+{% endif %}{{ entry.amount_base_units }}
             </td>
             <td class="px-5 py-3 text-xs opacity-60">{{ entry.asset.unit_name }}</td>

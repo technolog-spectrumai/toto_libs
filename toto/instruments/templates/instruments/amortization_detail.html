@@ -167,14 +167,14 @@
           <span class="font-semibold">{{ execution.action }}</span>
           <div class="flex items-center gap-2 text-xs opacity-60">
             <span class="rounded px-1.5 py-0.5
-              {% if execution.status == 'success' %}bg-green-500/15 text-green-600{% else %}bg-red-500/15 text-red-600{% endif %}">
+              {% if execution.status == 'success' %}bg-success-light/15 text-success-light{% else %}bg-warn-light/15 text-warn-light{% endif %}">
               {{ execution.get_status_display }}
             </span>
             {{ execution.created_at|date:"M d, Y H:i" }}
           </div>
         </div>
         {% if execution.error_message %}
-        <p class="mt-1 text-xs text-red-500">{{ execution.error_message }}</p>
+        <p class="mt-1 text-xs text-warn-light">{{ execution.error_message }}</p>
         {% endif %}
         {% if execution.transaction %}
         <p class="mt-1 text-xs opacity-50">

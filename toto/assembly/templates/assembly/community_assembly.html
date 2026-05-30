@@ -41,7 +41,7 @@
 
       <div class="flex flex-wrap gap-2">
         {% if is_read_only %}
-          <span class="inline-flex items-center gap-2 rounded-lg border border-blue-400/40 bg-blue-500/10 px-4 py-2 text-sm font-semibold text-blue-600 shadow-sm">
+          <span class="inline-flex items-center gap-2 rounded-lg border border-link-light/40 bg-link-light/10 px-4 py-2 text-sm font-semibold text-link-light shadow-sm">
             <i class="fa-solid fa-eye"></i>
             Observer — read only
           </span>
@@ -66,12 +66,12 @@
           <span
             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm">
-            <i class="fa-solid fa-check-circle text-green-500"></i>
+            <i class="fa-solid fa-check-circle text-success-light"></i>
             Voting rights active
           </span>
         {% else %}
           <span
-            class="inline-flex items-center gap-2 rounded-lg border border-yellow-400/40 bg-yellow-500/10 px-4 py-2 text-sm font-semibold text-yellow-600 shadow-sm">
+            class="inline-flex items-center gap-2 rounded-lg border border-accent-light/40 bg-accent-light/10 px-4 py-2 text-sm font-semibold text-accent-light shadow-sm">
             <i class="fa-solid fa-triangle-exclamation"></i>
             Poll tax due
           </span>
@@ -101,7 +101,7 @@
               <form method="post" action="{% url 'assembly:senate_confirm' community.slug p.pk %}">
                 {% csrf_token %}
                 <button type="submit"
-                        class="inline-flex items-center gap-1 rounded border border-green-400/40 bg-green-500/10 px-3 py-1 text-xs font-semibold text-green-700 hover:opacity-80">
+                        class="inline-flex items-center gap-1 rounded border border-success-light/40 bg-success-light/10 px-3 py-1 text-xs font-semibold text-success-light hover:opacity-80">
                   <i class="fa-solid fa-check"></i> {% trans "Enact" %}
                 </button>
               </form>
@@ -139,11 +139,11 @@
             </p>
           </div>
           {% if item.paid %}
-            <span class="inline-flex items-center gap-1 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-600">
+            <span class="inline-flex items-center gap-1 rounded-lg bg-success-light/15 px-3 py-1.5 text-xs font-semibold text-success-light">
               <i class="fa-solid fa-check"></i> Paid
             </span>
           {% elif has_voting_rights %}
-            <span class="inline-flex items-center gap-1 rounded-lg bg-green-500/15 px-3 py-1.5 text-xs font-semibold text-green-600">
+            <span class="inline-flex items-center gap-1 rounded-lg bg-success-light/15 px-3 py-1.5 text-xs font-semibold text-success-light">
               <i class="fa-solid fa-shield-halved"></i> Exempt
             </span>
           {% else %}
@@ -222,7 +222,7 @@
           <div x-show="proposalType === 'rule'" class="flex items-center gap-3">
             <label class="inline-flex cursor-pointer items-center gap-2 text-sm font-semibold">
               <input type="checkbox" name="is_repeal" value="1" class="h-4 w-4 rounded">
-              This is a <span class="text-red-500">repeal</span> (removes an existing rule)
+              This is a <span class="text-warn-light">repeal</span> (removes an existing rule)
             </label>
           </div>
 
@@ -368,9 +368,9 @@
                   <p class="font-semibold">{{ item.proposal.title }}</p>
                   {% if item.proposal.proposal_type == 'rule' %}
                     {% if item.proposal.is_repeal %}
-                      <span class="rounded bg-red-500/15 px-2 py-0.5 text-xs font-semibold text-red-600">Repeal</span>
+                      <span class="rounded bg-warn-light/15 px-2 py-0.5 text-xs font-semibold text-warn-light">Repeal</span>
                     {% else %}
-                      <span class="rounded bg-green-500/15 px-2 py-0.5 text-xs font-semibold text-green-600">New rule</span>
+                      <span class="rounded bg-success-light/15 px-2 py-0.5 text-xs font-semibold text-success-light">New rule</span>
                     {% endif %}
                   {% else %}
                     <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="rounded px-2 py-0.5 text-xs font-semibold">
@@ -382,8 +382,8 @@
                 <p class="mt-0.5 text-xs opacity-60">by {{ item.proposal.opened_by.display_name|default:"—" }}{% if item.proposal.closes_at %} · closes {{ item.proposal.closes_at|date:"Y-m-d H:i" }}{% endif %}</p>
               </div>
               <div class="flex gap-2 text-xs font-semibold">
-                <span class="rounded bg-green-500/15 px-2 py-0.5 text-green-600">✓ {{ item.tally.yes }}</span>
-                <span class="rounded bg-red-500/15 px-2 py-0.5 text-red-600">✗ {{ item.tally.no }}</span>
+                <span class="rounded bg-success-light/15 px-2 py-0.5 text-success-light">✓ {{ item.tally.yes }}</span>
+                <span class="rounded bg-warn-light/15 px-2 py-0.5 text-warn-light">✗ {{ item.tally.no }}</span>
                 <span class="rounded px-2 py-0.5 opacity-50">— {{ item.tally.abstain }}</span>
               </div>
             </div>
@@ -416,7 +416,7 @@
                     </form>
                   {% endfor %}
                 {% else %}
-                  <span class="text-xs font-semibold text-yellow-600">
+                  <span class="text-xs font-semibold text-accent-light">
                     <i class="fa-solid fa-lock text-xs"></i> Pay poll tax to vote
                   </span>
                 {% endif %}
@@ -425,7 +425,7 @@
                   <form method="post" action="{% url 'assembly:proposal_close' community.slug item.proposal.pk %}">
                     {% csrf_token %}
                     <button type="submit"
-                      class="inline-flex items-center gap-1 rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-1.5 text-xs font-semibold text-red-600 transition hover:opacity-80">
+                      class="inline-flex items-center gap-1 rounded-lg border border-warn-light/30 bg-warn-light/10 px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-80">
                       Force close
                     </button>
                   </form>
@@ -589,7 +589,7 @@
                   </p>
                   <p class="text-xs opacity-50">{{ fee.get_set_by_display }}</p>
                 </div>
-                <span class="font-bold {% if fee.fee_bps < 0 %}text-green-500{% else %}":class="darkMode ? 'text-accent-dark' : 'text-accent-light'{% endif %}">
+                <span class="font-bold {% if fee.fee_bps < 0 %}text-success-light{% else %}":class="darkMode ? 'text-accent-dark' : 'text-accent-light'{% endif %}">
                   {% if fee.fee_bps >= 0 %}+{% endif %}{{ fee.fee_bps }} bps
                 </span>
               </li>

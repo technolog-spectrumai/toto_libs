@@ -37,7 +37,7 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
       <div class="space-y-2">
         <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
-          {{ form.name.label }} <span class="text-red-400">*</span>
+          {{ form.name.label }} <span class="text-warn-light">*</span>
         </label>
         {{ form.name }}
         <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
@@ -51,7 +51,7 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="{{ form.source_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>{{ form.source_account.label }} <span class="text-red-400">*</span>
+            <i class="fa-solid fa-arrow-right-from-bracket mr-1"></i>{{ form.source_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.source_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Account holding the prepaid balance." %}</p>
@@ -59,7 +59,7 @@
         </div>
         <div>
           <label for="{{ form.destination_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>{{ form.destination_account.label }} <span class="text-red-400">*</span>
+            <i class="fa-solid fa-arrow-right-to-bracket mr-1"></i>{{ form.destination_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.destination_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Account receiving the consumed value." %}</p>
@@ -74,14 +74,14 @@
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
           <label for="{{ form.asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.asset.label }} <span class="text-red-400">*</span>
+            {{ form.asset.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.asset }}
           {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.original_amount_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.original_amount_base_units.label }} <span class="text-red-400">*</span>
+            {{ form.original_amount_base_units.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.original_amount_base_units }}
           <p class="mt-1 text-xs opacity-50">{% trans "Total prepaid balance in base units." %}</p>
@@ -89,7 +89,7 @@
         </div>
         <div>
           <label for="{{ form.basis.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.basis.label }} <span class="text-red-400">*</span>
+            {{ form.basis.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.basis }}
           <p class="mt-1 text-xs opacity-50">{% trans "How amortization is triggered." %}</p>

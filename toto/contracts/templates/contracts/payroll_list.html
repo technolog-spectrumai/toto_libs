@@ -71,7 +71,7 @@
           <td class="px-4 py-3 text-right font-mono">{{ row.duty_count }}</td>
           <td class="px-4 py-3">
             {% if row.contract.status == 'executed' %}
-            <span class="inline-flex items-center gap-1 rounded-full bg-green-100 text-green-800 px-2 py-0.5 text-xs font-semibold">
+            <span class="inline-flex items-center gap-1 rounded-full bg-success-light/15 text-success-light px-2 py-0.5 text-xs font-semibold">
               <i class="fa-solid fa-circle-check"></i> {% trans "Active" %}
             </span>
             {% else %}

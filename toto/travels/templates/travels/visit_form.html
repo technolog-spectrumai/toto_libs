@@ -79,7 +79,7 @@
           </div>
 
           {% if form.location.errors %}
-            <p class="text-sm text-red-500">{{ form.location.errors }}</p>
+            <p class="text-sm text-warn-light">{{ form.location.errors }}</p>
           {% endif %}
         </div>
 
@@ -94,7 +94,7 @@
             </label>
             {{ form.participant }}
             {% if form.participant.errors %}
-              <p class="text-sm text-red-500">{{ form.participant.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.participant.errors }}</p>
             {% endif %}
           </div>
 
@@ -105,7 +105,7 @@
               </label>
               {{ form.visited_date }}
               {% if form.visited_date.errors %}
-                <p class="text-sm text-red-500">{{ form.visited_date.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.visited_date.errors }}</p>
               {% endif %}
             </div>
 
@@ -115,7 +115,7 @@
               </label>
               {{ form.visited_time }}
               {% if form.visited_time.errors %}
-                <p class="text-sm text-red-500">{{ form.visited_time.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.visited_time.errors }}</p>
               {% endif %}
             </div>
           </div>
@@ -127,7 +127,7 @@
               </label>
               {{ form.ended_date }}
               {% if form.ended_date.errors %}
-                <p class="text-sm text-red-500">{{ form.ended_date.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.ended_date.errors }}</p>
               {% endif %}
             </div>
 
@@ -137,7 +137,7 @@
               </label>
               {{ form.ended_time }}
               {% if form.ended_time.errors %}
-                <p class="text-sm text-red-500">{{ form.ended_time.errors }}</p>
+                <p class="text-sm text-warn-light">{{ form.ended_time.errors }}</p>
               {% endif %}
             </div>
           </div>
@@ -149,7 +149,7 @@
             {{ form.score }}
             <p class="text-xs opacity-60">Optional. 1–5.</p>
             {% if form.score.errors %}
-              <p class="text-sm text-red-500">{{ form.score.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.score.errors }}</p>
             {% endif %}
           </div>
 
@@ -159,7 +159,7 @@
             </label>
             {{ form.review }}
             {% if form.review.errors %}
-              <p class="text-sm text-red-500">{{ form.review.errors }}</p>
+              <p class="text-sm text-warn-light">{{ form.review.errors }}</p>
             {% endif %}
           </div>
 

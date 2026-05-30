@@ -26,7 +26,7 @@
   <form method="post" class="space-y-5">
     {% csrf_token %}
     {% if form.non_field_errors %}
-    <div class="rounded-lg border border-red-400 px-4 py-3 text-sm font-semibold text-red-600">{{ form.non_field_errors }}</div>
+    <div class="rounded-lg border border-warn-light px-4 py-3 text-sm font-semibold text-warn-light">{{ form.non_field_errors }}</div>
     {% endif %}
 
     <!-- Identity -->
@@ -34,25 +34,25 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Identity" %}</legend>
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
-          <label for="{{ form.reference.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reference.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.reference.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.reference.label }} <span class="text-warn-light">*</span></label>
           {{ form.reference }}
           <p class="mt-1 text-xs opacity-50">{% trans "A unique human-readable identifier, e.g. ESC-2026-001" %}</p>
-          {% for e in form.reference.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.reference.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
         <div>
-          <label for="{{ form.instrument_type.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.instrument_type.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.instrument_type.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.instrument_type.label }} <span class="text-warn-light">*</span></label>
           {{ form.instrument_type }}
-          {% for e in form.instrument_type.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.instrument_type.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.issuer.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.issuer.label }}</label>
           {{ form.issuer }}
-          {% for e in form.issuer.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.issuer.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.status.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.status.label }}</label>
           {{ form.status }}
-          {% for e in form.status.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.status.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
@@ -65,17 +65,17 @@
           <label for="{{ form.contract_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.contract_account.label }}</label>
           {{ form.contract_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Vault or margin account used by this instrument." %}</p>
-          {% for e in form.contract_account.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.contract_account.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.starts_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.starts_at.label }}</label>
           {{ form.starts_at }}
-          {% for e in form.starts_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.starts_at.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.ends_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.ends_at.label }}</label>
           {{ form.ends_at }}
-          {% for e in form.ends_at.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+          {% for e in form.ends_at.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
         </div>
       </div>
     </fieldset>
@@ -87,12 +87,12 @@
         <label for="{{ form.terms.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.terms.label }}</label>
         {{ form.terms }}
         <p class="mt-1 text-xs opacity-50">{% trans "JSON object with contract terms and conditions." %}</p>
-        {% for e in form.terms.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        {% for e in form.terms.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
       </div>
       <div>
         <label for="{{ form.metadata.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.metadata.label }}</label>
         {{ form.metadata }}
-        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold text-red-500">{{ e }}</p>{% endfor %}
+        {% for e in form.metadata.errors %}<p class="mt-1 text-xs font-semibold text-warn-light">{{ e }}</p>{% endfor %}
       </div>
     </fieldset>
 

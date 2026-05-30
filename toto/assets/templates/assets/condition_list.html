@@ -29,7 +29,7 @@
           <td class="px-4 py-3">{{ c.get_kind_display }}</td>
           <td class="px-4 py-3">
             <span class="inline-block rounded px-2 py-0.5 text-xs font-semibold
-              {% if c.status == 'satisfied' %}bg-green-100 text-green-800{% elif c.status == 'failed' %}bg-red-100 text-red-800{% elif c.status == 'waived' %}bg-yellow-100 text-yellow-800{% elif c.status == 'cancelled' %}bg-gray-100 text-gray-500{% else %}bg-blue-100 text-blue-800{% endif %}">
+              {% if c.status == 'satisfied' %}bg-success-light/15 text-success-light{% elif c.status == 'failed' %}bg-warn-light/15 text-warn-light{% elif c.status == 'waived' %}bg-accent-light/15 text-accent-light{% elif c.status == 'cancelled' %}bg-gray-100 text-gray-500{% else %}bg-link-light/15 text-link-light{% endif %}">
               {{ c.get_status_display }}
             </span>
           </td>

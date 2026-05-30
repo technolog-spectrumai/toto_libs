@@ -33,9 +33,9 @@
     <a href="{% url 'incidents:incident-detail' incident.pk %}" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-sunken-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-sunken-light'" class="flex items-center gap-3 rounded-xl border p-3 shadow-sm transition hover:opacity-90">
       <span class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold
         {% if incident.severity == 'critical' %}bg-purple-500/20 text-purple-500
-        {% elif incident.severity == 'high' %}bg-red-500/20 text-red-500
+        {% elif incident.severity == 'high' %}bg-warn-light/20 text-warn-light
         {% elif incident.severity == 'medium' %}bg-amber-500/20 text-amber-500
-        {% else %}bg-green-500/20 text-green-500{% endif %}">
+        {% else %}bg-success-light/20 text-success-light{% endif %}">
         <i class="fa-solid fa-triangle-exclamation"></i>
       </span>
       <div class="min-w-0 flex-1">

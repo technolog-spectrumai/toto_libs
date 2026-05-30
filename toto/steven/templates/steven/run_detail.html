@@ -58,10 +58,10 @@
 
   {% if run.error %}
     <div class="space-y-3">
-      <h3 class="text-lg font-bold text-red-500">Error</h3>
+      <h3 class="text-lg font-bold text-warn-light">Error</h3>
       <pre
         :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-        class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-red-500/40 p-4 text-sm">{{ run.error }}</pre>
+        class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-warn-light/40 p-4 text-sm">{{ run.error }}</pre>
     </div>
   {% endif %}
 </section>

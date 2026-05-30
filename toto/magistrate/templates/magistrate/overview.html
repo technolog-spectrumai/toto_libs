@@ -134,19 +134,19 @@
 
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-xl border p-4 shadow-sm">
-      <div class="text-2xl font-bold text-blue-500">{{ stats.total_roles }}</div>
+      <div class="text-2xl font-bold text-link-light">{{ stats.total_roles }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Defined Roles" %}</div>
     </div>
 
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-xl border p-4 shadow-sm">
-      <div class="text-2xl font-bold text-yellow-500">{{ stats.pending_reports }}</div>
+      <div class="text-2xl font-bold text-accent-light">{{ stats.pending_reports }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Pending Reports" %}</div>
     </div>
 
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-xl border p-4 shadow-sm">
-      <div class="text-2xl font-bold text-green-500">{{ stats.acknowledged_reports }}</div>
+      <div class="text-2xl font-bold text-success-light">{{ stats.acknowledged_reports }}</div>
       <div class="mt-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Acknowledged" %}</div>
     </div>
 

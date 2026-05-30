@@ -103,8 +103,8 @@
               <td class="px-4 py-3 font-semibold">{{ c.name }}</td>
               <td class="px-4 py-3">
                 <span class="rounded-full px-2 py-0.5 text-xs font-semibold uppercase
-                  {% if c.status == 'executed' %}bg-green-100 text-green-700
-                  {% elif c.status == 'draft' %}bg-yellow-100 text-yellow-700
+                  {% if c.status == 'executed' %}bg-success-light/15 text-success-light
+                  {% elif c.status == 'draft' %}bg-accent-light/15 text-accent-light
                   {% else %}bg-gray-100 text-gray-600{% endif %}">
                   {{ c.status }}
                 </span>

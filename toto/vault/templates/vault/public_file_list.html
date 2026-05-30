@@ -749,7 +749,7 @@
                   <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="item.uploaded"></span>
 
                   <span x-show="item.encrypted"
-                        class="text-green-500 text-xs shrink-0">
+                        class="text-success-light text-xs shrink-0">
                     <i class="fa-solid fa-lock"></i>
                   </span>
 
@@ -807,7 +807,7 @@
                   <!-- Delete trash — owner only, revealed on row hover -->
                   <button x-show="item.owner === currentUser"
                           @click.stop="openDelete(item)"
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-red-500 hover:bg-red-500/10"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-warn-light hover:bg-warn-light/10"
                           :title="`Delete ${item.title}`">
                     <i class="fa-solid fa-trash text-xs"></i>
                   </button>
@@ -869,7 +869,7 @@
                    class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
           </div>
 
-          <p x-show="encDownloadError" x-text="encDownloadError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="encDownloadError" x-text="encDownloadError" class="text-xs text-warn-light -mt-2"></p>
 
           <div class="flex gap-3">
             <button @click="submitEncDownload"
@@ -968,7 +968,7 @@
                    class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
           </div>
 
-          <p x-show="removeEncError" x-text="removeEncError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="removeEncError" x-text="removeEncError" class="text-xs text-warn-light -mt-2"></p>
 
           <div class="flex gap-3">
             <button @click="submitRemoveEnc"
@@ -1074,7 +1074,7 @@
           </p>
 
           <!-- Error -->
-          <p x-show="cipherError" x-text="cipherError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="cipherError" x-text="cipherError" class="text-xs text-warn-light -mt-2"></p>
 
           <!-- Actions -->
           <div class="flex gap-3">
@@ -1192,7 +1192,7 @@
           </div>
 
           <!-- Error -->
-          <p x-show="moveError" x-text="moveError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="moveError" x-text="moveError" class="text-xs text-warn-light -mt-2"></p>
 
           <!-- Actions -->
           <div class="flex gap-3">
@@ -1237,7 +1237,7 @@
              class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
              @click.stop>
 
-          <h2 class="flex items-center gap-2 text-base font-bold text-red-500">
+          <h2 class="flex items-center gap-2 text-base font-bold text-warn-light">
             <i class="fa-solid fa-triangle-exclamation text-sm"></i>
             {% trans "Delete file" %}
           </h2>
@@ -1250,19 +1250,19 @@
           </div>
 
           <!-- Warning -->
-          <p class="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-500 font-medium">
+          <p class="rounded-xl border border-warn-light/30 bg-warn-light/10 px-4 py-3 text-sm text-warn-light font-medium">
             <i class="fa-solid fa-circle-exclamation mr-1.5"></i>
             {% trans "This action is permanent and cannot be undone. The file and all its data will be deleted immediately." %}
           </p>
 
           <!-- Error -->
-          <p x-show="deleteError" x-text="deleteError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="deleteError" x-text="deleteError" class="text-xs text-warn-light -mt-2"></p>
 
           <!-- Actions -->
           <div class="flex gap-3">
             <button @click="submitDelete"
                     :disabled="deleteLoading"
-                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-red-500 text-white hover:bg-red-600 disabled:opacity-50 disabled:cursor-not-allowed">
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-warn-light text-white hover:bg-warn-light disabled:opacity-50 disabled:cursor-not-allowed">
               <span x-show="!deleteLoading">{% trans "Delete permanently" %}</span>
               <span x-show="deleteLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
             </button>
@@ -1356,7 +1356,7 @@
           </div>
 
           <!-- Error -->
-          <p x-show="renameError" x-text="renameError" class="text-xs text-red-500 -mt-2"></p>
+          <p x-show="renameError" x-text="renameError" class="text-xs text-warn-light -mt-2"></p>
 
           <!-- Actions -->
           <div class="flex gap-3">

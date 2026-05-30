@@ -140,7 +140,7 @@ document.addEventListener('alpine:init', () => {
 
       <!-- Form errors -->
       {% if form.errors %}
-      <div class="mb-4 rounded-xl border border-red-400/40 bg-red-500/5 p-4 text-sm text-red-500 space-y-1">
+      <div class="mb-4 rounded-xl border border-warn-light/40 bg-warn-light/5 p-4 text-sm text-warn-light space-y-1">
         {% for field, errors in form.errors.items %}{% for e in errors %}
           <p><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>{{ e }}</p>
         {% endfor %}{% endfor %}

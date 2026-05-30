@@ -36,7 +36,7 @@
     <fieldset class="rounded-xl border p-5 space-y-4" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
       <div class="space-y-2">
-        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-red-400">*</span></label>
+        <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-warn-light">*</span></label>
         {{ form.name }}
         <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
         {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -50,7 +50,7 @@
         <div class="space-y-2">
           <label for="{{ form.grantor_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-building mr-1" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-            {{ form.grantor_account.label }} <span class="text-red-400">*</span>
+            {{ form.grantor_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.grantor_account }}
           <p class="text-xs opacity-50">{% trans "Holds the tokens being vested." %}</p>
@@ -59,7 +59,7 @@
         <div class="space-y-2">
           <label for="{{ form.beneficiary_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
             <i class="fa-solid fa-user-check mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            {{ form.beneficiary_account.label }} <span class="text-red-400">*</span>
+            {{ form.beneficiary_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.beneficiary_account }}
           <p class="text-xs opacity-50">{% trans "Receives tokens as they vest." %}</p>
@@ -73,12 +73,12 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Asset & Amounts" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-3">
         <div class="space-y-2">
-          <label for="{{ form.asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.asset }}
           {% for e in form.asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.total_amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.total_amount_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.total_amount_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.total_amount_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.total_amount_base_units }}
           <p class="text-xs opacity-50">{% trans "Full grant in base units." %}</p>
           {% for e in form.total_amount_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -101,12 +101,12 @@
       </div>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.start_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.start_at.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.start_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.start_at.label }} <span class="text-warn-light">*</span></label>
           {{ form.start_at }}
           {% for e in form.start_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.end_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.end_at.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.end_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.end_at.label }} <span class="text-warn-light">*</span></label>
           {{ form.end_at }}
           {% for e in form.end_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>

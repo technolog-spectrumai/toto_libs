@@ -39,7 +39,7 @@
         <form method="post" action="{% url 'subscriptions:subscription_cancel' subscription.uid %}">
           {% csrf_token %}
           <button type="submit"
-                  class="inline-flex items-center gap-2 rounded-lg border border-red-400/40 px-3 py-2 text-sm font-semibold text-red-500 transition hover:opacity-80">
+                  class="inline-flex items-center gap-2 rounded-lg border border-warn-light/40 px-3 py-2 text-sm font-semibold text-warn-light transition hover:opacity-80">
             <i class="fa-solid fa-ban"></i>{% trans "Cancel" %}
           </button>
         </form>

@@ -74,7 +74,7 @@
                   <label class="text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}
                 {% endif %}
                 {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
-                {% for error in field.errors %}<p class="text-xs text-red-500">{{ error }}</p>{% endfor %}
+                {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
               </div>
             {% endif %}
           {% endfor %}
@@ -114,20 +114,20 @@
                   {% elif job.status == "success" %}
                     <span class="text-emerald-500 font-semibold">{{ job.get_status_display }}</span>
                   {% elif job.status == "failed" %}
-                    <span class="text-red-500 font-semibold">{{ job.get_status_display }}</span>
+                    <span class="text-warn-light font-semibold">{{ job.get_status_display }}</span>
                   {% else %}
                     <span class="opacity-60">{{ job.get_status_display }}</span>
                   {% endif %}
                 </td>
                 <td class="pr-4 opacity-70">{{ job.get_engine_display }}</td>
                 <td class="pr-4 opacity-60 font-mono text-xs">{{ job.duration_label }}</td>
-                <td class="max-w-xs truncate text-red-500 pr-4">{{ job.error_message }}</td>
+                <td class="max-w-xs truncate text-warn-light pr-4">{{ job.error_message }}</td>
                 <td>
                   {% if job.status == "queued" or job.status == "running" %}
                     <form method="post" action="{% url 'transcription:job_cancel' collection.slug source.slug job.pk %}" class="inline">
                       {% csrf_token %}
                       <button type="submit"
-                              class="rounded-lg border border-red-500/40 px-2.5 py-1 text-xs font-semibold text-red-500 transition hover:bg-red-500/10"
+                              class="rounded-lg border border-warn-light/40 px-2.5 py-1 text-xs font-semibold text-warn-light transition hover:bg-warn-light/10"
                               onclick="return confirm('{% trans "Cancel this job?" %}')">
                         <i class="fa-solid fa-xmark mr-1"></i>{% trans "Cancel" %}
                       </button>

@@ -102,9 +102,9 @@
               </code>
               <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ rec.tariff.code }}</span>
               <span class="rounded px-2 py-0.5 text-xs font-semibold
-                {% if rec.status == 'posted' %}:class="darkMode ? 'bg-green-900/20 text-green-300' : 'bg-green-100 text-green-700'"
-                {% elif rec.status == 'failed' %}:class="darkMode ? 'bg-red-900/20 text-red-300' : 'bg-red-100 text-red-700'"
-                {% elif rec.status == 'pending' %}:class="darkMode ? 'bg-yellow-900/20 text-yellow-300' : 'bg-yellow-100 text-yellow-700'"
+                {% if rec.status == 'posted' %}:class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
+                {% elif rec.status == 'failed' %}:class="darkMode ? 'bg-warn-light/20 text-warn-light' : 'bg-warn-light/15 text-warn-light'"
+                {% elif rec.status == 'pending' %}:class="darkMode ? 'bg-accent-light/20 text-accent-light' : 'bg-accent-light/15 text-accent-light'"
                 {% else %}:class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"{% endif %}">
                 {{ rec.get_status_display }}
               </span>

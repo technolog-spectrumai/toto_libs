@@ -41,9 +41,9 @@
   {% for message in messages %}
     <div class="rounded-xl px-4 py-3 text-sm font-semibold
       {% if message.tags == 'error' %}
-        bg-red-500/20 text-red-400 border border-red-500/30
+        bg-warn-light/20 text-warn-light border border-warn-light/30
       {% else %}
-        bg-green-500/20 text-green-400 border border-green-500/30
+        bg-success-light/20 text-success-light border border-success-light/30
       {% endif %}">
       <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %} mr-2"></i>
       {{ message }}

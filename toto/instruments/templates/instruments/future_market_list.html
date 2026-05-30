@@ -28,7 +28,7 @@
               <span class="font-bold text-lg" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{{ market.code }}</span>
               {% if market.name %}<span class="text-sm opacity-60">{{ market.name }}</span>{% endif %}
               <span class="rounded-full px-2 py-0.5 text-xs font-semibold
-                {% if market.active %}bg-green-500/15 text-green-600{% else %}bg-gray-500/15 text-gray-500{% endif %}">
+                {% if market.active %}bg-success-light/15 text-success-light{% else %}bg-gray-500/15 text-gray-500{% endif %}">
                 {% if market.active %}{% trans "Active" %}{% else %}{% trans "Inactive" %}{% endif %}
               </span>
             </div>

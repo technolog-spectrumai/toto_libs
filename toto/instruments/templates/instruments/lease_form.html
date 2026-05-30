@@ -37,7 +37,7 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name" %}</legend>
       <div class="space-y-2">
         <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">
-          {{ form.name.label }} <span class="text-red-400">*</span>
+          {{ form.name.label }} <span class="text-warn-light">*</span>
         </label>
         {{ form.name }}
         <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
@@ -51,7 +51,7 @@
       <div class="grid gap-4 sm:grid-cols-3">
         <div>
           <label for="{{ form.lessor_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-user-tie mr-1"></i>{{ form.lessor_account.label }} <span class="text-red-400">*</span>
+            <i class="fa-solid fa-user-tie mr-1"></i>{{ form.lessor_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.lessor_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Account receiving the asset back when lease ends." %}</p>
@@ -59,7 +59,7 @@
         </div>
         <div>
           <label for="{{ form.lessee_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-user mr-1"></i>{{ form.lessee_account.label }} <span class="text-red-400">*</span>
+            <i class="fa-solid fa-user mr-1"></i>{{ form.lessee_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.lessee_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Account that pays the lease fees." %}</p>
@@ -67,7 +67,7 @@
         </div>
         <div>
           <label for="{{ form.revenue_account.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-piggy-bank mr-1"></i>{{ form.revenue_account.label }} <span class="text-red-400">*</span>
+            <i class="fa-solid fa-piggy-bank mr-1"></i>{{ form.revenue_account.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.revenue_account }}
           <p class="mt-1 text-xs opacity-50">{% trans "Account that receives payment proceeds." %}</p>
@@ -82,7 +82,7 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="{{ form.leased_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.leased_asset.label }} <span class="text-red-400">*</span>
+            {{ form.leased_asset.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.leased_asset }}
           <p class="mt-1 text-xs opacity-50">{% trans "The asset being leased." %}</p>
@@ -90,7 +90,7 @@
         </div>
         <div>
           <label for="{{ form.payment_asset.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.payment_asset.label }} <span class="text-red-400">*</span>
+            {{ form.payment_asset.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.payment_asset }}
           <p class="mt-1 text-xs opacity-50">{% trans "Asset used for lease payments." %}</p>
@@ -105,14 +105,14 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="{{ form.billing_period.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.billing_period.label }} <span class="text-red-400">*</span>
+            {{ form.billing_period.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.billing_period }}
           {% for e in form.billing_period.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div>
           <label for="{{ form.fixed_fee_base_units.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.fixed_fee_base_units.label }} <span class="text-red-400">*</span>
+            {{ form.fixed_fee_base_units.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.fixed_fee_base_units }}
           <p class="mt-1 text-xs opacity-50">{% trans "Periodic fee per billing period, in base units." %}</p>
@@ -127,7 +127,7 @@
       <div class="grid gap-4 sm:grid-cols-2">
         <div>
           <label for="{{ form.starts_at.id_for_label }}" class="mb-1.5 block text-xs font-semibold uppercase tracking-wide opacity-60">
-            {{ form.starts_at.label }} <span class="text-red-400">*</span>
+            {{ form.starts_at.label }} <span class="text-warn-light">*</span>
           </label>
           {{ form.starts_at }}
           {% for e in form.starts_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}

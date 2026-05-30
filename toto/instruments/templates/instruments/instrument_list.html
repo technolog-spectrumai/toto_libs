@@ -162,13 +162,13 @@
     <a href="{% url 'instruments:escrow_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-lock text-lg text-yellow-500"></i>
+      <i class="fa-solid fa-lock text-lg text-accent-light"></i>
       <span>{% trans "New Escrow" %}</span>
     </a>
     <a href="{% url 'instruments:forward_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-arrow-right-arrow-left text-lg text-blue-500"></i>
+      <i class="fa-solid fa-arrow-right-arrow-left text-lg text-link-light"></i>
       <span>{% trans "New Forward" %}</span>
     </a>
     <a href="{% url 'instruments:future_contract_create' %}"
@@ -180,7 +180,7 @@
     <a href="{% url 'instruments:vesting_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <i class="fa-solid fa-hourglass-half text-lg text-orange-500"></i>
+      <i class="fa-solid fa-hourglass-half text-lg text-accent-light"></i>
       <span>{% trans "New Vesting" %}</span>
     </a>
     <a href="{% url 'instruments:option_create' %}"

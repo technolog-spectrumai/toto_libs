@@ -35,10 +35,10 @@
         <span class="text-sm font-semibold opacity-60 uppercase tracking-wide">Status</span>
         <span
           :class="{
-            'bg-green-500/20 text-green-400': state.status === 'succeeded',
-            'bg-red-500/20 text-red-400': state.status === 'failed',
-            'bg-blue-500/20 text-blue-400': state.status === 'running',
-            'bg-yellow-500/20 text-yellow-400': state.status === 'pending',
+            'bg-success-light/20 text-success-light': state.status === 'succeeded',
+            'bg-warn-light/20 text-warn-light': state.status === 'failed',
+            'bg-link-light/20 text-link-light': state.status === 'running',
+            'bg-accent-light/20 text-accent-light': state.status === 'pending',
             'bg-gray-500/20 opacity-60': !['succeeded','failed','running','pending'].includes(state.status),
           }"
           class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
@@ -54,13 +54,13 @@
         <div class="w-full rounded-full h-2" :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
           <div
             class="h-2 rounded-full transition-all duration-500"
-            :class="state.status === 'succeeded' ? 'bg-green-500' : state.status === 'failed' ? 'bg-red-500' : 'bg-blue-500'"
+            :class="state.status === 'succeeded' ? 'bg-success-light' : state.status === 'failed' ? 'bg-warn-light' : 'bg-link-light'"
             :style="'width: ' + state.progress_percent + '%'"
           ></div>
         </div>
       </div>
 
-      <div x-show="state.error_message" class="rounded bg-red-500/10 px-3 py-2 text-sm text-red-400">
+      <div x-show="state.error_message" class="rounded bg-warn-light/10 px-3 py-2 text-sm text-warn-light">
         <i class="fa-solid fa-triangle-exclamation mr-1"></i>
         <span x-text="state.error_message"></span>
       </div>

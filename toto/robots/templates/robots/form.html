@@ -22,7 +22,7 @@
           {{ field }}
         {% endif %}
         {% if field.help_text %}<p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
-        {% if field.errors %}<div class="mt-1 text-sm text-red-500">{{ field.errors }}</div>{% endif %}
+        {% if field.errors %}<div class="mt-1 text-sm text-warn-light">{{ field.errors }}</div>{% endif %}
       </div>
     {% endfor %}
     <div class="flex justify-end gap-2 border-t border-current/10 pt-5">

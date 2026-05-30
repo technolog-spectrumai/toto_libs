@@ -81,9 +81,9 @@
         <div class="flex justify-between gap-4"><dt class="opacity-60">Severity</dt>
           <dd class="font-semibold
             {% if incident.severity == 'critical' %}text-purple-500
-            {% elif incident.severity == 'high' %}text-red-500
+            {% elif incident.severity == 'high' %}text-warn-light
             {% elif incident.severity == 'medium' %}text-amber-500
-            {% else %}text-green-500{% endif %}">{{ incident.get_severity_display }}</dd>
+            {% else %}text-success-light{% endif %}">{{ incident.get_severity_display }}</dd>
         </div>
         <div class="flex justify-between gap-4"><dt class="opacity-60">Status</dt><dd class="font-semibold">{{ incident.get_status_display }}</dd></div>
         {% if incident.category %}<div class="flex justify-between gap-4"><dt class="opacity-60">Category</dt><dd class="font-semibold">{{ incident.category.name }}</dd></div>{% endif %}

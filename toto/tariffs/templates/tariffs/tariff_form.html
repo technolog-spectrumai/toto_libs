@@ -14,7 +14,7 @@
       {% for field in form %}
         <div>
           <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">
-            {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
+            {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
           </label>
           <div
             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
@@ -27,13 +27,13 @@
             <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
           {% endif %}
           {% for error in field.errors %}
-            <p class="mt-1 text-xs text-red-500">{{ error }}</p>
+            <p class="mt-1 text-xs text-warn-light">{{ error }}</p>
           {% endfor %}
         </div>
       {% endfor %}
       {% if form.non_field_errors %}
         {% for error in form.non_field_errors %}
-          <p class="text-sm text-red-500">{{ error }}</p>
+          <p class="text-sm text-warn-light">{{ error }}</p>
         {% endfor %}
       {% endif %}
       <div class="flex gap-3 pt-2">

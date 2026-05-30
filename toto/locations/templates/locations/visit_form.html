@@ -68,7 +68,7 @@
           </label>
           {{ form.participant }}
           {% if form.participant.errors %}
-            <div class="text-sm text-red-500">{{ form.participant.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.participant.errors }}</div>
           {% endif %}
         </div>
 
@@ -78,7 +78,7 @@
           </label>
           {{ form.location }}
           {% if form.location.errors %}
-            <div class="text-sm text-red-500">{{ form.location.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.location.errors }}</div>
           {% endif %}
         </div>
 
@@ -88,7 +88,7 @@
           </label>
           {{ form.visited_date }}
           {% if form.visited_date.errors %}
-            <div class="text-sm text-red-500">{{ form.visited_date.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.visited_date.errors }}</div>
           {% endif %}
         </div>
 
@@ -98,7 +98,7 @@
           </label>
           {{ form.visited_time }}
           {% if form.visited_time.errors %}
-            <div class="text-sm text-red-500">{{ form.visited_time.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.visited_time.errors }}</div>
           {% endif %}
         </div>
 
@@ -111,7 +111,7 @@
             {% trans "Optional. Use 1 to 5. Review date is saved automatically when a score or review is provided." %}
           </p>
           {% if form.score.errors %}
-            <div class="text-sm text-red-500">{{ form.score.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.score.errors }}</div>
           {% endif %}
         </div>
 
@@ -121,7 +121,7 @@
           </label>
           {{ form.review }}
           {% if form.review.errors %}
-            <div class="text-sm text-red-500">{{ form.review.errors }}</div>
+            <div class="text-sm text-warn-light">{{ form.review.errors }}</div>
           {% endif %}
         </div>
       </div>

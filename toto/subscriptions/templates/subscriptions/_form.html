@@ -10,7 +10,7 @@
         </label>
       {% else %}
         <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">
-          {{ field.label }}{% if field.field.required %} <span class="text-red-500">*</span>{% endif %}
+          {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
         </label>
         <div
           class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>input]:text-sm [&>input]:outline-none [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>select]:text-sm [&>select]:outline-none [&>textarea]:w-full [&>textarea]:rounded-lg [&>textarea]:border [&>textarea]:px-3 [&>textarea]:py-2 [&>textarea]:text-sm [&>textarea]:outline-none"
@@ -24,12 +24,12 @@
         <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
       {% endif %}
       {% if field.errors %}
-        <div class="mt-1 text-sm text-red-500">{{ field.errors }}</div>
+        <div class="mt-1 text-sm text-warn-light">{{ field.errors }}</div>
       {% endif %}
     </div>
   {% endfor %}
   {% if form.non_field_errors %}
-    <div class="rounded-lg border border-red-300 p-3 text-sm text-red-500">
+    <div class="rounded-lg border border-warn-light p-3 text-sm text-warn-light">
       {% for error in form.non_field_errors %}{{ error }}{% endfor %}
     </div>
   {% endif %}

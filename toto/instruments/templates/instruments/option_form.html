@@ -37,13 +37,13 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Name & Type" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.name.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.name.label }} <span class="text-warn-light">*</span></label>
           {{ form.name }}
           <p class="text-xs opacity-50">{{ form.name.help_text }}</p>
           {% for e in form.name.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.option_type.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.option_type.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.option_type.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.option_type.label }} <span class="text-warn-light">*</span></label>
           {{ form.option_type }}
           <p class="text-xs opacity-50">{% trans "Call = right to buy. Put = right to sell." %}</p>
           {% for e in form.option_type.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -68,13 +68,13 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Counterparties" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.buyer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.buyer_account.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.buyer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.buyer_account.label }} <span class="text-warn-light">*</span></label>
           {{ form.buyer_account }}
           <p class="text-xs opacity-50">{% trans "Holder of the right to exercise." %}</p>
           {% for e in form.buyer_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.writer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.writer_account.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.writer_account.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.writer_account.label }} <span class="text-warn-light">*</span></label>
           {{ form.writer_account }}
           <p class="text-xs opacity-50">{% trans "Obligated to fulfill if exercised." %}</p>
           {% for e in form.writer_account.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -87,24 +87,24 @@
       <legend class="px-2 text-xs font-bold uppercase tracking-widest opacity-50">{% trans "Underlying & Pricing" %}</legend>
       <div class="grid gap-x-8 gap-y-4 sm:grid-cols-2">
         <div class="space-y-2">
-          <label for="{{ form.underlying_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.underlying_asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.underlying_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.underlying_asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.underlying_asset }}
           {% for e in form.underlying_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.quantity_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.quantity_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.quantity_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.quantity_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.quantity_base_units }}
           <p class="text-xs opacity-50">{% trans "Amount of underlying asset in base units." %}</p>
           {% for e in form.quantity_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.payment_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_asset.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.payment_asset.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.payment_asset.label }} <span class="text-warn-light">*</span></label>
           {{ form.payment_asset }}
           <p class="text-xs opacity-50">{% trans "Asset used for strike and premium." %}</p>
           {% for e in form.payment_asset.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.strike_price_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.strike_price_base_units.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.strike_price_base_units.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.strike_price_base_units.label }} <span class="text-warn-light">*</span></label>
           {{ form.strike_price_base_units }}
           <p class="text-xs opacity-50">{% trans "Price to buy/sell underlying at exercise." %}</p>
           {% for e in form.strike_price_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
@@ -116,7 +116,7 @@
           {% for e in form.premium_base_units.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
         <div class="space-y-2">
-          <label for="{{ form.expiry_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.expiry_at.label }} <span class="text-red-400">*</span></label>
+          <label for="{{ form.expiry_at.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-60">{{ form.expiry_at.label }} <span class="text-warn-light">*</span></label>
           {{ form.expiry_at }}
           {% for e in form.expiry_at.errors %}<p class="mt-1 text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ e }}</p>{% endfor %}
         </div>
