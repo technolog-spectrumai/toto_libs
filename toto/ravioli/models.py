@@ -140,3 +140,43 @@ class GraphSync(models.Model):
 
     def __str__(self):
         return "Graph Sync"
+
+
+class GraphSyncSchedule(models.Model):
+    STATUS_IDLE = "idle"
+    STATUS_RUNNING = "running"
+    STATUS_SUCCESS = "success"
+    STATUS_FAILED = "failed"
+
+    STATUS_CHOICES = [
+        (STATUS_IDLE, "Idle"),
+        (STATUS_RUNNING, "Running"),
+        (STATUS_SUCCESS, "Success"),
+        (STATUS_FAILED, "Failed"),
+    ]
+
+    enabled = models.BooleanField(default=False)
+    interval_minutes = models.PositiveIntegerField(
+        default=30,
+        help_text="How often to run the full graph sync (minutes).",
+    )
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_run_status = models.CharField(
+        max_length=16,
+        choices=STATUS_CHOICES,
+        default=STATUS_IDLE,
+    )
+    last_error = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = "Graph Sync Schedule"
+        verbose_name_plural = "Graph Sync Schedule"
+
+    def __str__(self):
+        state = "enabled" if self.enabled else "disabled"
+        return f"Graph Sync Schedule ({state}, every {self.interval_minutes} min)"
+
+    @classmethod
+    def get_config(cls):
+        obj, _ = cls.objects.get_or_create(pk=1)
+        return obj

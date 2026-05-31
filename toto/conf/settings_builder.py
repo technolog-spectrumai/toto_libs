@@ -123,6 +123,10 @@ def _build_beat_schedule() -> dict:
             "task": "toto.subscriptions.tasks.renew_due_subscriptions",
             "schedule": crontab(minute=0),  # every hour
         },
+        "ravioli-periodic-sync": {
+            "task": "toto.ravioli.tasks.periodic_graph_sync",
+            "schedule": crontab(minute="*"),  # every minute; task self-gates on interval_minutes
+        },
     }
 
 

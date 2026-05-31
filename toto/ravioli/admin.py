@@ -10,6 +10,7 @@ from .models import (
     GraphChangeEvent,
     GraphProjectionPlan,
     GraphSync,
+    GraphSyncSchedule,
 )
 
 
@@ -149,3 +150,31 @@ class GraphSyncAdmin(admin.ModelAdmin):
             f"Graph sync completed for: {', '.join(selected) if selected else 'all'}",
         )
         return redirect("..")
+
+
+@admin.register(GraphSyncSchedule)
+class GraphSyncScheduleAdmin(admin.ModelAdmin):
+    list_display = (
+        "enabled",
+        "interval_minutes",
+        "last_run_at",
+        "last_run_status",
+    )
+    readonly_fields = ("last_run_at", "last_run_status", "last_error")
+    fields = (
+        "enabled",
+        "interval_minutes",
+        "last_run_at",
+        "last_run_status",
+        "last_error",
+    )
+
+    def has_add_permission(self, request):
+        return not GraphSyncSchedule.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+    def get_queryset(self, request):
+        GraphSyncSchedule.get_config()
+        return super().get_queryset(request)
