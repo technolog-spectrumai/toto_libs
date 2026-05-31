@@ -5,12 +5,13 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from toto.ui import PageProcessor
 import json
+import uuid
 from django.http import JsonResponse
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from toto.sketch.models import Board, BoardObject
 from django.utils.decorators import method_decorator
-from toto.vault.models import VaultFile
+from toto.vault.models import VaultFile, Bucket
 
 
 class BoardListView(LoginRequiredMixin, ListView):
@@ -25,6 +26,14 @@ class BoardListView(LoginRequiredMixin, ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["boards_json"] = json.dumps([
+            {"id": b.id, "name": b.name, "created_at": b.created_at.strftime("%Y-%m-%d %H:%M")}
+            for b in context["boards"]
+        ])
+        buckets = Bucket.objects.filter(owner=self.request.user).order_by("name")
+        context["buckets_json"] = json.dumps([
+            {"id": b.id, "name": b.name} for b in buckets
+        ])
         return PageProcessor().decorate(context, self.request)
 
 
@@ -140,4 +149,41 @@ class BoardExportSVGView(LoginRequiredMixin, View):
             "file_url": vault_file.get_public_url(),
             "bucket": board.bucket.slug,
         })
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class BoardCreateView(LoginRequiredMixin, View):
+
+    def post(self, request):
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            return JsonResponse({"error": "Invalid JSON"}, status=400)
+
+        name = (payload.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "Name is required"}, status=400)
+
+        bucket_id = payload.get("bucket_id")
+        if not bucket_id:
+            return JsonResponse({"error": "Bucket is required"}, status=400)
+
+        bucket = get_object_or_404(Bucket, id=bucket_id, owner=request.user)
+
+        board = Board.objects.create(
+            id=uuid.uuid4().hex[:12],
+            name=name,
+            owner=request.user,
+            bucket=bucket,
+        )
+        return JsonResponse({"status": "ok", "board_id": board.id, "name": board.name}, status=201)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class BoardDeleteView(LoginRequiredMixin, View):
+
+    def post(self, request, board_id):
+        board = get_object_or_404(Board, id=board_id, owner=request.user)
+        board.delete()
+        return JsonResponse({"status": "ok"})
 
