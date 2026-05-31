@@ -20,6 +20,10 @@ class Tag(AbstractTag):
 
 class Page(AbstractPage):
     tags = models.ManyToManyField(Tag, related_name="pages", blank=True)
+    is_private = models.BooleanField(
+        default=False,
+        help_text="Private pages are only visible to logged-in users.",
+    )
 
     class Meta:
         verbose_name = "Blog post"

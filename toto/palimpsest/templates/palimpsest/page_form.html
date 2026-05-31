@@ -37,18 +37,33 @@
       {% endif %}
 
       {% for field in form %}
-        <div class="space-y-2">
-          <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">
-            {{ field.label }}
-          </label>
-          {{ field }}
-          {% if field.help_text %}
-            <p class="text-xs opacity-60">{{ field.help_text }}</p>
-          {% endif %}
-          {% if field.errors %}
-            <p class="text-sm text-warn-light">{{ field.errors }}</p>
-          {% endif %}
-        </div>
+        {% if field.field.widget.input_type == 'checkbox' %}
+          <div class="flex items-center gap-3">
+            {{ field }}
+            <label for="{{ field.id_for_label }}" class="text-sm font-semibold cursor-pointer select-none">
+              {{ field.label }}
+              {% if field.help_text %}
+                <span class="ml-1 text-xs font-normal opacity-60">— {{ field.help_text }}</span>
+              {% endif %}
+            </label>
+            {% if field.errors %}
+              <p class="text-sm text-warn-light">{{ field.errors }}</p>
+            {% endif %}
+          </div>
+        {% else %}
+          <div class="space-y-2">
+            <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">
+              {{ field.label }}
+            </label>
+            {{ field }}
+            {% if field.help_text %}
+              <p class="text-xs opacity-60">{{ field.help_text }}</p>
+            {% endif %}
+            {% if field.errors %}
+              <p class="text-sm text-warn-light">{{ field.errors }}</p>
+            {% endif %}
+          </div>
+        {% endif %}
       {% endfor %}
 
       <div class="flex flex-wrap items-center justify-end gap-3 pt-2">

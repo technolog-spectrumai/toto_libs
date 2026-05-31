@@ -125,6 +125,11 @@
             <span>{{ page.created_at|date:"M d, Y" }}</span>
             <span>{{ page.reading_time_minutes }} min read</span>
             <span>{{ page.section_count }} section{{ page.section_count|pluralize }}</span>
+            {% if page.is_private %}
+              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-1.5 py-0.5 font-semibold">
+                <i class="fa-solid fa-lock text-[10px]"></i>{% trans "Private" %}
+              </span>
+            {% endif %}
           </div>
 
           <h3 class="mt-4 break-words text-2xl font-extrabold leading-tight tracking-tight">

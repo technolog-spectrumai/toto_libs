@@ -1,6 +1,7 @@
-from django.db import models
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import models
+from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.generic import DetailView, ListView
 
@@ -23,6 +24,9 @@ class PalimpsestListView(ListView):
             .prefetch_related("tags", "sections", "sections__author")
             .order_by("-created_at")
         )
+        if not self.request.user.is_authenticated:
+            qs = qs.filter(is_private=False)
+
         query = self.request.GET.get("q")
         if query:
             qs = qs.filter(
@@ -56,6 +60,12 @@ class PalimpsestDetailView(PageDetailMixin, DetailView):
     slug_field = "slug"
     slug_url_kwarg = "slug"
     queryset = Page.objects.prefetch_related("tags", "sections", "sections__author")
+
+    def get_object(self, queryset=None):
+        obj = super().get_object(queryset)
+        if obj.is_private and not self.request.user.is_authenticated:
+            raise Http404
+        return obj
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

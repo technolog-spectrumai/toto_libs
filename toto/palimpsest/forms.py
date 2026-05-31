@@ -9,7 +9,7 @@ from .models import Page, Section, Tag
 class PageForm(forms.ModelForm):
     class Meta:
         model = Page
-        fields = ["title", "slug", "description", "tags"]
+        fields = ["title", "slug", "description", "tags", "is_private"]
         widgets = {
             "title": forms.TextInput(attrs={"placeholder": "Essay title"}),
             "slug": forms.TextInput(attrs={"placeholder": "optional-custom-url"}),
@@ -18,13 +18,14 @@ class PageForm(forms.ModelForm):
                 "placeholder": "A short deck for the piece. Think subtitle, not summary.",
             }),
             "tags": forms.SelectMultiple(),
+            "is_private": forms.CheckboxInput(),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.fields["slug"].required = False
         self.fields["tags"].queryset = Tag.objects.order_by("name")
-        apply_oya_field_styles(self.fields)
+        apply_oya_field_styles(self.fields, skip={"is_private"})
 
 
 class SectionForm(forms.ModelForm):
