@@ -2,9 +2,6 @@
 {% load i18n %}
 <script type="module">
 import * as Y from "https://esm.run/yjs";
-import mermaid from "{% static 'vendor/mermaid/mermaid.esm.min.mjs' %}";
-mermaid.initialize({ startOnLoad: false });
-
   window.Y = Y;
 
   class Painter {
