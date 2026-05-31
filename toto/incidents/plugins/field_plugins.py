@@ -1,5 +1,6 @@
 """Field Command plugins for the Incidents app. Registered in IncidentsConfig.ready()."""
 import json
+from django.utils.translation import gettext_lazy as _
 
 _OPEN_STATUSES = ["open", "contained"]
 
@@ -59,18 +60,18 @@ def incidents_metrics_section(request=None):
 
     return {
         "key": "incidents",
-        "title": "Incidents",
+        "title": _("Incidents"),
         "order": 25,
         "app_url": "/incidents/",
         "ribbon": [
-            {"label": "Open", "value": open_count, "alert": open_count > 0},
-            {"label": "Critical", "value": critical_count, "alert": critical_count > 0},
+            {"label": _("Open"), "value": open_count, "alert": open_count > 0},
+            {"label": _("Critical"), "value": critical_count, "alert": critical_count > 0},
         ],
         "kpis": [
-            {"label": "Open Incidents", "value": open_count, "sub": "open / contained", "alert": open_count > 0},
-            {"label": "Critical", "value": critical_count, "sub": "highest priority", "alert": critical_count > 0},
-            {"label": "High Severity", "value": high_count, "sub": "need attention", "alert": high_count > 0},
-            {"label": "Total Incidents", "value": total_count, "sub": "all time", "alert": False},
+            {"label": _("Open Incidents"), "value": open_count, "sub": _("open / contained"), "alert": open_count > 0},
+            {"label": _("Critical"), "value": critical_count, "sub": _("highest priority"), "alert": critical_count > 0},
+            {"label": _("High Severity"), "value": high_count, "sub": _("need attention"), "alert": high_count > 0},
+            {"label": _("Total Incidents"), "value": total_count, "sub": _("all time"), "alert": False},
         ],
         "chart": {
             "type": "doughnut",

@@ -3,6 +3,7 @@ Field Command plugins for the Weather app.
 Registered in WeatherConfig.ready().
 """
 import json
+from django.utils.translation import gettext_lazy as _
 
 
 # ---------------------------------------------------------------------------
@@ -55,16 +56,16 @@ def weather_metrics_section(request=None):
 
     return {
         "key": "weather",
-        "title": "Weather",
+        "title": _("Weather"),
         "order": 20,
         "app_url": "/weather/",
         "ribbon": [
-            {"label": "Observations", "value": obs_count, "alert": False},
+            {"label": _("Observations"), "value": obs_count, "alert": False},
         ],
         "kpis": [
-            {"label": "Observations", "value": obs_count, "sub": "stored", "alert": False},
-            {"label": "Covered Locations", "value": covered, "sub": "addresses", "alert": False},
-            {"label": "Forecast Sessions", "value": sessions, "sub": "loaded", "alert": False},
+            {"label": _("Observations"), "value": obs_count, "sub": _("stored"), "alert": False},
+            {"label": _("Covered Locations"), "value": covered, "sub": _("addresses"), "alert": False},
+            {"label": _("Forecast Sessions"), "value": sessions, "sub": _("loaded"), "alert": False},
         ],
         "chart": None,
         "table": None,

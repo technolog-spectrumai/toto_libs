@@ -3,6 +3,7 @@ Field Command plugins for the Locations app.
 Registered in LocationsConfig.ready().
 """
 import json
+from django.utils.translation import gettext_lazy as _
 
 
 # ---------------------------------------------------------------------------
@@ -75,18 +76,18 @@ def locations_metrics_section(request=None):
 
     return {
         "key": "locations",
-        "title": "Locations",
+        "title": _("Locations"),
         "order": 10,
         "app_url": "/locations/",
         "ribbon": [
-            {"label": "Addresses", "value": addr_count, "alert": False},
-            {"label": "Territories", "value": territory_count, "alert": False},
+            {"label": _("Addresses"), "value": addr_count, "alert": False},
+            {"label": _("Territories"), "value": territory_count, "alert": False},
         ],
         "kpis": [
-            {"label": "Addresses", "value": addr_count, "sub": "with geometry", "alert": False},
-            {"label": "Territories", "value": territory_count, "sub": "defined", "alert": False},
-            {"label": "Zones", "value": zone_count, "sub": "defined", "alert": False},
-            {"label": "Routes", "value": route_count, "sub": "defined", "alert": False},
+            {"label": _("Addresses"), "value": addr_count, "sub": _("with geometry"), "alert": False},
+            {"label": _("Territories"), "value": territory_count, "sub": _("defined"), "alert": False},
+            {"label": _("Zones"), "value": zone_count, "sub": _("defined"), "alert": False},
+            {"label": _("Routes"), "value": route_count, "sub": _("defined"), "alert": False},
         ],
         "chart": None,
         "table": None,

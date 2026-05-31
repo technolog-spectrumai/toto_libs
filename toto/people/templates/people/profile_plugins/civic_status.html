@@ -7,7 +7,7 @@
   <div class="mb-4 flex items-center gap-3">
     <i class="fa-solid fa-id-card-clip"
        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-    <h2 class="text-lg font-bold">{% trans "Civic Status" %}</h2>
+    <h2 class="text-lg font-bold">{% trans "Member Status" %}</h2>
   </div>
 
   <!-- Badges row -->
@@ -61,7 +61,7 @@
   <!-- Signed constitutions -->
   {% if signed_constitutions %}
   <div>
-    <p class="text-xs font-semibold uppercase tracking-wide opacity-50 mb-2">{% trans "Signed Constitutions" %}</p>
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-50 mb-2">{% trans "Signed Documents" %}</p>
     <ul class="space-y-2">
       {% for sig in signed_constitutions %}
         <li

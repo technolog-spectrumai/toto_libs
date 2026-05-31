@@ -3,6 +3,7 @@ Field Command plugins for the Inventory app.
 Registered in InventoryConfig.ready().
 """
 import json
+from django.utils.translation import gettext_lazy as _
 
 
 # ---------------------------------------------------------------------------
@@ -53,17 +54,17 @@ def inventory_metrics_section(request=None):
 
     return {
         "key": "inventory",
-        "title": "Inventory",
+        "title": _("Inventory"),
         "order": 50,
         "app_url": "/inventory/",
         "ribbon": [
-            {"label": "Active Sites", "value": active_sites, "alert": False},
-            {"label": "Objects", "value": total_objects, "alert": False},
+            {"label": _("Active Sites"), "value": active_sites, "alert": False},
+            {"label": _("Objects"), "value": total_objects, "alert": False},
         ],
         "kpis": [
-            {"label": "Active Sites", "value": active_sites, "sub": "operational", "alert": False},
-            {"label": "Total Sites", "value": total_sites, "sub": "all time", "alert": False},
-            {"label": "Tracked Objects", "value": total_objects, "sub": "inventory items", "alert": False},
+            {"label": _("Active Sites"), "value": active_sites, "sub": _("operational"), "alert": False},
+            {"label": _("Total Sites"), "value": total_sites, "sub": _("all time"), "alert": False},
+            {"label": _("Tracked Objects"), "value": total_objects, "sub": _("inventory items"), "alert": False},
         ],
         "chart": {
             "type": "doughnut",

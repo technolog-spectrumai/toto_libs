@@ -3,6 +3,7 @@ Field Command plugins for the Logistics app.
 Registered in LogisticsConfig.ready().
 """
 import json
+from django.utils.translation import gettext_lazy as _
 
 
 _IN_TRANSIT = ["picked_up", "in_transit", "at_hub", "out_for_delivery"]
@@ -53,18 +54,18 @@ def logistics_metrics_section(request=None):
 
     return {
         "key": "logistics",
-        "title": "Logistics",
+        "title": _("Logistics"),
         "order": 40,
         "app_url": "/logistics/",
         "ribbon": [
-            {"label": "In Transit", "value": in_transit, "alert": False},
-            {"label": "Failed", "value": failed, "alert": failed > 0},
+            {"label": _("In Transit"), "value": in_transit, "alert": False},
+            {"label": _("Failed"), "value": failed, "alert": failed > 0},
         ],
         "kpis": [
-            {"label": "Packages in Transit", "value": in_transit, "sub": "active", "alert": False},
-            {"label": "Failed Packages", "value": failed, "sub": "need attention", "alert": failed > 0},
-            {"label": "Active Transports", "value": active_transports, "sub": "vehicles", "alert": False},
-            {"label": "Total Packages", "value": sum(pkg_by_status.values()), "sub": "all time", "alert": False},
+            {"label": _("Packages in Transit"), "value": in_transit, "sub": _("active"), "alert": False},
+            {"label": _("Failed Packages"), "value": failed, "sub": _("need attention"), "alert": failed > 0},
+            {"label": _("Active Transports"), "value": active_transports, "sub": _("vehicles"), "alert": False},
+            {"label": _("Total Packages"), "value": sum(pkg_by_status.values()), "sub": _("all time"), "alert": False},
         ],
         "chart": {
             "type": "bar",
