@@ -88,24 +88,26 @@
             {% trans "Edit" %}
           </a>
           {% endif %}
-          {% if not box.is_locked %}
-          <button
-            type="button"
-            @click="openLock()"
-            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-lock"></i>
-            {% trans "Lock" %}
-          </button>
-          {% else %}
-          <button
-            type="button"
-            @click="openUnlock()"
-            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
-            <i class="fa-solid fa-lock-open"></i>
-            {% trans "Unlock" %}
-          </button>
+          {% if can_lock %}
+            {% if not box.is_locked %}
+            <button
+              type="button"
+              @click="openLock()"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-lock"></i>
+              {% trans "Lock" %}
+            </button>
+            {% else %}
+            <button
+              type="button"
+              @click="openUnlock()"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-lock-open"></i>
+              {% trans "Unlock" %}
+            </button>
+            {% endif %}
           {% endif %}
           <button
             type="button"
@@ -125,6 +127,7 @@
           <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-lock text-3xl"></i>
           <p class="text-sm font-semibold">{% trans "Content is locked." %}</p>
           <p class="text-xs opacity-60">{% trans "Enter the password to view the note body." %}</p>
+          {% if can_lock %}
           <button
             type="button"
             @click="openUnlock()"
@@ -133,6 +136,7 @@
             <i class="fa-solid fa-key"></i>
             {% trans "Enter password" %}
           </button>
+          {% endif %}
         </div>
       {% elif box.body %}
         <div class="mt-5 border-t border-current/10 pt-5 text-sm leading-7 opacity-90">

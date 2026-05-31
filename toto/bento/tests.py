@@ -1,9 +1,9 @@
-import json
-
 from cryptography.exceptions import InvalidTag
 from django.contrib.auth.models import User
 from django.test import Client, TestCase
 from django.urls import reverse
+
+from toto.people.models import Person
 
 from .models import IdeaBox
 
@@ -60,6 +60,7 @@ class IdeaBoxLockTests(TestCase):
 class BoxLockViewTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("tester", password="pw")
+        Person.objects.create(user=self.user, is_federal_agent=True)
         self.client = Client()
         self.client.force_login(self.user)
         self.box = IdeaBox.objects.create(title="Note", body="Secret")
@@ -123,9 +124,40 @@ class BoxLockViewTests(TestCase):
         self.assertEqual(res.status_code, 405)
 
 
+class BoxLockPermissionTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("civilian", password="pw")
+        # No Person / is_federal_agent=False
+        self.client = Client()
+        self.client.force_login(self.user)
+        self.box = IdeaBox.objects.create(title="Note", body="Secret")
+
+    def test_non_agent_cannot_lock(self):
+        res = self.client.post(reverse("bento:box_lock", args=[self.box.pk]), {"password": "pw"})
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(res.json()["ok"])
+        self.box.refresh_from_db()
+        self.assertFalse(self.box.is_locked)
+
+    def test_non_agent_cannot_unlock(self):
+        # Lock via model directly, bypassing view
+        self.box.lock("pw")
+        res = self.client.post(reverse("bento:box_unlock", args=[self.box.pk]), {"password": "pw"})
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(res.json()["ok"])
+        self.box.refresh_from_db()
+        self.assertTrue(self.box.is_locked)
+
+    def test_non_agent_with_false_flag_cannot_lock(self):
+        Person.objects.create(user=self.user, is_federal_agent=False)
+        res = self.client.post(reverse("bento:box_lock", args=[self.box.pk]), {"password": "pw"})
+        self.assertEqual(res.status_code, 403)
+
+
 class SerializeBoxLockTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("tester2", password="pw")
+        Person.objects.create(user=self.user, is_federal_agent=True)
         self.client = Client()
         self.client.force_login(self.user)
 

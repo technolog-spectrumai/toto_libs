@@ -93,6 +93,7 @@ def box_detail(request, pk):
         "box": box,
         "outgoing_links": outgoing_links,
         "incoming_links": incoming_links,
+        "can_lock": _is_federal_agent(request),
     })
 
 
@@ -208,8 +209,15 @@ def api_boxes(request):
     })
 
 
+def _is_federal_agent(request) -> bool:
+    person = getattr(request.user, "community_profile", None)
+    return bool(person and getattr(person, "is_federal_agent", False))
+
+
 @require_POST
 def box_lock(request, pk):
+    if not _is_federal_agent(request):
+        return JsonResponse({"ok": False, "error": str(_("Only federal agents can lock boxes."))}, status=403)
     box = get_object_or_404(IdeaBox, pk=pk)
     password = request.POST.get("password", "").strip()
     if not password:
@@ -225,6 +233,8 @@ def box_lock(request, pk):
 
 @require_POST
 def box_unlock(request, pk):
+    if not _is_federal_agent(request):
+        return JsonResponse({"ok": False, "error": str(_("Only federal agents can unlock boxes."))}, status=403)
     box = get_object_or_404(IdeaBox, pk=pk)
     password = request.POST.get("password", "").strip()
     if not password:
