@@ -25,8 +25,6 @@ from .models import (
     InstrumentObligationRole,
     InstrumentStatus,
     InstrumentType,
-    LeaseContract,
-    LeaseStatus,
     OptionContract,
     VestingContract,
     StakingPosition,
@@ -298,74 +296,6 @@ class StakingService:
         position.instrument.save(update_fields=["status", "updated_at"])
         record_execution(instrument=position.instrument, action="unstake", status=InstrumentExecutionStatus.SUCCESS, transaction_obj=tx)
         return tx
-
-
-class LeaseService:
-    @staticmethod
-    @transaction.atomic
-    def activate(lease: LeaseContract):
-        if lease.status != LeaseStatus.DRAFT:
-            raise ValidationError("Only draft leases can be activated.")
-        now = timezone.now()
-        lease.status = LeaseStatus.ACTIVE
-        lease.activated_at = now
-        lease.next_billing_at = max(lease.starts_at, now)
-        lease.instrument.status = InstrumentStatus.ACTIVE
-        lease.instrument.save(update_fields=["status", "updated_at"])
-        lease.save(update_fields=["status", "activated_at", "next_billing_at", "updated_at"])
-        record_execution(
-            instrument=lease.instrument,
-            action="lease_activate",
-            status=InstrumentExecutionStatus.SUCCESS,
-            result_data={"status": lease.status},
-        )
-
-    @staticmethod
-    @transaction.atomic
-    def cancel(lease: LeaseContract):
-        if lease.status not in (LeaseStatus.ACTIVE, LeaseStatus.PAUSED, LeaseStatus.DRAFT):
-            raise ValidationError("Cannot cancel a lease in its current state.")
-        lease.status = LeaseStatus.CANCELLED
-        lease.cancelled_at = timezone.now()
-        lease.instrument.status = InstrumentStatus.CANCELLED
-        lease.instrument.save(update_fields=["status", "updated_at"])
-        lease.save(update_fields=["status", "cancelled_at", "updated_at"])
-        record_execution(
-            instrument=lease.instrument,
-            action="lease_cancel",
-            status=InstrumentExecutionStatus.SUCCESS,
-        )
-
-    @staticmethod
-    @transaction.atomic
-    def charge_fixed_fee(lease: LeaseContract):
-        if lease.status != LeaseStatus.ACTIVE:
-            raise ValidationError("Lease must be active to charge fixed fee.")
-        if lease.fixed_fee_base_units <= 0:
-            raise ValidationError("Fixed fee must be positive.")
-        amount = from_base_units(lease.fixed_fee_base_units, lease.payment_asset.decimals)
-        ref = f"{lease.instrument.reference}-FIXED-{timezone.now().strftime('%Y%m%d%H%M%S')}"
-        tx = get_backend().transfer_asset(
-            asset=lease.payment_asset,
-            sender_account=lease.lessee_account,
-            receiver_account=lease.revenue_account,
-            amount=amount,
-            reference=ref,
-            description=f"Fixed fee for lease {lease.instrument.reference}",
-            metadata={
-                "instrument": lease.instrument.reference,
-                "action": "lease_fixed_fee",
-            },
-        )
-        record_execution(
-            instrument=lease.instrument,
-            action="lease_charge_fixed",
-            status=InstrumentExecutionStatus.SUCCESS,
-            transaction_obj=tx,
-            result_data={"amount_base_units": lease.fixed_fee_base_units},
-        )
-        return tx
-
 
 
 class AmortizationService:

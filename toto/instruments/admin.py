@@ -13,7 +13,6 @@ from .models import (
     FutureMarket,
     InstrumentExecution,
     InstrumentObligation,
-    LeaseContract,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -112,21 +111,6 @@ admin.site.register(VestingContract)
 admin.site.register(StakingPosition)
 admin.site.register(InstrumentObligation)
 admin.site.register(InstrumentExecution)
-
-
-# ---------------------------------------------------------------------------
-# Lease admin
-# ---------------------------------------------------------------------------
-
-@admin.register(LeaseContract)
-class LeaseContractAdmin(admin.ModelAdmin):
-    list_display = [
-        "instrument", "status", "lessee_account",
-        "lessor_account", "billing_period", "next_billing_at", "created_at",
-    ]
-    list_filter = ["status", "billing_period"]
-    search_fields = ["instrument__reference"]
-    readonly_fields = ["created_at", "updated_at", "activated_at", "cancelled_at"]
 
 
 # ---------------------------------------------------------------------------

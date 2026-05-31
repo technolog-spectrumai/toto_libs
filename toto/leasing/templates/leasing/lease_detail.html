@@ -1,0 +1,153 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Lease" %} #{{ lease.pk }}{% endblock %}
+{% block tab_leasing %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'leasing:lease_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "All leases" %}
+  </a>
+
+  <!-- Header card -->
+  <article class="rounded-xl border p-6 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <div class="flex flex-wrap items-start justify-between gap-4">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <h1 class="flex items-center gap-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            <i class="fa-solid fa-key"></i>
+            {{ lease.leased_object }}
+          </h1>
+          <span class="rounded-lg border border-current/20 px-2.5 py-1 text-sm font-semibold opacity-60">{% trans "Lease" %}</span>
+          <span class="rounded-lg px-2.5 py-1 text-sm font-semibold"
+            {% if lease.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+            {% elif lease.status == 'cancelled' %}:class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'"
+            {% elif lease.status == 'paused' or lease.status == 'expired' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+            {% else %}:class="darkMode ? 'bg-primary-bg-dark/50 text-text-main-dark/60' : 'bg-gray-100 text-gray-500'"
+            {% endif %}>
+            {{ lease.get_status_display }}
+          </span>
+          <span class="rounded border border-current/20 px-2.5 py-1 text-sm opacity-60">{{ lease.get_billing_period_display }}</span>
+        </div>
+
+        <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 text-sm mt-3">
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Lessor" %}</div>
+            <div class="font-semibold">{{ lease.lessor }}</div>
+            {% if lease.lessor_account %}<div class="text-xs opacity-50 font-mono">{{ lease.lessor_account.code }}</div>{% endif %}
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Lessee" %}</div>
+            <div class="font-semibold">{{ lease.lessee }}</div>
+            {% if lease.lessee_account %}<div class="text-xs opacity-50 font-mono">{{ lease.lessee_account.code }}</div>{% endif %}
+          </div>
+          {% if lease.payment_asset %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Payment asset" %}</div>
+            <div class="font-semibold font-mono">{{ lease.payment_asset.unit_name }}</div>
+          </div>
+          {% endif %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Fixed fee (base units)" %}</div>
+            <div class="font-semibold">{{ lease.fixed_fee_base_units }}</div>
+          </div>
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Starts" %}</div>
+            <div class="font-semibold">{{ lease.starts_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% if lease.ends_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Ends" %}</div>
+            <div class="font-semibold">{{ lease.ends_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.next_billing_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Next billing" %}</div>
+            <div class="font-semibold">{{ lease.next_billing_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.activated_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Activated" %}</div>
+            <div class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ lease.activated_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+          {% if lease.cancelled_at %}
+          <div>
+            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Cancelled" %}</div>
+            <div class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ lease.cancelled_at|date:"M d, Y H:i" }}</div>
+          </div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="flex flex-wrap gap-2 mt-5 pt-4 border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      {% if lease.status == 'draft' %}
+      <form method="post" action="{% url 'leasing:lease_activate' lease.pk %}">
+        {% csrf_token %}
+        <button class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'">
+          <i class="fa-solid fa-play"></i> {% trans "Activate" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if lease.status in 'draft,active,paused' %}
+      <form method="post" action="{% url 'leasing:lease_cancel' lease.pk %}">
+        {% csrf_token %}
+        <button class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+          <i class="fa-solid fa-ban"></i> {% trans "Cancel" %}
+        </button>
+      </form>
+      {% endif %}
+      {% if lease.contract %}
+      <a href="{% url 'contracts:contract_detail' lease.contract.uuid %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-scroll"></i> {% trans "View contract" %}
+      </a>
+      {% endif %}
+    </div>
+  </article>
+
+  <!-- Leased object card -->
+  <section class="rounded-xl border p-5 shadow-sm space-y-3" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-box-open mr-1"></i> {% trans "Leased object" %}
+    </h2>
+    <div class="grid gap-3 sm:grid-cols-2 text-sm">
+      <div>
+        <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Name" %}</div>
+        <div class="font-semibold">{{ lease.leased_object.name }}</div>
+      </div>
+      {% if lease.leased_object.object_type %}
+      <div>
+        <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Type" %}</div>
+        <div class="font-semibold">{{ lease.leased_object.object_type }}</div>
+      </div>
+      {% endif %}
+      {% if lease.leased_object.quantity %}
+      <div>
+        <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Quantity" %}</div>
+        <div class="font-semibold">{{ lease.leased_object.quantity }} {{ lease.leased_object.unit }}</div>
+      </div>
+      {% endif %}
+      {% if lease.leased_object.estimated_value %}
+      <div>
+        <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Estimated value" %}</div>
+        <div class="font-semibold">{{ lease.leased_object.estimated_value }}</div>
+      </div>
+      {% endif %}
+    </div>
+    {% if lease.leased_object.description %}
+    <p class="text-sm opacity-60 leading-relaxed">{{ lease.leased_object.description }}</p>
+    {% endif %}
+  </section>
+
+</div>
+{% endblock %}

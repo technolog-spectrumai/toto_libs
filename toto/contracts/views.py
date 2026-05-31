@@ -17,7 +17,7 @@ from toto.people.models import Person
 
 from .forms import (
     ContractForm, ContractNodeForm, ContractEdgeForm, ContractSignatoryForm,
-    PayrollCreateForm, PayrollDutyForm, InsuranceCreateForm, LoanCreateForm,
+    PayrollCreateForm, PayrollDutyForm, InsuranceCreateForm, LoanCreateForm, LeaseCreateForm,
 )
 from .models import Contract, ContractNode, ContractEdge, ContractSignatory
 from .services import contract_to_cytoscape, evaluate_claims_health
@@ -889,3 +889,75 @@ def insurance_detail(request, uuid):
     )
 
     return _render(request, "contracts/insurance_detail.html", ctx)
+
+
+# ---------------------------------------------------------------------------
+# Leasing
+# ---------------------------------------------------------------------------
+
+def _lease_ctx(contract):
+    try:
+        lease = contract.lease
+    except Exception:
+        lease = None
+    return {
+        "contract": contract,
+        "lease": lease,
+        "leased_object": lease.leased_object if lease else None,
+        "lessor": lease.lessor if lease else None,
+        "lessee": lease.lessee if lease else None,
+    }
+
+
+def lease_list(request):
+    from toto.leasing.models import Lease
+    qs = (
+        Lease.objects
+        .filter(contract__isnull=False)
+        .select_related("leased_object", "lessor", "lessee", "contract", "payment_asset")
+        .order_by("-created_at")
+    )
+    q = request.GET.get("q", "").strip()
+    if q:
+        qs = qs.filter(leased_object__name__icontains=q)
+    return _render(request, "contracts/lease_list.html", {"leases": qs, "q": q})
+
+
+def lease_create(request):
+    if request.method == "POST":
+        form = LeaseCreateForm(request.POST)
+        if form.is_valid():
+            cd = form.cleaned_data
+            from toto.leasing.services import create_lease_contract
+            lease = create_lease_contract(
+                name=cd["name"],
+                leased_object=cd["leased_object"],
+                lessor=cd["lessor"],
+                lessee=cd["lessee"],
+                billing_period=cd["billing_period"],
+                fixed_fee_base_units=cd["fixed_fee_base_units"],
+                starts_at=cd["starts_at"],
+                ends_at=cd.get("ends_at"),
+                lessor_account=cd.get("lessor_account"),
+                lessee_account=cd.get("lessee_account"),
+                payment_asset=cd.get("payment_asset"),
+            )
+            messages.success(request, f"Lease contract '{lease.contract.name}' created.")
+            return redirect("contracts:lease_detail", uuid=lease.contract.uuid)
+    else:
+        form = LeaseCreateForm()
+    return _render(request, "contracts/lease_form.html", {"form": form})
+
+
+def lease_detail(request, uuid):
+    contract = get_object_or_404(Contract, uuid=uuid)
+    ctx = _lease_ctx(contract)
+
+    signatories = list(contract.signatories.select_related("person").all())
+    current_person = _get_person_for_request(request)
+    ctx["signatories"] = signatories
+    ctx["current_person_signatory"] = next(
+        (s for s in signatories if current_person and s.person_id == current_person.pk), None
+    )
+
+    return _render(request, "contracts/lease_detail.html", ctx)

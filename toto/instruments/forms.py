@@ -7,7 +7,6 @@ from .models import (
     ForwardContract,
     FutureContract,
     FutureMarket,
-    LeaseContract,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -257,36 +256,6 @@ class StakingPositionForm(_InstrumentNameMixin, forms.ModelForm):
         fields = [
             "staker_account", "staking_account", "staked_asset", "staked_amount_base_units",
             "reward_asset", "reward_rate_bps", "locked_until", "unstaked_at", "metadata",
-        ]
-        widgets = {
-            "metadata": forms.Textarea(attrs={"rows": 3}),
-        }
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        _apply_bento_style(self)
-
-
-# ---------------------------------------------------------------------------
-# Lease forms
-# ---------------------------------------------------------------------------
-
-class LeaseContractForm(_InstrumentNameMixin, forms.ModelForm):
-    name = forms.CharField(
-        max_length=255,
-        label="Name",
-        help_text="A unique name or reference for this lease (e.g. 'lease-office-2026').",
-    )
-    starts_at = _split_dt(required=False, label="Starts at")
-    ends_at = _split_dt(required=False, label="Ends at")
-
-    class Meta:
-        model = LeaseContract
-        fields = [
-            "lessor_account", "lessee_account", "revenue_account",
-            "leased_asset", "payment_asset",
-            "billing_period", "fixed_fee_base_units",
-            "starts_at", "ends_at", "metadata",
         ]
         widgets = {
             "metadata": forms.Textarea(attrs={"rows": 3}),

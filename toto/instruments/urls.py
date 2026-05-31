@@ -42,14 +42,6 @@ urlpatterns = [
     path("<int:pk>/staking/stake/", views.staking_stake, name="staking_stake"),
     path("<int:pk>/staking/unstake/", views.staking_unstake, name="staking_unstake"),
 
-    # Lease
-    path("leases/", views.lease_list, name="lease_list"),
-    path("leases/create/", views.lease_create, name="lease_create"),
-    path("leases/<int:pk>/", views.lease_detail, name="lease_detail"),
-    path("leases/<int:pk>/activate/", views.lease_activate, name="lease_activate"),
-    path("leases/<int:pk>/cancel/", views.lease_cancel, name="lease_cancel"),
-    path("leases/<int:pk>/charge-fixed/", views.lease_charge_fixed, name="lease_charge_fixed"),
-
     # Amortization
     path("amortizations/", views.amortization_list, name="amortization_list"),
     path("amortizations/create/", views.amortization_create, name="amortization_create"),

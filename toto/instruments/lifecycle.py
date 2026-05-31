@@ -125,12 +125,6 @@ def sync_lifecycle_for_instrument(instrument) -> dict:
 
     itype = instrument.instrument_type
     try:
-        if itype == "lease":
-            lease = _m.LeaseContract.objects.select_related(
-                "lessor_account", "lessee_account", "payment_asset"
-            ).get(instrument=instrument)
-            return sync_lease_lifecycle(lease)
-
         if itype == "amortization":
             amort = _m.AmortizationContract.objects.select_related(
                 "source_account", "destination_account", "asset"
@@ -182,51 +176,6 @@ def sync_lifecycle_for_instrument(instrument) -> dict:
 # ---------------------------------------------------------------------------
 # Per-type sync functions
 # ---------------------------------------------------------------------------
-
-def sync_lease_lifecycle(lease) -> dict:
-    instr = lease.instrument
-    src_type, src_id = _src(instr)
-
-    ent, _ = _get_or_create_entitlement(
-        holder_account=lease.lessee_account,
-        kind=EntitlementKind.LEASE_RIGHT,
-        resource_label=f"Lease right: {instr.reference}",
-        source_type=src_type,
-        source_id=src_id,
-        starts_at=lease.starts_at,
-        ends_at=lease.ends_at,
-    )
-    sched, _ = _get_or_create_schedule(
-        name=f"Rent period: {instr.reference}",
-        kind=ScheduleKind.RENEWAL,
-        source_type=src_type,
-        source_id=src_id,
-        starts_at=lease.starts_at,
-        ends_at=lease.ends_at,
-        next_run_at=lease.next_billing_at,
-        frequency=lease.billing_period,
-    )
-    cond_expr = (
-        {"type": "now_before", "datetime": lease.ends_at.isoformat()}
-        if lease.ends_at
-        else {}
-    )
-    cond, _ = _get_or_create_condition(
-        name=f"Within lease term: {instr.reference}",
-        kind=ConditionKind.TIME,
-        source_type=src_type,
-        source_id=src_id,
-        description="Lease is within its active term.",
-        expression=cond_expr,
-    )
-    _ensure_created_event(
-        src_type, src_id,
-        f"Lease created: {instr.reference}",
-        schedule=sched,
-        entitlement=ent,
-    )
-    return {"entitlements": 1, "schedules": 1, "conditions": 1}
-
 
 def sync_amortization_lifecycle(amort) -> dict:
     instr = amort.instrument

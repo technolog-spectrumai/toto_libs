@@ -1,10 +1,7 @@
-from django.db import models as _models
-
 from .models import (
     FinancialInstrument,
     InstrumentStatus,
     InstrumentType,
-    LeaseContract,
 )
 
 
@@ -32,21 +29,5 @@ def list_instruments(*, instrument_type=None, status=None):
     if status:
         qs = qs.filter(status=status)
     return qs
-
-
-# ---------------------------------------------------------------------------
-# Lease queries
-# ---------------------------------------------------------------------------
-
-def list_active_leases():
-    return LeaseContract.objects.filter(status="active").select_related(
-        "instrument", "lessee_account", "lessor_account", "payment_asset", "leased_asset"
-    )
-
-
-def list_account_leases(account):
-    return LeaseContract.objects.filter(
-        _models.Q(lessor_account=account) | _models.Q(lessee_account=account)
-    ).select_related("instrument")
 
 

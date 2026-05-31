@@ -342,7 +342,6 @@ def _get_subtype(instrument):
     from toto.instruments import models as _m
 
     _model_map = {
-        "lease": _m.LeaseContract,
         "amortization": _m.AmortizationContract,
         "vesting": _m.VestingContract,
         "escrow": _m.EscrowContract,

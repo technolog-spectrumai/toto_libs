@@ -1,0 +1,82 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "Leasing" %}{% endblock %}
+{% block tab_leasing %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <div>
+      <h2 class="text-2xl font-bold">{% trans "Leasing" %}</h2>
+      <p class="text-sm opacity-60">{% trans "Contract-backed leases of physical inventory objects." %}</p>
+    </div>
+    <a href="{% url 'contracts:lease_create' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i> {% trans "New lease contract" %}
+    </a>
+  </div>
+
+  <!-- Search -->
+  <form method="get" class="flex items-center gap-2">
+    <input name="q" value="{{ q }}" placeholder="{% trans 'Search by object name…' %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+           class="rounded-lg border px-3 py-2 text-sm outline-none w-64">
+    <button type="submit"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+      {% trans "Search" %}
+    </button>
+    {% if q %}
+    <a href="{% url 'contracts:lease_list' %}" class="text-sm underline opacity-60 hover:opacity-80">{% trans "Clear" %}</a>
+    {% endif %}
+  </form>
+
+  <!-- Lease rows -->
+  <div class="space-y-3">
+    {% for lease in leases %}
+    <article class="rounded-xl border p-5 shadow-sm" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <div class="space-y-1">
+          <div class="flex flex-wrap items-center gap-2">
+            <a href="{% url 'contracts:lease_detail' lease.contract.uuid %}"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="text-lg font-bold underline underline-offset-2 hover:opacity-80">
+              {{ lease.leased_object }}
+            </a>
+            <span class="rounded px-2 py-0.5 text-xs font-semibold"
+              {% if lease.status == 'active' %}:class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+              {% elif lease.status == 'cancelled' %}:class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'"
+              {% elif lease.status == 'paused' or lease.status == 'expired' %}:class="darkMode ? 'bg-caution-dark/15 text-caution-dark' : 'bg-caution-light/15 text-caution-light'"
+              {% else %}:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark/60' : 'bg-gray-100 text-gray-500'"
+              {% endif %}>
+              {{ lease.get_status_display }}
+            </span>
+          </div>
+          <div class="text-xs opacity-50 space-x-3">
+            <span><i class="fa-solid fa-user-tie mr-1"></i>{{ lease.lessor }}</span>
+            <span class="opacity-40">→</span>
+            <span><i class="fa-solid fa-user mr-1"></i>{{ lease.lessee }}</span>
+            {% if lease.payment_asset %}<span><i class="fa-solid fa-coins mr-1"></i>{{ lease.payment_asset.unit_name }}</span>{% endif %}
+            <span><i class="fa-solid fa-repeat mr-1"></i>{{ lease.get_billing_period_display }}</span>
+          </div>
+          <p class="text-xs opacity-40 font-mono">{{ lease.contract.name }}</p>
+        </div>
+        <div class="text-xs opacity-50 text-right shrink-0">
+          <div>{% trans "Starts" %}: {{ lease.starts_at|date:"M d, Y" }}</div>
+          {% if lease.ends_at %}<div>{% trans "Ends" %}: {{ lease.ends_at|date:"M d, Y" }}</div>{% endif %}
+        </div>
+      </div>
+    </article>
+    {% empty %}
+    <div class="rounded-xl border p-8 text-center opacity-50" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <i class="fa-solid fa-key text-3xl mb-2 block"></i>
+      <p class="text-sm">{% trans "No lease contracts found." %}</p>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}

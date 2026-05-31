@@ -9,7 +9,6 @@ from toto.instruments.models import (
     EscrowContract,
     FinancialInstrument,
     ForwardContract,
-    LeaseContract,
     OptionContract,
     RevenueShareContract,
     RevenueShareRecipient,
@@ -18,7 +17,6 @@ from toto.instruments.models import (
 )
 
 _DEMO_TYPES = [
-    "lease",
     "amortization",
     "vesting",
     "escrow",
@@ -143,26 +141,6 @@ class Command(IngressCommand):
         staking = accounts["instr-staking"]
 
         instruments = {}
-
-        # ── lease ────────────────────────────────────────────────────────
-        instr, _ = FinancialInstrument.objects.get_or_create(
-            reference="demo-lease-001",
-            defaults={"instrument_type": "lease"},
-        )
-        LeaseContract.objects.get_or_create(
-            instrument=instr,
-            defaults=dict(
-                lessor_account=bob,
-                lessee_account=alice,
-                leased_asset=idemo,
-                payment_asset=ipay,
-                revenue_account=revenue,
-                fixed_fee_base_units=500,
-                billing_period="monthly",
-                starts_at=now,
-            ),
-        )
-        instruments["lease"] = instr
 
         # ── amortization ─────────────────────────────────────────────────
         instr, _ = FinancialInstrument.objects.get_or_create(

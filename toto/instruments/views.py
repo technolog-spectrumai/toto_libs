@@ -18,7 +18,6 @@ from .forms import (
     ForwardContractForm,
     FutureContractForm,
     FutureMarketForm,
-    LeaseContractForm,
     OptionContractForm,
     RevenueShareContractForm,
     RevenueShareRecipientInlineForm,
@@ -33,13 +32,12 @@ from .models import (
     FutureMarket,
     InstrumentStatus,
     InstrumentType,
-    LeaseContract,
     OptionContract,
     RevenueShareRecipient,
     StakingPosition,
 )
 from .queries import dashboard_counts, list_instruments
-from .services import AmortizationService, EscrowService, ForwardService, LeaseService, OptionService, StakingService
+from .services import AmortizationService, EscrowService, ForwardService, OptionService, StakingService
 
 
 def instruments_render(request, template_name, context):
@@ -378,94 +376,6 @@ def staking_unstake(request, pk):
         messages.error(request, "; ".join(exc.messages))
     return redirect("instruments:instrument_detail", pk=pk)
 
-
-# ── Lease ──────────────────────────────────────────────────────────────────
-
-@login_required
-def lease_list(request):
-    status = request.GET.get("status") or None
-    qs = LeaseContract.objects.select_related(
-        "instrument", "lessee_account", "lessor_account", "payment_asset", "leased_asset"
-    ).order_by("-created_at")
-    if status:
-        qs = qs.filter(status=status)
-    from .models import LeaseStatus
-    return instruments_render(request, "instruments/lease_list.html", {
-        "leases": qs[:100],
-        "status": status,
-        "status_choices": LeaseStatus.choices,
-        "total": LeaseContract.objects.count(),
-        "active_count": LeaseContract.objects.filter(status="active").count(),
-        "draft_count": LeaseContract.objects.filter(status="draft").count(),
-    })
-
-
-@login_required
-def lease_detail(request, pk):
-    lease = get_object_or_404(
-        LeaseContract.objects.select_related(
-            "instrument", "lessee_account", "lessor_account",
-            "leased_asset", "payment_asset", "revenue_account",
-        ),
-        pk=pk,
-    )
-    executions = lease.instrument.executions.all()
-    return instruments_render(request, "instruments/lease_detail.html", {
-        "lease": lease,
-        "executions": executions,
-    })
-
-
-@login_required
-def lease_create(request):
-    if request.method == "POST":
-        form = LeaseContractForm(request.POST)
-        if form.is_valid():
-            instrument = _create_instrument_and_contract(form, InstrumentType.LEASE, request.user)
-            messages.success(request, "Lease created.")
-            return redirect("instruments:lease_detail", pk=instrument.lease_contract.pk)
-    else:
-        form = LeaseContractForm()
-    return instruments_render(request, "instruments/lease_form.html", {"form": form})
-
-
-@require_POST
-@login_required
-def lease_activate(request, pk):
-    lease = get_object_or_404(LeaseContract, pk=pk)
-    try:
-        LeaseService.activate(lease)
-        messages.success(request, "Lease activated.")
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect("instruments:lease_detail", pk=lease.pk)
-
-
-@require_POST
-@login_required
-def lease_cancel(request, pk):
-    lease = get_object_or_404(LeaseContract, pk=pk)
-    try:
-        LeaseService.cancel(lease)
-        messages.success(request, "Lease cancelled.")
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect("instruments:lease_detail", pk=lease.pk)
-
-
-@require_POST
-@login_required
-def lease_charge_fixed(request, pk):
-    lease = get_object_or_404(
-        LeaseContract.objects.select_related("payment_asset", "lessee_account", "revenue_account"),
-        pk=pk,
-    )
-    try:
-        LeaseService.charge_fixed_fee(lease)
-        messages.success(request, "Fixed fee charged.")
-    except Exception as exc:
-        messages.error(request, str(exc))
-    return redirect("instruments:lease_detail", pk=lease.pk)
 
 
 # ── Amortization ──────────────────────────────────────────────────────────────

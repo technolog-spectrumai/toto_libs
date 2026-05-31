@@ -1,0 +1,51 @@
+{% extends "contracts/base.html" %}
+{% load i18n %}
+
+{% block contracts_title %}{% trans "New Lease" %}{% endblock %}
+{% block tab_leasing %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block contracts_content %}
+<div class="space-y-6 max-w-2xl">
+
+  <a href="{% url 'leasing:lease_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "Back to leases" %}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-6 shadow-sm">
+    <h2 class="flex items-center gap-2 text-xl font-bold mb-6">
+      <i class="fa-solid fa-key" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "New Lease" %}
+    </h2>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+      {% for field in form %}
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</label>
+        {{ field }}
+        {% if field.help_text %}<p class="text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
+        {% for error in field.errors %}
+        <p class="text-xs font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endfor %}
+      {% if form.non_field_errors %}
+      <div class="space-y-1">
+        {% for error in form.non_field_errors %}
+        <p class="text-sm font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ error }}</p>
+        {% endfor %}
+      </div>
+      {% endif %}
+      <div class="pt-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="rounded-lg px-5 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk mr-1"></i> {% trans "Save lease" %}
+        </button>
+      </div>
+    </form>
+  </div>
+
+</div>
+{% endblock %}

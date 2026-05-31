@@ -16,10 +16,8 @@ from toto.instruments.models import (
     ForwardContract,
     InstrumentStatus,
     InstrumentType,
-    LeaseContract,
-    LeaseStatus,
 )
-from toto.instruments.services import AmortizationService, LeaseService
+from toto.instruments.services import AmortizationService
 
 
 class InstrumentsSmokeTests(TestCase):
@@ -27,82 +25,6 @@ class InstrumentsSmokeTests(TestCase):
         self.assertIsNotNone(FinancialInstrument)
         self.assertIsNotNone(EscrowContract)
         self.assertIsNotNone(ForwardContract)
-
-
-def _make_lease_contract(**kwargs):
-    from django.db.models.base import ModelState
-    obj = object.__new__(LeaseContract)
-    obj.__dict__["_state"] = ModelState()
-    for k, v in kwargs.items():
-        obj.__dict__[k] = v
-    return obj
-
-
-class LeaseTests(TestCase):
-    """Tests for Lease instrument models and service logic."""
-
-    def test_fee_must_be_positive(self):
-        lease = _make_lease_contract(
-            fixed_fee_base_units=0,
-            starts_at=timezone.now(),
-            ends_at=None,
-            lessor_account_id=1,
-            lessee_account_id=2,
-        )
-        with self.assertRaises(ValidationError) as ctx:
-            lease.clean()
-        self.assertIn("fixed_fee_base_units", ctx.exception.message_dict)
-
-    def test_lessor_lessee_must_differ(self):
-        lease = _make_lease_contract(
-            fixed_fee_base_units=100,
-            starts_at=timezone.now(),
-            ends_at=None,
-            lessor_account_id=5,
-            lessee_account_id=5,
-        )
-        with self.assertRaises(ValidationError) as ctx:
-            lease.clean()
-        self.assertIn("Lessor and lessee accounts must differ", str(ctx.exception))
-
-    def test_ends_at_must_be_after_starts_at(self):
-        now = timezone.now()
-        lease = _make_lease_contract(
-            fixed_fee_base_units=100,
-            starts_at=now,
-            ends_at=now,
-            lessor_account_id=1,
-            lessee_account_id=2,
-        )
-        with self.assertRaises(ValidationError) as ctx:
-            lease.clean()
-        self.assertIn("ends_at", ctx.exception.message_dict)
-
-    @patch("toto.instruments.services.record_execution")
-    def test_service_activate_changes_status(self, mock_record):
-        instrument = SimpleNamespace(
-            status=InstrumentStatus.DRAFT,
-            reference="test-lease",
-            save=MagicMock(),
-        )
-        lease = SimpleNamespace(
-            status=LeaseStatus.DRAFT,
-            starts_at=timezone.now(),
-            instrument=instrument,
-            save=MagicMock(),
-        )
-        LeaseService.activate.__wrapped__(lease)
-        self.assertEqual(lease.status, LeaseStatus.ACTIVE)
-        self.assertIsNotNone(lease.activated_at)
-        self.assertEqual(instrument.status, InstrumentStatus.ACTIVE)
-
-    def test_lease_list_requires_login(self):
-        response = self.client.get("/instruments/leases/")
-        self.assertEqual(response.status_code, 302)
-
-    def test_lease_create_requires_login(self):
-        response = self.client.get("/instruments/leases/create/")
-        self.assertEqual(response.status_code, 302)
 
 
 def _make_amortization_contract(**kwargs):
@@ -487,50 +409,6 @@ class ForwardContractGenerationTests(TestCase):
         self.assertEqual(meta["instrument_reference"], "FWD-LC-001")
         self.assertEqual(meta["instrument_type"], "forward")
         self.assertEqual(meta["generated_by"], "instruments.lapis_contracts")
-
-
-class LeaseContractGenerationTests(TestCase):
-    def setUp(self):
-        self.reserve = _make_ledger_account("ls-reserve")
-        self.lessor = _make_ledger_account("ls-lessor")
-        self.lessee = _make_ledger_account("ls-lessee")
-        self.revenue_acc = _make_ledger_account("ls-revenue")
-        self.leased_asset = _make_asset("LSA", self.reserve)
-        self.payment_asset = _make_asset("LSP", self.reserve)
-
-        from toto.instruments.models import FinancialInstrument, LeaseContract
-        self.instrument = FinancialInstrument.objects.create(
-            reference="LSE-LC-001", instrument_type="lease",
-        )
-        self.lease = LeaseContract.objects.create(
-            instrument=self.instrument,
-            lessor_account=self.lessor,
-            lessee_account=self.lessee,
-            leased_asset=self.leased_asset,
-            payment_asset=self.payment_asset,
-            revenue_account=self.revenue_acc,
-            fixed_fee_base_units=200,
-            billing_period="monthly",
-            starts_at=timezone.now(),
-        )
-
-    def test_lease_generates_contract(self):
-        from toto.instruments.lapis_contracts import sync_contract_for_instrument
-        contract = sync_contract_for_instrument(self.instrument)
-        self.assertIsNotNone(contract.pk)
-
-    def test_lease_flow_validates(self):
-        from toto.instruments.lapis_contracts import render_lapis_for_instrument
-        from toto.assets.lapis.loader import loads_contract
-        from toto.assets.lapis.compiler import ContractFlowValidator
-        code = render_lapis_for_instrument(self.instrument)
-        ContractFlowValidator().validate(loads_contract(code, fmt="yaml"))
-
-    def test_lease_metadata_has_obligation(self):
-        from toto.instruments.lapis_contracts import build_contract_metadata_for_instrument
-        meta = build_contract_metadata_for_instrument(self.instrument)
-        self.assertEqual(len(meta["obligations"]), 1)
-        self.assertEqual(meta["obligations"][0]["role"], "recurring_payment")
 
 
 class InstrumentWithoutSubtypeTests(TestCase):

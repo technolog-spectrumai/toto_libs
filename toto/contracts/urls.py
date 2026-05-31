@@ -45,4 +45,9 @@ urlpatterns = [
     path("insurance/", views.insurance_list, name="insurance_list"),
     path("insurance/new/", views.insurance_create, name="insurance_create"),
     path("insurance/<uuid:uuid>/", views.insurance_detail, name="insurance_detail"),
+
+    # ---- Leasing ----
+    path("leasing/", views.lease_list, name="lease_list"),
+    path("leasing/new/", views.lease_create, name="lease_create"),
+    path("leasing/<uuid:uuid>/", views.lease_detail, name="lease_detail"),
 ]

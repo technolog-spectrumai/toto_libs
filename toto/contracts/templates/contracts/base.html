@@ -48,6 +48,13 @@
       <i class="fa-solid fa-hand-holding-dollar"></i>
       {% trans "Loans" %}
     </a>
+    <a href="{% url 'contracts:lease_list' %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% block tab_leasing %}opacity-50{% endblock %}">
+      <i class="fa-solid fa-key"></i>
+      {% trans "Leasing" %}
+    </a>
     <a href="{% url 'claims:overview' %}"
        :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
        class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition

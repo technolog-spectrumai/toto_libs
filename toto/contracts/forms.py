@@ -164,6 +164,62 @@ INSURANCE_FREQUENCIES = [
 ]
 
 
+class LeaseCreateForm(forms.Form):
+    """Contract-backed lease creation form (used from the contracts app)."""
+
+    name = forms.CharField(max_length=255, label="Contract name")
+    leased_object = forms.ModelChoiceField(queryset=None, label="Leased object")
+    lessor = forms.ModelChoiceField(queryset=None, label="Lessor (person leasing out)")
+    lessee = forms.ModelChoiceField(queryset=None, label="Lessee (person renting)")
+    lessor_account = forms.ModelChoiceField(queryset=None, required=False, label="Lessor account")
+    lessee_account = forms.ModelChoiceField(queryset=None, required=False, label="Lessee account")
+    payment_asset = forms.ModelChoiceField(queryset=None, required=False, label="Payment currency")
+    billing_period = forms.ChoiceField(
+        choices=[
+            ("once", "Once"), ("daily", "Daily"), ("weekly", "Weekly"),
+            ("monthly", "Monthly"), ("yearly", "Yearly"), ("custom", "Custom"),
+        ],
+        label="Billing period",
+    )
+    fixed_fee_base_units = forms.IntegerField(min_value=0, label="Fixed fee (base units)")
+    starts_at = forms.SplitDateTimeField(
+        widget=forms.SplitDateTimeWidget(date_attrs={"type": "date"}, time_attrs={"type": "time"}),
+        label="Starts at",
+    )
+    ends_at = forms.SplitDateTimeField(
+        required=False,
+        widget=forms.SplitDateTimeWidget(date_attrs={"type": "date"}, time_attrs={"type": "time"}),
+        label="Ends at",
+    )
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.assets.models import Asset, LedgerAccount
+        from toto.inventory.models import RealWorldObject
+
+        self.fields["leased_object"].queryset = RealWorldObject.objects.order_by("name")
+        self.fields["lessor"].queryset = Person.objects.order_by("display_name")
+        self.fields["lessee"].queryset = Person.objects.order_by("display_name")
+        self.fields["lessor_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["lessee_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
+        self.fields["payment_asset"].queryset = Asset.objects.filter(active=True).order_by("unit_name")
+        for fname in self.fields:
+            w = self.fields[fname].widget
+            if hasattr(w, "widgets"):
+                for sw in w.widgets:
+                    sw.attrs.setdefault("class", _CLS)
+                    sw.attrs.setdefault(":class", _DARK)
+            else:
+                w.attrs.setdefault("class", _CLS)
+                w.attrs.setdefault(":class", _DARK)
+
+    def clean(self):
+        cleaned = super().clean()
+        if cleaned.get("lessor") and cleaned.get("lessee") and cleaned["lessor"] == cleaned["lessee"]:
+            raise forms.ValidationError("Lessor and lessee must be different people.")
+        return cleaned
+
+
 class InsuranceCreateForm(forms.Form):
     name = forms.CharField(max_length=255)
     insured_person = forms.ModelChoiceField(queryset=None, label="Insured person")
