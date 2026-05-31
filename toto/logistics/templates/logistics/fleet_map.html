@@ -11,15 +11,25 @@
   #fleet-map { height: 520px; border-radius: 1rem; overflow: hidden; z-index: 0; }
   [x-cloak] { display: none !important; }
 </style>
+<script>
+  window._fleetUrls = {
+    geojson:   "{% url 'logistics:fleet-geojson' %}{% if category %}?category={{ category }}{% endif %}",
+    export:    "{% url 'logistics:fleet-export' %}",
+    runStatus: (id) => `{% url 'logistics:fleet-run-status' run_id=0 %}`.replace("/0/", `/${id}/`),
+  };
+  window._fleetBuckets     = JSON.parse(`{{ buckets_json|escapejs }}`);
+  window._fleetDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
+  window._fleetCeleryOk    = {{ celery_ok|yesno:"true,false" }};
+  window._fleetCategory    = "{{ category|default:'' }}";
+</script>
 {% endblock %}
 
 {% block logistics_header_action %}
-<a href="{% url 'logistics:fleet-geojson' %}{% if category %}?category={{ category }}{% endif %}"
-   download="fleet.geojson"
-   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-   class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-  <i class="fa-solid fa-download"></i> {% trans "Export GeoJSON" %}
-</a>
+<button type="button" @click="exportOpen = true"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+  <i class="fa-solid fa-file-export"></i> {% trans "Export GeoJSON" %}
+</button>
 {% endblock %}
 
 {% block logistics_content %}
@@ -41,9 +51,8 @@
       </span>
     </div>
 
-    <!-- Stats -->
     <p class="text-xs opacity-50">
-      {{ located }} / {{ total }} {% trans "objects have a location" %}
+      {{ located }} / {{ total }} {% trans "objects located" %}
     </p>
 
     <!-- Category filter -->
@@ -71,21 +80,125 @@
 
   <!-- Legend -->
   <div class="flex flex-wrap gap-3 text-xs font-semibold opacity-70">
-    <span class="flex items-center gap-1.5">
-      <span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {% trans "Vehicle" %}
-    </span>
-    <span class="flex items-center gap-1.5">
-      <span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> {% trans "Equipment" %}
-    </span>
-    <span class="flex items-center gap-1.5">
-      <span class="inline-block w-3 h-3 rounded-full bg-green-500"></span> {% trans "Commodity" %}
-    </span>
-    <span class="flex items-center gap-1.5">
-      <span class="inline-block w-3 h-3 rounded-full bg-gray-400"></span> {% trans "Other" %}
-    </span>
-    <span class="ml-4 flex items-center gap-1.5 opacity-60">
-      <i class="fa-solid fa-key text-[10px]"></i> {% trans "= active lease" %}
-    </span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-full bg-blue-500"></span> {% trans "Vehicle" %}</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-full bg-amber-500"></span> {% trans "Equipment" %}</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-full bg-green-500"></span> {% trans "Commodity" %}</span>
+    <span class="flex items-center gap-1.5"><span class="inline-block w-3 h-3 rounded-full bg-gray-400"></span> {% trans "Other" %}</span>
+    <span class="ml-4 flex items-center gap-1.5 opacity-60"><i class="fa-solid fa-key text-[10px]"></i> {% trans "= active lease" %}</span>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- EXPORT MODAL                                                      -->
+  <!-- ================================================================ -->
+  <div x-show="exportOpen" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="exportOpen = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-export"></i> {% trans "Export Fleet to Vault" %}
+        </h2>
+        <button type="button" @click="exportOpen = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <!-- Body -->
+      <div class="space-y-4 p-5">
+
+        {% if not celery_ok %}
+        <div :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+          {% trans "No Celery worker running — exports unavailable." %}
+        </div>
+        {% endif %}
+
+        <!-- Target bucket -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Target Bucket" %}</label>
+          <select x-model="exportBucketId" @change="exportDirectoryId = ''"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— {% trans "select bucket" %} —</option>
+            <template x-for="b in exportBuckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Directory (optional) -->
+        <div x-show="exportBucketId">
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Directory" %} <span class="font-normal opacity-50">{% trans "(optional)" %}</span>
+          </label>
+          <select x-model="exportDirectoryId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">— {% trans "root of bucket" %} —</option>
+            <template x-for="d in exportFilteredDirectories" :key="d.id">
+              <option :value="d.id" x-text="d.path"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Title (optional) -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "File Title" %} <span class="font-normal opacity-50">{% trans "(optional)" %}</span>
+          </label>
+          <input type="text" x-model="exportTitle" placeholder="{% trans 'Fleet Export' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Error -->
+        <div x-show="exportError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="exportError"></span>
+        </div>
+
+        <!-- Progress / download -->
+        <div x-show="exportRunId" x-cloak class="space-y-2">
+          <div class="flex items-center gap-2 text-sm">
+            <i class="fa-solid"
+               :class="exportIsBusy
+                 ? 'fa-spinner fa-spin opacity-60'
+                 : (exportDownloadUrl ? 'fa-circle-check text-success-light' : 'fa-circle-xmark text-warn-light')"></i>
+            <span x-text="exportIsBusy ? '{% trans 'Exporting…' %}' : (exportDownloadUrl ? '{% trans 'Export complete' %}' : '{% trans 'Export failed' %}')"
+                  class="font-semibold"></span>
+          </div>
+          <div x-show="exportDownloadUrl" x-cloak>
+            <a :href="exportDownloadUrl"
+               :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/40' : 'bg-success-light/20 text-success-light border-success-light/40'"
+               class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-download"></i> {% trans "Download file" %}
+            </a>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
+        <button type="button" @click="exportOpen = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-black/10' : 'border-accent-2 hover:bg-black/5'"
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Close" %}</button>
+        <button type="button" @click="startExport()"
+                :disabled="exportIsBusy || !exportBucketId || !_fleetCeleryOk"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+          <i class="fa-solid" :class="exportIsBusy ? 'fa-spinner fa-spin' : 'fa-file-export'"></i>
+          <span x-text="exportIsBusy ? '{% trans 'Exporting…' %}' : '{% trans 'Export' %}'"></span>
+        </button>
+      </div>
+
+    </div>
   </div>
 
 </div>
@@ -93,11 +206,29 @@
 
 {% block logistics_end_script %}
 <script>
-const _fleetGeoJsonUrl = "{% url 'logistics:fleet-geojson' %}{% if category %}?category={{ category }}{% endif %}";
-
 function fleetMap() {
   return {
     map: null,
+
+    // export modal state
+    exportOpen: false,
+    exportBucketId: "",
+    exportDirectoryId: "",
+    exportTitle: "",
+    exportRunId: null,
+    exportStatus: "",
+    exportDownloadUrl: null,
+    exportError: "",
+    exportBuckets: window._fleetBuckets || [],
+    exportDirectories: window._fleetDirectories || [],
+
+    get exportFilteredDirectories() {
+      if (!this.exportBucketId) return [];
+      return this.exportDirectories.filter(d => String(d.bucket_id) === String(this.exportBucketId));
+    },
+    get exportIsBusy() {
+      return this.exportStatus === "running" || this.exportStatus === "pending";
+    },
 
     init() {
       this.$nextTick(() => this.initMap());
@@ -115,24 +246,16 @@ function fleetMap() {
     },
 
     categoryColor(category) {
-      const map = {
-        vehicle:        "#3b82f6",
-        equipment:      "#f59e0b",
-        commodity:      "#22c55e",
-        real_estate:    "#8b5cf6",
-        infrastructure: "#f97316",
-      };
+      const map = { vehicle: "#3b82f6", equipment: "#f59e0b", commodity: "#22c55e", real_estate: "#8b5cf6", infrastructure: "#f97316" };
       return map[category] || "#94a3b8";
     },
 
     async loadFleet() {
       try {
-        const resp = await fetch(_fleetGeoJsonUrl);
+        const resp = await fetch(window._fleetUrls.geojson);
         const data = await resp.json();
         this.renderFeatures(data.features || []);
-      } catch (e) {
-        console.error("Fleet GeoJSON error:", e);
-      }
+      } catch (e) { console.error("Fleet GeoJSON error:", e); }
     },
 
     renderFeatures(features) {
@@ -142,37 +265,65 @@ function fleetMap() {
         const [lng, lat] = f.geometry.coordinates;
         const p = f.properties;
         const color = this.categoryColor(p.category);
-        const hasLease = !!p.lease_status;
-
         const marker = L.circleMarker([lat, lng], {
           radius: 8,
-          color: hasLease ? "#10b981" : color,
-          fillColor: color,
-          fillOpacity: 0.85,
-          weight: hasLease ? 2.5 : 1.5,
+          color: p.lease_status === "active" ? "#10b981" : color,
+          fillColor: color, fillOpacity: 0.85,
+          weight: p.lease_status === "active" ? 2.5 : 1.5,
         });
-
-        const leaseInfo = p.lease_status_display
-          ? `<br><i class="fa-solid fa-key" style="font-size:10px"></i> ${p.lease_status_display}`
-          : "";
-        const ownerInfo = p.owner ? `<br><span style="opacity:.6">${p.owner}</span>` : "";
-
         marker.bindPopup(
-          `<b>${p.name}</b><br>` +
-          `<span style="opacity:.7">${p.category_display || p.object_type}</span>` +
-          ownerInfo +
+          `<b>${p.name}</b><br><span style="opacity:.7">${p.category_display || p.object_type}</span>` +
+          (p.owner ? `<br><span style="opacity:.6">${p.owner}</span>` : "") +
           `<br><span style="opacity:.6">${p.location_label || ""}</span>` +
-          leaseInfo
+          (p.lease_status_display ? `<br><i class="fa-solid fa-key" style="font-size:10px"></i> ${p.lease_status_display}` : "")
         );
         marker.addTo(this.map);
         bounds.push([lat, lng]);
       });
+      if (bounds.length) this.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
+    },
 
-      if (bounds.length) {
-        this.map.fitBounds(bounds, { padding: [40, 40], maxZoom: 10 });
-      }
+    async startExport() {
+      if (!this.exportBucketId) return;
+      this.exportError = "";
+      this.exportDownloadUrl = null;
+      this.exportStatus = "pending";
+      this.exportRunId = null;
+      try {
+        const resp = await fetch(window._fleetUrls.export, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": _getCsrf() },
+          body: JSON.stringify({
+            bucket_id: this.exportBucketId,
+            directory_id: this.exportDirectoryId || null,
+            title: this.exportTitle || null,
+            category: window._fleetCategory || null,
+          }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { this.exportError = data.error || "Export failed."; this.exportStatus = ""; return; }
+        this.exportRunId = data.run_id;
+        this.pollExport();
+      } catch (e) { this.exportError = String(e); this.exportStatus = ""; }
+    },
+
+    async pollExport() {
+      if (!this.exportRunId) return;
+      try {
+        const resp = await fetch(window._fleetUrls.runStatus(this.exportRunId));
+        const data = await resp.json();
+        this.exportStatus = data.status;
+        if (data.download_url) { this.exportDownloadUrl = data.download_url; return; }
+        if (data.error) { this.exportError = data.error; return; }
+        if (this.exportIsBusy) setTimeout(() => this.pollExport(), 1500);
+      } catch (e) { this.exportError = String(e); }
     },
   };
+}
+
+function _getCsrf() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : "";
 }
 </script>
 {% endblock %}

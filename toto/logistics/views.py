@@ -1,7 +1,9 @@
 import json
 
+from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
+from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
 from .models import Package, PackageStatus
@@ -143,6 +145,11 @@ def fleet_map(request):
     total = qs.count()
     located = qs.filter(location__geometry__isnull=False).count()
 
+    from toto.vault.models import Bucket, VaultDirectory
+    from toto.celery_utils import celery_available
+    buckets = list(Bucket.objects.all().order_by("name"))
+    directories = list(VaultDirectory.objects.select_related("bucket").order_by("bucket__name", "name"))
+
     return render(
         request,
         "logistics/fleet_map.html",
@@ -151,8 +158,81 @@ def fleet_map(request):
             "located": located,
             "category": category,
             "category_choices": ObjectCategory.choices,
+            "celery_ok": celery_available(),
+            "buckets_json": json.dumps([{"id": b.id, "name": b.name} for b in buckets]),
+            "directories_json": json.dumps([
+                {"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()}
+                for d in directories
+            ]),
         }, request),
     )
+
+
+@login_required
+@require_POST
+def api_export_fleet(request):
+    """Trigger a fleet GeoJSON export workflow run — saves to Vault."""
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+    bucket_id = data.get("bucket_id")
+    if not bucket_id:
+        return JsonResponse({"error": "Select a target bucket."}, status=400)
+
+    from toto.celery_utils import celery_available
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker running."}, status=503)
+
+    from toto.workflows.api import trigger_workflow
+    from toto.workflows.models import Workflow
+    from toto.logistics.predefined_tasks import FLEET_EXPORT_SLUG
+
+    try:
+        run = trigger_workflow(FLEET_EXPORT_SLUG, {
+            "data": {
+                "bucket_id": int(bucket_id),
+                "directory_id": int(data["directory_id"]) if data.get("directory_id") else None,
+                "title": data.get("title", "").strip() or None,
+                "category": data.get("category") or None,
+                "owner_id": request.user.pk,
+            }
+        })
+        return JsonResponse({"run_id": run.id})
+    except Workflow.DoesNotExist:
+        return JsonResponse(
+            {"error": "Export workflow not seeded. Run: manage.py seed_logistics_workflows"},
+            status=503,
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+
+@login_required
+def api_fleet_run_status(request, run_id):
+    """Poll a workflow run for status and download URL."""
+    from toto.workflows.models import WorkflowNodeRun, WorkflowRun
+
+    try:
+        run = WorkflowRun.objects.get(pk=run_id)
+    except WorkflowRun.DoesNotExist:
+        return JsonResponse({"error": "Run not found."}, status=404)
+
+    error = ""
+    if run.status == WorkflowRun.FAILED:
+        failed_node = run.node_runs.exclude(error="").select_related("node").first()
+        if failed_node:
+            error = failed_node.error
+
+    download_url = None
+    for nr in run.node_runs.filter(status=WorkflowNodeRun.COMPLETED).select_related("node"):
+        file_data = ((nr.output_data or {}).get("data") or {})
+        if file_data.get("download_url"):
+            download_url = file_data["download_url"]
+            break
+
+    return JsonResponse({"status": run.status, "error": error, "download_url": download_url})
 
 
 def package_list(request):

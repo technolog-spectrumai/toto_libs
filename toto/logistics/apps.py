@@ -14,3 +14,4 @@ class LogisticsConfig(AppConfig):
         )
         FieldMapPlugin.register(logistics_map_features)
         FieldMetricsPlugin.register(logistics_metrics_section)
+        from toto.logistics import predefined_tasks  # noqa: F401 — registers fleet workflow task

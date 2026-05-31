@@ -9,4 +9,6 @@ urlpatterns = [
     path("logistics/fleet/", views.fleet, name="fleet"),
     path("logistics/fleet/map/", views.fleet_map, name="fleet-map"),
     path("logistics/fleet/geojson/", views.fleet_geojson, name="fleet-geojson"),
+    path("logistics/fleet/export/", views.api_export_fleet, name="fleet-export"),
+    path("logistics/fleet/run/<int:run_id>/status/", views.api_fleet_run_status, name="fleet-run-status"),
 ]
