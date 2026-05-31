@@ -16,7 +16,8 @@ class StorageLocationInline(admin.TabularInline):
 
 @admin.register(ObjectType)
 class ObjectTypeAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "created_at")
+    list_display = ("name", "category", "is_mobile", "slug", "created_at")
+    list_filter = ("category", "is_mobile")
     search_fields = ("name", "slug", "description")
     prepopulated_fields = {"slug": ("name",)}
 

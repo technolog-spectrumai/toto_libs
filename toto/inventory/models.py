@@ -16,9 +16,28 @@ def unique_slug_for(instance, field_value, *, scope=None, slug_field="slug"):
     return slug
 
 
+class ObjectCategory(models.TextChoices):
+    COMMODITY      = "commodity",      "Commodity"
+    EQUIPMENT      = "equipment",      "Equipment"
+    VEHICLE        = "vehicle",        "Vehicle"
+    REAL_ESTATE    = "real_estate",    "Real Estate"
+    INFRASTRUCTURE = "infrastructure", "Infrastructure"
+    OTHER          = "other",          "Other"
+
+
 class ObjectType(DomainEntity):
     name = models.CharField(max_length=255)
     slug = models.SlugField(max_length=280, unique=True, blank=True)
+    category = models.CharField(
+        max_length=30,
+        choices=ObjectCategory.choices,
+        blank=True,
+        db_index=True,
+    )
+    is_mobile = models.BooleanField(
+        default=False,
+        help_text="Objects of this type move (vehicles, portable equipment). Used for fleet map filtering.",
+    )
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

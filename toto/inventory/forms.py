@@ -13,6 +13,8 @@ class ObjectTypeForm(forms.ModelForm):
         model = ObjectType
         fields = [
             "name",
+            "category",
+            "is_mobile",
             "description",
             "metadata",
         ]
