@@ -67,13 +67,20 @@
       importError: "",
       importVaultFileId: "",
       importVaultSearch: "",
+      importVaultPassword: "",
       importVaultFiles: window.vaultGeojsonFiles || [],
       get importVaultFiltered() {
         const q = this.importVaultSearch.trim().toLowerCase();
         return q ? this.importVaultFiles.filter(f => f.title.toLowerCase().includes(q) || f.bucket.toLowerCase().includes(q)) : this.importVaultFiles;
       },
+      get importVaultSelectedFile() {
+        return this.importVaultFiles.find(f => String(f.id) === String(this.importVaultFileId)) || null;
+      },
       get importReady() {
-        return this.importSource === "upload" ? !!this.importFile : !!this.importVaultFileId;
+        if (this.importSource === "upload") return !!this.importFile;
+        if (!this.importVaultFileId) return false;
+        if (this.importVaultSelectedFile?.is_encrypted && !this.importVaultPassword) return false;
+        return true;
       },
 
       init() {
@@ -902,24 +909,36 @@
           <input type="text" x-model="importVaultSearch" placeholder="{% trans 'Filter by title or bucket…' %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="w-full rounded-lg border px-3 py-2 text-sm">
-          <div class="max-h-52 overflow-y-auto rounded-lg border"
+          <div class="max-h-48 overflow-y-auto rounded-lg border"
                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
             <template x-if="importVaultFiltered.length === 0">
               <p class="px-4 py-5 text-center text-sm opacity-40">{% trans "No JSON files found in Vault." %}</p>
             </template>
             <template x-for="f in importVaultFiltered" :key="f.id">
-              <button type="button" @click="importVaultFileId = String(f.id); importResult = null; importError = ''"
+              <button type="button" @click="importVaultFileId = String(f.id); importVaultPassword = ''; importResult = null; importError = ''"
                       class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-current/5"
                       :class="importVaultFileId === String(f.id) ? (darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10') : ''">
-                <i class="fa-solid fa-file-code opacity-40 shrink-0"></i>
+                <i class="fa-solid shrink-0 opacity-50"
+                   :class="f.is_encrypted ? 'fa-lock' : 'fa-file-code'"></i>
                 <span class="flex-1 min-w-0">
                   <span class="font-semibold block truncate" x-text="f.title"></span>
-                  <span class="text-xs opacity-50" x-text="f.bucket + ' · ' + f.uploaded_at"></span>
+                  <span class="text-xs opacity-50" x-text="f.bucket + ' · ' + f.uploaded_at + (f.is_encrypted ? ' · 🔒 encrypted' : '')"></span>
                 </span>
                 <i class="fa-solid fa-check shrink-0" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                    x-show="importVaultFileId === String(f.id)"></i>
               </button>
             </template>
+          </div>
+          <!-- Password field — only shown when selected file is encrypted -->
+          <div x-show="importVaultSelectedFile && importVaultSelectedFile.is_encrypted">
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-lock mr-1"></i>{% trans "Password" %}
+            </label>
+            <input type="password" x-model="importVaultPassword"
+                   placeholder="{% trans 'Enter password to decrypt' %}"
+                   autocomplete="current-password"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
           </div>
         </div>
 
@@ -974,7 +993,10 @@
                   importRunning = true; importError = ''; importResult = null;
                   const fd = new FormData();
                   if (importSource === 'upload') { fd.append('file', importFile); }
-                  else { fd.append('vault_file_id', importVaultFileId); }
+                  else {
+                    fd.append('vault_file_id', importVaultFileId);
+                    if (importVaultPassword) fd.append('password', importVaultPassword);
+                  }
                   fd.append('name', importName);
                   fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
                   fetch('{% url "locations:api_import_layer" %}', {method:'POST', body:fd})

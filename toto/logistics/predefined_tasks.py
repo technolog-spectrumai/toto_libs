@@ -72,10 +72,16 @@ def fleet_export_geojson(input_data: dict) -> dict:
     ts = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
     filename = f"fleet_export_{ts}.geojson"
 
+    password = data.get("password") or None
+
     vf = VaultFile(
         owner=owner, title=title, bucket=bucket, directory=directory,
         file_type=VaultFile.detect_type("application/geo+json"), is_public=False,
     )
     vf.file.save(filename, ContentFile(content), save=False)
     vf.save()
-    return {"data": {"vault_file_id": vf.pk, "download_url": vf.get_public_url()}}
+
+    if password:
+        vf.encrypt(password=password)
+
+    return {"data": {"vault_file_id": vf.pk, "download_url": vf.get_public_url(), "encrypted": bool(password)}}

@@ -196,6 +196,7 @@ def api_export_fleet(request):
                 "directory_id": int(data["directory_id"]) if data.get("directory_id") else None,
                 "title": data.get("title", "").strip() or None,
                 "category": data.get("category") or None,
+                "password": data.get("password") or None,
                 "owner_id": request.user.pk,
             }
         })

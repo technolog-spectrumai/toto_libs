@@ -53,6 +53,7 @@ def weather_export_layers(input_data: dict) -> dict:
     directory_id = data.get("directory_id")
     owner_id = data["owner_id"]
     title = data.get("title") or "Weather Layers Export"
+    password = data.get("password") or None
 
     _providers = {
         "weather-temperature": weather_temperature_layer,
@@ -77,4 +78,8 @@ def weather_export_layers(input_data: dict) -> dict:
     )
     vf.file.save(filename, ContentFile(content), save=False)
     vf.save()
-    return {"data": {"vault_file_id": vf.pk, "download_url": vf.get_public_url()}}
+
+    if password:
+        vf.encrypt(password=password)
+
+    return {"data": {"vault_file_id": vf.pk, "download_url": vf.get_public_url(), "encrypted": bool(password)}}

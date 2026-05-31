@@ -276,6 +276,7 @@ def locations_all(request):
                 "title": f.title,
                 "bucket": f.bucket.name if f.bucket else "—",
                 "uploaded_at": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
+                "is_encrypted": f.is_encrypted,
             }
             for f in vault_geojson_files
         ]),
@@ -759,9 +760,19 @@ def api_import_layer(request):
         else:
             from toto.vault.models import VaultFile
             vf = VaultFile.objects.get(pk=vault_file_id)
-            vf.file.open("rb")
-            raw = vf.file.read().decode("utf-8")
-            vf.file.close()
+            if vf.is_encrypted:
+                password = request.POST.get("password", "").strip()
+                if not password:
+                    return JsonResponse({"error": "encrypted", "message": "File is encrypted — provide a password."}, status=422)
+                try:
+                    content_bytes, _ = vf.get_strategy().decrypt_to_bytes(vf, password=password)
+                    raw = content_bytes.decode("utf-8")
+                except Exception:
+                    return JsonResponse({"error": "Wrong password or corrupted file."}, status=400)
+            else:
+                vf.file.open("rb")
+                raw = vf.file.read().decode("utf-8")
+                vf.file.close()
         data = json.loads(raw)
     except VaultFile.DoesNotExist:
         return JsonResponse({"error": "Vault file not found."}, status=404)

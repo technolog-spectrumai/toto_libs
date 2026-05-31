@@ -281,6 +281,7 @@ def api_export_layers(request):
                 "bucket_id": int(bucket_id),
                 "directory_id": int(data["directory_id"]) if data.get("directory_id") else None,
                 "title": data.get("title", "").strip() or None,
+                "password": data.get("password") or None,
                 "owner_id": request.user.pk,
             }
         })
