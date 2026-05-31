@@ -24,31 +24,32 @@
 </script>
 {% endblock %}
 
-{% block logistics_header_action %}
-<button type="button" @click="exportOpen = true"
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-  <i class="fa-solid fa-file-export"></i> {% trans "Export GeoJSON" %}
-</button>
-{% endblock %}
-
 {% block logistics_content %}
 <div class="space-y-4" x-data="fleetMap()" x-init="init()">
 
   <!-- Toolbar -->
   <div class="flex flex-wrap items-center justify-between gap-3">
 
-    <!-- List / Map toggle -->
-    <div class="flex items-center gap-1 rounded-lg border p-1 text-xs font-semibold"
-         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
-      <a href="{% url 'logistics:fleet' %}{% if category %}?category={{ category }}{% endif %}"
-         class="rounded px-3 py-1 transition opacity-50 hover:opacity-80">
-        <i class="fa-solid fa-list mr-1"></i>{% trans "List" %}
-      </a>
-      <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-            class="rounded px-3 py-1">
-        <i class="fa-solid fa-map mr-1"></i>{% trans "Map" %}
-      </span>
+    <div class="flex flex-wrap items-center gap-2">
+      <!-- List / Map toggle -->
+      <div class="flex items-center gap-1 rounded-lg border p-1 text-xs font-semibold"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <a href="{% url 'logistics:fleet' %}{% if category %}?category={{ category }}{% endif %}"
+           class="rounded px-3 py-1 transition opacity-50 hover:opacity-80">
+          <i class="fa-solid fa-list mr-1"></i>{% trans "List" %}
+        </a>
+        <span :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded px-3 py-1">
+          <i class="fa-solid fa-map mr-1"></i>{% trans "Map" %}
+        </span>
+      </div>
+
+      <!-- Export button — inside Alpine scope -->
+      <button type="button" @click="exportOpen = true"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-file-export"></i> {% trans "Export GeoJSON" %}
+      </button>
     </div>
 
     <p class="text-xs opacity-50">
@@ -235,6 +236,8 @@ function fleetMap() {
     },
 
     initMap() {
+      const el = document.getElementById("fleet-map");
+      if (!el || el._leaflet_id) return;
       const isDark = localStorage.getItem("darkMode") === "true";
       const tile = isDark
         ? "https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
