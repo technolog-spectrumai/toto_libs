@@ -31,6 +31,7 @@
   window.locationsPayload = JSON.parse(`{{ locations_json|escapejs }}`);
   window.mapLayersPayload = JSON.parse(`{{ map_layers_json|escapejs }}`);
   window.locationSearchUrl = "{% url 'locations:location_search_api' %}";
+  window.vaultGeojsonFiles = JSON.parse(`{{ vault_files_json|escapejs }}`);
 
   function locationsExplorer() {
     return {
@@ -58,11 +59,22 @@
       clickedPoint: null,
       addressModalOpen: false,
       importOpen: false,
+      importSource: "upload",
       importFile: null,
       importName: "",
       importRunning: false,
       importResult: null,
       importError: "",
+      importVaultFileId: "",
+      importVaultSearch: "",
+      importVaultFiles: window.vaultGeojsonFiles || [],
+      get importVaultFiltered() {
+        const q = this.importVaultSearch.trim().toLowerCase();
+        return q ? this.importVaultFiles.filter(f => f.title.toLowerCase().includes(q) || f.bucket.toLowerCase().includes(q)) : this.importVaultFiles;
+      },
+      get importReady() {
+        return this.importSource === "upload" ? !!this.importFile : !!this.importVaultFileId;
+      },
 
       init() {
         this.availableTypes
@@ -851,25 +863,70 @@
                 class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
 
+      <!-- Source tabs -->
+      <div class="flex border-b border-current/10">
+        <button type="button" @click="importSource = 'upload'; importResult = null; importError = ''"
+                class="flex-1 px-4 py-2.5 text-sm font-semibold transition border-b-2 -mb-px"
+                :class="importSource === 'upload'
+                  ? (darkMode ? 'border-accent-dark text-accent-dark' : 'border-accent-light text-accent-light')
+                  : 'border-transparent opacity-50 hover:opacity-80'">
+          <i class="fa-solid fa-upload mr-1.5"></i>{% trans "Upload file" %}
+        </button>
+        <button type="button" @click="importSource = 'vault'; importResult = null; importError = ''"
+                class="flex-1 px-4 py-2.5 text-sm font-semibold transition border-b-2 -mb-px"
+                :class="importSource === 'vault'
+                  ? (darkMode ? 'border-accent-dark text-accent-dark' : 'border-accent-light text-accent-light')
+                  : 'border-transparent opacity-50 hover:opacity-80'">
+          <i class="fa-solid fa-vault mr-1.5"></i>{% trans "From Vault" %}
+        </button>
+      </div>
+
       <!-- Body -->
       <div class="space-y-4 p-5">
 
-        <!-- File picker -->
-        <div>
+        <!-- Upload tab -->
+        <div x-show="importSource === 'upload'">
           <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "GeoJSON file" %}</label>
           <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
                  :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
             <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
-            <span x-text="importFile ? importFile.name : 'Click to select a .geojson file'" class="font-semibold"></span>
+            <span x-text="importFile ? importFile.name : '{% trans "Click to select a .geojson file" %}'" class="font-semibold"></span>
             <input type="file" accept=".geojson,application/geo+json,application/json"
                    class="sr-only"
                    @change="importFile = $event.target.files[0]; importResult = null; importError = ''">
           </label>
         </div>
 
-        <!-- Optional layer name (for single-layer files) -->
+        <!-- Vault tab -->
+        <div x-show="importSource === 'vault'" class="space-y-3">
+          <input type="text" x-model="importVaultSearch" placeholder="{% trans 'Filter by title or bucket…' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+          <div class="max-h-52 overflow-y-auto rounded-lg border"
+               :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <template x-if="importVaultFiltered.length === 0">
+              <p class="px-4 py-5 text-center text-sm opacity-40">{% trans "No JSON files found in Vault." %}</p>
+            </template>
+            <template x-for="f in importVaultFiltered" :key="f.id">
+              <button type="button" @click="importVaultFileId = String(f.id); importResult = null; importError = ''"
+                      class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-current/5"
+                      :class="importVaultFileId === String(f.id) ? (darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10') : ''">
+                <i class="fa-solid fa-file-code opacity-40 shrink-0"></i>
+                <span class="flex-1 min-w-0">
+                  <span class="font-semibold block truncate" x-text="f.title"></span>
+                  <span class="text-xs opacity-50" x-text="f.bucket + ' · ' + f.uploaded_at"></span>
+                </span>
+                <i class="fa-solid fa-check shrink-0" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   x-show="importVaultFileId === String(f.id)"></i>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Optional layer name -->
         <div>
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Layer name" %}<span class="font-normal opacity-50">(optional override)</span>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Layer name" %} <span class="font-normal opacity-50">{% trans "(optional override)" %}</span>
           </label>
           <input type="text" x-model="importName" placeholder="{% trans 'Use name from file' %}"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
@@ -886,15 +943,15 @@
 
         <!-- Result -->
         <div x-show="importResult" x-cloak class="space-y-3">
-          <p class="flex items-center gap-2 text-sm font-semibold text-success-light">
+          <p class="flex items-center gap-2 text-sm font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
             <i class="fa-solid fa-circle-check"></i>{% trans "Import complete" %}</p>
           <template x-for="layer in (importResult || [])" :key="layer.slug">
             <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="rounded-lg border px-4 py-2.5 text-sm">
               <p class="font-semibold" x-text="layer.name"></p>
               <p class="mt-0.5 text-xs opacity-60">
-                <span x-text="layer.polygon_count"></span> polygon<span x-show="layer.polygon_count !== 1">s</span>
-                &nbsp;·&nbsp; slug: <span x-text="layer.slug"></span>
+                <span x-text="layer.polygon_count"></span> {% trans "polygons" %}
+                &nbsp;·&nbsp; slug: <span x-text="layer.slug" class="font-mono"></span>
               </p>
             </div>
           </template>
@@ -912,11 +969,12 @@
                 :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
                 class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Cancel" %}</button>
         <button type="button"
-                :disabled="!importFile || importRunning"
+                :disabled="!importReady || importRunning"
                 @click="
                   importRunning = true; importError = ''; importResult = null;
                   const fd = new FormData();
-                  fd.append('file', importFile);
+                  if (importSource === 'upload') { fd.append('file', importFile); }
+                  else { fd.append('vault_file_id', importVaultFileId); }
                   fd.append('name', importName);
                   fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
                   fetch('{% url "locations:api_import_layer" %}', {method:'POST', body:fd})
@@ -927,7 +985,7 @@
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
                 class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
           <i class="fa-solid" :class="importRunning ? 'fa-spinner fa-spin' : 'fa-file-import'"></i>
-          <span x-text="importRunning ? 'Importing…' : 'Import'"></span>
+          <span x-text="importRunning ? '{% trans "Importing…" %}' : '{% trans "Import" %}'"></span>
         </button>
       </div>
     </div>

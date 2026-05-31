@@ -252,6 +252,14 @@ def locations_all(request):
     from toto.locations.plugins.sidebar_plugins import LocationSidebarPlugin
     from toto.locations.plugins.context_plugins import LocationContextPlugin
 
+    from toto.vault.models import VaultFile
+    vault_geojson_files = list(
+        VaultFile.objects
+        .filter(file_type="json")
+        .select_related("bucket")
+        .order_by("-uploaded_at")[:300]
+    )
+
     context = {
         "locations": locations,
         "locations_json": json.dumps(locations),
@@ -261,6 +269,15 @@ def locations_all(request):
             .filter(is_active=True)
             .prefetch_related("polygons")
             .order_by("name")
+        ]),
+        "vault_files_json": json.dumps([
+            {
+                "id": f.id,
+                "title": f.title,
+                "bucket": f.bucket.name if f.bucket else "—",
+                "uploaded_at": f.uploaded_at.strftime("%Y-%m-%d %H:%M"),
+            }
+            for f in vault_geojson_files
         ]),
         **LocationContextPlugin.get_context(),
     }
@@ -731,13 +748,25 @@ def api_import_layer(request):
     from .models import MapLayerPolygon
 
     uploaded = request.FILES.get("file")
-    if not uploaded:
-        return JsonResponse({"error": "No file uploaded."}, status=400)
+    vault_file_id = request.POST.get("vault_file_id", "").strip()
+
+    if not uploaded and not vault_file_id:
+        return JsonResponse({"error": "Provide a file upload or a vault_file_id."}, status=400)
 
     try:
-        data = json.loads(uploaded.read().decode("utf-8"))
-    except Exception:
-        return JsonResponse({"error": "Invalid GeoJSON — could not parse file."}, status=400)
+        if uploaded:
+            raw = uploaded.read().decode("utf-8")
+        else:
+            from toto.vault.models import VaultFile
+            vf = VaultFile.objects.get(pk=vault_file_id)
+            vf.file.open("rb")
+            raw = vf.file.read().decode("utf-8")
+            vf.file.close()
+        data = json.loads(raw)
+    except VaultFile.DoesNotExist:
+        return JsonResponse({"error": "Vault file not found."}, status=404)
+    except Exception as exc:
+        return JsonResponse({"error": f"Invalid GeoJSON — could not parse file: {exc}"}, status=400)
 
     if data.get("type") != "FeatureCollection":
         return JsonResponse({"error": "Expected a GeoJSON FeatureCollection."}, status=400)
