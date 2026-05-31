@@ -95,6 +95,12 @@
                   {% trans "Note" %}
                 </span>
               {% endif %}
+              {% if box.is_locked %}
+                <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
+                  <i class="fa-solid fa-lock"></i>
+                  {% trans "Locked" %}
+                </span>
+              {% endif %}
               {% if box.source_type %}
                 <span>{{ box.source_type }}</span>
               {% endif %}
@@ -123,7 +129,12 @@
           </a>
         </div>
 
-        {% if box.body %}
+        {% if box.is_locked %}
+          <p class="mt-3 flex items-center gap-2 text-sm opacity-60">
+            <i class="fa-solid fa-lock"></i>
+            {% trans "Content is locked." %}
+          </p>
+        {% elif box.body %}
           <p class="mt-3 text-sm opacity-80">{{ box.body|truncatewords:42 }}</p>
         {% endif %}
 

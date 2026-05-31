@@ -1,7 +1,27 @@
+import base64
+import os
+
+from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
 from django.db import models
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
+from toto.gervazy.crypto import aes_gcm_decrypt, aes_gcm_encrypt
+
+_LOCK_MEMORY_COST = 65536
+_LOCK_ITERATIONS = 3
+_LOCK_LANES = 4
+
+
+def _derive_lock_key(password: str, salt: bytes) -> bytes:
+    kdf = Argon2id(
+        salt=salt,
+        length=32,
+        iterations=_LOCK_ITERATIONS,
+        lanes=_LOCK_LANES,
+        memory_cost=_LOCK_MEMORY_COST,
+    )
+    return kdf.derive(password.encode("utf-8"))
 
 
 class Category(DomainEntity):
@@ -55,6 +75,11 @@ class IdeaBox(DomainEntity):
         help_text="Flexible metadata, e.g. {'topic': 'memory', 'rating': 4, 'status': 'raw'}.",
     )
 
+    is_locked = models.BooleanField(default=False)
+    lock_salt = models.BinaryField(null=True, blank=True)
+    encrypted_body = models.BinaryField(null=True, blank=True)
+    lock_nonce = models.BinaryField(null=True, blank=True)
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -74,6 +99,38 @@ class IdeaBox(DomainEntity):
     def set_property(self, key, value):
         self.properties[key] = value
         self.save(update_fields=["properties", "updated_at"])
+
+    def lock(self, password: str) -> None:
+        if self.is_locked:
+            raise ValueError("Box is already locked.")
+        if not password:
+            raise ValueError("Password is required.")
+        salt = os.urandom(16)
+        key = _derive_lock_key(password, salt)
+        ciphertext, nonce = aes_gcm_encrypt(key, self.body.encode("utf-8"))
+        self.lock_salt = salt
+        self.encrypted_body = ciphertext
+        self.lock_nonce = nonce
+        self.body = ""
+        self.is_locked = True
+        self.save(update_fields=["body", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
+
+    def unlock(self, password: str) -> str:
+        if not self.is_locked:
+            raise ValueError("Box is not locked.")
+        if not password:
+            raise ValueError("Password is required.")
+        salt = bytes(self.lock_salt)
+        key = _derive_lock_key(password, salt)
+        plaintext = aes_gcm_decrypt(key, bytes(self.encrypted_body), bytes(self.lock_nonce))
+        body = plaintext.decode("utf-8")
+        self.body = body
+        self.is_locked = False
+        self.lock_salt = None
+        self.encrypted_body = None
+        self.lock_nonce = None
+        self.save(update_fields=["body", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
+        return body
 
 
 class IdeaLink(DomainEntity):

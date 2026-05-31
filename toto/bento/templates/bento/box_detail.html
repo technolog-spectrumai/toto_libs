@@ -9,9 +9,29 @@
     deleteBoxOpen: false,
     deleteLinkId: null,
     graph: null,
+    lockModal: false,
+    lockMode: 'lock',
+    lockPassword: '',
+    lockError: '',
+    lockLoading: false,
     async loadGraph() {
       const response = await fetch('{% url "bento:api_box_graph" box.pk %}');
       this.graph = await response.json();
+    },
+    openLock() { this.lockMode = 'lock'; this.lockPassword = ''; this.lockError = ''; this.lockModal = true; },
+    openUnlock() { this.lockMode = 'unlock'; this.lockPassword = ''; this.lockError = ''; this.lockModal = true; },
+    async submitLock() {
+      if (!this.lockPassword) { this.lockError = '{% trans "Password is required." %}'; return; }
+      this.lockLoading = true; this.lockError = '';
+      const url = this.lockMode === 'lock' ? '{% url "bento:box_lock" box.pk %}' : '{% url "bento:box_unlock" box.pk %}';
+      const body = new URLSearchParams({ password: this.lockPassword, csrfmiddlewaretoken: '{{ csrf_token }}' });
+      try {
+        const res = await fetch(url, { method: 'POST', body });
+        const data = await res.json();
+        if (data.ok) { window.location.reload(); }
+        else { this.lockError = data.error || '{% trans "Something went wrong." %}'; }
+      } catch { this.lockError = '{% trans "Network error." %}'; }
+      finally { this.lockLoading = false; }
     }
   }"
   x-init="loadGraph()"
@@ -59,6 +79,7 @@
         </div>
 
         <div class="flex flex-wrap gap-2">
+          {% if not box.is_locked %}
           <a
             href="{% url 'bento:box_update' box.pk %}"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
@@ -66,6 +87,26 @@
             <i class="fa-solid fa-pen"></i>
             {% trans "Edit" %}
           </a>
+          {% endif %}
+          {% if not box.is_locked %}
+          <button
+            type="button"
+            @click="openLock()"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-lock"></i>
+            {% trans "Lock" %}
+          </button>
+          {% else %}
+          <button
+            type="button"
+            @click="openUnlock()"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-lock-open"></i>
+            {% trans "Unlock" %}
+          </button>
+          {% endif %}
           <button
             type="button"
             @click="deleteBoxOpen = true"
@@ -77,7 +118,23 @@
         </div>
       </div>
 
-      {% if box.body %}
+      {% if box.is_locked %}
+        <div
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+          class="mt-5 flex flex-col items-center gap-3 rounded-lg border border-dashed p-8 text-center">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-lock text-3xl"></i>
+          <p class="text-sm font-semibold">{% trans "Content is locked." %}</p>
+          <p class="text-xs opacity-60">{% trans "Enter the password to view the note body." %}</p>
+          <button
+            type="button"
+            @click="openUnlock()"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="mt-1 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-key"></i>
+            {% trans "Enter password" %}
+          </button>
+        </div>
+      {% elif box.body %}
         <div class="mt-5 border-t border-current/10 pt-5 text-sm leading-7 opacity-90">
           {{ box.body|linebreaks }}
         </div>
@@ -226,6 +283,57 @@
         <button type="button" @click="deleteBoxOpen = false" class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
         <button type="submit" :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'" class="rounded-lg px-4 py-2 text-sm font-semibold">{% trans "Delete" %}</button>
       </form>
+    </div>
+  </div>
+
+  <div x-show="lockModal" x-cloak class="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+    <div
+      @click.outside="lockModal = false"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="w-full max-w-md rounded-lg border p-5 shadow-2xl">
+      <h3 class="flex items-center gap-2 text-xl font-bold">
+        <i :class="lockMode === 'lock' ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'"></i>
+        <span x-text="lockMode === 'lock' ? '{% trans "Lock box" %}' : '{% trans "Unlock box" %}'"></span>
+      </h3>
+      <p class="mt-2 text-sm opacity-70">{{ box.title|default:"Untitled box" }}</p>
+
+      <div class="mt-4 space-y-3">
+        <div>
+          <label class="mb-1 block text-sm font-semibold" for="lock-password">
+            {% trans "Password" %}
+          </label>
+          <input
+            id="lock-password"
+            type="password"
+            autocomplete="current-password"
+            x-model="lockPassword"
+            @keydown.enter="submitLock()"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20"
+            placeholder="{% trans "Enter password..." %}">
+        </div>
+
+        <p x-show="lockError" x-cloak x-text="lockError" class="text-sm text-red-500"></p>
+      </div>
+
+      <div class="mt-5 flex justify-end gap-2">
+        <button
+          type="button"
+          @click="lockModal = false"
+          class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold hover:opacity-80">
+          {% trans "Cancel" %}
+        </button>
+        <button
+          type="button"
+          @click="submitLock()"
+          :disabled="lockLoading"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-50">
+          <i x-show="lockLoading" class="fa-solid fa-circle-notch fa-spin"></i>
+          <i x-show="!lockLoading" :class="lockMode === 'lock' ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'"></i>
+          <span x-text="lockMode === 'lock' ? '{% trans "Lock" %}' : '{% trans "Unlock" %}'"></span>
+        </button>
+      </div>
     </div>
   </div>
 

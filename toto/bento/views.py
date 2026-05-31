@@ -1,7 +1,9 @@
+from cryptography.exceptions import InvalidTag
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
 from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
@@ -39,7 +41,8 @@ def serialize_box(box):
     return {
         "id": box.pk,
         "title": box.title or _("Untitled box"),
-        "body": box.body,
+        "body": None if box.is_locked else box.body,
+        "is_locked": box.is_locked,
         "is_concept": box.is_concept,
         "source_title": box.source_title,
         "source_url": box.source_url,
@@ -203,6 +206,38 @@ def api_boxes(request):
         "count": boxes.count(),
         "results": [serialize_box(box) for box in boxes[:100]],
     })
+
+
+@require_POST
+def box_lock(request, pk):
+    box = get_object_or_404(IdeaBox, pk=pk)
+    password = request.POST.get("password", "").strip()
+    if not password:
+        return JsonResponse({"ok": False, "error": str(_("Password is required."))}, status=400)
+    if box.is_locked:
+        return JsonResponse({"ok": False, "error": str(_("Box is already locked."))}, status=400)
+    try:
+        box.lock(password)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    return JsonResponse({"ok": True})
+
+
+@require_POST
+def box_unlock(request, pk):
+    box = get_object_or_404(IdeaBox, pk=pk)
+    password = request.POST.get("password", "").strip()
+    if not password:
+        return JsonResponse({"ok": False, "error": str(_("Password is required."))}, status=400)
+    if not box.is_locked:
+        return JsonResponse({"ok": False, "error": str(_("Box is not locked."))}, status=400)
+    try:
+        box.unlock(password)
+    except InvalidTag:
+        return JsonResponse({"ok": False, "error": str(_("Wrong password."))}, status=400)
+    except Exception as e:
+        return JsonResponse({"ok": False, "error": str(e)}, status=500)
+    return JsonResponse({"ok": True})
 
 
 def api_box_graph(request, pk):

@@ -15,6 +15,8 @@ urlpatterns = [
     path("<int:pk>/", views.box_detail, name="box_detail"),
     path("<int:pk>/edit/", views.box_update, name="box_update"),
     path("<int:pk>/delete/", views.box_delete, name="box_delete"),
+    path("<int:pk>/lock/", views.box_lock, name="box_lock"),
+    path("<int:pk>/unlock/", views.box_unlock, name="box_unlock"),
     path("links/new/", views.link_create, name="link_create"),
     path("links/<int:pk>/delete/", views.link_delete, name="link_delete"),
 ]
