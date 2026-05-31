@@ -62,10 +62,7 @@ def _resolve_dashboard_item(item, authenticated):
     }
 
 
-def _get_grouped_dashboard_items(request):
-    authenticated = request.user.is_authenticated
-    # Key by the English source string so DASHBOARD_CATEGORIES lookup always works
-    # regardless of the active language.
+def _resolve_all_items(authenticated):
     items_by_key = {}
     for item in settings.DASHBOARD_ITEMS:
         resolved = _resolve_dashboard_item(item, authenticated)
@@ -73,28 +70,35 @@ def _get_grouped_dashboard_items(request):
             with translation_override("en"):
                 en_key = str(item["title"])
             items_by_key[en_key] = resolved
-
-    groups = []
-    for category in settings.DASHBOARD_CATEGORIES:
-        grouped_items = [
-            items_by_key[title]
-            for title in category["items"]
-            if title in items_by_key
-        ]
-        if grouped_items:
-            groups.append({"title": category["title"], "items": grouped_items})
-    return groups
+    return items_by_key
 
 
 def dashboard_view(request):
     processor = PageProcessor()
+    authenticated = request.user.is_authenticated
+    items_by_key = _resolve_all_items(authenticated)
 
-    groups = _get_grouped_dashboard_items(request)
+    if authenticated:
+        groups = []
+        for category in settings.DASHBOARD_CATEGORIES:
+            grouped_items = [
+                items_by_key[title]
+                for title in category["items"]
+                if title in items_by_key
+            ]
+            if grouped_items:
+                groups.append({"title": category["title"], "items": grouped_items})
+        use_groups = True
+    else:
+        groups = [{"title": "", "items": list(items_by_key.values())}]
+        use_groups = False
+
     total_items = sum(len(g["items"]) for g in groups)
 
     context = {
         "page_title": "Dashboard",
         "groups": groups,
+        "use_groups": use_groups,
         "total_items": total_items,
     }
 
