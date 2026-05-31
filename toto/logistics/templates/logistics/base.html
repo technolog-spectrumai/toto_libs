@@ -43,6 +43,13 @@
         <i class="fa-solid fa-box"></i>
         {% trans "Packages" %}
       </a>
+      <a href="{% url 'logistics:fleet' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_fleet %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-truck-fast"></i>
+        {% trans "Fleet" %}
+      </a>
       <a href="{% url 'inventory:dashboard' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition

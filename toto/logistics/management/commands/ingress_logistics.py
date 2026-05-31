@@ -13,6 +13,7 @@ class Command(IngressCommand):
 
         transports = self._seed_transports()
         self._seed_packages(transports)
+        self._seed_fleet()
 
         self.stdout.write(self.style.SUCCESS("✅  Logistics ingress complete."))
 
@@ -206,3 +207,55 @@ class Command(IngressCommand):
                 PackageEvent.objects.create(package=pkg, **ev)
 
             self.stdout.write(f"  + package {pkg.tracking_number} [{pkg.get_status_display()}] — {len(events_data)} events")
+
+    # ------------------------------------------------------------------ #
+
+    def _seed_fleet(self):
+        from toto.inventory.models import ObjectCategory, ObjectType, RealWorldObject
+
+        self.stdout.write("🚛  Seeding fleet objects…")
+
+        # ── Object types ──────────────────────────────────────────────────
+        type_specs = [
+            dict(name="Heavy Truck",   slug="heavy-truck",   category=ObjectCategory.VEHICLE,   is_mobile=True,  description="Long-haul road freight truck (>3.5 t)."),
+            dict(name="Cargo Van",     slug="cargo-van",     category=ObjectCategory.VEHICLE,   is_mobile=True,  description="Light commercial van for urban deliveries."),
+            dict(name="Forklift",      slug="forklift",      category=ObjectCategory.EQUIPMENT, is_mobile=True,  description="Warehouse or yard forklift."),
+            dict(name="Mobile Crane",  slug="mobile-crane",  category=ObjectCategory.EQUIPMENT, is_mobile=True,  description="Wheeled crane that can reposition between sites."),
+            dict(name="Tanker Truck",  slug="tanker-truck",  category=ObjectCategory.VEHICLE,   is_mobile=True,  description="Road tanker for bulk liquid transport."),
+        ]
+        types = {}
+        for spec in type_specs:
+            ot, created = ObjectType.objects.get_or_create(
+                slug=spec["slug"],
+                defaults={k: v for k, v in spec.items() if k != "slug"},
+            )
+            types[spec["slug"]] = ot
+            verb = "+" if created else "⚠ skipped existing"
+            self.stdout.write(f"  {verb} object type '{ot.name}'")
+
+        # ── Fleet objects at seeded addresses ────────────────────────────
+        warsaw  = self._get_address(16)
+        krakow  = self._get_address(18)
+        gdansk  = self._get_address(20)
+        london  = self._get_address(15)
+        paris   = self._get_address(1)
+
+        fleet_specs = [
+            dict(name="TL-TRUCK-001",  object_type=types["heavy-truck"],  location=warsaw,  description="Warsaw depot — northbound run to Gdansk.",     quantity=1, unit="unit"),
+            dict(name="TL-TRUCK-002",  object_type=types["heavy-truck"],  location=krakow,  description="Krakow hub — awaiting load assignment.",         quantity=1, unit="unit"),
+            dict(name="TL-VAN-001",    object_type=types["cargo-van"],    location=gdansk,  description="Gdansk last-mile delivery van.",                  quantity=1, unit="unit"),
+            dict(name="TL-VAN-002",    object_type=types["cargo-van"],    location=warsaw,  description="Warsaw city route van.",                          quantity=1, unit="unit"),
+            dict(name="TL-FORK-001",   object_type=types["forklift"],     location=gdansk,  description="Gdansk port forklift — container yard.",          quantity=1, unit="unit"),
+            dict(name="TL-FORK-002",   object_type=types["forklift"],     location=krakow,  description="Krakow warehouse forklift.",                      quantity=1, unit="unit"),
+            dict(name="TL-CRANE-001",  object_type=types["mobile-crane"], location=warsaw,  description="Mobile crane — construction support fleet.",       quantity=1, unit="unit"),
+            dict(name="EP-VAN-001",    object_type=types["cargo-van"],    location=london,  description="EuroParcel London van — channel route.",           quantity=1, unit="unit"),
+            dict(name="EP-TANKER-001", object_type=types["tanker-truck"], location=paris,   description="Paris fuel tanker — bulk distribution.",           quantity=1, unit="unit"),
+        ]
+
+        for spec in fleet_specs:
+            obj, created = RealWorldObject.objects.get_or_create(
+                name=spec["name"],
+                defaults=spec,
+            )
+            verb = "+" if created else "⚠ skipped existing"
+            self.stdout.write(f"  {verb} fleet object '{obj.name}' ({obj.object_type.name})")
