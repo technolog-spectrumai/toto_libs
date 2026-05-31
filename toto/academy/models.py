@@ -128,6 +128,10 @@ class CourseModule(models.Model):
         blank=True,
         help_text="Standalone quizzes attached to this academy module.",
     )
+    lecture_video_url = models.URLField(
+        blank=True,
+        help_text="Optional VOD link for the lecture video (YouTube, Vimeo, etc.).",
+    )
     order = models.PositiveIntegerField(default=0)
 
     class Meta:

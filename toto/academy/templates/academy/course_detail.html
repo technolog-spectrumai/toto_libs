@@ -130,6 +130,12 @@
                  class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
                 <i class="fa-solid fa-file-lines"></i>{% trans "Notes / article / handout" %}</a>
             {% endif %}
+            {% if module.lecture_video_url %}
+              <a href="{{ module.lecture_video_url }}"
+                 class="inline-flex items-center gap-2 text-sm underline hover:opacity-80"
+                 target="_blank" rel="noopener noreferrer">
+                <i class="fa-solid fa-circle-play"></i>{% trans "Lecture video" %}</a>
+            {% endif %}
           </div>
           <div class="flex items-center gap-3">
             <span :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"

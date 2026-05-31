@@ -303,7 +303,7 @@
           this.selectedName = location.name;
           zoomToFeature(location.name);
           highlightFeature(location.name);
-          this.mapSearch = location.name;
+          this.mapSearch = "";
           return;
         }
 
@@ -316,7 +316,7 @@
 
           clearFeatureHighlight();
           this.selectedName = location.label || location.name || "";
-          this.mapSearch = location.label || location.name || "";
+          this.mapSearch = "";
         }
       },
 
