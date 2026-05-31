@@ -65,6 +65,7 @@
       importRunning: false,
       importResult: null,
       importError: "",
+      importUploadPassword: "",
       importVaultFileId: "",
       importVaultSearch: "",
       importVaultPassword: "",
@@ -606,6 +607,7 @@
               <input
                 x-model="mapSearch"
                 type="search"
+                autocomplete="off"
                 placeholder="{% trans 'Move map to ...' %}"
                 @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
                 :class="darkMode
@@ -892,16 +894,29 @@
       <div class="space-y-4 p-5">
 
         <!-- Upload tab -->
-        <div x-show="importSource === 'upload'">
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "GeoJSON file" %}</label>
-          <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
-                 :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
-            <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
-            <span x-text="importFile ? importFile.name : '{% trans "Click to select a .geojson file" %}'" class="font-semibold"></span>
-            <input type="file" accept=".geojson,application/geo+json,application/json"
-                   class="sr-only"
-                   @change="importFile = $event.target.files[0]; importResult = null; importError = ''">
-          </label>
+        <div x-show="importSource === 'upload'" class="space-y-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "GeoJSON file" %}</label>
+            <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
+                   :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+              <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
+              <span x-text="importFile ? importFile.name : '{% trans "Click to select a .geojson file" %}'" class="font-semibold"></span>
+              <input type="file" accept=".geojson,application/geo+json,application/json"
+                     class="sr-only"
+                     @change="importFile = $event.target.files[0]; importResult = null; importError = ''">
+            </label>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-lock mr-1"></i>{% trans "Password" %}
+              <span class="font-normal opacity-50"> {% trans "(only if file is encrypted)" %}</span>
+            </label>
+            <input type="password" x-model="importUploadPassword"
+                   placeholder="{% trans 'Leave blank for unencrypted files' %}"
+                   autocomplete="current-password"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+          </div>
         </div>
 
         <!-- Vault tab -->
@@ -992,8 +1007,10 @@
                 @click="
                   importRunning = true; importError = ''; importResult = null;
                   const fd = new FormData();
-                  if (importSource === 'upload') { fd.append('file', importFile); }
-                  else {
+                  if (importSource === 'upload') {
+                    fd.append('file', importFile);
+                    if (importUploadPassword) fd.append('password', importUploadPassword);
+                  } else {
                     fd.append('vault_file_id', importVaultFileId);
                     if (importVaultPassword) fd.append('password', importVaultPassword);
                   }

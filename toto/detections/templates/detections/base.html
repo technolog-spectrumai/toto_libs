@@ -1,5 +1,5 @@
-{% load i18n %}
 {% extends detections_parent_template %}
+{% load i18n %}
 
 {% block tactical_title %}{% block detections_title %}Detections{% endblock %}{% endblock %}
 
@@ -120,6 +120,20 @@
                  class="w-full rounded-lg border px-3 py-2 text-sm">
         </div>
 
+        <!-- Password (optional) -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Password" %}<span class="font-normal opacity-50"> ({% trans "optional — encrypts the file" %})</span>
+          </label>
+          <input type="password" x-model="password" placeholder="{% trans 'Leave blank for unencrypted' %}"
+                 autocomplete="new-password"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+          <p x-show="password" class="mt-1 text-xs opacity-50">
+            <i class="fa-solid fa-lock text-[10px] mr-1"></i>{% trans "File will be encrypted — you will need this password to import it." %}
+          </p>
+        </div>
+
         <!-- Error -->
         <div x-show="exportError" x-cloak
              :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
@@ -178,6 +192,7 @@ function detectionsExportModal() {
     bucketId: '',
     directoryId: '',
     title: '',
+    password: '',
     buckets: [],
     allDirectories: [],
     runId: null,
@@ -226,6 +241,7 @@ function detectionsExportModal() {
             bucket_id: this.bucketId,
             directory_id: this.directoryId || null,
             title: this.title || null,
+            password: this.password || null,
           }),
         });
         const data = await res.json();

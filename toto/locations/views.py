@@ -756,7 +756,19 @@ def api_import_layer(request):
 
     try:
         if uploaded:
-            raw = uploaded.read().decode("utf-8")
+            raw_bytes = uploaded.read()
+            password = request.POST.get("password", "").strip()
+            if password:
+                try:
+                    from cryptography.fernet import Fernet, InvalidToken
+                    keyring = request.user.user_strongboxes.first()
+                    if not keyring:
+                        return JsonResponse({"error": "No encryption strongbox found for your account."}, status=400)
+                    key = keyring.derive_key(password)
+                    raw_bytes = Fernet(key).decrypt(raw_bytes)
+                except InvalidToken:
+                    return JsonResponse({"error": "Wrong password or file is not encrypted."}, status=400)
+            raw = raw_bytes.decode("utf-8")
         else:
             from toto.vault.models import VaultFile
             vf = VaultFile.objects.get(pk=vault_file_id)
