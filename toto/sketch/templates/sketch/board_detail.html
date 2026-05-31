@@ -7,6 +7,7 @@
 {% block start_script %}
 <script>
   const darkMode = localStorage.getItem("darkMode") === "true";
+  window.csrfToken = "{{ csrf_token }}";
 </script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -27,7 +28,7 @@
 
 {% block content %}
 <div
-  x-data="{ leftOpen: false, rightOpen: false }"
+  x-data="{ leftOpen: false, rightOpen: false, canvasView: 'canvas', svgContent: '' }"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
@@ -99,28 +100,36 @@
         >
           <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
                :class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
-            <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
-              <span>{% trans "Sketch Canvas" %}</span>
-              <span class="rounded border border-current/15 px-2 py-0.5 opacity-60">{% trans "SVG" %}</span>
-              <span data-active-target-badge class="hidden rounded bg-accent-light px-2 py-0.5 text-[10px] uppercase text-primary-bg-light">{% trans "Active target" %}</span>
-            </div>
-            <div class="flex flex-wrap items-center gap-2">
-              <span id="ai-toolbar-sketch-{{ board.id }}" class="flex items-center gap-2"></span>
+            <span class="text-xs font-semibold" x-text="canvasView === 'canvas' ? '{% trans "Sketch Canvas" %}' : '{% trans "SVG Output" %}'"></span>
+            <div class="inline-flex rounded-lg overflow-hidden border text-xs font-semibold"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
               <button
                 type="button"
-                onclick="window.painter && window.painter.exportToSVG('{{ board.slug|default:board.id }}.svg')"
-                :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-                <i class="fa-solid fa-file-export"></i>{% trans "Export SVG" %}</button>
+                @click="canvasView = 'canvas'"
+                :class="canvasView === 'canvas'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : (darkMode ? 'bg-transparent text-text-main-dark hover:opacity-70' : 'bg-transparent text-text-main-light hover:opacity-70')"
+                class="px-3 py-1 transition">
+                <i class="fa-solid fa-pen-ruler mr-1"></i>{% trans "Canvas" %}
+              </button>
               <button
                 type="button"
-                onclick="window.painter && window.painter.converter && window.openPreviewSvg && window.openPreviewSvg()"
-                :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
-                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-                <i class="fa-solid fa-eye"></i>{% trans "Preview" %}</button>
+                @click="canvasView = 'svg'; svgContent = (window.painter && window.painter.converter) ? window.painter.converter.exportSVG({ asString: true }) : ''"
+                :class="canvasView === 'svg'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : (darkMode ? 'bg-transparent text-text-main-dark hover:opacity-70' : 'bg-transparent text-text-main-light hover:opacity-70')"
+                class="px-3 py-1 transition border-l"
+                :style="darkMode ? 'border-color: var(--color-accent-1)' : 'border-color: var(--color-accent-2)'">
+                <i class="fa-solid fa-code mr-1"></i>{% trans "SVG" %}
+              </button>
             </div>
           </div>
-          <canvas id="sketch-canvas" resize class="h-[calc(100%-45px)] w-full"></canvas>
+          <canvas id="sketch-canvas" resize
+                  x-show="canvasView === 'canvas'"
+                  class="h-[calc(100%-45px)] w-full"></canvas>
+          <div x-show="canvasView === 'svg'"
+               x-html="svgContent"
+               class="h-[calc(100%-45px)] w-full overflow-auto flex items-center justify-center p-4 [&>svg]:max-w-full [&>svg]:max-h-full"></div>
         </section>
 
 
@@ -639,11 +648,6 @@ document.addEventListener("DOMContentLoaded", () => {
             getSelection: () => null,
             metadata: { preferredImportMode: "insert", boardId: "{{ board.id }}" },
         });
-        window.FunctionalZones.renderZoneToolbar(
-            document.getElementById("ai-toolbar-sketch-{{ board.id }}"),
-            zoneId,
-            { importLabel: "Import SVG" }
-        );
     }
 
     window.boardSocket = new BoardSocketProvider(ydoc, "{{ board.id }}", Y);
