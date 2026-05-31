@@ -86,7 +86,7 @@
             : 'border-accent-2 bg-sunken-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
           <i class="fa-solid fa-folder-tree"></i>
-          {% blocktrans with count=projects|length %}{{ count }} project{% endblocktrans %}
+          {% blocktrans count count=projects|length %}{{ count }} project{% plural %}{{ count }} projects{% endblocktrans %}
         </div>
       </div>
     </section>

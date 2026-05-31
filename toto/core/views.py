@@ -16,6 +16,7 @@ from toto.core.auth_cooldown import (
 import os
 from django.conf import settings
 from django.urls import reverse, NoReverseMatch
+from django.utils.translation import override as translation_override
 
 
 logger = logging.getLogger(__name__)
@@ -63,18 +64,22 @@ def _resolve_dashboard_item(item, authenticated):
 
 def _get_grouped_dashboard_items(request):
     authenticated = request.user.is_authenticated
-    items_by_title = {}
+    # Key by the English source string so DASHBOARD_CATEGORIES lookup always works
+    # regardless of the active language.
+    items_by_key = {}
     for item in settings.DASHBOARD_ITEMS:
         resolved = _resolve_dashboard_item(item, authenticated)
         if resolved is not None:
-            items_by_title[item["title"]] = resolved
+            with translation_override("en"):
+                en_key = str(item["title"])
+            items_by_key[en_key] = resolved
 
     groups = []
     for category in settings.DASHBOARD_CATEGORIES:
         grouped_items = [
-            items_by_title[title]
+            items_by_key[title]
             for title in category["items"]
-            if title in items_by_title
+            if title in items_by_key
         ]
         if grouped_items:
             groups.append({"title": category["title"], "items": grouped_items})
