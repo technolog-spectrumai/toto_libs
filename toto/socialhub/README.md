@@ -10,38 +10,36 @@ A `Community` is the container around which everything else organizes. People jo
 
 - `Community` — extends `DomainEntity`. Key fields:
   - `federation` — FK to `core.Federation`
-  - `is_federal_tribe` — bool; marks this community as part of the federal tier. Members of federal tribes are eligible as responders.
+  - `org_type` — `guild / company / non_profit / family / other`
+  - `is_autonomous` — bool; self-governing community with internal leadership
+  - `is_federal_tribe` — bool; members are eligible as emergency responders and exempt from poll tax
+  - `is_foreign` — bool; community outside local jurisdiction
   - `head` — FK to `people.Person` (community leader)
-  - `ledger_account` — FK to `assets.LedgerAccount` (community treasury)
-  - `theme` — FK to `core.Theme`
-  - `tax_rate`, `tax_asset` — optional default transaction tax settings
+  - `senior_members` — M2M to `people.Person` (can manage news/announcements)
+  - `location` — FK to `locations.Address`
+  - `territory` — FK to `locations.Territory`
+  - `parent` — FK to self (community hierarchy)
+  - `email_service` — FK to `api.EmailService`
 
 - `CommunityNewsTopic` — extends `AbstractTag`. Tag/category for news posts.
 
-- `CommunityNewsPost` — extends `AbstractSection`. A rich-text news article inside a community.
-  - `community` — FK
-  - `author` — FK to `people.Person`
-  - `is_published`, `published_at`
+- `CommunityNewsPost` — extends `AbstractSection`. A rich-text news article inside a community. Fields: `community` (FK), `author` (FK to `people.Person`), `topics` (M2M to `CommunityNewsTopic`), `visibility` (`public / community`).
 
-- `MembershipApplication` — a person's request to join a community.
-  - `applicant` — FK to `people.Person`
-  - `community` — FK
-  - `status` — `pending / approved / rejected`
-  - `reviewed_by` — FK to `people.Person`
+- `MembershipApplication` — an email-verified request to join a community. Fields: `email`, `community` (FK), `code` (6-digit verification), `verified_at`, `expires_at`.
 
-- `ReferenceRequest` — a request from one person to another asking for a reference letter (used in membership applications).
-  - `requester`, `target` — FKs to `people.Person`
-  - `community` — FK
-  - `status` — `pending / provided / declined`
+- `ReferenceRequest` — a reference letter provided by an existing member for a `MembershipApplication`. Fields: `application` (FK to `MembershipApplication`), `referrer` (FK to `people.Person`), `message`, `status` (`pending / accepted / declined`), `responded_at`.
+
+- `Constitution` — community founding document. Fields: `community` (FK), `content`, `version`, `adopted_at`.
+
+- `ConstitutionSignature` — a person's signature on a constitution. Fields: `constitution` (FK), `person` (FK to `people.Person`), `signed_at`.
 
 ## Key coupling
 
 - `Community` is referenced by nearly every domain model (kanban projects, bazaar shops, assembly proposals, mobilization events, emergency statuses, deployments).
 - `Community.is_federal_tribe` gates `mobilization.Responder` eligibility.
-- `Community.ledger_account` is used as the default creditor for community fees and taxes.
 
 ## Dependencies
 
 - `api` — EmailService FK for community notification emails
-- `locations` — Community headquarters Address FK
+- `locations` — Community headquarters Address FK and Territory FK
 - `people` — CommunityNewsPost author; MembershipApplication applicant

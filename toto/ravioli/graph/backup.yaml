@@ -1,0 +1,14 @@
+app: backup
+
+nodes:
+  - label: StoredBackup
+    model: toto.backup.models.StoredBackup
+    uuid_field: uid
+    fields:
+      name: name
+      sha256: sha256
+      size_bytes: size_bytes
+      is_active: is_active
+      created_at: created_at
+
+links: []

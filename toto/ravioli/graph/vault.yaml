@@ -57,9 +57,3 @@ links:
     cardinality: one
     nullable: true
 
-  - from_label: Bucket
-    to_label: Tariff
-    relation: BILLED_UNDER
-    source: tariff
-    cardinality: one
-    nullable: true

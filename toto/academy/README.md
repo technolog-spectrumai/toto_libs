@@ -8,31 +8,31 @@ A `Teacher` creates a `Course` structured into `CourseModule` → `Lesson` chain
 
 ## Models
 
-- `Teacher` — a `Person` authorized to create courses. Fields: `person` (FK), `community` (FK), `is_active`, `bio`.
+- `Teacher` — a `Person` authorized to create courses. Fields: `person` (OneToOne FK), `title`, `bio`, `is_active`.
 
-- `Course` — a structured learning program. Fields: `teacher` FK, `community` FK, `title`, `description`, `cover_image`, `status` (`draft / published / archived`), `is_public`, `price_base_units`, `price_asset`, `max_students`, `tags` (M2M).
+- `Course` — a structured learning program. Fields: `title`, `slug`, `description`, `owner` (FK to `Teacher`), `is_published`, `is_virtual`, `order`.
 
-- `CourseModule` — a chapter within a course. Fields: `course`, `title`, `description`, `order`, `is_published`.
+- `CourseModule` — a chapter within a course. Fields: `course` (FK), `title`, `slug`, `description`, `order`, `owner` (FK to `Teacher`), `unlocks_badge` (FK to `competence.SkillBadge`), `verbena_page` (FK to `palimpsest.Page`, nullable), `exam` (FK to `quizzes.Quiz`, nullable), `attached_quizzes` (M2M to `quizzes.Quiz`).
 
-- `Lesson` — a single learning unit within a module. Fields: `module`, `title`, `content` (rich text), `lesson_type` (`text / video / audio / quiz / deck`), `memo_deck` (FK to `memo.MemoDeck`, nullable — for flashcard lessons), `order`, `duration_minutes`.
+- `Lesson` — a single learning unit within a module. Fields: `module` (FK), `title`, `slug`, `summary`, `order`, `owner` (FK to `Teacher`), `lecture` (FK to `memo.MemoDeck`), `video_file` (FK to `vault.VaultFile`, nullable), `attached_quizzes` (M2M to `quizzes.Quiz`).
 
-- `Student` — a `Person` enrolled in the academy. Fields: `person` (OneToOne), `community` FK, `is_active`.
+- `Student` — a `Person` enrolled in the academy. Fields: `person` (OneToOne FK), `badges` (M2M through `StudentBadge`), `enrolled_courses` (M2M through `CourseEnrollment`).
 
-- `StudentBadge` — an achievement badge awarded to a student. Fields: `student`, `badge_type` (slug), `awarded_at`, `metadata`.
+- `StudentBadge` — a through model linking `Student` to `competence.SkillBadge`. Fields: `student`, `badge`, `awarded_at`.
 
-- `CourseEnrollment` — enrollment record. Fields: `student`, `course`, `status` (`enrolled / completed / dropped`), `enrolled_at`, `completed_at`, `progress_percent`.
+- `CourseEnrollment` — enrollment through model. Fields: `student` (FK), `course` (FK), `enrolled_at`, `completed_at`.
 
-- `Certificate` — issued on course completion. Fields: `enrollment` (OneToOne), `issued_at`, `certificate_number` (unique UUID slug), `vault_file` (FK to `vault.VaultFile`, nullable — PDF).
+- `Certificate` — issued on course completion. Fields: `uuid` (UUIDField), `person` (FK), `course` (FK, nullable), `exam` (FK to `quizzes.Quiz`, nullable), `title`, `description`, `granted_at`, `signed_by` (FK to `Teacher`), `signing_key` (FK to `gervazy.EncryptedPrivateKey`).
 
-- `Cohort` — a time-bounded group running through a course together. Fields: `course`, `name`, `starts_at`, `ends_at`, `max_size`, `is_active`.
+- `Cohort` — a time-bounded group running through a course together. Fields: `course` (FK), `teacher` (FK, nullable), `title`, `slug`, `starts_at`, `ends_at`, `capacity`, `is_active`.
 
-- `CohortMembership` — links a `Student` to a `Cohort`.
+- `CohortMembership` — links a `Student` to a `Cohort`. Fields: `cohort`, `student`, `joined_at`.
 
-- `LearningPath` — a curated sequence of courses. Fields: `community`, `title`, `description`, `courses` (ordered M2M to `Course`).
+- `LearningPath` — a curated progression of skill badges. Fields: `title`, `slug`, `description`, `badges` (M2M through `LearningPathBadge`), `is_published`, `order`.
 
-- `LearningPathBadge` — badge awarded on path completion.
+- `LearningPathBadge` — ordered badge step in a learning path. Fields: `learning_path`, `badge` (FK to `competence.SkillBadge`), `order`, `note`.
 
-- `Script` / `ScriptSection` — extends `verbena.AbstractPage` / `AbstractSection`. A long-form narrative document attached to a course module (course notes, textbooks).
+- `Script` / `ScriptSection` — extends `verbena.AbstractPage` / `AbstractSection`. Long-form instructional content attached to a course module.
 
 ## Key coupling
 

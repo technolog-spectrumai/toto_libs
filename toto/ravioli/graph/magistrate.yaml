@@ -8,14 +8,16 @@ nodes:
       name: name
       slug: slug
       description: description
-      overseeing_mobilization: overseeing_mobilization
       overseeing_tribunal: overseeing_tribunal
       overseeing_trade: overseeing_trade
       overseeing_finance: overseeing_finance
       overseeing_public_order: overseeing_public_order
-      overseeing_legislation: overseeing_legislation
       overseeing_merchandise: overseeing_merchandise
+      overseeing_education: overseeing_education
+      overseeing_relations: overseeing_relations
       overseeing_logistics: overseeing_logistics
+      overseeing_interior: overseeing_interior
+      overseeing_productivity: overseeing_productivity
       can_set_fines: can_set_fines
 
   - label: Magistrate

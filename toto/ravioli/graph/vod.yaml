@@ -1,0 +1,45 @@
+app: vod
+
+nodes:
+  - label: VodCollection
+    model: toto.vod.models.VodCollection
+    uuid_field: uid
+    fields:
+      title: title
+      slug: slug
+      description: description
+      access_mode: access_mode
+      allow_downloads: allow_downloads
+
+  - label: VodVideo
+    model: toto.vod.models.VodVideo
+    uuid_field: uid
+    fields:
+      title: title
+      slug: slug
+      description: description
+      status: status
+      duration_seconds: duration_seconds
+      hls_ready: hls_ready
+
+links:
+  - from_label: VodCollection
+    to_label: Bucket
+    relation: STORED_IN_BUCKET
+    source: bucket
+    cardinality: one
+    nullable: true
+
+  - from_label: VodVideo
+    to_label: VodCollection
+    relation: IN_COLLECTION
+    source: collection
+    cardinality: one
+    nullable: false
+
+  - from_label: VodVideo
+    to_label: VaultFile
+    relation: SOURCE_FILE
+    source: source_file
+    cardinality: one
+    nullable: false

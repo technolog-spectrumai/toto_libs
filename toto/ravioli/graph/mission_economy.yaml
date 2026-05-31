@@ -1,0 +1,32 @@
+app: mission_economy
+
+nodes:
+  - label: PractitionerAllowance
+    model: toto.mission_economy.models.PractitionerAllowance
+    uuid_field: uid
+    fields:
+      allowance_type: allowance_type
+      amount_base_units: amount_base_units
+      active: active
+
+links:
+  - from_label: PractitionerAllowance
+    to_label: Asset
+    relation: DENOMINATED_IN
+    source: asset
+    cardinality: one
+    nullable: false
+
+  - from_label: PractitionerAllowance
+    to_label: LedgerAccount
+    relation: PAID_FROM
+    source: payer_account
+    cardinality: one
+    nullable: false
+
+  - from_label: PractitionerAllowance
+    to_label: LedgerAccount
+    relation: PAID_TO
+    source: recipient_account
+    cardinality: one
+    nullable: true

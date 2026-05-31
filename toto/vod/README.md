@@ -61,18 +61,13 @@ VOD_SUBSCRIPTION_RESOLVER = "path.to.resolve_subscription"  # callable(user, pla
 
 ## Access modes
 
-`VodCollection.access_mode` controls the default:
+`VodCollection.access_mode` controls who can watch:
 
-- `public`
-- `unlisted`
-- `subscribers`
-- `invoice`
-- `staff`
+- `public` — anyone, including unauthenticated users
+- `private` — only users in the `readers` or `writers` M2M lists (or the owner)
 
-`VodVideo.access_mode` defaults to `inherit`, but can override the collection.
-
-For subscriber-gated videos, set `required_plan` to an existing `subscriptions.SubscriptionPlan`.
-For invoice-gated videos, set `invoice_amount` / `invoice_currency_label`; paying is handled by your existing invoices app.
+Access is collection-level; individual `VodVideo` records inherit from their collection.
+`VodAccessGrant` records can grant one-off access tied to a `subscriptions.Subscription` or `invoice.Invoice`.
 
 ## Upload and HLS
 
