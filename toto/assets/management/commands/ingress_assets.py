@@ -579,15 +579,24 @@ class Command(IngressCommand):
     # ------------------------------------------------------------------ #
 
     def _seed_base_platform_assets(self) -> dict:
-        platform_reserve, _ = LedgerAccount.objects.get_or_create(
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+        admin = User.objects.filter(is_superuser=True).order_by("id").first()
+
+        platform_reserve, created = LedgerAccount.objects.get_or_create(
             code="platform-reserve",
             defaults={
                 "name": "Platform Reserve",
                 "account_type": AccountType.RESERVE,
                 "active": True,
+                "user": admin,
                 "metadata": {"kind": "platform_token_reserve"},
             },
         )
+        if not created and admin and platform_reserve.user_id != admin.pk:
+            platform_reserve.user = admin
+            platform_reserve.save(update_fields=["user"])
+        self.stdout.write("  +/✓ account platform-reserve" + (f" (linked to {admin})" if admin else ""))
 
         assets = {}
         specs = [
@@ -618,6 +627,21 @@ class Command(IngressCommand):
                     "kind": "platform_token",
                     "unit": "cpu_second",
                     "unit_label": "1 token = 1 CPU-second",
+                    "seeded_by": "ingress",
+                },
+            ),
+            dict(
+                name="Banana Token",
+                unit_name="BANANA",
+                total_supply=Decimal("1000000000.000"),
+                decimals=3,
+                reserve_account=platform_reserve,
+                reference="create-banana",
+                description="Platform AI inference token. 1 BANANA = 1 AI inference unit.",
+                metadata={
+                    "kind": "platform_token",
+                    "unit": "ai_inference_unit",
+                    "unit_label": "1 token = 1 AI inference unit",
                     "seeded_by": "ingress",
                 },
             ),

@@ -14,6 +14,7 @@ Price philosophy:
 import uuid
 from decimal import Decimal
 
+from django.apps import apps as django_apps
 from django.db.models import Sum
 
 from toto.assets.models import (
@@ -269,71 +270,115 @@ class Command(IngressCommand):
         m_vm_sec  = _metric("videomant.second", "VideoMant processing second", "compute", "videomant", bu_second)
 
         # ------------------------------------------------------------------ #
-        # Base tariffs (always-on): vault, ravioli, steven, vod, videomant   #
+        # Base tariffs (always-on): one per installed heavy/Celery app.      #
         # Require STORAGE_TOKEN and COMPUTE_TOKEN from ingress_assets.        #
+        # Each tariff is only created when its app is installed.             #
         # ------------------------------------------------------------------ #
         from toto.assets.models import Asset as _Asset
 
         storage_token = _Asset.objects.filter(unit_name="STORAGE_TOKEN").first()
         compute_token = _Asset.objects.filter(unit_name="COMPUTE_TOKEN").first()
+        banana_token  = _Asset.objects.filter(unit_name="BANANA").first()
 
         if storage_token and compute_token:
             rev_storage_base = _account("REV-STORAGE-BASE", "Storage Base Revenue", AccountType.SYSTEM)
             rev_compute_base = _account("REV-COMPUTE-BASE", "Compute Base Revenue",  AccountType.SYSTEM)
 
-            # Vault: file storage
-            t_vault, _ = _tariff(
-                "FILE-STORAGE-BASE",
-                "File Storage Base Tariff",
-                "Base storage tariff using STORAGE_TOKEN. 1 token = 1 MB.",
-            )
-            _item(t_vault, m_st_req,     "Storage request",       storage_token, "0.1",  bu_request, rev_storage_base)
-            _item(t_vault, m_st_xfer,    "Data transfer per MB",  storage_token, "1.0",  bu_mb,      rev_storage_base)
-            _item(t_vault, m_st_hour,    "Storage per MB·hour",   storage_token, "0.01", bu_mb_hour, rev_storage_base)
-            _item(t_vault, m_st_gb_hour, "Storage per GB·hour",   storage_token, "10.0", bu_gb_hour, rev_storage_base)
-            self.stdout.write(f"    +/✓ tariff {t_vault.code} (base)")
+            if django_apps.is_installed("toto.vault"):
+                t_vault, _ = _tariff(
+                    "FILE-STORAGE-BASE",
+                    "File Storage Base Tariff",
+                    "Base storage tariff using STORAGE_TOKEN. 1 token = 1 MB.",
+                )
+                _item(t_vault, m_st_req,     "Storage request",       storage_token, "0.1",  bu_request, rev_storage_base)
+                _item(t_vault, m_st_xfer,    "Data transfer per MB",  storage_token, "1.0",  bu_mb,      rev_storage_base)
+                _item(t_vault, m_st_hour,    "Storage per MB·hour",   storage_token, "0.01", bu_mb_hour, rev_storage_base)
+                _item(t_vault, m_st_gb_hour, "Storage per GB·hour",   storage_token, "10.0", bu_gb_hour, rev_storage_base)
+                self.stdout.write("    +/✓ tariff FILE-STORAGE-BASE (vault)")
 
-            # Ravioli: Neo4j graph
-            t_ravioli, _ = _tariff(
-                "NEO4J-GRAPH-BASE",
-                "Neo4j Graph Base Tariff",
-                "Base graph tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
-            )
-            _item(t_ravioli, m_neo_q,    "Cypher Query",          compute_token, "1.0",  bu_request,      rev_compute_base)
-            _item(t_ravioli, m_neo_node, "Node (flat)",           compute_token, "0.1",  bu_node,         rev_compute_base)
-            _item(t_ravioli, m_neo_rel,  "Relationship (flat)",   compute_token, "0.05", bu_relationship, rev_compute_base)
-            self.stdout.write(f"    +/✓ tariff {t_ravioli.code} (base)")
+            if django_apps.is_installed("toto.ravioli"):
+                t_ravioli, _ = _tariff(
+                    "NEO4J-GRAPH-BASE",
+                    "Neo4j Graph Base Tariff",
+                    "Base graph tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_ravioli, m_neo_q,    "Cypher Query",          compute_token, "1.0",  bu_request,      rev_compute_base)
+                _item(t_ravioli, m_neo_node, "Node (flat)",           compute_token, "0.1",  bu_node,         rev_compute_base)
+                _item(t_ravioli, m_neo_rel,  "Relationship (flat)",   compute_token, "0.05", bu_relationship, rev_compute_base)
+                self.stdout.write("    +/✓ tariff NEO4J-GRAPH-BASE (ravioli)")
 
-            # Steven: AI inference
-            t_steven, _ = _tariff(
-                "AI-INFERENCE-BASE",
-                "AI Inference Base Tariff",
-                "Base AI tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
-            )
-            _item(t_steven, m_ai_req,    "Inference request",     compute_token, "10.0", bu_request,      rev_compute_base)
-            _item(t_steven, m_ai_input,  "LLM input tokens",      compute_token, "1.0",  bu_input_token,  rev_compute_base, uq=1000)
-            _item(t_steven, m_ai_output, "LLM output tokens",     compute_token, "3.0",  bu_output_token, rev_compute_base, uq=1000)
-            self.stdout.write(f"    +/✓ tariff {t_steven.code} (base)")
+            if django_apps.is_installed("toto.steven") and banana_token:
+                rev_banana_base = _account("REV-BANANA-BASE", "Banana (AI) Base Revenue", AccountType.SYSTEM)
+                t_steven, _ = _tariff(
+                    "AI-INFERENCE-BASE",
+                    "AI Inference Base Tariff",
+                    "Base AI tariff using BANANA. 1 BANANA = 1 AI inference unit.",
+                )
+                _item(t_steven, m_ai_req,    "Inference request",  banana_token, "1.0",  bu_request,      rev_banana_base)
+                _item(t_steven, m_ai_input,  "LLM input tokens",   banana_token, "0.1",  bu_input_token,  rev_banana_base, uq=1000)
+                _item(t_steven, m_ai_output, "LLM output tokens",  banana_token, "0.3",  bu_output_token, rev_banana_base, uq=1000)
+                self.stdout.write("    +/✓ tariff AI-INFERENCE-BASE (steven, BANANA)")
 
-            # VOD
-            t_vod_base, _ = _tariff(
-                "VOD-BASE",
-                "VOD Base Tariff",
-                "Base VOD tariff using STORAGE_TOKEN. 1 token = 1 MB.",
-            )
-            _item(t_vod_base, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage_base)
-            _item(t_vod_base, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage_base)
-            self.stdout.write(f"    +/✓ tariff {t_vod_base.code} (base)")
+            if django_apps.is_installed("toto.vod"):
+                t_vod_base, _ = _tariff(
+                    "VOD-BASE",
+                    "VOD Base Tariff",
+                    "Base VOD tariff using STORAGE_TOKEN. 1 token = 1 MB.",
+                )
+                _item(t_vod_base, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage_base)
+                _item(t_vod_base, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage_base)
+                self.stdout.write("    +/✓ tariff VOD-BASE (vod)")
 
-            # VideoMant: video processing
-            t_videomant, _ = _tariff(
-                "VIDEOMANT-BASE",
-                "VideoMant Base Tariff",
-                "Base video processing tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
-            )
-            _item(t_videomant, m_vm_job, "Processing job",    compute_token, "60.0", bu_job,    rev_compute_base)
-            _item(t_videomant, m_vm_sec, "Processing second", compute_token, "1.0",  bu_second, rev_compute_base)
-            self.stdout.write(f"    +/✓ tariff {t_videomant.code} (base)")
+            if django_apps.is_installed("toto.videomant"):
+                t_videomant, _ = _tariff(
+                    "VIDEOMANT-BASE",
+                    "VideoMant Base Tariff",
+                    "Base video processing tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_videomant, m_vm_job, "Processing job",    compute_token, "60.0", bu_job,    rev_compute_base)
+                _item(t_videomant, m_vm_sec, "Processing second", compute_token, "1.0",  bu_second, rev_compute_base)
+                self.stdout.write("    +/✓ tariff VIDEOMANT-BASE (videomant)")
+
+            if django_apps.is_installed("toto.texlab"):
+                t_texlab_base, _ = _tariff(
+                    "TEXLAB-BASE",
+                    "TexLab Base Tariff",
+                    "Base LaTeX compilation tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_texlab_base, m_tex_compile, "LaTeX compile run", compute_token, "1.0", bu_compile, rev_compute_base)
+                _item(t_texlab_base, m_tex_page,    "Output PDF page",   compute_token, "0.1", bu_page,    rev_compute_base)
+                self.stdout.write("    +/✓ tariff TEXLAB-BASE (texlab)")
+
+            if django_apps.is_installed("toto.mandragora"):
+                t_notebooks_base, _ = _tariff(
+                    "NOTEBOOKS-BASE",
+                    "Notebooks Base Tariff",
+                    "Base notebook execution tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_notebooks_base, m_nb_exec,  "Cell execution", compute_token, "0.1", bu_execution, rev_compute_base)
+                _item(t_notebooks_base, m_nb_cpu_s, "Compute second", compute_token, "0.1", bu_second,    rev_compute_base)
+                self.stdout.write("    +/✓ tariff NOTEBOOKS-BASE (mandragora)")
+
+            if django_apps.is_installed("toto.transcription"):
+                t_transcription_base, _ = _tariff(
+                    "TRANSCRIPTION-BASE",
+                    "Transcription Base Tariff",
+                    "Base transcription tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_transcription_base, m_tr_req, "Transcription job", compute_token, "10.0", bu_request, rev_compute_base)
+                _item(t_transcription_base, m_tr_sec, "Audio second",      compute_token, "0.5",  bu_second,  rev_compute_base)
+                self.stdout.write("    +/✓ tariff TRANSCRIPTION-BASE (transcription)")
+
+            if django_apps.is_installed("toto.ocr"):
+                t_ocr_base, _ = _tariff(
+                    "OCR-BASE",
+                    "OCR Base Tariff",
+                    "Base OCR tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+                )
+                _item(t_ocr_base, m_ocr_image, "OCR image", compute_token, "0.5", bu_image, rev_compute_base)
+                _item(t_ocr_base, m_ocr_page,  "OCR page",  compute_token, "0.1", bu_page,  rev_compute_base)
+                self.stdout.write("    +/✓ tariff OCR-BASE (ocr)")
+
         else:
             self.stdout.write(self.style.WARNING(
                 "  ⚠ STORAGE_TOKEN/COMPUTE_TOKEN not found — run ingress_assets first for base tariffs."
