@@ -70,18 +70,21 @@ def _save_vault_file(job: MediaJob, path: str, filename: str, content_type: str)
     return vf
 
 
-def _probe_duration(input_path: str) -> float | None:
+def _probe_file(input_path: str) -> dict | None:
     client = FFmpegClient()
     argv = builders.build_probe(input_path)
     result = client.run_probe(argv, timeout=30)
     if result.returncode != 0:
         return None
     try:
-        data = json.loads(result.stdout)
-        parsed = _parse_probe_data(data)
-        return parsed["duration_seconds"]
+        return _parse_probe_data(json.loads(result.stdout))
     except Exception:
         return None
+
+
+def _probe_duration(input_path: str) -> float | None:
+    parsed = _probe_file(input_path)
+    return parsed["duration_seconds"] if parsed else None
 
 
 class MediaJobRunner:
@@ -108,9 +111,13 @@ class MediaJobRunner:
                 return
 
             input_path = job.input_file.file.path
-            duration = _probe_duration(input_path)
+            probe = _probe_file(input_path)
+            duration = probe["duration_seconds"] if probe else None
             if job.task_name == "videomant.concat":
                 duration = self._concat_duration(job)
+            if job.task_name == "videomant.extract_mp3":
+                if not probe or not probe.get("audio_codec"):
+                    raise ValueError("Input file has no audio stream — cannot extract MP3.")
 
             def on_progress(pct: int, msg: str) -> None:
                 job.progress_percent = pct
