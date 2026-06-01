@@ -1,3 +1,5 @@
+import os
+
 from django.contrib.auth.models import User
 from django.core.management.base import CommandError
 from django.core.files.base import ContentFile
@@ -8,20 +10,64 @@ from toto.vault.models import Bucket, FileGateway, VaultDirectory, VaultFile
 
 
 class Command(IngressCommand):
-    help = "Seed Vault demo data: buckets, directories, files, gateways, tariff wiring."
+    help = "Seed Vault: always creates default buckets/dirs; full mode adds demo files and gateways."
 
     def process(self):
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        try:
+            user = User.objects.get(username=admin_username)
+        except User.DoesNotExist:
+            self.stdout.write(self.style.WARNING(
+                f"User '{admin_username}' not found — skipping vault ingress."
+            ))
+            return
+
+        self._ensure_default_structure(user)
+
         if not self.full:
             return
 
-        # ── Users ─────────────────────────────────────────────────────────────
-        try:
-            user = User.objects.get(username="admin")
-        except User.DoesNotExist:
-            raise CommandError("Demo user 'admin' not found. Run ingress_core first.")
+        self._seed_full_demo(user)
 
-        # ── Billing cycles + tariff (economy-only) ───────────────────────────
+    # ── Always-on: default bucket + directory tree ────────────────────────────
+
+    def _ensure_default_structure(self, user):
+        bucket_general, _ = Bucket.objects.get_or_create(
+            slug="general",
+            defaults={"name": "General", "owner": user},
+        )
+
+        def mkdir(name, bucket, parent=None):
+            d, created = VaultDirectory.objects.get_or_create(
+                name=name, bucket=bucket, parent=parent,
+                defaults={"owner": user},
+            )
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"  + dir {d.full_path()}"))
+            return d
+
+        def mkgateway(directory, name, description):
+            gw, created = FileGateway.objects.get_or_create(
+                directory=directory,
+                defaults={"name": name, "description": description, "make_public": False},
+            )
+            if created:
+                self.stdout.write(self.style.SUCCESS(f"  + gateway: {name}"))
+            return gw
+
+        docs_dir    = mkdir("Documents", bucket_general)
+        archive_dir = mkdir("Archive",   bucket_general)
+
+        mkgateway(docs_dir,    "General Documents Upload", "Upload documents to the General bucket.")
+        mkgateway(archive_dir, "General Archive Upload",   "Upload files to the Archive.")
+
+        self.stdout.write(self.style.SUCCESS("Default vault structure ready."))
+
+    # ── Full ingress: demo buckets, files, gateways, billing ─────────────────
+
+    def _seed_full_demo(self, user):
         from django.apps import apps as django_apps
+
         _invoice_ok = django_apps.is_installed("toto.invoice")
         _tariffs_ok = django_apps.is_installed("toto.tariffs")
 
@@ -73,7 +119,6 @@ class Command(IngressCommand):
             defaults={"name": "Media", "owner": user},
         )
 
-        # Wire quota to Finance bucket
         if bucket_finance.storage_quota_mb != 500:
             bucket_finance.storage_quota_mb = 500
             bucket_finance.save(update_fields=["storage_quota_mb"])
@@ -83,7 +128,7 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Buckets ready."))
 
-        # ── Directory tree ─────────────────────────────────────────────────────
+        # ── Directory tree ────────────────────────────────────────────────────
         def mkdir(name, bucket, parent=None, restricted=False):
             d, created = VaultDirectory.objects.get_or_create(
                 name=name, bucket=bucket, parent=parent,
@@ -113,7 +158,7 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Directory tree ready."))
 
-        # ── Demo files ─────────────────────────────────────────────────────────
+        # ── Demo files ────────────────────────────────────────────────────────
         def mkfile(title, bucket, directory, file_type="text", notes=""):
             key = slugify(title)
             if VaultFile.objects.filter(bucket=bucket, key=key).exists():
@@ -153,7 +198,7 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Demo files seeded."))
 
-        # ── Gateways ───────────────────────────────────────────────────────────
+        # ── Gateways ──────────────────────────────────────────────────────────
         for directory, name, description in [
             (contracts_dir, "Legal Contracts Upload",  "Submit new vendor or client contracts."),
             (reports,       "Finance Reports Upload",   "Submit quarterly financial reports."),
@@ -169,7 +214,7 @@ class Command(IngressCommand):
 
         self.stdout.write(self.style.SUCCESS("Gateways ready."))
 
-        # ── Seed demo invoice for Finance bucket (economy-only) ──────────────
+        # ── Demo invoice for Finance bucket (economy-only) ────────────────────
         if _invoice_ok and cycle_monthly:
             from toto.invoice.models import Invoice, InvoiceStatus
             from datetime import date

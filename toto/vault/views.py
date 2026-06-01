@@ -231,7 +231,11 @@ class FileGatewayPageView(LoginRequiredMixin, DetailView):
 
     def get(self, request, *args, **kwargs):
         gateway = self.get_object()
-        if gateway.allowed_users.exists() and request.user not in gateway.allowed_users.all():
+        if (
+            not request.user.is_superuser
+            and gateway.allowed_users.exists()
+            and request.user not in gateway.allowed_users.all()
+        ):
             return HttpResponseForbidden("You are not allowed to access this gateway")
         return super().get(request, *args, **kwargs)
 
@@ -291,7 +295,11 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             directory_id=dir_pk,
         )
 
-        if gateway.allowed_users.exists() and request.user not in gateway.allowed_users.all():
+        if (
+            not request.user.is_superuser
+            and gateway.allowed_users.exists()
+            and request.user not in gateway.allowed_users.all()
+        ):
             return JsonResponse({"error": "You are not allowed to use this gateway"}, status=403)
 
         if "file" not in request.FILES:
