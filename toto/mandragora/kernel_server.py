@@ -18,14 +18,35 @@ class NotebookKernel:
         for key, value in self.env.items():
             os.environ[key] = str(value)
 
-        self.km = KernelManager(kernel_name=self.kernel_name)
-        self.km.start_kernel(
-            env={**os.environ, **{k: str(v) for k, v in self.env.items()}}
-        )
+        try:
+            self.km = KernelManager(kernel_name=self.kernel_name)
+        except Exception as exc:
+            raise RuntimeError(
+                f"Cannot create KernelManager for '{self.kernel_name}'. "
+                "Make sure ipykernel is installed in this environment "
+                f"(pip install ipykernel). Detail: {exc}"
+            ) from exc
+
+        try:
+            self.km.start_kernel(
+                env={**os.environ, **{k: str(v) for k, v in self.env.items()}}
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                f"Failed to start '{self.kernel_name}' kernel process. "
+                f"Detail: {exc}"
+            ) from exc
 
         self.kc = self.km.client()
         self.kc.start_channels()
-        self.kc.wait_for_ready(timeout=30)
+        try:
+            self.kc.wait_for_ready(timeout=60)
+        except Exception as exc:
+            self.km.shutdown_kernel(now=True)
+            raise RuntimeError(
+                f"Kernel process started but never became ready within 60 s. "
+                f"Detail: {exc}"
+            ) from exc
 
         for dep in config.get("dependencies", []):
             if isinstance(dep, dict):

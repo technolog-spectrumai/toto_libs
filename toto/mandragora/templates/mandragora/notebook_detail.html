@@ -91,6 +91,20 @@
           <span>{% trans "Unknown" %}</span>
         </span>
       </div>
+
+      <!-- Kernel error banner (hidden by default) -->
+      <div id="kernel-error-banner"
+           class="mt-3 hidden rounded-lg border border-warn-light bg-warn-light/10 px-4 py-3 text-sm text-warn-dark"
+           :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-light' : ''">
+        <div class="flex items-start gap-2">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+          <span id="kernel-error-text" class="flex-1"></span>
+          <button onclick="document.getElementById('kernel-error-banner').classList.add('hidden')"
+                  class="ml-2 shrink-0 opacity-60 hover:opacity-100">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+      </div>
     </section>
 
     <!-- Cells -->
@@ -323,15 +337,28 @@ async function runCell(btn) {
 }
 
 // ── Kernel status indicator ───────────────────────────────────────────────
+function showKernelError(message) {
+  const banner = document.getElementById("kernel-error-banner");
+  const text   = document.getElementById("kernel-error-text");
+  text.textContent = message;
+  banner.classList.remove("hidden");
+}
+
+function hideKernelError() {
+  document.getElementById("kernel-error-banner").classList.add("hidden");
+}
+
 function updateKernelStatus(state, detail) {
   const el   = document.getElementById("kernel-status");
   const icon = el.querySelector("i");
   const text = el.querySelector("span");
 
   const states = {
-    running:  ["fa-solid fa-circle text-success-light text-xs", "Running"],
-    stopped:  ["fa-solid fa-circle text-warn-light text-xs",   "Stopped"],
-    starting: ["fa-solid fa-circle-notch fa-spin text-caution-dark text-xs", detail ? `Starting… ${detail}` : "Starting…"],
+    running:     ["fa-solid fa-circle text-success-light text-xs",                    "Running"],
+    stopped:     ["fa-solid fa-circle text-warn-light text-xs",                       "Stopped"],
+    unreachable: ["fa-solid fa-circle-xmark text-warn-light text-xs",                 "Unreachable"],
+    starting:    ["fa-solid fa-circle-notch fa-spin text-caution-dark text-xs",       detail ? `Starting… ${detail}` : "Starting…"],
+    error:       ["fa-solid fa-triangle-exclamation text-warn-light text-xs",         "Error"],
   };
   const [cls, label] = states[state] ?? ["fa-solid fa-circle text-gray-400 text-xs", "Unknown"];
   icon.className   = cls;
@@ -341,6 +368,7 @@ function updateKernelStatus(state, detail) {
 let kernelAutoClose = true;
 
 async function startKernel() {
+  hideKernelError();
   updateKernelStatus("starting");
 
   try {
@@ -354,10 +382,16 @@ async function startKernel() {
   try {
     const res  = await fetch(urlStart, { method: "POST", headers: { "X-CSRFToken": getCsrf() } });
     const data = await res.json();
-    updateKernelStatus(data.state === "started" ? "running" : "stopped");
+    if (data.state === "started") {
+      updateKernelStatus("running");
+    } else {
+      updateKernelStatus("error");
+      showKernelError(data.error_detail || data.error || "Kernel failed to start.");
+    }
   } catch (err) {
     console.error("startKernel error:", err);
-    updateKernelStatus("stopped");
+    updateKernelStatus("error");
+    showKernelError("Could not reach the server. Check your network connection.");
   }
 }
 
@@ -375,8 +409,11 @@ async function checkKernelStatus() {
     const res  = await fetch(urlStatus);
     const data = await res.json();
     updateKernelStatus(data.status);
+    if (data.status === "unreachable" && data.error_detail) {
+      showKernelError(data.error_detail);
+    }
   } catch (_) {
-    updateKernelStatus("unknown");
+    updateKernelStatus("unreachable");
   }
 }
 

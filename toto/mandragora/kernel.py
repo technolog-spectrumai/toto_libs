@@ -13,20 +13,27 @@ class KernelClient:
         self.addr = addr
         self.ctx = zmq.Context()
 
-    def _send(self, payload: dict) -> dict:
+    def _send(self, payload: dict, timeout_ms: int = 15_000) -> dict:
         socket = self.ctx.socket(zmq.REQ)
-        socket.setsockopt(zmq.RCVTIMEO, 15000)
+        socket.setsockopt(zmq.RCVTIMEO, timeout_ms)
         socket.connect(self.addr)
         socket.send_string(json.dumps(payload))
         try:
             return json.loads(socket.recv_string())
         except zmq.Again:
             return {"error": "kernel_server_timeout"}
+        except Exception as exc:
+            return {"error": f"kernel_client_error: {exc}"}
         finally:
-            socket.close()
+            socket.close(linger=0)
 
     def start(self, notebook_id, config=None) -> dict:
-        return self._send({"action": "start", "notebook_id": notebook_id, "config": config or {}})
+        # Kernel startup in Docker can take 60-90 s on a cold container
+        # (IPython subprocess + optional pip installs).  Give it 120 s.
+        return self._send(
+            {"action": "start", "notebook_id": notebook_id, "config": config or {}},
+            timeout_ms=120_000,
+        )
 
     def stop(self, notebook_id) -> dict:
         return self._send({"action": "stop", "notebook_id": notebook_id})

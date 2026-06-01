@@ -226,6 +226,19 @@ def start_kernel(request, notebook_id):
     result["installing"] = [
         d["package_name"] + (d["version_spec"] or "") for d in deps
     ]
+
+    if "error" in result:
+        error = result["error"]
+        if error == "kernel_server_timeout":
+            result["error_detail"] = (
+                "The kernel server did not respond in time. "
+                "Kernel startup in Docker can take up to 2 minutes on first use. "
+                "Wait a moment and try again."
+            )
+        else:
+            result["error_detail"] = f"Kernel error: {error}"
+        return Response(result, status=503)
+
     return Response(result)
 
 
@@ -254,6 +267,12 @@ def stop_kernel(request, notebook_id):
 def check_kernel(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
     result = client.status(notebook.id)
+    if "error" in result:
+        return Response({
+            "status": "unreachable",
+            "error": result["error"],
+            "error_detail": "Cannot reach the kernel server. Check that the kernel_server container is running.",
+        })
     if result.get("running"):
         return Response({"status": "running"})
     return Response({"status": "stopped"})
