@@ -52,4 +52,13 @@ class UnderlyingObjectsAssetPlugin(AssetPlugin):
             .order_by("-created_at")
         )
         context["tokenization_default_reasons"] = TokenizationDefaultReason.choices
+        from django.apps import apps
+        if apps.is_installed("toto.mission_economy"):
+            from toto.mission_economy.models import ProjectTokenization
+            context["project_tokenization"] = (
+                ProjectTokenization.objects
+                .select_related("project", "supervisor")
+                .filter(asset=asset)
+                .first()
+            )
         return context

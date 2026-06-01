@@ -19,7 +19,7 @@
 
     <h2 class="text-xl font-bold flex items-center gap-2">
       <i class="fa-solid fa-signature" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
-      {% trans "Sign Constitution" %}
+      {% trans "Sign Rules" %}
     </h2>
 
     {% if not person %}
@@ -156,7 +156,7 @@
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
         class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
         <i class="fa-solid fa-pen-nib"></i>
-        {% trans "Sign Constitution" %}
+        {% trans "Sign Rules" %}
       </button>
     </form>
     {% endif %}

@@ -7,7 +7,7 @@
       <i class="fa-solid fa-coins" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
       <h2 class="text-lg font-bold">{% trans "Economy" %}</h2>
     </div>
-    <a href="{% url 'kanban:mission_economy' economy_mission.pk %}"
+    <a href="{% url 'mission_economy:mission_economy' economy_mission.pk %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="inline-flex items-center gap-1 rounded-lg border px-3 py-1 text-xs font-semibold transition hover:opacity-80">
       <i class="fa-solid fa-arrow-up-right-from-square"></i>
@@ -44,7 +44,7 @@
       {% else %}
         <p class="text-xs opacity-40 text-center py-2">{% trans "None linked" %}</p>
       {% endif %}
-      <a href="{% url 'kanban:mission_economy' economy_mission.pk %}"
+      <a href="{% url 'mission_economy:mission_economy' economy_mission.pk %}"
          class="block text-center text-xs opacity-50 hover:opacity-80 transition pt-1">
         <i class="fa-solid fa-link mr-1"></i>{% trans "Manage →" %}
       </a>

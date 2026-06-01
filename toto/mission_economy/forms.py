@@ -4,9 +4,13 @@ from django import forms
 
 from toto.mission_economy.models import ProjectTokenization, ProjectTokenizationDefaultReason
 
-_CSS = (
+_CSS_BASE = (
     "w-full rounded-lg border px-3 py-2 text-sm outline-none transition "
-    "focus:ring-2 focus:ring-current/20 border-accent-2 bg-primary-bg-light text-text-main-light"
+    "focus:ring-2 focus:ring-current/20"
+)
+_CSS_COLORS = (
+    "darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'"
+    " : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
 )
 
 
@@ -43,9 +47,13 @@ class ProjectTokenizationCreateForm(forms.Form):
         self.fields["reserve_account"].queryset = LedgerAccount.objects.filter(active=True).order_by("code")
         self.fields["supervisor"].queryset = Person.objects.order_by("display_name")
 
-        for field in self.fields.values():
-            existing = field.widget.attrs.get("class", "")
-            field.widget.attrs["class"] = f"{existing} {_CSS}".strip()
+        for name, field in self.fields.items():
+            if isinstance(field.widget, forms.CheckboxInput):
+                field.widget.attrs.setdefault("class", "h-4 w-4 rounded")
+            else:
+                existing = field.widget.attrs.get("class", "")
+                field.widget.attrs["class"] = f"{existing} {_CSS_BASE}".strip()
+                field.widget.attrs[":class"] = _CSS_COLORS
 
     def clean_unit_name(self):
         from toto.assets.models import Asset
@@ -73,4 +81,5 @@ class ProjectTokenizationDefaultForm(forms.Form):
         super().__init__(*args, **kwargs)
         for field in self.fields.values():
             existing = field.widget.attrs.get("class", "")
-            field.widget.attrs["class"] = f"{existing} {_CSS}".strip()
+            field.widget.attrs["class"] = f"{existing} {_CSS_BASE}".strip()
+            field.widget.attrs[":class"] = _CSS_COLORS

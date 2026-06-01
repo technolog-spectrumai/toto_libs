@@ -322,6 +322,14 @@
           {% endif %}
         </div>
       </div>
+      {% else %}
+      <a href="{% url 'mission_economy:project_tokenize' project.pk %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-black/10' : 'border-accent-2 bg-bubble-bg-light hover:bg-black/5'"
+         class="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm font-semibold opacity-50 hover:opacity-80 transition shadow-sm">
+        <i class="fa-solid fa-circle-nodes"></i>
+        {% trans "Tokenize project" %}
+        <i class="fa-solid fa-arrow-right ml-auto opacity-40"></i>
+      </a>
       {% endif %}
 
       <!-- ── Contracts link ── -->
