@@ -57,6 +57,8 @@ class Command(IngressCommand):
         super().handle(*args, **options)
 
     def process(self):
+        if not self.full:
+            return
         self.stdout.write("📄  Seeding demo financial instruments…")
         accounts = self._seed_accounts()
         assets = self._seed_assets(accounts)

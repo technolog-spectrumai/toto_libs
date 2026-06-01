@@ -12,6 +12,8 @@ class Command(IngressCommand):
     help = "Seed demo subscription plans, customers, and subscriptions for user testing."
 
     def process(self):
+        if not self.full:
+            return
         self.stdout.write("📦  Seeding demo subscriptions…")
 
         accounts = self._seed_accounts()

@@ -263,6 +263,88 @@ class Command(IngressCommand):
         m_kb_task = _metric("kanban.task",        "Task created",      "event", "kanban", bu_task)
         m_kb_req  = _metric("kanban.api_request", "Kanban API request","event", "kanban", bu_request)
 
+        # — VideoMant (app: videomant) —
+        bu_job    = _bu("job",               "Job",                      "event")
+        m_vm_job  = _metric("videomant.job",    "VideoMant processing job",    "compute", "videomant", bu_job)
+        m_vm_sec  = _metric("videomant.second", "VideoMant processing second", "compute", "videomant", bu_second)
+
+        # ------------------------------------------------------------------ #
+        # Base tariffs (always-on): vault, ravioli, steven, vod, videomant   #
+        # Require STORAGE_TOKEN and COMPUTE_TOKEN from ingress_assets.        #
+        # ------------------------------------------------------------------ #
+        from toto.assets.models import Asset as _Asset
+
+        storage_token = _Asset.objects.filter(unit_name="STORAGE_TOKEN").first()
+        compute_token = _Asset.objects.filter(unit_name="COMPUTE_TOKEN").first()
+
+        if storage_token and compute_token:
+            rev_storage_base = _account("REV-STORAGE-BASE", "Storage Base Revenue", AccountType.SYSTEM)
+            rev_compute_base = _account("REV-COMPUTE-BASE", "Compute Base Revenue",  AccountType.SYSTEM)
+
+            # Vault: file storage
+            t_vault, _ = _tariff(
+                "FILE-STORAGE-BASE",
+                "File Storage Base Tariff",
+                "Base storage tariff using STORAGE_TOKEN. 1 token = 1 MB.",
+            )
+            _item(t_vault, m_st_req,     "Storage request",       storage_token, "0.1",  bu_request, rev_storage_base)
+            _item(t_vault, m_st_xfer,    "Data transfer per MB",  storage_token, "1.0",  bu_mb,      rev_storage_base)
+            _item(t_vault, m_st_hour,    "Storage per MB·hour",   storage_token, "0.01", bu_mb_hour, rev_storage_base)
+            _item(t_vault, m_st_gb_hour, "Storage per GB·hour",   storage_token, "10.0", bu_gb_hour, rev_storage_base)
+            self.stdout.write(f"    +/✓ tariff {t_vault.code} (base)")
+
+            # Ravioli: Neo4j graph
+            t_ravioli, _ = _tariff(
+                "NEO4J-GRAPH-BASE",
+                "Neo4j Graph Base Tariff",
+                "Base graph tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+            )
+            _item(t_ravioli, m_neo_q,    "Cypher Query",          compute_token, "1.0",  bu_request,      rev_compute_base)
+            _item(t_ravioli, m_neo_node, "Node (flat)",           compute_token, "0.1",  bu_node,         rev_compute_base)
+            _item(t_ravioli, m_neo_rel,  "Relationship (flat)",   compute_token, "0.05", bu_relationship, rev_compute_base)
+            self.stdout.write(f"    +/✓ tariff {t_ravioli.code} (base)")
+
+            # Steven: AI inference
+            t_steven, _ = _tariff(
+                "AI-INFERENCE-BASE",
+                "AI Inference Base Tariff",
+                "Base AI tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+            )
+            _item(t_steven, m_ai_req,    "Inference request",     compute_token, "10.0", bu_request,      rev_compute_base)
+            _item(t_steven, m_ai_input,  "LLM input tokens",      compute_token, "1.0",  bu_input_token,  rev_compute_base, uq=1000)
+            _item(t_steven, m_ai_output, "LLM output tokens",     compute_token, "3.0",  bu_output_token, rev_compute_base, uq=1000)
+            self.stdout.write(f"    +/✓ tariff {t_steven.code} (base)")
+
+            # VOD
+            t_vod_base, _ = _tariff(
+                "VOD-BASE",
+                "VOD Base Tariff",
+                "Base VOD tariff using STORAGE_TOKEN. 1 token = 1 MB.",
+            )
+            _item(t_vod_base, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage_base)
+            _item(t_vod_base, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage_base)
+            self.stdout.write(f"    +/✓ tariff {t_vod_base.code} (base)")
+
+            # VideoMant: video processing
+            t_videomant, _ = _tariff(
+                "VIDEOMANT-BASE",
+                "VideoMant Base Tariff",
+                "Base video processing tariff using COMPUTE_TOKEN. 1 token = 1 CPU-second.",
+            )
+            _item(t_videomant, m_vm_job, "Processing job",    compute_token, "60.0", bu_job,    rev_compute_base)
+            _item(t_videomant, m_vm_sec, "Processing second", compute_token, "1.0",  bu_second, rev_compute_base)
+            self.stdout.write(f"    +/✓ tariff {t_videomant.code} (base)")
+        else:
+            self.stdout.write(self.style.WARNING(
+                "  ⚠ STORAGE_TOKEN/COMPUTE_TOKEN not found — run ingress_assets first for base tariffs."
+            ))
+
+        if not self.full:
+            self.stdout.write(self.style.SUCCESS(
+                "Tariffs base ingress complete. Run with --full to also create full service token assets and usage records."
+            ))
+            return
+
         # ------------------------------------------------------------------ #
         # 1. Service token assets                                              #
         # ------------------------------------------------------------------ #
@@ -431,12 +513,6 @@ class Command(IngressCommand):
         _item(tf_bundle, m_cpu_s,     "Compute",      compute_token, "0.08",  bu_second,      rev_compute)
         _item(tf_bundle, m_api_req,   "API Call",     api_token,     "0.08",  bu_request,     rev_api)
         self.stdout.write(f"    + {tf_bundle.code} (draft)")
-
-        if not self.full:
-            self.stdout.write(self.style.SUCCESS(
-                "Tariffs ingress complete. Run with --full to also create sample usage records."
-            ))
-            return
 
         # ------------------------------------------------------------------ #
         # 4. Sample payer accounts and prepaid balances                        #

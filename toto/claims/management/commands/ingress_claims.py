@@ -9,6 +9,8 @@ class Command(IngressCommand):
     help = "Seed demo claims primitives for user testing."
 
     def process(self):
+        if not self.full:
+            return
         self.stdout.write("📋  Seeding demo claims primitives…")
         accounts, asset = self._seed_accounts_and_asset()
         self._seed_entitlements(accounts)
