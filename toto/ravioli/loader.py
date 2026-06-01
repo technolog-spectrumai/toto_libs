@@ -19,11 +19,17 @@ GRAPH_DIR = Path(__file__).parent / "graph"
 # ---------------------------------------------------------------------------
 
 def load_all_configs():
-    """Load every *.yaml file in ravioli/graph/ and return a list of dicts."""
+    """Load *.yaml files in ravioli/graph/, skipping configs for uninstalled apps."""
     configs = []
     for path in sorted(GRAPH_DIR.glob("*.yaml")):
         with open(path) as f:
             config = yaml.safe_load(f) or {}
+        app_label = config.get("app", "")
+        if app_label:
+            try:
+                django_apps.get_app_config(app_label)
+            except LookupError:
+                continue
         config["_source"] = path.name
         configs.append(config)
     return configs
