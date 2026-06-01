@@ -280,6 +280,31 @@ def run_detail(request, run_id):
     return Response(WorkflowRunSerializer(run).data)
 
 
+@api_view(["POST"])
+def cancel_run(request, run_id):
+    """Mark a pending or running workflow run as cancelled.
+
+    Idempotent — cancelling an already-terminal run returns 200 with its
+    current status so callers don't need to pre-check.
+    """
+    from django.utils import timezone as _tz
+    run = get_object_or_404(WorkflowRun, pk=run_id)
+
+    if run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED, "cancelled"):
+        return Response({"status": run.status, "detail": "Run already finished."})
+
+    # Mark any in-flight node runs as failed
+    WorkflowNodeRun.objects.filter(
+        workflow_run=run,
+        status__in=[WorkflowNodeRun.PENDING, WorkflowNodeRun.RUNNING],
+    ).update(status=WorkflowNodeRun.FAILED, error="Cancelled by user.")
+
+    run.status = "cancelled"
+    run.completed_at = _tz.now()
+    run.save(update_fields=["status", "completed_at"])
+    return Response({"status": "cancelled"})
+
+
 # ---------------------------------------------------------------------------
 #  UI Views
 # ---------------------------------------------------------------------------

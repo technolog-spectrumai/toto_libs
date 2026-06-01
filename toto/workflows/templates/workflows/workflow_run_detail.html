@@ -30,7 +30,7 @@
         </div>
 
         <!-- Actions -->
-        <div class="flex flex-wrap items-center gap-2">
+        <div x-data="runActions()" class="flex flex-wrap items-center gap-2">
           <span class="rounded-full px-4 py-1.5 text-sm font-bold
             {% if run.status == 'completed' %}
               :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
@@ -38,12 +38,30 @@
               :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
             {% elif run.status == 'running' %}
               :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
+            {% elif run.status == 'cancelled' %}
+              :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
             {% else %}
               :class="'bg-gray-500/20 text-gray-500'"
             {% endif %}">
             {% if run.status == 'running' %}<i class="fa-solid fa-spinner fa-spin mr-1"></i>{% endif %}
-            {{ run.status|upper }}
+            <span x-text="displayStatus">{{ run.status|upper }}</span>
           </span>
+
+          {% if run.status in 'pending,running' %}
+          <button
+            @click="cancelRun()"
+            :disabled="cancelling || done"
+            :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+            class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition disabled:opacity-40"
+          >
+            <svg x-show="cancelling" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <i x-show="!cancelling" class="fa-solid fa-xmark text-xs"></i>
+            <span x-text="cancelling ? '{% trans "Cancelling…" %}' : '{% trans "Kill run" %}'"></span>
+          </button>
+          {% endif %}
         </div>
       </div>
 
@@ -579,4 +597,35 @@
   })();
 </script>
 {% endif %}
+<script>
+const CANCEL_URL = "/workflows/api/runs/{{ run.id }}/cancel/";
+const CSRF_TOKEN = "{{ csrf_token }}";
+
+function runActions() {
+  return {
+    cancelling: false,
+    done: false,
+    displayStatus: "{{ run.status|upper }}",
+
+    async cancelRun() {
+      if (this.cancelling || this.done) return;
+      if (!confirm("Kill run #{{ run.id }}? This marks it as cancelled immediately.")) return;
+      this.cancelling = true;
+      try {
+        const res = await fetch(CANCEL_URL, {
+          method: "POST",
+          headers: { "X-CSRFToken": CSRF_TOKEN, "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        this.displayStatus = (data.status || "cancelled").toUpperCase();
+        this.done = true;
+      } catch (e) {
+        alert("Failed to cancel run: " + e.message);
+      } finally {
+        this.cancelling = false;
+      }
+    },
+  };
+}
+</script>
 {% endblock %}

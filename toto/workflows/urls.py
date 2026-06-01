@@ -6,7 +6,7 @@ from .views import (
     workflow_list, workflow_detail, validate_workflow,
     node_create, node_detail,
     edge_create, edge_delete,
-    run_list, run_detail,
+    run_list, run_detail, cancel_run,
     # UI
     WorkflowListUIView, WorkflowDetailUIView,
     WorkflowRunDetailUIView,
@@ -34,4 +34,5 @@ urlpatterns = [
     path("api/<int:workflow_id>/edges/<int:edge_id>/", edge_delete, name="api_edge_delete"),
     path("api/<int:workflow_id>/runs/", run_list, name="api_run_list"),
     path("api/runs/<int:run_id>/", run_detail, name="api_run_detail"),
+    path("api/runs/<int:run_id>/cancel/", cancel_run, name="api_cancel_run"),
 ]
