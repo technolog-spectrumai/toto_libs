@@ -68,6 +68,22 @@ class AgentSession(ABC):
         if not getattr(self.profile, "graph_rag_enabled", False):
             return ""
 
+        from django.conf import settings
+
+        backend = getattr(settings, "STEVEN_GRAPH_RAG_BACKEND", "legacy_keyword")
+
+        if backend == "ravioli_vector":
+            try:
+                from toto.ravioli.vector_search import (
+                    VectorSearchUnavailable,
+                    retrieve_vector_context,
+                )
+                context = retrieve_vector_context(user_prompt)
+                if context:
+                    return context
+            except Exception:
+                pass  # fall through to legacy keyword search
+
         from .graph_rag import GraphRagRetriever, format_graph_context
 
         retriever = GraphRagRetriever()

@@ -388,6 +388,20 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "toto-dev-secret-key-change-me" if django_env != "PROD" else secrets.token_urlsafe(50)
     )
 
+    # -------------------------------------------------------- steven embeddings
+    steven_embedding_settings: dict[str, Any] = {
+        "STEVEN_EMBEDDINGS_ENABLED": os.getenv("STEVEN_EMBEDDINGS_ENABLED", "0") == "1",
+        "STEVEN_EMBEDDING_PROVIDER": os.getenv("STEVEN_EMBEDDING_PROVIDER", "ollama"),
+        "STEVEN_OLLAMA_HOST": os.getenv("STEVEN_OLLAMA_HOST", "http://localhost:11434"),
+        "STEVEN_EMBEDDING_MODEL": os.getenv("STEVEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b"),
+        "STEVEN_EMBEDDING_TIMEOUT": int(os.getenv("STEVEN_EMBEDDING_TIMEOUT", "120")),
+        "STEVEN_GRAPH_RAG_BACKEND": os.getenv("STEVEN_GRAPH_RAG_BACKEND", "legacy_keyword"),
+        "TOTO_NEO4J_VECTOR_INDEX": os.getenv("TOTO_NEO4J_VECTOR_INDEX", "toto_chunk_embeddings"),
+        "TOTO_VECTOR_NODE_LABEL": os.getenv("TOTO_VECTOR_NODE_LABEL", "TotoChunk"),
+        "TOTO_VECTOR_TEXT_PROPERTY": os.getenv("TOTO_VECTOR_TEXT_PROPERTY", "text"),
+        "TOTO_VECTOR_EMBEDDING_PROPERTY": os.getenv("TOTO_VECTOR_EMBEDDING_PROPERTY", "embedding"),
+    }
+
     # ----------------------------------------------------------- assemble
     result: dict[str, Any] = {
         # Security
@@ -473,6 +487,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         **login_url_settings,
         **locations_settings,
         **spatialite_settings,
+        **steven_embedding_settings,
     }
 
     if migration_modules:
