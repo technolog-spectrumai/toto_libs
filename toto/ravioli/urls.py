@@ -44,5 +44,5 @@ urlpatterns = [
     path("projections/full-sync/", full_sync_view, name="full_sync"),
     path("projections/clear-db/", clear_db_view, name="clear_db"),
     path("search/", search_view, name="search"),
-    path("search/status/<str:run_id>/", search_status_view, name="search_status"),
+    path("search/status/<int:run_id>/", search_status_view, name="search_status"),
 ]

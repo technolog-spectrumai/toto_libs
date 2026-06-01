@@ -112,6 +112,30 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Clear DB' already exists"))
 
+        # --- Ravioli Graph Search: single node ---
+        wf6, created6 = Workflow.objects.get_or_create(
+            slug="ravioli-graph-search",
+            defaults={
+                "name": "Ravioli Graph Search",
+                "description": (
+                    "Run a graph search (basic / advanced / deep) against Neo4j "
+                    "and return matching nodes with their properties."
+                ),
+            },
+        )
+        if created6:
+            WorkflowNode.objects.create(
+                workflow=wf6,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Search graph nodes",
+                task_name="ravioli_graph_search",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("📊 Created workflow: Ravioli Graph Search"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Graph Search' already exists"))
+
         # --- Ravioli Run Cypher Query: single node ---
         wf5, created5 = Workflow.objects.get_or_create(
             slug="ravioli-run-cypher-query",

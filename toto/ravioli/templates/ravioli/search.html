@@ -6,8 +6,9 @@
 
 {% block content %}
 <script>
-  const SEARCH_STATUS_URL_TPL = "{% url 'ravioli:search_status' '00000000-0000-0000-0000-000000000000' %}".replace('00000000-0000-0000-0000-000000000000', '{run_id}');
-  const INITIAL_RUN_ID     = "{{ run_id|default:''|escapejs }}";
+  const SEARCH_STATUS_URL_TPL = "{% url 'ravioli:search_status' '0' %}".replace('/0/', '/{run_id}/');
+  const WF_RUN_URL_TPL        = "/workflows/runs/{run_id}/";
+  const INITIAL_RUN_ID     = "{{ wf_run_id|default:''|escapejs }}";
   const INITIAL_RESULTS    = {{ initial_results_json|safe }};
   const INITIAL_ERROR      = "{{ error|default:''|escapejs }}";
   const INITIAL_SEARCHED   = {{ searched|yesno:"true,false" }};
@@ -214,20 +215,33 @@
           </div>
         </template>
 
-        <!-- Celery: searching in progress card -->
+        <!-- Celery: workflow run in progress card -->
         <div
           x-show="running"
           x-transition
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="rounded-lg border p-6 shadow-sm text-center space-y-3"
+          class="rounded-lg border p-5 shadow-sm space-y-3"
         >
-          <svg class="animate-spin h-8 w-8 mx-auto" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
-            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
-          </svg>
-          <p class="text-sm font-semibold">{% trans "Searching via Celery worker…" %}</p>
-          <p class="text-xs opacity-50">{% trans "Results will appear automatically." %}</p>
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <svg class="animate-spin h-5 w-5 shrink-0" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <div>
+                <p class="text-sm font-semibold">{% trans "Searching via workflow…" %}</p>
+                <p class="text-xs opacity-50">{% trans "Results will appear automatically." %}</p>
+              </div>
+            </div>
+            <a
+              x-show="_runId"
+              :href="WF_RUN_URL_TPL.replace('{run_id}', _runId)"
+              target="_blank"
+              :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+              class="inline-flex shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80"
+            ><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>{% trans "View run" %}</a>
+          </div>
         </div>
 
         <!-- Result count bar (visible when results exist) -->
@@ -380,7 +394,10 @@ function graphSearch() {
       this._pollTimer = setInterval(async () => {
         try {
           const res  = await fetch(url);
-          const data = await res.json();
+          let data;
+          const text = await res.text();
+          try { data = JSON.parse(text); }
+          catch { data = { status: 'error', error: `Non-JSON response (HTTP ${res.status})` }; }
 
           if (data.status === 'done') {
             this._stopPolling();
@@ -397,7 +414,7 @@ function graphSearch() {
             this.error   = 'Search result expired — please search again.';
             this.results = [];
           }
-          // status === 'pending' or 'running': keep polling
+          // status === 'running' or 'pending': keep polling
         } catch (e) {
           this._stopPolling();
           this.running = false;

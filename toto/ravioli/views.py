@@ -590,8 +590,6 @@ def run_projection_stream(request):
 
 
 def search_view(request):
-    import uuid
-    from django.core.cache import cache
     from .services.search import (
         SearchUnavailableError,
         advanced_search,
@@ -615,7 +613,8 @@ def search_view(request):
     results = []
     error = None
     searched = False
-    run_id = None
+    wf_run = None        # WorkflowRun instance (Celery path)
+    wf_run_id = None     # its PK, passed to template for polling
 
     if q:
         searched = True
@@ -630,11 +629,17 @@ def search_view(request):
             except SearchUnavailableError as exc:
                 error = str(exc)
         else:
-            # Celery path: kick off task, template polls for status
-            from .tasks import run_graph_search
-            run_id = str(uuid.uuid4())
-            cache.set(f"search:{run_id}:status", "pending", timeout=300)
-            run_graph_search.delay(run_id, q, mode, limit, exact)
+            # Workflow / Celery path — creates a WorkflowRun visible in the Workflows UI
+            try:
+                wf_run = _trigger_workflow(
+                    "ravioli-graph-search",
+                    input_data={"data": {
+                        "q": q, "mode": mode, "limit": limit, "exact": exact,
+                    }},
+                )
+                wf_run_id = wf_run.pk
+            except RuntimeError as exc:
+                error = str(exc)
 
     modes = [
         ("basic",    "Basic",    "fa-solid fa-text-size"),
@@ -653,9 +658,8 @@ def search_view(request):
             "error": error,
             "searched": searched,
             "result_count": len(results),
-            "run_id": run_id,
+            "wf_run_id": wf_run_id,
             "modes": modes,
-            # Escape </  so the JSON literal can't break the <script> block.
             "initial_results_json": json.dumps(results).replace("</", "<\\/"),
         },
         request,
@@ -665,20 +669,33 @@ def search_view(request):
 
 @require_GET
 def search_status_view(request, run_id):
-    from django.core.cache import cache
+    """Poll a ravioli-graph-search WorkflowRun for status + results."""
+    from toto.workflows.models import WorkflowRun
 
-    status = cache.get(f"search:{run_id}:status")
-    if status is None:
+    try:
+        run = WorkflowRun.objects.get(pk=run_id)
+    except WorkflowRun.DoesNotExist:
         return JsonResponse({"status": "expired"}, status=404)
 
-    payload = {"status": status}
-    if status == "done":
-        payload["results"] = cache.get(f"search:{run_id}:results", [])
-    elif status == "error":
-        payload["error"] = cache.get(f"search:{run_id}:error", "Unknown error")
+    wf_status = run.status  # pending / running / completed / failed / cancelled
 
-    # Guard against non-serializable values that would produce a 500 HTML page
-    try:
-        return JsonResponse(payload)
-    except (TypeError, ValueError) as exc:
-        return JsonResponse({"status": "error", "error": f"Result serialization failed: {exc}"}, status=500)
+    if wf_status == WorkflowRun.COMPLETED:
+        # Results live in the single node-run's output_data
+        node_run = run.node_runs.order_by("id").last()
+        output = (node_run.output_data or {}) if node_run else {}
+        results = (output.get("data") or {}).get("results", [])
+        try:
+            return JsonResponse({"status": "done", "results": results})
+        except (TypeError, ValueError) as exc:
+            return JsonResponse({"status": "error", "error": f"Serialization failed: {exc}"}, status=500)
+
+    if wf_status == WorkflowRun.FAILED:
+        node_run = run.node_runs.order_by("id").last()
+        err = (node_run.error if node_run else None) or "Search workflow failed."
+        return JsonResponse({"status": "error", "error": err})
+
+    if wf_status == "cancelled":
+        return JsonResponse({"status": "error", "error": "Run was cancelled."})
+
+    # still pending or running
+    return JsonResponse({"status": "running", "wf_run_url": f"/workflows/runs/{run.pk}/"})

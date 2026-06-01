@@ -210,6 +210,50 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
     return {"data": {"vault_file_id": vault_file.pk, "download_url": vault_file.get_public_url()}}
 
 
+@register("ravioli_graph_search")
+def ravioli_graph_search(input_data: dict) -> dict:
+    """Run a graph search (basic / advanced / deep) and return results."""
+    from .services.search import (
+        SearchUnavailableError,
+        advanced_search,
+        basic_search,
+        deep_search,
+    )
+
+    data = input_data.get("data") or {}
+    q = str(data.get("q") or "").strip()
+    mode = data.get("mode", "basic")
+    limit = max(1, min(200, int(data.get("limit", 25))))
+    exact = bool(data.get("exact", False))
+
+    if not q:
+        raise ValueError("Search query 'q' is required.")
+
+    if mode not in ("basic", "advanced", "deep"):
+        mode = "basic"
+
+    try:
+        if mode == "deep":
+            results = deep_search(q, limit=limit, exact=exact)
+        elif mode == "advanced":
+            results = advanced_search(q, limit=limit)
+        else:
+            results = basic_search(q, limit=limit)
+    except SearchUnavailableError as exc:
+        raise RuntimeError(f"Neo4j unavailable: {exc}") from exc
+
+    return {
+        "data": {
+            "q": q,
+            "mode": mode,
+            "limit": limit,
+            "exact": exact,
+            "result_count": len(results),
+            "results": results,
+        }
+    }
+
+
 @register("ravioli_clear_db")
 def ravioli_clear_db(input_data: dict) -> dict:
     from .connection import Neo4jClient, is_enabled
