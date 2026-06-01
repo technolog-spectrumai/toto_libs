@@ -23,7 +23,9 @@
   data-url-start="{% url 'mandragora:start_kernel' notebook.id %}"
   data-url-stop="{% url 'mandragora:stop_kernel' notebook.id %}"
   data-url-status="{% url 'mandragora:check_kernel' notebook.id %}"
-  data-url-cell-create="{% url 'mandragora:create_cell' notebook.id %}">
+  data-url-cell-create="{% url 'mandragora:create_cell' notebook.id %}"
+  data-url-vault-files="{% url 'mandragora:notebook_vault_files' notebook.id %}"
+  data-has-bucket="{{ has_bucket|yesno:'true,false' }}">
 
   {% csrf_token %}
   <div class="mx-auto max-w-6xl space-y-8">
@@ -84,6 +86,16 @@
           <i class="fa-solid fa-stop"></i>
           {% trans "Stop kernel" %}
         </button>
+
+        {% if has_bucket %}
+        <button
+          onclick="openVaultModal()"
+          :class="darkMode ? 'border-accent-1 text-accent-1 hover:bg-accent-1/10' : 'border-accent-2 text-accent-2 hover:bg-accent-2/10'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition">
+          <i class="fa-solid fa-box-archive text-xs"></i>
+          {% trans "Files" %}
+        </button>
+        {% endif %}
 
         <span id="kernel-status"
               class="inline-flex items-center gap-1.5 text-sm opacity-70">
@@ -219,6 +231,58 @@
 
   </div>
 </div>
+
+<!-- ── Vault Files Modal ──────────────────────────────────────────────── -->
+<div id="vault-modal"
+     class="fixed inset-0 z-50 hidden items-start justify-center bg-black/60 p-4 pt-16"
+     onclick="if(event.target===this) closeVaultModal()">
+  <div
+    :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+    class="relative w-full max-w-3xl rounded-2xl border shadow-2xl"
+    onclick="event.stopPropagation()">
+
+    <!-- Modal header -->
+    <div class="flex items-center justify-between border-b px-6 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-box-archive opacity-70"></i>
+        <span id="vault-modal-bucket-name">{% trans "Vault Files" %}</span>
+      </h2>
+      <button onclick="closeVaultModal()" class="opacity-50 hover:opacity-100 transition">
+        <i class="fa-solid fa-xmark text-lg"></i>
+      </button>
+    </div>
+
+    <!-- File list + preview -->
+    <div class="flex h-[60vh] divide-x overflow-hidden rounded-b-2xl"
+         :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+
+      <!-- Left: file list -->
+      <div class="w-1/2 overflow-y-auto">
+        <div id="vault-file-list" class="divide-y"
+             :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+          <p id="vault-loading" class="px-6 py-8 text-center opacity-50 text-sm">
+            <i class="fa-solid fa-circle-notch fa-spin mr-2"></i>{% trans "Loading…" %}
+          </p>
+        </div>
+      </div>
+
+      <!-- Right: preview -->
+      <div class="w-1/2 overflow-auto p-4">
+        <div id="vault-preview-empty" class="flex h-full items-center justify-center">
+          <p class="text-sm opacity-40">{% trans "Select a file to preview" %}</p>
+        </div>
+        <div id="vault-preview-content" class="hidden"></div>
+      </div>
+    </div>
+
+    <!-- Footer hint -->
+    <div class="border-t px-6 py-3 text-xs opacity-50"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      {% trans "Use" %} <code>open(vault_files['filename'])</code> {% trans "in a cell to read any file." %}
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block end_script %}
@@ -230,7 +294,140 @@ const urlDeps      = _root.dataset.urlDeps;
 const urlStart     = _root.dataset.urlStart;
 const urlStop      = _root.dataset.urlStop;
 const urlStatus    = _root.dataset.urlStatus;
-const urlCellCreate = _root.dataset.urlCellCreate;
+const urlCellCreate   = _root.dataset.urlCellCreate;
+const urlVaultFiles   = _root.dataset.urlVaultFiles;
+const hasBucket       = _root.dataset.hasBucket === "true";
+
+// ── Vault Files Modal ────────────────────────────────────────────────────────
+
+const _fileTypeIcon = {
+  pdf:    "fa-solid fa-file-pdf text-red-400",
+  image:  "fa-solid fa-file-image text-blue-400",
+  csv:    "fa-solid fa-file-csv text-green-400",
+  json:   "fa-solid fa-file-code text-yellow-400",
+  text:   "fa-solid fa-file-lines text-gray-400",
+  audio:  "fa-solid fa-file-audio text-purple-400",
+  video:  "fa-solid fa-file-video text-pink-400",
+  yaml:   "fa-solid fa-file-code text-yellow-400",
+  xml:    "fa-solid fa-file-code text-orange-400",
+  latex:  "fa-solid fa-file-alt text-teal-400",
+};
+
+function _icon(type) {
+  return _fileTypeIcon[type] ?? "fa-solid fa-file text-gray-400";
+}
+
+function _fmtSize(bytes) {
+  if (!bytes) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1048576) return `${(bytes/1024).toFixed(1)} KB`;
+  return `${(bytes/1048576).toFixed(1)} MB`;
+}
+
+function openVaultModal() {
+  const modal = document.getElementById("vault-modal");
+  modal.classList.remove("hidden");
+  modal.classList.add("flex");
+  _loadVaultFiles();
+}
+
+function closeVaultModal() {
+  const modal = document.getElementById("vault-modal");
+  modal.classList.add("hidden");
+  modal.classList.remove("flex");
+}
+
+async function _loadVaultFiles() {
+  const list = document.getElementById("vault-file-list");
+  document.getElementById("vault-loading").classList.remove("hidden");
+
+  try {
+    const res  = await fetch(urlVaultFiles);
+    const data = await res.json();
+
+    document.getElementById("vault-loading").classList.add("hidden");
+
+    if (data.bucket) {
+      document.getElementById("vault-modal-bucket-name").textContent = data.bucket.name;
+    }
+
+    if (!data.files || data.files.length === 0) {
+      list.innerHTML = '<p class="px-6 py-8 text-center opacity-50 text-sm">No files in this bucket.</p>';
+      return;
+    }
+
+    list.innerHTML = "";
+    data.files.forEach(f => {
+      const expr = `vault_files[${JSON.stringify(f.title)}]`;
+      const row = document.createElement("div");
+      row.className = "flex items-center gap-3 px-4 py-2.5 cursor-pointer hover:bg-black/5 transition group";
+      row.innerHTML = `
+        <i class="${_icon(f.file_type)} text-sm shrink-0 w-5 text-center"></i>
+        <div class="flex-1 min-w-0">
+          <p class="truncate text-sm font-medium">${f.title}</p>
+          <p class="text-xs opacity-40">${[f.directory, _fmtSize(f.size_bytes)].filter(Boolean).join(" · ")}</p>
+        </div>
+        <button
+          title="Copy open() expression"
+          onclick="event.stopPropagation(); navigator.clipboard.writeText('open(${expr.replace(/'/g,"\\'")})')"
+          class="shrink-0 opacity-0 group-hover:opacity-60 hover:!opacity-100 transition text-xs px-1.5 py-0.5 rounded border font-mono"
+          style="font-size:10px">
+          open()
+        </button>`;
+      row.addEventListener("click", () => _previewFile(f));
+      list.appendChild(row);
+    });
+  } catch (err) {
+    document.getElementById("vault-loading").classList.add("hidden");
+    list.innerHTML = `<p class="px-6 py-8 text-center text-sm text-red-400">Failed to load files: ${err}</p>`;
+  }
+}
+
+async function _previewFile(f) {
+  const empty   = document.getElementById("vault-preview-empty");
+  const content = document.getElementById("vault-preview-content");
+  empty.classList.add("hidden");
+  content.classList.remove("hidden");
+  content.innerHTML = '<p class="text-xs opacity-40 text-center py-8"><i class="fa-solid fa-circle-notch fa-spin"></i></p>';
+
+  const isImage = ["image"].includes(f.file_type) || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.title);
+  const isText  = ["text","csv","json","yaml","xml","latex","bib"].includes(f.file_type);
+
+  if (isImage && f.download_url) {
+    content.innerHTML = `<img src="${f.download_url}" class="max-w-full rounded" alt="${f.title}">`;
+    return;
+  }
+
+  if (isText && f.download_url) {
+    try {
+      const r    = await fetch(f.download_url);
+      const text = await r.text();
+      const preview = text.length > 2000 ? text.slice(0, 2000) + "\n…" : text;
+      content.innerHTML = `<pre class="text-xs whitespace-pre-wrap break-all font-mono opacity-80">${_esc(preview)}</pre>`;
+    } catch {
+      content.innerHTML = `<p class="text-xs opacity-40 text-center py-8">Cannot preview.</p>`;
+    }
+    return;
+  }
+
+  const expr = `vault_files[${JSON.stringify(f.title)}]`;
+  content.innerHTML = `
+    <div class="space-y-3">
+      <p class="text-sm font-semibold">${f.title}</p>
+      <p class="text-xs opacity-50">${_fmtSize(f.size_bytes)}${f.directory ? " · " + f.directory : ""}</p>
+      <p class="text-xs opacity-40">No inline preview available for this file type.</p>
+      <div class="rounded-lg border px-3 py-2 font-mono text-xs opacity-70">open(${_esc(expr)})</div>
+      ${f.download_url ? `<a href="${f.download_url}" class="text-xs underline opacity-50 hover:opacity-80" download>Download</a>` : ""}
+    </div>`;
+}
+
+function _esc(s) {
+  return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+}
+
+document.addEventListener("keydown", e => {
+  if (e.key === "Escape") closeVaultModal();
+});
 
 function cellRoot(cellId) {
   return document.querySelector(`[data-cell-id="${cellId}"]`);

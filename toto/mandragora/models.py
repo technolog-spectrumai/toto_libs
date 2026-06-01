@@ -100,7 +100,18 @@ class Notebook(models.Model):
         on_delete=models.SET_NULL,
         null=True,
         blank=True,
-        related_name="notebook"
+        related_name="notebook",
+    )
+    bucket = models.ForeignKey(
+        "vault.Bucket",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="notebooks",
+        help_text=(
+            "Vault bucket attached to this notebook. "
+            "Files are injected as vault_files dict so you can open(vault_files['name'])."
+        ),
     )
 
     def save(self, *args, **kwargs):

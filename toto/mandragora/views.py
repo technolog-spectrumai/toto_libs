@@ -60,6 +60,7 @@ class NotebookDetailView(LoginRequiredMixin, DetailView):
         context = super().get_context_data(**kwargs)
         notebook = self.get_object()
         context["cells"] = notebook.cells.order_by("position")
+        context["has_bucket"] = notebook.bucket_id is not None
         return PageProcessor().decorate(context, self.request)
 
 
@@ -206,6 +207,68 @@ def cell_result(request, cell_id):
 
 client = KernelClient(addr=getattr(settings, "KERNEL_SERVER_ADDR", "tcp://127.0.0.1:5555"))
 
+
+def _collect_vault_files(notebook) -> dict:
+    """Return {title: abs_path} for every file in notebook.bucket (local storage only)."""
+    if not notebook.bucket_id:
+        return {}
+    from toto.vault.models import VaultFile
+    result = {}
+    for vf in VaultFile.objects.filter(bucket_id=notebook.bucket_id).order_by("title"):
+        try:
+            path = vf.file.path
+        except (ValueError, NotImplementedError):
+            continue
+        key = vf.title
+        if key in result:
+            base, dot, ext = key.rpartition(".")
+            n = 2
+            candidate = f"{base}_{n}.{ext}" if dot else f"{key}_{n}"
+            while candidate in result:
+                n += 1
+                candidate = f"{base}_{n}.{ext}" if dot else f"{key}_{n}"
+            key = candidate
+        result[key] = path
+    return result
+
+
+@api_view(["GET"])
+def notebook_vault_files(request, notebook_id):
+    """Return the list of vault files attached to a notebook, for the Files modal."""
+    notebook = get_object_or_404(Notebook, id=notebook_id)
+    if not notebook.bucket_id:
+        return Response({"bucket": None, "files": []})
+
+    from django.urls import reverse
+    from toto.vault.models import VaultFile
+    bucket = notebook.bucket
+    files_data = []
+    for vf in VaultFile.objects.filter(bucket=bucket).select_related("directory").order_by("title"):
+        try:
+            abs_path = vf.file.path
+        except (ValueError, NotImplementedError):
+            abs_path = None
+        try:
+            download_url = reverse("vault:public_file", args=[bucket.slug, vf.key])
+        except Exception:
+            download_url = None
+        files_data.append({
+            "id": vf.pk,
+            "title": vf.title,
+            "key": vf.key,
+            "file_type": vf.file_type or "",
+            "size_bytes": vf.file_size_bytes,
+            "is_public": vf.is_public,
+            "download_url": download_url,
+            "has_local_path": abs_path is not None,
+            "directory": vf.directory.name if vf.directory else None,
+        })
+
+    return Response({
+        "bucket": {"name": bucket.name, "slug": bucket.slug},
+        "files": files_data,
+    })
+
 @api_view(["POST"])
 def start_kernel(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
@@ -221,6 +284,11 @@ def start_kernel(request, notebook_id):
         "env": kernel.env or {},
         "dependencies": deps,
     }
+
+    # Inject vault file paths if a bucket is attached
+    vault_files = _collect_vault_files(notebook)
+    if vault_files:
+        payload["vault_files"] = vault_files
 
     result = client.start(notebook.id, payload, startup_timeout_ms=kernel.startup_timeout_ms)
     result["installing"] = [

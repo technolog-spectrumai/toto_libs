@@ -6,6 +6,7 @@ from .views import (
     connector_execute, connector_list,
     run_cell,
     start_kernel, stop_kernel, check_kernel, kernel_dependencies,
+    notebook_vault_files,
     create_cell, delete_cell, promote_cell_to_lambda,
 )
 
@@ -24,6 +25,7 @@ urlpatterns = [
     path("kernel/<int:notebook_id>/stop/", stop_kernel, name="stop_kernel"),
     path("kernel/<int:notebook_id>/status/", check_kernel, name="check_kernel"),
     path("kernel/<int:notebook_id>/dependencies/", kernel_dependencies, name="kernel_dependencies"),
+    path("kernel/<int:notebook_id>/vault-files/", notebook_vault_files, name="notebook_vault_files"),
     path("connectors/", connector_list, name="connector_list"),
     path("connectors/execute/", connector_execute, name="connector_execute"),
     path("<int:notebook_id>/cells/create/", create_cell, name="create_cell"),

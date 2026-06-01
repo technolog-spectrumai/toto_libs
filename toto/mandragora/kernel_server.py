@@ -63,6 +63,11 @@ class NotebookKernel:
             "    pass\n"
         )
 
+        vault_files_map = config.get("vault_files", {})
+        if vault_files_map:
+            items = ", ".join(f"{repr(k)}: {repr(v)}" for k, v in vault_files_map.items())
+            self.execute(f"vault_files = {{{items}}}")
+
     def execute(self, code, timeout=None):
         timeout = timeout or self.timeout
 
