@@ -2,9 +2,52 @@
 
 from ..connection import Neo4jClient, Neo4jConnectionError
 
+# ---------------------------------------------------------------------------
+# Mode constants
+# ---------------------------------------------------------------------------
+
+MODE_AUTO = "auto"
+MODE_KEYWORD = "keyword"
+MODE_FULLTEXT = "fulltext"
+MODE_SEMANTIC = "semantic"
+
+# Canonical modes + legacy aliases accepted as valid input
+_KNOWN_MODES = {
+    MODE_AUTO, MODE_KEYWORD, MODE_FULLTEXT, MODE_SEMANTIC,
+    "basic", "advanced", "deep",
+}
+
+# Legacy aliases → canonical display name
+_CANONICAL_DISPLAY = {
+    "basic":    MODE_KEYWORD,
+    "advanced": MODE_KEYWORD,
+    "deep":     MODE_FULLTEXT,
+}
+
+
+def resolve_mode(mode_str: str) -> str:
+    """Normalize any mode string to a known mode. Unknown input → MODE_AUTO."""
+    m = str(mode_str or "").lower().strip()
+    return m if m in _KNOWN_MODES else MODE_AUTO
+
+
+def canonical_mode(mode: str) -> str:
+    """Map legacy aliases to canonical display names; canonical names pass through."""
+    return _CANONICAL_DISPLAY.get(mode, mode)
+
+
+# ---------------------------------------------------------------------------
+# Errors
+# ---------------------------------------------------------------------------
+
 
 class SearchUnavailableError(Exception):
     """Raised when Neo4j is unreachable during a search."""
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers
+# ---------------------------------------------------------------------------
 
 
 def _client():
@@ -39,6 +82,20 @@ def _record_to_dict(record, score_key=None):
     if score_key and record.get(score_key) is not None:
         result["score"] = round(float(record[score_key]), 4)
     return result
+
+
+def _normalize_result(r: dict) -> dict:
+    """Ensure every result has the canonical shape: labels, props, score."""
+    return {
+        "labels": list(r.get("labels") or []),
+        "props": r.get("props") or {},
+        "score": r.get("score", None),
+    }
+
+
+# ---------------------------------------------------------------------------
+# Primitive search functions (unchanged from original)
+# ---------------------------------------------------------------------------
 
 
 def basic_search(q, limit=25):
@@ -110,3 +167,78 @@ def deep_search(q, limit=25, exact=False):
     except Neo4jConnectionError as exc:
         raise SearchUnavailableError(str(exc)) from exc
     return [_record_to_dict(r, score_key="score") for r in records]
+
+
+# ---------------------------------------------------------------------------
+# Smart / unified search
+# ---------------------------------------------------------------------------
+
+
+def semantic_available() -> bool:
+    """Return True when Steven embeddings are enabled (fast, no Ollama call)."""
+    try:
+        from toto.steven.services.embeddings import embeddings_enabled
+        return embeddings_enabled()
+    except Exception:
+        return False
+
+
+def run_search(q: str, mode: str = MODE_AUTO, limit: int = 25, exact: bool = False) -> dict:
+    """Execute a search and return results with metadata.
+
+    Returns a dict with keys:
+        results          list[dict]  — normalized {labels, props, score}
+        requested_mode   str         — canonical name of the user-requested mode
+        effective_mode   str         — canonical name of the mode actually used
+        fallback_used    bool        — True when auto/semantic fell back to keyword
+        fallback_reason  str|None    — why fallback happened (for staff/debug display)
+        semantic_available bool      — whether Steven embeddings are enabled
+    """
+    mode = resolve_mode(mode)
+    requested_canonical = canonical_mode(mode)
+    sem_avail = semantic_available()
+
+    results: list[dict] = []
+    effective_mode = requested_canonical
+    fallback_used = False
+    fallback_reason: str | None = None
+    semantic_done = False  # True iff semantic succeeded
+
+    # --- Try semantic path for auto / semantic modes ---
+    if mode in (MODE_AUTO, MODE_SEMANTIC):
+        try:
+            from toto.ravioli.vector_search import (
+                VectorSearchUnavailable,
+                retrieve_vector_results,
+            )
+            results = retrieve_vector_results(q, top_k=limit)
+            effective_mode = MODE_SEMANTIC
+            semantic_done = True
+        except Exception as exc:
+            fallback_used = True
+            fallback_reason = str(exc)
+
+    # --- Keyword / fulltext path (primary for non-semantic, fallback otherwise) ---
+    if not semantic_done:
+        if mode in ("deep", MODE_FULLTEXT):
+            raw = deep_search(q, limit=limit, exact=exact)
+            effective_mode = MODE_FULLTEXT
+        elif mode == "basic":
+            raw = basic_search(q, limit=limit)
+            effective_mode = MODE_KEYWORD
+        else:
+            # covers: keyword, advanced, auto (fallback), semantic (fallback)
+            raw = advanced_search(q, limit=limit)
+            effective_mode = MODE_KEYWORD
+        results = [_normalize_result(r) for r in raw]
+    else:
+        results = [_normalize_result(r) for r in results]
+
+    return {
+        "results": results,
+        "requested_mode": requested_canonical,
+        "effective_mode": effective_mode,
+        "fallback_used": fallback_used,
+        "fallback_reason": fallback_reason,
+        "semantic_available": sem_avail,
+    }

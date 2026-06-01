@@ -212,44 +212,39 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
 
 @register("ravioli_graph_search")
 def ravioli_graph_search(input_data: dict) -> dict:
-    """Run a graph search (basic / advanced / deep) and return results."""
-    from .services.search import (
-        SearchUnavailableError,
-        advanced_search,
-        basic_search,
-        deep_search,
-    )
+    """Run a graph search and return results with mode metadata.
+
+    Supports modes: auto (default), keyword, fulltext, semantic, and legacy
+    aliases basic / advanced / deep.
+    """
+    from .services.search import MODE_AUTO, SearchUnavailableError, resolve_mode, run_search
 
     data = input_data.get("data") or {}
     q = str(data.get("q") or "").strip()
-    mode = data.get("mode", "basic")
+    mode = resolve_mode(data.get("mode", MODE_AUTO))
     limit = max(1, min(200, int(data.get("limit", 25))))
     exact = bool(data.get("exact", False))
 
     if not q:
         raise ValueError("Search query 'q' is required.")
 
-    if mode not in ("basic", "advanced", "deep"):
-        mode = "basic"
-
     try:
-        if mode == "deep":
-            results = deep_search(q, limit=limit, exact=exact)
-        elif mode == "advanced":
-            results = advanced_search(q, limit=limit)
-        else:
-            results = basic_search(q, limit=limit)
+        sr = run_search(q, mode=mode, limit=limit, exact=exact)
     except SearchUnavailableError as exc:
         raise RuntimeError(f"Neo4j unavailable: {exc}") from exc
 
     return {
         "data": {
             "q": q,
-            "mode": mode,
             "limit": limit,
             "exact": exact,
-            "result_count": len(results),
-            "results": results,
+            "result_count": len(sr["results"]),
+            "results": sr["results"],
+            "requested_mode": sr["requested_mode"],
+            "effective_mode": sr["effective_mode"],
+            "fallback_used": sr["fallback_used"],
+            "fallback_reason": sr["fallback_reason"],
+            "semantic_available": sr["semantic_available"],
         }
     }
 

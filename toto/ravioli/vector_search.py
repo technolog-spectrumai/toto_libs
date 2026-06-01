@@ -20,12 +20,21 @@ def _safe_id(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value or ""))
 
 
-def retrieve_vector_context(query: str, top_k: int = 5) -> str:
-    """Embed *query* via Steven, search the Neo4j vector index, return plain-text
-    context suitable for injection into an LLM system prompt.
+def _to_json_safe(v):
+    """Convert Neo4j driver values to JSON-serializable Python types."""
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, list):
+        return [_to_json_safe(i) for i in v]
+    if isinstance(v, dict):
+        return {k: _to_json_safe(val) for k, val in v.items()}
+    return str(v)
 
-    Raises VectorSearchUnavailable when embeddings or Neo4j are unreachable.
-    Does not call an LLM itself.
+
+def _shared_vector_query(query: str, top_k: int) -> list:
+    """Embed *query* and run the vector index query. Returns raw Neo4j records.
+
+    Raises VectorSearchUnavailable on any failure.
     """
     try:
         query_vector = embed_text(query)
@@ -43,10 +52,11 @@ def retrieve_vector_context(query: str, top_k: int = 5) -> str:
     client = Neo4jClient()
     try:
         records = client.run_cypher(
-            f"CALL db.index.vector.queryNodes($index, $k, $vector) "
-            f"YIELD node, score "
-            f"RETURN node.{text_prop} AS text, score "
-            f"ORDER BY score DESC",
+            "CALL db.index.vector.queryNodes($index, $k, $vector) "
+            "YIELD node, score "
+            f"RETURN labels(node) AS labels, properties(node) AS props, "
+            f"node.{text_prop} AS text, score "
+            "ORDER BY score DESC",
             {"index": index_name, "k": int(top_k), "vector": query_vector},
         )
     except Neo4jConnectionError as exc:
@@ -55,6 +65,37 @@ def retrieve_vector_context(query: str, top_k: int = 5) -> str:
         raise VectorSearchUnavailable(f"Vector query failed: {exc}") from exc
     finally:
         client.close()
+
+    return records
+
+
+def retrieve_vector_results(query: str, top_k: int = 25) -> list[dict]:
+    """Embed *query* and return structured search results from the Neo4j vector index.
+
+    Each result: ``{"labels": [...], "props": {...}, "score": float}``.
+    Raises VectorSearchUnavailable on any failure.
+    """
+    records = _shared_vector_query(query, top_k)
+    results = []
+    for record in records:
+        raw_props = record.get("props") or {}
+        props = {k: _to_json_safe(v) for k, v in raw_props.items()}
+        score = record.get("score")
+        results.append({
+            "labels": list(record.get("labels") or []),
+            "props": props,
+            "score": round(float(score), 4) if score is not None else None,
+        })
+    return results
+
+
+def retrieve_vector_context(query: str, top_k: int = 5) -> str:
+    """Embed *query* via Steven, return plain-text context for LLM injection.
+
+    Raises VectorSearchUnavailable when embeddings or Neo4j are unreachable.
+    Does not call an LLM itself.
+    """
+    records = _shared_vector_query(query, top_k)
 
     hits = []
     for record in records:

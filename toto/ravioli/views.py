@@ -590,19 +590,18 @@ def run_projection_stream(request):
 
 
 def search_view(request):
+    from django.conf import settings as _settings
+
     from .services.search import (
+        MODE_AUTO,
         SearchUnavailableError,
-        advanced_search,
-        basic_search,
-        deep_search,
+        resolve_mode,
+        run_search,
+        semantic_available,
     )
 
-    MODES = ("basic", "advanced", "deep")
-
     q = request.GET.get("q", "").strip()
-    mode = request.GET.get("mode", "basic")
-    if mode not in MODES:
-        mode = "basic"
+    mode = resolve_mode(request.GET.get("mode", MODE_AUTO))
     exact = request.GET.get("exact") == "1"
     exec_mode = request.GET.get("exec", "celery")  # "celery" | "direct"
     try:
@@ -613,23 +612,29 @@ def search_view(request):
     results = []
     error = None
     searched = False
-    wf_run = None        # WorkflowRun instance (Celery path)
-    wf_run_id = None     # its PK, passed to template for polling
+    wf_run_id = None
+
+    # Search metadata — populated on direct execution; Celery path fills via status polling
+    _empty_meta = {
+        "requested_mode": mode,
+        "effective_mode": mode,
+        "fallback_used": False,
+        "fallback_reason": None,
+        "semantic_available": semantic_available(),
+    }
+    search_meta = dict(_empty_meta)
 
     if q:
         searched = True
         if exec_mode == "direct":
             try:
-                if mode == "deep":
-                    results = deep_search(q, limit=limit, exact=exact)
-                elif mode == "advanced":
-                    results = advanced_search(q, limit=limit)
-                else:
-                    results = basic_search(q, limit=limit)
+                sr = run_search(q, mode=mode, limit=limit, exact=exact)
+                results = sr["results"]
+                search_meta = {k: sr[k] for k in _empty_meta}
             except SearchUnavailableError as exc:
                 error = str(exc)
         else:
-            # Workflow / Celery path — creates a WorkflowRun visible in the Workflows UI
+            # Celery path — metadata arrives via polling the status endpoint
             try:
                 wf_run = _trigger_workflow(
                     "ravioli-graph-search",
@@ -641,10 +646,21 @@ def search_view(request):
             except RuntimeError as exc:
                 error = str(exc)
 
-    modes = [
-        ("basic",    "Basic",    "fa-solid fa-text-size"),
-        ("advanced", "Advanced", "fa-solid fa-list-ul"),
-        ("deep",     "Deep",     "fa-solid fa-layer-group"),
+    # Controls visibility: staff or DEBUG users see the Celery/Direct toggle
+    show_exec_controls = (
+        (request.user.is_authenticated and request.user.is_staff)
+        or bool(getattr(_settings, "DEBUG", False))
+    )
+
+    search_method_choices = [
+        ("auto",     "Smart / Auto",  "fa-solid fa-wand-magic-sparkles",
+         "Semantic when available, keyword otherwise."),
+        ("keyword",  "Keyword",       "fa-solid fa-text-size",
+         "Searches name, description, and text fields."),
+        ("fulltext", "Full-text",     "fa-solid fa-layer-group",
+         "Lucene full-text index on Chunk nodes."),
+        ("semantic", "Semantic",      "fa-solid fa-brain",
+         "Vector similarity search. Falls back to keyword if embeddings are unavailable."),
     ]
 
     context = PageProcessor().decorate(
@@ -659,7 +675,10 @@ def search_view(request):
             "searched": searched,
             "result_count": len(results),
             "wf_run_id": wf_run_id,
-            "modes": modes,
+            "show_exec_controls": show_exec_controls,
+            "search_meta": search_meta,
+            "search_meta_json": json.dumps(search_meta).replace("</", "<\\/"),
+            "search_method_choices": search_method_choices,
             "initial_results_json": json.dumps(results).replace("</", "<\\/"),
         },
         request,
@@ -680,12 +699,20 @@ def search_status_view(request, run_id):
     wf_status = run.status  # pending / running / completed / failed / cancelled
 
     if wf_status == WorkflowRun.COMPLETED:
-        # Results live in the single node-run's output_data
         node_run = run.node_runs.order_by("id").last()
         output = (node_run.output_data or {}) if node_run else {}
-        results = (output.get("data") or {}).get("results", [])
+        data = output.get("data") or {}
+        results = data.get("results", [])
         try:
-            return JsonResponse({"status": "done", "results": results})
+            return JsonResponse({
+                "status": "done",
+                "results": results,
+                "requested_mode": data.get("requested_mode", "auto"),
+                "effective_mode": data.get("effective_mode", "keyword"),
+                "fallback_used": bool(data.get("fallback_used", False)),
+                "fallback_reason": data.get("fallback_reason"),
+                "semantic_available": bool(data.get("semantic_available", False)),
+            })
         except (TypeError, ValueError) as exc:
             return JsonResponse({"status": "error", "error": f"Serialization failed: {exc}"}, status=500)
 
