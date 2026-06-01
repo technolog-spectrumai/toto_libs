@@ -75,6 +75,28 @@ class Command(IngressCommand):
                 content="import sys\nprint(sys.version)",
                 position=3,
             )
+            Cell.objects.create(
+                notebook=notebook,
+                cell_type=Cell.CODE,
+                content="""\
+# files is available in every notebook cell — no import needed.
+# It reads and writes inside WORKFLOW_FILE_CONNECTOR_ROOT (media/workflow-files/).
+
+# Write a JSON file
+files.write_json("notebook-demo/hello.json", {"message": "hello from notebook", "step": 1})
+
+# Read it back
+data = files.read_json("notebook-demo/hello.json")
+print("read back:", data)
+
+# Append a log line
+files.append("notebook-demo/run.log", "notebook cell executed\\n")
+
+# List directory
+print("files in notebook-demo/:", files.list("notebook-demo"))
+""",
+                position=4,
+            )
         else:
             self.stdout.write(self.style.WARNING(f"Notebook already exists: {notebook.title}"))
 
@@ -494,6 +516,7 @@ class Command(IngressCommand):
             report_templates["weather_temperature"],
             report_templates["weather_precipitation"],
         )
+        self._seed_file_client_workflow(report_templates["pipeline_table"])
 
     def _upsert_lambda(self, name: str, src: str) -> LambdaFunction:
         fn, created = LambdaFunction.objects.update_or_create(
@@ -1175,6 +1198,57 @@ print(json.dumps({
         if report_created:
             self.stdout.write(self.style.SUCCESS(f"  + report node: {report_label}"))
 
+    def _seed_file_client_workflow(self, report_template=None):
+        """write → read → summarise: demonstrates files.write / files.read in lambdas."""
+        wf, created = Workflow.objects.get_or_create(
+            name="File Client Demo",
+            defaults={"description": "Write data to a file, read it back, and summarise — shows files.write_json / files.read_json inside lambda nodes."},
+        )
+        if not created:
+            self.stdout.write(self.style.WARNING("Workflow already exists: File Client Demo"))
+            return
+
+        fn_write = self._upsert_lambda("file_demo_write", """\
+import json
+
+payload = _input.get("data", {}).get("payload", {"demo": True, "value": 42})
+files.write_json("workflow-demo/input.json", payload)
+print(json.dumps({"data": {"written": True, "path": "workflow-demo/input.json", "payload": payload}, "route": "read"}))
+""")
+        fn_read = self._upsert_lambda("file_demo_read", """\
+import json
+
+data = files.read_json("workflow-demo/input.json")
+files.append("workflow-demo/run.log", "read step executed\\n")
+print(json.dumps({"data": {"read": data, "log_path": "workflow-demo/run.log"}, "route": "summarise"}))
+""")
+        fn_summarise = self._upsert_lambda("file_demo_summarise", """\
+import json
+
+read_data = _input.get("data", {}).get("read", {})
+rows = [{"field": k, "value": str(v)} for k, v in read_data.items()]
+files.write_json("workflow-demo/output.json", {"rows": rows, "count": len(rows)})
+print(json.dumps({"data": {"rows": rows, "output_path": "workflow-demo/output.json"}, "route": "end"}))
+""")
+
+        n1 = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Write File",   lambda_function=fn_write,     position_x=0, position_y=0)
+        n2 = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Read File",    lambda_function=fn_read,      position_x=0, position_y=120)
+        n3 = WorkflowNode.objects.create(workflow=wf, node_type=WorkflowNode.LAMBDA, label="Summarise",    lambda_function=fn_summarise, position_x=0, position_y=240)
+        WorkflowEdge.objects.create(workflow=wf, source=n1, target=n2)
+        WorkflowEdge.objects.create(workflow=wf, source=n2, target=n3)
+        if report_template:
+            n_report = WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.REPORT,
+                label="File Output Report",
+                report_template=report_template,
+                config={"title": "File Client Demo Output", "route": "end"},
+                position_x=0,
+                position_y=360,
+            )
+            WorkflowEdge.objects.create(workflow=wf, source=n3, target=n_report)
+        self.stdout.write(self.style.SUCCESS("Created workflow: File Client Demo"))
+
     # ------------------------------------------------------------------
     #  Fake run seeds
     # ------------------------------------------------------------------
@@ -1188,6 +1262,7 @@ print(json.dumps({
         self._seed_metrics_trend_runs(now)
         self._seed_channel_mix_runs(now)
         self._seed_weather_runs(now)
+        self._seed_file_client_runs(now)
 
     def _nr(self, run, node, status, input_data, output_data, ago_start, ago_end=None, error=""):
         """Create a WorkflowNodeRun with realistic timestamps."""
@@ -1593,6 +1668,52 @@ print(json.dumps({
             start_ago=timedelta(minutes=19),
             finish_ago=timedelta(minutes=17),
         )
+
+    def _seed_file_client_runs(self, now):
+        try:
+            wf = Workflow.objects.get(name="File Client Demo")
+        except Workflow.DoesNotExist:
+            return
+
+        if WorkflowRun.objects.filter(workflow=wf).exists():
+            self.stdout.write(self.style.WARNING("Runs already exist: File Client Demo"))
+            return
+
+        nodes = {n.label: n for n in wf.nodes.all()}
+        edges = list(wf.edges.select_related("source", "target").all())
+        if "Write File" not in nodes:
+            return
+
+        payload = {"demo": True, "value": 42}
+        rows = [{"field": "demo", "value": "True"}, {"field": "value", "value": "42"}]
+        write_out = {"data": {"written": True, "path": "workflow-demo/input.json", "payload": payload}, "routes": ["read"]}
+        read_out  = {"data": {"read": payload, "log_path": "workflow-demo/run.log"}, "routes": ["summarise"]}
+        summarise_out = {"data": {"rows": rows, "output_path": "workflow-demo/output.json"}, "routes": ["end"]}
+
+        r1 = WorkflowRun.objects.create(
+            workflow=wf, status=WorkflowRun.COMPLETED,
+            input_data={"data": {"payload": payload}},
+            output_data=summarise_out,
+            started_at=now - timedelta(minutes=8),
+            completed_at=now - timedelta(minutes=7),
+        )
+        self._nr(r1, nodes["Write File"],  WorkflowNodeRun.COMPLETED, r1.input_data, write_out,     timedelta(minutes=8),               timedelta(minutes=7, seconds=50))
+        self._nr(r1, nodes["Read File"],   WorkflowNodeRun.COMPLETED, write_out,     read_out,      timedelta(minutes=7, seconds=50),   timedelta(minutes=7, seconds=40))
+        self._nr(r1, nodes["Summarise"],   WorkflowNodeRun.COMPLETED, read_out,      summarise_out, timedelta(minutes=7, seconds=40),   timedelta(minutes=7, seconds=30))
+        if "File Output Report" in nodes:
+            self._nr(
+                r1,
+                nodes["File Output Report"],
+                WorkflowNodeRun.COMPLETED,
+                summarise_out,
+                {"data": {"report": {"title": "File Client Demo Output"}}, "routes": ["end"]},
+                timedelta(minutes=7, seconds=20),
+                timedelta(minutes=7),
+            )
+        for e in edges:
+            self._er(r1, e, True, timedelta(minutes=7, seconds=50))
+
+        self.stdout.write(self.style.SUCCESS("Seeded 1 run: File Client Demo"))
 
     def _seed_weather_runs(self, now):
         try:

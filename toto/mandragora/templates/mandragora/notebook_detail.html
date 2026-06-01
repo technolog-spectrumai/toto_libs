@@ -108,8 +108,7 @@
             data-functional-zone-id="notebook-cell-{{ cell.id }}"
             data-cell-id="{{ cell.id }}"
             data-url-run="{% url 'mandragora:run_cell' cell.id %}"
-            data-url-delete="{% url 'mandragora:delete_cell' cell.id %}"
-            data-url-promote="{% url 'mandragora:promote_cell' cell.id %}">
+            data-url-delete="{% url 'mandragora:delete_cell' cell.id %}">
 
             <!-- Cell header -->
             <div class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-3"
@@ -129,7 +128,6 @@
                 </span>
 
                 {% if cell.cell_type == "code" %}
-                  <span id="ai-toolbar-cell-{{ cell.id }}" class="flex items-center gap-2"></span>
                   <button
                     data-cell-id="{{ cell.id }}"
                     onclick="runCell(this)"
@@ -137,13 +135,6 @@
                     class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-90">
                     <i class="fa-solid fa-play"></i>
                     {% trans "Run" %}
-                  </button>
-                  <button
-                    onclick="promoteCellToLambda({{ cell.id }})"
-                    :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
-                    class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1 text-xs font-semibold transition">
-                    <i class="fa-solid fa-cloud-arrow-up"></i>
-                    {% trans "Promote" %}
                   </button>
                 {% endif %}
                 <button
@@ -270,9 +261,8 @@ document.addEventListener("DOMContentLoaded", () => {
       },
       replaceSelection: content => window.NotebookEditors["{{ cell.id }}"].session.replace(window.NotebookEditors["{{ cell.id }}"].getSelectionRange(), content),
       getSelection: () => window.NotebookEditors["{{ cell.id }}"].getSelectedText() || null,
-      metadata: { preferredImportMode: "insert", cellId: "{{ cell.id }}" },
+      metadata: { cellId: "{{ cell.id }}" },
     });
-    window.FunctionalZones.renderZoneToolbar(document.getElementById("ai-toolbar-cell-{{ cell.id }}"), zoneId, { importLabel: "Import" });
   }
   {% endif %}{% endfor %}
 });
@@ -428,21 +418,5 @@ async function deleteCell(cellId) {
   }
 }
 
-async function promoteCellToLambda(cellId) {
-  try {
-    const editor = ace.edit(`editor-${cellId}`);
-    const res    = await fetch(cellUrl(cellId, "urlPromote"), {
-      method: "POST",
-      headers: { "Content-Type": "application/json", "X-CSRFToken": getCsrf() },
-      body: JSON.stringify({ content: editor.getValue(), function_name: `notebook_cell_${cellId}` }),
-    });
-    const data = await res.json();
-    if (data.status === "created" || data.status === "updated") {
-      alert(`Lambda function "${data.function_name}" ${data.status}.`);
-    }
-  } catch (err) {
-    console.error("promoteCellToLambda error:", err);
-  }
-}
 </script>
 {% endblock %}

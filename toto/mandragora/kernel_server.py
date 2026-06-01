@@ -34,6 +34,14 @@ class NotebookKernel:
                 specifier = dep
             self.execute(f"!pip install {specifier}")
 
+        self.execute(
+            "try:\n"
+            "    from toto.core.file_client import FileClient as _FileClient\n"
+            "    files = _FileClient()\n"
+            "except Exception:\n"
+            "    pass\n"
+        )
+
     def execute(self, code, timeout=None):
         timeout = timeout or self.timeout
 

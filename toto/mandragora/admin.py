@@ -7,6 +7,7 @@ from django.utils.html import format_html
 from .models import (
     Cell, ComputeKernel, KernelDependency, Notebook,
 )
+from .views import ensure_lambda_kernel
 
 
 _STATUS_COLORS = {
@@ -120,3 +121,24 @@ class CellAdmin(admin.ModelAdmin):
     list_filter = ("cell_type", "notebook")
     ordering = ("notebook", "position")
     search_fields = ("content",)
+    actions = ["promote_to_lambda"]
+
+    @admin.action(description="Promote selected cells to Lambda functions")
+    def promote_to_lambda(self, request, queryset):
+        from toto.workflows.models import LambdaFunction  # noqa: PLC0415
+        created_count = updated_count = 0
+        for cell in queryset.filter(cell_type="code"):
+            function_name = f"notebook_cell_{cell.id}"
+            lambda_fn, created = LambdaFunction.objects.update_or_create(
+                function_name=function_name,
+                defaults={"content": cell.content, "stdout": "", "stderr": ""},
+            )
+            ensure_lambda_kernel(lambda_fn)
+            if created:
+                created_count += 1
+            else:
+                updated_count += 1
+        self.message_user(
+            request,
+            f"Promoted {created_count} new + {updated_count} updated lambda function(s).",
+        )

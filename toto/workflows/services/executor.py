@@ -202,10 +202,13 @@ class WorkflowExecutor:
         return {"data": wo.data, "routes": wo.routes}
 
     def _execute_lambda_content(self, content: str, input_data: dict) -> dict:
+        from toto.core.file_client import FileClient
+
         stdout = StringIO()
         scope = {
             "__name__": "__workflow_lambda__",
             "_input": input_data,
+            "files": FileClient(),
         }
         with redirect_stdout(stdout):
             exec(content, scope, scope)

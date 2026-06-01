@@ -244,63 +244,17 @@
       <header>Preview import into ${escapeHtml(zone.label)}</header>
       <main>
         <section><h2>Current</h2><pre>${escapeHtml(getContent(zoneId))}</pre></section>
-        <section><h2>Steven output</h2><pre>${escapeHtml(block.content)}</pre></section>
+        <section><h2>New content</h2><pre>${escapeHtml(block.content)}</pre></section>
       </main>
     `);
     previewWindow.document.close();
-  }
-
-  function askStevenAboutZone(zoneId) {
-    const zone = getZone(zoneId);
-    if (!zone) return;
-    setActiveZone(zoneId);
-    const prompt = document.querySelector("[data-steven-prompt]");
-    if (prompt) {
-      const selected = typeof zone.getSelection === "function" ? zone.getSelection() : "";
-      prompt.value = `For ${zone.label} (${zone.language}), suggest content I can explicitly import.${selected ? `\n\nCurrent selection:\n${selected}` : ""}`;
-      prompt.focus();
-    }
-    window.dispatchEvent(new CustomEvent("steven-open", { detail: { zone } }));
   }
 
   function renderZoneToolbar(container, zoneId, options) {
     const zone = getZone(zoneId);
     if (!zone || !container) return;
     container.innerHTML = "";
-    container.appendChild(createActionButton("Ask Steven", "fa-solid fa-robot", () => askStevenAboutZone(zoneId)));
-    container.appendChild(createActionButton(options?.importLabel || "Import", "fa-solid fa-file-import", () => importLatestBlockIntoZone(zoneId)));
     if (options?.extraButtons) options.extraButtons.forEach(button => container.appendChild(button));
-  }
-
-  function renderStevenActions(resultElement) {
-    if (!resultElement || resultElement.dataset.functionalZoneParsed === "true") return;
-    const sourceMessageId = `steven-${Date.now()}`;
-    const text = resultElement.textContent || "";
-    const blocks = parseAIOutputBlocks(text, sourceMessageId);
-    rememberAIBlocks(blocks);
-    resultElement.dataset.functionalZoneParsed = "true";
-
-    blocks.forEach(block => {
-      const zones = getCompatibleZones(block.language);
-      const actionBar = document.createElement("div");
-      actionBar.className = "mt-3 flex flex-wrap gap-2 border-t border-current/10 pt-3 whitespace-normal";
-
-      const activeZone = getActiveZone();
-      if (activeZone && zones.some(zone => zone.id === activeZone.id)) {
-        actionBar.appendChild(createActionButton(`Insert into ${activeZone.label}`, "fa-solid fa-arrow-right-to-bracket", () => {
-          applyToZone(activeZone.id, block.content, activeZone.metadata?.preferredImportMode || "insert");
-        }));
-      }
-
-      zones.slice(0, 4).forEach(zone => {
-        if (activeZone && zone.id === activeZone.id) return;
-        actionBar.appendChild(createActionButton(`Insert into ${zone.label}`, "fa-solid fa-arrow-right-to-bracket", () => {
-          applyToZone(zone.id, block.content, zone.metadata?.preferredImportMode || "insert");
-        }));
-      });
-
-      if (actionBar.children.length) resultElement.appendChild(actionBar);
-    });
   }
 
   function updateZoneChrome() {
@@ -323,17 +277,6 @@
   }
 
   document.addEventListener("DOMContentLoaded", initDeclarativeZones);
-  document.body?.addEventListener("htmx:beforeRequest", event => {
-    const target = event.detail?.target;
-    if (target?.id === "steven-chat-result") {
-      delete target.dataset.functionalZoneParsed;
-    }
-  });
-  document.body?.addEventListener("htmx:afterSwap", event => {
-    if (event.detail?.target?.id === "steven-chat-result") {
-      renderStevenActions(event.detail.target);
-    }
-  });
 
   window.FunctionalZones = {
     registerZone,
@@ -350,8 +293,6 @@
     rememberAIBlocks,
     getAIBlocks,
     renderZoneToolbar,
-    renderStevenActions,
-    askStevenAboutZone,
     importLatestBlockIntoZone,
     previewLatestBlockForZone,
   };
