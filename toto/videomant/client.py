@@ -3,7 +3,9 @@ import threading
 from dataclasses import dataclass, field
 from typing import Callable
 
-_SHELL_TOKENS = {"&&", "||", "|", ";", ">", "<", "`", "$("}
+# `;` is a valid ffmpeg filtergraph chain separator (e.g. in -lavfi/-filter_complex) and is
+# harmless in subprocess args since shell=False — it is intentionally excluded here.
+_SHELL_TOKENS = {"&&", "||", "|", ">", "<", "`", "$("}
 
 
 def validate_argv(argv: list) -> None:

@@ -87,3 +87,6 @@ def gif(self, node_run_id: int) -> dict:
 @shared_task(bind=True, name="toto.videomant.tasks.concat", time_limit=7300, soft_time_limit=7200)
 def concat(self, node_run_id: int) -> dict:
     return _run_task(self, node_run_id, "videomant.concat")
+
+
+from . import tasks_direct as _tasks_direct  # noqa: E402,F401 — ensure run_direct is registered
