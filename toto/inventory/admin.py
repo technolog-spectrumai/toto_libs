@@ -64,9 +64,10 @@ class InventorySiteAdmin(admin.ModelAdmin):
         "operator",
         "address",
         "is_active",
+        "is_virtual",
         "created_at",
     )
-    list_filter = ("site_type", "is_active", "created_at")
+    list_filter = ("site_type", "is_active", "is_virtual", "created_at")
     search_fields = ("name", "slug", "site_type", "operator__name")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at",)

@@ -55,6 +55,7 @@ class InventorySiteForm(forms.ModelForm):
             "operator",
             "address",
             "is_active",
+            "is_virtual",
             "metadata",
         ]
 

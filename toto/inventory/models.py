@@ -179,6 +179,10 @@ class InventorySite(DomainEntity):
     )
 
     is_active = models.BooleanField(default=True)
+    is_virtual = models.BooleanField(
+        default=False,
+        help_text="Virtual sites have no physical location (e.g. cloud storage, in-transit, write-off pool).",
+    )
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -189,6 +193,7 @@ class InventorySite(DomainEntity):
             models.Index(fields=["site_type"]),
             models.Index(fields=["operator"]),
             models.Index(fields=["is_active"]),
+            models.Index(fields=["is_virtual"]),
         ]
 
     def __str__(self):

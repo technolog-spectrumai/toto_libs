@@ -26,6 +26,13 @@
 {% endblock %}
 
 {% block inventory_content %}
+{% if site.is_virtual %}
+<div :class="darkMode ? 'bg-caution-dark/15 border-caution-dark text-caution-dark' : 'bg-caution-light/15 border-caution-light text-caution-light'"
+     class="rounded-xl border px-4 py-3 text-sm font-semibold flex items-center gap-2 mb-4">
+  <i class="fa-solid fa-cloud"></i>
+  {% trans "This is a virtual site — it has no physical location. Items assigned here are logically tracked but not physically stored anywhere." %}
+</div>
+{% endif %}
 <div class="grid gap-6 lg:grid-cols-[280px_minmax(0,1fr)]">
 
   <div class="space-y-4">
@@ -56,6 +63,18 @@
         {% else %}
         <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold">
           <i class="fa-solid fa-pause mr-1"></i>{% trans "Inactive" %}
+        </span>
+        {% endif %}
+      </div>
+      <div class="border-t py-2" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <p class="opacity-60 text-xs">{% trans "Virtual" %}</p>
+        {% if site.is_virtual %}
+        <span :class="darkMode ? 'text-caution-dark' : 'text-caution-light'" class="font-semibold">
+          <i class="fa-solid fa-cloud mr-1"></i>{% trans "Virtual site" %}
+        </span>
+        {% else %}
+        <span class="font-semibold opacity-60">
+          <i class="fa-solid fa-warehouse mr-1"></i>{% trans "Physical site" %}
         </span>
         {% endif %}
       </div>

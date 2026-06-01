@@ -40,13 +40,21 @@
         <p class="font-bold text-lg">{{ site.name }}</p>
         <p class="text-xs opacity-50 mt-0.5">{{ site.site_type|default:"—" }}</p>
       </div>
-      {% if site.is_active %}
-      <span :class="darkMode ? 'text-success-dark bg-success-dark/10' : 'text-success-light bg-success-light/10'"
-            class="shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Active" %}</span>
-      {% else %}
-      <span :class="darkMode ? 'text-warn-dark bg-warn-dark/10' : 'text-warn-light bg-warn-light/10'"
-            class="shrink-0 text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Inactive" %}</span>
-      {% endif %}
+      <div class="flex flex-col items-end gap-1 shrink-0">
+        {% if site.is_active %}
+        <span :class="darkMode ? 'text-success-dark bg-success-dark/10' : 'text-success-light bg-success-light/10'"
+              class="text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Active" %}</span>
+        {% else %}
+        <span :class="darkMode ? 'text-warn-dark bg-warn-dark/10' : 'text-warn-light bg-warn-light/10'"
+              class="text-[10px] font-bold rounded-full px-2 py-0.5">{% trans "Inactive" %}</span>
+        {% endif %}
+        {% if site.is_virtual %}
+        <span :class="darkMode ? 'text-caution-dark bg-caution-dark/10' : 'text-caution-light bg-caution-light/10'"
+              class="text-[10px] font-bold rounded-full px-2 py-0.5">
+          <i class="fa-solid fa-cloud mr-0.5"></i>{% trans "Virtual" %}
+        </span>
+        {% endif %}
+      </div>
     </div>
     <div class="mt-4 space-y-1.5 text-sm opacity-60">
       <p><i class="fa-solid fa-user-gear mr-2 w-4"></i>{% if site.operator %}{{ site.operator }}{% else %}{% trans "No operator" %}{% endif %}</p>
