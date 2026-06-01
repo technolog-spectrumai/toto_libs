@@ -43,8 +43,10 @@ _silver_oz_per_aureus = AUR_GOLD_OZ * GOLD_SILVER_RATIO
 
 gold_aur = (GOLD_BAR_OZ / AUR_GOLD_OZ).quantize(Q9)
 gold_asr = (gold_aur * ASR_PER_AUR).quantize(Q9)
-silver_aur = (SILVER_BAR_OZ / _silver_oz_per_aureus).quantize(Q9)
-silver_asr = (silver_aur * ASR_PER_AUR).quantize(Q9)
+# Compute silver_asr directly from raw values to avoid rounding silver_aur first.
+# Multiplying the already-rounded silver_aur × 1000 gives 6666.666667, not 6666.666666667.
+silver_asr = (SILVER_BAR_OZ * ASR_PER_AUR / _silver_oz_per_aureus).quantize(Q9)
+silver_aur = (silver_asr / ASR_PER_AUR).quantize(Q9)
 total_aur = (gold_aur + silver_aur).quantize(Q9)
 total_asr = (gold_asr + silver_asr).quantize(Q9)
 
