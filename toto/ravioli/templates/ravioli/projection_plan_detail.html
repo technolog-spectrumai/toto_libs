@@ -125,10 +125,11 @@
       <h2 class="flex items-center gap-2 text-xl font-bold">
         <i class="fa-solid fa-circle-nodes"></i>{% trans "Node changes" %}</h2>
 
+      {% trans "Create" as lbl_create %}{% trans "Update" as lbl_update %}{% trans "Delete" as lbl_delete %}
       <div class="mt-5 grid gap-5 lg:grid-cols-3">
-        {% include "ravioli/projection_plan_node_bucket.html" with title="{% trans 'Create' %}" icon="fa-plus" items=node_create %}
-        {% include "ravioli/projection_plan_node_bucket.html" with title="{% trans 'Update' %}" icon="fa-pen" items=node_update %}
-        {% include "ravioli/projection_plan_node_bucket.html" with title="{% trans 'Delete' %}" icon="fa-trash" items=node_delete %}
+        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_create icon="fa-plus" items=node_create %}
+        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_update icon="fa-pen" items=node_update %}
+        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_delete icon="fa-trash" items=node_delete %}
       </div>
     </section>
 
@@ -139,9 +140,9 @@
         <i class="fa-solid fa-link"></i>{% trans "Relationship changes" %}</h2>
 
       <div class="mt-5 grid gap-5 lg:grid-cols-3">
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title="{% trans 'Create' %}" icon="fa-plus" items=relationship_create %}
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title="{% trans 'Update' %}" icon="fa-pen" items=relationship_update %}
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title="{% trans 'Delete' %}" icon="fa-trash" items=relationship_delete %}
+        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_create icon="fa-plus" items=relationship_create %}
+        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_update icon="fa-pen" items=relationship_update %}
+        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_delete icon="fa-trash" items=relationship_delete %}
       </div>
     </section>
 
