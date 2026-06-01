@@ -655,7 +655,8 @@ def search_view(request):
             "result_count": len(results),
             "run_id": run_id,
             "modes": modes,
-            "initial_results_json": json.dumps(results),
+            # Escape </  so the JSON literal can't break the <script> block.
+            "initial_results_json": json.dumps(results).replace("</", "<\\/"),
         },
         request,
     )
@@ -675,4 +676,9 @@ def search_status_view(request, run_id):
         payload["results"] = cache.get(f"search:{run_id}:results", [])
     elif status == "error":
         payload["error"] = cache.get(f"search:{run_id}:error", "Unknown error")
-    return JsonResponse(payload)
+
+    # Guard against non-serializable values that would produce a 500 HTML page
+    try:
+        return JsonResponse(payload)
+    except (TypeError, ValueError) as exc:
+        return JsonResponse({"status": "error", "error": f"Result serialization failed: {exc}"}, status=500)

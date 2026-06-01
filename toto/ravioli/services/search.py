@@ -11,11 +11,30 @@ def _client():
     return Neo4jClient()
 
 
+def _to_json_safe(v):
+    """Recursively convert Neo4j driver values to JSON-serializable Python types.
+
+    The driver can return temporal types (DateTime, Date, Time, Duration) and
+    spatial types (Point) that are not handled by the standard json module or
+    DjangoJSONEncoder.  Converting them to str/float is safe enough for display.
+    """
+    if v is None or isinstance(v, (bool, int, float, str)):
+        return v
+    if isinstance(v, list):
+        return [_to_json_safe(i) for i in v]
+    if isinstance(v, dict):
+        return {k: _to_json_safe(val) for k, val in v.items()}
+    # neo4j temporal: DateTime, Date, Time, Duration → ISO string via str()
+    # neo4j spatial: Point → "POINT(x y)" via str()
+    return str(v)
+
+
 def _record_to_dict(record, score_key=None):
-    """Convert a raw neo4j Record into a plain dict for template rendering."""
+    """Convert a raw neo4j Record into a plain JSON-safe dict."""
     node = record.get("n") or record.get("node")
     labels = list(record.get("labels") or (node.labels if node else []))
-    props = dict(node) if node else {}
+    raw_props = dict(node) if node else {}
+    props = {k: _to_json_safe(v) for k, v in raw_props.items()}
     result = {"labels": labels, "props": props}
     if score_key and record.get(score_key) is not None:
         result["score"] = round(float(record[score_key]), 4)
