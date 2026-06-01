@@ -587,3 +587,92 @@ def run_projection_stream(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
+
+
+def search_view(request):
+    import uuid
+    from django.core.cache import cache
+    from .services.search import (
+        SearchUnavailableError,
+        advanced_search,
+        basic_search,
+        deep_search,
+    )
+
+    MODES = ("basic", "advanced", "deep")
+
+    q = request.GET.get("q", "").strip()
+    mode = request.GET.get("mode", "basic")
+    if mode not in MODES:
+        mode = "basic"
+    exact = request.GET.get("exact") == "1"
+    exec_mode = request.GET.get("exec", "celery")  # "celery" | "direct"
+    try:
+        limit = max(1, min(200, int(request.GET.get("limit", 25))))
+    except (ValueError, TypeError):
+        limit = 25
+
+    results = []
+    error = None
+    searched = False
+    run_id = None
+
+    if q:
+        searched = True
+        if exec_mode == "direct":
+            try:
+                if mode == "deep":
+                    results = deep_search(q, limit=limit, exact=exact)
+                elif mode == "advanced":
+                    results = advanced_search(q, limit=limit)
+                else:
+                    results = basic_search(q, limit=limit)
+            except SearchUnavailableError as exc:
+                error = str(exc)
+        else:
+            # Celery path: kick off task, template polls for status
+            from .tasks import run_graph_search
+            run_id = str(uuid.uuid4())
+            cache.set(f"search:{run_id}:status", "pending", timeout=300)
+            run_graph_search.delay(run_id, q, mode, limit, exact)
+
+    modes = [
+        ("basic",    "Basic",    "fa-solid fa-text-size"),
+        ("advanced", "Advanced", "fa-solid fa-list-ul"),
+        ("deep",     "Deep",     "fa-solid fa-layer-group"),
+    ]
+
+    context = PageProcessor().decorate(
+        {
+            "q": q,
+            "mode": mode,
+            "exact": exact,
+            "exec_mode": exec_mode,
+            "limit": limit,
+            "results": results,
+            "error": error,
+            "searched": searched,
+            "result_count": len(results),
+            "run_id": run_id,
+            "modes": modes,
+            "initial_results_json": json.dumps(results),
+        },
+        request,
+    )
+    return render(request, "ravioli/search.html", context)
+
+
+@require_GET
+def search_status_view(request, run_id):
+    from django.core.cache import cache
+
+    status = cache.get(f"search:{run_id}:status")
+    if status is None:
+        return JsonResponse({"status": "expired"}, status=404)
+
+    payload = {"status": status}
+    if status == "done":
+        payload["results"] = cache.get(f"search:{run_id}:results", [])
+    elif status == "error":
+        payload["error"] = cache.get(f"search:{run_id}:error", "Unknown error")
+    return JsonResponse(payload)

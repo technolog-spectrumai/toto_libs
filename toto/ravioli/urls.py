@@ -14,6 +14,8 @@ from .views import (
     projection_plan_detail,
     projection_sync_view,
     run_projection_stream,
+    search_view,
+    search_status_view,
 )
 
 app_name = "ravioli"
@@ -41,4 +43,6 @@ urlpatterns = [
     path("projections/run-stream/", run_projection_stream, name="run_projection_stream"),
     path("projections/full-sync/", full_sync_view, name="full_sync"),
     path("projections/clear-db/", clear_db_view, name="clear_db"),
+    path("search/", search_view, name="search"),
+    path("search/status/<str:run_id>/", search_status_view, name="search_status"),
 ]

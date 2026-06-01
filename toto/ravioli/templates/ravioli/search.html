@@ -1,0 +1,415 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Graph Search" %}{% endblock %}
+
+{% block content %}
+<script>
+  const SEARCH_STATUS_BASE = "{% url 'ravioli:search_status' '00000000-0000-0000-0000-000000000000' %}".replace('00000000-0000-0000-0000-000000000000', '');
+  const INITIAL_RUN_ID     = "{{ run_id|default:''|escapejs }}";
+  const INITIAL_RESULTS    = {{ initial_results_json|safe }};
+  const INITIAL_ERROR      = "{{ error|default:''|escapejs }}";
+  const INITIAL_SEARCHED   = {{ searched|yesno:"true,false" }};
+  const INITIAL_MODE       = "{{ mode|escapejs }}";
+  const INITIAL_EXEC       = "{{ exec_mode|escapejs }}";
+</script>
+
+<div
+  x-data="graphSearch()"
+  x-init="init()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Page header -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-magnifying-glass mr-2 text-2xl"></i>{% trans "Graph Search" %}</h1>
+        <p class="mt-1 text-sm opacity-60">{% trans "Search nodes in the Neo4j graph by text, name, or full-text index." %}</p>
+      </div>
+      <div class="flex shrink-0 items-center gap-2">
+        <a
+          href="{% url 'ravioli:query_unified' %}"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
+        ><i class="fa-solid fa-database"></i>{% trans "Queries" %}</a>
+        <a
+          href="{% url 'ravioli:graph_analysis' %}"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
+        ><i class="fa-solid fa-chart-network"></i>{% trans "Analysis" %}</a>
+      </div>
+    </div>
+
+    <!-- Two-column layout -->
+    <div class="grid gap-5 lg:grid-cols-[340px_minmax(0,1fr)]">
+
+      <!-- ── Sidebar ── -->
+      <aside class="space-y-4">
+
+        <form method="get" action="" @submit.prevent="submitSearch($event)">
+
+          <!-- Main search card -->
+          <section
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border p-4 shadow-sm space-y-4"
+          >
+            <h3 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-sliders"></i>{% trans "Search" %}</h3>
+
+            <!-- Query -->
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Query" %}</label>
+              <div class="relative">
+                <input
+                  type="text"
+                  name="q"
+                  value="{{ q }}"
+                  placeholder="{% trans 'Enter search term…' %}"
+                  autofocus
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                  class="w-full rounded-lg border px-3 py-2 pr-9 text-sm outline-none shadow-inner transition focus:ring-2 focus:ring-current/20"
+                >
+                <i class="fa-solid fa-magnifying-glass absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-40"></i>
+              </div>
+            </div>
+
+            <!-- Mode pills -->
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Mode" %}</label>
+              <div class="flex gap-2">
+                {% for m, label, icon in modes %}
+                <label
+                  class="flex-1 cursor-pointer rounded-lg border px-2 py-2 text-center text-xs font-semibold transition"
+                  :class="currentMode === '{{ m }}'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                    : (darkMode ? 'border-accent-1 hover:bg-primary-bg-dark/60' : 'border-accent-2 hover:bg-primary-bg-light/60')"
+                >
+                  <input type="radio" name="mode" value="{{ m }}" {% if mode == m %}checked{% endif %}
+                    @change="currentMode = '{{ m }}'" class="sr-only">
+                  <i class="{{ icon }} mr-1"></i>{{ label }}
+                </label>
+                {% endfor %}
+              </div>
+            </div>
+
+            <!-- Submit -->
+            <button
+              type="submit"
+              :disabled="running"
+              class="w-full inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition disabled:opacity-40"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+            >
+              <svg x-show="running" class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+              </svg>
+              <i x-show="!running" class="fa-solid fa-magnifying-glass text-xs"></i>
+              <span x-text="running ? '{% trans "Searching…" %}' : '{% trans "Search" %}'"></span>
+            </button>
+          </section>
+
+          <!-- Advanced options (collapsible) -->
+          <section
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border shadow-sm mt-4"
+          >
+            <button
+              type="button"
+              @click="advancedOpen = !advancedOpen"
+              class="flex w-full items-center justify-between px-4 py-3"
+            >
+              <span class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+                <i class="fa-solid fa-gear"></i>{% trans "Advanced options" %}</span>
+              <i class="fa-solid fa-chevron-down text-xs opacity-50 transition-transform duration-200"
+                 :class="advancedOpen ? 'rotate-180' : ''"></i>
+            </button>
+
+            <div x-show="advancedOpen" x-collapse class="px-4 pb-4 space-y-4">
+
+              <!-- Execution mode -->
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Execution" %}</label>
+                <div class="flex gap-2">
+                  <label
+                    class="flex-1 cursor-pointer rounded-lg border px-2 py-2 text-center text-xs font-semibold transition"
+                    :class="execMode === 'celery'
+                      ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                      : (darkMode ? 'border-accent-1 hover:bg-primary-bg-dark/60' : 'border-accent-2 hover:bg-primary-bg-light/60')"
+                  >
+                    <input type="radio" name="exec" value="celery" {% if exec_mode == 'celery' %}checked{% endif %}
+                      @change="execMode = 'celery'" class="sr-only">
+                    <i class="fa-solid fa-layer-group mr-1"></i>{% trans "Celery" %}
+                  </label>
+                  <label
+                    class="flex-1 cursor-pointer rounded-lg border px-2 py-2 text-center text-xs font-semibold transition"
+                    :class="execMode === 'direct'
+                      ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                      : (darkMode ? 'border-accent-1 hover:bg-primary-bg-dark/60' : 'border-accent-2 hover:bg-primary-bg-light/60')"
+                  >
+                    <input type="radio" name="exec" value="direct" {% if exec_mode == 'direct' %}checked{% endif %}
+                      @change="execMode = 'direct'" class="sr-only">
+                    <i class="fa-solid fa-bolt mr-1"></i>{% trans "Direct" %}
+                  </label>
+                </div>
+                <p class="mt-1.5 text-xs opacity-50 italic" x-text="execMode === 'celery' ? '{% trans "Runs in a Celery worker. Default." %}' : '{% trans "Runs inline in the request. Faster for small queries." %}'"></p>
+              </div>
+
+              <!-- Limit -->
+              <div>
+                <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+                  {% trans "Result limit" %}<span class="font-normal opacity-50 ml-1">(1–200)</span></label>
+                <input
+                  type="number" name="limit" value="{{ limit }}" min="1" max="200"
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none shadow-inner transition focus:ring-2 focus:ring-current/20"
+                >
+              </div>
+
+              <!-- Exact phrase (Deep only) -->
+              <div x-show="currentMode === 'deep'" x-transition>
+                <label class="flex cursor-pointer items-center gap-3">
+                  <input type="checkbox" name="exact" value="1" {% if exact %}checked{% endif %}
+                    class="h-4 w-4 rounded accent-current">
+                  <span class="text-sm">
+                    {% trans "Exact phrase" %}
+                    <span class="text-xs opacity-50 ml-1">{% trans "(wraps query in Lucene quotes)" %}</span>
+                  </span>
+                </label>
+              </div>
+
+            </div>
+          </section>
+
+        </form>
+
+        <div class="text-center">
+          <a
+            href="{% url 'core:dashboard' %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+          ><i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
+        </div>
+
+      </aside>
+
+      <!-- ── Main ── -->
+      <main class="space-y-4">
+
+        <!-- Error banner (server-rendered error OR client-side) -->
+        <template x-if="error">
+          <div
+            :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+            class="flex items-start gap-3 rounded-lg border p-4 text-sm"
+          >
+            <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+            <div>
+              <span class="font-semibold">{% trans "Neo4j unavailable — " %}</span>
+              <span x-text="error"></span>
+            </div>
+            <button @click="error = null" class="ml-auto shrink-0 text-lg leading-none opacity-60 hover:opacity-100">&times;</button>
+          </div>
+        </template>
+
+        <!-- Celery: searching in progress card -->
+        <div
+          x-show="running"
+          x-transition
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-6 shadow-sm text-center space-y-3"
+        >
+          <svg class="animate-spin h-8 w-8 mx-auto" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <p class="text-sm font-semibold">{% trans "Searching via Celery worker…" %}</p>
+          <p class="text-xs opacity-50">{% trans "Results will appear automatically." %}</p>
+        </div>
+
+        <!-- Result count bar (visible when results exist) -->
+        <div x-show="searched && !running && !error && results !== null"
+             x-transition class="flex items-center justify-between text-sm opacity-60">
+          <span>
+            <span x-text="results && results.length ? results.length + ' {% trans "result(s)" %}' : '{% trans "No results" %}'"></span>
+            <span x-show="results && results.length"> &mdash; <span x-text="currentMode"></span> {% trans "search" %}</span>
+          </span>
+          <span x-show="results && results.length" class="text-xs">{% trans "limit" %} {{ limit }}</span>
+        </div>
+
+        <!-- Empty state: nothing searched yet -->
+        <div
+          x-show="!searched && !running"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border border-dashed p-12 text-center shadow-sm"
+        >
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-magnifying-glass text-4xl opacity-30"></i>
+          <h2 class="mt-4 text-xl font-bold">{% trans "Search the graph" %}</h2>
+          <p class="mt-1 text-sm opacity-60">{% trans "Enter a term in the sidebar and choose a search mode." %}</p>
+        </div>
+
+        <!-- No results state -->
+        <div
+          x-show="searched && !running && !error && results && results.length === 0"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border border-dashed p-12 text-center shadow-sm"
+        >
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-circle-xmark text-4xl opacity-30"></i>
+          <h2 class="mt-4 text-xl font-bold">{% trans "No results" %}</h2>
+          <p class="mt-1 text-sm opacity-60">
+            {% trans "Nothing matched" %} &ldquo;{{ q }}&rdquo;{% if mode == "basic" %} — {% trans "try Advanced or Deep search" %}{% endif %}.
+          </p>
+        </div>
+
+        <!-- Result list (Alpine-rendered, works for both modes) -->
+        <div x-show="results && results.length > 0" class="space-y-3">
+          <template x-for="(item, idx) in results" :key="idx">
+            <article
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-lg border p-4 shadow-sm"
+            >
+              <!-- Labels + score row -->
+              <div class="mb-2 flex flex-wrap items-center gap-1.5">
+                <template x-for="lbl in item.labels" :key="lbl">
+                  <span
+                    :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+                    class="rounded px-1.5 py-0.5 text-xs font-semibold font-mono"
+                    x-text="lbl"
+                  ></span>
+                </template>
+                <template x-if="item.score !== undefined && item.score !== null">
+                  <span
+                    :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'"
+                    class="ml-auto rounded px-1.5 py-0.5 text-xs font-semibold"
+                  >
+                    <i class="fa-solid fa-star-half-stroke mr-0.5 text-xs"></i>
+                    <span x-text="item.score"></span>
+                  </span>
+                </template>
+              </div>
+
+              <!-- Title / name -->
+              <template x-if="item.props.title || item.props.name">
+                <p class="mb-1 text-sm font-semibold leading-snug"
+                   x-text="item.props.title || item.props.name"></p>
+              </template>
+
+              <!-- Snippet -->
+              <template x-if="item.props.text || item.props.description">
+                <p class="text-xs opacity-70 leading-relaxed line-clamp-3"
+                   x-text="(item.props.text || item.props.description || '').slice(0, 240)"></p>
+              </template>
+
+              <!-- Collapsible raw props -->
+              <details class="mt-3 group">
+                <summary class="cursor-pointer select-none list-none text-xs opacity-50 hover:opacity-80 flex items-center gap-1">
+                  <i class="fa-solid fa-chevron-right text-[10px] transition-transform duration-150 group-open:rotate-90"></i>
+                  {% trans "Raw properties" %}
+                  <span class="opacity-60">(<span x-text="Object.keys(item.props).length"></span>)</span>
+                </summary>
+                <div
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                  class="mt-2 rounded-lg border p-3 text-xs font-mono space-y-1 overflow-x-auto"
+                >
+                  <template x-for="[k, v] in Object.entries(item.props)" :key="k">
+                    <div class="flex gap-2 min-w-0">
+                      <span class="shrink-0 opacity-50 select-none" x-text="k"></span>
+                      <span class="truncate opacity-80" x-text="String(v)"></span>
+                    </div>
+                  </template>
+                </div>
+              </details>
+
+            </article>
+          </template>
+        </div>
+
+      </main>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+function graphSearch() {
+  return {
+    currentMode: INITIAL_MODE,
+    execMode:    INITIAL_EXEC,
+    advancedOpen: (INITIAL_EXEC === 'direct' || {{ limit }} !== 25 || {{ exact|yesno:"true,false" }}),
+    running:  false,
+    searched: INITIAL_SEARCHED,
+    results:  INITIAL_RESULTS,
+    error:    INITIAL_ERROR || null,
+    _runId:   INITIAL_RUN_ID || null,
+    _pollTimer: null,
+
+    init() {
+      // If the page loaded with a Celery run already in flight, start polling
+      if (this._runId) {
+        this.running = true;
+        this.searched = true;
+        this.results = null;
+        this._pollStatus(this._runId);
+      }
+    },
+
+    submitSearch(event) {
+      const form = event.target;
+      const formData = new FormData(form);
+      const exec = formData.get('exec') || 'celery';
+
+      if (exec === 'direct') {
+        // Direct mode: normal form submission (full page reload with server-rendered results)
+        form.submit();
+        return;
+      }
+
+      // Celery mode: submit form normally — server will kick the task and return run_id in page
+      // We still do a normal submit; on reload init() will detect the run_id and start polling.
+      form.submit();
+    },
+
+    _pollStatus(runId) {
+      const url = SEARCH_STATUS_BASE + runId + '/';
+      this._stopPolling();
+      this._pollTimer = setInterval(async () => {
+        try {
+          const res  = await fetch(url);
+          const data = await res.json();
+
+          if (data.status === 'done') {
+            this._stopPolling();
+            this.running = false;
+            this.results = data.results || [];
+          } else if (data.status === 'error') {
+            this._stopPolling();
+            this.running = false;
+            this.error   = data.error || 'Search failed.';
+            this.results = [];
+          } else if (data.status === 'expired') {
+            this._stopPolling();
+            this.running = false;
+            this.error   = 'Search result expired — please search again.';
+            this.results = [];
+          }
+          // status === 'pending' or 'running': keep polling
+        } catch (e) {
+          this._stopPolling();
+          this.running = false;
+          this.error   = e.message;
+        }
+      }, 1500);
+    },
+
+    _stopPolling() {
+      if (this._pollTimer) { clearInterval(this._pollTimer); this._pollTimer = null; }
+    },
+  };
+}
+</script>
+{% endblock %}
