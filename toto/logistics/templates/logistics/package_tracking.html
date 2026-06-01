@@ -146,6 +146,11 @@ document.addEventListener("DOMContentLoaded", function () {
     { maxZoom: 19, attribution: "© OpenStreetMap" + (isDark ? " © CARTO" : "") }
   ).addTo(map);
 
+  const css = getComputedStyle(document.documentElement);
+  const clrAccent  = css.getPropertyValue(isDark ? "--color-accent-dark"  : "--color-accent-light").trim();
+  const clrSuccess = css.getPropertyValue(isDark ? "--color-success-dark" : "--color-success-light").trim();
+  const clrWarn    = css.getPropertyValue(isDark ? "--color-warn-dark"    : "--color-warn-light").trim();
+
   function dotIcon(color, size = 13) {
     return L.divIcon({
       className: "",
@@ -158,13 +163,13 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (p.origin?.geometry) {
     const [lng, lat] = p.origin.geometry.coordinates;
-    L.marker([lat, lng], { icon: dotIcon("#60a5fa", 14) })
+    L.marker([lat, lng], { icon: dotIcon(clrAccent, 14) })
       .bindPopup(`<strong>{% trans "Origin" %}</strong><br>${p.origin.label}`).addTo(map);
     allPoints.push([lat, lng]);
   }
   if (p.destination?.geometry) {
     const [lng, lat] = p.destination.geometry.coordinates;
-    L.marker([lat, lng], { icon: dotIcon("#4ade80", 14) })
+    L.marker([lat, lng], { icon: dotIcon(clrSuccess, 14) })
       .bindPopup(`<strong>{% trans "Destination" %}</strong><br>${p.destination.label}`).addTo(map);
     allPoints.push([lat, lng]);
   }
@@ -173,7 +178,7 @@ document.addEventListener("DOMContentLoaded", function () {
     if (!ev.location?.geometry) return;
     const [lng, lat] = ev.location.geometry.coordinates;
     const isLast = i === p.events.length - 1;
-    L.marker([lat, lng], { icon: dotIcon(isLast ? "#f59e0b" : "#a78bfa", 10) })
+    L.marker([lat, lng], { icon: dotIcon(isLast ? clrWarn : clrAccent, 10) })
       .bindPopup(`<strong>${ev.status_display}</strong><br>${ev.location.label}<br><small>${ev.occurred_at.slice(0, 16).replace("T", " ")}</small>`)
       .addTo(map);
     allPoints.push([lat, lng]);
@@ -181,7 +186,7 @@ document.addEventListener("DOMContentLoaded", function () {
 
   if (allPoints.length > 1) {
     L.polyline(allPoints, {
-      color: isDark ? "#818cf8" : "#4f46e5",
+      color: clrAccent,
       weight: 3,
       dashArray: "8 6",
       opacity: 0.75,

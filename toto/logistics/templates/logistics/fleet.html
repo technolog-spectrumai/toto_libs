@@ -94,7 +94,7 @@
         {% if lease.status == 'active' %}
         " :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
         {% elif lease.status == 'draft' %}
-        " :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark/60' : 'bg-gray-100 text-gray-500'
+        " :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark opacity-50' : 'bg-bubble-bg-light text-text-main-light opacity-50'
         {% else %}
         " :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
         {% endif %}
@@ -108,12 +108,16 @@
       <!-- Category pill -->
       {% if obj.object_type.category %}
       <span class="hidden md:inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-semibold shrink-0
-        {% if obj.object_type.category == 'vehicle' %}bg-blue-100 text-blue-700
-        {% elif obj.object_type.category == 'equipment' %}bg-amber-100 text-amber-700
-        {% elif obj.object_type.category == 'commodity' %}bg-green-100 text-green-700
-        {% elif obj.object_type.category == 'real_estate' %}bg-purple-100 text-purple-700
-        {% elif obj.object_type.category == 'infrastructure' %}bg-orange-100 text-orange-700
-        {% else %}bg-gray-100 text-gray-600{% endif %}">
+        {% if obj.object_type.category == 'vehicle' or obj.object_type.category == 'infrastructure' %}"
+            :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'
+        {% elif obj.object_type.category == 'commodity' or obj.object_type.category == 'real_estate' %}"
+            :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'
+        {% elif obj.object_type.category == 'equipment' %}"
+            :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'
+        {% else %}"
+            :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark opacity-60' : 'bg-bubble-bg-light text-text-main-light opacity-60'
+        {% endif %}
+        ">
         {{ obj.object_type.get_category_display }}
       </span>
       {% endif %}
