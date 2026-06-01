@@ -90,7 +90,12 @@
         : 'border-accent-2 bg-primary-bg-light text-text-main-light focus:border-accent-light'"
       class="w-full resize-y rounded-2xl border px-4 py-3 text-sm leading-6 shadow-sm outline-none transition duration-300 placeholder:opacity-50 focus:ring-4 focus:ring-current/10"
     ></textarea>
-    <div class="flex justify-end">
+    <div class="flex items-center justify-between gap-3">
+      <span
+        id="steven-cost-hint"
+        class="font-mono text-xs opacity-40 transition-opacity duration-200"
+        aria-live="polite"
+      ></span>
       <button
         type="submit"
         :class="darkMode
@@ -104,6 +109,27 @@
 
 <script>
   document.getElementById("chat-thread").scrollIntoView({behavior: "smooth", block: "end"});
+
+  (function () {
+    const ta   = document.querySelector('textarea[name="user_prompt"]');
+    const hint = document.getElementById("steven-cost-hint");
+    const url  = "{% url 'steven:estimate_cost' agent.slug %}";
+    if (!ta || !hint) return;
+    let timer;
+    ta.addEventListener("input", () => {
+      clearTimeout(timer);
+      hint.textContent = "";
+      const chars = ta.value.trim().length;
+      if (chars < 4) return;
+      timer = setTimeout(async () => {
+        try {
+          const r = await fetch(`${url}?chars=${chars}`);
+          const d = await r.json();
+          hint.textContent = d.estimate ? `~${d.estimate} ${d.unit}` : "";
+        } catch { hint.textContent = ""; }
+      }, 600);
+    });
+  })();
 </script>
 
 {% endblock %}

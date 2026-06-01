@@ -321,16 +321,24 @@ class Command(IngressCommand):
                     self.stdout.write("    +/✓ tariff MAKARONI-GRAPH (ravioli)")
 
             if django_apps.is_installed("toto.steven") and banana_token:
+                # Pricing basis: OpenAI GPT-4o × 2.70 margin, Polish banana prices.
+                #
+                # OpenAI GPT-4o:  $2.50/1M input,  $10.00/1M output
+                # × 2.70 margin:  $6.75/1M input,  $27.00/1M output
+                # × 3.95 PLN/$:  26.66 PLN/1M in, 106.65 PLN/1M out
+                # ÷ 0.42 PLN/🍌:  63.48 BANANA/1M = 0.063 BANANA/1K input
+                #                 253.93 BANANA/1M = 0.254 BANANA/1K output
+                # Per-request overhead (~$0.005 base × 2.70 × 3.95 ÷ 0.42 ≈ 0.127 BANANA)
                 rev_banana_base = _account("REV-BANANA-BASE", "Banana (AI) Base Revenue", AccountType.SYSTEM)
                 t_steven, _ = _tariff(
                     "AI-INFERENCE-BASE",
                     "AI Inference Base Tariff",
-                    "Base AI tariff using BANANA. 1 BANANA = 1 AI inference unit.",
+                    "AI tariff in BANANA (GPT-4o pricing × 2.70 margin, PLN banana prices).",
                 )
-                _item(t_steven, m_ai_req,    "Inference request",  banana_token, "1.0",  bu_request,      rev_banana_base)
-                _item(t_steven, m_ai_input,  "LLM input tokens",   banana_token, "0.1",  bu_input_token,  rev_banana_base, uq=1000)
-                _item(t_steven, m_ai_output, "LLM output tokens",  banana_token, "0.3",  bu_output_token, rev_banana_base, uq=1000)
-                self.stdout.write("    +/✓ tariff AI-INFERENCE-BASE (steven, BANANA)")
+                _item(t_steven, m_ai_req,    "Inference request",  banana_token, "0.127", bu_request,      rev_banana_base)
+                _item(t_steven, m_ai_input,  "LLM input tokens",   banana_token, "0.063", bu_input_token,  rev_banana_base, uq=1000)
+                _item(t_steven, m_ai_output, "LLM output tokens",  banana_token, "0.254", bu_output_token, rev_banana_base, uq=1000)
+                self.stdout.write("    +/✓ tariff AI-INFERENCE-BASE (steven, BANANA, GPT-4o×2.7 PLN)")
 
             if django_apps.is_installed("toto.vod"):
                 t_vod_base, _ = _tariff(

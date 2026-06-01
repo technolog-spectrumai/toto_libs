@@ -638,14 +638,20 @@ class Command(IngressCommand):
                 reserve_account=platform_reserve,
                 reference="create-banana",
                 description=(
-                    "AI inference token. 1 BANANA = 1 thick slice of banana (~15 g). "
-                    "A whole banana (~120 g) ≈ 8 BANANA."
+                    "AI inference token. 1 BANANA = 1 banana (the fruit, ~120 g, ~0.42 PLN). "
+                    "Priced at OpenAI GPT-4o rates converted to PLN (3.95 USD/PLN) with 270% margin."
                 ),
                 metadata={
                     "kind": "platform_token",
-                    "unit": "banana_slice",
-                    "unit_label": "1 token = 1 thick slice of banana (~15 g)",
-                    "whole_banana": "~8 BANANA",
+                    "unit": "banana",
+                    "unit_label": "1 token = 1 banana (~120 g, ~0.42 PLN)",
+                    "pricing_reference": (
+                        "OpenAI GPT-4o × 2.70 margin, converted via 3.95 PLN/USD, "
+                        "then ÷ 0.42 PLN/banana"
+                    ),
+                    "banana_price_pln": "0.42",
+                    "usd_pln_rate": "3.95",
+                    "margin": "2.70",
                     "seeded_by": "ingress",
                 },
             ),

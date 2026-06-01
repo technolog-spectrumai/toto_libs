@@ -80,6 +80,11 @@
           : 'bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40 border-accent-light/30'"
         class="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition"
       ></textarea>
+      <span
+        id="steven-float-cost-hint"
+        class="block text-right font-mono text-[11px] opacity-40 -mt-1 min-h-[1em]"
+        aria-live="polite"
+      ></span>
       <button
         type="submit"
         :disabled="loading"
@@ -115,6 +120,27 @@
 </div>
 
 <script>
+(function () {
+  const ta   = document.querySelector('[data-steven-prompt]');
+  const hint = document.getElementById("steven-float-cost-hint");
+  const url  = "{% url 'steven:estimate_cost' agent.slug %}";
+  if (!ta || !hint) return;
+  let timer;
+  ta.addEventListener("input", () => {
+    clearTimeout(timer);
+    hint.textContent = "";
+    const chars = ta.value.trim().length;
+    if (chars < 4) return;
+    timer = setTimeout(async () => {
+      try {
+        const r = await fetch(`${url}?chars=${chars}`);
+        const d = await r.json();
+        hint.textContent = d.estimate ? `~${d.estimate} ${d.unit}` : "";
+      } catch { hint.textContent = ""; }
+    }, 600);
+  });
+})();
+
 document.body.addEventListener("htmx:responseError", event => {
   if (event.detail?.target?.id !== "steven-chat-result") return;
   const result = event.detail.target;
