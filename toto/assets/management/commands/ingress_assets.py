@@ -637,11 +637,34 @@ class Command(IngressCommand):
                 decimals=3,
                 reserve_account=platform_reserve,
                 reference="create-banana",
-                description="Platform AI inference token. 1 BANANA = 1 AI inference unit.",
+                description=(
+                    "AI inference token. 1 BANANA = 1 thick slice of banana (~15 g). "
+                    "A whole banana (~120 g) ≈ 8 BANANA."
+                ),
                 metadata={
                     "kind": "platform_token",
-                    "unit": "ai_inference_unit",
-                    "unit_label": "1 token = 1 AI inference unit",
+                    "unit": "banana_slice",
+                    "unit_label": "1 token = 1 thick slice of banana (~15 g)",
+                    "whole_banana": "~8 BANANA",
+                    "seeded_by": "ingress",
+                },
+            ),
+            dict(
+                name="Makaroni Token",
+                unit_name="MAKARONI",
+                total_supply=Decimal("1000000000"),
+                decimals=0,
+                reserve_account=platform_reserve,
+                reference="create-makaroni",
+                description=(
+                    "Graph query token. 1 MAKARONI = 1 dry macaroni piece (~0.5 g). "
+                    "A 500 g bag ≈ 1,000 MAKARONI."
+                ),
+                metadata={
+                    "kind": "platform_token",
+                    "unit": "dry_macaroni_piece",
+                    "unit_label": "1 token = 1 dry macaroni piece (~0.5 g)",
+                    "bag_500g": "1000 MAKARONI",
                     "seeded_by": "ingress",
                 },
             ),

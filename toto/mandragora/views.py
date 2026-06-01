@@ -381,14 +381,27 @@ def connector_execute(request):
 def create_cell(request, notebook_id):
     notebook = get_object_or_404(Notebook, id=notebook_id)
 
-    last_cell = notebook.cells.order_by("-position").first()
-    next_position = (last_cell.position + 1) if last_cell else 1
+    cell_type = request.data.get("cell_type", "code")
+    if cell_type not in ("code", "markdown"):
+        cell_type = "code"
+    content  = request.data.get("content", "")
+    position = request.data.get("position")
+
+    if position is not None:
+        try:
+            position = int(position)
+        except (TypeError, ValueError):
+            position = None
+
+    if position is None:
+        last_cell = notebook.cells.order_by("-position").first()
+        position = (last_cell.position + 1) if last_cell else 1
 
     cell = Cell.objects.create(
         notebook=notebook,
-        cell_type="code",
-        content="",
-        position=next_position,
+        cell_type=cell_type,
+        content=content,
+        position=position,
     )
 
     return Response({

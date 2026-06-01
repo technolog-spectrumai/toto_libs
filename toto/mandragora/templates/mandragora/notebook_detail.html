@@ -276,10 +276,20 @@
       </div>
     </div>
 
-    <!-- Footer hint -->
-    <div class="border-t px-6 py-3 text-xs opacity-50"
+    <!-- Footer -->
+    <div class="flex items-center justify-between border-t px-6 py-3"
          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-      {% trans "Use" %} <code>open(vault_files['filename'])</code> {% trans "in a cell to read any file." %}
+      <p class="text-xs opacity-50">
+        {% trans "Use" %} <code class="font-mono">open(vault_files['filename'])</code> {% trans "in a cell." %}
+      </p>
+      <button
+        id="vault-insert-btn"
+        onclick="insertVaultGuideCell()"
+        :class="darkMode ? 'border-accent-1 text-accent-1 hover:bg-accent-1/10' : 'border-accent-2 text-accent-2 hover:bg-accent-2/10'"
+        class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+        <i class="fa-solid fa-file-circle-plus"></i>
+        {% trans "Insert guide cell" %}
+      </button>
     </div>
   </div>
 </div>
@@ -337,6 +347,9 @@ function closeVaultModal() {
   modal.classList.remove("flex");
 }
 
+let _vaultFilesCache = null;   // {bucket, files} after first fetch
+let _vaultBucketName = "";
+
 async function _loadVaultFiles() {
   const list = document.getElementById("vault-file-list");
   document.getElementById("vault-loading").classList.remove("hidden");
@@ -348,8 +361,10 @@ async function _loadVaultFiles() {
     document.getElementById("vault-loading").classList.add("hidden");
 
     if (data.bucket) {
+      _vaultBucketName = data.bucket.name;
       document.getElementById("vault-modal-bucket-name").textContent = data.bucket.name;
     }
+    _vaultFilesCache = data;
 
     if (!data.files || data.files.length === 0) {
       list.innerHTML = '<p class="px-6 py-8 text-center opacity-50 text-sm">No files in this bucket.</p>';
@@ -419,6 +434,57 @@ async function _previewFile(f) {
       <div class="rounded-lg border px-3 py-2 font-mono text-xs opacity-70">open(${_esc(expr)})</div>
       ${f.download_url ? `<a href="${f.download_url}" class="text-xs underline opacity-50 hover:opacity-80" download>Download</a>` : ""}
     </div>`;
+}
+
+async function insertVaultGuideCell() {
+  const btn = document.getElementById("vault-insert-btn");
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-circle-notch fa-spin"></i> Inserting…';
+
+  const files = _vaultFilesCache?.files ?? [];
+  const bucket = _vaultBucketName || "Vault";
+
+  const rows = files.map(f =>
+    `| \`${f.title}\` | \`open(vault_files['${f.title.replace(/`/g,"'")}'])\` |`
+  ).join("\n");
+
+  const examples = files.slice(0, 2).map(f => {
+    const isText = ["text","csv","json","yaml","xml"].includes(f.file_type);
+    const isCsv  = f.file_type === "csv" || f.title.endsWith(".csv");
+    if (isCsv)   return `import pandas as pd\ndf = pd.read_csv(vault_files['${f.title}'])\ndf.head()`;
+    if (isText)  return `with open(vault_files['${f.title}']) as _f:\n    print(_f.read())`;
+    return `with open(vault_files['${f.title}'], 'rb') as _f:\n    data = _f.read()\nprint(len(data), 'bytes')`;
+  });
+
+  const content = [
+    `## 📦 Vault Files — ${bucket}`,
+    "",
+    "Files from the attached bucket are available in `vault_files` after the kernel starts.",
+    "",
+    "| File | Expression |",
+    "|------|------------|",
+    rows || "| *(no files yet)* | — |",
+    "",
+    "### Quick start",
+    "",
+    "```python",
+    examples.length ? examples[0] : "# open(vault_files['myfile.csv'])",
+    "```",
+  ].join("\n");
+
+  try {
+    await fetch(urlCellCreate, {
+      method: "POST",
+      headers: { "X-CSRFToken": getCsrf(), "Content-Type": "application/json" },
+      body: JSON.stringify({ cell_type: "markdown", content, position: 0 }),
+    });
+    closeVaultModal();
+    window.location.reload();
+  } catch (err) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fa-solid fa-file-circle-plus"></i> Insert guide cell';
+    alert("Failed to insert cell: " + err);
+  }
 }
 
 function _esc(s) {

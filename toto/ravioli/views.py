@@ -339,7 +339,7 @@ def run_cypher_query_view(request, query_id):
     _ravioli_tariff = get_tariff_for_user(request.user, "ravioli")
     if _ravioli_tariff:
         try:
-            check_user_can_act(request.user, _ravioli_tariff, "ravioli.cypher_query", 1)
+            check_user_can_act(request.user, _ravioli_tariff, "neo4j.query", 1)
         except InsufficientBalanceError as _exc:
             return JsonResponse({
                 "error": str(_exc),
@@ -361,7 +361,7 @@ def run_cypher_query_view(request, query_id):
     if _ravioli_tariff:
         from toto.metering.charge import charge_user as _charge
         try:
-            _charge(request.user, _ravioli_tariff, "ravioli.cypher_query", 1,
+            _charge(request.user, _ravioli_tariff, "neo4j.query", 1,
                     source_type="ravioli.CypherQuery", source_id=str(selected_query.pk))
         except Exception:
             pass

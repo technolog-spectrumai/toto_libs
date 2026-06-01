@@ -276,9 +276,10 @@ class Command(IngressCommand):
         # ------------------------------------------------------------------ #
         from toto.assets.models import Asset as _Asset
 
-        storage_token = _Asset.objects.filter(unit_name="STORAGE_TOKEN").first()
-        compute_token = _Asset.objects.filter(unit_name="COMPUTE_TOKEN").first()
-        banana_token  = _Asset.objects.filter(unit_name="BANANA").first()
+        storage_token  = _Asset.objects.filter(unit_name="STORAGE_TOKEN").first()
+        compute_token  = _Asset.objects.filter(unit_name="COMPUTE_TOKEN").first()
+        banana_token   = _Asset.objects.filter(unit_name="BANANA").first()
+        makaroni_token = _Asset.objects.filter(unit_name="MAKARONI").first()
 
         if storage_token and compute_token:
             rev_storage_base = _account("REV-STORAGE-BASE", "Storage Base Revenue", AccountType.SYSTEM)
@@ -306,6 +307,18 @@ class Command(IngressCommand):
                 _item(t_ravioli, m_neo_node, "Node (flat)",           compute_token, "0.1",  bu_node,         rev_compute_base)
                 _item(t_ravioli, m_neo_rel,  "Relationship (flat)",   compute_token, "0.05", bu_relationship, rev_compute_base)
                 self.stdout.write("    +/✓ tariff NEO4J-GRAPH-BASE (ravioli)")
+
+                if makaroni_token:
+                    rev_makaroni = _account("REV-MAKARONI", "Makaroni Revenue", AccountType.SYSTEM)
+                    t_makaroni, _ = _tariff(
+                        "MAKARONI-GRAPH",
+                        "Makaroni Graph Tariff",
+                        "Graph query tariff in MAKARONI. 1 MAKARONI = 1 dry macaroni piece (~0.5 g).",
+                    )
+                    _item(t_makaroni, m_neo_q,    "Cypher Query",        makaroni_token, "10", bu_request,      rev_makaroni)
+                    _item(t_makaroni, m_neo_node, "Node (flat)",         makaroni_token, "2",  bu_node,         rev_makaroni)
+                    _item(t_makaroni, m_neo_rel,  "Relationship (flat)", makaroni_token, "1",  bu_relationship, rev_makaroni)
+                    self.stdout.write("    +/✓ tariff MAKARONI-GRAPH (ravioli)")
 
             if django_apps.is_installed("toto.steven") and banana_token:
                 rev_banana_base = _account("REV-BANANA-BASE", "Banana (AI) Base Revenue", AccountType.SYSTEM)
