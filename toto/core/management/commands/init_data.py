@@ -87,9 +87,22 @@ class Command(BaseCommand):
         domain = os.environ.get("PLATFORM_DOMAIN", "localhost")
         author = os.environ.get("PLATFORM_AUTHOR", "")
 
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        admin_email = os.environ.get("ADMIN_EMAIL", "")
+        admin_first_name = os.environ.get("ADMIN_FIRST_NAME", "")
+        admin_last_name = os.environ.get("ADMIN_LAST_NAME", "")
+
         self.stdout.write(self.style.NOTICE("Creating superuser..."))
-        call_command("create_user", "admin", admin_password, admin=True)
+        call_command(
+            "create_user", admin_username, admin_password,
+            admin=True,
+            email=admin_email,
+            first_name=admin_first_name,
+            last_name=admin_last_name,
+        )
         self.stdout.write(self.style.SUCCESS("Superuser created."))
+
+        self._create_admin_person(admin_username)
 
         self.stdout.write(self.style.NOTICE("Creating fonts..."))
         self.create_fonts()
@@ -115,6 +128,31 @@ class Command(BaseCommand):
         self.stdout.write(self.style.NOTICE("Creating platform..."))
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
+
+    def _create_admin_person(self, admin_username: str) -> None:
+        display_name = os.environ.get("ADMIN_DISPLAY_NAME", "")
+        if not display_name:
+            return
+        try:
+            from django.contrib.auth.models import User  # noqa: PLC0415
+            from toto.people.models import Person  # noqa: PLC0415
+        except ImportError:
+            return
+        try:
+            user = User.objects.get(username=admin_username)
+        except User.DoesNotExist:
+            return
+        person_email = os.environ.get("ADMIN_PERSON_EMAIL", "") or os.environ.get("ADMIN_EMAIL", "")
+        person_phone = os.environ.get("ADMIN_PERSON_PHONE", "")
+        Person.objects.update_or_create(
+            user=user,
+            defaults={
+                "display_name": display_name,
+                **({"email": person_email} if person_email else {}),
+                **({"phone": person_phone} if person_phone else {}),
+            },
+        )
+        self.stdout.write(self.style.SUCCESS(f"Person profile created for '{admin_username}'."))
 
     def get_theme(self, name):
         """Fetches the latest Theme ID to be used in platform creation"""

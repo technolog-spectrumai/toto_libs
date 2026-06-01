@@ -35,10 +35,11 @@ class Command(BaseCommand):
             except Theme.DoesNotExist:
                 self.stderr.write(self.style.WARNING(f"Theme {theme_id} not found."))
 
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
         try:
-            owner = User.objects.get(username="admin")
+            owner = User.objects.get(username=admin_username)
         except User.DoesNotExist:
-            raise CommandError("Admin user not found.")
+            raise CommandError(f"Admin user '{admin_username}' not found.")
 
         platform, created = Platform.objects.update_or_create(
             domain=domain,

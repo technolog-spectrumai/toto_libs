@@ -10,6 +10,9 @@ class Command(BaseCommand):
         parser.add_argument('username', type=str, help='The username for the superuser')
         parser.add_argument('password', type=str, help='The password for the superuser')
         parser.add_argument('--admin', type=bool, default=False, help='is admin')
+        parser.add_argument('--email', type=str, default='', help='Email address')
+        parser.add_argument('--first-name', type=str, default='', help='First name')
+        parser.add_argument('--last-name', type=str, default='', help='Last name')
 
     def handle(self, *args, **options):
         username = options['username']
@@ -23,6 +26,12 @@ class Command(BaseCommand):
             if options.get("admin"):
                 user.is_superuser = True
                 user.is_staff = True
+            if options.get("email"):
+                user.email = options["email"]
+            if options.get("first_name"):
+                user.first_name = options["first_name"]
+            if options.get("last_name"):
+                user.last_name = options["last_name"]
             user.save()
 
             if created:
