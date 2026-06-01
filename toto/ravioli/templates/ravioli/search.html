@@ -6,7 +6,7 @@
 
 {% block content %}
 <script>
-  const SEARCH_STATUS_BASE = "{% url 'ravioli:search_status' '00000000-0000-0000-0000-000000000000' %}".replace('00000000-0000-0000-0000-000000000000', '');
+  const SEARCH_STATUS_URL_TPL = "{% url 'ravioli:search_status' '00000000-0000-0000-0000-000000000000' %}".replace('00000000-0000-0000-0000-000000000000', '{run_id}');
   const INITIAL_RUN_ID     = "{{ run_id|default:''|escapejs }}";
   const INITIAL_RESULTS    = {{ initial_results_json|safe }};
   const INITIAL_ERROR      = "{{ error|default:''|escapejs }}";
@@ -375,7 +375,7 @@ function graphSearch() {
     },
 
     _pollStatus(runId) {
-      const url = SEARCH_STATUS_BASE + runId + '/';
+      const url = SEARCH_STATUS_URL_TPL.replace('{run_id}', runId);
       this._stopPolling();
       this._pollTimer = setInterval(async () => {
         try {
