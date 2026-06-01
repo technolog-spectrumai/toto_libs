@@ -222,7 +222,7 @@ def start_kernel(request, notebook_id):
         "dependencies": deps,
     }
 
-    result = client.start(notebook.id, payload)
+    result = client.start(notebook.id, payload, startup_timeout_ms=kernel.startup_timeout_ms)
     result["installing"] = [
         d["package_name"] + (d["version_spec"] or "") for d in deps
     ]

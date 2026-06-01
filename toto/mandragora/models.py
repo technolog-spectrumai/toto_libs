@@ -24,7 +24,17 @@ class ExecutableUnit(models.Model):
 class ComputeKernel(models.Model):
     name = models.CharField(max_length=255, unique=True)
     env = models.JSONField(null=True, blank=True)
-    timeout_ms = models.IntegerField(default=5000)
+    timeout_ms = models.IntegerField(
+        default=5000,
+        help_text="Per-cell execution timeout in milliseconds.",
+    )
+    startup_timeout_ms = models.IntegerField(
+        default=120_000,
+        help_text=(
+            "How long to wait for the kernel process to become ready, in milliseconds. "
+            "Increase this for slow Docker environments or when installing many dependencies."
+        ),
+    )
     auto_close = models.BooleanField(
         default=True,
         help_text="Automatically stop this kernel when the user leaves the notebook page.",

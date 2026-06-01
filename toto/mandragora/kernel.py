@@ -27,12 +27,10 @@ class KernelClient:
         finally:
             socket.close(linger=0)
 
-    def start(self, notebook_id, config=None) -> dict:
-        # Kernel startup in Docker can take 60-90 s on a cold container
-        # (IPython subprocess + optional pip installs).  Give it 120 s.
+    def start(self, notebook_id, config=None, startup_timeout_ms: int = 120_000) -> dict:
         return self._send(
             {"action": "start", "notebook_id": notebook_id, "config": config or {}},
-            timeout_ms=120_000,
+            timeout_ms=startup_timeout_ms,
         )
 
     def stop(self, notebook_id) -> dict:
