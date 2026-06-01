@@ -9,6 +9,7 @@ class AssetsConfig(AppConfig):
     def ready(self):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.asset_plugins")
+        autodiscover_plugins("plugins.profile_plugins")
         self._connect_prepaid_signal()
 
     @staticmethod

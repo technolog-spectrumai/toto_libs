@@ -599,6 +599,19 @@ class Command(IngressCommand):
         _fund(payer_demo,  api_token,     "10000.0")
         self.stdout.write("    + Alice, Bob, Carol, Demo funded")
 
+        # Seed MAKARONI into every real user's prepaid account so they can
+        # use ravioli out of the box.  1000 MAKARONI ≈ 100 Cypher queries.
+        if makaroni_token:
+            from django.contrib.auth import get_user_model
+            from toto.assets.prepaid import get_or_create_prepaid_account
+            User = get_user_model()
+            seeded = 0
+            for user in User.objects.filter(is_active=True):
+                prepaid, _ = get_or_create_prepaid_account(user)
+                _fund(prepaid, makaroni_token, "1000")
+                seeded += 1
+            self.stdout.write(f"    + MAKARONI seeded into {seeded} user prepaid accounts")
+
         # ------------------------------------------------------------------ #
         # 5. Sample usage records (posted)                                     #
         # ------------------------------------------------------------------ #

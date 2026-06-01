@@ -392,6 +392,7 @@ def wallet(request):
     from .models import Currency, AssetHolding, Obligation, ObligationStatus
     accounts = (
         LedgerAccount.objects.filter(user=request.user, active=True)
+        .order_by("-user_priority", "code")
         .prefetch_related('holdings__asset')
     )
     account_pks = list(accounts.values_list('pk', flat=True))
@@ -426,6 +427,20 @@ def wallet(request):
         'now': now,
         'has_wallet_pin': has_wallet_pin(request.user),
     })
+
+
+@require_POST
+@login_required
+def set_account_priority(request, pk):
+    account = get_object_or_404(LedgerAccount, pk=pk, user=request.user, active=True)
+    try:
+        priority = int(request.POST.get("priority", 0))
+    except (ValueError, TypeError):
+        priority = 0
+    account.user_priority = priority
+    account.save(update_fields=["user_priority", "updated_at"])
+    messages.success(request, f'Priority for "{account.name or account.code}" set to {priority}.')
+    return redirect("assets:wallet")
 
 
 @require_POST

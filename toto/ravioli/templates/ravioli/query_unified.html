@@ -32,6 +32,12 @@
       {% if request.user.is_superuser %}
       <div class="flex shrink-0 items-center gap-2">
         <a
+          href="{% url 'ravioli:search' %}"
+          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
+        >
+          <i class="fa-solid fa-magnifying-glass"></i>{% trans "Search" %}</a>
+        <a
           href="{% url 'ravioli:graph_analysis' %}"
           :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"

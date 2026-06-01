@@ -163,6 +163,29 @@ def get_tariff_for_user(user, app_label: str) -> "Tariff | None":
 # Balance check
 # ---------------------------------------------------------------------------
 
+def _get_billing_account(user):
+    """
+    Return the account to debit for this user.
+
+    Resolution:
+      1. User's highest-priority LedgerAccount (user_priority > 0, descending).
+      2. Fall back to the auto-created prepaid account.
+    """
+    from toto.assets.models import LedgerAccount
+    from toto.assets.prepaid import get_or_create_prepaid_account
+
+    priority_account = (
+        LedgerAccount.objects
+        .filter(user=user, active=True, user_priority__gt=0)
+        .order_by("-user_priority")
+        .first()
+    )
+    if priority_account:
+        return priority_account
+    prepaid, _ = get_or_create_prepaid_account(user)
+    return prepaid
+
+
 def check_user_can_act(
     user,
     tariff: "Tariff",
@@ -175,10 +198,9 @@ def check_user_can_act(
     Raises InsufficientBalanceError if not.
     Returns None if affordable (or no tariff items match — free pass).
     """
-    from toto.assets.prepaid import get_or_create_prepaid_account
     from toto.tariffs.services import check_can_afford
 
-    payer_account, _ = get_or_create_prepaid_account(user)
+    payer_account = _get_billing_account(user)
     can_afford, msg = check_can_afford(
         tariff=tariff,
         payer_account=payer_account,
@@ -231,10 +253,9 @@ def charge_user(
     Returns (UsageRecord, LedgerTransaction).
     Raises InsufficientBalanceError if balance is insufficient at post time.
     """
-    from toto.assets.prepaid import get_or_create_prepaid_account
     from toto.tariffs.services import record_and_post_usage
 
-    payer_account, _ = get_or_create_prepaid_account(user)
+    payer_account = _get_billing_account(user)
     try:
         record, tx = record_and_post_usage(
             tariff=tariff,

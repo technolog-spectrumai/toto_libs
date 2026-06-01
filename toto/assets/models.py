@@ -182,6 +182,10 @@ class LedgerAccount(models.Model):
     name = models.CharField(max_length=255)
     account_type = models.CharField(max_length=20, choices=AccountType.choices)
     active = models.BooleanField(default=True)
+    user_priority = models.IntegerField(
+        default=0,
+        help_text="Billing priority for this user's accounts. Higher = checked first.",
+    )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,

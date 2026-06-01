@@ -20,6 +20,7 @@ urlpatterns = [
     path("flow/data/", views.ledger_flow_data, name="ledger_flow_data"),
     path("obligations/<int:pk>/fulfill/", views.obligation_fulfill, name="obligation_fulfill"),
     path("wallet/", views.wallet, name="wallet"),
+    path("accounts/<int:pk>/priority/", views.set_account_priority, name="set_account_priority"),
     path("wallet/pin/", views.wallet_pin_set, name="wallet_pin_set"),
     path("wallet/pin/verify/", views.wallet_pin_verify, name="wallet_pin_verify"),
     path("wallet/authorizations/", views.authorization_list, name="authorization_list"),
