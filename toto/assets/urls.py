@@ -1,13 +1,20 @@
 from django.urls import path
 
 from . import views
-from .api_views import WalletSummaryApiView
+from .api_views import (
+    WalletSummaryApiView, ObligationsApiView, MovementsApiView,
+    PinVerifyApiView, ObligationFulfillApiView,
+)
 
 app_name = "assets"
 
 urlpatterns = [
     # Enigma JSON API
     path("api/wallet/summary/", WalletSummaryApiView.as_view(), name="api_wallet_summary"),
+    path("api/wallet/obligations/", ObligationsApiView.as_view(), name="api_obligations"),
+    path("api/wallet/movements/", MovementsApiView.as_view(), name="api_movements"),
+    path("api/wallet/pin/verify/", PinVerifyApiView.as_view(), name="api_pin_verify"),
+    path("api/obligations/<int:pk>/fulfill/", ObligationFulfillApiView.as_view(), name="api_obligation_fulfill"),
 
 
     path("", views.asset_list, name="asset_list"),
