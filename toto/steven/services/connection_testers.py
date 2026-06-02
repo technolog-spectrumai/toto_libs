@@ -1,29 +1,41 @@
-"""Connection-test strategies for AgentConnector providers.
+"""Provider strategies for AgentConnector.
 
-Each strategy implements one method:
-    test(connector, api_key, timeout) -> {"ok": bool, "message": str}
+Each strategy covers the full lifecycle for one provider:
+  - test()           connection health check
+  - create_session() return the right AgentSession for inference
 
-REGISTRY is the single source of truth for which providers are supported.
-AgentConnector.PROVIDER_CHOICES and clean() both derive from it.
-To add a new provider: add a class below and register it in REGISTRY.
+REGISTRY is the single source of truth.
+To add a provider: write a class below and add it to REGISTRY.
+models.AgentConnector.PROVIDER_CHOICES and clean() both derive from REGISTRY.
 """
 from __future__ import annotations
 
 import json
 from abc import ABC, abstractmethod
+from importlib.util import find_spec
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
-class ConnectionTester(ABC):
+class ProviderStrategy(ABC):
     label: str
 
     @abstractmethod
     def test(self, connector, api_key: str, timeout: int) -> dict:
+        """Return {"ok": bool, "message": str}."""
+        raise NotImplementedError
+
+    @abstractmethod
+    def create_session(self, profile):
+        """Return an AgentSession ready for invoke()."""
         raise NotImplementedError
 
 
-class OpenAIConnectionTester(ConnectionTester):
+# ---------------------------------------------------------------------------
+# OpenAI
+# ---------------------------------------------------------------------------
+
+class OpenAIProviderStrategy(ProviderStrategy):
     label = "OpenAI"
 
     def test(self, connector, api_key: str, timeout: int) -> dict:
@@ -58,8 +70,18 @@ class OpenAIConnectionTester(ConnectionTester):
         except TimeoutError:
             return {"ok": False, "message": f"OpenAI connection timed out after {timeout} seconds."}
 
+    def create_session(self, profile):
+        from toto.steven.services.agent_session import RealAgentSession, StubAgentSession
+        if find_spec("langchain") is None:
+            return StubAgentSession(profile, reason="LangChain is not installed in this environment.")
+        return RealAgentSession(profile)
 
-class OllamaConnectionTester(ConnectionTester):
+
+# ---------------------------------------------------------------------------
+# Ollama
+# ---------------------------------------------------------------------------
+
+class OllamaProviderStrategy(ProviderStrategy):
     label = "Ollama local"
 
     def test(self, connector, api_key: str, timeout: int) -> dict:
@@ -96,31 +118,50 @@ class OllamaConnectionTester(ConnectionTester):
         except (HTTPError, URLError, TimeoutError) as exc:
             return {"ok": False, "message": f"Ollama smoke test failed: {exc}"}
 
+    def create_session(self, profile):
+        from toto.steven.services.agent_session import OllamaAgentSession, StubAgentSession
+        if find_spec("langchain_ollama") is None:
+            return StubAgentSession(
+                profile,
+                reason="langchain-ollama is not installed. Run: pip install langchain-ollama",
+            )
+        return OllamaAgentSession(profile)
 
-class RuleBasedConnectionTester(ConnectionTester):
+
+# ---------------------------------------------------------------------------
+# Rule-based
+# ---------------------------------------------------------------------------
+
+class RuleBasedProviderStrategy(ProviderStrategy):
     label = "Rule-based (no API key)"
 
     def test(self, connector, api_key: str, timeout: int) -> dict:
         return {"ok": True, "message": "Rule-based connector — no external connection needed."}
 
+    def create_session(self, profile):
+        from toto.steven.services.agent_session import RuleBasedAgentSession
+        return RuleBasedAgentSession(profile)
 
-# Single source of truth: provider key → (tester, display label).
-# AgentConnector.PROVIDER_CHOICES and clean() both derive from this dict.
-REGISTRY: dict[str, ConnectionTester] = {
-    "openai": OpenAIConnectionTester(),
-    "ollama": OllamaConnectionTester(),
-    "rule_based": RuleBasedConnectionTester(),
+
+# ---------------------------------------------------------------------------
+# Registry — single source of truth
+# ---------------------------------------------------------------------------
+
+REGISTRY: dict[str, ProviderStrategy] = {
+    "openai":      OpenAIProviderStrategy(),
+    "ollama":      OllamaProviderStrategy(),
+    "rule_based":  RuleBasedProviderStrategy(),
 }
 
-# Ready-made Django choices list for AgentConnector.PROVIDER_CHOICES.
+# Django choices list for AgentConnector.PROVIDER_CHOICES.
 PROVIDER_CHOICES: list[tuple[str, str]] = [(k, v.label) for k, v in REGISTRY.items()]
 
 
 def test_connection(connector, api_key: str = "", timeout: int = 10) -> dict:
-    tester = REGISTRY.get(connector.provider)
-    if tester is None:
+    strategy = REGISTRY.get(connector.provider)
+    if strategy is None:
         return {
             "ok": False,
-            "message": f"No connection tester registered for provider {connector.provider!r}.",
+            "message": f"No strategy registered for provider {connector.provider!r}.",
         }
-    return tester.test(connector, api_key, timeout)
+    return strategy.test(connector, api_key, timeout)

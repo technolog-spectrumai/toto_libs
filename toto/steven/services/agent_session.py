@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from importlib.util import find_spec
 
 from django.utils import timezone
 
@@ -399,56 +398,30 @@ class OllamaAgentSession(AgentSession):
         return extract_text(response)
 
 
-def _ollama_available() -> bool:
-    """True when langchain-ollama is installed and importable."""
-    return find_spec("langchain_ollama") is not None
-
-
 def create_agent_session(profile) -> AgentSession:
-    """Return the right session implementation for an agent profile.
+    """Return the right AgentSession for *profile* by delegating to the provider registry.
 
-    Rule-of-thumb: if langchain-ollama is installed, Ollama is the default
-    engine for every non-rule-based, active session regardless of which
-    connector (or model name) is configured on the profile.
+    Pre-conditions checked here (apply to every provider):
+    - connector must exist and be active
+    Provider-specific logic (availability checks, session class) lives in
+    the strategy registered in services/connection_testers.py.
     """
-    # Rule-based is always its own thing — no AI model involved.
-    if profile.connector is not None and profile.connector.provider == "rule_based":
-        return RuleBasedAgentSession(profile)
+    if profile.connector is None:
+        return StubAgentSession(profile, reason="No connector is configured for this agent.")
 
-    # An explicitly inactive connector should still be honoured as a block.
-    if profile.connector is not None and not profile.connector.is_active:
+    if not profile.connector.is_active:
         return StubAgentSession(profile, reason="Connector is inactive.")
 
-    # Helpful message when an ollama connector is explicitly configured
-    # but the package isn't installed.
-    if (
-        profile.connector is not None
-        and profile.connector.provider == "ollama"
-        and not _ollama_available()
-    ):
+    from toto.steven.services.connection_testers import REGISTRY
+    strategy = REGISTRY.get(profile.connector.provider)
+    if strategy is None:
         return StubAgentSession(
             profile,
-            reason="langchain-ollama is not installed. Run: pip install langchain-ollama",
+            reason=f"Unknown provider {profile.connector.provider!r}. "
+                   f"Supported: {', '.join(REGISTRY)}.",
         )
 
-    # Ollama is the default engine when installed.
-    if _ollama_available():
-        return OllamaAgentSession(profile)
-
-    # No Ollama — fall back to OpenAI / LangChain path.
-    if profile.connector is None:
-        return StubAgentSession(
-            profile,
-            reason="No connector is configured for this agent.",
-        )
-
-    if find_spec("langchain") is None:
-        return StubAgentSession(
-            profile,
-            reason="LangChain is not installed in this environment.",
-        )
-
-    return RealAgentSession(profile)
+    return strategy.create_session(profile)
 
 
 def run_agent(agent_run):

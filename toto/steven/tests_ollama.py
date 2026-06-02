@@ -146,38 +146,32 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
     def test_factory_returns_ollama_session_for_ollama_provider(self):
         from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
         profile = _make_profile(provider="ollama")
-        with patch("toto.steven.services.agent_session.find_spec", return_value=MagicMock()):
+        with patch("toto.steven.services.connection_testers.find_spec", return_value=MagicMock()):
             session = create_agent_session(profile)
         self.assertIsInstance(session, OllamaAgentSession)
 
     def test_factory_returns_stub_if_langchain_ollama_missing(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile(provider="ollama")
-        with patch("toto.steven.services.agent_session.find_spec", return_value=None):
+        with patch("toto.steven.services.connection_testers.find_spec", return_value=None):
             session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
         self.assertIn("langchain-ollama", session.reason)
 
-    def test_factory_openai_uses_ollama_when_installed(self):
-        """When Ollama is installed it is the default engine even for openai-configured profiles."""
-        from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
-        profile = _make_profile(provider="openai")
-        with patch("toto.steven.services.agent_session.find_spec", return_value=MagicMock()):
-            session = create_agent_session(profile)
-        self.assertIsInstance(session, OllamaAgentSession)
-
-    def test_factory_openai_returns_real_session_when_ollama_absent(self):
+    def test_factory_openai_returns_real_session_when_langchain_available(self):
         from toto.steven.services.agent_session import RealAgentSession, create_agent_session
         profile = _make_profile(provider="openai")
-
-        def fake_find_spec(name):
-            if name == "langchain_ollama":
-                return None
-            return MagicMock()
-
-        with patch("toto.steven.services.agent_session.find_spec", side_effect=fake_find_spec):
+        with patch("toto.steven.services.connection_testers.find_spec", return_value=MagicMock()):
             session = create_agent_session(profile)
         self.assertIsInstance(session, RealAgentSession)
+
+    def test_factory_openai_returns_stub_when_langchain_missing(self):
+        from toto.steven.services.agent_session import StubAgentSession, create_agent_session
+        profile = _make_profile(provider="openai")
+        with patch("toto.steven.services.connection_testers.find_spec", return_value=None):
+            session = create_agent_session(profile)
+        self.assertIsInstance(session, StubAgentSession)
+        self.assertIn("LangChain", session.reason)
 
     def test_factory_rule_based_returns_rule_based_session(self):
         from toto.steven.services.agent_session import RuleBasedAgentSession, create_agent_session
@@ -185,21 +179,13 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
         session = create_agent_session(profile)
         self.assertIsInstance(session, RuleBasedAgentSession)
 
-    def test_factory_no_connector_uses_ollama_when_installed(self):
-        from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
-        profile = _make_profile()
-        profile.connector = None
-        with patch("toto.steven.services.agent_session.find_spec", return_value=MagicMock()):
-            session = create_agent_session(profile)
-        self.assertIsInstance(session, OllamaAgentSession)
-
-    def test_factory_no_connector_returns_stub_when_ollama_missing(self):
+    def test_factory_no_connector_returns_stub(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile()
         profile.connector = None
-        with patch("toto.steven.services.agent_session.find_spec", return_value=None):
-            session = create_agent_session(profile)
+        session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
+        self.assertIn("No connector", session.reason)
 
     def test_factory_inactive_connector_returns_stub(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
@@ -207,6 +193,13 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
         profile.connector.is_active = False
         session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
+
+    def test_factory_unknown_provider_returns_stub(self):
+        from toto.steven.services.agent_session import StubAgentSession, create_agent_session
+        profile = _make_profile(provider="some_future_llm")
+        session = create_agent_session(profile)
+        self.assertIsInstance(session, StubAgentSession)
+        self.assertIn("some_future_llm", session.reason)
 
 
 # ---------------------------------------------------------------------------
