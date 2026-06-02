@@ -1,9 +1,266 @@
 {% extends "bento/base.html" %}
+{% load static %}
 {% load i18n %}
 
 {% block bento_title %}{% trans "Boxes" %}{% endblock %}
 
 {% block bento_content %}
+
+{# ── Graph modal ─────────────────────────────────────────────────────────── #}
+<div
+  x-data="{ graphOpen: false }"
+  @keydown.escape.window="graphOpen = false"
+>
+
+<div class="mb-4 flex justify-end">
+  <button
+    @click="graphOpen = true"
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light hover:bg-primary-bg-light'"
+    class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition">
+    <i class="fa-solid fa-diagram-project"></i>
+    {% trans "Graph view" %}
+  </button>
+</div>
+
+<template x-if="graphOpen">
+  <div
+    class="fixed inset-0 z-50 flex items-center justify-center p-4"
+    :class="darkMode ? 'bg-black/70' : 'bg-black/40'"
+    @click.self="graphOpen = false"
+  >
+    <div
+      :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+      class="flex w-full max-w-6xl flex-col rounded-xl border shadow-2xl"
+      style="height:88vh"
+    >
+      <div class="flex shrink-0 items-center justify-between border-b border-current/10 px-5 py-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-diagram-project opacity-70"></i>
+          {% trans "Note graph" %}
+        </h2>
+        <button @click="graphOpen = false" class="rounded-lg border border-current/20 px-3 py-1.5 text-sm transition hover:opacity-80">
+          <i class="fa-solid fa-xmark"></i>
+          {% trans "Close" %}
+        </button>
+      </div>
+      <div id="bento-graph-container" class="flex-1 rounded-b-xl" style="min-height:0"></div>
+    </div>
+  </div>
+</template>
+
+</div>{# /x-data #}
+
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<script>
+(function () {
+  const GRAPH_URL = "{% url 'bento:api_full_graph' %}";
+  const BOX_URL_TPL = "/bento/__PK__/";  // replaced in click handler
+  let cy = null;
+
+  function getColors(dark) {
+    const s = getComputedStyle(document.documentElement);
+    const get = (v) => s.getPropertyValue(v).trim();
+    if (dark) return {
+      bg:     get('--color-primary-bg-dark')   || '#0a0c11',
+      node:   get('--color-bubble-bg-dark')    || '#131929',
+      border: get('--color-accent-1')          || '#4f5fa1',
+      text:   get('--color-text-main-dark')    || '#d3d7e0',
+      accent: get('--color-accent-dark')       || '#7b9cff',
+      edge:   get('--color-accent-1')          || '#4f5fa1',
+    };
+    return {
+      bg:     get('--color-primary-bg-light')  || '#f2f3f5',
+      node:   get('--color-bubble-bg-light')   || '#ffffff',
+      border: get('--color-accent-2')          || '#2f3d63',
+      text:   get('--color-text-main-light')   || '#0f1114',
+      accent: get('--color-accent-light')      || '#2f5bf7',
+      edge:   get('--color-accent-2')          || '#2f3d63',
+    };
+  }
+
+  function buildGraph(container, nodes, edges, dark) {
+    if (cy) { cy.destroy(); cy = null; }
+    const c = getColors(dark);
+    container.style.backgroundColor = c.bg;
+
+    const elements = [
+      ...nodes.map(n => ({
+        data: {
+          id: n.id,
+          label: (n.label || n.title || 'Untitled').slice(0, 36),
+          url: n.node_type === 'category' ? null : '/bento/' + n.real_id + '/',
+          node_type: n.node_type || 'box',
+          is_concept: !!n.is_concept,
+        }
+      })),
+      ...edges.map(e => ({
+        data: {
+          id: e.id,
+          source: e.source,
+          target: e.target,
+          label: e.label || '',
+          edge_type: e.edge_type || 'link',
+        }
+      })),
+    ];
+
+    cy = cytoscape({
+      container,
+      elements,
+      wheelSensitivity: 0.2,
+      style: [
+        {
+          // Default: note box — rounded rectangle
+          selector: 'node',
+          style: {
+            'shape': 'round-rectangle',
+            'background-color': c.node,
+            'border-color': c.border,
+            'border-width': 1.5,
+            'label': 'data(label)',
+            'color': c.text,
+            'font-size': 11,
+            'text-wrap': 'ellipsis',
+            'text-max-width': 140,
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'width': 160,
+            'height': 48,
+            'cursor': 'pointer',
+          }
+        },
+        {
+          // Category node — plain ellipse
+          selector: 'node[node_type = "category"]',
+          style: {
+            'shape': 'ellipse',
+            'background-color': c.node,
+            'border-color': c.border,
+            'border-width': 2,
+            'width': 130,
+            'height': 44,
+            'font-size': 10,
+            'font-style': 'italic',
+            'cursor': 'default',
+          }
+        },
+        {
+          // Concept box — ellipse with thick dashed accent border
+          selector: 'node[node_type = "concept"]',
+          style: {
+            'shape': 'ellipse',
+            'border-color': c.accent,
+            'border-width': 3,
+            'border-style': 'dashed',
+            'font-style': 'italic',
+            'width': 170,
+            'height': 56,
+          }
+        },
+        {
+          selector: 'node:selected',
+          style: {
+            'background-color': c.accent,
+            'color': dark ? '#0a0c11' : '#ffffff',
+            'border-width': 0,
+          }
+        },
+        {
+          // IdeaLink edge — solid
+          selector: 'edge[edge_type = "link"]',
+          style: {
+            'width': 1.5,
+            'line-color': c.edge,
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'triangle',
+            'target-arrow-color': c.edge,
+            'label': 'data(label)',
+            'font-size': 9,
+            'color': c.text,
+            'text-opacity': 0.7,
+            'text-background-color': c.bg,
+            'text-background-opacity': 0.8,
+            'text-background-padding': '2px',
+          }
+        },
+        {
+          // Category membership edge — dashed, no arrow, subtle
+          selector: 'edge[edge_type = "category"]',
+          style: {
+            'width': 1,
+            'line-color': c.border,
+            'line-style': 'dashed',
+            'curve-style': 'bezier',
+            'target-arrow-shape': 'none',
+            'opacity': 0.5,
+          }
+        },
+      ],
+      layout: {
+        name: 'cose',
+        animate: false,
+        randomize: true,
+        nodeRepulsion: 8000,
+        idealEdgeLength: 120,
+        padding: 24,
+        fit: true,
+      },
+    });
+
+    cy.on('tap', 'node', (evt) => {
+      const url = evt.target.data('url');
+      if (url) window.location.href = url;
+    });
+
+    new ResizeObserver(() => { if (cy) { cy.resize(); cy.fit(); } })
+      .observe(container);
+  }
+
+  let loaded = false;
+
+  async function loadGraph(container, dark) {
+    if (loaded) { if (cy) { cy.resize(); cy.fit(); } return; }
+    loaded = true;
+    try {
+      const res = await fetch(GRAPH_URL);
+      const data = await res.json();
+      buildGraph(container, data.nodes || [], data.edges || [], dark);
+    } catch (e) {
+      container.innerHTML = '<p style="padding:2rem;opacity:.5">Failed to load graph.</p>';
+    }
+  }
+
+  // Watch for modal open via MutationObserver on the container
+  function tryInit() {
+    const container = document.getElementById('bento-graph-container');
+    if (!container) return false;
+    const dark = Alpine.evaluate(document.documentElement, 'darkMode');
+    loadGraph(container, !!dark);
+    return true;
+  }
+
+  // Re-init on theme toggle so colors update
+  document.addEventListener('DOMContentLoaded', () => {
+    const observer = new MutationObserver(() => { tryInit(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+
+    const themeBtn = document.querySelector('.site-theme-toggle-button');
+    if (themeBtn) {
+      themeBtn.addEventListener('click', () => {
+        loaded = false;
+        setTimeout(() => {
+          const c = document.getElementById('bento-graph-container');
+          if (c) {
+            const dark = Alpine.evaluate(document.documentElement, 'darkMode');
+            buildGraph(c, cy ? cy.nodes().map(n => ({ id: parseInt(n.id()), title: n.data('label'), is_concept: n.data('is_concept') })) : [], cy ? cy.edges().map(e => ({ id: parseInt(e.id().slice(1)), from_box: parseInt(e.data('source')), to_box: parseInt(e.data('target')), label: e.data('label') })) : [], !dark);
+          }
+        }, 50);
+      });
+    }
+  });
+})();
+</script>
+
 <div class="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
   <aside
     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

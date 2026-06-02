@@ -7,7 +7,7 @@ from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
 from toto.telegraph.api_views import CorsApiView
-from toto.bento.models import Category, IdeaBox
+from toto.bento.models import Category, IdeaBox, IdeaLink
 
 
 def _category_to_dict(c):
@@ -136,3 +136,136 @@ class CategoryListApiView(CorsApiView):
     def get(self, request):
         cats = Category.objects.order_by("name")
         return JsonResponse({"categories": [_category_to_dict(c) for c in cats]})
+
+
+def _link_to_dict(link):
+    return {
+        "id": link.id,
+        "from_box": link.from_box_id,
+        "to_box": link.to_box_id,
+        "label": link.label or "related to",
+        "from_box_title": link.from_box.title or "Untitled",
+        "to_box_title": link.to_box.title or "Untitled",
+    }
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LinkListCreateApiView(CorsApiView):
+    def get(self, request, pk=None):
+        qs = IdeaLink.objects.select_related("from_box", "to_box").order_by("-created_at")
+        if pk is not None:
+            qs = qs.filter(db_models.Q(from_box_id=pk) | db_models.Q(to_box_id=pk))
+        return JsonResponse({"links": [_link_to_dict(l) for l in qs[:200]]})
+
+    def post(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            data = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        from_id = data.get("from_box")
+        to_id = data.get("to_box")
+        label = data.get("label", "").strip()
+
+        if not from_id or not to_id:
+            return JsonResponse({"error": "from_box and to_box are required."}, status=400)
+        if from_id == to_id:
+            return JsonResponse({"error": "A box cannot link to itself."}, status=400)
+
+        try:
+            from_box = IdeaBox.objects.get(pk=from_id)
+            to_box = IdeaBox.objects.get(pk=to_id)
+        except IdeaBox.DoesNotExist:
+            return JsonResponse({"error": "Box not found."}, status=404)
+
+        link, created = IdeaLink.objects.get_or_create(
+            from_box=from_box, to_box=to_box, label=label,
+            defaults={}
+        )
+        return JsonResponse(_link_to_dict(link), status=201 if created else 200)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class LinkDeleteApiView(CorsApiView):
+    def delete(self, request, pk):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            link = IdeaLink.objects.get(pk=pk)
+        except IdeaLink.DoesNotExist:
+            return JsonResponse({"error": "Not found."}, status=404)
+        link.delete()
+        return JsonResponse({}, status=204)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FullGraphApiView(CorsApiView):
+    """
+    Return ALL boxes, ALL IdeaLinks, and ALL categories as a unified graph.
+
+    Node types:
+      "box"      — IdeaBox, id prefixed "b{id}"
+      "concept"  — IdeaBox with is_concept=True, same prefix
+      "category" — Category, id prefixed "cat{id}"
+
+    Edge types:
+      "link"     — IdeaLink between two boxes
+      "category" — box → its category
+    """
+    def get(self, request):
+        boxes = list(IdeaBox.objects.select_related("category").order_by("id"))
+        links = list(IdeaLink.objects.all())
+        categories = list(Category.objects.all())
+
+        # category nodes (ellipses)
+        cat_nodes = [
+            {
+                "id": f"cat{c.id}",
+                "label": c.name,
+                "node_type": "category",
+            }
+            for c in categories
+        ]
+
+        # box nodes (rectangles for notes, concept style for concepts)
+        box_nodes = [
+            {
+                "id": f"b{b.id}",
+                "real_id": b.id,
+                "label": b.title or "Untitled",
+                "is_concept": b.is_concept,
+                "node_type": "concept" if b.is_concept else "box",
+            }
+            for b in boxes
+        ]
+
+        # idea-link edges (box ↔ box)
+        link_edges = [
+            {
+                "id": f"l{l.id}",
+                "source": f"b{l.from_box_id}",
+                "target": f"b{l.to_box_id}",
+                "label": l.label or "related to",
+                "edge_type": "link",
+            }
+            for l in links
+        ]
+
+        # category edges (box → category)
+        cat_edges = [
+            {
+                "id": f"cl{b.id}",
+                "source": f"b{b.id}",
+                "target": f"cat{b.category_id}",
+                "label": "",
+                "edge_type": "category",
+            }
+            for b in boxes if b.category_id
+        ]
+
+        return JsonResponse({
+            "nodes": box_nodes + cat_nodes,
+            "edges": link_edges + cat_edges,
+        })

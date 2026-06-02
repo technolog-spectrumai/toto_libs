@@ -123,6 +123,79 @@ class BoxDetailApiTests(TestCase):
         self.assertEqual(res.status_code, 404)
 
 
+class LinkApiTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user(username="linkuser", password="pass")
+        self.box_a = IdeaBox.objects.create(title="Alpha", body="first")
+        self.box_b = IdeaBox.objects.create(title="Beta", body="second")
+
+    def test_create_link_unauthenticated(self):
+        res = self.client.post(
+            "/bento/api/links/",
+            json.dumps({"from_box": self.box_a.id, "to_box": self.box_b.id, "label": "relates"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_create_link_authenticated(self):
+        self.client.force_login(self.user)
+        res = self.client.post(
+            "/bento/api/links/",
+            json.dumps({"from_box": self.box_a.id, "to_box": self.box_b.id, "label": "supports"}),
+            content_type="application/json",
+        )
+        self.assertIn(res.status_code, (200, 201))
+        data = res.json()
+        self.assertEqual(data["from_box"], self.box_a.id)
+        self.assertEqual(data["to_box"], self.box_b.id)
+
+    def test_create_link_self_reference(self):
+        self.client.force_login(self.user)
+        res = self.client.post(
+            "/bento/api/links/",
+            json.dumps({"from_box": self.box_a.id, "to_box": self.box_a.id, "label": ""}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_list_links_for_box(self):
+        from toto.bento.models import IdeaLink
+        IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="answered by")
+        res = self.client.get(f"/bento/api/boxes/{self.box_a.id}/links/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(res.json()["links"]), 1)
+
+    def test_delete_link_unauthenticated(self):
+        from toto.bento.models import IdeaLink
+        link = IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="x")
+        res = self.client.delete(f"/bento/api/links/{link.id}/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_delete_link_authenticated(self):
+        from toto.bento.models import IdeaLink
+        self.client.force_login(self.user)
+        link = IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="x")
+        res = self.client.delete(f"/bento/api/links/{link.id}/")
+        self.assertEqual(res.status_code, 204)
+        self.assertFalse(IdeaLink.objects.filter(pk=link.pk).exists())
+
+
+class FullGraphApiTests(TestCase):
+    def setUp(self):
+        from toto.bento.models import IdeaLink
+        self.box_a = IdeaBox.objects.create(title="A", body="aaa")
+        self.box_b = IdeaBox.objects.create(title="B", body="bbb")
+        IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="leads to")
+
+    def test_full_graph_returns_all(self):
+        res = self.client.get("/bento/api/graph/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(len(data["nodes"]), 2)
+        self.assertEqual(len(data["edges"]), 1)
+        self.assertEqual(data["edges"][0]["label"], "leads to")
+
+
 class CategoryListApiTests(TestCase):
     def setUp(self):
         Category.objects.create(name="Art", slug="art")
