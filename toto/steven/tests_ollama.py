@@ -116,7 +116,7 @@ class OllamaTestConnectionTests(SimpleTestCase):
             ).encode()
             return ctx
 
-        with patch("toto.steven.models.urlopen", side_effect=fake_urlopen):
+        with patch("toto.steven.services.connection_testers.urlopen", side_effect=fake_urlopen):
             result = c.test_connection(timeout=5)
 
         self.assertTrue(result["ok"])
@@ -130,7 +130,7 @@ class OllamaTestConnectionTests(SimpleTestCase):
         c = AgentConnector.__new__(AgentConnector)
         c.provider = "ollama"
 
-        with patch("toto.steven.models.urlopen", side_effect=urllib.error.URLError("refused")):
+        with patch("toto.steven.services.connection_testers.urlopen", side_effect=urllib.error.URLError("refused")):
             result = c.test_connection(timeout=2)
 
         self.assertFalse(result["ok"])
