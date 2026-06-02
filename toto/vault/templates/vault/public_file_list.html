@@ -34,6 +34,9 @@
         _matchingIds: null,        // null = no search; plain object { id: true } when active
         _visibleAncestorIds: null, // ancestor dirs of matched files
 
+        // view mode
+        viewMode: localStorage.getItem('vault_view_mode') || 'tree', // 'tree' | 'grid'
+
         // sort & date filter state
         sortMode: 'name_asc',  // 'name_asc' | 'name_desc' | 'date_asc' | 'date_desc'
         dateFilter: '',         // '' | 'today' | 'week' | 'month'
@@ -92,6 +95,28 @@
         renameFileType: '',
         renameError: '',
         renameLoading: false,
+
+        setViewMode(m) {
+          this.viewMode = m;
+          localStorage.setItem('vault_view_mode', m);
+        },
+
+        fileTypeIcon(ft) {
+          const map = { pdf:'fa-file-pdf', image:'fa-image', audio:'fa-music', video:'fa-film',
+            text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
+            html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
+            latex:'fa-file-lines', bib:'fa-book' };
+          return map[ft] || 'fa-file';
+        },
+        fileTypeColor(ft) {
+          const map = { pdf:'text-red-400', image:'text-pink-400', audio:'text-purple-400',
+            video:'text-orange-400', text:'text-blue-400', json:'text-green-400',
+            yaml:'text-green-400', csv:'text-teal-400', html:'text-amber-400' };
+          return map[ft] || 'text-gray-400';
+        },
+        get gridFiles() {
+          return this.displayItems.filter(item => item.t === 'file' && this.isVisible(item));
+        },
 
         init() {
           const clearSearchAutofill = () => {
@@ -633,7 +658,7 @@
         </div>
       </div>
 
-      <!-- Sort & date filter controls -->
+      <!-- Sort, date filter & view toggle controls -->
       <div x-show="items.length > 0" class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
         <div class="flex items-center gap-1.5">
           <span :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
@@ -663,6 +688,25 @@
             <option value="month">{% trans "This month" %}</option>
           </select>
         </div>
+
+        <!-- View toggle -->
+        <div class="ml-auto flex rounded-lg overflow-hidden border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <button @click="setViewMode('tree')"
+                  :class="viewMode === 'tree'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-50 hover:opacity-100'"
+                  class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-list"></i> {% trans "Tree" %}
+          </button>
+          <button @click="setViewMode('grid')"
+                  :class="viewMode === 'grid'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-50 hover:opacity-100'"
+                  class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-table-cells"></i> {% trans "Grid" %}
+          </button>
+        </div>
       </div>
 
       <!-- Empty state -->
@@ -676,7 +720,7 @@
       </template>
 
       <!-- Tree container -->
-      <template x-if="items.length > 0">
+      <template x-if="items.length > 0 && viewMode === 'tree'">
         <div
           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
           class="overflow-hidden rounded-xl border shadow-sm">
@@ -817,6 +861,96 @@
             </div>
           </template>
 
+        </div>
+      </template>
+
+      <!-- Grid container -->
+      <template x-if="items.length > 0 && viewMode === 'grid'">
+        <div>
+          <template x-if="gridFiles.length === 0">
+            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+              <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+              <p class="mt-4 text-sm font-semibold opacity-55">{% trans "No files match your filters." %}</p>
+            </div>
+          </template>
+          <template x-if="gridFiles.length > 0">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <template x-for="item in gridFiles" :key="`grid-${item.id}`">
+                <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                     class="group relative flex flex-col gap-2 rounded-xl border p-3 shadow-sm transition hover:shadow-md">
+
+                  <!-- Encrypted badge -->
+                  <div x-show="item.encrypted" class="absolute top-2 right-2">
+                    <i class="fa-solid fa-lock text-xs text-yellow-400"></i>
+                  </div>
+
+                  <!-- File icon -->
+                  <div class="flex items-center justify-center h-12 opacity-70">
+                    <i class="fa-solid text-3xl" :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
+                  </div>
+
+                  <!-- Title -->
+                  <p class="truncate text-xs font-semibold" :title="item.title" x-text="item.title"></p>
+
+                  <!-- Meta -->
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-60"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          x-text="item.file_type"></span>
+                    <span class="text-xs opacity-40" x-text="item.uploaded"></span>
+                  </div>
+
+                  <!-- Owner -->
+                  <p class="text-xs opacity-40 truncate" x-text="item.owner"></p>
+
+                  <!-- Actions -->
+                  <div class="mt-auto flex flex-wrap gap-1">
+                    <!-- Download (unencrypted) -->
+                    <a x-show="item.url" :href="item.url"
+                       :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                       class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "Download" %}">
+                      <i class="fa-solid fa-download"></i>
+                    </a>
+                    <!-- Download encrypted -->
+                    <button x-show="item.owner === currentUser && item.encrypted"
+                            @click.stop="openEncDownload(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "Download encrypted" %}">
+                      <i class="fa-solid fa-download"></i>
+                    </button>
+                    <!-- Encrypt -->
+                    <button x-show="item.owner === currentUser && !item.encrypted"
+                            @click.stop="openCipher(item, 'encrypt')"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Encrypt" %}">
+                      <i class="fa-solid fa-lock"></i>
+                    </button>
+                    <!-- Remove encryption -->
+                    <button x-show="item.owner === currentUser && item.encrypted"
+                            @click.stop="openRemoveEnc(item)"
+                            class="rounded-lg border border-yellow-400/40 px-2 py-1 text-xs text-yellow-400 hover:opacity-80 transition" title="{% trans "Remove encryption" %}">
+                      <i class="fa-solid fa-lock-open"></i>
+                    </button>
+                    <!-- Rename -->
+                    <button x-show="item.owner === currentUser"
+                            @click.stop="openRename(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Rename" %}">
+                      <i class="fa-solid fa-pencil"></i>
+                    </button>
+                    <!-- Delete -->
+                    <button x-show="item.owner === currentUser"
+                            @click.stop="openDelete(item)"
+                            class="rounded-lg border border-red-400/30 px-2 py-1 text-xs text-red-400 hover:opacity-80 transition" title="{% trans "Delete" %}">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+
+                </div>
+              </template>
+            </div>
+          </template>
         </div>
       </template>
 
