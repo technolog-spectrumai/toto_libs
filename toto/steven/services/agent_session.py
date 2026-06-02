@@ -169,8 +169,10 @@ class RealAgentSession(AgentSession):
         return contextlib.nullcontext()
 
     def invoke(self, user_prompt: str, history=None) -> str:
-        from langchain.agents import create_agent
+        from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain.chat_models import init_chat_model
+        from langchain_core.messages import AIMessage, HumanMessage
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
         from .tools import tools_for_agent
 
@@ -186,20 +188,25 @@ class RealAgentSession(AgentSession):
                 temperature=self.profile.temperature,
             )
 
-            agent = create_agent(
-                model=model,
-                tools=tools_for_agent(self.profile, llm=model),
-                system_prompt=self.profile.system_prompt or "",
-            )
+            tools = tools_for_agent(self.profile, llm=model)
+            prompt = ChatPromptTemplate.from_messages([
+                ("system", self.profile.system_prompt or ""),
+                MessagesPlaceholder("chat_history", optional=True),
+                ("human", "{input}"),
+                MessagesPlaceholder("agent_scratchpad"),
+            ])
 
-            messages = [(m["role"], m["content"]) for m in (history or [])]
-            messages.append(("user", user_prompt))
+            agent = create_tool_calling_agent(model, tools, prompt)
+            executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
 
-            response = agent.invoke({"messages": messages})
+            chat_history = [
+                (HumanMessage if m["role"] == "user" else AIMessage)(content=m["content"])
+                for m in (history or [])
+            ]
+            result = executor.invoke({"input": user_prompt, "chat_history": chat_history})
 
-        # Stash token usage on self for _record_metering to pick up
-        self._last_token_usage = extract_token_usage(response)
-        return extract_text(response)
+        self._last_token_usage = None
+        return result.get("output", "")
 
 
 class StubAgentSession(AgentSession):
@@ -244,124 +251,14 @@ class StubAgentSession(AgentSession):
         )
 
 
-class RuleBasedAgentSession(AgentSession):
-    """
-    NLP-powered rule-based chat — no API key required.
-
-    The agent's system_prompt is stored as JSON containing intent rules
-    (see nlp.py for the schema).  Built-in commands (time, echo, calc,
-    help, who) are always available and checked before NLP matching.
-    """
-
-    _BUILTIN_HELP = (
-        "Built-in commands (always available):\n"
-        "  time / date / now        — current date & time\n"
-        "  echo <text>              — repeat your text\n"
-        "  calc <expr>              — safe arithmetic  (e.g. calc 2+2*3)\n"
-        "  who are you              — agent identity\n"
-        "  help                     — this list\n"
-        "\nEverything else is matched against intent rules stored in my\n"
-        "system prompt (Admin → Steven → Agents → system_prompt JSON)."
-    )
-
-    def invoke(self, user_prompt: str, history=None) -> str:
-        from .nlp import parse_system_prompt, spacy_available
-
-        text = user_prompt.strip()
-        lower = text.lower()
-
-        # --- Built-in commands (prefix / exact match, before NLP) ----------
-
-        if lower in ("help", "?", "commands"):
-            matcher, _ = parse_system_prompt(self.profile.system_prompt)
-            intents = (
-                "\n  ".join(f"• {r.intent}" for r in matcher.rules)
-                if matcher and matcher.rules
-                else "  (no rules defined)"
-            )
-            return f"{self._BUILTIN_HELP}\n\nConfigured intents:\n  {intents}"
-
-        if lower in ("who are you", "what are you", "whoami"):
-            nlp_note = "spaCy" if spacy_available() else "simple split (spaCy not available)"
-            return (
-                f"I'm {self.profile.name}, a rule-based assistant inside Toto Studio.\n"
-                f"NLP backend: {nlp_note}\n"
-                "I match your input against intent rules in my system_prompt JSON.\n"
-                "Configure an OpenAI connector to replace me with a real AI."
-            )
-
-        if any(p in lower for p in ("what time", "current time", "what date", "today", " date", " time", "clock")):
-            from datetime import datetime
-            now = datetime.now()
-            return f"{now.strftime('%A, %d %B %Y  %H:%M:%S')}"
-
-        if lower.startswith("echo "):
-            return text[5:].strip() or "(nothing to echo)"
-
-        if lower.startswith(("calc ", "calculate ", "compute ")):
-            expr = text.split(None, 1)[1] if " " in text else ""
-            return self._safe_eval(expr)
-
-        if self._looks_like_math(lower):
-            return self._safe_eval(text)
-
-        # --- NLP intent matching -------------------------------------------
-
-        matcher, fallback = parse_system_prompt(self.profile.system_prompt)
-        if matcher is None:
-            return (
-                fallback + "\n\n"
-                "(system_prompt is plain text — convert to JSON rule set to enable NLP matching)"
-            )
-
-        intent, response = matcher.match(text)
-        return response
-
-    # ------------------------------------------------------------------
-    # Helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _looks_like_math(text: str) -> bool:
-        import re
-        return bool(re.fullmatch(r"[\d\s\+\-\*\/\%\(\)\.]+", text.strip()))
-
-    @staticmethod
-    def _safe_eval(expr: str) -> str:
-        import ast
-        import operator as op
-
-        _OPS = {
-            ast.Add: op.add, ast.Sub: op.sub,
-            ast.Mult: op.mul, ast.Div: op.truediv,
-            ast.Mod: op.mod, ast.Pow: op.pow,
-            ast.UAdd: op.pos, ast.USub: op.neg,
-        }
-
-        def _eval(node):
-            if isinstance(node, ast.Constant) and isinstance(node.value, (int, float)):
-                return node.value
-            if isinstance(node, ast.BinOp) and type(node.op) in _OPS:
-                return _OPS[type(node.op)](_eval(node.left), _eval(node.right))
-            if isinstance(node, ast.UnaryOp) and type(node.op) in _OPS:
-                return _OPS[type(node.op)](_eval(node.operand))
-            raise ValueError(f"Unsupported: {ast.dump(node)}")
-
-        try:
-            tree = ast.parse(expr.strip(), mode="eval")
-            result = _eval(tree.body)
-            if isinstance(result, float) and result.is_integer():
-                result = int(result)
-            return f"{expr.strip()} = {result}"
-        except Exception:
-            return f'Could not evaluate: "{expr}". Try e.g. calc 2 + 3 * 4'
-
-
 class OllamaAgentSession(AgentSession):
     """LangChain-Ollama-backed agent session using a local Ollama instance."""
 
     def invoke(self, user_prompt: str, history=None) -> str:
         from django.conf import settings
+        from langchain.agents import AgentExecutor, create_tool_calling_agent
+        from langchain_core.messages import AIMessage, HumanMessage
+        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_ollama import ChatOllama
 
         from .tools import tools_for_agent
@@ -386,20 +283,24 @@ class OllamaAgentSession(AgentSession):
             timeout=getattr(settings, "VICUNA_CHAT_TIMEOUT", 180),
         )
 
-        from langchain.agents import create_agent
+        tools = tools_for_agent(self.profile, llm=model)
+        prompt = ChatPromptTemplate.from_messages([
+            ("system", self.profile.system_prompt or ""),
+            MessagesPlaceholder("chat_history", optional=True),
+            ("human", "{input}"),
+            MessagesPlaceholder("agent_scratchpad"),
+        ])
 
-        agent = create_agent(
-            model=model,
-            tools=tools_for_agent(self.profile, llm=model),
-            system_prompt=self.profile.system_prompt or "",
-        )
+        agent = create_tool_calling_agent(model, tools, prompt)
+        executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
 
-        messages = [(m["role"], m["content"]) for m in (history or [])]
-        messages.append(("user", user_prompt))
-
-        response = agent.invoke({"messages": messages})
-        self._last_token_usage = extract_token_usage(response)
-        return extract_text(response)
+        chat_history = [
+            (HumanMessage if m["role"] == "user" else AIMessage)(content=m["content"])
+            for m in (history or [])
+        ]
+        result = executor.invoke({"input": user_prompt, "chat_history": chat_history})
+        self._last_token_usage = None
+        return result.get("output", "")
 
 
 def create_agent_session(profile) -> AgentSession:

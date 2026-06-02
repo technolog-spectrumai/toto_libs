@@ -15,7 +15,6 @@ class AgentConnector(ApiConnector):
     """
 
     OPENAI = ApiConnector.PROVIDER_OPENAI
-    RULE_BASED = ApiConnector.PROVIDER_RULE_BASED
     OLLAMA = "ollama"
 
     PROVIDER_CHOICES = _PROVIDER_CHOICES

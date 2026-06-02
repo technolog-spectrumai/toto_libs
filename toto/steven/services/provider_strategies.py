@@ -128,28 +128,12 @@ class OllamaProviderStrategy(ProviderStrategy):
 
 
 # ---------------------------------------------------------------------------
-# Rule-based
-# ---------------------------------------------------------------------------
-
-class RuleBasedProviderStrategy(ProviderStrategy):
-    label = "Rule-based (no API key)"
-
-    def test(self, connector, api_key: str, timeout: int) -> dict:
-        return {"ok": True, "message": "Rule-based connector — no external connection needed."}
-
-    def create_session(self, profile):
-        from toto.steven.services.agent_session import RuleBasedAgentSession
-        return RuleBasedAgentSession(profile)
-
-
-# ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
 REGISTRY: dict[str, ProviderStrategy] = {
-    "openai":     OpenAIProviderStrategy(),
-    "ollama":     OllamaProviderStrategy(),
-    "rule_based": RuleBasedProviderStrategy(),
+    "openai": OpenAIProviderStrategy(),
+    "ollama": OllamaProviderStrategy(),
 }
 
 # Ready-made Django choices list consumed by AgentConnector.PROVIDER_CHOICES.

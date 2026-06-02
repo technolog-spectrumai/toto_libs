@@ -67,7 +67,7 @@ class AgentConnectorValidationTests(SimpleTestCase):
         c = self._make_connector("ollama")
         # clean() calls super().clean() which needs DB; test only the provider branch
         # by checking that "ollama" is in the allowed set
-        self.assertIn("ollama", (AgentConnector.OPENAI, AgentConnector.RULE_BASED, AgentConnector.OLLAMA))
+        self.assertIn("ollama", (AgentConnector.OPENAI, AgentConnector.OLLAMA))
 
     def test_ollama_constant_value(self):
         from toto.steven.models import AgentConnector
@@ -83,10 +83,10 @@ class AgentConnectorValidationTests(SimpleTestCase):
         choice_values = [v for v, _ in AgentConnector.PROVIDER_CHOICES]
         self.assertIn("openai", choice_values)
 
-    def test_rule_based_still_in_choices(self):
+    def test_ollama_still_in_choices(self):
         from toto.steven.models import AgentConnector
         choice_values = [v for v, _ in AgentConnector.PROVIDER_CHOICES]
-        self.assertIn("rule_based", choice_values)
+        self.assertIn("ollama", choice_values)
 
 
 # ---------------------------------------------------------------------------
@@ -175,11 +175,11 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
         self.assertIsInstance(session, StubAgentSession)
         self.assertIn("LangChain", session.reason)
 
-    def test_factory_rule_based_returns_rule_based_session(self):
-        from toto.steven.services.agent_session import RuleBasedAgentSession, create_agent_session
+    def test_factory_rule_based_provider_returns_stub(self):
+        from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile(provider="rule_based")
         session = create_agent_session(profile)
-        self.assertIsInstance(session, RuleBasedAgentSession)
+        self.assertIsInstance(session, StubAgentSession)
 
     def test_factory_no_connector_returns_stub(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
@@ -243,19 +243,14 @@ class OllamaAgentSessionTests(SimpleTestCase):
 
     @override_settings(
         VICUNA_CHAT_MODEL="qwen3:1.7b",
-        VICUNA_OLLAMA_HOST="http://127.0.0.1:11434",
         VICUNA_CHAT_TEMPERATURE=0.1,
         VICUNA_CHAT_TIMEOUT=180,
     )
     def test_session_instantiates_chat_ollama_with_correct_params(self):
         from toto.steven.services.agent_session import OllamaAgentSession
 
-        profile = _make_profile()
+        profile = _make_profile(base_url="http://127.0.0.1:11434")
         session = OllamaAgentSession(profile)
-
-        mock_response = {"messages": [MagicMock(content="OK")]}
-        mock_agent = MagicMock()
-        mock_agent.invoke.return_value = mock_response
 
         created_model_kwargs = {}
 
@@ -266,13 +261,15 @@ class OllamaAgentSessionTests(SimpleTestCase):
         fake_langchain_ollama = MagicMock()
         fake_langchain_ollama.ChatOllama = FakeChatOllama
 
+        mock_executor = MagicMock()
+        mock_executor.invoke.return_value = {"output": "OK"}
+
         with patch.dict("sys.modules", {"langchain_ollama": fake_langchain_ollama}), \
-             patch("langchain.agents.create_agent", return_value=mock_agent), \
+             patch("langchain.agents.create_tool_calling_agent", return_value=MagicMock()), \
+             patch("langchain.agents.AgentExecutor", return_value=mock_executor), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hello")
 
-        # profile.model_name is "qwen3:4b" via _make_profile; that's in the choices.
-        # resolve_ollama_chat_model should use it.
         self.assertIn(created_model_kwargs["model"], ["qwen3:1.7b", "qwen3:4b"])
         self.assertIn("11434", created_model_kwargs["base_url"])
 
@@ -430,9 +427,6 @@ class ExistingSessionsUnchangedTests(SimpleTestCase):
         from toto.steven.services.agent_session import RealAgentSession, AgentSession
         self.assertTrue(issubclass(RealAgentSession, AgentSession))
 
-    def test_rule_based_session_class_unchanged(self):
-        from toto.steven.services.agent_session import RuleBasedAgentSession, AgentSession
-        self.assertTrue(issubclass(RuleBasedAgentSession, AgentSession))
 
     def test_stub_session_class_unchanged(self):
         from toto.steven.services.agent_session import StubAgentSession, AgentSession

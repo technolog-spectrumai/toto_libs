@@ -27,8 +27,6 @@ class StevenChatPlugin(FloatingPlugin):
                 pass
             elif agent.connector_id is None:
                 context["steven_stub_reason"] = "No connector attached — running in stub mode."
-            elif agent.connector.provider == "rule_based":
-                context["steven_stub_reason"] = "Rule-based mode — no real AI (configure OpenAI connector to enable)."
         except OperationalError as exc:
             context["agent"] = None
             context["steven_stub_reason"] = f"DB not ready: {exc}"
