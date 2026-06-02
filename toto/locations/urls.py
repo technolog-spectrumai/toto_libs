@@ -1,7 +1,10 @@
 from django.urls import path
 
 from . import views
-from .api_views import ZoneListApiView, AddressListCreateApiView, AddressDetailApiView
+from .api_views import (
+    ZoneListApiView, AddressListCreateApiView, AddressDetailApiView,
+    MapDataApiView, MapLayersApiView, RouteSearchApiView,
+)
 
 app_name = "locations"
 
@@ -10,6 +13,9 @@ urlpatterns = [
     path("api/zones/", ZoneListApiView.as_view(), name="api_zone_list"),
     path("api/addresses/", AddressListCreateApiView.as_view(), name="api_address_list"),
     path("api/addresses/<int:pk>/", AddressDetailApiView.as_view(), name="api_address_detail"),
+    path("api/map/", MapDataApiView.as_view(), name="api_map_data"),
+    path("api/layers/", MapLayersApiView.as_view(), name="api_map_layers"),
+    path("api/route-search/", RouteSearchApiView.as_view(), name="api_route_search"),
 
 
     path("", views.locations_all, name="locations_all"),
