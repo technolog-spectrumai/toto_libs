@@ -175,9 +175,9 @@ def deep_search(q, limit=25, exact=False):
 
 
 def semantic_available() -> bool:
-    """Return True when Steven embeddings are enabled (fast, no Ollama call)."""
+    """Return True when Vicuna embeddings are enabled (fast, no Ollama call)."""
     try:
-        from toto.steven.services.embeddings import embeddings_enabled
+        from toto.vicuna.embeddings import embeddings_enabled
         return embeddings_enabled()
     except Exception:
         return False

@@ -370,17 +370,17 @@ class OllamaAgentSession(AgentSession):
         if not self.profile.is_active:
             raise RuntimeError(f'Agent "{self.profile.name}" is inactive.')
 
-        from .ollama_models import resolve_ollama_chat_model
+        from toto.vicuna.chat import resolve_ollama_chat_model
 
         model = ChatOllama(
             model=resolve_ollama_chat_model(self.profile),
-            base_url=getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434"),
+            base_url=getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434"),
             temperature=(
                 self.profile.temperature
                 if self.profile.temperature is not None
-                else getattr(settings, "STEVEN_OLLAMA_CHAT_TEMPERATURE", 0.1)
+                else getattr(settings, "VICUNA_CHAT_TEMPERATURE", 0.1)
             ),
-            timeout=getattr(settings, "STEVEN_OLLAMA_CHAT_TIMEOUT", 180),
+            timeout=getattr(settings, "VICUNA_CHAT_TIMEOUT", 180),
         )
 
         from langchain.agents import create_agent

@@ -95,8 +95,8 @@ class AgentConnectorValidationTests(SimpleTestCase):
 class OllamaTestConnectionTests(SimpleTestCase):
 
     @override_settings(
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_MODEL="qwen3:4b",
     )
     def test_ollama_connection_calls_api_tags_then_chat(self):
         from toto.steven.models import AgentConnector
@@ -123,7 +123,7 @@ class OllamaTestConnectionTests(SimpleTestCase):
         self.assertTrue(any("/api/tags" in str(u) for u in call_log))
         self.assertTrue(any("/api/chat" in str(u) for u in call_log))
 
-    @override_settings(STEVEN_OLLAMA_HOST="http://localhost:11434")
+    @override_settings(VICUNA_OLLAMA_HOST="http://localhost:11434")
     def test_ollama_connection_returns_error_when_unreachable(self):
         import urllib.error
         from toto.steven.models import AgentConnector
@@ -216,10 +216,10 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
 class OllamaAgentSessionTests(SimpleTestCase):
 
     @override_settings(
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_TEMPERATURE=0.1,
-        STEVEN_OLLAMA_CHAT_TIMEOUT=180,
+        VICUNA_CHAT_MODEL="qwen3:4b",
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_TEMPERATURE=0.1,
+        VICUNA_CHAT_TIMEOUT=180,
     )
     def test_session_uses_chat_model_from_settings(self):
         from toto.steven.services.agent_session import OllamaAgentSession
@@ -244,13 +244,13 @@ class OllamaAgentSessionTests(SimpleTestCase):
         # Since we patched invoke directly, verify the model is chosen via settings
         # by testing that the constant in settings is correct
         from django.conf import settings as djsettings
-        self.assertEqual(djsettings.STEVEN_OLLAMA_CHAT_MODEL, "qwen3:4b")
+        self.assertEqual(djsettings.VICUNA_CHAT_MODEL, "qwen3:4b")
 
     @override_settings(
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:1.7b",
-        STEVEN_OLLAMA_HOST="http://127.0.0.1:11434",
-        STEVEN_OLLAMA_CHAT_TEMPERATURE=0.1,
-        STEVEN_OLLAMA_CHAT_TIMEOUT=180,
+        VICUNA_CHAT_MODEL="qwen3:1.7b",
+        VICUNA_OLLAMA_HOST="http://127.0.0.1:11434",
+        VICUNA_CHAT_TEMPERATURE=0.1,
+        VICUNA_CHAT_TIMEOUT=180,
     )
     def test_session_instantiates_chat_ollama_with_correct_params(self):
         from toto.steven.services.agent_session import OllamaAgentSession
@@ -289,7 +289,7 @@ class OllamaAgentSessionTests(SimpleTestCase):
 class DetectGpuTests(SimpleTestCase):
 
     def test_returns_unavailable_when_nvidia_smi_absent(self):
-        from toto.steven.services.ollama_runtime import detect_gpu
+        from toto.vicuna.runtime import detect_gpu
         with patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=False), \
              patch.dict("os.environ", {}, clear=True):
@@ -298,7 +298,7 @@ class DetectGpuTests(SimpleTestCase):
         self.assertEqual(result["backend"], "none")
 
     def test_returns_available_when_nvidia_smi_succeeds(self):
-        from toto.steven.services.ollama_runtime import detect_gpu
+        from toto.vicuna.runtime import detect_gpu
         mock_proc = MagicMock()
         mock_proc.returncode = 0
         mock_proc.stdout = "NVIDIA GeForce RTX 3090\n"
@@ -310,7 +310,7 @@ class DetectGpuTests(SimpleTestCase):
         self.assertIn("RTX 3090", result["details"])
 
     def test_returns_available_via_dev_node(self):
-        from toto.steven.services.ollama_runtime import detect_gpu
+        from toto.vicuna.runtime import detect_gpu
         with patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=True):
             result = detect_gpu()
@@ -318,7 +318,7 @@ class DetectGpuTests(SimpleTestCase):
         self.assertEqual(result["backend"], "nvidia")
 
     def test_returns_available_via_env_var(self):
-        from toto.steven.services.ollama_runtime import detect_gpu
+        from toto.vicuna.runtime import detect_gpu
         with patch("shutil.which", return_value=None), \
              patch("os.path.exists", return_value=False), \
              patch.dict("os.environ", {"NVIDIA_VISIBLE_DEVICES": "0,1"}):
@@ -326,7 +326,7 @@ class DetectGpuTests(SimpleTestCase):
         self.assertTrue(result["available"])
 
     def test_nvidia_smi_failure_not_counted_as_available(self):
-        from toto.steven.services.ollama_runtime import detect_gpu
+        from toto.vicuna.runtime import detect_gpu
         mock_proc = MagicMock()
         mock_proc.returncode = 1
         mock_proc.stdout = ""
@@ -345,10 +345,10 @@ class DetectGpuTests(SimpleTestCase):
 class PullChatModelCommandTests(SimpleTestCase):
 
     @override_settings(
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
-        STEVEN_OLLAMA_REQUIRE_GPU=False,
-        STEVEN_OLLAMA_CHAT_TIMEOUT=180,
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_MODEL="qwen3:4b",
+        VICUNA_REQUIRE_GPU=False,
+        VICUNA_CHAT_TIMEOUT=180,
     )
     def test_pull_posts_to_api_pull(self):
         captured = {}
@@ -366,7 +366,7 @@ class PullChatModelCommandTests(SimpleTestCase):
             return ctx
 
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
-        with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
+        with patch("toto.vicuna.runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=fake_urlopen):
             _make_command().handle(**{"model": None, "all": False})
 
@@ -375,22 +375,22 @@ class PullChatModelCommandTests(SimpleTestCase):
         self.assertIn("localhost:11434", pull_urls[0])
 
     @override_settings(
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
-        STEVEN_OLLAMA_REQUIRE_GPU=True,
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_MODEL="qwen3:4b",
+        VICUNA_REQUIRE_GPU=True,
     )
     def test_gpu_required_aborts_when_unavailable(self):
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
-        with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu):
+        with patch("toto.vicuna.runtime.detect_gpu", return_value=no_gpu):
             with self.assertRaises(SystemExit) as ctx:
                 _make_command().handle(**{"model": None, "all": False})
         self.assertEqual(ctx.exception.code, 1)
 
     @override_settings(
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
-        STEVEN_OLLAMA_REQUIRE_GPU=False,
-        STEVEN_OLLAMA_CHAT_TIMEOUT=180,
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_MODEL="qwen3:4b",
+        VICUNA_REQUIRE_GPU=False,
+        VICUNA_CHAT_TIMEOUT=180,
     )
     def test_continues_on_cpu_with_warning(self):
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
@@ -404,21 +404,21 @@ class PullChatModelCommandTests(SimpleTestCase):
             ctx.read.return_value = json.dumps({"status": "success", "message": {"content": "ok"}}).encode()
             return ctx
 
-        with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
+        with patch("toto.vicuna.runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=fake_urlopen):
             _make_command().handle(**{"model": None, "all": False})  # must not raise
 
         self.assertTrue(any("/api/pull" in u for u in captured_urls))
 
     @override_settings(
-        STEVEN_OLLAMA_HOST="http://localhost:11434",
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
-        STEVEN_OLLAMA_REQUIRE_GPU=False,
+        VICUNA_OLLAMA_HOST="http://localhost:11434",
+        VICUNA_CHAT_MODEL="qwen3:4b",
+        VICUNA_REQUIRE_GPU=False,
     )
     def test_exits_nonzero_when_ollama_unreachable(self):
         import urllib.error
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
-        with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
+        with patch("toto.vicuna.runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
             with self.assertRaises(SystemExit) as ctx:
                 _make_command().handle(**{"model": None, "all": False})

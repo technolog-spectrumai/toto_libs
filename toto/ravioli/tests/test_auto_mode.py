@@ -81,7 +81,7 @@ class ResolveModeTests(SimpleTestCase):
 
 class RunSearchAutoSemanticTests(SimpleTestCase):
 
-    @override_settings(STEVEN_EMBEDDINGS_ENABLED=True)
+    @override_settings(VICUNA_EMBEDDINGS_ENABLED=True)
     def test_auto_uses_semantic_when_available(self):
         from toto.ravioli.services.search import run_search, MODE_SEMANTIC
 
@@ -99,7 +99,7 @@ class RunSearchAutoSemanticTests(SimpleTestCase):
         self.assertIsNone(result["fallback_reason"])
         self.assertEqual(len(result["results"]), 2)
 
-    @override_settings(STEVEN_EMBEDDINGS_ENABLED=True)
+    @override_settings(VICUNA_EMBEDDINGS_ENABLED=True)
     def test_semantic_mode_explicit_succeeds(self):
         from toto.ravioli.services.search import run_search, MODE_SEMANTIC
 
@@ -121,7 +121,7 @@ class RunSearchAutoSemanticTests(SimpleTestCase):
 
 class RunSearchAutoFallbackTests(SimpleTestCase):
 
-    @override_settings(STEVEN_EMBEDDINGS_ENABLED=False)
+    @override_settings(VICUNA_EMBEDDINGS_ENABLED=False)
     def test_auto_falls_back_when_embeddings_disabled(self):
         from toto.ravioli.services.search import run_search, MODE_KEYWORD
         from toto.ravioli.vector_search import VectorSearchUnavailable

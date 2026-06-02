@@ -13,9 +13,9 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         from toto.steven.models import AgentConnector
 
-        from toto.steven.services.ollama_models import default_ollama_chat_model
+        from toto.vicuna.chat import default_ollama_chat_model
 
-        host = getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434")
+        host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434")
         model = default_ollama_chat_model()
 
         connector, created = AgentConnector.objects.update_or_create(

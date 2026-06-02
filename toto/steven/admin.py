@@ -11,7 +11,7 @@ class AgentProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from toto.steven.services.ollama_models import ollama_chat_model_choices
+        from toto.vicuna.chat import ollama_chat_model_choices
         choices_str = ", ".join(ollama_chat_model_choices())
         self.fields["model_name"].help_text = (
             f"OpenAI: e.g. openai:gpt-4.1-mini. "
@@ -24,7 +24,7 @@ class AgentProfileForm(forms.ModelForm):
         connector = cleaned.get("connector")
         model_name = (cleaned.get("model_name") or "").strip()
         if connector and getattr(connector, "provider", None) == "ollama" and model_name:
-            from toto.steven.services.ollama_models import ollama_chat_model_choices
+            from toto.vicuna.chat import ollama_chat_model_choices
             choices = ollama_chat_model_choices()
             if model_name not in choices:
                 self.add_error(

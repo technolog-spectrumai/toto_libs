@@ -76,7 +76,7 @@ class AgentConnector(ApiConnector):
             return {"ok": False, "message": f"OpenAI connection timed out after {timeout} seconds."}
 
     def _test_ollama_connection(self, timeout: int = 10):
-        host = getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
         # Step 1: GET /api/tags to verify Ollama is running
         try:
             with urlopen(f"{host}/api/tags", timeout=timeout) as resp:
@@ -88,7 +88,7 @@ class AgentConnector(ApiConnector):
             return {"ok": False, "message": f"Ollama connection timed out after {timeout}s."}
 
         # Step 2: tiny /api/chat smoke test
-        model = getattr(settings, "STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b")
+        model = getattr(settings, "VICUNA_CHAT_MODEL", "qwen3:4b")
         smoke_payload = json.dumps({
             "model": model,
             "messages": [{"role": "user", "content": "ok"}],

@@ -12,7 +12,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         if find_spec("langchain_ollama") is not None:
             connector = self._ensure_ollama_connector()
-            model_name = getattr(settings, "STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b")
+            model_name = getattr(settings, "VICUNA_CHAT_MODEL", "qwen3:4b")
         else:
             connector = self._ensure_openai_connector()
             model_name = "openai:gpt-4.1-mini"
@@ -44,7 +44,7 @@ class Command(BaseCommand):
         )
 
     def _ensure_ollama_connector(self):
-        host = getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434")
+        host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434")
         connector, _ = AgentConnector.objects.update_or_create(
             slug="ollama-local",
             defaults={

@@ -388,31 +388,27 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "toto-dev-secret-key-change-me" if django_env != "PROD" else secrets.token_urlsafe(50)
     )
 
-    # -------------------------------------------------------- steven embeddings + ollama
+    # -------------------------------------------------------- vicuna (Ollama / Qwen service layer)
     steven_embedding_settings: dict[str, Any] = {
         # Shared Ollama host (used by both embeddings and chat)
-        "STEVEN_OLLAMA_HOST": os.getenv("STEVEN_OLLAMA_HOST", "http://localhost:11434"),
+        "VICUNA_OLLAMA_HOST": os.getenv("VICUNA_OLLAMA_HOST", "http://localhost:11434"),
         # Embeddings
-        "STEVEN_EMBEDDINGS_ENABLED": os.getenv("STEVEN_EMBEDDINGS_ENABLED", "0") == "1",
-        "STEVEN_EMBEDDING_PROVIDER": os.getenv("STEVEN_EMBEDDING_PROVIDER", "ollama"),
-        "STEVEN_EMBEDDING_MODEL": os.getenv("STEVEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b"),
-        "STEVEN_EMBEDDING_TIMEOUT": int(os.getenv("STEVEN_EMBEDDING_TIMEOUT", "120")),
-        "STEVEN_GRAPH_RAG_BACKEND": os.getenv("STEVEN_GRAPH_RAG_BACKEND", "legacy_keyword"),
+        "VICUNA_EMBEDDINGS_ENABLED": os.getenv("VICUNA_EMBEDDINGS_ENABLED", "0") == "1",
+        "VICUNA_EMBEDDING_PROVIDER": os.getenv("VICUNA_EMBEDDING_PROVIDER", "ollama"),
+        "VICUNA_EMBEDDING_MODEL": os.getenv("VICUNA_EMBEDDING_MODEL", "qwen3-embedding:0.6b"),
+        "VICUNA_EMBEDDING_TIMEOUT": int(os.getenv("VICUNA_EMBEDDING_TIMEOUT", "120")),
         "TOTO_NEO4J_VECTOR_INDEX": os.getenv("TOTO_NEO4J_VECTOR_INDEX", "toto_chunk_embeddings"),
         "TOTO_VECTOR_NODE_LABEL": os.getenv("TOTO_VECTOR_NODE_LABEL", "TotoChunk"),
         "TOTO_VECTOR_TEXT_PROPERTY": os.getenv("TOTO_VECTOR_TEXT_PROPERTY", "text"),
         "TOTO_VECTOR_EMBEDDING_PROPERTY": os.getenv("TOTO_VECTOR_EMBEDDING_PROPERTY", "embedding"),
         # Ollama chat
-        "STEVEN_OLLAMA_CHAT_ENABLED": os.getenv("STEVEN_OLLAMA_CHAT_ENABLED", "0") == "1",
-        "STEVEN_OLLAMA_CHAT_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_MODEL", "qwen3:1.7b"),
-        "STEVEN_OLLAMA_CHAT_MODEL_CHOICES": os.getenv(
-            "STEVEN_OLLAMA_CHAT_MODEL_CHOICES", "qwen3:0.6b,qwen3:1.7b,qwen3:4b"
+        "VICUNA_CHAT_MODEL": os.getenv("VICUNA_CHAT_MODEL", "qwen3:1.7b"),
+        "VICUNA_CHAT_MODEL_CHOICES": os.getenv(
+            "VICUNA_CHAT_MODEL_CHOICES", "qwen3:0.6b,qwen3:1.7b,qwen3:4b"
         ).split(","),
-        "STEVEN_OLLAMA_CHAT_FALLBACK_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_FALLBACK_MODEL", "qwen3:0.6b"),
-        "STEVEN_OLLAMA_CHAT_QUALITY_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_QUALITY_MODEL", "qwen3:4b"),
-        "STEVEN_OLLAMA_CHAT_TIMEOUT": int(os.getenv("STEVEN_OLLAMA_CHAT_TIMEOUT", "180")),
-        "STEVEN_OLLAMA_CHAT_TEMPERATURE": float(os.getenv("STEVEN_OLLAMA_CHAT_TEMPERATURE", "0.1")),
-        "STEVEN_OLLAMA_REQUIRE_GPU": os.getenv("STEVEN_OLLAMA_REQUIRE_GPU", "0") == "1",
+        "VICUNA_CHAT_TIMEOUT": int(os.getenv("VICUNA_CHAT_TIMEOUT", "180")),
+        "VICUNA_CHAT_TEMPERATURE": float(os.getenv("VICUNA_CHAT_TEMPERATURE", "0.1")),
+        "VICUNA_REQUIRE_GPU": os.getenv("VICUNA_REQUIRE_GPU", "0") == "1",
     }
 
     # ----------------------------------------------------------- assemble

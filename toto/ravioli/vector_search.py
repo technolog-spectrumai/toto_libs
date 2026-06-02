@@ -9,7 +9,7 @@ import re
 from django.conf import settings
 
 from toto.ravioli.connection import Neo4jClient, Neo4jConnectionError
-from toto.steven.services.embeddings import EmbeddingUnavailable, embed_text
+from toto.vicuna.embeddings import EmbeddingUnavailable, embed_text
 
 
 class VectorSearchUnavailable(RuntimeError):

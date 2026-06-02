@@ -1,7 +1,7 @@
 """Create the Neo4j vector index for toto chunk embeddings.
 
 Idempotent — safe to run multiple times. Requires embeddings to be enabled
-(STEVEN_EMBEDDINGS_ENABLED=True) so the dimension can be determined.
+(VICUNA_EMBEDDINGS_ENABLED=True) so the dimension can be determined.
 """
 from __future__ import annotations
 
@@ -17,13 +17,13 @@ def _safe_id(value: str) -> bool:
 class Command(BaseCommand):
     help = (
         "Create the Neo4j vector index for toto chunk embeddings (idempotent). "
-        "Requires STEVEN_EMBEDDINGS_ENABLED=True and a running Ollama instance."
+        "Requires VICUNA_EMBEDDINGS_ENABLED=True and a running Ollama instance."
     )
 
     def handle(self, *args, **options):
         from django.conf import settings
 
-        from toto.steven.services.embeddings import EmbeddingUnavailable, embedding_dimension
+        from toto.vicuna.embeddings import EmbeddingUnavailable, embedding_dimension
 
         # --- determine embedding dimension --------------------------------
         try:
@@ -32,7 +32,7 @@ class Command(BaseCommand):
             self.stderr.write(
                 self.style.WARNING(
                     f"Embeddings unavailable — cannot determine vector dimension: {exc}\n"
-                    "Set STEVEN_EMBEDDINGS_ENABLED=True and ensure Ollama is running, then retry."
+                    "Set VICUNA_EMBEDDINGS_ENABLED=True and ensure Ollama is running, then retry."
                 )
             )
             raise SystemExit(1)
