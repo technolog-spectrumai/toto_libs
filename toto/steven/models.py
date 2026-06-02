@@ -2,7 +2,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from toto.api.models import ApiConnector
-from toto.steven.services.connection_testers import PROVIDER_CHOICES as _PROVIDER_CHOICES
+from toto.steven.services.provider_strategies import PROVIDER_CHOICES as _PROVIDER_CHOICES
 from toto.steven.services.connection_testers import test_connection as _test_connection
 
 
@@ -10,7 +10,7 @@ class AgentConnector(ApiConnector):
     """Agent connector driven by the connection-tester registry.
 
     Supported providers and their connection logic live in
-    services/connection_testers.py. Adding a provider there is the only
+    services/provider_strategies.py. Adding a provider there is the only
     change needed — this model stays untouched.
     """
 

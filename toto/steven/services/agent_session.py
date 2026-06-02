@@ -404,7 +404,7 @@ def create_agent_session(profile) -> AgentSession:
     Pre-conditions checked here (apply to every provider):
     - connector must exist and be active
     Provider-specific logic (availability checks, session class) lives in
-    the strategy registered in services/connection_testers.py.
+    the strategy registered in services/provider_strategies.py.
     """
     if profile.connector is None:
         return StubAgentSession(profile, reason="No connector is configured for this agent.")
@@ -412,7 +412,7 @@ def create_agent_session(profile) -> AgentSession:
     if not profile.connector.is_active:
         return StubAgentSession(profile, reason="Connector is inactive.")
 
-    from toto.steven.services.connection_testers import REGISTRY
+    from toto.steven.services.provider_strategies import REGISTRY
     strategy = REGISTRY.get(profile.connector.provider)
     if strategy is None:
         return StubAgentSession(

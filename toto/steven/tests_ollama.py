@@ -116,7 +116,7 @@ class OllamaTestConnectionTests(SimpleTestCase):
             ).encode()
             return ctx
 
-        with patch("toto.steven.services.connection_testers.urlopen", side_effect=fake_urlopen):
+        with patch("toto.steven.services.provider_strategies.urlopen", side_effect=fake_urlopen):
             result = c.test_connection(timeout=5)
 
         self.assertTrue(result["ok"])
@@ -130,7 +130,7 @@ class OllamaTestConnectionTests(SimpleTestCase):
         c = AgentConnector.__new__(AgentConnector)
         c.provider = "ollama"
 
-        with patch("toto.steven.services.connection_testers.urlopen", side_effect=urllib.error.URLError("refused")):
+        with patch("toto.steven.services.provider_strategies.urlopen", side_effect=urllib.error.URLError("refused")):
             result = c.test_connection(timeout=2)
 
         self.assertFalse(result["ok"])
@@ -146,14 +146,14 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
     def test_factory_returns_ollama_session_for_ollama_provider(self):
         from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
         profile = _make_profile(provider="ollama")
-        with patch("toto.steven.services.connection_testers.find_spec", return_value=MagicMock()):
+        with patch("toto.steven.services.provider_strategies.find_spec", return_value=MagicMock()):
             session = create_agent_session(profile)
         self.assertIsInstance(session, OllamaAgentSession)
 
     def test_factory_returns_stub_if_langchain_ollama_missing(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile(provider="ollama")
-        with patch("toto.steven.services.connection_testers.find_spec", return_value=None):
+        with patch("toto.steven.services.provider_strategies.find_spec", return_value=None):
             session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
         self.assertIn("langchain-ollama", session.reason)
@@ -161,14 +161,14 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
     def test_factory_openai_returns_real_session_when_langchain_available(self):
         from toto.steven.services.agent_session import RealAgentSession, create_agent_session
         profile = _make_profile(provider="openai")
-        with patch("toto.steven.services.connection_testers.find_spec", return_value=MagicMock()):
+        with patch("toto.steven.services.provider_strategies.find_spec", return_value=MagicMock()):
             session = create_agent_session(profile)
         self.assertIsInstance(session, RealAgentSession)
 
     def test_factory_openai_returns_stub_when_langchain_missing(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile(provider="openai")
-        with patch("toto.steven.services.connection_testers.find_spec", return_value=None):
+        with patch("toto.steven.services.provider_strategies.find_spec", return_value=None):
             session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
         self.assertIn("LangChain", session.reason)
