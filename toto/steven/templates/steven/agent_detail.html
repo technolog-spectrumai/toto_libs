@@ -41,20 +41,6 @@
         <span>Updated {{ agent.updated_at|date:"M d, Y H:i" }}</span>
       </div>
 
-      <div class="flex flex-wrap gap-2 text-xs">
-        {% if agent.graph_rag_enabled %}
-          <span
-            :class="darkMode ? 'border-accent-1 text-accent-dark' : 'border-accent-2 text-accent-light'"
-            class="inline-flex items-center gap-1 rounded border px-2 py-1 font-semibold">
-            <i class="fa-solid fa-circle-nodes"></i>{% trans "Graph RAG" %}</span>
-          <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 opacity-75">
-            {{ agent.graph_rag_max_nodes }} node limit · depth {{ agent.graph_rag_depth }}
-          </span>
-        {% else %}
-          <span class="inline-flex items-center gap-1 rounded border border-current/15 px-2 py-1 opacity-60">
-            <i class="fa-solid fa-circle-nodes"></i>{% trans "Graph RAG off" %}</span>
-        {% endif %}
-      </div>
 
       <div class="flex flex-wrap gap-2">
         {% for tool in agent.tools.all %}

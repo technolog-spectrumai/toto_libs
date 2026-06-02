@@ -138,27 +138,6 @@ class AgentProfile(models.Model):
         related_name="agents",
     )
     temperature = models.FloatField(default=0.2)
-    uses_encrypted_chat = models.BooleanField(
-        default=False,
-        help_text="When enabled, Enigma chat routes this agent through the MLS encrypted session layer.",
-    )
-    graph_rag_enabled = models.BooleanField(
-        default=False,
-        help_text="Attach relevant ravioli graph context to Steven prompts.",
-    )
-    graph_rag_labels = models.JSONField(
-        default=list,
-        blank=True,
-        help_text="Optional list of ravioli graph labels to search. Empty means all labels.",
-    )
-    graph_rag_max_nodes = models.PositiveSmallIntegerField(
-        default=8,
-        help_text="Maximum matched graph nodes to include in prompt context.",
-    )
-    graph_rag_depth = models.PositiveSmallIntegerField(
-        default=1,
-        help_text="Relationship depth to include around matched graph nodes.",
-    )
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -177,6 +156,7 @@ class AgentTool(models.Model):
         ("echo", "Echo"),
         ("calculator", "Calculator"),
         ("current_time", "Current time"),
+        ("graph_cypher_qa", "Graph Cypher QA (ravioli Neo4j)"),
     ]
 
     agent = models.ForeignKey(AgentProfile, on_delete=models.CASCADE, related_name="tools")

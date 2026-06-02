@@ -74,8 +74,8 @@ def graph_cypher_qa_tool(llm):
 
 
 def tools_for_agent(agent_profile, llm=None):
-    enabled_keys = agent_profile.tools.filter(enabled=True).values_list('key', flat=True)
+    enabled_keys = list(agent_profile.tools.filter(enabled=True).values_list('key', flat=True))
     tools = [TOOL_REGISTRY[key] for key in enabled_keys if key in TOOL_REGISTRY]
-    if getattr(agent_profile, "graph_rag_enabled", False) and langchain_neo4j_available():
+    if "graph_cypher_qa" in enabled_keys and langchain_neo4j_available():
         tools.append(graph_cypher_qa_tool(llm))
     return tools

@@ -17,7 +17,7 @@ _STEVEN_INSTALLED = apps.is_installed("toto.steven")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_profile(provider="ollama", is_active=True, graph_rag_enabled=False, temperature=0.1):
+def _make_profile(provider="ollama", is_active=True, temperature=0.1):
     connector = SimpleNamespace(
         provider=provider,
         is_active=is_active,
@@ -31,10 +31,6 @@ def _make_profile(provider="ollama", is_active=True, graph_rag_enabled=False, te
         model_name="qwen3:4b",
         temperature=temperature,
         system_prompt="You are a test agent.",
-        graph_rag_enabled=graph_rag_enabled,
-        graph_rag_labels=[],
-        graph_rag_max_nodes=3,
-        graph_rag_depth=0,
     )
 
 
@@ -277,7 +273,6 @@ class OllamaAgentSessionTests(SimpleTestCase):
 
         with patch.dict("sys.modules", {"langchain_ollama": fake_langchain_ollama}), \
              patch("langchain.agents.create_agent", return_value=mock_agent), \
-             patch.object(session, "graph_context_for", return_value=""), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hello")
 
@@ -285,28 +280,6 @@ class OllamaAgentSessionTests(SimpleTestCase):
         # resolve_ollama_chat_model should use it.
         self.assertIn(created_model_kwargs["model"], ["qwen3:1.7b", "qwen3:4b"])
         self.assertIn("11434", created_model_kwargs["base_url"])
-
-    def test_graph_context_still_injected(self):
-        from toto.steven.services.agent_session import OllamaAgentSession
-        profile = _make_profile(graph_rag_enabled=True)
-        session = OllamaAgentSession(profile)
-
-        mock_response = {"messages": [MagicMock(content="answer")]}
-        mock_agent = MagicMock()
-        mock_agent.invoke.return_value = mock_response
-
-        fake_langchain_ollama = MagicMock()
-        fake_langchain_ollama.ChatOllama = MagicMock(return_value=MagicMock())
-
-        with patch.dict("sys.modules", {"langchain_ollama": fake_langchain_ollama}), \
-             patch("langchain.agents.create_agent", return_value=mock_agent) as mock_create, \
-             patch.object(session, "graph_context_for", return_value="graph info") as mock_gc, \
-             patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
-            session.invoke("query")
-
-        mock_gc.assert_called_once_with("query")
-        create_call_kwargs = mock_create.call_args[1]
-        self.assertIn("graph info", create_call_kwargs["system_prompt"])
 
 
 # ---------------------------------------------------------------------------
@@ -470,11 +443,3 @@ class ExistingSessionsUnchangedTests(SimpleTestCase):
         from toto.steven.services.agent_session import StubAgentSession, AgentSession
         self.assertTrue(issubclass(StubAgentSession, AgentSession))
 
-    def test_graph_context_base_method_exists(self):
-        from toto.steven.services.agent_session import AgentSession
-        self.assertTrue(hasattr(AgentSession, "graph_context_for"))
-
-    def test_system_prompt_helper_on_base(self):
-        """_system_prompt_with_graph_context was moved to AgentSession base class."""
-        from toto.steven.services.agent_session import AgentSession
-        self.assertTrue(hasattr(AgentSession, "_system_prompt_with_graph_context"))

@@ -114,10 +114,13 @@ class GraphRagTests(SimpleTestCase):
         self.assertIn("HAS_CATEGORY", context)
 
     def test_graph_cypher_tool_is_added_when_langchain_neo4j_is_available(self):
-        agent = SimpleNamespace(
-            tools=EmptyToolManager(),
-            graph_rag_enabled=True,
-        )
+        class GraphRagToolManager:
+            def filter(self, **kwargs):
+                return self
+            def values_list(self, *args, **kwargs):
+                return ["graph_cypher_qa"]
+
+        agent = SimpleNamespace(tools=GraphRagToolManager())
 
         with patch.object(steven_tools, "langchain_neo4j_available", return_value=True):
             tools = steven_tools.tools_for_agent(agent, llm=object())

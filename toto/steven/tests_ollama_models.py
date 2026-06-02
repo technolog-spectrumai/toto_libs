@@ -160,7 +160,6 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             model_name="qwen3:4b",
             temperature=0.1,
             system_prompt="",
-            graph_rag_enabled=False,
         )
         session = OllamaAgentSession(profile)
 
@@ -178,7 +177,6 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
 
         with patch.dict("sys.modules", {"langchain_ollama": fake_lo}), \
              patch("langchain.agents.create_agent", return_value=mock_agent), \
-             patch.object(session, "graph_context_for", return_value=""), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hi")
 
@@ -199,7 +197,6 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             model_name="LoboLightNLP",
             temperature=0.1,
             system_prompt="",
-            graph_rag_enabled=False,
         )
         session = OllamaAgentSession(profile)
 
@@ -217,7 +214,6 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
 
         with patch.dict("sys.modules", {"langchain_ollama": fake_lo}), \
              patch("langchain.agents.create_agent", return_value=mock_agent), \
-             patch.object(session, "graph_context_for", return_value=""), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hi")
 

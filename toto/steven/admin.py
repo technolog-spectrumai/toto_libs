@@ -49,15 +49,11 @@ class AgentProfileAdmin(admin.ModelAdmin):
         "model_name",
         "connector",
         "temperature",
-        "graph_rag_enabled",
-        "uses_encrypted_chat",
         "is_active",
         "updated_at",
     )
     list_filter = (
         "is_active",
-        "graph_rag_enabled",
-        "uses_encrypted_chat",
         "model_name",
         "connector",
     )
@@ -69,19 +65,7 @@ class AgentProfileAdmin(admin.ModelAdmin):
             "fields": ("name", "slug", "user", "avatar", "description", "is_active"),
         }),
         ("Runtime", {
-            "fields": ("model_name", "connector", "temperature", "uses_encrypted_chat", "system_prompt"),
-        }),
-        ("Graph RAG", {
-            "fields": (
-                "graph_rag_enabled",
-                "graph_rag_labels",
-                "graph_rag_max_nodes",
-                "graph_rag_depth",
-            ),
-            "description": (
-                "Retrieve context from ravioli's Neo4j projection before "
-                "Steven answers. Leave labels empty to search every graph label."
-            ),
+            "fields": ("model_name", "connector", "temperature", "system_prompt"),
         }),
     )
     inlines = [AgentToolInline]
