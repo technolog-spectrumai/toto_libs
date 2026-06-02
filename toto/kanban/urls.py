@@ -6,6 +6,11 @@ from .api_views import (
     TaskDetailApiView,
     TaskPromoteApiView,
     TaskDemoteApiView,
+    ProjectMissionsApiView,
+    MissionDetailApiView,
+    SprintMetricsApiView,
+    BacklogApiView,
+    EisenhowerMatrixApiView,
 )
 from .views import (
     ProjectListView,
@@ -32,6 +37,11 @@ urlpatterns = [
     path("api/tasks/<int:pk>/", TaskDetailApiView.as_view(), name="api_task_detail"),
     path("api/tasks/<int:pk>/promote/", TaskPromoteApiView.as_view(), name="api_task_promote"),
     path("api/tasks/<int:pk>/demote/", TaskDemoteApiView.as_view(), name="api_task_demote"),
+    path("api/projects/<int:pk>/missions/", ProjectMissionsApiView.as_view(), name="api_project_missions"),
+    path("api/projects/<int:pk>/backlog/", BacklogApiView.as_view(), name="api_project_backlog"),
+    path("api/projects/<int:pk>/sprint-metrics/", SprintMetricsApiView.as_view(), name="api_sprint_metrics"),
+    path("api/projects/<int:pk>/matrix/", EisenhowerMatrixApiView.as_view(), name="api_eisenhower_matrix"),
+    path("api/missions/<int:pk>/", MissionDetailApiView.as_view(), name="api_mission_detail"),
 
     path("", ProjectListView.as_view(), name="project_list"),
 
