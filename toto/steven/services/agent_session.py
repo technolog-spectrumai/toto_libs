@@ -5,6 +5,45 @@ from abc import ABC, abstractmethod
 from django.utils import timezone
 
 
+def _run_tool_loop(model, tools, system_prompt: str, user_prompt: str, history, max_iters: int = 10) -> str:
+    """Tool-calling loop using only langchain_core primitives.
+
+    Works with any LangChain version that supports tool calling — no
+    AgentExecutor or create_tool_calling_agent required.
+    """
+    from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
+
+    tool_map = {t.name: t for t in (tools or [])}
+    bound = model.bind_tools(list(tool_map.values())) if tool_map else model
+
+    messages = [SystemMessage(content=system_prompt)]
+    for m in (history or []):
+        cls = HumanMessage if m["role"] == "user" else AIMessage
+        messages.append(cls(content=m["content"]))
+    messages.append(HumanMessage(content=user_prompt))
+
+    for _ in range(max_iters):
+        response = bound.invoke(messages)
+        messages.append(response)
+
+        calls = getattr(response, "tool_calls", None) or []
+        if not calls:
+            content = response.content
+            if isinstance(content, list):
+                return "\n".join(str(c) for c in content)
+            return str(content) if content else ""
+
+        for tc in calls:
+            tool = tool_map.get(tc["name"])
+            try:
+                result = tool.invoke(tc["args"]) if tool else f"Unknown tool: {tc['name']}"
+            except Exception as exc:
+                result = f"Tool error: {exc}"
+            messages.append(ToolMessage(content=str(result), tool_call_id=tc["id"]))
+
+    return str(getattr(messages[-1], "content", "")) or "(max iterations reached)"
+
+
 def extract_text(agent_response) -> str:
     """Normalize LangChain agent output into displayable text."""
     messages = agent_response.get("messages", []) if isinstance(agent_response, dict) else []
@@ -169,10 +208,7 @@ class RealAgentSession(AgentSession):
         return contextlib.nullcontext()
 
     def invoke(self, user_prompt: str, history=None) -> str:
-        from langchain.agents import AgentExecutor, create_tool_calling_agent
         from langchain.chat_models import init_chat_model
-        from langchain_core.messages import AIMessage, HumanMessage
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 
         from .tools import tools_for_agent
 
@@ -187,26 +223,15 @@ class RealAgentSession(AgentSession):
                 self.profile.model_name,
                 temperature=self.profile.temperature,
             )
-
             tools = tools_for_agent(self.profile, llm=model)
-            prompt = ChatPromptTemplate.from_messages([
-                ("system", self.profile.system_prompt or ""),
-                MessagesPlaceholder("chat_history", optional=True),
-                ("human", "{input}"),
-                MessagesPlaceholder("agent_scratchpad"),
-            ])
-
-            agent = create_tool_calling_agent(model, tools, prompt)
-            executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
-
-            chat_history = [
-                (HumanMessage if m["role"] == "user" else AIMessage)(content=m["content"])
-                for m in (history or [])
-            ]
-            result = executor.invoke({"input": user_prompt, "chat_history": chat_history})
 
         self._last_token_usage = None
-        return result.get("output", "")
+        return _run_tool_loop(
+            model, tools,
+            system_prompt=self.profile.system_prompt or "",
+            user_prompt=user_prompt,
+            history=history,
+        )
 
 
 class StubAgentSession(AgentSession):
@@ -256,9 +281,6 @@ class OllamaAgentSession(AgentSession):
 
     def invoke(self, user_prompt: str, history=None) -> str:
         from django.conf import settings
-        from langchain.agents import AgentExecutor, create_tool_calling_agent
-        from langchain_core.messages import AIMessage, HumanMessage
-        from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
         from langchain_ollama import ChatOllama
 
         from .tools import tools_for_agent
@@ -283,24 +305,13 @@ class OllamaAgentSession(AgentSession):
             timeout=getattr(settings, "VICUNA_CHAT_TIMEOUT", 180),
         )
 
-        tools = tools_for_agent(self.profile, llm=model)
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", self.profile.system_prompt or ""),
-            MessagesPlaceholder("chat_history", optional=True),
-            ("human", "{input}"),
-            MessagesPlaceholder("agent_scratchpad"),
-        ])
-
-        agent = create_tool_calling_agent(model, tools, prompt)
-        executor = AgentExecutor(agent=agent, tools=tools, verbose=False)
-
-        chat_history = [
-            (HumanMessage if m["role"] == "user" else AIMessage)(content=m["content"])
-            for m in (history or [])
-        ]
-        result = executor.invoke({"input": user_prompt, "chat_history": chat_history})
         self._last_token_usage = None
-        return result.get("output", "")
+        return _run_tool_loop(
+            model, tools_for_agent(self.profile, llm=model),
+            system_prompt=self.profile.system_prompt or "",
+            user_prompt=user_prompt,
+            history=history,
+        )
 
 
 def create_agent_session(profile) -> AgentSession:

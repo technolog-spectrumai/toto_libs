@@ -3,6 +3,7 @@ import urllib.request
 from urllib.error import URLError
 
 from django.contrib import admin
+from django.http import HttpResponseRedirect
 from django.utils import timezone
 
 from .models import OllamaModel, OllamaServer
@@ -74,6 +75,7 @@ class OllamaModelInline(admin.TabularInline):
 
 @admin.register(OllamaServer)
 class OllamaServerAdmin(admin.ModelAdmin):
+    change_form_template = "vicuna/admin/ollamaserver_change_form.html"
     list_display = ("name", "host", "uses_gpu", "is_active", "model_count", "last_synced")
     list_filter = ("is_active", "uses_gpu")
     search_fields = ("name", "host")
@@ -84,6 +86,29 @@ class OllamaServerAdmin(admin.ModelAdmin):
     @admin.display(description="Models")
     def model_count(self, obj):
         return obj.models.count()
+
+    def response_change(self, request, obj):
+        if "_test_server" in request.POST:
+            host = obj.host.rstrip("/")
+            try:
+                with urllib.request.urlopen(f"{host}/api/tags", timeout=5) as resp:
+                    data = json.loads(resp.read())
+                models = data.get("models") or []
+                pulled = [m["name"] for m in models]
+                detail = f"{len(pulled)} model(s) available" + (
+                    f": {', '.join(pulled)}" if pulled else ""
+                )
+                self.message_user(request, f"✓ {obj.name} ({host}) is reachable — {detail}.")
+            except URLError as exc:
+                self.message_user(
+                    request,
+                    f"✗ Cannot reach {obj.name} ({host}): {exc.reason}",
+                    level="error",
+                )
+            except Exception as exc:
+                self.message_user(request, f"✗ Test failed: {exc}", level="error")
+            return HttpResponseRedirect(request.path)
+        return super().response_change(request, obj)
 
     @admin.action(description="Sync model list from Ollama (/api/tags)")
     def action_sync(self, request, queryset):

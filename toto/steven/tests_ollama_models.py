@@ -162,15 +162,11 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             def __init__(self, **kw):
                 created_kwargs.update(kw)
 
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {"output": "ok"}
-
         fake_lo = MagicMock()
         fake_lo.ChatOllama = FakeChatOllama
 
         with patch.dict("sys.modules", {"langchain_ollama": fake_lo}), \
-             patch("langchain.agents.create_tool_calling_agent", return_value=MagicMock()), \
-             patch("langchain.agents.AgentExecutor", return_value=mock_executor), \
+             patch("toto.steven.services.agent_session._run_tool_loop", return_value="ok"), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hi")
 
@@ -196,15 +192,11 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             def __init__(self, **kw):
                 created_kwargs.update(kw)
 
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {"output": "ok"}
-
         fake_lo = MagicMock()
         fake_lo.ChatOllama = FakeChatOllama
 
         with patch.dict("sys.modules", {"langchain_ollama": fake_lo}), \
-             patch("langchain.agents.create_tool_calling_agent", return_value=MagicMock()), \
-             patch("langchain.agents.AgentExecutor", return_value=mock_executor), \
+             patch("toto.steven.services.agent_session._run_tool_loop", return_value="ok"), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hi")
 

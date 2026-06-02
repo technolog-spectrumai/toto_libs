@@ -30,6 +30,14 @@ class AgentConnector(ApiConnector):
                 {"provider": f"Provider must be one of: {', '.join(sorted(valid))}."}
             )
 
+    is_slow = models.BooleanField(
+        default=True,
+        help_text=(
+            "When enabled (default), inference is queued via Celery and the "
+            "workflow engine. Disable only for connectors with sub-second latency."
+        ),
+    )
+
     def runtime_environment(self):
         """Returns credential dict. Requires a vault session to resolve; raises RuntimeError if unavailable."""
         raise RuntimeError(

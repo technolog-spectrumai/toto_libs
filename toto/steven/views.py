@@ -12,12 +12,19 @@ from .models import AgentProfile, AgentRun, ChatMessage, Conversation
 from toto.steven.services.agent_session import create_agent_session
 
 
-def _trigger_agent_run_workflow(agent_run_pk: int) -> bool:
-    """Queue agent_run_pk through the 'steven-run-agent' workflow.
+def _connector_is_slow(agent) -> bool:
+    """True when inference should go through Celery/workflow (the default)."""
+    connector = getattr(agent, "connector", None)
+    if connector is None:
+        return True
+    return bool(getattr(connector, "is_slow", True))
 
-    Returns True when the workflow was queued, False when the workflow is
-    not found (ingress_steven not yet run) or Celery is unavailable — in
-    both cases the caller falls back to synchronous execution.
+
+def _queue_via_workflow(agent_run_pk: int) -> bool:
+    """Push agent_run_pk into the 'steven-run-agent' workflow.
+
+    Returns True when queued. Returns False (fallback to sync) when Celery
+    is unavailable or the workflow hasn't been seeded yet.
     """
     try:
         from toto.workflows.models import Workflow, WorkflowRun
@@ -39,6 +46,17 @@ def _trigger_agent_run_workflow(agent_run_pk: int) -> bool:
         return True
     except Exception:
         return False
+
+
+def _run_agent(agent, agent_run) -> bool:
+    """Execute *agent_run* — async via Celery when the connector is slow, sync otherwise.
+
+    Returns True when queued asynchronously, False when executed synchronously.
+    """
+    if _connector_is_slow(agent) and _queue_via_workflow(agent_run.pk):
+        return True
+    create_agent_session(agent).run(agent_run)
+    return False
 
 
 def render_steven(request, template_name, context):
@@ -81,13 +99,12 @@ def agent_detail(request, slug):
             agent_run.agent = agent
             agent_run.save()
 
-            if not _trigger_agent_run_workflow(agent_run.pk):
-                create_agent_session(agent).run(agent_run)
-                if agent_run.status == "failed":
-                    messages.error(
-                        request,
-                        "Steven could not complete the run. Check the error details below.",
-                    )
+            queued = _run_agent(agent, agent_run)
+            if not queued and agent_run.status == "failed":
+                messages.error(
+                    request,
+                    "Steven could not complete the run. Check the error details below.",
+                )
 
             return redirect("steven:run_detail", pk=agent_run.pk)
 
@@ -155,23 +172,47 @@ def conversation_detail(request, slug, pk):
     if request.method == "POST":
         user_prompt = request.POST.get("user_prompt", "").strip()
         if user_prompt:
-            history = [
-                {"role": msg.role, "content": msg.content}
-                for msg in conversation.messages.all()
-            ]
             ChatMessage.objects.create(
                 conversation=conversation, role=ChatMessage.ROLE_USER, content=user_prompt
             )
-            session = create_agent_session(agent)
-            try:
-                result = session.invoke(user_prompt, history=history)
-            except Exception as exc:
-                result = f"[Error] {exc}"
+
+            if _connector_is_slow(agent):
+                agent_run = AgentRun.objects.create(
+                    agent=agent, user_prompt=user_prompt
+                )
+                queued = _queue_via_workflow(agent_run.pk)
+                if not queued:
+                    create_agent_session(agent).run(agent_run)
+                result = agent_run.result if agent_run.status == "succeeded" else (
+                    f"[Error] {agent_run.error}" if agent_run.status == "failed"
+                    else "[Queued — refresh to see the response]"
+                )
+            else:
+                history = [
+                    {"role": msg.role, "content": msg.content}
+                    for msg in conversation.messages.exclude(
+                        role=ChatMessage.ROLE_USER,
+                        content=user_prompt,
+                    ).order_by("created_at")
+                ]
+                session = create_agent_session(agent)
+                try:
+                    result = session.invoke(user_prompt, history=history)
+                except Exception as exc:
+                    result = f"[Error] {exc}"
+
             ChatMessage.objects.create(
                 conversation=conversation, role=ChatMessage.ROLE_ASSISTANT, content=result
             )
             conversation.save()
         return redirect("steven:conversation_detail", slug=slug, pk=pk)
+
+    workflow = None
+    try:
+        from toto.workflows.models import Workflow
+        workflow = Workflow.objects.filter(slug="steven-run-agent").first()
+    except Exception:
+        pass
 
     return render_steven(
         request,
@@ -180,6 +221,7 @@ def conversation_detail(request, slug, pk):
             "agent": agent,
             "conversation": conversation,
             "chat_messages": conversation.messages.all(),
+            "workflow": workflow,
         },
     )
 
@@ -267,7 +309,7 @@ def quick_ask(request, slug):
     agent_run = AgentRun(agent=agent, user_prompt=user_prompt)
     agent_run.save()
 
-    if _trigger_agent_run_workflow(agent_run.pk):
+    if _connector_is_slow(agent) and _queue_via_workflow(agent_run.pk):
         poll_url = f"/steven/runs/{agent_run.pk}/status/"
         return HttpResponse(
             f'<span id="quick-ask-{agent_run.pk}"'

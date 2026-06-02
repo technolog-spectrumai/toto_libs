@@ -261,12 +261,8 @@ class OllamaAgentSessionTests(SimpleTestCase):
         fake_langchain_ollama = MagicMock()
         fake_langchain_ollama.ChatOllama = FakeChatOllama
 
-        mock_executor = MagicMock()
-        mock_executor.invoke.return_value = {"output": "OK"}
-
         with patch.dict("sys.modules", {"langchain_ollama": fake_langchain_ollama}), \
-             patch("langchain.agents.create_tool_calling_agent", return_value=MagicMock()), \
-             patch("langchain.agents.AgentExecutor", return_value=mock_executor), \
+             patch("toto.steven.services.agent_session._run_tool_loop", return_value="OK"), \
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hello")
 

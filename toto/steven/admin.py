@@ -83,15 +83,15 @@ class AgentProfileAdmin(admin.ModelAdmin):
 
 @admin.register(AgentConnector)
 class AgentConnectorAdmin(admin.ModelAdmin):
-    list_display = ("name", "provider", "auth_type", "api_secret", "signing_key", "is_active", "updated_at")
-    list_filter = ("provider", "auth_type", "is_active", "created_at")
+    list_display = ("name", "provider", "auth_type", "api_secret", "signing_key", "is_active", "is_slow", "updated_at")
+    list_filter = ("provider", "auth_type", "is_active", "is_slow", "created_at")
     search_fields = ("name", "slug", "base_url")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at", "updated_at")
     autocomplete_fields = ("api_secret", "signing_key", "owner")
     fieldsets = (
         (None, {
-            "fields": ("name", "slug", "provider", "base_url", "is_active", "owner"),
+            "fields": ("name", "slug", "provider", "base_url", "is_active", "is_slow", "owner"),
         }),
         ("Authentication", {
             "fields": ("auth_type", "api_secret", "signing_key", "auth_config"),
