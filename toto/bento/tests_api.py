@@ -183,17 +183,36 @@ class LinkApiTests(TestCase):
 class FullGraphApiTests(TestCase):
     def setUp(self):
         from toto.bento.models import IdeaLink
-        self.box_a = IdeaBox.objects.create(title="A", body="aaa")
-        self.box_b = IdeaBox.objects.create(title="B", body="bbb")
+        self.cat = Category.objects.create(name="Science", slug="science")
+        self.box_a = IdeaBox.objects.create(title="A", body="aaa", category=self.cat)
+        self.box_b = IdeaBox.objects.create(title="B", body="bbb", is_concept=True)
         IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="leads to")
 
     def test_full_graph_returns_all(self):
         res = self.client.get("/bento/api/graph/")
         self.assertEqual(res.status_code, 200)
         data = res.json()
-        self.assertEqual(len(data["nodes"]), 2)
-        self.assertEqual(len(data["edges"]), 1)
-        self.assertEqual(data["edges"][0]["label"], "leads to")
+        # 2 box nodes + 1 category node
+        self.assertEqual(len(data["nodes"]), 3)
+        node_types = {n["node_type"] for n in data["nodes"]}
+        self.assertIn("box", node_types)
+        self.assertIn("concept", node_types)
+        self.assertIn("category", node_types)
+
+    def test_graph_edges_include_category_and_link(self):
+        res = self.client.get("/bento/api/graph/")
+        edges = res.json()["edges"]
+        edge_types = {e["edge_type"] for e in edges}
+        # IdeaLink edge
+        self.assertIn("link", edge_types)
+        # Category membership edge (box_a → cat)
+        self.assertIn("category", edge_types)
+
+    def test_concept_node_type(self):
+        res = self.client.get("/bento/api/graph/")
+        concept_nodes = [n for n in res.json()["nodes"] if n["node_type"] == "concept"]
+        self.assertEqual(len(concept_nodes), 1)
+        self.assertEqual(concept_nodes[0]["label"], "B")
 
 
 class CategoryListApiTests(TestCase):
