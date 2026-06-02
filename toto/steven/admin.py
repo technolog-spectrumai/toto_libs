@@ -11,25 +11,35 @@ class AgentProfileForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        from toto.vicuna.chat import ollama_chat_model_choices
-        choices_str = ", ".join(ollama_chat_model_choices())
+        from toto.vicuna.chat import installed_ollama_chat_models, ollama_chat_model_choices
+
+        installed = installed_ollama_chat_models()
+        current = self.instance.model_name if self.instance.pk else None
+
+        choices = [(m, m) for m in installed]
+        if current and current not in installed:
+            choices.insert(0, (current, f"{current} — not pulled"))
+
+        self.fields["model_name"].widget = forms.Select(choices=choices)
+        missing = len(ollama_chat_model_choices()) - len(installed)
         self.fields["model_name"].help_text = (
-            f"OpenAI: e.g. openai:gpt-4.1-mini. "
-            f"Ollama: one of {choices_str}. "
-            f"Other values are ignored for Ollama and the configured default is used instead."
-        )
+            f"Showing {len(installed)} installed model(s). "
+            + (f"Run 'manage.py vicuna_pull_chat' to pull {missing} more." if missing else "")
+        ).strip()
 
     def clean(self):
         cleaned = super().clean()
         connector = cleaned.get("connector")
         model_name = (cleaned.get("model_name") or "").strip()
         if connector and getattr(connector, "provider", None) == "ollama" and model_name:
-            from toto.vicuna.chat import ollama_chat_model_choices
-            choices = ollama_chat_model_choices()
-            if model_name not in choices:
+            from toto.vicuna.chat import installed_ollama_chat_models
+            installed = installed_ollama_chat_models()
+            if model_name not in installed:
                 self.add_error(
                     "model_name",
-                    f"For Ollama connectors, model_name must be one of: {', '.join(choices)}.",
+                    f"{model_name!r} is not installed. "
+                    f"Installed: {', '.join(installed) or 'none'}. "
+                    "Run 'manage.py vicuna_pull_chat' to pull it.",
                 )
         return cleaned
 

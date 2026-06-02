@@ -45,6 +45,30 @@ def is_allowed_ollama_chat_model(model_name: str) -> bool:
     return bool(model_name) and model_name in ollama_chat_model_choices()
 
 
+def installed_ollama_chat_models() -> list[str]:
+    """Return allowed models that are currently pulled in Ollama.
+
+    Queries /api/tags with a short timeout and intersects the response with
+    ollama_chat_model_choices(). Falls back to the full choices list when
+    Ollama is unreachable so the admin form never breaks.
+    """
+    import json
+    import urllib.request
+    from django.conf import settings
+
+    host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+    allowed = ollama_chat_model_choices()
+
+    try:
+        with urllib.request.urlopen(f"{host}/api/tags", timeout=3) as resp:
+            data = json.loads(resp.read())
+        pulled = {m["name"] for m in (data.get("models") or [])}
+        found = [m for m in allowed if m in pulled]
+        return found if found else allowed
+    except Exception:
+        return allowed
+
+
 def resolve_ollama_chat_model(profile=None) -> str:
     """Return the chat model to use for *profile*.
 
