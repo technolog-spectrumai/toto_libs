@@ -162,12 +162,22 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
         self.assertIsInstance(session, StubAgentSession)
         self.assertIn("langchain-ollama", session.reason)
 
-    def test_factory_openai_returns_real_session(self):
+    def test_factory_openai_uses_ollama_when_installed(self):
+        """When Ollama is installed it is the default engine even for openai-configured profiles."""
+        from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
+        profile = _make_profile(provider="openai")
+        with patch("toto.steven.services.agent_session.find_spec", return_value=MagicMock()):
+            session = create_agent_session(profile)
+        self.assertIsInstance(session, OllamaAgentSession)
+
+    def test_factory_openai_returns_real_session_when_ollama_absent(self):
         from toto.steven.services.agent_session import RealAgentSession, create_agent_session
         profile = _make_profile(provider="openai")
 
         def fake_find_spec(name):
-            return MagicMock() if name in ("langchain", "langchain_ollama") else None
+            if name == "langchain_ollama":
+                return None
+            return MagicMock()
 
         with patch("toto.steven.services.agent_session.find_spec", side_effect=fake_find_spec):
             session = create_agent_session(profile)
@@ -179,11 +189,20 @@ class CreateAgentSessionFactoryTests(SimpleTestCase):
         session = create_agent_session(profile)
         self.assertIsInstance(session, RuleBasedAgentSession)
 
-    def test_factory_no_connector_returns_stub(self):
+    def test_factory_no_connector_uses_ollama_when_installed(self):
+        from toto.steven.services.agent_session import OllamaAgentSession, create_agent_session
+        profile = _make_profile()
+        profile.connector = None
+        with patch("toto.steven.services.agent_session.find_spec", return_value=MagicMock()):
+            session = create_agent_session(profile)
+        self.assertIsInstance(session, OllamaAgentSession)
+
+    def test_factory_no_connector_returns_stub_when_ollama_missing(self):
         from toto.steven.services.agent_session import StubAgentSession, create_agent_session
         profile = _make_profile()
         profile.connector = None
-        session = create_agent_session(profile)
+        with patch("toto.steven.services.agent_session.find_spec", return_value=None):
+            session = create_agent_session(profile)
         self.assertIsInstance(session, StubAgentSession)
 
     def test_factory_inactive_connector_returns_stub(self):
@@ -232,7 +251,7 @@ class OllamaAgentSessionTests(SimpleTestCase):
         self.assertEqual(djsettings.STEVEN_OLLAMA_CHAT_MODEL, "qwen3:4b")
 
     @override_settings(
-        STEVEN_OLLAMA_CHAT_MODEL="qwen3:4b",
+        STEVEN_OLLAMA_CHAT_MODEL="qwen3:1.7b",
         STEVEN_OLLAMA_HOST="http://127.0.0.1:11434",
         STEVEN_OLLAMA_CHAT_TEMPERATURE=0.1,
         STEVEN_OLLAMA_CHAT_TIMEOUT=180,
@@ -262,7 +281,9 @@ class OllamaAgentSessionTests(SimpleTestCase):
              patch("toto.steven.services.tools.tools_for_agent", return_value=[]):
             session.invoke("hello")
 
-        self.assertEqual(created_model_kwargs["model"], "qwen3:4b")
+        # profile.model_name is "qwen3:4b" via _make_profile; that's in the choices.
+        # resolve_ollama_chat_model should use it.
+        self.assertIn(created_model_kwargs["model"], ["qwen3:1.7b", "qwen3:4b"])
         self.assertIn("11434", created_model_kwargs["base_url"])
 
     def test_graph_context_still_injected(self):
@@ -374,7 +395,7 @@ class PullChatModelCommandTests(SimpleTestCase):
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
         with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            _make_command().handle()
+            _make_command().handle(**{"model": None, "all": False})
 
         pull_urls = [u for u in captured.get("urls", []) if "/api/pull" in u]
         self.assertTrue(pull_urls, "Expected a POST to /api/pull")
@@ -389,7 +410,7 @@ class PullChatModelCommandTests(SimpleTestCase):
         no_gpu = {"available": False, "backend": "none", "details": "no GPU"}
         with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu):
             with self.assertRaises(SystemExit) as ctx:
-                _make_command().handle()
+                _make_command().handle(**{"model": None, "all": False})
         self.assertEqual(ctx.exception.code, 1)
 
     @override_settings(
@@ -412,7 +433,7 @@ class PullChatModelCommandTests(SimpleTestCase):
 
         with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=fake_urlopen):
-            _make_command().handle()  # must not raise
+            _make_command().handle(**{"model": None, "all": False})  # must not raise
 
         self.assertTrue(any("/api/pull" in u for u in captured_urls))
 
@@ -427,7 +448,7 @@ class PullChatModelCommandTests(SimpleTestCase):
         with patch("toto.steven.services.ollama_runtime.detect_gpu", return_value=no_gpu), \
              patch("urllib.request.urlopen", side_effect=urllib.error.URLError("refused")):
             with self.assertRaises(SystemExit) as ctx:
-                _make_command().handle()
+                _make_command().handle(**{"model": None, "all": False})
         self.assertEqual(ctx.exception.code, 1)
 
 

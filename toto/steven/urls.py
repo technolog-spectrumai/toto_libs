@@ -11,4 +11,5 @@ urlpatterns = [
     path('agents/<slug:slug>/chat/', views.conversation_new, name='conversation_new'),
     path('agents/<slug:slug>/chat/<int:pk>/', views.conversation_detail, name='conversation_detail'),
     path('runs/<int:pk>/', views.run_detail, name='run_detail'),
+    path('runs/<int:pk>/status/', views.run_status, name='run_status'),
 ]

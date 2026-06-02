@@ -404,7 +404,12 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "TOTO_VECTOR_EMBEDDING_PROPERTY": os.getenv("TOTO_VECTOR_EMBEDDING_PROPERTY", "embedding"),
         # Ollama chat
         "STEVEN_OLLAMA_CHAT_ENABLED": os.getenv("STEVEN_OLLAMA_CHAT_ENABLED", "0") == "1",
-        "STEVEN_OLLAMA_CHAT_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b"),
+        "STEVEN_OLLAMA_CHAT_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_MODEL", "qwen3:1.7b"),
+        "STEVEN_OLLAMA_CHAT_MODEL_CHOICES": os.getenv(
+            "STEVEN_OLLAMA_CHAT_MODEL_CHOICES", "qwen3:0.6b,qwen3:1.7b,qwen3:4b"
+        ).split(","),
+        "STEVEN_OLLAMA_CHAT_FALLBACK_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_FALLBACK_MODEL", "qwen3:0.6b"),
+        "STEVEN_OLLAMA_CHAT_QUALITY_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_QUALITY_MODEL", "qwen3:4b"),
         "STEVEN_OLLAMA_CHAT_TIMEOUT": int(os.getenv("STEVEN_OLLAMA_CHAT_TIMEOUT", "180")),
         "STEVEN_OLLAMA_CHAT_TEMPERATURE": float(os.getenv("STEVEN_OLLAMA_CHAT_TEMPERATURE", "0.1")),
         "STEVEN_OLLAMA_REQUIRE_GPU": os.getenv("STEVEN_OLLAMA_REQUIRE_GPU", "0") == "1",

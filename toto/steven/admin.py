@@ -1,6 +1,37 @@
+from django import forms
 from django.contrib import admin
 
 from .models import AgentConnector, AgentProfile, AgentRun, AgentTool
+
+
+class AgentProfileForm(forms.ModelForm):
+    class Meta:
+        model = AgentProfile
+        fields = "__all__"
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        from toto.steven.services.ollama_models import ollama_chat_model_choices
+        choices_str = ", ".join(ollama_chat_model_choices())
+        self.fields["model_name"].help_text = (
+            f"OpenAI: e.g. openai:gpt-4.1-mini. "
+            f"Ollama: one of {choices_str}. "
+            f"Other values are ignored for Ollama and the configured default is used instead."
+        )
+
+    def clean(self):
+        cleaned = super().clean()
+        connector = cleaned.get("connector")
+        model_name = (cleaned.get("model_name") or "").strip()
+        if connector and getattr(connector, "provider", None) == "ollama" and model_name:
+            from toto.steven.services.ollama_models import ollama_chat_model_choices
+            choices = ollama_chat_model_choices()
+            if model_name not in choices:
+                self.add_error(
+                    "model_name",
+                    f"For Ollama connectors, model_name must be one of: {', '.join(choices)}.",
+                )
+        return cleaned
 
 
 class AgentToolInline(admin.TabularInline):
@@ -10,6 +41,7 @@ class AgentToolInline(admin.TabularInline):
 
 @admin.register(AgentProfile)
 class AgentProfileAdmin(admin.ModelAdmin):
+    form = AgentProfileForm
     list_display = (
         "name",
         "slug",

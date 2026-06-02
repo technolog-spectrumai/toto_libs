@@ -6,7 +6,12 @@
   :class="darkMode
     ? 'bg-bubble-bg-dark border-accent-1'
     : 'bg-bubble-bg-light border-accent-2'"
-  class="rounded-lg border p-6 shadow-md space-y-6">
+  class="rounded-lg border p-6 shadow-md space-y-6"
+  {% if run.status in "queued,running" %}
+    x-data="{}"
+    x-init="setTimeout(function poll(){fetch('{% url "steven:run_status" run.pk %}').then(r=>r.text()).then(t=>{if(t.includes('fa-spinner')){setTimeout(poll,1500)}else{location.reload()}})},1500)"
+  {% endif %}
+>
   <div class="flex items-start gap-4">
     {% if run.agent.avatar %}
       <img
@@ -32,7 +37,12 @@
       </h2>
       <div class="flex flex-wrap gap-3 text-xs opacity-70">
         <span>{{ run.agent.model_name }}</span>
-        <span>{{ run.get_status_display }}</span>
+        <span class="flex items-center gap-1">
+          {% if run.status == "queued" or run.status == "running" %}
+            <i class="fa-solid fa-spinner fa-spin"></i>
+          {% endif %}
+          {{ run.get_status_display }}
+        </span>
         <span>Created {{ run.created_at|date:"M d, Y H:i" }}</span>
         {% if run.started_at %}<span>Started {{ run.started_at|date:"M d, Y H:i" }}</span>{% endif %}
         {% if run.finished_at %}<span>Finished {{ run.finished_at|date:"M d, Y H:i" }}</span>{% endif %}
@@ -52,9 +62,16 @@
 
   <div class="space-y-3">
     <h3 class="text-lg font-bold">{% trans "Result" %}</h3>
-    <pre
-      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
-      class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.result|default:'No result.' }}</pre>
+    {% if run.status == "queued" or run.status == "running" %}
+      <div class="flex items-center gap-2 opacity-50 text-sm italic p-4">
+        <i class="fa-solid fa-spinner fa-spin"></i>
+        {% trans "Waiting for Ollama…" %}
+      </div>
+    {% else %}
+      <pre
+        :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+        class="overflow-x-auto whitespace-pre-wrap rounded-lg border border-current/10 p-4 text-sm">{{ run.result|default:'No result.' }}</pre>
+    {% endif %}
   </div>
 
   {% if run.error %}

@@ -418,8 +418,10 @@ class OllamaAgentSession(AgentSession):
         if not self.profile.is_active:
             raise RuntimeError(f'Agent "{self.profile.name}" is inactive.')
 
+        from .ollama_models import resolve_ollama_chat_model
+
         model = ChatOllama(
-            model=getattr(settings, "STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b"),
+            model=resolve_ollama_chat_model(self.profile),
             base_url=getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434"),
             temperature=(
                 self.profile.temperature
@@ -445,28 +447,48 @@ class OllamaAgentSession(AgentSession):
         return extract_text(response)
 
 
-def create_agent_session(profile) -> AgentSession:
-    """Return the right session implementation for an agent profile."""
+def _ollama_available() -> bool:
+    """True when langchain-ollama is installed and importable."""
+    return find_spec("langchain_ollama") is not None
 
+
+def create_agent_session(profile) -> AgentSession:
+    """Return the right session implementation for an agent profile.
+
+    Rule-of-thumb: if langchain-ollama is installed, Ollama is the default
+    engine for every non-rule-based, active session regardless of which
+    connector (or model name) is configured on the profile.
+    """
+    # Rule-based is always its own thing — no AI model involved.
+    if profile.connector is not None and profile.connector.provider == "rule_based":
+        return RuleBasedAgentSession(profile)
+
+    # An explicitly inactive connector should still be honoured as a block.
+    if profile.connector is not None and not profile.connector.is_active:
+        return StubAgentSession(profile, reason="Connector is inactive.")
+
+    # Helpful message when an ollama connector is explicitly configured
+    # but the package isn't installed.
+    if (
+        profile.connector is not None
+        and profile.connector.provider == "ollama"
+        and not _ollama_available()
+    ):
+        return StubAgentSession(
+            profile,
+            reason="langchain-ollama is not installed. Run: pip install langchain-ollama",
+        )
+
+    # Ollama is the default engine when installed.
+    if _ollama_available():
+        return OllamaAgentSession(profile)
+
+    # No Ollama — fall back to OpenAI / LangChain path.
     if profile.connector is None:
         return StubAgentSession(
             profile,
             reason="No connector is configured for this agent.",
         )
-
-    if profile.connector.provider == "rule_based":
-        return RuleBasedAgentSession(profile)
-
-    if not profile.connector.is_active:
-        return StubAgentSession(profile, reason="Connector is inactive.")
-
-    if profile.connector.provider == "ollama":
-        if find_spec("langchain_ollama") is None:
-            return StubAgentSession(
-                profile,
-                reason="langchain-ollama is not installed. Run: pip install langchain-ollama",
-            )
-        return OllamaAgentSession(profile)
 
     if find_spec("langchain") is None:
         return StubAgentSession(

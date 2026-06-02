@@ -12,6 +12,35 @@ from .models import AgentProfile, AgentRun, ChatMessage, Conversation
 from toto.steven.services.agent_session import create_agent_session
 
 
+def _trigger_agent_run_workflow(agent_run_pk: int) -> bool:
+    """Queue agent_run_pk through the 'steven-run-agent' workflow.
+
+    Returns True when the workflow was queued, False when the workflow is
+    not found (ingress_steven not yet run) or Celery is unavailable — in
+    both cases the caller falls back to synchronous execution.
+    """
+    try:
+        from toto.workflows.models import Workflow, WorkflowRun
+        from toto.workflows.tasks import start_workflow_run_task
+        from toto.celery_utils import celery_available
+
+        if not celery_available():
+            return False
+
+        wf = Workflow.objects.filter(slug="steven-run-agent").first()
+        if wf is None:
+            return False
+
+        run = WorkflowRun.objects.create(
+            workflow=wf,
+            input_data={"data": {"agent_run_pk": agent_run_pk}},
+        )
+        start_workflow_run_task.delay(run.pk)
+        return True
+    except Exception:
+        return False
+
+
 def render_steven(request, template_name, context):
     return render(
         request,
@@ -52,13 +81,13 @@ def agent_detail(request, slug):
             agent_run.agent = agent
             agent_run.save()
 
-            create_agent_session(agent).run(agent_run)
-
-            if agent_run.status == "failed":
-                messages.error(
-                    request,
-                    "Steven could not complete the run. Check the error details below.",
-                )
+            if not _trigger_agent_run_workflow(agent_run.pk):
+                create_agent_session(agent).run(agent_run)
+                if agent_run.status == "failed":
+                    messages.error(
+                        request,
+                        "Steven could not complete the run. Check the error details below.",
+                    )
 
             return redirect("steven:run_detail", pk=agent_run.pk)
 
@@ -237,9 +266,23 @@ def quick_ask(request, slug):
 
     agent_run = AgentRun(agent=agent, user_prompt=user_prompt)
     agent_run.save()
+
+    if _trigger_agent_run_workflow(agent_run.pk):
+        poll_url = f"/steven/runs/{agent_run.pk}/status/"
+        return HttpResponse(
+            f'<span id="quick-ask-{agent_run.pk}"'
+            f' hx-get="{poll_url}"'
+            f' hx-trigger="every 1.5s"'
+            f' hx-target="this"'
+            f' hx-swap="outerHTML">'
+            f'<i class="fa-solid fa-spinner fa-spin mr-1 opacity-50"></i>'
+            f'<span class="opacity-50 italic">Running…</span>'
+            f'</span>'
+        )
+
     create_agent_session(agent).run(agent_run)
 
-    # ── Charge after run ─────────────────────────────────────────────────────
+    # ── Charge after synchronous run ─────────────────────────────────────────
     if _steven_tariff:
         from toto.metering.charge import charge_user as _charge
         try:
@@ -254,3 +297,44 @@ def quick_ask(request, slug):
         )
 
     return HttpResponse(agent_run.result)
+
+
+@require_GET
+def run_status(request, pk):
+    """HTMX polling endpoint: returns a fragment while running, the result when done."""
+    run = get_object_or_404(AgentRun.objects.only("status", "result", "error"), pk=pk)
+
+    if run.status in ("queued", "running"):
+        poll_url = f"/steven/runs/{pk}/status/"
+        return HttpResponse(
+            f'<span id="quick-ask-{pk}"'
+            f' hx-get="{poll_url}"'
+            f' hx-trigger="every 1.5s"'
+            f' hx-target="this"'
+            f' hx-swap="outerHTML">'
+            f'<i class="fa-solid fa-spinner fa-spin mr-1 opacity-50"></i>'
+            f'<span class="opacity-50 italic">Running…</span>'
+            f'</span>'
+        )
+
+    if run.status == "failed":
+        return HttpResponse(
+            f'<span class="text-red-500">'
+            f'<i class="fa-solid fa-circle-exclamation mr-1"></i>{run.error}'
+            f'</span>'
+        )
+
+    # succeeded — charge now (best-effort; may already be charged on sync path)
+    try:
+        from toto.metering.charge import charge_user as _charge, get_tariff_for_user
+        if request.user.is_authenticated:
+            tariff = get_tariff_for_user(request.user, "steven")
+            if tariff:
+                _charge(
+                    request.user, tariff, "ai.agent_run", 1,
+                    source_type="steven.AgentRun", source_id=str(pk),
+                )
+    except Exception:
+        pass
+
+    return HttpResponse(run.result or "")

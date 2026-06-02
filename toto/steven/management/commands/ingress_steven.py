@@ -77,6 +77,7 @@ class Command(IngressCommand):
         # Always create the default agent so the floating widget works
         # even without FULL_INGRESS (it falls back to stub mode without a connector).
         agent = self._ensure_default_agent()
+        self._ensure_workflows()
 
         if not self.full:
             self.stdout.write(
@@ -232,6 +233,29 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.SUCCESS(f"  Enabled tool: {tool.get_key_display()}"))
             else:
                 self.stdout.write(self.style.WARNING(f"  Tool already exists: {tool.get_key_display()}"))
+
+    def _ensure_workflows(self):
+        from toto.workflows.models import Workflow, WorkflowNode
+
+        wf, created = Workflow.objects.get_or_create(
+            slug="steven-run-agent",
+            defaults={
+                "name": "Steven: Run Agent",
+                "description": "Execute a Steven AgentRun via the workflow engine.",
+            },
+        )
+        if created:
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Run agent",
+                task_name="steven_run_agent",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("  Created workflow: Steven: Run Agent"))
+        else:
+            self.stdout.write(self.style.WARNING("  Workflow already exists: Steven: Run Agent"))
 
     def _check_tariff(self):
         from django.apps import apps as django_apps
