@@ -8,13 +8,15 @@ from toto.api.models import ApiConnector
 
 
 class AgentConnector(ApiConnector):
-    """Agent connector. Supports OpenAI (real AI) and Rule-based (no API key, for dev/testing)."""
+    """Agent connector: OpenAI, Ollama local, or Rule-based (no API key)."""
 
     OPENAI = ApiConnector.PROVIDER_OPENAI
     RULE_BASED = ApiConnector.PROVIDER_RULE_BASED
+    OLLAMA = "ollama"
 
     PROVIDER_CHOICES = [
         (ApiConnector.PROVIDER_OPENAI, "OpenAI"),
+        (OLLAMA, "Ollama local"),
         (ApiConnector.PROVIDER_RULE_BASED, "Rule-based (no API key)"),
     ]
 
@@ -23,8 +25,10 @@ class AgentConnector(ApiConnector):
 
     def clean(self):
         super().clean()
-        if self.provider not in (self.OPENAI, self.RULE_BASED):
-            raise ValidationError({"provider": "Only OpenAI and Rule-based connectors are supported."})
+        if self.provider not in (self.OPENAI, self.RULE_BASED, self.OLLAMA):
+            raise ValidationError(
+                {"provider": "Only OpenAI, Ollama, and Rule-based connectors are supported."}
+            )
 
     def runtime_environment(self):
         """Returns credential dict. Requires a vault session to resolve; raises RuntimeError if unavailable."""
@@ -33,8 +37,13 @@ class AgentConnector(ApiConnector):
             "Use build_auth_headers(vault_session=...) instead."
         )
 
-    def test_connection(self, api_key: str, timeout: int = 10):
-        """Test connectivity with an already-decrypted API key."""
+    def test_connection(self, api_key: str = "", timeout: int = 10):
+        """Test connectivity. For Ollama, api_key is ignored."""
+        if self.provider == self.OLLAMA:
+            return self._test_ollama_connection(timeout)
+        return self._test_openai_connection(api_key, timeout)
+
+    def _test_openai_connection(self, api_key: str, timeout: int = 10):
         payload = json.dumps({
             "model": "gpt-4.1-mini",
             "messages": [{"role": "user", "content": "Reply with ok."}],
@@ -65,6 +74,39 @@ class AgentConnector(ApiConnector):
             return {"ok": False, "message": f"OpenAI connection failed: {exc.reason}"}
         except TimeoutError:
             return {"ok": False, "message": f"OpenAI connection timed out after {timeout} seconds."}
+
+    def _test_ollama_connection(self, timeout: int = 10):
+        host = getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        # Step 1: GET /api/tags to verify Ollama is running
+        try:
+            with urlopen(f"{host}/api/tags", timeout=timeout) as resp:
+                if not (200 <= resp.status < 300):
+                    return {"ok": False, "message": f"Ollama /api/tags returned HTTP {resp.status}."}
+        except (HTTPError, URLError) as exc:
+            return {"ok": False, "message": f"Cannot reach Ollama at {host}: {exc}"}
+        except TimeoutError:
+            return {"ok": False, "message": f"Ollama connection timed out after {timeout}s."}
+
+        # Step 2: tiny /api/chat smoke test
+        model = getattr(settings, "STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b")
+        smoke_payload = json.dumps({
+            "model": model,
+            "messages": [{"role": "user", "content": "ok"}],
+            "stream": False,
+        }).encode()
+        smoke_req = Request(
+            f"{host}/api/chat",
+            data=smoke_payload,
+            headers={"Content-Type": "application/json"},
+            method="POST",
+        )
+        try:
+            with urlopen(smoke_req, timeout=timeout) as resp:
+                if 200 <= resp.status < 300:
+                    return {"ok": True, "message": f"Ollama connection succeeded (model: {model})."}
+                return {"ok": False, "message": f"Ollama /api/chat returned HTTP {resp.status}."}
+        except (HTTPError, URLError, TimeoutError) as exc:
+            return {"ok": False, "message": f"Ollama smoke test failed: {exc}"}
 
 
 class AgentProfile(models.Model):

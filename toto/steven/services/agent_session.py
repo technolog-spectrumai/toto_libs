@@ -181,6 +181,17 @@ class AgentSession(ABC):
                    idempotency_key=f"steven.total_token:{_run_pk}",
                    metadata=_meta, **_src, **_sub)
 
+    def _system_prompt_with_graph_context(self, user_prompt: str) -> str:
+        system_prompt = self.profile.system_prompt or ""
+        graph_context = self.graph_context_for(user_prompt)
+        if not graph_context:
+            return system_prompt
+        return (
+            f"{system_prompt}\n\n"
+            "----\n"
+            f"{graph_context}"
+        )
+
     @abstractmethod
     def invoke(self, user_prompt: str, history=None) -> str:
         """Run the agent and return displayable text.
@@ -231,17 +242,6 @@ class RealAgentSession(AgentSession):
         # Stash token usage on self for _record_metering to pick up
         self._last_token_usage = extract_token_usage(response)
         return extract_text(response)
-
-    def _system_prompt_with_graph_context(self, user_prompt):
-        system_prompt = self.profile.system_prompt or ""
-        graph_context = self.graph_context_for(user_prompt)
-        if not graph_context:
-            return system_prompt
-        return (
-            f"{system_prompt}\n\n"
-            "----\n"
-            f"{graph_context}"
-        )
 
 
 class StubAgentSession(AgentSession):
@@ -406,6 +406,45 @@ class RuleBasedAgentSession(AgentSession):
             return f'Could not evaluate: "{expr}". Try e.g. calc 2 + 3 * 4'
 
 
+class OllamaAgentSession(AgentSession):
+    """LangChain-Ollama-backed agent session using a local Ollama instance."""
+
+    def invoke(self, user_prompt: str, history=None) -> str:
+        from django.conf import settings
+        from langchain_ollama import ChatOllama
+
+        from .tools import tools_for_agent
+
+        if not self.profile.is_active:
+            raise RuntimeError(f'Agent "{self.profile.name}" is inactive.')
+
+        model = ChatOllama(
+            model=getattr(settings, "STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b"),
+            base_url=getattr(settings, "STEVEN_OLLAMA_HOST", "http://localhost:11434"),
+            temperature=(
+                self.profile.temperature
+                if self.profile.temperature is not None
+                else getattr(settings, "STEVEN_OLLAMA_CHAT_TEMPERATURE", 0.1)
+            ),
+            timeout=getattr(settings, "STEVEN_OLLAMA_CHAT_TIMEOUT", 180),
+        )
+
+        from langchain.agents import create_agent
+
+        agent = create_agent(
+            model=model,
+            tools=tools_for_agent(self.profile, llm=model),
+            system_prompt=self._system_prompt_with_graph_context(user_prompt),
+        )
+
+        messages = [(m["role"], m["content"]) for m in (history or [])]
+        messages.append(("user", user_prompt))
+
+        response = agent.invoke({"messages": messages})
+        self._last_token_usage = extract_token_usage(response)
+        return extract_text(response)
+
+
 def create_agent_session(profile) -> AgentSession:
     """Return the right session implementation for an agent profile."""
 
@@ -420,6 +459,14 @@ def create_agent_session(profile) -> AgentSession:
 
     if not profile.connector.is_active:
         return StubAgentSession(profile, reason="Connector is inactive.")
+
+    if profile.connector.provider == "ollama":
+        if find_spec("langchain_ollama") is None:
+            return StubAgentSession(
+                profile,
+                reason="langchain-ollama is not installed. Run: pip install langchain-ollama",
+            )
+        return OllamaAgentSession(profile)
 
     if find_spec("langchain") is None:
         return StubAgentSession(

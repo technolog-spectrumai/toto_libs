@@ -388,11 +388,13 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "toto-dev-secret-key-change-me" if django_env != "PROD" else secrets.token_urlsafe(50)
     )
 
-    # -------------------------------------------------------- steven embeddings
+    # -------------------------------------------------------- steven embeddings + ollama
     steven_embedding_settings: dict[str, Any] = {
+        # Shared Ollama host (used by both embeddings and chat)
+        "STEVEN_OLLAMA_HOST": os.getenv("STEVEN_OLLAMA_HOST", "http://localhost:11434"),
+        # Embeddings
         "STEVEN_EMBEDDINGS_ENABLED": os.getenv("STEVEN_EMBEDDINGS_ENABLED", "0") == "1",
         "STEVEN_EMBEDDING_PROVIDER": os.getenv("STEVEN_EMBEDDING_PROVIDER", "ollama"),
-        "STEVEN_OLLAMA_HOST": os.getenv("STEVEN_OLLAMA_HOST", "http://localhost:11434"),
         "STEVEN_EMBEDDING_MODEL": os.getenv("STEVEN_EMBEDDING_MODEL", "qwen3-embedding:0.6b"),
         "STEVEN_EMBEDDING_TIMEOUT": int(os.getenv("STEVEN_EMBEDDING_TIMEOUT", "120")),
         "STEVEN_GRAPH_RAG_BACKEND": os.getenv("STEVEN_GRAPH_RAG_BACKEND", "legacy_keyword"),
@@ -400,6 +402,12 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         "TOTO_VECTOR_NODE_LABEL": os.getenv("TOTO_VECTOR_NODE_LABEL", "TotoChunk"),
         "TOTO_VECTOR_TEXT_PROPERTY": os.getenv("TOTO_VECTOR_TEXT_PROPERTY", "text"),
         "TOTO_VECTOR_EMBEDDING_PROPERTY": os.getenv("TOTO_VECTOR_EMBEDDING_PROPERTY", "embedding"),
+        # Ollama chat
+        "STEVEN_OLLAMA_CHAT_ENABLED": os.getenv("STEVEN_OLLAMA_CHAT_ENABLED", "0") == "1",
+        "STEVEN_OLLAMA_CHAT_MODEL": os.getenv("STEVEN_OLLAMA_CHAT_MODEL", "qwen3:4b"),
+        "STEVEN_OLLAMA_CHAT_TIMEOUT": int(os.getenv("STEVEN_OLLAMA_CHAT_TIMEOUT", "180")),
+        "STEVEN_OLLAMA_CHAT_TEMPERATURE": float(os.getenv("STEVEN_OLLAMA_CHAT_TEMPERATURE", "0.1")),
+        "STEVEN_OLLAMA_REQUIRE_GPU": os.getenv("STEVEN_OLLAMA_REQUIRE_GPU", "0") == "1",
     }
 
     # ----------------------------------------------------------- assemble
