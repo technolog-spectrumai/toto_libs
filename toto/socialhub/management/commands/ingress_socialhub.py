@@ -196,6 +196,17 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING("⚠ Tester ledger account already exists."))
 
+    # Rich fake-person data for realistic seeding
+    FAKE_PEOPLE = [
+        {"name": "Eleanor Voss",     "email": "e.voss@example.com",      "phone": "+1-202-555-0101", "bio": "Founder and strategic lead. Oversees all departments."},
+        {"name": "Marcus Hale",      "email": "m.hale@example.com",       "phone": "+1-202-555-0102", "bio": "Operations manager. Coordinates logistics and team workflows."},
+        {"name": "Sofia Reyes",      "email": "s.reyes@example.com",      "phone": "+1-202-555-0103", "bio": "Head of communications. Manages external relations and media."},
+        {"name": "Daniel Okoye",     "email": "d.okoye@example.com",      "phone": "+1-202-555-0104", "bio": "Infrastructure lead. Responsible for technical systems."},
+        {"name": "Priya Nair",       "email": "p.nair@example.com",       "phone": "+1-202-555-0105", "bio": "Finance coordinator. Tracks budgets and member contributions."},
+        {"name": "James Whitfield",  "email": "j.whitfield@example.com",  "phone": "+1-202-555-0106", "bio": "Community outreach. Builds partnerships and recruits new members."},
+        {"name": "Amara Diallo",     "email": "a.diallo@example.com",     "phone": "+1-202-555-0107", "bio": "Events organiser. Plans and runs community gatherings."},
+    ]
+
     def create_members(self, community, count=6):
         """
         Creates a founder (admin if available), managers, and staff members.
@@ -208,7 +219,6 @@ class Command(IngressCommand):
             self.stderr.write(self.style.ERROR("❌ No users found. Create some users first."))
             return members
 
-        # Avoid selecting users already linked to a Person
         used_user_ids = set(Person.objects.values_list("user_id", flat=True))
         available_users = [u for u in all_users if u.id not in used_user_ids]
 
@@ -216,7 +226,6 @@ class Command(IngressCommand):
             self.stderr.write(self.style.ERROR("❌ All users already have community profiles."))
             return members
 
-        # Prefer admin as founder
         admin_user = User.objects.filter(username="admin").first()
         if admin_user and admin_user in available_users:
             founder_user = admin_user
@@ -224,38 +233,50 @@ class Command(IngressCommand):
         else:
             founder_user = available_users.pop(0)
 
+        fake = self.FAKE_PEOPLE
+        address = Address.objects.first()
+
         # Founder
         founder = self.create_member(
             user=founder_user,
-            display_name="Founder",
-            bio="Top-level patron of the community",
+            display_name=fake[0]["name"],
+            bio=fake[0]["bio"],
+            email=fake[0]["email"],
+            phone=fake[0]["phone"],
+            address=address,
             community=community,
-            patron=None
+            patron=None,
         )
         members.append(founder)
 
         # Managers (2)
-        manager_candidates = available_users[:2]
-        for i, user in enumerate(manager_candidates, start=1):
+        for i, user in enumerate(available_users[:2], start=1):
+            info = fake[i] if i < len(fake) else {"name": f"Manager {i}", "bio": "", "email": "", "phone": ""}
             manager = self.create_member(
                 user=user,
-                display_name=f"Manager {i}",
-                bio="Mid-level manager reporting to Founder",
+                display_name=info["name"],
+                bio=info["bio"],
+                email=info["email"],
+                phone=info["phone"],
+                address=address,
                 community=community,
-                patron=founder
+                patron=founder,
             )
             members.append(manager)
 
         # Staff
-        staff_candidates = available_users[2:]
-        for idx, user in enumerate(staff_candidates, start=3):
+        for idx, user in enumerate(available_users[2:], start=3):
             patron = random.choice(members[1:3]) if len(members) > 2 else founder
+            info = fake[idx] if idx < len(fake) else {"name": f"Staff {idx}", "bio": "", "email": "", "phone": ""}
             staff = self.create_member(
                 user=user,
-                display_name=f"Staff {idx}",
-                bio=f"Team member reporting to {patron.display_name}",
+                display_name=info["name"],
+                bio=info["bio"],
+                email=info["email"],
+                phone=info["phone"],
+                address=address,
                 community=community,
-                patron=patron
+                patron=patron,
             )
             members.append(staff)
 
@@ -265,13 +286,17 @@ class Command(IngressCommand):
     # Helper: create a single member
     # ---------------------------------------------------------
 
-    def create_member(self, user, display_name, bio, community, patron=None):
+    def create_member(self, user, display_name, bio, community, patron=None,
+                      email=None, phone=None, address=None):
         member = Person.objects.create(
             user=user,
             display_name=display_name,
             bio=bio,
+            email=email,
+            phone=phone,
+            address=address,
             joined_date=timezone.now(),
-            patron=patron
+            patron=patron,
         )
         member.communities.add(community)
         return member

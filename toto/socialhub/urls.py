@@ -4,6 +4,7 @@ from toto.socialhub.api_views import (
     ProfileDetailApiView,
     CommunityListApiView,
     CommunityDetailApiView,
+    CommunityOrgChartApiView,
 )
 from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, set_preferred_language
 from toto.socialhub.views.community import (
@@ -31,6 +32,7 @@ urlpatterns = [
     path("api/profiles/<slug:slug>/", ProfileDetailApiView.as_view(), name="api_profile_detail"),
     path("api/communities/", CommunityListApiView.as_view(), name="api_community_list"),
     path("api/communities/<slug:slug>/", CommunityDetailApiView.as_view(), name="api_community_detail"),
+    path("api/communities/<slug:slug>/org-chart/", CommunityOrgChartApiView.as_view(), name="api_community_org_chart"),
 
     path("profiles/", ProfileListView.as_view(), name="profile_list"),
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),

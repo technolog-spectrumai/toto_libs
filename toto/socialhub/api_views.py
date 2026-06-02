@@ -79,10 +79,37 @@ class CommunityDetailApiView(CorsApiView):
             {"id": p.id, "slug": p.slug, "name": p.full_name}
             for p in community.senior_members.all()[:50]
         ]
-        # Latest news headline
         try:
             latest_news = community.news_posts.order_by("-created_at").first()
             data["latest_news_title"] = latest_news.title if latest_news else None
         except Exception:
             data["latest_news_title"] = None
         return JsonResponse(data)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class CommunityOrgChartApiView(CorsApiView):
+    def get(self, request, slug):
+        try:
+            community = Community.objects.get(slug=slug)
+        except Community.DoesNotExist:
+            return JsonResponse({"error": "Community not found."}, status=404)
+        members = Person.objects.filter(communities=community).select_related("patron")
+        nodes = []
+        for m in members:
+            avatar_url = None
+            try:
+                if m.avatar:
+                    avatar_url = request.build_absolute_uri(m.avatar.url)
+            except Exception:
+                pass
+            nodes.append({
+                "id": str(m.id),
+                "name": m.display_name,
+                "slug": m.slug,
+                "pid": str(m.patron_id) if m.patron_id else None,
+                "avatar_url": avatar_url,
+                "email": m.email or "",
+                "phone": m.phone or "",
+            })
+        return JsonResponse({"nodes": nodes})
