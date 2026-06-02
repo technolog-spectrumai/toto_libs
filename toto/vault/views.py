@@ -526,7 +526,7 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
                 dir_count=Count("directories", distinct=True),
                 public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
                 encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
-            ).select_related("owner", "tariff").order_by("name")
+            ).select_related("owner").order_by("name")
         )
         context["gateway_bucket_pks"] = set(
             FileGateway.objects.values_list("bucket_id", flat=True)
