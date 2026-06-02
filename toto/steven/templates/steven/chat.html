@@ -102,18 +102,58 @@
         aria-live="polite"
       ></span>
       <button
+        id="steven-send-btn"
         type="submit"
         :class="darkMode
           ? 'bg-accent-dark text-primary-bg-dark'
           : 'bg-accent-light text-primary-bg-light'"
-        class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
-        <i class="fa-solid fa-paper-plane"></i>{% trans "Send" %}</button>
+        class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+        <i id="steven-send-icon" class="fa-solid fa-paper-plane"></i>
+        <span id="steven-send-label">{% trans "Send" %}</span>
+      </button>
     </div>
   </form>
 </section>
 
 <script>
   document.getElementById("chat-thread").scrollIntoView({behavior: "smooth", block: "end"});
+
+  (function () {
+    const form  = document.querySelector('form[method="post"]');
+    const btn   = document.getElementById("steven-send-btn");
+    const icon  = document.getElementById("steven-send-icon");
+    const label = document.getElementById("steven-send-label");
+    const ta    = document.querySelector('textarea[name="user_prompt"]');
+    if (!form || !btn) return;
+
+    form.addEventListener("submit", function () {
+      if (!ta || !ta.value.trim()) return;
+      icon.className  = "fa-solid fa-spinner fa-spin";
+      label.textContent = "{% trans 'Sending…' %}";
+      btn.disabled    = true;
+      ta.disabled     = true;
+
+      const thread = document.getElementById("chat-thread");
+
+      // user bubble
+      const userBubble = document.createElement("div");
+      userBubble.className = "flex justify-end";
+      userBubble.innerHTML = `<div class="max-w-[75%] rounded-2xl rounded-br-sm px-4 py-3 text-sm leading-6 whitespace-pre-wrap shadow-sm" style="background:var(--color-accent-light);color:var(--color-primary-bg-light)">${ta.value.replace(/</g,"&lt;").replace(/>/g,"&gt;")}</div>`;
+      thread.appendChild(userBubble);
+
+      // agent thinking bubble
+      const thinkBubble = document.createElement("div");
+      thinkBubble.className = "flex justify-start gap-3";
+      thinkBubble.innerHTML = `
+        <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-full border text-xs font-bold shadow-sm mt-1">{{ agent.name|first|upper }}</div>
+        <div class="flex items-center gap-2 opacity-50 text-sm italic rounded-2xl rounded-bl-sm border px-4 py-3 shadow-sm">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+          {% trans "Waiting for AI Agent …" %}
+        </div>`;
+      thread.appendChild(thinkBubble);
+      thinkBubble.scrollIntoView({behavior: "smooth", block: "end"});
+    });
+  })();
 
   (function () {
     const ta   = document.querySelector('textarea[name="user_prompt"]');
