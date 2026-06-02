@@ -19,8 +19,8 @@ class TaskCreateForm(forms.ModelForm):
                 project=project
             )
             practitioners = Practitioner.objects.filter(
-                project=project, is_active=True
-            ).select_related("person")
+                commitments__project=project, is_active=True
+            ).select_related("person").distinct()
             self.fields["assignee"].queryset = practitioners
             self.fields["reviewer"].queryset = practitioners
 
