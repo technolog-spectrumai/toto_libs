@@ -1,5 +1,6 @@
 from django.urls import path
 from django.views.generic import RedirectView
+from .api_views import FileListApiView, FileUploadApiView, FileDetailApiView, FileDownloadApiView
 from .views import (
     PublicFileListView, VaultFileDownloadView,
     FileGatewayPageView, FileGatewayUploadView,
@@ -14,6 +15,12 @@ from .views import (
 app_name = "vault"
 
 urlpatterns = [
+    # Enigma JSON API
+    path("api/files/", FileListApiView.as_view(), name="api_file_list"),
+    path("api/files/upload/", FileUploadApiView.as_view(), name="api_file_upload"),
+    path("api/files/<slug:key>/", FileDetailApiView.as_view(), name="api_file_detail"),
+    path("api/files/<slug:key>/download/", FileDownloadApiView.as_view(), name="api_file_download"),
+
     path("", RedirectView.as_view(pattern_name="vault:public_list", permanent=False), name="root"),
     path("public/", PublicFileListView.as_view(), name="public_list"),
     path("public/<slug:bucket_slug>/<slug:key>/", VaultFileDownloadView.as_view(), name="public_file"),

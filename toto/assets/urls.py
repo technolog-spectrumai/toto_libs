@@ -1,10 +1,15 @@
 from django.urls import path
 
 from . import views
+from .api_views import WalletSummaryApiView
 
 app_name = "assets"
 
 urlpatterns = [
+    # Enigma JSON API
+    path("api/wallet/summary/", WalletSummaryApiView.as_view(), name="api_wallet_summary"),
+
+
     path("", views.asset_list, name="asset_list"),
     path("assets/create/", views.asset_create, name="asset_create"),
     path("assets/<int:pk>/", views.asset_detail, name="asset_detail"),

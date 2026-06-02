@@ -1,12 +1,18 @@
 from django.urls import path
 
 from . import views
+from .api_views import BoxListApiView, BoxDetailApiView, CategoryListApiView
 
 app_name = "bento"
 
 urlpatterns = [
     path("", views.box_list, name="box_list"),
-    path("api/boxes/", views.api_boxes, name="api_boxes"),
+    # Enigma JSON API
+    path("api/boxes/", BoxListApiView.as_view(), name="api_box_list"),
+    path("api/boxes/<int:pk>/", BoxDetailApiView.as_view(), name="api_box_detail"),
+    path("api/categories/", CategoryListApiView.as_view(), name="api_category_list"),
+    # Legacy HTML-support API
+    path("api/boxes-graph/", views.api_boxes, name="api_boxes"),
     path("api/boxes/<int:pk>/graph/", views.api_box_graph, name="api_box_graph"),
     path("categories/", views.category_list, name="category_list"),
     path("categories/new/", views.category_create, name="category_create"),

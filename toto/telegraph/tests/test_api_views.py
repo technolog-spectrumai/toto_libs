@@ -205,3 +205,65 @@ class ImageUploadApiViewTests(TestCase):
         f = SimpleUploadedFile("photo.png", SMALL_PNG, content_type="image/png")
         res = self.client.post("/telegraph/api/channels/nope/upload/", {"image": f})
         self.assertEqual(res.status_code, 404)
+
+
+SMALL_WEBM = b"\x1a\x45\xdf\xa3"  # minimal EBML header (enough for content_type test)
+
+
+class AudioUploadApiViewTests(TestCase):
+    def setUp(self):
+        from toto.people.models import Person
+        self.user = User.objects.create_user(username="audiouser", password="pass")
+        self.person = Person.objects.create(
+            user=self.user, display_name="Audio User", email="audio@example.com"
+        )
+        self.channel = TelegraphChannel.objects.create(name="Audio", slug="audio")
+
+    def test_upload_unauthenticated(self):
+        f = SimpleUploadedFile("clip.webm", SMALL_WEBM, content_type="audio/webm")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload-audio/",
+            {"audio": f},
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_upload_invalid_type(self):
+        self.client.force_login(self.user)
+        f = SimpleUploadedFile("clip.exe", b"MZ", content_type="application/octet-stream")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload-audio/",
+            {"audio": f},
+        )
+        self.assertEqual(res.status_code, 415)
+
+    def test_upload_no_file(self):
+        self.client.force_login(self.user)
+        res = self.client.post(f"/telegraph/api/channels/{self.channel.slug}/upload-audio/")
+        self.assertEqual(res.status_code, 400)
+
+    def test_upload_channel_not_found(self):
+        self.client.force_login(self.user)
+        f = SimpleUploadedFile("clip.webm", SMALL_WEBM, content_type="audio/webm")
+        res = self.client.post("/telegraph/api/channels/nope/upload-audio/", {"audio": f})
+        self.assertEqual(res.status_code, 404)
+
+    @patch("toto.telegraph.api_views.get_channel_layer", return_value=None)
+    def test_upload_success(self, _mock):
+        self.client.force_login(self.user)
+        f = SimpleUploadedFile("clip.webm", SMALL_WEBM, content_type="audio/webm")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload-audio/",
+            {"audio": f},
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["ok"])
+
+    @patch("toto.telegraph.api_views.get_channel_layer", return_value=None)
+    def test_upload_ogg_accepted(self, _mock):
+        self.client.force_login(self.user)
+        f = SimpleUploadedFile("clip.ogg", b"OggS", content_type="audio/ogg")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload-audio/",
+            {"audio": f},
+        )
+        self.assertEqual(res.status_code, 200)

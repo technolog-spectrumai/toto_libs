@@ -43,3 +43,19 @@ A `Community` is the container around which everything else organizes. People jo
 - `api` — EmailService FK for community notification emails
 - `locations` — Community headquarters Address FK and Territory FK
 - `people` — CommunityNewsPost author; MembershipApplication applicant
+
+## Enigma JSON API
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/socialhub/api/profiles/` | List people profiles (sorted by display_name) |
+| GET | `/socialhub/api/profiles/{slug}/` | Profile detail with communities list |
+| GET | `/socialhub/api/communities/` | List communities (sorted by name) |
+| GET | `/socialhub/api/communities/{slug}/` | Community detail with senior members + latest news |
+
+All endpoints are public (no auth required).
+
+### Testing
+```bash
+cd portal && python manage.py test toto.socialhub.tests_api
+```

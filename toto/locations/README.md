@@ -35,3 +35,17 @@ GIS-backed geographic model layer. All spatial data uses PostGIS SRID 4326 (WGS8
 ## Dependencies
 
 - `people` — Territory and Zone can have a Person administrator
+
+## Enigma JSON API
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/locations/api/zones/` | List zones with territory name |
+| GET | `/locations/api/addresses/` | List addresses with lat/lng if geocoded |
+| POST | `/locations/api/addresses/` | Create address `{street, building, locality_name, country_name}` (auth) |
+| GET | `/locations/api/addresses/{id}/` | Address detail |
+
+### Testing
+```bash
+cd portal && python manage.py test toto.locations.tests_api
+```

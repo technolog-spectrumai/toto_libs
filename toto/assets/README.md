@@ -109,3 +109,30 @@ backend.reverse_transaction(
 
 - `inventory` — Physical asset types linked via Contract/Agreement runtime
 - `people` — Person as account holder identity
+
+## Enigma Wallet API
+
+Single aggregated read-only endpoint combining balances, pending charges, and open invoices.
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/assets/api/wallet/summary/` | Wallet summary for the authenticated user |
+
+### Response shape
+```json
+{
+  "accounts": [{"code", "name", "account_type", "holdings": [{"asset_name", "asset_unit", "balance_display"}]}],
+  "pending_charges": [{"metric_code", "quantity", "unit", "tariff_name", "asset_unit", "amount_display", "occurred_at"}],
+  "open_invoices": [{"id", "title", "amount", "currency", "status", "due_date", "issued_by_name"}],
+  "totals": {"total_pending_by_asset": {"UNIT": "amount"}, "total_open_invoice_amount": "0.00"}
+}
+```
+
+- `accounts` — `LedgerAccount` rows where `user = request.user`
+- `pending_charges` — `UsageRecord` rows with status `pending` or `rated`
+- `open_invoices` — `Invoice` rows with status `pending` or `overdue`
+
+### Testing
+```bash
+cd portal && python manage.py test toto.assets.tests_wallet_api
+```

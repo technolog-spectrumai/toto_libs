@@ -37,3 +37,22 @@ A community creates a `Project`, adds `Practitioner` members with roles, and bre
 - `locations` — Project location / territory FK
 - `people` — Practitioner is a Person; task assignments
 - `verbena` — DocumentationPage extends AbstractPage
+
+## Enigma JSON API
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/kanban/api/projects/` | Projects where user is lead or committed practitioner |
+| GET | `/kanban/api/projects/{id}/` | Project detail with columns |
+| GET | `/kanban/api/projects/{id}/tasks/` | All tasks for a project |
+| POST | `/kanban/api/projects/{id}/tasks/` | Create task `{title, column_id, description?}` |
+| PATCH | `/kanban/api/tasks/{id}/` | Update task fields |
+| POST | `/kanban/api/tasks/{id}/promote/` | Move task to next column |
+| POST | `/kanban/api/tasks/{id}/demote/` | Move task to previous column |
+
+Promote/demote returns 400 if the task is already at the first/last column.
+
+### Testing
+```bash
+cd portal && python manage.py test toto.kanban.tests_api
+```

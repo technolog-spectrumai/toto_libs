@@ -1,4 +1,10 @@
 from django.urls import path
+from toto.socialhub.api_views import (
+    ProfileListApiView,
+    ProfileDetailApiView,
+    CommunityListApiView,
+    CommunityDetailApiView,
+)
 from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, set_preferred_language
 from toto.socialhub.views.community import (
     CommunityListView,
@@ -20,6 +26,12 @@ from toto.socialhub.views.constitution import constitution_detail, constitution_
 app_name = "socialhub"
 
 urlpatterns = [
+    # Enigma JSON API
+    path("api/profiles/", ProfileListApiView.as_view(), name="api_profile_list"),
+    path("api/profiles/<slug:slug>/", ProfileDetailApiView.as_view(), name="api_profile_detail"),
+    path("api/communities/", CommunityListApiView.as_view(), name="api_community_list"),
+    path("api/communities/<slug:slug>/", CommunityDetailApiView.as_view(), name="api_community_detail"),
+
     path("profiles/", ProfileListView.as_view(), name="profile_list"),
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
     path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),

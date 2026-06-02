@@ -22,3 +22,19 @@ Community members capture ideas as `IdeaBox` records and draw directional relati
 
 - `people` — IdeaBox.author and IdeaLink.author
 - `socialhub` — Community-scoped categories and idea boxes
+
+## Enigma JSON API
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/bento/api/boxes/` | List boxes; `?q=` for full-text search |
+| POST | `/bento/api/boxes/` | Create box (auth required) |
+| GET | `/bento/api/boxes/{id}/` | Box detail |
+| PATCH | `/bento/api/boxes/{id}/` | Update title/body/category (auth required) |
+| DELETE | `/bento/api/boxes/{id}/` | Delete box (auth required) → 204 |
+| GET | `/bento/api/categories/` | List categories |
+
+### Testing
+```bash
+cd portal && python manage.py test toto.bento.tests_api
+```

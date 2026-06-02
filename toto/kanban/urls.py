@@ -1,4 +1,12 @@
 from django.urls import path
+from .api_views import (
+    ProjectListApiView,
+    ProjectDetailApiView,
+    TaskListCreateApiView,
+    TaskDetailApiView,
+    TaskPromoteApiView,
+    TaskDemoteApiView,
+)
 from .views import (
     ProjectListView,
     ProjectDetailView,
@@ -17,6 +25,14 @@ from .views import (
 app_name = "kanban"
 
 urlpatterns = [
+    # Enigma JSON API
+    path("api/projects/", ProjectListApiView.as_view(), name="api_project_list"),
+    path("api/projects/<int:pk>/", ProjectDetailApiView.as_view(), name="api_project_detail"),
+    path("api/projects/<int:project_pk>/tasks/", TaskListCreateApiView.as_view(), name="api_task_list"),
+    path("api/tasks/<int:pk>/", TaskDetailApiView.as_view(), name="api_task_detail"),
+    path("api/tasks/<int:pk>/promote/", TaskPromoteApiView.as_view(), name="api_task_promote"),
+    path("api/tasks/<int:pk>/demote/", TaskDemoteApiView.as_view(), name="api_task_demote"),
+
     path("", ProjectListView.as_view(), name="project_list"),
 
     path(

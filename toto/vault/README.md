@@ -52,3 +52,20 @@ Charge failure is non-fatal — metering still records the event.
 ## Ingress
 
 `python manage.py ingress_vault` seeds demo buckets, directories, and files. Tariff and invoice seeding is skipped when `toto.tariffs` / `toto.invoice` are not installed.
+
+## Enigma JSON API
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET | `/vault/api/files/` | List own files (auth required) |
+| POST | `/vault/api/files/upload/` | Upload file — multipart `file` + `title` (auth required) |
+| GET | `/vault/api/files/{key}/` | File detail (auth required) |
+| DELETE | `/vault/api/files/{key}/` | Delete own file → 204; others → 403 (auth required) |
+| GET | `/vault/api/files/{key}/download/` | Redirect to file download (auth required) |
+
+Upload auto-creates a personal bucket `personal-{username}` if one doesn't exist.
+
+### Testing
+```bash
+cd portal && python manage.py test toto.vault.tests_api
+```
