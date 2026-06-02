@@ -371,9 +371,13 @@ class OllamaAgentSession(AgentSession):
 
         from toto.vicuna.chat import resolve_ollama_chat_model
 
+        host = (
+            getattr(self.profile.connector, "base_url", None)
+            or getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434")
+        )
         model = ChatOllama(
             model=resolve_ollama_chat_model(self.profile),
-            base_url=getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434"),
+            base_url=host,
             temperature=(
                 self.profile.temperature
                 if self.profile.temperature is not None

@@ -142,12 +142,7 @@ class ResolveOllamaChatModelTests(SimpleTestCase):
 
 class OllamaSessionModelResolutionTests(SimpleTestCase):
 
-    @override_settings(
-        VICUNA_CHAT_MODEL="qwen3:1.7b",
-        VICUNA_OLLAMA_HOST="http://localhost:11434",
-        VICUNA_CHAT_TEMPERATURE=0.1,
-        VICUNA_CHAT_TIMEOUT=180,
-    )
+    @override_settings(VICUNA_CHAT_MODEL="qwen3:1.7b", VICUNA_CHAT_TEMPERATURE=0.1, VICUNA_CHAT_TIMEOUT=180)
     def test_session_uses_resolved_model_from_profile(self):
         """Profile with qwen3:4b should send qwen3:4b to ChatOllama."""
         from toto.steven.services.agent_session import OllamaAgentSession
@@ -157,6 +152,7 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             model_name="qwen3:4b",
             temperature=0.1,
             system_prompt="",
+            connector=SimpleNamespace(base_url="http://localhost:11434"),
         )
         session = OllamaAgentSession(profile)
 
@@ -179,12 +175,7 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
 
         self.assertEqual(created_kwargs["model"], "qwen3:4b")
 
-    @override_settings(
-        VICUNA_CHAT_MODEL="qwen3:1.7b",
-        VICUNA_OLLAMA_HOST="http://localhost:11434",
-        VICUNA_CHAT_TEMPERATURE=0.1,
-        VICUNA_CHAT_TIMEOUT=180,
-    )
+    @override_settings(VICUNA_CHAT_MODEL="qwen3:1.7b", VICUNA_CHAT_TEMPERATURE=0.1, VICUNA_CHAT_TIMEOUT=180)
     def test_session_rejects_invalid_profile_model_falls_back_to_default(self):
         """Profile with LoboLightNLP should fall back to qwen3:1.7b."""
         from toto.steven.services.agent_session import OllamaAgentSession
@@ -194,6 +185,7 @@ class OllamaSessionModelResolutionTests(SimpleTestCase):
             model_name="LoboLightNLP",
             temperature=0.1,
             system_prompt="",
+            connector=SimpleNamespace(base_url="http://localhost:11434"),
         )
         session = OllamaAgentSession(profile)
 

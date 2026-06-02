@@ -85,10 +85,9 @@ class OllamaProviderStrategy(ProviderStrategy):
     label = "Ollama local"
 
     def test(self, connector, api_key: str, timeout: int) -> dict:
-        from django.conf import settings
         from toto.vicuna.chat import default_ollama_chat_model
 
-        host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
+        host = (getattr(connector, "base_url", None) or "http://localhost:11434").rstrip("/")
 
         try:
             with urlopen(f"{host}/api/tags", timeout=timeout) as resp:

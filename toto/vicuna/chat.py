@@ -48,17 +48,32 @@ def is_allowed_ollama_chat_model(model_name: str) -> bool:
 def installed_ollama_chat_models() -> list[str]:
     """Return allowed models that are currently pulled in Ollama.
 
-    Queries /api/tags with a short timeout and intersects the response with
-    ollama_chat_model_choices(). Falls back to the full choices list when
-    Ollama is unreachable so the admin form never breaks.
+    Prefers the DB-backed OllamaModel records (kept fresh by the vicuna admin
+    sync action). Falls back to a live /api/tags query against VICUNA_OLLAMA_HOST
+    when no OllamaServer records exist yet. Returns the full allowed list if
+    Ollama is unreachable, so the admin form never breaks.
     """
+    allowed = ollama_chat_model_choices()
+
+    # DB-backed path: use synced OllamaModel records when servers are configured.
+    try:
+        from toto.vicuna.models import OllamaModel, OllamaServer
+        if OllamaServer.objects.filter(is_active=True).exists():
+            pulled = set(
+                OllamaModel.objects.filter(server__is_active=True)
+                .values_list("name", flat=True)
+            )
+            found = [m for m in allowed if m in pulled]
+            return found if found else allowed
+    except Exception:
+        pass
+
+    # Live fallback: query VICUNA_OLLAMA_HOST directly (settings-era compat).
     import json
     import urllib.request
     from django.conf import settings
 
     host = getattr(settings, "VICUNA_OLLAMA_HOST", "http://localhost:11434").rstrip("/")
-    allowed = ollama_chat_model_choices()
-
     try:
         with urllib.request.urlopen(f"{host}/api/tags", timeout=3) as resp:
             data = json.loads(resp.read())

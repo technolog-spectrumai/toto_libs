@@ -17,11 +17,13 @@ _STEVEN_INSTALLED = apps.is_installed("toto.steven")
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _make_profile(provider="ollama", is_active=True, temperature=0.1):
+def _make_profile(provider="ollama", is_active=True, temperature=0.1,
+                  base_url="http://localhost:11434"):
     connector = SimpleNamespace(
         provider=provider,
         is_active=is_active,
         name=f"{provider}-connector",
+        base_url=base_url,
     )
     return SimpleNamespace(
         connector=connector,
