@@ -1,4 +1,5 @@
 import hashlib
+import json
 import os
 
 from django.http import JsonResponse, HttpResponseRedirect
@@ -111,6 +112,24 @@ class FileDetailApiView(CorsApiView):
             return JsonResponse({"error": "File not found."}, status=404)
         return JsonResponse(_file_to_dict(request, vf))
 
+    def patch(self, request, key):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        vf = self._get_file(request.user, key)
+        if not vf:
+            return JsonResponse({"error": "File not found."}, status=404)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        if "title" in data:
+            title = str(data["title"]).strip()
+            if not title:
+                return JsonResponse({"error": "Title cannot be empty."}, status=400)
+            vf.title = title
+            vf.save(update_fields=["title"])
+        return JsonResponse(_file_to_dict(request, vf))
+
     def delete(self, request, key):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -125,6 +144,128 @@ class FileDetailApiView(CorsApiView):
 
         vf.delete()
         return JsonResponse({}, status=204)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FileEncryptApiView(CorsApiView):
+    def post(self, request, key):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            vf = VaultFile.objects.select_related("bucket").get(key=key, owner=request.user)
+        except VaultFile.DoesNotExist:
+            return JsonResponse({"error": "File not found."}, status=404)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        password = str(data.get("password", "")).strip()
+        if not password:
+            return JsonResponse({"error": "Password required."}, status=400)
+        if vf.is_encrypted:
+            return JsonResponse({"error": "File is already encrypted."}, status=400)
+        try:
+            vf.encrypt(password=password)
+            vf.is_public = False
+            vf.save(update_fields=["is_public"])
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(_file_to_dict(request, vf))
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FileDecryptApiView(CorsApiView):
+    def post(self, request, key):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            vf = VaultFile.objects.select_related("bucket").get(key=key, owner=request.user)
+        except VaultFile.DoesNotExist:
+            return JsonResponse({"error": "File not found."}, status=404)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        password = str(data.get("password", "")).strip()
+        if not password:
+            return JsonResponse({"error": "Password required."}, status=400)
+        if not vf.is_encrypted:
+            return JsonResponse({"error": "File is not encrypted."}, status=400)
+        try:
+            vf.decrypt(password=password)
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+        return JsonResponse(_file_to_dict(request, vf))
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class VaultMetricsApiView(CorsApiView):
+    def get(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        from django.utils import timezone
+        from datetime import timedelta, date
+        from django.db.models import Count, Sum, Q
+        from django.db.models.functions import TruncDate
+        from toto.vault.models import Bucket
+
+        user = request.user
+        qs = VaultFile.objects.filter(owner=user)
+
+        total_files = qs.count()
+        public_files = qs.filter(is_public=True).count()
+        encrypted_files = qs.filter(is_encrypted=True).count()
+        total_size = qs.aggregate(s=Sum("file_size_bytes"))["s"] or 0
+        week_ago = timezone.now() - timedelta(days=7)
+        recent_count = qs.filter(uploaded_at__gte=week_ago).count()
+
+        files_by_type = list(
+            qs.values("file_type").annotate(count=Count("id")).order_by("-count")
+        )
+
+        thirty_days_ago = timezone.now() - timedelta(days=29)
+        daily_map = {
+            e["day"]: e["count"]
+            for e in qs.filter(uploaded_at__gte=thirty_days_ago)
+            .annotate(day=TruncDate("uploaded_at"))
+            .values("day")
+            .annotate(count=Count("id"))
+        }
+        today = date.today()
+        daily_series = [
+            {
+                "date": (today - timedelta(days=29 - i)).strftime("%m-%d"),
+                "count": daily_map.get(today - timedelta(days=29 - i), 0),
+            }
+            for i in range(30)
+        ]
+
+        bucket_stats = []
+        for b in Bucket.objects.filter(owner=user).annotate(
+            file_count=Count("files", distinct=True),
+            public_count=Count("files", filter=Q(files__is_public=True), distinct=True),
+            encrypted_count=Count("files", filter=Q(files__is_encrypted=True), distinct=True),
+            total_size=Sum("files__file_size_bytes"),
+        ).order_by("name"):
+            bucket_stats.append({
+                "slug": b.slug,
+                "name": b.name,
+                "file_count": b.file_count,
+                "public_count": b.public_count,
+                "encrypted_count": b.encrypted_count,
+                "total_size": b.total_size or 0,
+            })
+
+        return JsonResponse({
+            "total_files": total_files,
+            "public_files": public_files,
+            "encrypted_files": encrypted_files,
+            "total_size_bytes": total_size,
+            "recent_count": recent_count,
+            "files_by_type": files_by_type,
+            "daily_series": daily_series,
+            "bucket_stats": bucket_stats,
+        })
 
 
 @method_decorator(csrf_exempt, name="dispatch")
