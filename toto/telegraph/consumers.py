@@ -10,6 +10,7 @@ MLS_TYPES = {
     "mls_welcome",
     "mls_commit",
     "mls_app",
+    "mls_reset_request",
 }
 
 YJS_TYPES = {

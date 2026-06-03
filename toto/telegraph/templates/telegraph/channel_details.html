@@ -142,10 +142,21 @@ document.addEventListener("DOMContentLoaded", async () => {
     }
   }
 
-  async function resetMlsSession(fromPeer = false) {
+  const processedResetIds = new Set();
+
+  async function resetMlsSession(fromPeer = false, resetId = null) {
+    // Deduplicate by UUID to prevent cycles
+    if (resetId) {
+      if (processedResetIds.has(resetId)) return;
+      processedResetIds.add(resetId);
+      setTimeout(() => processedResetIds.delete(resetId), 30000);
+    }
     // Broadcast to all peers first (unless this IS a peer-triggered reset)
     if (!fromPeer && socket && socket.readyState === WebSocket.OPEN) {
-      sendSocketPayload({ type: "mls_reset_request" });
+      const newResetId = crypto.randomUUID();
+      processedResetIds.add(newResetId);
+      setTimeout(() => processedResetIds.delete(newResetId), 30000);
+      sendSocketPayload({ type: "mls_reset_request", device_id: browserDeviceId, reset_id: newResetId });
     }
     // Clear message history and Yjs state
     container.querySelectorAll("[data-empty-messages], article, div.flex.min-w-0").forEach((el) => el.remove());
@@ -686,7 +697,9 @@ document.addEventListener("DOMContentLoaded", async () => {
       } else if (data.type === "yjs_sync_request") {
         sendSocketPayload({ type: "yjs_sync_response", target_channel: data.sender_channel, update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
       } else if (data.type === "mls_reset_request") {
-        await resetMlsSession(true);
+        if (data.device_id !== browserDeviceId) {
+          await resetMlsSession(true, data.reset_id || null);
+        }
       } else if (data.type === "mls_key_package") {
         await addMlsMember(data);
       } else if (data.type === "mls_welcome") {
