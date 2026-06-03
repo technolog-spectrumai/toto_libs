@@ -1,9 +1,13 @@
 from django.urls import path
 from . import views
+from .api_views import IncidentsMapApiView, PromoteDetectionApiView, IncidentDetailApiView
 
 app_name = "incidents"
 
 urlpatterns = [
+    path("api/enigma/list/", IncidentsMapApiView.as_view(), name="api_enigma_list"),
+    path("api/enigma/promote/<uuid:detection_pk>/", PromoteDetectionApiView.as_view(), name="api_enigma_promote"),
+    path("api/enigma/<uuid:pk>/", IncidentDetailApiView.as_view(), name="api_enigma_detail"),
     path("", views.IncidentListView.as_view(), name="incident-list"),
     path("new/", views.incident_create, name="incident-create"),
     path("dashboard/", views.IncidentDashboardView.as_view(), name="dashboard"),

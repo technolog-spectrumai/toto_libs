@@ -107,7 +107,7 @@ def deployment_detail(request, pk):
 
     event = deployment.event
     report_detections = Detection.objects.filter(
-        mobilization_evidence__report__mobilization_events=event
+        promoted_incident__mobilization_evidence__report__mobilization_events=event
     ).distinct().select_related("category").order_by("-start_time")
 
     linked_detection_ids = set(
@@ -348,7 +348,7 @@ def intervention_create(request, pk):
 
     event = deployment.event
     event_detections = Detection.objects.filter(
-        mobilization_evidence__report__mobilization_events=event
+        promoted_incident__mobilization_evidence__report__mobilization_events=event
     ).distinct().select_related("category").order_by("-start_time")[:30]
 
     if request.method == "POST":

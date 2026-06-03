@@ -1,9 +1,11 @@
 from django.urls import path
 from . import views
+from .api_views import MobilizationMapApiView
 
 app_name = "mobilization"
 
 urlpatterns = [
+    path("api/enigma/map/", MobilizationMapApiView.as_view(), name="api_enigma_map"),
     path("", views.overview, name="overview"),
 
     # Responders

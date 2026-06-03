@@ -14,7 +14,7 @@
 
     <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'" class="rounded-2xl border p-5 shadow-sm">
       <h2 class="text-lg font-bold">{% trans "Description" %}</h2>
-      <div class="prose mt-3 max-w-none opacity-85">{{ incident.description|linebreaks|default:"<em class='opacity-50'>{% trans "No description." %}</em>" }}</div>
+      <div class="prose mt-3 max-w-none opacity-85">{% if incident.description %}{{ incident.description|linebreaks }}{% else %}<em class="opacity-50">{% trans "No description." %}</em>{% endif %}</div>
     </article>
 
     {% if incident.source_detection %}
