@@ -67,9 +67,17 @@ class FileUploadApiView(CorsApiView):
 
         title = request.POST.get("title", "").strip() or os.path.splitext(file.name)[0]
         content_type = file.content_type or ""
-        file_type = VaultFile.detect_type(content_type)
+        file_type = VaultFile.detect_type(content_type, file.name)
 
-        bucket = _get_or_create_default_bucket(request.user)
+        bucket_slug = request.POST.get("bucket_slug", "").strip()
+        if bucket_slug:
+            bucket, _ = Bucket.objects.get_or_create(
+                owner=request.user,
+                slug=bucket_slug,
+                defaults={"name": bucket_slug, "storage_backend": "local"},
+            )
+        else:
+            bucket = _get_or_create_default_bucket(request.user)
 
         content = file.read()
         content_hash = hashlib.sha256(content).hexdigest()

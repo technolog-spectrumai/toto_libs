@@ -144,8 +144,30 @@ class VaultFile(models.Model):
         ('video', 'Video'),
     ]
 
+    _EXT_MAP = {
+        ".tex": "latex", ".sty": "latex", ".cls": "latex", ".dtx": "latex", ".ins": "latex",
+        ".bib": "bib",
+        ".pdf": "pdf",
+        ".svg": "svg",
+        ".csv": "csv",
+        ".json": "json",
+        ".yaml": "yaml", ".yml": "yaml",
+        ".xml": "xml",
+        ".html": "html", ".htm": "html",
+        ".md": "text", ".txt": "text", ".rst": "text",
+        ".mp3": "audio", ".ogg": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
+        ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
+        ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",
+        ".webp": "image", ".bmp": "image", ".tiff": "image",
+    }
+
     @classmethod
-    def detect_type(cls, mime: str) -> str:
+    def detect_type(cls, mime: str, filename: str = "") -> str:
+        # Extension-first for types browsers mis-label as text/plain
+        if filename:
+            ext = os.path.splitext(filename)[1].lower()
+            if ext in cls._EXT_MAP:
+                return cls._EXT_MAP[ext]
         if not mime:
             return "text"
         mime = mime.lower()
