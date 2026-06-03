@@ -277,7 +277,7 @@ class ChannelLeaveAllApiView(CorsApiView):
 
 
 _ALLOWED_IMAGE_TYPES = {"image/jpeg", "image/png", "image/gif", "image/webp"}
-_ALLOWED_AUDIO_TYPES = {"audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/mpeg"}
+_ALLOWED_AUDIO_PREFIXES = ("audio/webm", "audio/ogg", "audio/mp4", "audio/wav", "audio/mpeg")
 _MAX_MEDIA_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
@@ -362,7 +362,7 @@ class AudioUploadApiView(CorsApiView):
             return JsonResponse({"error": "No audio file provided."}, status=400)
 
         content_type = file.content_type or ""
-        if content_type not in _ALLOWED_AUDIO_TYPES:
+        if not any(content_type.startswith(p) for p in _ALLOWED_AUDIO_PREFIXES):
             return JsonResponse(
                 {"error": "Unsupported file type. Send audio/webm, audio/ogg, audio/mp4, audio/wav, or audio/mpeg."},
                 status=415,
