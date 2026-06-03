@@ -131,8 +131,47 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
+  let keyExchangeTimeout = null;
+
+  function setKeyExchangeStatus(active) {
+    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).mlsKeyExchange = active;
+    if (keyExchangeTimeout) { clearTimeout(keyExchangeTimeout); keyExchangeTimeout = null; }
+    if (active) {
+      // Auto-clear the stuck indicator after 30 s (enough for a normal exchange)
+      keyExchangeTimeout = setTimeout(() => setKeyExchangeStatus(false), 30000);
+    }
+  }
+
+  async function resetMlsSession(fromPeer = false) {
+    // Broadcast to all peers first (unless this IS a peer-triggered reset)
+    if (!fromPeer && socket && socket.readyState === WebSocket.OPEN) {
+      sendSocketPayload({ type: "mls_reset_request" });
+    }
+    // Clear message history and Yjs state
+    container.querySelectorAll("[data-empty-messages], article, div.flex.min-w-0").forEach((el) => el.remove());
+    renderedIds.clear();
+    yMessages.delete(0, yMessages.length);
+    setEncryptionStatus(false);
+    setKeyExchangeStatus(false);
+    mlsInvitedUsers.clear();
+    clearMlsState();
+    try {
+      await initializeMls();
+      setEncryptionStatus(true);
+      setKeyExchangeStatus(true);
+      sendKeyPackage();
+      appendSystemMessage("🔑 Session reset — history cleared.");
+    } catch (err) {
+      appendSystemMessage(`Reset failed: ${err?.message || err}`);
+    }
+  }
+
+  // Expose to HTML onclick
+  window._telegraphResetMls = resetMlsSession;
+
   function setEncryptionStatus(enabled) {
     encryptionEnabled = enabled && canSend;
+    if (enabled) setKeyExchangeStatus(false);
     if (window.Alpine && appRoot) window.Alpine.$data(appRoot).encryptionEnabled = encryptionEnabled;
     encryptionTexts.forEach((el) => { el.textContent = encryptionEnabled ? "Encrypted" : "Unencrypted"; });
     encryptionIcons.forEach((el) => {
@@ -556,7 +595,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   }
 
   async function addMlsMember(data) {
-    if (!mlsReady || !mlsSession || !data.package) return;
+    const kpField = data.package || data.key_package;
+    if (!mlsReady || !mlsSession || !kpField) return;
+    data = { ...data, package: kpField };  // normalise field name
     if (data.user === userName) return;
     if (data.target && data.target !== userName) return;
 
@@ -601,11 +642,13 @@ document.addEventListener("DOMContentLoaded", async () => {
     saveMlsState();
     mlsReady = true;
     setEncryptionStatus(true);
+    setKeyExchangeStatus(false);
     appendSystemMessage("Joined encrypted channel.");
   }
 
   async function processMlsApplicationMessage(data) {
-    if (!mlsReady || !mlsSession || !data.ciphertext || data.user === userName) return;
+    const senderName = data.user || data.sender_name || data.device_id || "Unknown";
+    if (!mlsReady || !mlsSession || !data.ciphertext || senderName === userName) return;
     const ciphertext = base64ToBytes(data.ciphertext);
     let plaintext;
     try {
@@ -621,15 +664,15 @@ document.addEventListener("DOMContentLoaded", async () => {
     try {
       const inner = JSON.parse(text);
       if (inner.type === "image_message" && inner.image_data) {
-        appendMessage({ ...inner, user: data.user, avatar_url: data.avatar_url || "" });
+        appendMessage({ ...inner, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "" });
         return;
       }
       if (inner.type === "voice_message" && inner.audio_data) {
-        appendMessage({ ...inner, user: data.user, avatar_url: data.avatar_url || "" });
+        appendMessage({ ...inner, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "" });
         return;
       }
     } catch (_) {}
-    appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: text });
+    appendSharedMessage({ id: data.id, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "", message: text });
   }
 
   async function handleSocketMessage(data) {
@@ -642,6 +685,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         Y.applyUpdate(ydoc, new Uint8Array(data.update), "remote");
       } else if (data.type === "yjs_sync_request") {
         sendSocketPayload({ type: "yjs_sync_response", target_channel: data.sender_channel, update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
+      } else if (data.type === "mls_reset_request") {
+        await resetMlsSession(true);
       } else if (data.type === "mls_key_package") {
         await addMlsMember(data);
       } else if (data.type === "mls_welcome") {
@@ -734,7 +779,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       setConnectionStatus("connected");
       sendSocketPayload({ type: "yjs_sync_request" });
       sendSocketPayload({ type: "yjs_update", update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
-      if (encryptionEnabled && mlsReady) sendKeyPackage();
+      if (encryptionEnabled && mlsReady) { sendKeyPackage(); setKeyExchangeStatus(true); }
     };
     socket.onclose = () => setConnectionStatus("disconnected");
     socket.onerror = () => setConnectionStatus("disconnected");
@@ -749,7 +794,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 {% block content %}
 <main
-  x-data="{ sidebarOpen: false, connectionStatus: 'observer', encryptionEnabled: {{ can_send_messages|yesno:'true,false' }} }"
+  x-data="{ sidebarOpen: false, connectionStatus: 'observer', encryptionEnabled: {{ can_send_messages|yesno:'true,false' }}, mlsKeyExchange: false }"
   data-telegraph-channel
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-6 transition-colors duration-300 sm:px-6 lg:px-8">
@@ -818,6 +863,17 @@ document.addEventListener("DOMContentLoaded", async () => {
           <span class="encryption-status-text">{% if can_send_messages %}Encrypted{% else %}Unencrypted{% endif %}</span>
         </div>
 
+        {# Reset session button — shown when stuck in key exchange #}
+        {% if can_send_messages %}
+        <button
+          x-show="mlsKeyExchange"
+          @click="window._telegraphResetMls && window._telegraphResetMls()"
+          class="hidden shrink-0 items-center gap-1.5 rounded border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1.5 text-xs font-semibold text-yellow-400 transition hover:bg-yellow-500/20 sm:flex"
+          title="Clear MLS state and renegotiate encryption">
+          <i class="fa-solid fa-rotate-right"></i>{% trans "Reset session" %}
+        </button>
+        {% endif %}
+
         {# Connection chip #}
         <div
           class="connection-status-chip hidden shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
@@ -875,8 +931,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         </div>
       {% endif %}
 
-      {# Messages #}
-      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4">
+      {# Messages — pinned to row 3 so composer always stays visible regardless of whether the observer banner renders #}
+      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:3]">
         {% for msg in messages %}
           <article class="flex min-w-0 gap-3 {% if msg.user == current_chat_user %}justify-end{% else %}justify-start{% endif %}">
             {% if msg.user != current_chat_user %}
@@ -917,7 +973,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
 
       {# Input #}
-      <div id="message-form" class="border-t border-current/10 p-3">
+      <div id="message-form" class="border-t border-current/10 p-3 [grid-row:4]">
         {# Mobile chips row #}
         <div class="mb-2 flex flex-wrap gap-2 sm:hidden">
           <div
