@@ -3,6 +3,8 @@ from django.urls import path
 from .api_views import (
     EventListApiView,
     EventDetailApiView,
+    EventInviteApiView,
+    FormDataApiView,
     MyInvitesApiView,
     InviteRespondApiView,
 )
@@ -22,8 +24,10 @@ app_name = "events"
 urlpatterns = [
     # Enigma JSON API
     path("api/enigma/list/", EventListApiView.as_view(), name="api_list"),
-    path("api/enigma/<uuid:pk>/", EventDetailApiView.as_view(), name="api_detail"),
+    path("api/enigma/form-data/", FormDataApiView.as_view(), name="api_form_data"),
     path("api/enigma/my-invites/", MyInvitesApiView.as_view(), name="api_my_invites"),
+    path("api/enigma/<uuid:pk>/", EventDetailApiView.as_view(), name="api_detail"),
+    path("api/enigma/<uuid:pk>/invite/", EventInviteApiView.as_view(), name="api_invite"),
     path("api/enigma/invites/<uuid:pk>/respond/", InviteRespondApiView.as_view(), name="api_invite_respond"),
 
     path('calendar/', EventCalendarView.as_view(), name='event_list'),
