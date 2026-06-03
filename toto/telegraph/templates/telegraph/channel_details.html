@@ -170,8 +170,8 @@ document.addEventListener("DOMContentLoaded", async () => {
       await initializeMls();
       setEncryptionStatus(true);
       setKeyExchangeStatus(true);
-      sendKeyPackage();
       appendSystemMessage("🔑 Session reset — history cleared.");
+      sendKeyPackage(/*targetUser=*/"", /*silent=*/true);
     } catch (err) {
       appendSystemMessage(`Reset failed: ${err?.message || err}`);
     }
@@ -591,7 +591,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     mlsReady = true;
   }
 
-  function sendKeyPackage(targetUser = "") {
+  function sendKeyPackage(targetUser = "", silent = false) {
     if (!mlsReady || !mlsSession) return;
     const keyPackage = callSession("key_package", "keyPackage");
     saveMlsState();
@@ -603,6 +603,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       device_id: browserDeviceId, device_kind: "browser",
       mls_session_id: browserMlsSessionId,
     });
+    if (!silent) appendSystemMessage("🔑 Setting up encryption…");
   }
 
   async function addMlsMember(data) {
@@ -617,7 +618,8 @@ document.addEventListener("DOMContentLoaded", async () => {
     const theyComeBefore = data.user < userName ||
       (data.user === userName && (data.device_id || "") < browserDeviceId);
     if (theyComeBefore) {
-      sendKeyPackage(data.user);
+      appendSystemMessage("🔑 MLS group changed — sent a fresh key package.");
+      sendKeyPackage(data.user, true);
       return;
     }
 
@@ -632,6 +634,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     const welcome = new Uint8Array(result[0]);
     const commit  = new Uint8Array(result[1]);
     saveMlsState();
+    appendSystemMessage("🔒 End-to-end encryption active.");
     sendSocketPayload({
       type: "mls_welcome", id: crypto.randomUUID(),
       user: userName, avatar_url: userAvatarUrl,
@@ -648,13 +651,14 @@ document.addEventListener("DOMContentLoaded", async () => {
   async function joinMlsGroup(data) {
     if (!data.welcome || data.target !== userName || data.user === userName) return;
     if (!mlsSession) mlsSession = new WasmRotorSession(channelSlug, userName);
+    appendSystemMessage("🔑 Received group invitation — joining encrypted group…");
     const welcome = base64ToBytes(data.welcome);
     callSession("join_from_welcome", "joinFromWelcome", welcome);
     saveMlsState();
     mlsReady = true;
     setEncryptionStatus(true);
     setKeyExchangeStatus(false);
-    appendSystemMessage("Joined encrypted channel.");
+    appendSystemMessage("🔒 End-to-end encryption active.");
   }
 
   async function processMlsApplicationMessage(data) {
