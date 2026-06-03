@@ -1,6 +1,8 @@
 import hmac
 import hashlib
+import secrets
 import time
+import threading
 
 from django.conf import settings
 
@@ -9,6 +11,35 @@ _PIN_SECRET_NAME = "wallet-pin"
 _SESSION_KEY_OK = "wallet_pin_ok"
 _SESSION_KEY_EXP = "wallet_pin_exp"
 _SESSION_TTL = 300  # seconds
+
+# ── Bearer-token PIN verification store ──────────────────────────────────────
+# Maps opaque token → (user_id, expiry). Lives in-process; expires in 5 min.
+_PIN_TOKENS: dict[str, tuple[int, float]] = {}
+_PIN_TOKENS_LOCK = threading.Lock()
+
+
+def issue_pin_token(user) -> str:
+    """Return a single-use-style opaque token valid for _SESSION_TTL seconds."""
+    token = secrets.token_urlsafe(32)
+    exp = time.time() + _SESSION_TTL
+    with _PIN_TOKENS_LOCK:
+        # Evict expired entries opportunistically.
+        now = time.time()
+        expired = [k for k, (_, e) in _PIN_TOKENS.items() if e < now]
+        for k in expired:
+            del _PIN_TOKENS[k]
+        _PIN_TOKENS[token] = (user.pk, exp)
+    return token
+
+
+def verify_pin_token(token: str, user) -> bool:
+    """Return True if token is valid and belongs to this user."""
+    with _PIN_TOKENS_LOCK:
+        entry = _PIN_TOKENS.get(token)
+    if not entry:
+        return False
+    uid, exp = entry
+    return uid == user.pk and time.time() < exp
 
 
 def _vault_password(user) -> str:

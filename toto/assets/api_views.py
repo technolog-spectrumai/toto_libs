@@ -1,3 +1,4 @@
+import json
 from decimal import Decimal
 
 from django.http import JsonResponse
@@ -207,14 +208,15 @@ class PinVerifyApiView(CorsApiView):
         if not raw_pin:
             return JsonResponse({"ok": False, "error": "PIN is required."})
 
-        from toto.bazaar.wallet_pin import check_wallet_pin, has_wallet_pin, mark_session_verified
+        from toto.bazaar.wallet_pin import check_wallet_pin, has_wallet_pin, mark_session_verified, issue_pin_token
 
         if not has_wallet_pin(request.user):
             return JsonResponse({"ok": False, "error": "No wallet PIN set. Set one via the portal first.", "no_pin": True})
 
         if check_wallet_pin(request.user, raw_pin):
             mark_session_verified(request.session)
-            return JsonResponse({"ok": True})
+            token = issue_pin_token(request.user)
+            return JsonResponse({"ok": True, "pin_token": token})
 
         return JsonResponse({"ok": False, "error": "Incorrect PIN."})
 
@@ -227,8 +229,13 @@ class ObligationFulfillApiView(CorsApiView):
 
         from toto.assets.models import Obligation, ObligationStatus
         from toto.assets.services.assets import fulfill_obligation
-        from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified
+        from toto.bazaar.wallet_pin import has_wallet_pin, session_is_verified, verify_pin_token
         from django.core.exceptions import ValidationError
+
+        try:
+            body = json.loads(request.body) if request.body else {}
+        except (json.JSONDecodeError, ValueError):
+            body = {}
 
         try:
             obligation = (
@@ -245,7 +252,9 @@ class ObligationFulfillApiView(CorsApiView):
         if not has_wallet_pin(request.user):
             return JsonResponse({"error": "Set a wallet PIN first.", "no_pin": True}, status=400)
 
-        if not session_is_verified(request.session):
+        pin_token = body.get("pin_token", "")
+        token_ok = pin_token and verify_pin_token(pin_token, request.user)
+        if not token_ok and not session_is_verified(request.session):
             return JsonResponse({"error": "PIN verification required.", "pin_required": True}, status=403)
 
         try:
