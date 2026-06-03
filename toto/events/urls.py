@@ -1,5 +1,11 @@
 from django.urls import path
 
+from .api_views import (
+    EventListApiView,
+    EventDetailApiView,
+    MyInvitesApiView,
+    InviteRespondApiView,
+)
 from .views import (
     EventCalendarView,
     EventDetailView,
@@ -14,6 +20,12 @@ from .views import (
 app_name = "events"
 
 urlpatterns = [
+    # Enigma JSON API
+    path("api/enigma/list/", EventListApiView.as_view(), name="api_list"),
+    path("api/enigma/<uuid:pk>/", EventDetailApiView.as_view(), name="api_detail"),
+    path("api/enigma/my-invites/", MyInvitesApiView.as_view(), name="api_my_invites"),
+    path("api/enigma/invites/<uuid:pk>/respond/", InviteRespondApiView.as_view(), name="api_invite_respond"),
+
     path('calendar/', EventCalendarView.as_view(), name='event_list'),
     path('event/create/', event_create, name='event_create'),
     path('event/<uuid:pk>/', EventDetailView.as_view(), name='event_detail'),
