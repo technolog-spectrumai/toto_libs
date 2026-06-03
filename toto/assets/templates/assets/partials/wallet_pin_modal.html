@@ -9,12 +9,18 @@
   <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="pinOpen = false"></div>
   <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
        class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
-    <div class="flex items-center justify-between gap-3">
+    <div class="flex items-start justify-between gap-3">
       <div>
-        <h3 class="font-bold text-lg">{% trans "Wallet PIN" %}</h3>
-        <p class="text-xs opacity-50 mt-0.5">{% trans "Enter your PIN to authorise this transfer." %}</p>
+        <p class="text-xs font-bold uppercase tracking-wide opacity-50">{% trans "PIN required" %}</p>
+        <h3 class="font-bold text-lg mt-0.5">{% trans "Settle obligation" %}</h3>
+        <p class="text-sm font-semibold mt-1" x-text="pendingAmount + ' ' + pendingUnit"></p>
+        <div class="mt-1 text-xs opacity-60 space-y-0.5">
+          <p>{% trans "To" %}: <span class="font-semibold" x-text="pendingTo"></span></p>
+          <p>{% trans "From wallet" %}: <span class="font-semibold" x-text="pendingFrom"></span></p>
+          <p x-show="pendingRef" class="opacity-70" x-text="'Ref: ' + pendingRef"></p>
+        </div>
       </div>
-      <button type="button" @click="pinOpen = false" class="opacity-40 hover:opacity-80 transition text-xl leading-none">&times;</button>
+      <button type="button" @click="pinOpen = false" class="opacity-40 hover:opacity-80 transition text-xl leading-none shrink-0">&times;</button>
     </div>
 
     <div class="space-y-1">

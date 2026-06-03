@@ -149,13 +149,23 @@
       pinError: '',
       pinLoading: false,
       pendingForm: null,
+      pendingAmount: '',
+      pendingUnit: '',
+      pendingTo: '',
+      pendingFrom: '',
+      pendingRef: '',
       walletPinReady: {{ has_wallet_pin|yesno:'true,false' }},
-      requirePin(form) {
+      requirePin(form, amount, unit, to, from, ref) {
         if (!this.walletPinReady) {
           window.location.href = '{% url 'assets:wallet_pin_set' %}';
           return;
         }
         this.pendingForm = form;
+        this.pendingAmount = amount || '';
+        this.pendingUnit = unit || '';
+        this.pendingTo = to || '';
+        this.pendingFrom = from || '';
+        this.pendingRef = ref || '';
         this.pinValue = '';
         this.pinError = '';
         this.pinOpen = true;
@@ -214,7 +224,7 @@
             {{ ob.due_at|date:"M d, Y" }}
           </p>
           <p class="opacity-40 mt-0.5">{{ ob.reference }}</p>
-          <form method="post" action="{% url 'assets:obligation_fulfill' ob.pk %}" @submit.prevent="requirePin($el)">
+          <form method="post" action="{% url 'assets:obligation_fulfill' ob.pk %}" @submit.prevent="requirePin($el, '{{ ob.amount_display }}', '{{ ob.asset.unit_name }}', '{{ ob.creditor_account.code }}', '{{ ob.debtor_account.code }}', '{{ ob.reference }}')">
             {% csrf_token %}
             <input type="hidden" name="next" value="{{ request.get_full_path }}">
             <button type="submit"
