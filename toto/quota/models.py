@@ -109,11 +109,11 @@ class UsageEvent(models.Model):
         indexes = [
             models.Index(
                 fields=["app_label", "metric_code", "occurred_at"],
-                name="quota_event_app_metric_time_idx",
+                name="quota_evt_app_metric_time",
             ),
             models.Index(
                 fields=["subject_type", "subject_id", "metric_code"],
-                name="quota_event_subject_metric_idx",
+                name="quota_evt_subject_metric",
             ),
         ]
 

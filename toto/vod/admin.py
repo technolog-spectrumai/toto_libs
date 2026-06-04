@@ -28,7 +28,7 @@ class VodAccessGrantAdmin(admin.ModelAdmin):
     list_display = ("user", "collection", "video", "status", "starts_at", "ends_at")
     list_filter = ("status",)
     search_fields = ("user__username", "video__title", "collection__title", "note")
-    raw_id_fields = ("user", "collection", "video", "subscription", "invoice")
+    raw_id_fields = ("user", "collection", "video")
 
 
 @admin.register(VodPlaybackEvent)
