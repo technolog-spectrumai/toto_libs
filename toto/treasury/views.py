@@ -217,7 +217,7 @@ def revenue_dashboard(request):
         )
         for asset_code, monthly in _monthly(
             qs, "created_at", "amount_base_units",
-            label_field="invoice__asset__unit_name",
+            label_field="invoice__price__asset__unit_name",
         ).items():
             streams[f"Subscriptions — {asset_code or '?'}"] = monthly
 
