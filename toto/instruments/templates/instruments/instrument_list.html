@@ -137,7 +137,7 @@
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
             {% trans "New Vesting" %}
           </a>
-          <a href="{% url 'instruments:lease_create' %}"
+          <a href="{% url 'leasing:lease_create' %}"
              class="rounded-lg border px-4 py-2 text-sm font-semibold"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
             {% trans "New Lease" %}
@@ -195,7 +195,7 @@
       <i class="fa-solid fa-layer-group text-lg text-indigo-500"></i>
       <span>{% trans "New Staking" %}</span>
     </a>
-    <a href="{% url 'instruments:lease_create' %}"
+    <a href="{% url 'leasing:lease_create' %}"
        class="flex items-center gap-3 rounded-xl border p-4 text-sm font-semibold shadow-sm transition hover:opacity-80"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <i class="fa-solid fa-file-contract text-lg text-teal-500"></i>
