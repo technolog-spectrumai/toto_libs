@@ -10,7 +10,6 @@ _APPS = [
     ("/events/", "Events"),
     ("/kanban/", "Tasks"),
     ("/memo/", "Presentations"),
-    ("/tactical/", "Tactical"),
     ("/robots/", "Robots"),
     ("/transcription/", "Transcription"),
     ("/vod/", "VOD"),
