@@ -193,6 +193,23 @@
               <i class="fa-solid fa-arrow-right-to-bracket"></i>{% trans "Sign In" %}</button>
           </form>
 
+          {% if not sso_client %}
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 text-center text-sm">
+            <p class="opacity-70">{% trans "Don't have an account?" %}</p>
+            <a
+              href="{% url 'socialhub:membership_application' %}"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+              {% trans "Apply for membership" %}
+              <i class="fa-solid fa-arrow-right text-xs"></i>
+            </a>
+          </div>
+          {% endif %}
+
         </div>
       </section>
 
