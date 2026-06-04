@@ -7,7 +7,6 @@ _KEY = "last_visited:{}"
 _APPS = [
     ("/vault/", "Vault"),
     ("/assets/", "Assets"),
-    ("/academy/", "Academy"),
     ("/socialhub/", "Community"),
     ("/events/", "Events"),
     ("/kanban/", "Tasks"),
@@ -19,8 +18,6 @@ _APPS = [
     ("/robots/", "Robots"),
     ("/transcription/", "Transcription"),
     ("/vod/", "VOD"),
-    ("/palimpsest/", "Blog"),
-    ("/library/", "Library"),
     ("/polls/", "Polls"),
 ]
 

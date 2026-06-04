@@ -123,56 +123,6 @@ class IsSubscribedTest(TestCase):
         self.assertFalse(result)
 
 
-class AcademyEnrollGateTest(TestCase):
-
-    def setUp(self):
-        make_platform()
-        self.user = User.objects.create_user("enroller", password="x", email="e@e.com")
-        self.client.force_login(self.user)
-
-    def _make_course(self):
-        from toto.people.models import Person
-        from toto.academy.models import Course, Teacher
-        teacher_user = User.objects.create_user("teacher1", password="x")
-        person = Person.objects.create(display_name="Teacher", user=teacher_user)
-        Teacher.objects.create(person=person)
-        return Course.objects.create(
-            title="Test Course", slug="test-course-enroll",
-            author=teacher_user, is_published=True,
-        )
-
-    def test_enroll_allowed_when_no_academy_plans_exist(self):
-        """When no academy subscription plans exist, enrollment is open."""
-        course = self._make_course()
-        # Create person/student for user
-        from toto.people.models import Person
-        person = Person.objects.create(display_name="Enroller", user=self.user)
-
-        resp = self.client.post(reverse("academy:course-enroll", args=[course.slug]))
-        # Should redirect (to course detail) not show subscription error
-        self.assertIn(resp.status_code, [200, 302])
-        # If it redirected, check messages don't contain subscription error
-        if resp.status_code == 302:
-            follow_resp = self.client.get(resp["Location"])
-            self.assertNotIn("subscription", str(follow_resp.content).lower()[:500])
-
-    def test_enroll_blocked_when_academy_plans_exist_and_no_subscription(self):
-        """When academy plans exist and user is not subscribed, enrollment is blocked."""
-        from toto.subscriptions.models import SubscriptionPlan
-        from toto.assets.models import Asset
-        asset = Asset.objects.create(
-            name="ACDM", unit_name="ACDM", decimals=2,
-            total_supply_base_units=10 ** 10, active=True,
-        )
-        from toto.socialhub.models import Community as _C
-        _community = _C.objects.create(name="Gate Community", slug="gate-community")
-        SubscriptionPlan.objects.create(name="Academy Gate", code="academy", status="active", community=_community)
-
-        course = self._make_course()
-        resp = self.client.post(reverse("academy:course-enroll", args=[course.slug]))
-        # Should redirect to subscription plan list
-        self.assertEqual(resp.status_code, 302)
-
 
 class SubscriptionGatesArchitectureTest(TestCase):
     def test_gates_module_does_not_import_tariffs_or_treasury(self):
