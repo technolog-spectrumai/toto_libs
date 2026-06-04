@@ -32,10 +32,7 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "profile"
 
     def get_queryset(self):
-        from django.apps import apps
         prefetches = ["communities"]
-        if apps.is_installed("toto.competence"):
-            prefetches.append("experiences")
         return (
             super()
             .get_queryset()
