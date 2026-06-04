@@ -66,6 +66,9 @@ def query_unified_view(request):
     total_nodes = sum(len(r.result_nodes or []) for r in results_by_query.values())
     total_edges = sum(len(r.result_edges or []) for r in results_by_query.values())
 
+    from toto.quota import usage_summary
+    quota_data = usage_summary("ravioli", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
+
     context = PageProcessor().decorate(
         {
             "queries": queries,
@@ -73,6 +76,7 @@ def query_unified_view(request):
             "run_stats": run_stats,
             "total_nodes": total_nodes,
             "total_edges": total_edges,
+            "quota_data": quota_data,
         },
         request,
     )
@@ -283,6 +287,19 @@ def query_graph_data(request, query_id):
             "error": "",
         },
     )
+
+    from toto.quota import record_usage as _ru
+    _stype = "auth.User" if request.user.is_authenticated else "system"
+    _sid = str(request.user.pk) if request.user.is_authenticated else "ravioli"
+    _src_type = "ravioli.CypherQuery"
+    _src_id = str(selected_query.pk)
+    _ru("ravioli", "graph.query", 1, _stype, _sid,
+        source_type=_src_type, source_id=_src_id,
+        idempotency_key=f"ravioli.query.view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M')}")
+    _row_count = len(nodes) + len(edges)
+    if _row_count:
+        _ru("ravioli", "graph.rows", _row_count, _stype, _sid,
+            source_type=_src_type, source_id=_src_id)
 
     return JsonResponse({
         "nodes": nodes,

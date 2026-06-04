@@ -74,12 +74,16 @@ def agent_list(request):
 
     recent_runs = AgentRun.objects.select_related("agent")[:10]
 
+    from toto.quota import usage_summary
+    quota_data = usage_summary("steven", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
+
     return render_steven(
         request,
         "steven/agent_list.html",
         {
             "agents": agents,
             "recent_runs": recent_runs,
+            "quota_data": quota_data,
         },
     )
 
@@ -239,6 +243,17 @@ def quick_ask(request, slug):
     if not user_prompt:
         return HttpResponse('<span class="opacity-50 italic">No prompt provided.</span>')
 
+    if request.user.is_authenticated:
+        from toto.quota import QuotaExceeded, check_quota
+        try:
+            check_quota("steven", "ai.agent_run", 1, "auth.User", str(request.user.pk))
+        except QuotaExceeded as _exc:
+            return HttpResponse(
+                f'<span class="opacity-70"><i class="fa-solid fa-circle-xmark mr-1 text-red-500"></i>'
+                f'{_exc}</span>',
+                status=429,
+            )
+
     agent_run = AgentRun(agent=agent, user_prompt=user_prompt)
     agent_run.save()
 
@@ -256,6 +271,13 @@ def quick_ask(request, slug):
         )
 
     create_agent_session(agent).run(agent_run)
+
+    if request.user.is_authenticated:
+        from toto.quota import record_usage as _ru
+        _uid = str(request.user.pk)
+        _src = {"source_type": "steven.AgentRun", "source_id": str(agent_run.pk)}
+        _ru("steven", "ai.agent_run", 1, "auth.User", _uid,
+            idempotency_key=f"steven.agent_run:{agent_run.pk}", **_src)
 
     if agent_run.status == "failed":
         return HttpResponse(

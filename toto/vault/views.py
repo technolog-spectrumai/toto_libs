@@ -307,6 +307,15 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
 
         uploaded_file = request.FILES["file"]
 
+        # ── Quota check ──────────────────────────────────────────────────────
+        if request.user.is_authenticated:
+            from toto.quota import QuotaExceeded, check_quota
+            try:
+                check_quota("vault", "storage.request", 1,
+                            "auth.User", str(request.user.pk))
+            except QuotaExceeded as _exc:
+                return JsonResponse({"error": str(_exc), "quota_exceeded": True}, status=429)
+
         if uploaded_file.size > gateway.max_file_size * 1024:
             return JsonResponse({
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
@@ -340,6 +349,18 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
 
+        # ── Record usage ─────────────────────────────────────────────────────
+        if request.user.is_authenticated:
+            from toto.quota import record_usage as _ru
+            _uid = str(request.user.pk)
+            _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk)}
+            _ru("vault", "storage.request", 1, "auth.User", _uid,
+                idempotency_key=f"vault.upload.request:{vault_file.pk}", **_src)
+            _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
+            if _size_mb > 0:
+                _ru("vault", "storage.transfer_mb", _size_mb, "auth.User", _uid,
+                    idempotency_key=f"vault.upload.transfer:{vault_file.pk}", **_src)
+
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
             dirs_by_pk = {d.pk: d for d in all_dirs}
@@ -356,30 +377,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             location = "Root"
 
-        # ── Upload cost estimate from active tariff ───────────────────────
-        upload_cost = None
-        if _vault_tariff:
-            try:
-                items = {
-                    item.metric.code: item
-                    for item in _vault_tariff.items.filter(active=True).select_related("metric", "charged_asset")
-                }
-                size_mb = Decimal(str(uploaded_file.size)) / Decimal("1048576")
-                cost = Decimal("0")
-                token = None
-                req_item = items.get("storage.request")
-                xfer_item = items.get("storage.transfer_mb")
-                if req_item:
-                    cost += req_item.price_per_unit_display
-                    token = token or (req_item.charged_asset.unit_name if req_item.charged_asset else None)
-                if xfer_item:
-                    cost += (size_mb * xfer_item.price_per_unit_display).quantize(Decimal("0.000001"))
-                    token = token or (xfer_item.charged_asset.unit_name if xfer_item.charged_asset else None)
-                if token and cost > 0:
-                    upload_cost = f"{cost:.6f} {token}"
-            except Exception:
-                pass
-
         return JsonResponse({
             "result": {
                 "title": vault_file.title,
@@ -390,7 +387,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "public": vault_file.is_public,
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
-                "upload_cost": upload_cost,
             },
         })
 
@@ -498,6 +494,11 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
             }
             for i in range(30)
         ]
+
+        from toto.quota import usage_summary
+        context["quota_data"] = usage_summary(
+            "vault", "auth.User", str(self.request.user.pk)
+        )
 
         return PageProcessor().decorate(context, self.request)
 

@@ -45,7 +45,13 @@ def home(request):
     stats = transcription_overview_stats()
     jobs_chart = jobs_by_day_chart_data(30)
     top_chart = top_sources_chart_data(8)
-    return _render(request, "transcription/home.html", {"recent_sources": sources, "stats": stats, "jobs_chart": jobs_chart, "top_chart": top_chart})
+    from toto.quota import usage_summary
+    quota_data = usage_summary("transcription", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
+    return _render(request, "transcription/home.html", {
+        "recent_sources": sources, "stats": stats,
+        "jobs_chart": jobs_chart, "top_chart": top_chart,
+        "quota_data": quota_data,
+    })
 
 
 def collection_list(request):
@@ -178,6 +184,15 @@ def start_transcription(request, collection_slug, source_slug):
     if run_async and not celery_workers_available():
         messages.error(request, _("No Celery workers are running. Run synchronously or start a worker first."))
         return redirect(source.get_manage_url())
+
+    from toto.quota import QuotaExceeded, check_quota
+    try:
+        check_quota("transcription", "transcription.request", 1,
+                    "auth.User", str(request.user.pk))
+    except QuotaExceeded as _exc:
+        messages.error(request, str(_exc))
+        return redirect(source.get_manage_url())
+
     job = create_transcription_job(
         source=source,
         user=request.user,
@@ -188,6 +203,14 @@ def start_transcription(request, collection_slug, source_slug):
     )
     record_event(request=request, source=source, event=TranscriptEvent.EventKind.TRANSCRIBE)
 
+    from toto.quota import record_usage as _ru
+    _uid = str(request.user.pk)
+    _src = {"source_type": "transcription.TranscriptionJob", "source_id": str(job.pk)}
+    _ru("transcription", "transcription.request", 1, "auth.User", _uid,
+        idempotency_key=f"transcription.request:{job.pk}", **_src)
+    _duration_min = max(1, (source.duration_seconds or 60) // 60)
+    _ru("transcription", "transcription.minutes", _duration_min, "auth.User", _uid,
+        idempotency_key=f"transcription.minutes:{job.pk}", **_src)
 
     if run_async:
         from .tasks import run_transcription_job

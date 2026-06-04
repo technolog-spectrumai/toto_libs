@@ -60,7 +60,9 @@ def collection_list(request):
     if q:
         qs = qs.filter(Q(title__icontains=q) | Q(slug__icontains=q) | Q(description__icontains=q))
     qs = qs.annotate(video_count=Count("videos", filter=Q(videos__status=VodVideo.Status.PUBLISHED)))
-    return _render(request, "vod/collection_list.html", {"collections": qs[:200], "q": q})
+    from toto.quota import usage_summary
+    quota_data = usage_summary("vod", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
+    return _render(request, "vod/collection_list.html", {"collections": qs[:200], "q": q, "quota_data": quota_data})
 
 
 def collection_detail(request, slug):
