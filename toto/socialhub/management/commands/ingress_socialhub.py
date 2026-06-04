@@ -165,36 +165,7 @@ class Command(IngressCommand):
                 self.style.WARNING("⚠ Tester Person profile already exists.")
             )
 
-        self.ensure_tester_ledger_account(tester_user)
         return tester_user, tester_person
-
-    def ensure_tester_ledger_account(self, tester_user):
-        """Ensure the tester auth user has a ledger wallet account."""
-        from toto.assets.models import LedgerAccount
-
-        account, created = LedgerAccount.objects.get_or_create(
-            code="user-tester",
-            defaults={
-                "name": "Tester Wallet",
-                "account_type": "user",
-                "active": True,
-                "user": tester_user,
-            },
-        )
-        changed = False
-        if account.user_id != tester_user.pk:
-            account.user = tester_user
-            changed = True
-        if not account.active:
-            account.active = True
-            changed = True
-        if changed:
-            account.save(update_fields=["user", "active", "updated_at"])
-
-        if created:
-            self.stdout.write(self.style.SUCCESS("✔ Created ledger account user-tester for tester."))
-        else:
-            self.stdout.write(self.style.WARNING("⚠ Tester ledger account already exists."))
 
     # Rich fake-person data for realistic seeding
     FAKE_PEOPLE = [

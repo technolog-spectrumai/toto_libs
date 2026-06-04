@@ -116,7 +116,6 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        self._check_tariff()
         owner = self._get_owner(options["user"])
         self.stdout.write(f"Seeding as user: {owner.username}")
 
@@ -216,19 +215,6 @@ class Command(BaseCommand):
     # ------------------------------------------------------------------
     # Helpers
     # ------------------------------------------------------------------
-
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="TRANSCRIPTION-STANDARD").exists():
-            self.stdout.write("  [transcription] TRANSCRIPTION-STANDARD tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [transcription] TRANSCRIPTION-STANDARD tariff not found — run ingress_tariffs first."
-            ))
 
     def _get_owner(self, username: str | None):
         if username:

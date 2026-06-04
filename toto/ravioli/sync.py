@@ -79,19 +79,6 @@ def mark_event_done(event):
     event.error = ""
     event.save(update_fields=["status", "processed_at", "error", "updated_at"])
 
-    # Metering: one graph change event processed
-    from toto.metering.utils import safe_record_usage as _m
-    _m(
-        metric_code="ravioli.graph_event",
-        quantity=1,
-        unit="event",
-        source_type="ravioli.GraphChangeEvent",
-        source_id=str(event.pk),
-        subject_type="system",
-        subject_id="ravioli",
-        idempotency_key=f"ravioli.graph_event:{event.pk}",
-        metadata={"action": event.action, "graph_label": event.graph_label},
-    )
 
 
 def mark_event_failed(event, exc):

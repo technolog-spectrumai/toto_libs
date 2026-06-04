@@ -66,43 +66,6 @@ class Command(IngressCommand):
     # ── Full ingress: demo buckets, files, gateways, billing ─────────────────
 
     def _seed_full_demo(self, user):
-        from django.apps import apps as django_apps
-
-        _invoice_ok = django_apps.is_installed("toto.invoice")
-        _tariffs_ok = django_apps.is_installed("toto.tariffs")
-
-        cycle_monthly = None
-        tariff_storage = None
-
-        if _invoice_ok:
-            from toto.invoice.models import BillingCycle, BillingCycleFrequency
-            cycle_monthly, _ = BillingCycle.objects.get_or_create(
-                name="Monthly",
-                defaults={"frequency": BillingCycleFrequency.MONTHLY, "description": "Invoice once per calendar month.", "active": True},
-            )
-            BillingCycle.objects.get_or_create(
-                name="Quarterly",
-                defaults={"frequency": BillingCycleFrequency.MONTHLY, "description": "Invoice once per quarter (approx. every 3 months).", "active": True},
-            )
-            BillingCycle.objects.get_or_create(
-                name="Yearly",
-                defaults={"frequency": BillingCycleFrequency.YEARLY, "description": "Annual invoice.", "active": True},
-            )
-            self.stdout.write(self.style.SUCCESS("Billing cycles ready."))
-        else:
-            self.stdout.write("toto.invoice not installed — skipping billing cycles.")
-
-        if _tariffs_ok:
-            from toto.tariffs.models import Tariff
-            try:
-                tariff_storage = Tariff.objects.get(code="FILE-STORAGE")
-            except Tariff.DoesNotExist:
-                self.stdout.write(self.style.WARNING(
-                    "Tariff 'FILE-STORAGE' not found — run ingress_tariffs first. Skipping tariff wiring."
-                ))
-        else:
-            self.stdout.write("toto.tariffs not installed — skipping tariff wiring.")
-
         # ── Buckets ───────────────────────────────────────────────────────────
         bucket_legal, _ = Bucket.objects.get_or_create(
             slug="legal",
@@ -123,9 +86,6 @@ class Command(IngressCommand):
             bucket_finance.storage_quota_mb = 500
             bucket_finance.save(update_fields=["storage_quota_mb"])
             self.stdout.write(self.style.SUCCESS("Finance bucket → quota=500 MB"))
-        if tariff_storage:
-            self.stdout.write(self.style.SUCCESS(f"Finance bucket — tariff {tariff_storage.code} available."))
-
         self.stdout.write(self.style.SUCCESS("Buckets ready."))
 
         # ── Directory tree ────────────────────────────────────────────────────
@@ -213,30 +173,5 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.SUCCESS(f"  + gateway: {name}"))
 
         self.stdout.write(self.style.SUCCESS("Gateways ready."))
-
-        # ── Demo invoice for Finance bucket (economy-only) ────────────────────
-        if _invoice_ok and cycle_monthly:
-            from toto.invoice.models import Invoice, InvoiceStatus
-            from datetime import date
-            from decimal import Decimal
-
-            tariff_label = tariff_storage.code if tariff_storage else "no tariff"
-            if not Invoice.objects.filter(bucket=bucket_finance).exists():
-                Invoice.objects.create(
-                    issued_to=user,
-                    issued_by=user,
-                    bucket=bucket_finance,
-                    billing_cycle=cycle_monthly,
-                    title=f"Storage Invoice — Finance — {date.today().strftime('%B %Y')}",
-                    description=f"Monthly storage billing for the Finance bucket ({tariff_label}).",
-                    amount=Decimal("0.00"),
-                    currency_label="STORAGE_TOKEN",
-                    status=InvoiceStatus.PENDING,
-                )
-            self.stdout.write(self.style.SUCCESS(
-                "Demo invoice created for Finance bucket (amount=0.00, pending — use Generate Invoice to issue real ones)."
-            ))
-        else:
-            self.stdout.write("Finance bucket already has invoices — skipping demo invoice.")
 
         self.stdout.write(self.style.SUCCESS("✅  Vault ingress complete."))

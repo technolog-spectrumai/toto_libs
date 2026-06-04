@@ -119,14 +119,6 @@ class RealWorldObject(DomainEntity):
         blank=True,
     )
 
-    estimated_value_currency = models.ForeignKey(
-        "assets.Currency",
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name="valued_inventory_objects",
-    )
-
     valuation_date = models.DateField(null=True, blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
 

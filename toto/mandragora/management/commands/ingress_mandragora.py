@@ -34,7 +34,6 @@ class Command(IngressCommand):
     help = "Seed default ComputeKernel and starter Notebook for Mandragora."
 
     def process(self):
-        self._check_tariff()
         kernel, kernel_created = ComputeKernel.objects.get_or_create(
             name="Python 3",
             defaults={"timeout_ms": 30000, "env": {}},
@@ -2027,16 +2026,3 @@ print(json.dumps({"data": {"rows": rows, "output_path": "workflow-demo/output.js
             )
         if created_count:
             self.stdout.write(self.style.SUCCESS(f"  + report node runs: {wf.name} ({created_count})"))
-
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="NOTEBOOKS-STANDARD").exists():
-            self.stdout.write("  [mandragora] NOTEBOOKS-STANDARD tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [mandragora] NOTEBOOKS-STANDARD tariff not found — run ingress_tariffs first."
-            ))

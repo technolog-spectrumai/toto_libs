@@ -17,8 +17,6 @@ class Command(IngressCommand):
     help = "Creates a demo kanban setup with practitioners, campaigns, missions, sprints, and tasks"
 
     def process(self):
-        self._check_tariff()
-
         if not self.full:
             return
 
@@ -197,15 +195,3 @@ class Command(IngressCommand):
 
         print("[Ingress] Demo Kanban setup created successfully.")
 
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="KANBAN-STANDARD").exists():
-            self.stdout.write("  [kanban] KANBAN-STANDARD tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [kanban] KANBAN-STANDARD tariff not found — run ingress_tariffs first."
-            ))

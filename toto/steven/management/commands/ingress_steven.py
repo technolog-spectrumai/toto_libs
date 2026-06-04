@@ -13,7 +13,6 @@ class Command(IngressCommand):
 
     def process(self):
         self.stdout.write(self.style.WARNING("Seeding Steven..."))
-        self._check_tariff()
 
         # Always create the default agent so the floating widget works
         # even without FULL_INGRESS (it falls back to stub mode without a connector).
@@ -130,17 +129,3 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS("  Created workflow: Steven: Run Agent"))
         else:
             self.stdout.write(self.style.WARNING("  Workflow already exists: Steven: Run Agent"))
-
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="AI-INFERENCE").exists():
-            self.stdout.write("  [steven] AI-INFERENCE tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [steven] AI-INFERENCE tariff not found — run ingress_tariffs first."
-            ))
-

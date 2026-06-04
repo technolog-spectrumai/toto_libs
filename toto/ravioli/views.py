@@ -284,38 +284,6 @@ def query_graph_data(request, query_id):
         },
     )
 
-    # Metering: cypher query + row count
-    from toto.metering.utils import safe_record_usage as _m
-    _user = request.user if getattr(request, "user", None) and request.user.is_authenticated else None
-    _sub = (
-        {"subject_type": "auth.User", "subject_id": str(_user.pk), "subject_label": _user.username}
-        if _user else {"subject_type": "system", "subject_id": "ravioli"}
-    )
-    _run_key = f"ravioli.cypher_query:view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}"
-    _m(
-        metric_code="ravioli.cypher_query",
-        quantity=1,
-        unit="query",
-        source_type="ravioli.CypherQuery",
-        source_id=str(selected_query.pk),
-        source_label=selected_query.name,
-        idempotency_key=_run_key,
-        metadata={"node_count": len(nodes), "edge_count": len(edges)},
-        **_sub,
-    )
-    _row_count = len(nodes) + len(edges)
-    if _row_count:
-        _m(
-            metric_code="ravioli.cypher_row",
-            quantity=_row_count,
-            unit="row",
-            source_type="ravioli.CypherQuery",
-            source_id=str(selected_query.pk),
-            source_label=selected_query.name,
-            idempotency_key=f"ravioli.cypher_row:view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}",
-            **_sub,
-        )
-
     return JsonResponse({
         "nodes": nodes,
         "edges": edges,
@@ -332,23 +300,6 @@ def query_graph_data(request, query_id):
 def run_cypher_query_view(request, query_id):
     selected_query = get_object_or_404(CypherQuery, pk=query_id)
 
-    # ── Tariff balance check ──────────────────────────────────────────────────
-    from toto.metering.charge import (
-        InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
-    )
-    _ravioli_tariff = get_tariff_for_user(request.user, "ravioli")
-    if _ravioli_tariff:
-        try:
-            check_user_can_act(request.user, _ravioli_tariff, "neo4j.query", 1)
-        except InsufficientBalanceError as _exc:
-            return JsonResponse({
-                "error": str(_exc),
-                "insufficient_balance": True,
-                "asset": _exc.asset_name,
-                "needed": str(_exc.needed_display),
-                "have": str(_exc.have_display),
-            }, status=402)
-
     try:
         run = _trigger_workflow(
             "ravioli-run-cypher-query",
@@ -356,15 +307,6 @@ def run_cypher_query_view(request, query_id):
         )
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
-
-    # ── Charge after successful trigger ──────────────────────────────────────
-    if _ravioli_tariff:
-        from toto.metering.charge import charge_user as _charge
-        try:
-            _charge(request.user, _ravioli_tariff, "neo4j.query", 1,
-                    source_type="ravioli.CypherQuery", source_id=str(selected_query.pk))
-        except Exception:
-            pass
 
     return JsonResponse({"run_id": run.pk})
 

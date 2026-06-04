@@ -83,34 +83,6 @@ def ravioli_run_cypher_query(input_data: dict) -> dict:
         },
     )
 
-    # Metering: cypher query + row count (workflow-driven execution)
-    from toto.metering.utils import safe_record_usage as _m
-    _m(
-        metric_code="ravioli.cypher_query",
-        quantity=1,
-        unit="query",
-        source_type="ravioli.CypherQuery",
-        source_id=str(query.pk),
-        source_label=query.name,
-        subject_type="system",
-        subject_id="ravioli",
-        idempotency_key=f"ravioli.cypher_query:workflow:{query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}",
-        metadata={"node_count": len(nodes), "edge_count": len(edges)},
-    )
-    _row_count = len(nodes) + len(edges)
-    if _row_count:
-        _m(
-            metric_code="ravioli.cypher_row",
-            quantity=_row_count,
-            unit="row",
-            source_type="ravioli.CypherQuery",
-            source_id=str(query.pk),
-            source_label=query.name,
-            subject_type="system",
-            subject_id="ravioli",
-            idempotency_key=f"ravioli.cypher_row:workflow:{query.pk}:{timezone.now().strftime('%Y%m%dT%H%M%S')}",
-        )
-
     return {"data": {"query_id": query_id, "node_count": len(nodes), "edge_count": len(edges)}}
 
 

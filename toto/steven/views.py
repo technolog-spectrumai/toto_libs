@@ -228,59 +228,7 @@ def conversation_detail(request, slug, pk):
 
 @require_GET
 def estimate_cost(request, slug):
-    """Return estimated BANANA cost for a prompt of *chars* characters. Used by debounce JS."""
-    try:
-        chars = max(0, int(request.GET.get("chars", 0)))
-    except (TypeError, ValueError):
-        chars = 0
-
-    # ~4 chars per token (rough universal heuristic)
-    estimated_tokens = max(1, round(chars / 4))
-
-    try:
-        from toto.metering.charge import get_tariff_for_user
-
-        if not request.user.is_authenticated:
-            return JsonResponse({"estimate": None})
-
-        tariff = get_tariff_for_user(request.user, "steven")
-        if not tariff:
-            return JsonResponse({"estimate": None})
-
-        # Collect all active items for ai.requests + ai.input_tokens regardless of token type.
-        # Group by charged_asset so we return cost in whichever token the tariff uses.
-        items = list(
-            tariff.active_items
-                .select_related("metric", "charged_asset")
-                .filter(metric__code__in=["ai.requests", "ai.input_tokens"])
-        )
-        if not items:
-            return JsonResponse({"estimate": None})
-
-        # Pick the asset used by the input-tokens item; fall back to request item.
-        inp_item = next((i for i in items if i.metric.code == "ai.input_tokens"), None)
-        req_item = next((i for i in items if i.metric.code == "ai.requests"), None)
-        ref_item = inp_item or req_item
-        token_asset = ref_item.charged_asset
-
-        cost = Decimal("0")
-        if req_item and req_item.charged_asset_id == token_asset.pk:
-            cost += req_item.price_per_unit_display
-        if inp_item and inp_item.charged_asset_id == token_asset.pk:
-            uq = inp_item.unit_quantity or Decimal("1000")
-            cost += (Decimal(estimated_tokens) / uq) * inp_item.price_per_unit_display
-
-        if cost == 0:
-            return JsonResponse({"estimate": None})
-
-        unit_name = token_asset.unit_name if token_asset else "tokens"
-        return JsonResponse({
-            "estimate": str(cost.quantize(Decimal("0.001"))),
-            "unit": unit_name,
-            "tokens": estimated_tokens,
-        })
-    except Exception:
-        return JsonResponse({"estimate": None})
+    return JsonResponse({"estimate": None})
 
 
 @require_POST
@@ -290,21 +238,6 @@ def quick_ask(request, slug):
 
     if not user_prompt:
         return HttpResponse('<span class="opacity-50 italic">No prompt provided.</span>')
-
-    # ── Tariff balance check before AI run ───────────────────────────────────
-    from toto.metering.charge import (
-        InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
-    )
-    _steven_tariff = get_tariff_for_user(request.user, "steven")
-    if _steven_tariff:
-        try:
-            check_user_can_act(request.user, _steven_tariff, "ai.agent_run", 1)
-        except InsufficientBalanceError as _exc:
-            return HttpResponse(
-                f'<span class="opacity-70"><i class="fa-solid fa-circle-xmark mr-1 text-red-500"></i>'
-                f'Insufficient balance: {_exc}</span>',
-                status=402,
-            )
 
     agent_run = AgentRun(agent=agent, user_prompt=user_prompt)
     agent_run.save()
@@ -323,15 +256,6 @@ def quick_ask(request, slug):
         )
 
     create_agent_session(agent).run(agent_run)
-
-    # ── Charge after synchronous run ─────────────────────────────────────────
-    if _steven_tariff:
-        from toto.metering.charge import charge_user as _charge
-        try:
-            _charge(request.user, _steven_tariff, "ai.agent_run", 1,
-                    source_type="steven.AgentRun", source_id=str(agent_run.pk))
-        except Exception:
-            pass
 
     if agent_run.status == "failed":
         return HttpResponse(
@@ -366,17 +290,5 @@ def run_status(request, pk):
             f'</span>'
         )
 
-    # succeeded — charge now (best-effort; may already be charged on sync path)
-    try:
-        from toto.metering.charge import charge_user as _charge, get_tariff_for_user
-        if request.user.is_authenticated:
-            tariff = get_tariff_for_user(request.user, "steven")
-            if tariff:
-                _charge(
-                    request.user, tariff, "ai.agent_run", 1,
-                    source_type="steven.AgentRun", source_id=str(pk),
-                )
-    except Exception:
-        pass
 
     return HttpResponse(run.result or "")

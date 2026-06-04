@@ -8,7 +8,6 @@ class Command(IngressCommand):
     help = "Verify the WEATHER-STANDARD tariff and seed default WeatherSettings."
 
     def process(self):
-        self._check_tariff()
         self._ensure_settings()
         self._seed_workflows()
 
@@ -19,19 +18,6 @@ class Command(IngressCommand):
         call_command("seed_weather_workflows", stdout=out, stderr=out)
         for line in out.getvalue().splitlines():
             self.stdout.write(f"  {line}")
-
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="WEATHER-STANDARD").exists():
-            self.stdout.write("  [weather] WEATHER-STANDARD tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [weather] WEATHER-STANDARD tariff not found — run ingress_tariffs first."
-            ))
 
     def _ensure_settings(self):
         from toto.weather.models import WeatherSettings

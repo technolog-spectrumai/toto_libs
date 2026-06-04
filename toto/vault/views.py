@@ -307,26 +307,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
 
         uploaded_file = request.FILES["file"]
 
-        # ── Tariff balance check ──────────────────────────────────────────────
-        from toto.metering.charge import (
-            InsufficientBalanceError, check_user_can_act, get_tariff_for_user,
-        )
-        _vault_tariff = get_tariff_for_user(request.user, "vault")
-        if _vault_tariff:
-            _size_mb_est = Decimal(str(uploaded_file.size)) / Decimal("1048576")
-            try:
-                check_user_can_act(request.user, _vault_tariff, "storage.request", 1)
-                if _size_mb_est > 0:
-                    check_user_can_act(request.user, _vault_tariff, "storage.transfer_mb", _size_mb_est)
-            except InsufficientBalanceError as _exc:
-                return JsonResponse({
-                    "error": str(_exc),
-                    "insufficient_balance": True,
-                    "asset": _exc.asset_name,
-                    "needed": str(_exc.needed_display),
-                    "have": str(_exc.have_display),
-                }, status=402)
-
         if uploaded_file.size > gateway.max_file_size * 1024:
             return JsonResponse({
                 "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
@@ -359,50 +339,6 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         vault_file.save()
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
-
-        # ── Tariff charge: drain prepaid balance ─────────────────────────────
-        if _vault_tariff:
-            from toto.metering.charge import charge_user as _charge
-            try:
-                _actual_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
-                _charge(request.user, _vault_tariff, "storage.request", 1,
-                        source_type="vault.VaultFile", source_id=str(vault_file.pk))
-                if _actual_mb > 0:
-                    _charge(request.user, _vault_tariff, "storage.transfer_mb", _actual_mb,
-                            unit="MB", source_type="vault.VaultFile", source_id=str(vault_file.pk))
-            except Exception:
-                pass  # charge failure is non-fatal; metering still records the event
-
-        # ── Metering: record upload request + transferred bytes ──────────────
-        from toto.metering.utils import safe_record_usage as _m
-        _user = request.user
-        _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
-        _m(
-            metric_code="storage.request",
-            quantity=1,
-            unit="request",
-            source_type="vault.VaultFile",
-            source_id=str(vault_file.pk),
-            source_label=vault_file.title,
-            subject_type="auth.User",
-            subject_id=str(_user.pk),
-            subject_label=_user.username,
-            idempotency_key=f"vault.upload.request:{vault_file.pk}",
-            metadata={"bucket": gateway.bucket.slug if gateway.bucket_id else None},
-        )
-        _m(
-            metric_code="storage.transfer_mb",
-            quantity=_size_mb,
-            unit="MB",
-            source_type="vault.VaultFile",
-            source_id=str(vault_file.pk),
-            source_label=vault_file.title,
-            subject_type="auth.User",
-            subject_id=str(_user.pk),
-            subject_label=_user.username,
-            idempotency_key=f"vault.upload.transfer:{vault_file.pk}",
-            metadata={"bucket": gateway.bucket.slug if gateway.bucket_id else None, "direction": "upload"},
-        )
 
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
@@ -708,23 +644,6 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         context["recent_files"] = VaultFile.objects.filter(bucket=bucket).select_related(
             "owner", "directory"
         ).order_by("-uploaded_at")[:8]
-
-        from django.apps import apps as _apps
-        if _apps.is_installed("toto.tariffs"):
-            from toto.metering.charge import get_tariff_for_user as _gtfu
-            context["bucket_tariff"] = _gtfu(self.request.user, "vault")
-        else:
-            context["bucket_tariff"] = None
-
-        from toto.invoice.models import Invoice, InvoiceStatus
-        context["bucket_invoices"] = list(
-            Invoice.objects.filter(bucket=bucket)
-            .select_related("issued_to", "issued_by")
-            .order_by("-created_at")[:10]
-        )
-        context["bucket_pending_count"] = Invoice.objects.filter(
-            bucket=bucket, status=InvoiceStatus.PENDING
-        ).count()
 
         return PageProcessor().decorate(context, self.request)
 
@@ -1108,98 +1027,6 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
 # ============================================================
 # Invoices
 # ============================================================
-
-class GenerateInvoiceView(LoginRequiredMixin, View):
-    """
-    GET: shows a pre-filled invoice form based on the bucket's tariff + current storage.
-    POST: creates an invoice.Invoice and redirects to invoice list.
-    """
-    template_name = "vault/generate_invoice.html"
-
-    def _bucket(self, bucket_slug):
-        return get_object_or_404(
-            Bucket.objects.select_related("owner"),
-            slug=bucket_slug,
-        )
-
-    def _get_tariff(self, bucket):
-        from toto.metering.charge import get_tariff_for_user
-        return get_tariff_for_user(bucket.owner, "vault")
-
-    def _estimate(self, bucket):
-        """Return (amount, currency, usage_mb, item_or_None) from tariff + storage."""
-        tariff = self._get_tariff(bucket)
-        if not tariff:
-            return Decimal("0.00"), "TOKEN", 0.0, None
-
-        usage_bytes = VaultFile.objects.filter(bucket=bucket).aggregate(
-            total=Sum("file_size_bytes")
-        )["total"] or 0
-        usage_mb = round(usage_bytes / 1_048_576, 4)
-
-        item = (
-            tariff.items.filter(active=True)
-            .select_related("metric", "charged_asset", "unit")
-            .filter(metric__code__icontains="mb")
-            .first()
-        ) or tariff.items.filter(active=True).select_related("metric", "charged_asset", "unit").first()
-
-        currency = item.charged_asset.unit_name if (item and item.charged_asset) else "TOKEN"
-        if item:
-            hours_per_month = Decimal("730")
-            amount = (Decimal(str(usage_mb)) * item.price_per_unit_display * hours_per_month).quantize(Decimal("0.01"))
-        else:
-            amount = Decimal("0.00")
-        return amount, currency, usage_mb, item
-
-    def get(self, request, bucket_slug):
-        bucket = self._bucket(bucket_slug)
-        tariff = self._get_tariff(bucket)
-        if not tariff:
-            messages.warning(request, "This bucket has no tariff assigned.")
-            return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
-
-        amount, currency, usage_mb, item = self._estimate(bucket)
-        items = list(tariff.items.filter(active=True).select_related("metric", "charged_asset", "unit"))
-        month = date.today().strftime("%B %Y")
-
-        context = {
-            "bucket": bucket,
-            "tariff": tariff,
-            "tariff_items": items,
-            "usage_mb": usage_mb,
-            "suggested_title": f"Storage Invoice — {bucket.name} — {month}",
-            "suggested_amount": amount,
-            "suggested_currency": currency,
-        }
-        return render(request, self.template_name, PageProcessor().decorate(context, request))
-
-    def post(self, request, bucket_slug):
-        from toto.invoice.models import Invoice as InvoiceModel
-
-        bucket = self._bucket(bucket_slug)
-        tariff = self._get_tariff(bucket)
-        if not tariff:
-            messages.error(request, "This bucket has no tariff assigned.")
-            return redirect("vault:bucket_metrics", bucket_slug=bucket_slug)
-
-        amount, currency, usage_mb, _ = self._estimate(bucket)
-        month = date.today().strftime("%B %Y")
-        title = f"Storage Invoice — {bucket.name} — {month}"
-        description = f"Storage billing for {bucket.name} ({tariff.code}). {usage_mb} MB used."
-
-        inv = InvoiceModel.objects.create(
-            issued_to=bucket.owner,
-            issued_by=request.user,
-            bucket=bucket,
-            title=title,
-            description=description,
-            amount=amount,
-            currency_label=currency,
-        )
-        messages.success(request, f"Invoice '{inv.title}' generated.")
-        return redirect("invoice:invoice_list")
-
 
 # ============================================================
 # Bucket connection URL + remote import

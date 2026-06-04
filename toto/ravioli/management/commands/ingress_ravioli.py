@@ -6,7 +6,6 @@ class Command(IngressCommand):
     help = "Seed Ravioli with default Knowledge Graph and predefined workflows"
 
     def process(self):
-        self._check_tariff()
         self._ensure_workflows()
         self._ensure_graph_analysis_workflow()
         self._ensure_cypher_queries()
@@ -259,16 +258,3 @@ class Command(IngressCommand):
 
         CypherQueryResult.objects.get_or_create(query=q)
         self.stdout.write(self.style.SUCCESS("📊 Created query result entry"))
-
-    def _check_tariff(self):
-        from django.apps import apps as django_apps
-        if not django_apps.is_installed("toto.tariffs"):
-            self.stdout.write("  toto.tariffs not installed — skipping tariff check.")
-            return
-        from toto.tariffs.models import Tariff
-        if Tariff.objects.filter(code="NEO4J-GRAPH").exists():
-            self.stdout.write("  [ravioli] NEO4J-GRAPH tariff: ready.")
-        else:
-            self.stdout.write(self.style.WARNING(
-                "  [ravioli] NEO4J-GRAPH tariff not found — run ingress_tariffs first."
-            ))

@@ -6,13 +6,10 @@ _KEY = "last_visited:{}"
 # Ordered list of (url_prefix, display_name) for meaningful app sections.
 _APPS = [
     ("/vault/", "Vault"),
-    ("/assets/", "Assets"),
     ("/socialhub/", "Community"),
     ("/events/", "Events"),
     ("/kanban/", "Tasks"),
     ("/memo/", "Presentations"),
-    ("/bourse/", "Bourse"),
-    ("/bazaar/", "Bazaar"),
     ("/logistics/", "Logistics"),
     ("/tactical/", "Tactical"),
     ("/robots/", "Robots"),

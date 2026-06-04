@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import uuid
+
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.core.files.storage import default_storage
@@ -9,7 +11,14 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
-from toto.subscriptions.models import TimestampedModel
+class TimestampedModel(models.Model):
+    uid = models.UUIDField(default=uuid.uuid4, editable=False, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    class Meta:
+        abstract = True
 
 
 class VodAccessMode(models.TextChoices):
@@ -226,7 +235,7 @@ class VodVideo(TimestampedModel):
 
 
 class VodAccessGrant(TimestampedModel):
-    """Optional one-off access grant tied to existing invoices.Invoice or subscriptions.Subscription."""
+    """One-off access grant for a VOD collection or video."""
 
     class Status(models.TextChoices):
         PENDING = "pending", _("Pending")
@@ -237,20 +246,6 @@ class VodAccessGrant(TimestampedModel):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name="vod_access_grants")
     collection = models.ForeignKey(VodCollection, on_delete=models.CASCADE, null=True, blank=True, related_name="access_grants")
     video = models.ForeignKey(VodVideo, on_delete=models.CASCADE, null=True, blank=True, related_name="access_grants")
-    subscription = models.ForeignKey(
-        "subscriptions.Subscription",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vod_access_grants",
-    )
-    invoice = models.ForeignKey(
-        "invoice.Invoice",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="vod_access_grants",
-    )
     status = models.CharField(max_length=24, choices=Status.choices, default=Status.PENDING)
     starts_at = models.DateTimeField(default=timezone.now)
     ends_at = models.DateTimeField(null=True, blank=True)
@@ -262,8 +257,6 @@ class VodAccessGrant(TimestampedModel):
             models.Index(fields=["user", "status"]),
             models.Index(fields=["collection", "status"]),
             models.Index(fields=["video", "status"]),
-            models.Index(fields=["invoice"]),
-            models.Index(fields=["subscription"]),
         ]
 
     def __str__(self):
@@ -282,8 +275,6 @@ class VodAccessGrant(TimestampedModel):
         if self.starts_at and self.starts_at > now:
             return False
         if self.ends_at and self.ends_at <= now:
-            return False
-        if self.invoice_id and not getattr(self.invoice, "is_paid", False):
             return False
         return True
 

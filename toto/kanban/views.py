@@ -126,20 +126,10 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
         for column in columns:
             column.is_auditor = column.auditors.filter(person__user=self.request.user).exists()
 
-        from django.apps import apps as django_apps
-        tokenization = getattr(project, "tokenization", None) if django_apps.is_installed("toto.mission_economy") else None
-        if tokenization:
-            from toto.mission_economy.forms import ProjectTokenizationDefaultForm
-            default_form = ProjectTokenizationDefaultForm()
-        else:
-            default_form = None
-
         context.update({
             "columns": columns,
             "sprints": sprints,
             "selected_sprint": selected_sprint,
-            "tokenization": tokenization,
-            "default_form": default_form,
         })
 
         return context

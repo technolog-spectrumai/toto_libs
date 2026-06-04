@@ -127,67 +127,7 @@ class AgentSession(ABC):
                 ]
             )
 
-        # ── Metering ─────────────────────────────────────────────────────────
-        self._record_metering(agent_run, self._last_token_usage)
-
         return agent_run
-
-    def _record_metering(self, agent_run, token_usage=None):
-        """Best-effort metering for agent run and token usage."""
-        from toto.metering.utils import safe_record_usage as _m
-        _run_pk = str(agent_run.pk)
-        _profile = self.profile
-        _latency = None
-        if agent_run.started_at and agent_run.finished_at:
-            _latency = int((agent_run.finished_at - agent_run.started_at).total_seconds() * 1000)
-
-        _src = {
-            "source_type": "steven.AgentRun",
-            "source_id": _run_pk,
-            "source_label": _profile.name if _profile else "",
-        }
-        # Determine subject from agent_run.agent's owner if available
-        _sub = {"subject_type": "system", "subject_id": "steven"}
-        if hasattr(agent_run, "user") and agent_run.user_id:
-            _sub = {
-                "subject_type": "auth.User",
-                "subject_id": str(agent_run.user_id),
-                "subject_label": str(agent_run.user),
-            }
-
-        _meta = {
-            "model": getattr(_profile, "model_name", None),
-            "status": agent_run.status,
-            "latency_ms": _latency,
-        }
-        if _profile and getattr(_profile, "connector", None):
-            _meta["connector_id"] = str(_profile.connector.pk)
-
-        _m(
-            metric_code="ai.agent_run",
-            quantity=1,
-            unit="run",
-            idempotency_key=f"steven.agent_run:{_run_pk}",
-            metadata=_meta,
-            **_src, **_sub,
-        )
-
-        if token_usage:
-            pt = token_usage.get("prompt_tokens")
-            ct = token_usage.get("completion_tokens")
-            tt = token_usage.get("total_tokens")
-            if pt:
-                _m(metric_code="ai.prompt_token", quantity=pt, unit="token",
-                   idempotency_key=f"steven.prompt_token:{_run_pk}",
-                   metadata=_meta, **_src, **_sub)
-            if ct:
-                _m(metric_code="ai.completion_token", quantity=ct, unit="token",
-                   idempotency_key=f"steven.completion_token:{_run_pk}",
-                   metadata=_meta, **_src, **_sub)
-            if tt and not (pt or ct):
-                _m(metric_code="ai.total_token", quantity=tt, unit="token",
-                   idempotency_key=f"steven.total_token:{_run_pk}",
-                   metadata=_meta, **_src, **_sub)
 
     @abstractmethod
     def invoke(self, user_prompt: str, history=None) -> str:
