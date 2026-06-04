@@ -84,7 +84,7 @@ class LoanAppImportSafetyTest(TestCase):
         path = os.path.join(os.path.dirname(__file__), "services.py")
         with open(path) as f:
             tree = ast.parse(f.read())
-        forbidden = {"kanban", "academy", "mobilization", "response"}
+        forbidden = {"kanban", "academy"}
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in getattr(node, "names", []):

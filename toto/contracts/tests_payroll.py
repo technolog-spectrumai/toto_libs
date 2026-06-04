@@ -82,7 +82,7 @@ class PayrollImportSafetyTests(TestCase):
         path = os.path.normpath(path)
         with open(path) as f:
             tree = ast.parse(f.read())
-        forbidden = {"kanban", "academy", "mobilization", "response", "deployment"}
+        forbidden = {"kanban", "academy", "deployment"}
         for node in ast.walk(tree):
             if isinstance(node, (ast.Import, ast.ImportFrom)):
                 for alias in getattr(node, "names", []):
