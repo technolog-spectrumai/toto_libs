@@ -32,21 +32,6 @@
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-route fa-fw"></i> {% trans "Routes" %}
     </a>
-    <a href="{% url 'weather:index' %}"
-       :class="{% if request.resolver_match.app_name == 'weather' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
-       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-cloud-sun fa-fw"></i> {% trans "Weather" %}
-    </a>
-    <a href="{% url 'travels:my_travels' %}"
-       :class="{% if request.resolver_match.app_name == 'travels' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
-       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-route fa-fw"></i> {% trans "Travels" %}
-    </a>
-    <a href="{% url 'detections:detection-list' %}"
-       :class="{% if request.resolver_match.app_name == 'detections' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
-       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
-      <i class="fa-solid fa-bullseye fa-fw"></i> {% trans "Detections" %}
-    </a>
   </nav>
 
   {% block locations_content %}{% endblock %}
