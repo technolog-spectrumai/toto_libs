@@ -1,6 +1,9 @@
+import logging
 from importlib import import_module
 
 from django.apps import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class WorkflowsConfig(AppConfig):
@@ -23,5 +26,10 @@ class WorkflowsConfig(AppConfig):
                 import_module(module_path)
             except ImportError:
                 pass  # App has no predefined_tasks — that's fine.
-            except Exception:
-                pass  # Never break startup due to a bad predefined_tasks import.
+            except Exception as exc:
+                logger.warning(
+                    "Failed to load predefined_tasks for %s: %s: %s",
+                    app_config.name,
+                    type(exc).__name__,
+                    exc,
+                )

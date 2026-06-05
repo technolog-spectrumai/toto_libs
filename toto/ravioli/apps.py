@@ -1,4 +1,8 @@
+import logging
+
 from django.apps import AppConfig
+
+logger = logging.getLogger(__name__)
 
 
 class RavioliConfig(AppConfig):
@@ -7,7 +11,13 @@ class RavioliConfig(AppConfig):
     verbose_name = 'Knowledge Graph'
 
     def ready(self):
-        from .signals import register_graph_signals
+        try:
+            from .signals import register_graph_signals
+            register_graph_signals()
+        except Exception as exc:
+            logger.warning("ravioli: failed to register graph signals: %s: %s", type(exc).__name__, exc)
 
-        register_graph_signals()
-        from . import predefined_tasks  # noqa: F401 — registers ravioli workflow tasks
+        try:
+            from . import predefined_tasks  # noqa: F401 — registers ravioli workflow tasks
+        except Exception as exc:
+            logger.error("ravioli: failed to load predefined_tasks — workflow nodes will not work: %s: %s", type(exc).__name__, exc)
