@@ -106,6 +106,10 @@
         createLoading: false,
         createError: '',
 
+        // actions chooser state
+        actionsModal: false,
+        actionsItem: null,
+
         // file-service (wand) state
         svcModal: false,
         svcFileId: null,
@@ -576,6 +580,24 @@
           this.createLoading = false;
         },
 
+        // ── Actions chooser ───────────────────────────────────
+        openActions(item) {
+          this.actionsItem = item;
+          this.actionsModal = true;
+        },
+
+        // Close the chooser, then open the chosen action's own modal.
+        chooseAction(name) {
+          const item = this.actionsItem;
+          this.actionsModal = false;
+          this.$nextTick(() => {
+            if (name === 'edit')         window.location.href = item.editor_url;
+            else if (name === 'service') this.openServices(item);
+            else if (name === 'move')    this.openMove(item);
+            else if (name === 'rename')  this.openRename(item);
+          });
+        },
+
         // ── File services (wand) ──────────────────────────────
         get svcCurrent() {
           return this.svcList.find(s => s.key === this.svcSelected) || null;
@@ -962,22 +984,13 @@
                     <i class="fa-solid fa-lock-open text-xs"></i>
                   </button>
 
-                  <!-- Move — owner only, revealed on row hover -->
+                  <!-- Actions menu — owner only (move / rename / edit / run service) -->
                   <button x-show="item.owner === currentUser"
-                          @click.stop="openMove(item)"
+                          @click.stop="openActions(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Move ${item.title}`' %}">
-                    <i class="fa-solid fa-up-down text-xs"></i>
-                  </button>
-
-                  <!-- Rename pencil — owner only, revealed on row hover -->
-                  <button x-show="item.owner === currentUser"
-                          @click.stop="openRename(item)"
-                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Rename ${item.title}`' %}">
-                    <i class="fa-solid fa-pencil text-xs"></i>
+                          :title="{% trans '`Edit ${item.title}`' %}">
+                    <i class="fa-solid fa-pen-to-square text-xs"></i>
                   </button>
 
                   <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
@@ -987,24 +1000,6 @@
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
                           :title="{% trans '`Play ${item.title}`' %}">
                     <i class="fa-solid fa-play text-xs"></i>
-                  </button>
-
-                  <!-- Open in editor (latex → texlab, python → antaresia) -->
-                  <button x-show="item.editor_url && item.owner === currentUser"
-                          @click.stop="window.location.href = item.editor_url"
-                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="`Edit ${item.title}`">
-                    <i class="fa-solid fa-pen-to-square text-xs"></i>
-                  </button>
-
-                  <!-- Run a file service — wand -->
-                  <button x-show="item.has_services && item.owner === currentUser"
-                          @click.stop="openServices(item)"
-                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Run a service on ${item.title}`' %}">
-                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i>
                   </button>
 
                   <!-- Delete trash — owner only, revealed on row hover -->
@@ -1091,32 +1086,18 @@
                             class="rounded-lg border border-yellow-400/40 px-2 py-1 text-xs text-yellow-400 hover:opacity-80 transition" title="{% trans "Remove encryption" %}">
                       <i class="fa-solid fa-lock-open"></i>
                     </button>
-                    <!-- Rename -->
+                    <!-- Actions menu (move / rename / edit / run service) -->
                     <button x-show="item.owner === currentUser"
-                            @click.stop="openRename(item)"
+                            @click.stop="openActions(item)"
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Rename" %}">
-                      <i class="fa-solid fa-pencil"></i>
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Edit ${item.title}`">
+                      <i class="fa-solid fa-pen-to-square"></i>
                     </button>
                     <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
                     <button x-show="item.play_url"
                             @click.stop="window.location.href = item.play_url"
                             class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
                       <i class="fa-solid fa-play"></i>
-                    </button>
-                    <!-- Open in editor -->
-                    <button x-show="item.editor_url && item.owner === currentUser"
-                            @click.stop="window.location.href = item.editor_url"
-                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Edit ${item.title}`">
-                      <i class="fa-solid fa-pen-to-square"></i>
-                    </button>
-                    <!-- Run a file service -->
-                    <button x-show="item.has_services && item.owner === currentUser"
-                            @click.stop="openServices(item)"
-                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans 'Run a service' %}">
-                      <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </button>
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"
@@ -1754,6 +1735,57 @@
             </button>
           </div>
 
+        </div>
+      </div>
+
+      <!-- ── Actions chooser modal ────────────────────────────────── -->
+      <div x-show="actionsModal"
+           x-cloak
+           @keydown.escape.window="actionsModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="actionsModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-xs rounded-2xl border shadow-2xl p-5 space-y-3">
+
+          <h2 class="text-base font-bold flex items-center gap-2 min-w-0">
+            <i class="fa-solid fa-pen-to-square opacity-60 shrink-0"></i>
+            <span class="truncate" x-text="actionsItem ? actionsItem.title : ''"></span>
+          </h2>
+
+          <div class="flex flex-col gap-1.5">
+            <!-- Edit in editor -->
+            <button x-show="actionsItem && actionsItem.editor_url"
+                    @click="chooseAction('edit')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-code w-5 text-center opacity-70"></i>{% trans "Open in editor" %}
+            </button>
+            <!-- Run a service -->
+            <button x-show="actionsItem && actionsItem.has_services"
+                    @click="chooseAction('service')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-wand-magic-sparkles w-5 text-center opacity-70"></i>{% trans "Run a service" %}
+            </button>
+            <!-- Move -->
+            <button @click="chooseAction('move')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-up-down w-5 text-center opacity-70"></i>{% trans "Move" %}
+            </button>
+            <!-- Rename -->
+            <button @click="chooseAction('rename')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-pencil w-5 text-center opacity-70"></i>{% trans "Rename" %}
+            </button>
+          </div>
+
+          <button @click="actionsModal = false"
+                  :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                  class="w-full rounded-xl border px-4 py-2 text-sm font-semibold transition">
+            {% trans "Cancel" %}
+          </button>
         </div>
       </div>
 
