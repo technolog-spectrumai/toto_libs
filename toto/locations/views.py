@@ -1,4 +1,6 @@
 import json
+
+import yaml
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
@@ -42,8 +44,8 @@ ROAD_ROUTING_ENDPOINTS = {
 }
 
 
-# URL-slug -> model for the generic JSON metadata editor.
-METADATA_MODELS = {
+# URL-slug -> model for the generic detail page + metadata editor.
+DETAIL_MODELS = {
     "address": Address,
     "territory": Territory,
     "zone": Zone,
@@ -52,8 +54,70 @@ METADATA_MODELS = {
 }
 
 
-def metadata_edit_url(kind, pk):
-    return reverse("locations:metadata_edit", args=[kind, pk])
+def location_detail_url(kind, pk):
+    return reverse("locations:location_detail", args=[kind, pk])
+
+
+def _parse_metadata(text, fmt):
+    """Parse metadata text as JSON or YAML. Empty -> {}.
+
+    YAML is a superset of JSON, but we honour the declared format so the editor's
+    current mode produces precise, matching error messages.
+    """
+    text = (text or "").strip()
+    if not text:
+        return {}
+    if fmt == "yaml":
+        return yaml.safe_load(text)
+    return json.loads(text)
+
+
+def _detail_fields(kind, obj):
+    """Human-readable (label, value) rows shown on the detail page per type."""
+    if kind == "address":
+        return [
+            ("Country", obj.country_name),
+            ("State / Province", obj.state_or_province_name),
+            ("Locality", obj.locality_name),
+            ("Street", obj.street),
+            ("Building", obj.building),
+            ("Apartment", obj.apartment),
+        ]
+    if kind == "territory":
+        return [
+            ("Name", obj.name),
+            ("Capital", str(obj.capital) if obj.capital else None),
+        ]
+    if kind == "zone":
+        return [
+            ("Name", obj.name),
+            ("Territory", obj.territory.name if obj.territory else None),
+        ]
+    if kind == "routechain":
+        return [
+            ("Name", obj.name),
+            ("Description", obj.description),
+            ("Routes", obj.routes.count()),
+        ]
+    if kind == "route":
+        return [
+            ("Name", obj.name or f"Route {obj.pk}"),
+            ("Route chain", obj.route_chain.name if obj.route_chain else None),
+            ("Sequence", obj.sequence),
+            ("Start address", str(obj.start_address) if obj.start_address else None),
+            ("End address", str(obj.end_address) if obj.end_address else None),
+        ]
+    return []
+
+
+def _metadata_context(kind, obj):
+    """Context the reusable metadata editor section needs."""
+    return {
+        "kind": kind,
+        "metadata_json": json.dumps(obj.metadata or {}, indent=2, ensure_ascii=False),
+        "metadata_save_url": reverse("locations:metadata_save", args=[kind, obj.pk]),
+        "metadata_convert_url": reverse("locations:metadata_convert"),
+    }
 
 
 # ---------------------------------------------------------------------
@@ -203,28 +267,32 @@ def locations_all(request):
     locations = []
 
     for territory in Territory.objects.select_related("capital").all():
+        detail_url = location_detail_url("territory", territory.pk)
         locations.append({
             "type": "Territory",
             "name": territory.name or f"Territory {territory.pk}",
             "detail": f"Capital: {territory.capital}" if territory.capital else "Territory",
             "geometry": geometry_json(territory.geometry),
             "geometry_json": geometry_json(territory.geometry),
-            "metadata_url": metadata_edit_url("territory", territory.pk),
+            "detail_url": detail_url,
+            "metadata_url": f"{detail_url}#metadata",
         })
 
     for zone in Zone.objects.select_related("territory").all():
+        detail_url = location_detail_url("zone", zone.pk)
         locations.append({
             "type": "Zone",
             "name": zone.name or f"Zone {zone.pk}",
             "detail": f"Inside {zone.territory.name}" if zone.territory else "Standalone zone",
             "geometry": geometry_json(zone.geometry),
             "geometry_json": geometry_json(zone.geometry),
-            "detail_url": reverse("locations:zone_detail", args=[zone.pk]),
-            "metadata_url": metadata_edit_url("zone", zone.pk),
+            "detail_url": detail_url,
+            "metadata_url": f"{detail_url}#metadata",
         })
 
     for chain in RouteChain.objects.prefetch_related("routes").all():
         geometry = route_chain_geometry(chain)
+        detail_url = location_detail_url("routechain", chain.pk)
 
         locations.append({
             "type": "Route Chain",
@@ -232,7 +300,8 @@ def locations_all(request):
             "detail": chain.description or f"{chain.routes.count()} routes",
             "geometry": geometry,
             "geometry_json": geometry,
-            "metadata_url": metadata_edit_url("routechain", chain.pk),
+            "detail_url": detail_url,
+            "metadata_url": f"{detail_url}#metadata",
         })
 
     for route in Route.objects.select_related(
@@ -240,29 +309,27 @@ def locations_all(request):
         "start_address",
         "end_address",
     ).all():
+        detail_url = location_detail_url("route", route.pk)
         locations.append({
             "type": "Route",
             "name": route.name or f"Route {route.pk}",
             "detail": f"In {route.route_chain.name}" if route.route_chain else "Route",
             "geometry": geometry_json(route.geometry),
             "geometry_json": geometry_json(route.geometry),
-            "detail_url": reverse("locations:route_detail", args=[route.pk]),
-            "review_url": reverse("locations:route_review", args=[route.pk]),
-            "metadata_url": metadata_edit_url("route", route.pk),
+            "detail_url": detail_url,
+            "metadata_url": f"{detail_url}#metadata",
         })
 
-    from toto.locations.plugins.url_plugins import LocationUrlPlugin
-
     for address in Address.objects.all():
+        detail_url = location_detail_url("address", address.pk)
         locations.append({
             "type": "Address",
             "name": str(address),
             "detail": address.locality_name,
             "geometry": geometry_json(address.geometry),
             "geometry_json": geometry_json(address.geometry),
-            "detail_url": reverse("locations:address_detail", args=[address.pk]),
-            "review_url": LocationUrlPlugin.get_address_visit_review_url(address.pk),
-            "metadata_url": metadata_edit_url("address", address.pk),
+            "detail_url": detail_url,
+            "metadata_url": f"{detail_url}#metadata",
         })
 
     from toto.locations.plugins.map_plugins import LocationMapPlugin
@@ -321,7 +388,7 @@ def locations_all(request):
 @login_required
 def address_detail(request, pk):
     get_object_or_404(Address, pk=pk)
-    return redirect("travels:visit_review", address_id=pk)
+    return redirect("locations:location_detail", kind="address", pk=pk)
 
 
 @login_required
@@ -889,52 +956,106 @@ def api_import_layer(request):
 
 
 # ---------------------------------------------------------------------
-# Per-object JSON metadata editor (Ace)
+# Generic per-object detail page (+ JSON/YAML metadata section)
 # ---------------------------------------------------------------------
 
 @login_required
-def metadata_edit(request, kind, pk):
-    """Edit a location object's free-form JSON `metadata` field in an Ace editor.
+def location_detail(request, kind, pk):
+    """Unified detail page for any location object.
 
-    GET  -> render the editor page.
-    POST -> validate + persist the submitted JSON (AJAX); returns JSON status.
+    Shows the object's key fields, a geometry preview, and the editable
+    JSON/YAML metadata section (anchored at #metadata).
     """
-    model = METADATA_MODELS.get(kind)
+    model = DETAIL_MODELS.get(kind)
     if model is None:
         raise Http404(f"Unknown location kind '{kind}'.")
 
     obj = get_object_or_404(model, pk=pk)
 
-    if request.method == "POST":
-        raw = (request.POST.get("metadata") or "").strip()
-        try:
-            parsed = json.loads(raw) if raw else {}
-        except json.JSONDecodeError as exc:
-            return JsonResponse(
-                {"status": "error", "error": f"Invalid JSON: {exc}"}, status=400
-            )
-
-        if not isinstance(parsed, dict):
-            return JsonResponse(
-                {"status": "error", "error": "Metadata must be a JSON object ({ … })."},
-                status=400,
-            )
-
-        obj.metadata = parsed
-        obj.save(update_fields=["metadata"])
-        return JsonResponse({"status": "ok"})
+    if kind == "routechain":
+        geom_json = route_chain_geometry(obj)
+    else:
+        geom = getattr(obj, "geometry", None)
+        geom_json = geometry_json(geom) if geom else None
 
     context = {
-        "kind": kind,
         "object_label": str(obj),
-        "object_type": model.__name__,
-        "metadata_json": json.dumps(obj.metadata or {}, indent=2, ensure_ascii=False),
-        "save_url": reverse("locations:metadata_edit", args=[kind, pk]),
+        "object_type": model._meta.verbose_name.title(),
+        "fields": [(label, value) for label, value in _detail_fields(kind, obj)],
+        "geometry_json": json.dumps(geom_json),
+        "has_geometry": geom_json is not None,
         "back_url": reverse("locations:locations_all"),
+        **_metadata_context(kind, obj),
     }
 
     return render(
         request,
-        "locations/metadata_edit.html",
+        "locations/location_detail.html",
         PageProcessor().decorate(context, request),
     )
+
+
+@login_required
+@require_POST
+def metadata_save(request, kind, pk):
+    """Persist a location object's metadata from JSON or YAML text (AJAX)."""
+    model = DETAIL_MODELS.get(kind)
+    if model is None:
+        raise Http404(f"Unknown location kind '{kind}'.")
+
+    obj = get_object_or_404(model, pk=pk)
+    fmt = request.POST.get("format", "json")
+
+    try:
+        parsed = _parse_metadata(request.POST.get("metadata"), fmt)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        return JsonResponse(
+            {"status": "error", "error": f"Invalid {fmt.upper()}: {exc}"}, status=400
+        )
+
+    if parsed is None:
+        parsed = {}
+
+    if not isinstance(parsed, dict):
+        return JsonResponse(
+            {"status": "error", "error": "Metadata must be a mapping/object."},
+            status=400,
+        )
+
+    obj.metadata = parsed
+    obj.save(update_fields=["metadata"])
+    return JsonResponse({"status": "ok"})
+
+
+@login_required
+@require_POST
+def metadata_convert(request):
+    """Convert metadata text between JSON and YAML (object-agnostic, AJAX)."""
+    text = request.POST.get("text", "")
+    src = request.POST.get("from", "json")
+    dst = request.POST.get("to", "json")
+
+    try:
+        data = _parse_metadata(text, src)
+    except (json.JSONDecodeError, yaml.YAMLError) as exc:
+        return JsonResponse(
+            {"status": "error", "error": f"Invalid {src.upper()}: {exc}"}, status=400
+        )
+
+    if data is None:
+        data = {}
+
+    if not isinstance(data, dict):
+        return JsonResponse(
+            {"status": "error", "error": "Metadata must be a mapping/object."},
+            status=400,
+        )
+
+    if dst == "yaml":
+        text_out = yaml.safe_dump(
+            data, default_flow_style=False, allow_unicode=True, sort_keys=False
+        )
+    else:
+        text_out = json.dumps(data, indent=2, ensure_ascii=False)
+
+    return JsonResponse({"status": "ok", "text": text_out})

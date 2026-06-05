@@ -31,7 +31,11 @@ urlpatterns = [
 
     path("addresses/new/", views.address_create, name="address_create"),
     path("routes/save/", views.route_save, name="route_save"),
-    path("metadata/<str:kind>/<int:pk>/", views.metadata_edit, name="metadata_edit"),
+
+    # Generic per-object detail page + JSON/YAML metadata editor
+    path("detail/<str:kind>/<int:pk>/", views.location_detail, name="location_detail"),
+    path("metadata/<str:kind>/<int:pk>/save/", views.metadata_save, name="metadata_save"),
+    path("metadata/convert/", views.metadata_convert, name="metadata_convert"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]
