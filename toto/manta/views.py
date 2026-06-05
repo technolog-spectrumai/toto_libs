@@ -94,19 +94,8 @@ def _resolve_extra_pks(user, vf, pks):
     return objs, names, errors
 
 
-def _resolve_source(request, cmd_cls):
-    from toto.vault.models import VaultFile
-
-    file_pk = request.POST.get("file") or request.GET.get("file")
-    if not file_pk:
-        return None, None
-    vf = VaultFile.objects.select_related("bucket", "directory", "owner").filter(pk=file_pk).first()
-    if vf is None or not user_can_access_vault_file(request.user, vf):
-        return None, "Pick a file you can access."
-    allowed = _primary_types(cmd_cls)
-    if vf.file_type not in allowed:
-        return None, f"This command needs a {' / '.join(allowed)} file."
-    return vf, None
+# When a file is picked with no command chosen, default the command by type.
+_DEFAULT_OP_BY_TYPE = {"video": "compress", "audio": "transcribe", "image": "ocr"}
 
 
 def _validate(request, vf, cmd_cls):
@@ -139,16 +128,33 @@ def _validate(request, vf, cmd_cls):
 @login_required
 def command_builder(request):
     from toto.vault.filetree import build_file_tree
+    from toto.vault.models import VaultFile
 
-    op = (request.POST.get("op") or request.GET.get("op") or "").strip()
+    op_req = (request.POST.get("op") or request.GET.get("op") or "").strip()
     service = request.GET.get("service", "").strip()
+    file_pk = request.POST.get("file") or request.GET.get("file")
+
+    # Resolve the source first so we can default the command from its type.
+    vf, source_error = None, None
+    if file_pk:
+        vf = VaultFile.objects.select_related("bucket", "directory", "owner").filter(pk=file_pk).first()
+        if vf is None or not user_can_access_vault_file(request.user, vf):
+            vf, source_error = None, "Pick a file you can access."
+
+    op = op_req or (_DEFAULT_OP_BY_TYPE.get(vf.file_type, "compress") if vf else "compress")
     if op not in OPERATIONS:
         op = "compress"
     cmd_cls = get_command(op)
 
-    vf, source_error = _resolve_source(request, cmd_cls)
     primary_types = _primary_types(cmd_cls)
-    source_tree = build_file_tree(request.user, file_types=primary_types)
+    if vf is not None and vf.file_type not in primary_types:
+        vf, source_error = None, f"This command needs a {' / '.join(primary_types)} file."
+
+    # Bare landing (no command and no source yet) → show every accessible media
+    # file; once a command or source is in play, filter to the command's type.
+    browsing = not op_req and vf is None
+    tree_types = ["video", "audio", "image"] if browsing else primary_types
+    source_tree = build_file_tree(request.user, file_types=tree_types)
     out_slot = next(iter(cmd_cls.outputs.values()), {})
 
     context = {
@@ -158,8 +164,8 @@ def command_builder(request):
         "backend": (cmd_cls.backend_label or cmd_cls.backend),
         "is_service": cmd_cls.backend == "service",
         "source_tree": source_tree,
-        "source_types": " / ".join(primary_types),
-        "source_link_prefix": f"?op={op}&file=",
+        "source_types": "media" if browsing else " / ".join(primary_types),
+        "source_link_prefix": "?file=" if browsing else f"?op={op}&file=",
         "needs_extra": False,
         "extra_slot": None,
         "extra_tree": [],

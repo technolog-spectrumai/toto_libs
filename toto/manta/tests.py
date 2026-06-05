@@ -124,10 +124,18 @@ class BuilderTests(TestCase):
 
     # -- source / pickers -------------------------------------------------
 
-    def test_no_source_shows_picker(self):
+    def test_no_source_shows_all_media(self):
+        # Landing shows every accessible media file (not just video).
         resp = self.client.get(self.URL)
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Source")
+        self.assertContains(resp, "source.mp4")   # video
+        self.assertContains(resp, "song.mp3")     # audio
+        self.assertContains(resp, "scan.png")     # image
+
+    def test_picking_audio_defaults_to_transcribe(self):
+        resp = self.client.get(self.URL + f"?file={self.audio.pk}")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "whisper")      # audio → transcribe command
 
     def test_compress_shows_form_and_backend(self):
         resp = self.client.get(self.URL + f"?file={self.src.pk}&op=compress")
