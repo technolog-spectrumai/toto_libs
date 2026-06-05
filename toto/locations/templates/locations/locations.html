@@ -1366,10 +1366,6 @@
       actions.push(`<button type="button" data-location-name="${escapeAttribute(name)}" onclick="zoomToAddressFromPopup(this)" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>`);
     }
 
-    if (item.metadata_url) {
-      actions.push(`<a href="${escapeAttribute(item.metadata_url)}" style="${POPUP_BTN_STYLE}; opacity: 0.7;" title="{% trans 'Edit metadata' %}"><i class="fa-solid fa-code"></i>{% trans "Metadata" %}</a>`);
-    }
-
     if (!actions.length) return title;
 
     return `${title}<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${actions.join("")}</div>`;

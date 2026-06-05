@@ -258,23 +258,10 @@
               x-show="location.detail_url"
               :href="location.detail_url"
               @click.stop
-              :class="darkMode
-                ? 'bg-accent-dark text-primary-bg-dark'
-                : 'border-accent-light/50 text-accent-light'"
-              class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold transition hover:opacity-80">
-              <i class="fa-solid fa-circle-info"></i>
-              <span>{% trans "Details" %}</span>
-            </a>
-
-            <a
-              x-show="location.metadata_url"
-              :href="location.metadata_url"
-              @click.stop
-              title="{% trans 'Edit metadata' %}"
               :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
               class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold opacity-50 transition hover:opacity-100">
-              <i class="fa-solid fa-code"></i>
-              <span>{% trans "Metadata" %}</span>
+              <i class="fa-solid fa-circle-info"></i>
+              <span>{% trans "Details" %}</span>
             </a>
           </div>
         </div>
