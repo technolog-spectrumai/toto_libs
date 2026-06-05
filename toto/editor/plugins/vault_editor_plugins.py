@@ -17,3 +17,11 @@ class JsonEditorPlugin(VaultEditorPlugin):
 
     def get_editor_url(self, vault_file) -> str:
         return reverse("editor:json_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="svg", title="SVG Editor", order=50)
+class SvgEditorPlugin(VaultEditorPlugin):
+    file_type = "svg"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("sketch:svg_file_display", args=[vault_file.pk])

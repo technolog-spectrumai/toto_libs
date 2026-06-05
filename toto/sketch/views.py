@@ -1,8 +1,8 @@
 from django.core.files.base import ContentFile
 from django.views.generic import ListView, DetailView
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.shortcuts import get_object_or_404
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, render
+from django.urls import reverse, reverse_lazy
 from toto.ui import PageProcessor
 import json
 import uuid
@@ -186,4 +186,35 @@ class BoardDeleteView(LoginRequiredMixin, View):
         board = get_object_or_404(Board, id=board_id, owner=request.user)
         board.delete()
         return JsonResponse({"status": "ok"})
+
+
+class SvgFileView(LoginRequiredMixin, View):
+    """SVG vault file editor — Preview/Code toggle."""
+    login_url = reverse_lazy("core:login")
+
+    def get(self, request, file_pk):
+        vault_file = get_object_or_404(
+            VaultFile.objects.select_related("bucket", "directory", "owner"),
+            pk=file_pk,
+            owner=request.user,
+        )
+        try:
+            content = vault_file.file.read().decode("utf-8")
+        except Exception:
+            content = ""
+
+        directory_name = (
+            vault_file.directory.name if vault_file.directory else vault_file.bucket.name
+        )
+        context = PageProcessor().decorate(
+            {
+                "vault_file": vault_file,
+                "content": content,
+                "directory_name": directory_name,
+                "save_url": reverse("sketch:svg_file_save", args=[file_pk]),
+                "delete_url": reverse("sketch:svg_file_delete", args=[file_pk]),
+            },
+            request,
+        )
+        return render(request, "sketch/svg_file_editor.html", context)
 
