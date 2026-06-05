@@ -26,6 +26,22 @@ class TranscriptionRunPageTests(TestCase):
         self.video = VaultFile(owner=self.user, title="v.mp4", file_type="video", bucket=self.bucket)
         self.video.file.save("v.mp4", ContentFile(b"x"), save=True)
 
+    def test_home_lists_audio_and_runs_selected(self):
+        resp = self.client.get(reverse("transcription:home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "a.mp3")        # audio shown
+        self.assertNotContains(resp, "v.mp4")     # video not shown
+        from toto.fileservices.models import FileServiceRun
+        before = FileServiceRun.objects.count()
+        with patch("toto.transcription.views.dispatch_run"):
+            resp2 = self.client.post(reverse("transcription:home"),
+                                     {"file_pks": [self.audio.pk], "language": "en"})
+        self.assertEqual(FileServiceRun.objects.count(), before + 1)
+        run = FileServiceRun.objects.latest("started_at")
+        self.assertEqual(run.service_key, "transcription")
+        self.assertRedirects(resp2, reverse("fileservices:run_detail", args=[run.id]),
+                             fetch_redirect_response=False)
+
     def test_page_renders_for_audio(self):
         resp = self.client.get(reverse("transcription:run_page", args=[self.audio.pk]))
         self.assertEqual(resp.status_code, 200)

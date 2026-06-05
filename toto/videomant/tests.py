@@ -945,10 +945,49 @@ class FFmpegCommandFactoryTests(SimpleTestCase):
 # Iterative command builder view
 # ---------------------------------------------------------------------------
 
+class CommandFilePresetTests(SimpleTestCase):
+    def test_operations_and_presets_match(self):
+        from .factory import OPERATIONS, COMMAND_FILE_PRESETS
+        self.assertEqual(set(OPERATIONS), set(COMMAND_FILE_PRESETS))
+
+    def test_slots_are_well_formed(self):
+        from .factory import COMMAND_FILE_PRESETS
+        for op, preset in COMMAND_FILE_PRESETS.items():
+            self.assertTrue(preset["inputs"], f"{op} has no input slot")
+            self.assertTrue(preset["outputs"], f"{op} has no output slot")
+            for slot in preset["inputs"].values():
+                self.assertIn("file_type", slot)
+            for slot in preset["outputs"].values():
+                for key in ("file_type", "extension", "name"):
+                    self.assertIn(key, slot, f"{op} output missing {key}")
+
+    def test_specific_input_and_output_metadata(self):
+        from .factory import COMMAND_FILE_PRESETS as P
+        self.assertEqual(set(P["replace_audio"]["inputs"]), {"video", "audio"})
+        self.assertEqual(P["replace_audio"]["inputs"]["audio"]["file_type"], "audio")
+        self.assertEqual(P["add_subtitles"]["inputs"]["subtitles"]["file_type"], "subtitle")
+        self.assertEqual(P["add_watermark"]["inputs"]["watermark"]["file_type"], "image")
+        for op in ("vstack", "hstack"):
+            self.assertEqual(len(P[op]["inputs"]), 2)
+            self.assertTrue(all(s["file_type"] == "video" for s in P[op]["inputs"].values()))
+        self.assertTrue(next(iter(P["concat"]["inputs"].values())).get("multiple"))
+        self.assertEqual(P["gif"]["outputs"]["output"]["extension"], "gif")
+        self.assertEqual(P["thumbnail"]["outputs"]["output"]["extension"], "jpg")
+        self.assertEqual(P["extract_mp3"]["outputs"]["output"]["extension"], "mp3")
+        self.assertEqual(P["probe"]["outputs"]["output"]["extension"], "ffprobe.json")
+
+    def test_helpers_raise_on_unknown(self):
+        from .factory import (
+            get_command_file_preset, get_command_input_slots,
+            get_command_output_slots, UnknownOperation,
+        )
+        for fn in (get_command_file_preset, get_command_input_slots, get_command_output_slots):
+            with self.assertRaises(UnknownOperation):
+                fn("nope")
+
+
 @override_settings(VIDEOMANT_WORK_ROOT="/tmp/videomant_test", MEDIA_ROOT="/tmp/media_test")
 class CommandBuilderTests(TestCase):
-    BUILDER_URL = "/videomant/vault/{pk}/builder/"
-
     def setUp(self):
         # curator owns the bucket; owner (viewer) owns files but not the bucket,
         # so non-owner access filtering is actually exercised.
@@ -984,222 +1023,144 @@ class CommandBuilderTests(TestCase):
         return vf
 
     def _url(self, vf=None):
-        return self.BUILDER_URL.format(pk=(vf or self.src).pk)
+        return f"/videomant/builder/?file={(vf or self.src).pk}"
 
-    # -- access + listing -------------------------------------------------
+    def _ajax(self, data):
+        return self.client.post("/videomant/builder/", data,
+                                HTTP_X_REQUESTED_WITH="XMLHttpRequest")
 
-    def test_builder_shows_source_and_same_bucket_accessible_files(self):
-        resp = self.client.get(self._url())
+    # -- source picker + access ------------------------------------------
+
+    def test_no_source_shows_picker_only(self):
+        resp = self.client.get("/videomant/builder/")
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "source.mp4")   # the selected source file
-        self.assertContains(resp, "second.mp4")   # accessible same-bucket file
-        self.assertNotContains(resp, "secret.mp4")  # stranger's private file hidden
-        self.assertNotContains(resp, "foreign.mp4")  # different bucket hidden
+        self.assertContains(resp, "Source video")
+        self.assertNotContains(resp, "ffmpeg command")  # builder hidden until source
 
     def test_builder_denies_inaccessible_source(self):
         resp = self.client.get(self._url(self.secret))
-        self.assertEqual(resp.status_code, 404)
-
-    # -- preview ----------------------------------------------------------
-
-    def test_preview_renders_command_without_creating_job(self):
-        before = MediaJob.objects.count()
-        resp = self.client.post(self._url(), {
-            "op": "compress",
-            "action": "preview",
-            "spec_yaml": "quality: medium\noutput_name: compressed\n",
-        })
         self.assertEqual(resp.status_code, 200)
-        self.assertEqual(MediaJob.objects.count(), before)  # no job created
-        self.assertContains(resp, "compressed.mp4")
+        self.assertNotContains(resp, "ffmpeg command")
+        self.assertContains(resp, "Pick a video file you can access")
+
+    def test_concat_shows_extra_video_picker(self):
+        resp = self.client.get(self._url() + "&op=concat")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "source.mp4")        # source tree
+        self.assertContains(resp, "second.mp4")        # extra video tree
+        self.assertContains(resp, "Videos to concatenate")  # preset slot label
+        self.assertNotContains(resp, "secret.mp4")     # inaccessible never shown
+
+    def test_single_input_op_has_no_extra_picker(self):
+        resp = self.client.get(self._url() + "&op=compress")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "ffmpeg command")
+        self.assertNotContains(resp, "Videos to concatenate")
+
+    def test_replace_audio_shows_audio_files(self):
+        self._vf(self.owner, "track.mp3", file_type="audio")
+        resp = self.client.get(self._url() + "&op=replace_audio")
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Replacement audio")  # preset slot label
+        self.assertContains(resp, "track.mp3")          # audio in the second tree
+
+    def test_builder_lists_new_operations(self):
+        resp = self.client.get(self._url())
+        for label in ["Crop", "Replace audio", "Add watermark", "Stack vertically"]:
+            self.assertContains(resp, label)
+
+    # -- live preview (AJAX) ---------------------------------------------
+
+    def test_preview_returns_command_without_job(self):
+        before = MediaJob.objects.count()
+        data = self._ajax({"file": self.src.pk, "op": "compress", "action": "preview",
+                           "quality": "medium", "output_name": "compressed"}).json()
+        self.assertTrue(data["ok"])
+        self.assertIn("compressed.mp4", data["command"])
+        self.assertIn("-i source.mp4", data["command"])  # input is the vault file
+        self.assertEqual(MediaJob.objects.count(), before)
 
     def test_preview_equals_factory_shell_display(self):
         from .factory import FFmpegCommandFactory
         from .views import display_input_name
         spec = FFmpegCommandFactory().build(
-            "compress",
-            input_name=display_input_name(self.src),
+            "compress", input_name=display_input_name(self.src),
             params={"quality": "medium", "output_name": "compressed"},
         )
-        resp = self.client.post(self._url(), {
-            "op": "compress",
-            "action": "preview",
-            "spec_yaml": "quality: medium\noutput_name: compressed\n",
-        })
-        self.assertContains(resp, spec.shell_display)
-
-    def test_user_absolute_input_path_is_ignored(self):
-        resp = self.client.post(self._url(), {
-            "op": "compress",
-            "action": "preview",
-            "spec_yaml": "quality: medium\noutput_name: compressed\ninput_path: /etc/passwd\n",
-        })
-        self.assertEqual(resp.status_code, 200)
-        # The YAML is echoed back into the editor (value preservation), but the
-        # path must never reach the generated command — input comes from the
-        # resolved vault file only.
-        self.assertNotContains(resp, "-i /etc/passwd")
-        self.assertContains(resp, "-i source.mp4")
+        data = self._ajax({"file": self.src.pk, "op": "compress", "action": "preview",
+                           "quality": "medium", "output_name": "compressed"}).json()
+        self.assertEqual(data["command"], spec.shell_display)
 
     # -- run --------------------------------------------------------------
 
     def test_run_creates_and_enqueues_job(self):
         before = MediaJob.objects.count()
         with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
-            resp = self.client.post(self._url(), {
-                "op": "compress",
-                "action": "run",
-                "spec_yaml": "quality: medium\noutput_name: compressed\n",
-            })
+            resp = self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "compress", "action": "run",
+                "quality": "medium", "output_name": "compressed"})
         self.assertEqual(MediaJob.objects.count(), before + 1)
         job = MediaJob.objects.filter(task_name="videomant.compress").last()
-        self.assertIsNotNone(job)
         self.assertTrue(delay.called)
         self.assertRedirects(resp, f"/videomant/jobs/{job.pk}/", fetch_redirect_response=False)
 
-    def test_run_invalid_yaml_creates_no_job(self):
+    def test_run_invalid_form_creates_no_job(self):
         before = MediaJob.objects.count()
         with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
-            resp = self.client.post(self._url(), {
-                "op": "compress",
-                "action": "run",
-                "spec_yaml": "quality: medium\n  bad: : indent",  # malformed YAML
-            })
+            resp = self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "compress", "action": "run",
+                "quality": "medium"})  # output_name missing (required)
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(MediaJob.objects.count(), before)
         self.assertFalse(delay.called)
-
-    def test_run_concat_with_accessible_extra_by_name(self):
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["second.mp4"]\n',
-            })
-        job = MediaJob.objects.filter(task_name="videomant.concat").last()
-        self.assertIsNotNone(job)
-        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
-
-    def test_run_concat_extra_referenced_by_key(self):
-        # A file resolves by its key (slug) as well as its title.
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": f'reencode: false\noutput_name: merged\nextra_files: ["{self.extra.key}"]\n',
-            })
-        job = MediaJob.objects.filter(task_name="videomant.concat").last()
-        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
-
-    def test_extra_file_via_checkbox_selector(self):
-        # The selector posts names under extra_files even if the YAML omits them.
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": "reencode: false\noutput_name: merged\nextra_files: []\n",
-                "extra_files": ["second.mp4"],
-            })
-        job = MediaJob.objects.filter(task_name="videomant.concat").last()
-        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
-
-    def test_unknown_extra_file_name_rejected(self):
-        before = MediaJob.objects.count()
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
-            resp = self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["nope.mp4"]\n',
-            })
-        self.assertEqual(MediaJob.objects.count(), before)
-        self.assertFalse(delay.called)
-        self.assertContains(resp, "No file named")
-
-    def test_ambiguous_extra_file_name_rejected(self):
-        # Two accessible files share the same title (distinct keys) in the bucket.
-        from toto.vault.models import VaultFile
-        from django.core.files.base import ContentFile
-        import os
-        os.makedirs("/tmp/media_test/vault/files", exist_ok=True)
-        for fname in ("dupa.mp4", "dupb.mp4"):
-            d = VaultFile(owner=self.owner, title="dup.mp4", file_type="video", bucket=self.bucket)
-            d.file.save(fname, ContentFile(b"x"), save=True)
-        before = MediaJob.objects.count()
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            resp = self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["dup.mp4"]\n',
-            })
-        self.assertEqual(MediaJob.objects.count(), before)
-        self.assertContains(resp, "Ambiguous")
-
-    def test_unauthorized_bucket_file_cannot_be_referenced(self):
-        before = MediaJob.objects.count()
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
-            resp = self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["secret.mp4"]\n',
-            })
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(MediaJob.objects.count(), before)  # rejected, no job
-        self.assertFalse(delay.called)
-        self.assertContains(resp, "access")
-
-    def test_out_of_bucket_file_cannot_be_referenced(self):
-        before = MediaJob.objects.count()
-        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            resp = self.client.post(self._url(), {
-                "op": "concat",
-                "action": "run",
-                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["foreign.mp4"]\n',
-            })
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(MediaJob.objects.count(), before)
-        self.assertContains(resp, "this bucket")
-
-    # -- new operations ---------------------------------------------------
 
     def test_run_single_input_op_creates_job(self):
-        before = MediaJob.objects.count()
         with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            resp = self.client.post(self._url(), {
-                "op": "crop",
-                "action": "run",
-                "spec_yaml": "width: 320\nheight: 240\nx: 0\ny: 0\noutput_name: cropped\n",
-            })
-        self.assertEqual(MediaJob.objects.count(), before + 1)
+            self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "crop", "action": "run",
+                "width": 320, "height": 240, "x": 0, "y": 0, "output_name": "cropped"})
         job = MediaJob.objects.filter(task_name="videomant.crop").last()
         self.assertIsNotNone(job)
         self.assertEqual(job.input_files, [])
-        self.assertRedirects(resp, f"/videomant/jobs/{job.pk}/", fetch_redirect_response=False)
 
-    def test_secondary_op_stores_primary_and_secondary(self):
+    def test_run_concat_with_selected_videos(self):
         with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
-            self.client.post(self._url(), {
-                "op": "vstack",
-                "action": "run",
-                "spec_yaml": 'output_name: stacked\nextra_files: ["second.mp4"]\n',
-            })
-        job = MediaJob.objects.filter(task_name="videomant.vstack").last()
-        self.assertIsNotNone(job)
+            self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "concat", "action": "run",
+                "output_name": "merged", "videos": [self.extra.pk]})
+        job = MediaJob.objects.filter(task_name="videomant.concat").last()
         self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
 
-    def test_secondary_op_requires_one_extra(self):
+    def test_run_secondary_op_stores_primary_and_secondary(self):
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "vstack", "action": "run",
+                "output_name": "stacked", "bottom_video": [self.extra.pk]})
+        job = MediaJob.objects.filter(task_name="videomant.vstack").last()
+        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_secondary_op_requires_one_file(self):
         before = MediaJob.objects.count()
         with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
-            resp = self.client.post(self._url(), {
-                "op": "vstack",
-                "action": "run",
-                "spec_yaml": "output_name: stacked\nextra_files: []\n",
-            })
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(MediaJob.objects.count(), before)  # no file selected → rejected
+            resp = self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "vstack", "action": "run",
+                "output_name": "stacked"})  # no bottom_video
+        self.assertEqual(MediaJob.objects.count(), before)
         self.assertFalse(delay.called)
-        self.assertContains(resp, "exactly one additional file")
+        self.assertContains(resp, "Select exactly one")
 
-    def test_builder_lists_new_operations(self):
-        resp = self.client.get(self._url())
-        for label in ["Crop", "Replace audio", "Add watermark", "Stack vertically"]:
-            self.assertContains(resp, label)
+    def test_unauthorized_file_rejected_on_run(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post("/videomant/builder/", {
+                "file": self.src.pk, "op": "concat", "action": "run",
+                "output_name": "merged", "videos": [self.secret.pk]})
+        self.assertEqual(MediaJob.objects.count(), before)
+        self.assertFalse(delay.called)
+        self.assertContains(resp, "access")
+
+    def test_out_of_bucket_file_rejected(self):
+        data = self._ajax({"file": self.src.pk, "op": "concat", "action": "preview",
+                           "output_name": "merged", "videos": [self.foreign.pk]}).json()
+        self.assertFalse(data["ok"])
+        self.assertTrue(any("this bucket" in e for e in data["errors"]))

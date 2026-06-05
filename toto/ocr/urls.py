@@ -5,5 +5,6 @@ from . import views
 app_name = "ocr"
 
 urlpatterns = [
+    path("", views.home, name="home"),
     path("vault/<int:file_pk>/", views.run_page, name="run_page"),
 ]

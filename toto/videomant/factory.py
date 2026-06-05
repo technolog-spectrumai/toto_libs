@@ -66,6 +66,115 @@ SECONDARY_OPERATIONS: frozenset[str] = frozenset({
 })
 
 
+# ---------------------------------------------------------------------------
+# Declarative input/output file metadata per command.
+#
+# Pure data the UI/request layer uses to decide which file pickers to show and
+# which file types each one accepts. Logical file-type categories (video, audio,
+# image, subtitle, gif, json) — the UI maps these to VaultFile.file_type values.
+# This does NOT change the argv builders or execution behaviour.
+# ---------------------------------------------------------------------------
+COMMAND_FILE_PRESETS: dict[str, dict] = {
+    "compress": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Compressed video"}},
+    },
+    "resize": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Resized video"}},
+    },
+    "crop": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Cropped video"}},
+    },
+    "change_fps": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "FPS-adjusted video"}},
+    },
+    "cut": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Trimmed video"}},
+    },
+    "extract_mp3": {
+        "inputs": {"media": {"file_type": "video", "name": "Source video"}},
+        "outputs": {"output": {"file_type": "audio", "extension": "mp3", "name": "Extracted MP3"}},
+    },
+    "remove_audio": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Muted video"}},
+    },
+    "replace_audio": {
+        "inputs": {
+            "video": {"file_type": "video", "name": "Video file"},
+            "audio": {"file_type": "audio", "name": "Replacement audio"},
+        },
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Video with replaced audio"}},
+    },
+    "add_subtitles": {
+        "inputs": {
+            "video": {"file_type": "video", "name": "Video file"},
+            "subtitles": {"file_type": "subtitle", "name": "Subtitle file"},
+        },
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Video with subtitles"}},
+    },
+    "add_watermark": {
+        "inputs": {
+            "video": {"file_type": "video", "name": "Video file"},
+            "watermark": {"file_type": "image", "name": "Watermark image"},
+        },
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Watermarked video"}},
+    },
+    "thumbnail": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "image", "extension": "jpg", "name": "Thumbnail image"}},
+    },
+    "gif": {
+        "inputs": {"video": {"file_type": "video", "name": "Input video"}},
+        "outputs": {"output": {"file_type": "gif", "extension": "gif", "name": "Animated GIF"}},
+    },
+    "vstack": {
+        "inputs": {
+            "top_video": {"file_type": "video", "name": "Top video"},
+            "bottom_video": {"file_type": "video", "name": "Bottom video"},
+        },
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Vertically stacked video"}},
+    },
+    "hstack": {
+        "inputs": {
+            "left_video": {"file_type": "video", "name": "Left video"},
+            "right_video": {"file_type": "video", "name": "Right video"},
+        },
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Horizontally stacked video"}},
+    },
+    "concat": {
+        "inputs": {"videos": {"file_type": "video", "name": "Videos to concatenate", "multiple": True}},
+        "outputs": {"output": {"file_type": "video", "extension": "mp4", "name": "Concatenated video"}},
+    },
+    "probe": {
+        "inputs": {"media": {"file_type": "video", "name": "Media file"}},
+        "outputs": {"output": {"file_type": "json", "extension": "ffprobe.json", "name": "Probe JSON"}},
+    },
+}
+
+
+def get_command_file_preset(operation: str) -> dict:
+    """Return the input/output file metadata for ``operation``."""
+    try:
+        return COMMAND_FILE_PRESETS[operation]
+    except KeyError:
+        raise UnknownOperation(f"No file preset for operation: {operation!r}")
+
+
+def get_command_input_slots(operation: str) -> dict:
+    """Named input slots for ``operation`` (e.g. ``{"video": {...}, "audio": {...}}``)."""
+    return get_command_file_preset(operation)["inputs"]
+
+
+def get_command_output_slots(operation: str) -> dict:
+    """Named output slots for ``operation``."""
+    return get_command_file_preset(operation)["outputs"]
+
+
 @dataclass(frozen=True)
 class FFmpegCommandSpec:
     """An immutable, fully-resolved command preview.

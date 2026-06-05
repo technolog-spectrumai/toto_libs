@@ -30,7 +30,7 @@ class VideomantServicePlugin(FileServicePlugin):
     builder = True
 
     def builder_url(self, vault_file) -> str:
-        return reverse("videomant:command_builder", args=[vault_file.pk]) + "?service=videomant"
+        return reverse("videomant:command_builder") + f"?file={vault_file.pk}&service=videomant"
 
     def execute(self, run):
         raise NotImplementedError("Videomant runs through its command builder, not inline.")

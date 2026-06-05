@@ -1,9 +1,6 @@
-import json
-import mimetypes
 import os
 import re
 
-import yaml
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
@@ -14,7 +11,8 @@ from toto.ui import PageProcessor
 
 from .access import accessible_bucket_files, user_can_access_vault_file
 from .factory import (
-    FFmpegCommandFactory, OPERATIONS, OPERATION_LABELS, SECONDARY_OPERATIONS,
+    FFmpegCommandFactory, OPERATIONS, OPERATION_LABELS,
+    get_command_input_slots, get_command_output_slots,
 )
 from .forms import (
     CompressForm, CutForm, ExtractMp3Form,
@@ -414,38 +412,31 @@ _OP_FORMS = {
     "concat": ConcatForm,
 }
 
-# Default params used to seed the YAML editor and to fill omitted keys.
-_OP_DEFAULTS = {
-    "compress":      {"quality": "medium", "output_name": "compressed"},
-    "resize":        {"preserve_aspect_ratio": True, "width": 1280, "output_name": "resized"},
-    "crop":          {"width": 640, "height": 480, "x": 0, "y": 0, "output_name": "cropped"},
-    "change_fps":    {"fps": 30, "output_name": "fps"},
-    "cut":           {"start_time": "00:00:00", "end_time": "00:00:30", "output_name": "clip"},
-    "extract_mp3":   {"bitrate": "192k", "output_name": "audio"},
-    "remove_audio":  {"output_name": "muted"},
-    "replace_audio": {"output_name": "dubbed", "extra_files": []},
-    "add_subtitles": {"output_name": "subtitled", "extra_files": []},
-    "add_watermark": {"position": "bottom-right", "output_name": "watermarked", "extra_files": []},
-    "thumbnail":     {"at_time": "00:00:01", "output_name": "thumbnail"},
-    "gif":           {"start_time": "00:00:00", "duration": 5, "fps": 12, "width": 480, "output_name": "animation"},
-    "vstack":        {"output_name": "vstack", "extra_files": []},
-    "hstack":        {"output_name": "hstack", "extra_files": []},
-    "concat":        {"reencode": False, "output_name": "merged", "extra_files": []},
-    "probe":         {},
+# Logical preset file-type → VaultFile.file_type values used by the tree pickers.
+_PRESET_TO_VAULT_TYPES = {
+    "video": ["video"],
+    "audio": ["audio"],
+    "image": ["image"],
+    "subtitle": ["text"],   # .srt/.vtt are detected as VaultFile type "text"
+    "gif": ["image"],
+    "json": ["json"],
 }
 
-# YAML keys that could smuggle a filesystem path are never trusted.
-_PATH_KEYS = {
-    "input", "inputs", "input_path", "input_paths", "input_file", "input_files",
-    "output", "output_path", "source", "sources", "path", "paths", "file", "files",
-}
 
-_ROLE_HINTS = {
-    "video": ["source", "concat input"],
-    "audio": ["audio input"],
-    "image": ["watermark / overlay", "thumbnail"],
-    "text": ["subtitle"],
-}
+def _secondary_slot(op):
+    """The extra-input picker for ``op``, derived from COMMAND_FILE_PRESETS.
+
+    Returns ``(name, label, vault_types, multiple)`` or ``None`` for
+    single-input operations.
+    """
+    slots = list(get_command_input_slots(op).items())
+    if len(slots) >= 2:
+        name, slot = slots[1]
+        return name, slot["name"], _PRESET_TO_VAULT_TYPES.get(slot["file_type"], []), False
+    if slots and slots[0][1].get("multiple"):
+        name, slot = slots[0]
+        return name, slot["name"], _PRESET_TO_VAULT_TYPES.get(slot["file_type"], []), True
+    return None
 
 
 def display_input_name(vf) -> str:
@@ -465,18 +456,8 @@ def _sanitize_output_name(value) -> str:
     return base or "output"
 
 
-def _strip_path_keys(params: dict) -> dict:
-    return {k: v for k, v in params.items() if k not in _PATH_KEYS}
-
-
-def _default_yaml(op: str) -> str:
-    return yaml.safe_dump(_OP_DEFAULTS.get(op, {}), sort_keys=False, default_flow_style=False)
-
-
 def _form_errors(form) -> list[str]:
-    out = []
-    for err in form.non_field_errors():
-        out.append(str(err))
+    out = [str(e) for e in form.non_field_errors()]
     for field, errs in form.errors.items():
         if field == "__all__":
             continue
@@ -485,116 +466,117 @@ def _form_errors(form) -> list[str]:
     return out
 
 
-def _role_hints(file_type: str) -> list[str]:
-    return _ROLE_HINTS.get(file_type, [])
-
-
-def _bucket_file_row(f) -> dict:
-    mime, _ = mimetypes.guess_type(f.title or "")
-    return {
-        "id": f.id,
-        "title": f.title,
-        "file_type": f.file_type,
-        "mimetype": mime or "",
-        "size": f.file_size_bytes,
-        "roles": _role_hints(f.file_type),
-    }
-
-
-def _parse_and_validate(raw_yaml: str, op: str):
-    """Parse the YAML spec and validate it against the operation form.
-
-    Returns ``(cleaned_params, parsed_dict, errors)``. ``cleaned_params`` is
-    ``None`` when there are errors.
-    """
-    try:
-        parsed = yaml.safe_load(raw_yaml) if raw_yaml.strip() else {}
-    except yaml.YAMLError as exc:
-        return None, {}, [f"YAML parse error: {exc}"]
-    if parsed is None:
-        parsed = {}
-    if not isinstance(parsed, dict):
-        return None, {}, ["The operation spec must be a YAML mapping (key: value pairs)."]
-
-    parsed = _strip_path_keys(parsed)
-
-    if op == "probe":
-        return {}, parsed, []
-
+def _build_op_form(op, data=None):
+    """Instantiate the structured parameter form for ``op`` (None for probe)."""
     form_cls = _OP_FORMS.get(op)
     if form_cls is None:
-        return None, parsed, [f"Unknown operation: {op!r}"]
-
-    defaults = _OP_DEFAULTS.get(op, {})
-    data = {**defaults, **{k: v for k, v in parsed.items() if k not in ("extra_files", "extra_file_ids")}}
-    if "output_name" in data:
-        data["output_name"] = _sanitize_output_name(data["output_name"])
-
-    form = form_cls(data=data, bucket_files=None) if op == "concat" else form_cls(data=data)
-    if not form.is_valid():
-        return None, parsed, _form_errors(form)
-
-    cleaned = {k: v for k, v in form.cleaned_data.items() if k not in ("extra_files", "extra_file_ids")}
-    return cleaned, parsed, []
+        return None
+    if op == "concat":
+        return form_cls(data, bucket_files=None)
+    return form_cls(data)
 
 
-def _resolve_extra_files(user, vf, name_list):
-    """Resolve bucket file *names* to accessible VaultFile objects in vf.bucket.
+def _resolve_extra_pks(user, vf, pks):
+    """Resolve picked file ids to accessible same-bucket VaultFiles.
 
-    A name matches a file's ``title`` or ``key`` within the same bucket. Access
-    is re-checked per file; out-of-bucket / unauthorized / ambiguous names are
-    rejected. Returns ``(objects, display_names, errors)``.
+    Re-checks access per file; out-of-bucket / unauthorized refs are rejected.
+    Returns ``(objects, display_names, errors)``.
     """
-    from django.db.models import Q
     from toto.vault.models import VaultFile
 
-    objs, display_names, errors = [], [], []
-    seen = set()
-    for raw in name_list:
-        name = str(raw).strip()
-        if not name or name in seen:
+    objs, names, errors, seen = [], [], [], set()
+    for raw in pks:
+        try:
+            pk = int(raw)
+        except (TypeError, ValueError):
+            errors.append(f"Invalid file selection: {raw!r}")
             continue
-        seen.add(name)
-        matches = list(
-            VaultFile.objects
-            .filter(bucket=vf.bucket)
-            .filter(Q(title=name) | Q(key=name))
-            .exclude(pk=vf.pk)
-            .select_related("bucket", "directory")
-        )
-        if not matches:
-            errors.append(f"No file named '{name}' in this bucket.")
+        if pk in seen:
             continue
-        accessible = [m for m in matches if user_can_access_vault_file(user, m)]
-        if not accessible:
-            errors.append(f"You do not have access to file '{name}'.")
+        seen.add(pk)
+        f = VaultFile.objects.select_related("bucket", "directory").filter(pk=pk).first()
+        if f is None:
+            errors.append(f"Referenced file {pk} does not exist.")
             continue
-        if len(accessible) > 1:
-            errors.append(f"Ambiguous file name '{name}' — multiple matches in this bucket.")
+        if f.bucket_id != vf.bucket_id:
+            errors.append(f"File '{f.title}' is not in this bucket and cannot be used.")
             continue
-        f = accessible[0]
+        if not user_can_access_vault_file(user, f):
+            errors.append(f"You do not have access to '{f.title}'.")
+            continue
         objs.append(f)
-        display_names.append(display_input_name(f))
-    return objs, display_names, errors
+        names.append(display_input_name(f))
+    return objs, names, errors
+
+
+def _builder_result(request, vf, op):
+    """Validate the submitted form + file picks and build the command spec.
+
+    Returns ``(spec, params, objs, errors)``; ``spec`` is None on error.
+    """
+    form = _build_op_form(op, request.POST)
+    errors, params = [], {}
+    if form is not None:
+        if form.is_valid():
+            params = {k: v for k, v in form.cleaned_data.items()
+                      if k not in ("extra_files", "extra_file_ids")}
+            if "output_name" in params:
+                params["output_name"] = _sanitize_output_name(params["output_name"])
+        else:
+            errors.extend(_form_errors(form))
+
+    slot = _secondary_slot(op)
+    objs, extra_names = [], []
+    if slot is not None:
+        name, label, _types, multiple = slot
+        pks = request.POST.getlist(name) or request.POST.getlist("extra_files")
+        objs, extra_names, ref_errors = _resolve_extra_pks(request.user, vf, pks)
+        errors.extend(ref_errors)
+        if multiple and len(objs) < 1:
+            errors.append(f"Select at least one {label.lower()}.")
+        elif not multiple and len(objs) != 1:
+            errors.append(f"Select exactly one {label.lower()}.")
+
+    if errors:
+        return None, params, objs, errors
+
+    spec = FFmpegCommandFactory().build(
+        op, input_name=display_input_name(vf),
+        extra_input_names=extra_names, params=params,
+    )
+    return spec, params, objs, errors
+
+
+def _resolve_source(request):
+    """Resolve + validate the chosen source file. Returns (vf, error_or_None)."""
+    from toto.vault.models import VaultFile
+
+    file_pk = request.POST.get("file") or request.GET.get("file")
+    if not file_pk:
+        return None, None
+    vf = (
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(pk=file_pk).first()
+    )
+    if vf is None or not user_can_access_vault_file(request.user, vf):
+        return None, "Pick a video file you can access."
+    if vf.file_type != "video":
+        return None, "Videomant works on video files — pick a video."
+    return vf, None
 
 
 @login_required
-def command_builder(request, file_id):
-    """Iterative ffmpeg/ffprobe command builder for a vault media file.
+def command_builder(request):
+    """Form-based videomant builder, all on one page.
 
-    GET shows the builder; POST ``action=preview`` renders the generated
-    command without creating a job; POST ``action=run`` validates again and
+    1. Choose the operation.  2. Pick the source video (and any preset-declared
+    extra file).  3. Fill the structured parameter form.  The generated ffmpeg
+    command updates live (AJAX ``action=preview``). ``action=run`` validates and
     enqueues the job through the existing runner.
     """
-    from toto.vault.models import VaultFile
+    from toto.vault.filetree import build_file_tree
 
-    vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"), pk=file_id
-    )
-    # Independent access check — do not trust the referring app.
-    if not user_can_access_vault_file(request.user, vf):
-        raise Http404
-
+    vf, source_error = _resolve_source(request)
     service = request.GET.get("service", "").strip()
     op = (request.POST.get("op") or request.GET.get("op") or "").strip()
     if not op:
@@ -602,87 +584,71 @@ def command_builder(request, file_id):
     if op not in OPERATIONS:
         op = "compress"
 
-    bucket_files = [
-        _bucket_file_row(f)
-        for f in accessible_bucket_files(
-            request.user, vf.bucket,
-            # text included so subtitle files (.srt/.vtt) can be picked for add_subtitles
-            exclude_pk=vf.pk, file_types=["video", "audio", "image", "text"],
-        ).order_by("title")[:200]
-    ]
-
-    spec_yaml = request.POST.get("spec_yaml")
-    if spec_yaml is None:
-        spec_yaml = _default_yaml(op)
+    source_tree = build_file_tree(request.user, file_types=["video"])
+    out_slot = next(iter(get_command_output_slots(op).values()), {})
 
     context = {
         "vf": vf,
         "op": op,
         "operations": [(o, OPERATION_LABELS[o]) for o in OPERATIONS],
-        "bucket_files": bucket_files,
-        "spec_yaml": spec_yaml,
-        "selected_names": [],
+        "source_tree": source_tree,
+        "source_link_prefix": f"?op={op}&file=",  # picking a source keeps the op
+        "needs_extra": False,
+        "extra_slot": None,
+        "extra_tree": [],
+        "form": None,
+        "output_label": out_slot.get("name", "Output"),
         "command_preview": None,
         "expected_outputs": [],
-        "errors": [],
+        "errors": [source_error] if source_error else [],
         "service": service,
     }
 
+    # No (valid) source yet → just show the operation + source picker.
+    if vf is None:
+        return _render(request, "videomant/command_builder.html", context)
+
+    # Preset-driven extra-input picker (named + type-filtered).
+    slot = _secondary_slot(op)
+    if slot is not None:
+        name, label, types, multiple = slot
+        context["needs_extra"] = True
+        context["extra_slot"] = {"name": name, "label": label, "multiple": multiple,
+                                 "types": ", ".join(types)}
+        if vf.bucket_id:
+            context["extra_tree"] = build_file_tree(
+                request.user, file_types=types, bucket=vf.bucket, exclude_pk=vf.pk,
+            )
+
     if request.method == "POST":
         action = request.POST.get("action", "preview")
-        checkbox_names = request.POST.getlist("extra_files")
-        context["selected_names"] = [str(s) for s in checkbox_names]
+        spec, params, objs, errors = _builder_result(request, vf, op)
 
-        cleaned, parsed, errors = _parse_and_validate(spec_yaml, op)
-        if errors:
-            context["errors"] = errors
-            return _render(request, "videomant/command_builder.html", context)
+        # AJAX live-preview: JSON only, never creates a job.
+        if request.headers.get("x-requested-with") == "XMLHttpRequest":
+            if spec is None:
+                return JsonResponse({"ok": False, "errors": errors})
+            return JsonResponse({"ok": True, "command": spec.shell_display,
+                                 "outputs": list(spec.output_names)})
 
-        # YAML extra_files (bucket file names) are canonical; merge selector picks.
-        yaml_names = parsed.get("extra_files") or []
-        if not isinstance(yaml_names, (list, tuple)):
-            context["errors"] = ["extra_files must be a YAML list of bucket file names."]
-            return _render(request, "videomant/command_builder.html", context)
-        seen = {str(y) for y in yaml_names}
-        merged_names = [str(y) for y in yaml_names] + [c for c in checkbox_names if c not in seen]
-
-        objs, extra_names, ref_errors = _resolve_extra_files(request.user, vf, merged_names)
-        if ref_errors:
-            context["errors"] = ref_errors
-            context["selected_names"] = [o.title for o in objs]
-            return _render(request, "videomant/command_builder.html", context)
-
-        # Operations that consume extra inputs require the right file count.
-        if op in SECONDARY_OPERATIONS and len(objs) != 1:
-            context["errors"] = [
-                "This operation needs exactly one additional file selected from the bucket."
-            ]
-            context["selected_names"] = [o.title for o in objs]
-            return _render(request, "videomant/command_builder.html", context)
-        if op == "concat" and len(objs) < 1:
-            context["errors"] = ["Select at least one additional file to concatenate."]
-            return _render(request, "videomant/command_builder.html", context)
-
-        spec = FFmpegCommandFactory().build(
-            op,
-            input_name=display_input_name(vf),
-            extra_input_names=extra_names,
-            params=cleaned,
-        )
-
-        if action == "run":
+        if action == "run" and spec is not None:
             ids = [o.id for o in objs]
-            if op == "concat":
+            if slot is not None and slot[3]:          # multiple inputs (concat)
                 input_files = [vf.id] + ids
-            elif op in SECONDARY_OPERATIONS:
+            elif slot is not None:                    # single secondary
                 input_files = [vf.id, ids[0]]
             else:
                 input_files = []
-            job = _make_job(request, f"videomant.{op}", vf, dict(cleaned), input_files=input_files)
+            job = _make_job(request, f"videomant.{op}", vf, dict(params), input_files=input_files)
             return _dispatch_and_redirect(request, job)
 
-        context["command_preview"] = spec.shell_display
-        context["expected_outputs"] = list(spec.output_names)
-        context["selected_names"] = [o.title for o in objs]
+        context["form"] = _build_op_form(op, request.POST)
+        context["errors"] = errors
+        if spec is not None:
+            context["command_preview"] = spec.shell_display
+            context["expected_outputs"] = list(spec.output_names)
+        return _render(request, "videomant/command_builder.html", context)
 
+    # GET with a source → unbound form (command is filled live by JS).
+    context["form"] = _build_op_form(op)
     return _render(request, "videomant/command_builder.html", context)

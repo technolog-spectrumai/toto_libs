@@ -203,9 +203,11 @@ class PublicFileListView(TemplateView):
         try:
             context["services_url_tpl"] = reverse("fileservices:services_for_file", kwargs={"file_pk": 0})
             context["run_service_url_tpl"] = reverse("fileservices:run_service", kwargs={"file_pk": 0})
+            context["open_service_url_tpl"] = reverse("fileservices:open_primary", kwargs={"file_pk": 0})
         except Exception:
             context["services_url_tpl"] = ""
             context["run_service_url_tpl"] = ""
+            context["open_service_url_tpl"] = ""
 
         # Per-bucket quota usage so the template can show "X MB / Y MB" next to each bucket name.
         bucket_quota_info = {}

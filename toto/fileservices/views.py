@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -15,12 +15,34 @@ from .models import FileServiceRun
 from .plugin import FileServicePlugin
 
 
+# The single tool a file type opens directly from the vault (no service picker).
+PRIMARY_SERVICE_BY_TYPE = {"video": "videomant", "audio": "transcription", "image": "ocr"}
+
+
 @login_required
 def services_for_file(request, file_pk):
     """JSON list of services applicable to a given vault file."""
     vault_file = get_object_or_404(VaultFile, pk=file_pk)
     services = [p.to_dict() for p in FileServicePlugin.for_file(vault_file)]
     return JsonResponse({"services": services, "file_title": vault_file.title})
+
+
+@login_required
+def open_primary_service(request, file_pk):
+    """Redirect straight to the primary tool for this file type (no modal)."""
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk,
+    )
+    from .access import user_can_access_vault_file
+    if not user_can_access_vault_file(request.user, vault_file):
+        raise Http404
+    key = PRIMARY_SERVICE_BY_TYPE.get(vault_file.file_type)
+    plugin = FileServicePlugin.get(key) if key else None
+    if plugin and plugin.builder:
+        url = plugin.builder_url(vault_file)
+        if url:
+            return redirect(url)
+    raise Http404
 
 
 @csrf_exempt

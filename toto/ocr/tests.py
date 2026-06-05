@@ -26,6 +26,22 @@ class OcrRunPageTests(TestCase):
         self.audio = VaultFile(owner=self.user, title="a.mp3", file_type="audio", bucket=self.bucket)
         self.audio.file.save("a.mp3", ContentFile(b"x"), save=True)
 
+    def test_home_lists_images_and_runs_selected(self):
+        resp = self.client.get(reverse("ocr:home"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "i.png")        # image shown
+        self.assertNotContains(resp, "a.mp3")     # audio not shown
+        from toto.fileservices.models import FileServiceRun
+        before = FileServiceRun.objects.count()
+        with patch("toto.ocr.views.dispatch_run"):
+            resp2 = self.client.post(reverse("ocr:home"),
+                                     {"file_pks": [self.image.pk], "language": "eng"})
+        self.assertEqual(FileServiceRun.objects.count(), before + 1)
+        run = FileServiceRun.objects.latest("started_at")
+        self.assertEqual(run.service_key, "ocr")
+        self.assertRedirects(resp2, reverse("fileservices:run_detail", args=[run.id]),
+                             fetch_redirect_response=False)
+
     def test_page_renders_for_image(self):
         resp = self.client.get(reverse("ocr:run_page", args=[self.image.pk]))
         self.assertEqual(resp.status_code, 200)

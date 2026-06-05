@@ -44,7 +44,8 @@ class BuilderServiceRedirectTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "redirect")
-        self.assertIn(f"/videomant/vault/{self.video.pk}/builder/", data["redirect_url"])
+        self.assertIn("/videomant/builder/", data["redirect_url"])
+        self.assertIn(f"file={self.video.pk}", data["redirect_url"])
 
     def test_transcription_audio_redirects_to_app(self):
         self.client.login(username="fs_owner", password="pass")
@@ -71,6 +72,29 @@ class BuilderServiceRedirectTests(TestCase):
         resp = self.client.get(reverse("fileservices:services_for_file", args=[self.video.pk]))
         keys = {s["key"] for s in resp.json()["services"]}
         self.assertNotIn("transcription", keys)
+
+    def test_open_primary_routes_by_file_type(self):
+        self.client.login(username="fs_owner", password="pass")
+        cases = [
+            (self.video, "/videomant/builder/", f"file={self.video.pk}"),
+            (self.audio, f"/transcription/vault/{self.audio.pk}/", None),
+            (self.image, f"/ocr/vault/{self.image.pk}/", None),
+        ]
+        for vf, expect, extra in cases:
+            resp = self.client.get(reverse("fileservices:open_primary", args=[vf.pk]))
+            self.assertEqual(resp.status_code, 302)
+            self.assertIn(expect, resp.url)
+            if extra:
+                self.assertIn(extra, resp.url)
+
+    def test_open_primary_denies_inaccessible(self):
+        from toto.vault.models import Bucket, VaultFile
+        other = Bucket.objects.create(name="O2", owner=self.owner, slug="fs-o2")
+        secret = VaultFile(owner=self.owner, title="s.mp4", file_type="video", bucket=other, is_public=False)
+        secret.file.save("s.mp4", ContentFile(b"x"), save=True)
+        self.client.login(username="fs_stranger", password="pass")
+        resp = self.client.get(reverse("fileservices:open_primary", args=[secret.pk]))
+        self.assertEqual(resp.status_code, 404)
 
     def test_redirect_does_not_create_a_run(self):
         from .models import FileServiceRun

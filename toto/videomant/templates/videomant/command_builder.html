@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}Command Builder — {{ vf.title }}{% endblock %}
+{% block title %}Command Builder{% if vf %} — {{ vf.title }}{% endif %}{% endblock %}
 
 {% block content %}
 <div
@@ -12,26 +12,35 @@
 >
   <div class="mx-auto max-w-4xl space-y-6">
 
-    <!-- Header / source file -->
+    <!-- Header -->
     <div>
-      <a href="{% url 'videomant:bucket_file_list' vf.bucket_id %}" class="text-sm opacity-50 hover:opacity-100">
-        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Files" %}</a>
+      <a href="{% url 'videomant:job_list' %}" class="text-sm opacity-50 hover:opacity-100">
+        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Jobs" %}</a>
       <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
         <i class="fa-solid fa-terminal mr-2"></i>{% trans "Command Builder" %}</h1>
+      {% if vf %}
       <p class="mt-1 text-sm opacity-60">
         {% trans "Source:" %} <span class="font-mono">{{ vf.title }}</span>
         ({{ vf.file_type }}{% if vf.file_size_bytes %}, {{ vf.file_size_bytes|filesizeformat }}{% endif %})
       </p>
+      {% else %}
+      <p class="mt-1 text-sm opacity-60">{% trans "Choose an operation and a source video to begin." %}</p>
+      {% endif %}
     </div>
 
-    <!-- Operation selector -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-5 shadow-sm"
-    >
-      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Operation" %}</label>
+    {% if errors %}
+    <div class="rounded-lg bg-warn-light/10 px-4 py-3 text-sm text-warn-light space-y-1">
+      <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Please fix the following:" %}</p>
+      {% for error in errors %}<p class="font-mono text-xs">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+
+    <!-- 1) Operation (decides how many files you pick) -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "1. Operation" %}</label>
       <select
-        @change="window.location.href = '?op=' + $event.target.value"
+        @change="window.location.href = '{% if vf %}?file={{ vf.id }}&op={% else %}?op={% endif %}' + $event.target.value"
         class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
         x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
       >
@@ -41,125 +50,94 @@
       </select>
     </div>
 
-    <!-- Validation errors -->
-    {% if errors %}
-    <div class="rounded-lg bg-warn-light/10 px-4 py-3 text-sm text-warn-light space-y-1">
-      <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Please fix the following:" %}</p>
-      {% for error in errors %}<p class="font-mono text-xs">{{ error }}</p>{% endfor %}
+    <!-- 2) Source video picker (always shown) -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "2. Source video" %}</h2>
+      {% include "vault/_file_tree.html" with tree=source_tree tree_link_prefix=source_link_prefix tree_current_id=vf.id %}
     </div>
-    {% endif %}
 
-    {{ spec_yaml|json_script:"spec-yaml-data" }}
-    {{ selected_names|json_script:"selected-names-data" }}
-
-    <form method="post" action="{% url 'videomant:command_builder' vf.id %}" class="space-y-6"
-      x-data="builderForm()">
+    {% if vf %}
+    <form method="post" action="{% url 'videomant:command_builder' %}" class="space-y-6"
+      x-data="builderForm()" x-init="preview()"
+      @input.debounce.400ms="preview()" @change.debounce.400ms="preview()">
       {% csrf_token %}
+      <input type="hidden" name="file" value="{{ vf.id }}">
       <input type="hidden" name="op" value="{{ op }}">
 
-      <!-- Same-bucket files (inputs / overlays / audio / subtitles) -->
-      <div
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-lg border p-5 shadow-sm"
-      >
-        <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket files" %}</h2>
+      <!-- 3) Preset-driven extra-input picker -->
+      {% if needs_extra %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">3. {{ extra_slot.label }}</h2>
         <p class="mb-3 text-xs opacity-50">
-          {% trans "Accessible files in the same bucket. Tick to reference as extra inputs (e.g. concat); the selection is written into the YAML below by file name — never a path." %}
+          {% blocktrans with t=extra_slot.types %}Pick {{ t }} file(s) from this bucket.{% endblocktrans %}
         </p>
-        {% if bucket_files %}
-        <div class="overflow-x-auto">
-          <table class="w-full text-left text-sm">
-            <thead class="text-xs uppercase tracking-wide opacity-50">
-              <tr>
-                <th class="py-1 pr-2"></th>
-                <th class="py-1 pr-3">{% trans "Name" %}</th>
-                <th class="py-1 pr-3">{% trans "Type" %}</th>
-                <th class="py-1 pr-3">{% trans "Size" %}</th>
-                <th class="py-1 pr-3">{% trans "Roles" %}</th>
-              </tr>
-            </thead>
-            <tbody>
-              {% for file in bucket_files %}
-              <tr class="border-t" x-bind:class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
-                <td class="py-1.5 pr-2">
-                  <input type="checkbox" name="extra_files" value="{{ file.title }}"
-                    x-model="selected" @change="syncExtraFiles()"
-                    class="rounded border" x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-                </td>
-                <td class="py-1.5 pr-3 font-mono">{{ file.title }}</td>
-                <td class="py-1.5 pr-3 opacity-70">{{ file.file_type }}{% if file.mimetype %} <span class="opacity-50">/ {{ file.mimetype }}</span>{% endif %}</td>
-                <td class="py-1.5 pr-3 opacity-70">{% if file.size %}{{ file.size|filesizeformat }}{% else %}—{% endif %}</td>
-                <td class="py-1.5 pr-3">
-                  {% for role in file.roles %}
-                  <span class="mr-1 inline-block rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-70"
-                    x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ role }}</span>
-                  {% endfor %}
-                </td>
-              </tr>
-              {% endfor %}
-            </tbody>
-          </table>
-        </div>
-        {% else %}
-        <p class="text-xs opacity-50">{% trans "No other accessible media files in this bucket." %}</p>
-        {% endif %}
+        {% include "vault/_file_tree.html" with tree=extra_tree tree_input_name=extra_slot.name tree_value_field="id" tree_selected=None tree_alpine=False %}
       </div>
+      {% endif %}
 
-      <!-- YAML operation spec editor -->
-      <div
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-lg border p-5 shadow-sm"
-      >
-        <label class="mb-1 block text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Operation spec (YAML)" %}</label>
-        <p class="mb-3 text-xs opacity-50">{% trans "Edit arguments here. This YAML is the source of truth for the command. Ticking bucket files above fills in extra_files. Absolute input paths are ignored." %}</p>
-        <textarea
-          name="spec_yaml" rows="10" spellcheck="false" x-model="yamlText"
-          class="w-full rounded-lg border px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2"
-          x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-        ></textarea>
+      <!-- 4) Parameters -->
+      {% if form %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm space-y-4">
+        <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Options" %}</h2>
+        {% for field in form %}
+        <div>
+          {% if field.field.widget.input_type == 'checkbox' %}
+          <label class="flex items-center gap-2 text-sm cursor-pointer">
+            {{ field }}
+            <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</span>
+          </label>
+          {% else %}
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</label>
+          {{ field }}
+          {% endif %}
+          {% if field.help_text %}<p class="mt-0.5 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
 
-        <div class="mt-4 flex flex-wrap gap-2">
-          <button type="submit" name="action" value="preview"
-            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition"
-            x-bind:class="darkMode ? 'border-accent-1 hover:bg-accent-1/10' : 'border-accent-2 hover:bg-accent-2/10'">
-            <i class="fa-solid fa-eye"></i> {% trans "Preview" %}
+      <!-- 5) Generated ffmpeg command (live) -->
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+        <div class="mb-2 flex items-center justify-between">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "ffmpeg command" %}</h2>
+          <button type="button" x-show="command"
+            @click="navigator.clipboard.writeText($refs.cmd.innerText); copied = true; setTimeout(() => copied = false, 1500)"
+            class="text-xs opacity-60 hover:opacity-100">
+            <i class="fa-solid fa-copy mr-1"></i><span x-text="copied ? '{% trans "Copied" %}' : '{% trans "Copy" %}'"></span>
           </button>
-          <button type="submit" name="action" value="run"
+        </div>
+        <pre x-ref="cmd" class="overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed"
+          x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'"
+          x-text="command || '{% trans "Fill the form to generate the command…" %}'"></pre>
+
+        <template x-if="previewErrors.length">
+          <div class="mt-2 text-xs text-warn-light space-y-0.5">
+            <template x-for="e in previewErrors" :key="e"><p class="font-mono" x-text="e"></p></template>
+          </div>
+        </template>
+
+        <template x-if="outputs.length">
+          <div class="mt-3">
+            <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Expected output(s)" %}</h3>
+            <ul class="list-inside list-disc text-sm opacity-80">
+              <template x-for="o in outputs" :key="o"><li class="font-mono" x-text="o"></li></template>
+            </ul>
+          </div>
+        </template>
+
+        <div class="mt-4">
+          <button type="submit" name="action" value="run" :disabled="!command"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
             <i class="fa-solid fa-play"></i> {% trans "Run" %}
           </button>
         </div>
       </div>
     </form>
-
-    <!-- Generated command preview -->
-    {% if command_preview is not None %}
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-5 shadow-sm"
-    >
-      <div class="mb-2 flex items-center justify-between">
-        <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Generated command" %}</h2>
-        <button type="button"
-          @click="navigator.clipboard.writeText($refs.cmd.innerText); copied = true; setTimeout(() => copied = false, 1500)"
-          class="text-xs opacity-60 hover:opacity-100">
-          <i class="fa-solid fa-copy mr-1"></i><span x-text="copied ? '{% trans "Copied" %}' : '{% trans "Copy" %}'"></span>
-        </button>
-      </div>
-      <pre x-ref="cmd" class="overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed"
-        x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'">{{ command_preview }}</pre>
-
-      {% if expected_outputs %}
-      <h3 class="mt-4 mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Expected output(s)" %}</h3>
-      <ul class="list-inside list-disc text-sm opacity-80">
-        {% for out in expected_outputs %}<li class="font-mono">{{ out }}</li>{% endfor %}
-      </ul>
-      {% else %}
-      <p class="mt-3 text-xs opacity-50">{% trans "This operation produces no output file (results are stored as metadata)." %}</p>
-      {% endif %}
-      <p class="mt-3 text-xs opacity-50">{% trans "Preview only — no job has been created. Press Run to enqueue." %}</p>
-    </div>
     {% endif %}
 
   </div>
@@ -168,30 +146,31 @@
 <script>
   function builderForm() {
     return {
-      yamlText: JSON.parse(document.getElementById('spec-yaml-data').textContent),
-      selected: JSON.parse(document.getElementById('selected-names-data').textContent),
-      // Rewrite the `extra_files:` entry in the YAML from the ticked bucket files.
-      syncExtraFiles() {
-        const flow = '[' + this.selected.map(n => JSON.stringify(n)).join(', ') + ']';
-        const newLine = 'extra_files: ' + flow;
-        const lines = this.yamlText.split('\n');
-        const out = [];
-        let found = false;
-        for (let i = 0; i < lines.length; i++) {
-          if (/^\s*extra_files\s*:/.test(lines[i])) {
-            out.push(newLine);
-            found = true;
-            // drop any following block-style list items belonging to extra_files
-            let j = i + 1;
-            while (j < lines.length && /^\s*-\s/.test(lines[j])) j++;
-            i = j - 1;
+      preserve: true,           // used by the resize form's aspect-ratio toggle
+      command: "",
+      outputs: [],
+      previewErrors: [],
+      async preview() {
+        const form = this.$el.closest("form") || this.$el;
+        const fd = new FormData(form);
+        fd.set("action", "preview");
+        try {
+          const res = await fetch("{% url 'videomant:command_builder' %}", {
+            method: "POST",
+            headers: { "X-Requested-With": "XMLHttpRequest" },
+            body: fd,
+            credentials: "same-origin",
+          });
+          const data = await res.json();
+          if (data.ok) {
+            this.command = data.command; this.outputs = data.outputs || []; this.previewErrors = [];
           } else {
-            out.push(lines[i]);
+            this.command = ""; this.outputs = []; this.previewErrors = data.errors || [];
           }
+        } catch (e) {
+          this.command = ""; this.previewErrors = ["Preview failed."];
         }
-        if (!found) out.push(newLine);
-        this.yamlText = out.join('\n');
-      }
+      },
     };
   }
 </script>

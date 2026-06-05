@@ -16,6 +16,7 @@
   const _currentUser  = "{{ user.username|escapejs }}";
   const _servicesUrlTpl   = "{{ services_url_tpl }}";
   const _runServiceUrlTpl = "{{ run_service_url_tpl }}";
+  const _openServiceUrlTpl = "{{ open_service_url_tpl }}";
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('vaultTree', () => {
@@ -1787,12 +1788,12 @@
                     class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
               <i class="fa-solid fa-code w-5 text-center opacity-70"></i>{% trans "Open in editor" %}
             </button>
-            <!-- Run a service -->
-            <button x-show="actionsItem && actionsItem.has_services"
-                    @click="chooseAction('service')"
+            <!-- Open the file's tool directly (no service picker) -->
+            <button x-show="actionsItem && actionsItem.has_services && _openServiceUrlTpl"
+                    @click="window.location.href = _openServiceUrlTpl.replace('0', actionsItem.id)"
                     :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
                     class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
-              <i class="fa-solid fa-wand-magic-sparkles w-5 text-center opacity-70"></i>{% trans "Run a service" %}
+              <i class="fa-solid fa-wand-magic-sparkles w-5 text-center opacity-70"></i>{% trans "Open tool" %}
             </button>
             <!-- Move -->
             <button @click="chooseAction('move')"
