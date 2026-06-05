@@ -33,6 +33,15 @@
     <input
       x-model="search"
       type="search"
+      readonly
+      @focus="$el.removeAttribute('readonly')"
+      autocomplete="off"
+      autocorrect="off"
+      autocapitalize="off"
+      spellcheck="false"
+      data-1p-ignore
+      data-lpignore="true"
+      name="locations-filter-search"
       placeholder="{% trans 'Search by name or type' %}"
       :class="darkMode
         ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'

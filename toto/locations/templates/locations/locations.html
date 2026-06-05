@@ -607,7 +607,15 @@
               <input
                 x-model="mapSearch"
                 type="search"
+                readonly
+                @focus="$el.removeAttribute('readonly')"
                 autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                data-1p-ignore
+                data-lpignore="true"
+                name="map-target-search"
                 placeholder="{% trans 'Move map to ...' %}"
                 @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
                 :class="darkMode
