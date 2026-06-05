@@ -416,6 +416,7 @@
       .setView([52.0, 19.0], 5);
     (isDark ? darkTiles : lightTiles).addTo(_map);
     L.control.zoom({ position: "bottomright" }).addTo(_map);
+    _map.on("popupopen", function (event) { stylePopupForTheme(event.popup); });
 
     // Place all addresses as small faded dots
     (window._weatherAddresses || []).forEach(a => {
@@ -443,6 +444,7 @@
       .setView([52.0, 19.0], 5);
     (isDark ? darkTiles : lightTiles).addTo(_forecastMap);
     L.control.zoom({ position: "bottomright" }).addTo(_forecastMap);
+    _forecastMap.on("popupopen", function (event) { stylePopupForTheme(event.popup); });
 
     (window._weatherAddresses || []).forEach(a => {
       const m = L.circleMarker([a.lat, a.lng], {
@@ -573,6 +575,38 @@
     const el = document.createElement("div");
     el.textContent = v || "";
     return el.innerHTML;
+  }
+
+  function _themeColor(name, fallback) {
+    return (window.tailwind?.config?.theme?.extend?.colors || {})[name] || fallback;
+  }
+
+  function stylePopupForTheme(popup) {
+    const element = popup?.getElement?.();
+    if (!element) return;
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const background = isDark
+      ? _themeColor("bubble-bg-dark", "#2C2C2C")
+      : _themeColor("bubble-bg-light", "#ffffff");
+    const text = isDark
+      ? _themeColor("text-main-dark", "#f3f4f6")
+      : _themeColor("text-main-light", "#111827");
+
+    const wrapper = element.querySelector(".leaflet-popup-content-wrapper");
+    const tip = element.querySelector(".leaflet-popup-tip");
+    const closeButton = element.querySelector(".leaflet-popup-close-button");
+
+    if (wrapper) {
+      wrapper.style.backgroundColor = background;
+      wrapper.style.color = text;
+    }
+    if (tip) {
+      tip.style.backgroundColor = background;
+    }
+    if (closeButton) {
+      closeButton.style.color = text;
+    }
   }
 
   // ── chart rendering ───────────────────────────────────────────────

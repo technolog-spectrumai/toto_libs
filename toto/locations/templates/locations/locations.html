@@ -1313,6 +1313,34 @@
     return escapeHtml(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
   }
 
+  function stylePopupForTheme(popup) {
+    const element = popup?.getElement?.();
+    if (!element) return;
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const background = isDark
+      ? themeColor("bubble-bg-dark", "#2C2C2C")
+      : themeColor("bubble-bg-light", "#ffffff");
+    const text = isDark
+      ? themeColor("text-main-dark", "#f3f4f6")
+      : themeColor("text-main-light", "#111827");
+
+    const wrapper = element.querySelector(".leaflet-popup-content-wrapper");
+    const tip = element.querySelector(".leaflet-popup-tip");
+    const closeButton = element.querySelector(".leaflet-popup-close-button");
+
+    if (wrapper) {
+      wrapper.style.backgroundColor = background;
+      wrapper.style.color = text;
+    }
+    if (tip) {
+      tip.style.backgroundColor = background;
+    }
+    if (closeButton) {
+      closeButton.style.color = text;
+    }
+  }
+
   function popupContent(item) {
     const type = item.type;
     const name = item.name;
@@ -1383,6 +1411,10 @@
       zoomControl: false,
       scrollWheelZoom: true
     }).setView([52.0, 19.0], 6);
+
+    map.on("popupopen", function (event) {
+      stylePopupForTheme(event.popup);
+    });
 
     map.on("click", function (event) {
       const root = document.querySelector("[x-data='locationsExplorer()']");
