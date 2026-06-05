@@ -85,7 +85,10 @@ class TranscriptCollection(TimestampedModel):
         super().save(*args, **kwargs)
 
     def get_absolute_url(self):
-        return reverse("transcription:collection_detail", args=[self.slug])
+        try:
+            return reverse("transcription:collection_detail", args=[self.slug])
+        except Exception:
+            return ""
 
     @property
     def is_private(self) -> bool:
@@ -187,10 +190,16 @@ class TranscriptSource(TimestampedModel):
         return ""
 
     def get_absolute_url(self):
-        return reverse("transcription:source_detail", args=[self.collection.slug, self.slug])
+        try:
+            return reverse("transcription:source_detail", args=[self.collection.slug, self.slug])
+        except Exception:
+            return ""
 
     def get_manage_url(self):
-        return reverse("transcription:source_manage", args=[self.collection.slug, self.slug])
+        try:
+            return reverse("transcription:source_manage", args=[self.collection.slug, self.slug])
+        except Exception:
+            return ""
 
 
 class TranscriptionJob(TimestampedModel):
@@ -435,4 +444,7 @@ class SpeechModel(TimestampedModel):
         return self.download_status == self.DownloadStatus.DOWNLOADING
 
     def get_absolute_url(self):
-        return reverse("transcription:model_setup")
+        try:
+            return reverse("transcription:model_setup")
+        except Exception:
+            return ""

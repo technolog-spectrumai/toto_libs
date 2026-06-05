@@ -14,6 +14,8 @@
   const _renameUrl    = "{% url 'vault:rename_file' %}";
   const _deleteUrl    = "{% url 'vault:delete_file' %}";
   const _currentUser  = "{{ user.username|escapejs }}";
+  const _servicesUrlTpl   = "{{ services_url_tpl }}";
+  const _runServiceUrlTpl = "{{ run_service_url_tpl }}";
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('vaultTree', () => {
@@ -103,6 +105,16 @@
         createType: 'text',
         createLoading: false,
         createError: '',
+
+        // file-service (wand) state
+        svcModal: false,
+        svcFileId: null,
+        svcFileTitle: '',
+        svcList: [],
+        svcSelected: '',
+        svcArgs: '',
+        svcLoading: false,
+        svcError: '',
 
         setViewMode(m) {
           this.viewMode = m;
@@ -563,6 +575,58 @@
           }
           this.createLoading = false;
         },
+
+        // ── File services (wand) ──────────────────────────────
+        get svcCurrent() {
+          return this.svcList.find(s => s.key === this.svcSelected) || null;
+        },
+
+        async openServices(fileItem) {
+          this.svcFileId = fileItem.id;
+          this.svcFileTitle = fileItem.title;
+          this.svcList = [];
+          this.svcSelected = '';
+          this.svcArgs = '';
+          this.svcError = '';
+          this.svcModal = true;
+          try {
+            const res = await fetch(_servicesUrlTpl.replace('0', fileItem.id), { credentials: 'same-origin' });
+            const data = await res.json();
+            this.svcList = data.services || [];
+            if (this.svcList.length) this.svcSelected = this.svcList[0].key;
+          } catch {
+            this.svcError = 'Could not load services.';
+          }
+        },
+
+        async submitService() {
+          this.svcError = '';
+          const svc = this.svcCurrent;
+          if (!svc) { this.svcError = 'Pick a service.'; return; }
+          if (svc.args_required && !this.svcArgs.trim()) {
+            this.svcError = `${svc.args_label} are required.`; return;
+          }
+          this.svcLoading = true;
+          try {
+            const csrf = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams({ service_key: this.svcSelected, args: this.svcArgs });
+            const res = await fetch(_runServiceUrlTpl.replace('0', this.svcFileId), {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf },
+              credentials: 'same-origin',
+              body,
+            });
+            const data = await res.json();
+            if (data.run_url) {
+              window.location.href = data.run_url;
+            } else {
+              this.svcError = data.error || 'Failed to start service.';
+            }
+          } catch {
+            this.svcError = 'Network error. Please try again.';
+          }
+          this.svcLoading = false;
+        },
       };
     });
   });
@@ -934,6 +998,15 @@
                     <i class="fa-solid fa-pen-to-square text-xs"></i>
                   </button>
 
+                  <!-- Run a file service — wand -->
+                  <button x-show="item.has_services && item.owner === currentUser"
+                          @click.stop="openServices(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Run a service on ${item.title}`' %}">
+                    <i class="fa-solid fa-wand-magic-sparkles text-xs"></i>
+                  </button>
+
                   <!-- Delete trash — owner only, revealed on row hover -->
                   <button x-show="item.owner === currentUser"
                           @click.stop="openDelete(item)"
@@ -1037,6 +1110,13 @@
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
                             class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Edit ${item.title}`">
                       <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <!-- Run a file service -->
+                    <button x-show="item.has_services && item.owner === currentUser"
+                            @click.stop="openServices(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans 'Run a service' %}">
+                      <i class="fa-solid fa-wand-magic-sparkles"></i>
                     </button>
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"
@@ -1668,6 +1748,81 @@
               <span x-show="createLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
             </button>
             <button @click="createModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── File services (wand) modal ───────────────────────────── -->
+      <div x-show="svcModal"
+           x-cloak
+           @keydown.escape.window="svcModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="svcModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles opacity-60"></i>{% trans "Run a service" %}
+          </h2>
+          <p class="text-xs opacity-60 -mt-2 truncate">
+            <span class="font-mono" x-text="svcFileTitle"></span>
+          </p>
+
+          <template x-if="svcList.length === 0">
+            <p class="text-xs opacity-50 italic">{% trans "No services available for this file." %}</p>
+          </template>
+
+          <!-- Service picker -->
+          <div x-show="svcList.length > 0">
+            <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Service" %}</p>
+            <div class="flex flex-col gap-1.5">
+              <template x-for="s in svcList" :key="s.key">
+                <button type="button"
+                        @click="svcSelected = s.key; svcArgs = ''"
+                        :class="svcSelected === s.key
+                          ? (darkMode ? 'border-accent-1 bg-accent-dark/15' : 'border-accent-2 bg-accent-light/15')
+                          : (darkMode ? 'border-accent-1/40 hover:bg-accent-dark/10' : 'border-accent-2/40 hover:bg-accent-light/10')"
+                        class="flex items-start gap-3 rounded-lg border px-3 py-2 text-left transition">
+                  <i :class="s.icon + ' mt-0.5 opacity-70'"></i>
+                  <span class="min-w-0">
+                    <span class="block text-sm font-semibold" x-text="s.title"></span>
+                    <span class="block text-[11px] opacity-55 leading-snug" x-text="s.description"></span>
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Args -->
+          <div x-show="svcCurrent">
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">
+              <span x-text="svcCurrent ? svcCurrent.args_label : ''"></span>
+              <span x-show="svcCurrent && svcCurrent.args_required" class="opacity-50">*</span>
+            </label>
+            <textarea x-model="svcArgs" rows="3"
+                      :placeholder="svcCurrent ? svcCurrent.args_placeholder : ''"
+                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                      class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition"></textarea>
+          </div>
+
+          <p x-show="svcError" x-text="svcError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <div class="flex gap-2 pt-1">
+            <button @click="submitService"
+                    :disabled="svcLoading || !svcCurrent"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!svcLoading"><i class="fa-solid fa-play mr-1"></i>{% trans "Run" %}</span>
+              <span x-show="svcLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="svcModal = false"
                     :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
                     class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
               {% trans "Cancel" %}

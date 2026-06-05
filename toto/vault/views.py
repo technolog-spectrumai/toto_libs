@@ -52,6 +52,15 @@ class PublicFileListView(TemplateView):
             plugin = VaultEditorPlugin.for_file_type(f.file_type)
             return plugin.get_editor_url(f) if plugin else ""
 
+        try:
+            from toto.fileservices.plugin import FileServicePlugin
+            _fs_plugins = FileServicePlugin.all()
+        except Exception:
+            _fs_plugins = []
+
+        def _has_services(f):
+            return any(p.accepts(f) for p in _fs_plugins)
+
         by_parent = {}
         for d in dirs:
             pid = d.parent_id
@@ -105,6 +114,7 @@ class PublicFileListView(TemplateView):
                         "bpk": f.bucket_id,
                         "play_url": _play_url_for(f),
                         "editor_url": _editor_url_for(f),
+                        "has_services": _has_services(f),
                     })
 
         visit(None, 0)
@@ -126,6 +136,7 @@ class PublicFileListView(TemplateView):
                 "bpk": f.bucket_id,
                 "play_url": _play_url_for(f),
                 "editor_url": _editor_url_for(f),
+                "has_services": _has_services(f),
             })
 
         return flat
@@ -187,6 +198,14 @@ class PublicFileListView(TemplateView):
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
+
+        # File-service (wand) endpoints — only when the fileservices app is installed.
+        try:
+            context["services_url_tpl"] = reverse("fileservices:services_for_file", kwargs={"file_pk": 0})
+            context["run_service_url_tpl"] = reverse("fileservices:run_service", kwargs={"file_pk": 0})
+        except Exception:
+            context["services_url_tpl"] = ""
+            context["run_service_url_tpl"] = ""
 
         # Per-bucket quota usage so the template can show "X MB / Y MB" next to each bucket name.
         bucket_quota_info = {}
@@ -671,7 +690,47 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             "owner", "directory"
         ).order_by("-uploaded_at")[:8]
 
+        context["service_stats"] = self._service_stats(bucket)
+
         return PageProcessor().decorate(context, self.request)
+
+    def _service_stats(self, bucket):
+        """Per-service run counts + success/failure for this bucket's files."""
+        try:
+            from toto.fileservices.models import FileServiceRun
+            from toto.fileservices.plugin import FileServicePlugin
+        except Exception:
+            return []
+
+        rows = (
+            FileServiceRun.objects.filter(bucket=bucket)
+            .values("service_key", "status")
+            .annotate(n=Count("id"))
+        )
+        agg = {}
+        for r in rows:
+            entry = agg.setdefault(r["service_key"], {"total": 0, "success": 0, "failed": 0, "outputs": 0})
+            entry["total"] += r["n"]
+            if r["status"] == FileServiceRun.SUCCESS:
+                entry["success"] += r["n"]
+            elif r["status"] == FileServiceRun.FAILED:
+                entry["failed"] += r["n"]
+
+        # Count produced output files per service.
+        for run in FileServiceRun.objects.filter(bucket=bucket).only("service_key", "output_file_pks"):
+            if run.service_key in agg:
+                agg[run.service_key]["outputs"] += len(run.output_file_pks or [])
+
+        result = []
+        for key, data in sorted(agg.items(), key=lambda kv: -kv[1]["total"]):
+            plugin = FileServicePlugin.get(key)
+            result.append({
+                "key": key,
+                "title": plugin.get_title() if plugin else key,
+                "icon": plugin.icon if plugin else "fa-solid fa-wand-magic-sparkles",
+                **data,
+            })
+        return result
 
 
 # ============================================================

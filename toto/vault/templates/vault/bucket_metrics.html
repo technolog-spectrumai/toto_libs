@@ -543,6 +543,39 @@
 
     </section>
 
+    <!-- Service usage -->
+    {% if service_stats %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>{% trans "Service usage" %}
+      </p>
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+        {% for s in service_stats %}
+        <div :class="darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+             class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+          <i class="{{ s.icon }} opacity-60 w-5 text-center"></i>
+          <span class="font-semibold flex-1 min-w-0 truncate">{{ s.title }}</span>
+          <span class="shrink-0 text-xs opacity-60" title="{% trans 'Total runs' %}">
+            <i class="fa-solid fa-play mr-0.5"></i>{{ s.total }}
+          </span>
+          <span class="shrink-0 text-xs text-green-500" title="{% trans 'Succeeded' %}">
+            <i class="fa-solid fa-circle-check mr-0.5"></i>{{ s.success }}
+          </span>
+          {% if s.failed %}
+          <span class="shrink-0 text-xs text-warn-light" title="{% trans 'Failed' %}">
+            <i class="fa-solid fa-circle-xmark mr-0.5"></i>{{ s.failed }}
+          </span>
+          {% endif %}
+          <span class="shrink-0 text-xs opacity-60" title="{% trans 'Files created' %}">
+            <i class="fa-regular fa-file mr-0.5"></i>{{ s.outputs }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
     <!-- Recent files -->
     <section>
       <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
