@@ -389,7 +389,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
     )
 
     # -------------------------------------------------------- vicuna (Ollama / Qwen service layer)
-    steven_embedding_settings: dict[str, Any] = {
+    vicuna_embedding_settings: dict[str, Any] = {
         # Shared Ollama host (used by both embeddings and chat)
         "VICUNA_OLLAMA_HOST": os.getenv("VICUNA_OLLAMA_HOST", "http://localhost:11434"),
         # Embeddings
@@ -496,7 +496,7 @@ def build_settings(base_dir: Path, config_path: str | Path | None = None) -> dic
         **login_url_settings,
         **locations_settings,
         **spatialite_settings,
-        **steven_embedding_settings,
+        **vicuna_embedding_settings,
     }
 
     if migration_modules:
