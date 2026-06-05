@@ -6,11 +6,9 @@ from diff_match_patch import diff_match_patch
 
 class FileSyncConsumer(AsyncWebsocketConsumer):
     async def connect(self):
-        self.file_id = self.scope["url_route"]["kwargs"]["file_id"]
-        self.room = f"file_{self.file_id}"
-
+        self.file_pk = self.scope["url_route"]["kwargs"]["file_pk"]
+        self.room = f"texlab_file_{self.file_pk}"
         self.dmp = diff_match_patch()
-
         await self.channel_layer.group_add(self.room, self.channel_name)
         await self.accept()
 
@@ -18,40 +16,35 @@ class FileSyncConsumer(AsyncWebsocketConsumer):
         await self.channel_layer.group_discard(self.room, self.channel_name)
 
     @database_sync_to_async
-    def read_file(self):
-        from toto.texlab.models import LatexFile
-        lf = LatexFile.objects.select_related("vault_file").get(id=self.file_id)
-        with lf.vault_file.file.open("r") as f:
+    def read_file(self) -> str:
+        from toto.vault.models import VaultFile
+        vf = VaultFile.objects.get(pk=self.file_pk)
+        with vf.file.open("r") as f:
             return f.read()
 
     @database_sync_to_async
-    def write_file(self, content):
-        from toto.texlab.models import LatexFile
-        lf = LatexFile.objects.select_related("vault_file").get(id=self.file_id)
-        with lf.vault_file.file.open("w") as f:
+    def write_file(self, content: str) -> None:
+        from toto.vault.models import VaultFile
+        vf = VaultFile.objects.get(pk=self.file_pk)
+        with vf.file.open("w") as f:
             f.write(content)
 
     async def receive(self, text_data):
         data = json.loads(text_data)
-
-        msg_type = data.get("type", "full")
         incoming_content = data.get("content", "")
         incoming_patch = data.get("patch", "")
+        msg_type = data.get("type", "full")
 
-        # Load current file content
         current_content = await self.read_file()
 
-        # Apply patch if provided
         if incoming_patch:
             patches = self.dmp.patch_fromText(incoming_patch)
-            new_content, results = self.dmp.patch_apply(patches, current_content)
+            new_content, _ = self.dmp.patch_apply(patches, current_content)
         else:
             new_content = incoming_content
 
-        # Save updated content
         await self.write_file(new_content)
 
-        # Broadcast to others
         await self.channel_layer.group_send(
             self.room,
             {
@@ -60,14 +53,12 @@ class FileSyncConsumer(AsyncWebsocketConsumer):
                 "msg_type": msg_type,
                 "content": new_content,
                 "patch": incoming_patch,
-            }
+            },
         )
 
     async def sync_message(self, event):
-        # Don't echo back to sender
         if event["sender"] == self.channel_name:
             return
-
         await self.send(text_data=json.dumps({
             "type": event["msg_type"],
             "content": event["content"],

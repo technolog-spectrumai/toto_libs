@@ -185,7 +185,7 @@ class VaultFile(models.Model):
             return "yaml"
         if "xml" in mime:
             return "xml"
-        if "latex" in mime or mime in ("application/x-tex", "application/x-latex"):
+        if "latex" in mime or mime in ("application/x-tex", "application/x-latex", "text/x-tex"):
             return "latex"
         if "bibtex" in mime:
             return "bib"

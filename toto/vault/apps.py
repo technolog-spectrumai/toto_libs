@@ -10,3 +10,4 @@ class VaultConfig(AppConfig):
         import toto.vault.signals  # noqa: F401 — registers signal handlers
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.vault_play_plugins")
+        autodiscover_plugins("plugins.vault_editor_plugins")

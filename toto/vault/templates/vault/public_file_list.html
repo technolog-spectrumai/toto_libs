@@ -856,11 +856,14 @@
                           :title="{% trans '`Play ${item.title}`' %}">
                     <i class="fa-solid fa-play text-xs"></i>
                   </button>
-                  <button x-show="item.owner === currentUser && !item.play_url && item.t === 'file'"
-                          disabled
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-30 transition-opacity duration-150 cursor-not-allowed"
-                          :title="{% trans 'No player available for this file type' %}">
-                    <i class="fa-solid fa-play text-xs"></i>
+
+                  <!-- Open in TeX editor — latex files that are in a texlab workspace -->
+                  <button x-show="item.editor_url"
+                          @click.stop="window.location.href = item.editor_url"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Edit ${item.title} in TeX editor`' %}">
+                    <i class="fa-solid fa-pen-to-square text-xs"></i>
                   </button>
 
                   <!-- Delete trash — owner only, revealed on row hover -->
@@ -960,12 +963,12 @@
                             class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
                       <i class="fa-solid fa-play"></i>
                     </button>
-                    <button x-show="item.owner === currentUser && !item.play_url"
-                            disabled
-                            class="rounded-lg border px-2 py-1 text-xs opacity-0 group-hover:opacity-30 cursor-not-allowed transition-opacity duration-150"
-                            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                            title="{% trans "No player available for this file type" %}">
-                      <i class="fa-solid fa-play"></i>
+                    <!-- Open in TeX editor -->
+                    <button x-show="item.editor_url"
+                            @click.stop="window.location.href = item.editor_url"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Edit in TeX editor" %}">
+                      <i class="fa-solid fa-pen-to-square"></i>
                     </button>
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"

@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{{ file.vault_file.title }} – {{ workspace.name }}{% endblock %}
+{% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
 
 {% block start_script %}
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
@@ -20,17 +20,17 @@
   class="flex flex-col min-h-screen px-4 pt-6 pb-10 transition-colors duration-300">
 
   <div class="max-w-7xl w-full mx-auto flex flex-col gap-3 flex-1"
-       data-url-compile="{% url 'texlab:compile_latex' file_id=file.id %}"
-       data-url-history="{% url 'texlab:compile_history' file_id=file.id %}"
+       data-url-compile="{% url 'texlab:compile_latex' file_pk=vault_file.pk %}"
+       data-url-history="{% url 'texlab:compile_history' file_pk=vault_file.pk %}"
        data-url-status-base="{% url 'texlab:compile_status' run_id=0 %}">
 
     <!-- ── Breadcrumb ──────────────────────────────────────── -->
     <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
-      <a href="{% url 'texlab:workspace_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Workspaces" %}</a>
+      <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
-      <a href="{% url 'texlab:workspace_detail' workspace.slug %}" class="hover:opacity-90 underline underline-offset-2">{{ workspace.name }}</a>
+      <span class="opacity-70">{{ directory_name }}</span>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
-      <span class="font-semibold opacity-100">{{ file.vault_file.title }}</span>
+      <span class="font-semibold opacity-100">{{ vault_file.title }}</span>
     </nav>
 
     <!-- ── Toolbar ─────────────────────────────────────────── -->
@@ -40,9 +40,9 @@
       <!-- Left: file label -->
       <div class="flex items-center gap-2 min-w-0 flex-1">
         <i class="fa-solid fa-file-code opacity-50 shrink-0"></i>
-        <span class="font-mono text-sm font-semibold truncate">{{ file.vault_file.title }}</span>
+        <span class="font-mono text-sm font-semibold truncate">{{ vault_file.title }}</span>
         <span class="shrink-0 rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-50">
-          {{ file.file_type }}
+          {{ vault_file.file_type }}
         </span>
         <span data-active-target-badge
               class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
@@ -92,18 +92,11 @@
         </button>
         {% endif %}
 
-        <!-- Delete -->
-        <button id="delete-file" title="{% trans 'Delete file' %}"
-          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
-          class="toolbar-btn-primary">
-          <i class="fa-solid fa-trash"></i>
-        </button>
-
       </div>
     </div>
 
     <!-- ── Editor ──────────────────────────────────────────── -->
-    <div class="flex-1 relative" data-functional-zone-id="tex-file-{{ file.id }}">
+    <div class="flex-1 relative" data-functional-zone-id="tex-file-{{ vault_file.pk }}">
       <div id="editor"
            class="w-full rounded-xl border"
            style="height: calc(100vh - 14rem);"
@@ -151,7 +144,7 @@
           </div>
         </div>
 
-        <!-- Workflow link — always right-aligned, shown when workflow_run_id available -->
+        <!-- Workflow link -->
         <a id="status-workflow-link" href="#" target="_blank"
            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/50 text-text-main-dark' : 'border-accent-2 bg-primary-bg-light/50 text-text-main-light'"
            class="hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
@@ -171,7 +164,6 @@
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-xl border shadow-sm overflow-hidden" style="flex-shrink: 0;">
 
-      <!-- Toggle header -->
       <button @click="open = !open"
               class="w-full flex items-center justify-between gap-3 px-4 py-3 text-sm transition hover:opacity-80">
         <div class="flex items-center gap-2">
@@ -184,41 +176,32 @@
            :class="open ? 'rotate-180' : ''"></i>
       </button>
 
-      <!-- Rows -->
       <div x-show="open" x-transition x-cloak class="border-t border-current/10">
         {% for run in compile_runs %}
         <div :class="darkMode ? 'border-accent-1/30 hover:bg-primary-bg-dark/30' : 'border-accent-2/30 hover:bg-primary-bg-light/30'"
              class="flex items-center gap-3 px-4 py-2.5 border-b last:border-0 transition-colors">
 
-          <!-- Status dot -->
           <span class="h-2 w-2 rounded-full shrink-0
             {% if run.status == 'success' %}bg-success-light{% elif run.status == 'failed' %}bg-warn-light{% elif run.status == 'running' %}bg-accent-light{% else %}bg-current opacity-30{% endif %}">
           </span>
 
-          <!-- Status label -->
           <span class="text-xs font-semibold w-14 shrink-0
             {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-warn-light{% else %}opacity-60{% endif %}">
             {{ run.status }}
           </span>
 
-          <!-- Time -->
           <span class="text-xs opacity-45 flex-1">{{ run.started_at|date:"Y-m-d H:i" }}</span>
 
-          <!-- Duration -->
           {% if run.finished_at %}
-          <span class="text-xs opacity-40 shrink-0">
-            {{ run.started_at|timesince:run.finished_at }}
-          </span>
+          <span class="text-xs opacity-40 shrink-0">{{ run.started_at|timesince:run.finished_at }}</span>
           {% endif %}
 
-          <!-- PDF link -->
           {% if run.pdf_url %}
           <a href="{{ run.pdf_url }}" target="_blank"
              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
              class="text-xs underline underline-offset-2 shrink-0 hover:opacity-80">{% trans "PDF" %}</a>
           {% endif %}
 
-          <!-- Workflow run link -->
           {% if run.workflow_run_id %}
           <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}" target="_blank"
              class="text-xs underline underline-offset-2 shrink-0 opacity-45 hover:opacity-80">
@@ -242,10 +225,9 @@
   <div class="w-full max-w-2xl rounded-2xl border shadow-2xl"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
 
-    <!-- Modal header -->
     <div class="flex items-center justify-between gap-4 border-b border-current/10 px-6 py-4">
       <div>
-        <p class="text-[10px] font-semibold uppercase tracking-widest opacity-50">Bucket · {{ workspace.bucket.name }}</p>
+        <p class="text-[10px] font-semibold uppercase tracking-widest opacity-50">{{ vault_file.bucket.name }}</p>
         <h2 class="mt-0.5 flex items-center gap-2 text-lg font-bold">
           <i class="fa-solid fa-images opacity-70"></i>{% trans "Images" %}</h2>
       </div>
@@ -260,19 +242,16 @@
       </div>
     </div>
 
-    <!-- Hint -->
     <p class="px-6 pt-3 text-xs opacity-55">{% trans "Click an image to insert" %}<code class="font-mono">\includegraphics[width=\linewidth]{…}</code> at cursor.
       Add <code class="font-mono">\usepackage{graphicx}</code> to your preamble.
     </p>
 
-    <!-- List -->
     <div id="images-grid"
          class="flex flex-col overflow-y-auto px-6 py-2 divide-y divide-current/10"
          style="max-height: 55vh;">
       <span class="text-center text-xs opacity-40 italic py-8">{% trans "Loading…" %}</span>
     </div>
 
-    <!-- Footer -->
     <div class="border-t border-current/10 px-6 py-3 flex justify-between items-center">
       <span id="images-count" class="text-xs opacity-50"></span>
       <button id="close-images-modal-footer"
@@ -313,7 +292,6 @@
 
 {% block end_script %}
 <script>
-// ── Sync module ────────────────────────────────────────────
 const TexSync = (() => {
   const dmp = new diff_match_patch();
   let lastContent = "";
@@ -356,7 +334,6 @@ const TexSync = (() => {
 </script>
 
 <script>
-// ── Editor setup ───────────────────────────────────────────
 const editor = ace.edit("editor");
 editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
 editor.session.setMode("ace/mode/latex");
@@ -366,7 +343,6 @@ window.TexLabEditor = editor;
 
 TexSync.initBaseline(editor);
 
-// ── Read-only toggle ───────────────────────────────────────
 let isReadOnly = false;
 document.getElementById("toggle-readonly").addEventListener("click", function () {
   isReadOnly = !isReadOnly;
@@ -378,7 +354,6 @@ document.getElementById("toggle-readonly").addEventListener("click", function ()
   this.title = isReadOnly ? "Read-only (click to unlock)" : "Toggle read-only";
 });
 
-// ── Sync toggle ────────────────────────────────────────────
 let syncEnabled = true;
 document.getElementById("toggle-sync").addEventListener("click", function () {
   syncEnabled = !syncEnabled;
@@ -389,30 +364,25 @@ document.getElementById("toggle-sync").addEventListener("click", function () {
   this.title = syncEnabled ? "Toggle live sync" : "Sync off (click to enable)";
 });
 
-// ── WebSocket ──────────────────────────────────────────────
-const fileId = "{{ file.id }}";
+const filePk = "{{ vault_file.pk }}";
 const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
-const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/file/${fileId}/`);
+const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/texlab/file/${filePk}/`);
 editor.session.on("change", () => TexSync.onLocalChange(editor, socket, syncEnabled));
 socket.onmessage = event => TexSync.onServerMessage(editor, syncEnabled, event);
 
-// ── Save ───────────────────────────────────────────────────
 async function saveFile() {
   const btn = document.getElementById("save-file");
   const formData = new FormData();
   formData.append("content", editor.getValue());
   btn.style.opacity = "0.5";
   try {
-    const res = await fetch("{% url 'texlab:save_file' file_id=file.id %}", {
+    const res = await fetch("{% url 'texlab:save_file' file_pk=vault_file.pk %}", {
       method: "POST", body: formData,
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
     const data = await res.json();
-    if (data.status !== "ok") {
-      alert(data.error || "Failed to save file.");
-      return false;
-    }
+    if (data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
     return true;
   } catch (err) {
     alert("Save failed: " + err);
@@ -422,31 +392,10 @@ async function saveFile() {
   }
 }
 document.getElementById("save-file").addEventListener("click", saveFile);
-
-// ── Delete ─────────────────────────────────────────────────
-document.getElementById("delete-file").addEventListener("click", async () => {
-  if (!confirm("Delete this file? This cannot be undone.")) return;
-  const url = "{% url 'texlab:delete_file' file_id=0 %}".replace("0", "{{ file.id }}");
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "X-CSRFToken": "{{ csrf_token }}" },
-    });
-    const data = await res.json();
-    if (data.status === "ok") {
-      window.location.href = "{% url 'texlab:workspace_detail' workspace.slug %}";
-    } else {
-      alert("Error: " + (data.error || "Unknown error"));
-    }
-  } catch (err) {
-    alert("Request failed: " + err);
-  }
-});
 </script>
 
 {% if can_compile %}
 <script>
-// ── Compile ────────────────────────────────────────────────
 const compileBtn      = document.getElementById("compile-file");
 const statusBar       = document.getElementById("status-bar");
 const statusRun       = document.getElementById("status-running");
@@ -471,7 +420,6 @@ function showStatus(mode) {
 }
 
 function showWorkflowLink(detailUrl) {
-  console.log("[texlab] showWorkflowLink", detailUrl);
   wfLink.href = detailUrl;
   wfLink.classList.remove("hidden");
   wfLink.classList.add("inline-flex");
@@ -487,59 +435,40 @@ async function pollWorkflowRun(workflowRunId, compileRunId) {
   const detailUrl = WORKFLOW_DETAIL_URL.replace("{id}", workflowRunId);
   showWorkflowLink(detailUrl);
 
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt++) {
     const res  = await fetch(apiUrl, { credentials: "same-origin" });
     const data = await res.json();
 
     if (data.status === "completed") {
-      const statusRes  = await fetch(COMPILE_STATUS_URL.replace("{id}", compileRunId), { credentials: "same-origin" });
-      const statusData = await statusRes.json();
-      if (statusData.pdf_url) statusPdf.href = statusData.pdf_url;
+      const sr   = await fetch(COMPILE_STATUS_URL.replace("{id}", compileRunId), { credentials: "same-origin" });
+      const sd   = await sr.json();
+      if (sd.pdf_url) statusPdf.href = sd.pdf_url;
       showStatus("ok");
       return;
     }
-
-    if (data.status === "failed") {
-      window.location.href = detailUrl;
-      return;
-    }
+    if (data.status === "failed") { window.location.href = detailUrl; return; }
 
     statusRunDetail.textContent = data.status || "running";
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(r => setTimeout(r, 1500));
   }
-
   statusLog.textContent = "Compilation is still running. Check the compile history again in a moment.";
   showStatus("err");
 }
 
 async function pollCompileStatus(runId) {
   const url = COMPILE_STATUS_URL.replace("{id}", runId);
-
-  for (let attempt = 0; attempt < 120; attempt += 1) {
+  for (let attempt = 0; attempt < 120; attempt++) {
     const res  = await fetch(url, { credentials: "same-origin" });
     const data = await res.json();
-
-    if (data.status === "success") {
-      if (data.pdf_url) statusPdf.href = data.pdf_url;
-      showStatus("ok");
-      return;
-    }
-
-    if (data.status === "failed") {
-      statusLog.textContent = data.log || "Compilation failed.";
-      showStatus("err");
-      return;
-    }
-
+    if (data.status === "success") { if (data.pdf_url) statusPdf.href = data.pdf_url; showStatus("ok"); return; }
+    if (data.status === "failed")  { statusLog.textContent = data.log || "Compilation failed."; showStatus("err"); return; }
     statusRunDetail.textContent = data.status || "running";
-    await new Promise(resolve => setTimeout(resolve, 1500));
+    await new Promise(r => setTimeout(r, 1500));
   }
-
   statusLog.textContent = "Compilation is still running. Check the compile history again in a moment.";
   showStatus("err");
 }
 
-// Expandable log
 document.getElementById("status-error-header").addEventListener("click", () => {
   const isHidden = statusLog.classList.contains("hidden");
   statusLog.classList.toggle("hidden", !isHidden);
@@ -550,7 +479,6 @@ compileBtn.addEventListener("click", async () => {
   statusBar.classList.add("hidden");
   statusLog.classList.add("hidden");
   hideWorkflowLink();
-
   compileBtn.disabled = true;
   compileBtn.style.opacity = "0.5";
   compileBtn.style.filter  = "hue-rotate(40deg)";
@@ -559,21 +487,16 @@ compileBtn.addEventListener("click", async () => {
 
   try {
     const saved = await saveFile();
-    if (!saved) {
-      statusLog.textContent = "Save failed. Compilation was not started.";
-      showStatus("err");
-      return;
-    }
+    if (!saved) { statusLog.textContent = "Save failed. Compilation was not started."; showStatus("err"); return; }
 
     statusRunDetail.textContent = "queued";
-    const res  = await fetch("{% url 'texlab:compile_latex' file_id=file.id %}", {
+    const res  = await fetch("{% url 'texlab:compile_latex' file_pk=vault_file.pk %}", {
       method: "POST",
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
     const data = await res.json();
 
-    console.log("[texlab] compile response", data);
     if (data.status === "queued" && data.workflow_run_id) {
       await pollWorkflowRun(data.workflow_run_id, data.run_id);
     } else if (data.status === "queued" && data.run_id) {
@@ -596,10 +519,10 @@ compileBtn.addEventListener("click", async () => {
 });
 
 // ── Images modal ───────────────────────────────────────────
-const imagesModal   = document.getElementById("images-modal");
-const imagesGrid    = document.getElementById("images-grid");
-const imagesUrl     = "{% url 'texlab:bucket_images' workspace_slug=workspace.slug %}";
-let imagesLoaded    = false;
+const imagesModal = document.getElementById("images-modal");
+const imagesGrid  = document.getElementById("images-grid");
+const imagesUrl   = "{% url 'texlab:bucket_images' file_pk=vault_file.pk %}";
+let imagesLoaded  = false;
 
 function openModal()  { imagesModal.classList.replace("hidden", "flex"); if (!imagesLoaded) loadImages(); }
 function closeModal() { imagesModal.classList.replace("flex", "hidden"); }
@@ -614,7 +537,6 @@ async function loadImages() {
   imagesLoaded = false;
   imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">{% trans "Loading…" %}</span>';
   document.getElementById("images-count").textContent = "";
-
   let data;
   try {
     const res = await fetch(imagesUrl, { credentials: "same-origin" });
@@ -623,53 +545,30 @@ async function loadImages() {
     imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs text-warn-light py-8">{% trans "Failed to load images." %}</span>';
     return;
   }
-
   const images = (data.images || []).slice(0, 20);
-
   if (images.length === 0) {
-    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">{% trans "No images in this bucket yet." %}</span>';
+    imagesGrid.innerHTML = '<span class="col-span-full text-center text-xs opacity-40 italic py-8">{% trans "No images in this directory yet." %}</span>';
     return;
   }
-
   const total = data.images.length;
-  const countEl = document.getElementById("images-count");
-  countEl.textContent = total > 20
-    ? `Showing 20 of ${total} images`
-    : `${total} image${total === 1 ? "" : "s"}`;
-
+  document.getElementById("images-count").textContent = total > 20 ? `Showing 20 of ${total} images` : `${total} image${total === 1 ? "" : "s"}`;
   imagesGrid.innerHTML = "";
-
   for (const img of images) {
     const row = document.createElement("button");
     row.type = "button";
     row.className = "flex items-center gap-3 w-full px-1 py-2.5 text-left transition hover:opacity-70 active:scale-[0.99]";
-
-    const icon = document.createElement("i");
-    icon.className = "fa-solid fa-image text-sm opacity-40 shrink-0";
+    const icon = document.createElement("i"); icon.className = "fa-solid fa-image text-sm opacity-40 shrink-0";
     row.appendChild(icon);
-
-    const name = document.createElement("span");
-    name.textContent = img.title;
-    name.className = "font-mono text-sm flex-1 min-w-0 truncate";
+    const name = document.createElement("span"); name.textContent = img.title; name.className = "font-mono text-sm flex-1 min-w-0 truncate";
     row.appendChild(name);
-
-    const hint = document.createElement("span");
-    hint.textContent = "insert";
-    hint.className = "text-[10px] opacity-35 shrink-0";
+    const hint = document.createElement("span"); hint.textContent = "insert"; hint.className = "text-[10px] opacity-35 shrink-0";
     row.appendChild(hint);
-
     row.addEventListener("click", () => {
-      const snippet = `\\includegraphics[width=\\linewidth]{${img.title}}`;
-      if (window.TexLabEditor) {
-        window.TexLabEditor.insert(snippet);
-        window.TexLabEditor.focus();
-      }
+      if (window.TexLabEditor) { window.TexLabEditor.insert(`\\includegraphics[width=\\linewidth]{${img.title}}`); window.TexLabEditor.focus(); }
       closeModal();
     });
-
     imagesGrid.appendChild(row);
   }
-
   imagesLoaded = true;
 }
 

@@ -44,6 +44,12 @@ class PublicFileListView(TemplateView):
             plugin = VaultPlayPlugin.for_file_type(f.file_type)
             return plugin.get_play_url(f) if plugin else ""
 
+        from toto.vault.plugins import VaultEditorPlugin
+
+        def _editor_url_for(f):
+            plugin = VaultEditorPlugin.for_file_type(f.file_type)
+            return plugin.get_editor_url(f) if plugin else ""
+
         by_parent = {}
         for d in dirs:
             pid = d.parent_id
@@ -95,6 +101,7 @@ class PublicFileListView(TemplateView):
                         "raw_url": _url,
                         "bpk": f.bucket_id,
                         "play_url": _play_url_for(f),
+                        "editor_url": _editor_url_for(f),
                     })
 
         visit(None, 0)
@@ -115,6 +122,7 @@ class PublicFileListView(TemplateView):
                 "raw_url": _url,
                 "bpk": f.bucket_id,
                 "play_url": _play_url_for(f),
+                "editor_url": _editor_url_for(f),
             })
 
         return flat
@@ -341,7 +349,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             directory = gateway.directory
 
         mime, _ = mimetypes.guess_type(uploaded_file.name)
-        auto_file_type = VaultFile.detect_type(mime)
+        auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
         valid_types = {code for code, _ in VaultFile.FILE_TYPES}
         manual_type = request.POST.get("file_type", "").strip()
         file_type = manual_type if manual_type in valid_types else auto_file_type

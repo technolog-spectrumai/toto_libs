@@ -1,0 +1,184 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<script>
+  const _compileUrl   = "{% url 'texplay:latex_compile' vault_file.pk %}";
+  const _statusUrlTpl = "{% url 'texplay:latex_job_status' 0 %}";
+  const _csrfToken    = "{{ csrf_token }}";
+
+  function texplayStatusUrl(pk) {
+    return _statusUrlTpl.replace('/0/', '/' + pk + '/');
+  }
+
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('texPlay', () => ({
+      status:  "{{ latest_job.status|default:'' }}",
+      jobPk:   {{ latest_job.pk|default:'null' }},
+      pdfUrl:  "{% if latest_job.pdf_vault_file %}{{ latest_job.pdf_vault_file.get_public_url }}{% endif %}",
+      log:     "",
+      error:   "",
+
+      get isIdle()    { return !this.status || this.status === ''; },
+      get isPending() { return this.status === 'pending'; },
+      get isRunning() { return this.status === 'running' || this.status === 'pending'; },
+      get isSuccess() { return this.status === 'success'; },
+      get isFailed()  { return this.status === 'failed'; },
+      get canCompile(){ return !this.isRunning; },
+
+      async compile() {
+        this.error = '';
+        this.log   = '';
+        this.pdfUrl = '';
+        this.status = 'pending';
+        try {
+          const resp = await fetch(_compileUrl, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': _csrfToken },
+            credentials: 'same-origin',
+          });
+          if (!resp.ok) { this.status = 'failed'; this.error = `HTTP ${resp.status}`; return; }
+          const data = await resp.json();
+          this.jobPk  = data.job_pk;
+          this.status = data.status;
+          this.log    = data.log || '';
+          this.pdfUrl = data.pdf_url || '';
+          if (!data.finished) this._schedulePolll();
+        } catch (e) {
+          this.status = 'failed';
+          this.error  = String(e);
+        }
+      },
+
+      _schedulePolll() {
+        setTimeout(() => this._poll(), 2000);
+      },
+
+      async _poll() {
+        if (!this.jobPk || this.isSuccess || this.isFailed) return;
+        try {
+          const resp = await fetch(texplayStatusUrl(this.jobPk), { credentials: 'same-origin' });
+          const data = await resp.json();
+          this.status = data.status;
+          this.log    = data.log || '';
+          this.pdfUrl = data.pdf_url || '';
+          if (!data.finished) this._schedulePolll();
+        } catch (e) {
+          this._schedulePolll();
+        }
+      },
+
+      init() {
+        if (this.jobPk && (this.isPending || this.isRunning)) this._poll();
+      },
+    }));
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div x-data="texPlay()"
+     x-cloak
+     class="mx-auto max-w-3xl px-4 py-6 space-y-5">
+
+  {# Back link #}
+  <a href="{% url 'vault:public_list' %}"
+     :class="darkMode ? 'text-accent-dark hover:text-accent-dark/70' : 'text-accent-light hover:text-accent-light/70'"
+     class="inline-flex items-center gap-1.5 text-sm font-medium transition">
+    <i class="fa-solid fa-arrow-left text-xs"></i>
+    {% trans "Back to vault" %}
+  </a>
+
+  {# Header card #}
+  <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+       class="rounded-2xl border p-5 shadow-sm space-y-3">
+
+    <div class="flex items-start justify-between gap-4 flex-wrap">
+      <div class="min-w-0">
+        <div class="flex items-center gap-2 mb-1">
+          <i class="fa-solid fa-file-code opacity-50"></i>
+          <span class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "LaTeX source" %}</span>
+        </div>
+        <h1 class="text-xl font-bold leading-snug sm:text-2xl truncate">{{ vault_file.title }}</h1>
+        <div class="flex flex-wrap items-center gap-3 mt-1 text-sm opacity-50">
+          <span>{{ vault_file.owner.username }}</span>
+          <span>·</span>
+          <span>{{ vault_file.uploaded_at|date:"Y-m-d" }}</span>
+          {% if vault_file.file_size_bytes %}
+            <span>·</span>
+            <span>{{ vault_file.file_size_bytes|filesizeformat }}</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Compile button #}
+      <button @click="compile()"
+              :disabled="!canCompile"
+              :class="canCompile
+                ? (darkMode ? 'bg-accent-dark text-white hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90')
+                : 'opacity-40 cursor-not-allowed ' + (darkMode ? 'bg-accent-dark text-white' : 'bg-accent-light text-white')"
+              class="shrink-0 inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold shadow transition">
+        <i x-show="!isRunning" class="fa-solid fa-play text-xs"></i>
+        <i x-show="isRunning"  class="fa-solid fa-spinner animate-spin text-xs"></i>
+        <span x-show="!isRunning">{% trans "Compile" %}</span>
+        <span x-show="isRunning">{% trans "Compiling…" %}</span>
+      </button>
+    </div>
+
+    {# Status badge #}
+    <div x-show="status" class="flex items-center gap-2 text-sm">
+      <span x-show="isPending || isRunning"
+            class="inline-flex items-center gap-1.5 rounded-full bg-yellow-400/15 px-3 py-1 text-xs font-semibold text-yellow-500">
+        <i class="fa-solid fa-spinner animate-spin text-[10px]"></i>
+        {% trans "Running" %}
+      </span>
+      <span x-show="isSuccess"
+            class="inline-flex items-center gap-1.5 rounded-full bg-green-400/15 px-3 py-1 text-xs font-semibold text-green-500">
+        <i class="fa-solid fa-check text-[10px]"></i>
+        {% trans "Success" %}
+      </span>
+      <span x-show="isFailed"
+            class="inline-flex items-center gap-1.5 rounded-full bg-red-400/15 px-3 py-1 text-xs font-semibold text-red-500">
+        <i class="fa-solid fa-xmark text-[10px]"></i>
+        {% trans "Failed" %}
+      </span>
+    </div>
+  </div>
+
+  {# PDF result #}
+  <div x-show="pdfUrl && isSuccess"
+       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+       class="rounded-2xl border p-5 shadow-sm flex items-center justify-between gap-4">
+    <div class="flex items-center gap-3">
+      <i class="fa-solid fa-file-pdf text-2xl text-red-400"></i>
+      <div>
+        <p class="font-semibold text-sm">{% trans "Compiled PDF" %}</p>
+        <p class="text-xs opacity-50">{% trans "Ready to download" %}</p>
+      </div>
+    </div>
+    <a :href="pdfUrl"
+       :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+       class="inline-flex items-center gap-2 rounded-xl border px-4 py-2 text-sm font-semibold transition">
+      <i class="fa-solid fa-download text-xs"></i>
+      {% trans "Download" %}
+    </a>
+  </div>
+
+  {# Error / log panel #}
+  <div x-show="log || error"
+       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+       class="rounded-2xl border shadow-sm overflow-hidden">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex items-center gap-2 border-b px-4 py-2.5">
+      <i class="fa-solid fa-terminal text-xs opacity-50"></i>
+      <span class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Compiler log" %}</span>
+    </div>
+    <pre x-text="error || log"
+         class="p-4 text-xs leading-relaxed overflow-x-auto whitespace-pre-wrap break-words max-h-96 overflow-y-auto font-mono opacity-80"></pre>
+  </div>
+
+</div>
+{% endblock %}
