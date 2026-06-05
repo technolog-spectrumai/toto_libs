@@ -265,6 +265,17 @@
               <i class="fa-solid fa-circle-info"></i>
               <span>{% trans "Details" %}</span>
             </a>
+
+            <a
+              x-show="location.metadata_url"
+              :href="location.metadata_url"
+              @click.stop
+              title="{% trans 'Edit metadata' %}"
+              :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+              class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold opacity-50 transition hover:opacity-100">
+              <i class="fa-solid fa-code"></i>
+              <span>{% trans "Metadata" %}</span>
+            </a>
           </div>
         </div>
       </template>

@@ -31,6 +31,7 @@ urlpatterns = [
 
     path("addresses/new/", views.address_create, name="address_create"),
     path("routes/save/", views.route_save, name="route_save"),
+    path("metadata/<str:kind>/<int:pk>/", views.metadata_edit, name="metadata_edit"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]

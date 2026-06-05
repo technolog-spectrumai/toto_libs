@@ -6,7 +6,7 @@ from urllib.request import urlopen
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.http import require_POST
@@ -40,6 +40,20 @@ ROAD_ROUTING_ENDPOINTS = {
     "bicycle": "https://routing.openstreetmap.de/routed-bike/route/v1/driving",
     "foot": "https://routing.openstreetmap.de/routed-foot/route/v1/driving",
 }
+
+
+# URL-slug -> model for the generic JSON metadata editor.
+METADATA_MODELS = {
+    "address": Address,
+    "territory": Territory,
+    "zone": Zone,
+    "routechain": RouteChain,
+    "route": Route,
+}
+
+
+def metadata_edit_url(kind, pk):
+    return reverse("locations:metadata_edit", args=[kind, pk])
 
 
 # ---------------------------------------------------------------------
@@ -195,6 +209,7 @@ def locations_all(request):
             "detail": f"Capital: {territory.capital}" if territory.capital else "Territory",
             "geometry": geometry_json(territory.geometry),
             "geometry_json": geometry_json(territory.geometry),
+            "metadata_url": metadata_edit_url("territory", territory.pk),
         })
 
     for zone in Zone.objects.select_related("territory").all():
@@ -205,6 +220,7 @@ def locations_all(request):
             "geometry": geometry_json(zone.geometry),
             "geometry_json": geometry_json(zone.geometry),
             "detail_url": reverse("locations:zone_detail", args=[zone.pk]),
+            "metadata_url": metadata_edit_url("zone", zone.pk),
         })
 
     for chain in RouteChain.objects.prefetch_related("routes").all():
@@ -216,6 +232,7 @@ def locations_all(request):
             "detail": chain.description or f"{chain.routes.count()} routes",
             "geometry": geometry,
             "geometry_json": geometry,
+            "metadata_url": metadata_edit_url("routechain", chain.pk),
         })
 
     for route in Route.objects.select_related(
@@ -231,6 +248,7 @@ def locations_all(request):
             "geometry_json": geometry_json(route.geometry),
             "detail_url": reverse("locations:route_detail", args=[route.pk]),
             "review_url": reverse("locations:route_review", args=[route.pk]),
+            "metadata_url": metadata_edit_url("route", route.pk),
         })
 
     from toto.locations.plugins.url_plugins import LocationUrlPlugin
@@ -244,6 +262,7 @@ def locations_all(request):
             "geometry_json": geometry_json(address.geometry),
             "detail_url": reverse("locations:address_detail", args=[address.pk]),
             "review_url": LocationUrlPlugin.get_address_visit_review_url(address.pk),
+            "metadata_url": metadata_edit_url("address", address.pk),
         })
 
     from toto.locations.plugins.map_plugins import LocationMapPlugin
@@ -867,3 +886,55 @@ def api_import_layer(request):
         results.append({"slug": layer_slug, "name": layer_name, "polygon_count": created})
 
     return JsonResponse({"imported": results})
+
+
+# ---------------------------------------------------------------------
+# Per-object JSON metadata editor (Ace)
+# ---------------------------------------------------------------------
+
+@login_required
+def metadata_edit(request, kind, pk):
+    """Edit a location object's free-form JSON `metadata` field in an Ace editor.
+
+    GET  -> render the editor page.
+    POST -> validate + persist the submitted JSON (AJAX); returns JSON status.
+    """
+    model = METADATA_MODELS.get(kind)
+    if model is None:
+        raise Http404(f"Unknown location kind '{kind}'.")
+
+    obj = get_object_or_404(model, pk=pk)
+
+    if request.method == "POST":
+        raw = (request.POST.get("metadata") or "").strip()
+        try:
+            parsed = json.loads(raw) if raw else {}
+        except json.JSONDecodeError as exc:
+            return JsonResponse(
+                {"status": "error", "error": f"Invalid JSON: {exc}"}, status=400
+            )
+
+        if not isinstance(parsed, dict):
+            return JsonResponse(
+                {"status": "error", "error": "Metadata must be a JSON object ({ … })."},
+                status=400,
+            )
+
+        obj.metadata = parsed
+        obj.save(update_fields=["metadata"])
+        return JsonResponse({"status": "ok"})
+
+    context = {
+        "kind": kind,
+        "object_label": str(obj),
+        "object_type": model.__name__,
+        "metadata_json": json.dumps(obj.metadata or {}, indent=2, ensure_ascii=False),
+        "save_url": reverse("locations:metadata_edit", args=[kind, pk]),
+        "back_url": reverse("locations:locations_all"),
+    }
+
+    return render(
+        request,
+        "locations/metadata_edit.html",
+        PageProcessor().decorate(context, request),
+    )

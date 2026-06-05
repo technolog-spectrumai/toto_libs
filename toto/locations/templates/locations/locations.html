@@ -1349,50 +1349,30 @@
     }
   }
 
+  const POPUP_BTN_STYLE = "display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;";
+
   function popupContent(item) {
     const type = item.type;
     const name = item.name;
     const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
 
+    const actions = [];
+
     if (item.review_url) {
-      return `
-        ${title}
-        <div style="margin-top: 8px;">
-          <a
-            href="${escapeAttribute(item.review_url)}"
-            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
-            <i class="fa-solid fa-star-half-stroke"></i>{% trans "Review" %}</a>
-        </div>
-      `;
+      actions.push(`<a href="${escapeAttribute(item.review_url)}" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-star-half-stroke"></i>{% trans "Review" %}</a>`);
+    } else if (item.detail_url) {
+      actions.push(`<a href="${escapeAttribute(item.detail_url)}" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-arrow-right"></i>{% trans "View" %}</a>`);
+    } else if (type === "Address") {
+      actions.push(`<button type="button" data-location-name="${escapeAttribute(name)}" onclick="zoomToAddressFromPopup(this)" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>`);
     }
 
-    if (item.detail_url) {
-      return `
-        ${title}
-        <div style="margin-top: 8px;">
-          <a
-            href="${escapeAttribute(item.detail_url)}"
-            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;">
-            <i class="fa-solid fa-arrow-right"></i>{% trans "View" %}</a>
-        </div>
-      `;
+    if (item.metadata_url) {
+      actions.push(`<a href="${escapeAttribute(item.metadata_url)}" style="${POPUP_BTN_STYLE}; opacity: 0.7;" title="{% trans 'Edit metadata' %}"><i class="fa-solid fa-code"></i>{% trans "Metadata" %}</a>`);
     }
 
-    if (type === "Address") {
-      return `
-        ${title}
-        <div style="margin-top: 8px;">
-          <button
-            type="button"
-            data-location-name="${escapeAttribute(name)}"
-            onclick="zoomToAddressFromPopup(this)"
-            style="display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer;">
-            <i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>
-        </div>
-      `;
-    }
+    if (!actions.length) return title;
 
-    return title;
+    return `${title}<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${actions.join("")}</div>`;
   }
 
   function zoomToAddressFromPopup(button) {

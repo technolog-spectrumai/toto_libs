@@ -38,6 +38,11 @@ class Address(DomainEntity):
         verbose_name="Apartment Number",
     )
     geometry = models.PointField(srid=SRID, null=True, blank=True)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form JSON metadata for this location.",
+    )
 
     def __str__(self):
         parts = []
@@ -78,6 +83,11 @@ class Territory(DomainEntity):
         blank=True,
         related_name="territory_capitals"
     )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form JSON metadata for this location.",
+    )
 
     def __str__(self):
         return self.name
@@ -93,6 +103,11 @@ class Zone(DomainEntity):
         null=True,
         blank=True,
     )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form JSON metadata for this location.",
+    )
 
     def __str__(self):
         return self.name
@@ -101,6 +116,11 @@ class Zone(DomainEntity):
 class RouteChain(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form JSON metadata for this location.",
+    )
 
     def __str__(self):
         return self.name
@@ -131,6 +151,11 @@ class Route(DomainEntity):
         null=True,
         blank=True,
         related_name="route_ends"
+    )
+    metadata = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Free-form JSON metadata for this location.",
     )
 
     def __str__(self):

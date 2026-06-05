@@ -1,0 +1,155 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block locations_title %}{% trans "Edit metadata" %}{% endblock %}
+
+{% block locations_start_script %}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<style>
+  .meta-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.8rem; border-radius: 0.5rem;
+    font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
+  }
+  .meta-btn:hover { opacity: 0.85; }
+  .meta-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+</style>
+{% endblock %}
+
+{% block locations_content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex max-w-5xl flex-col gap-4">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="min-w-0">
+        <a href="{{ back_url }}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide hover:underline">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Back to map" %}
+        </a>
+        <h1 class="mt-2 flex items-center gap-2 text-2xl font-bold sm:text-3xl">
+          <i class="fa-solid fa-code opacity-60"></i>{% trans "Metadata" %}
+        </h1>
+        <p class="mt-1 break-words text-sm opacity-70">
+          <span class="rounded border border-current/15 px-1.5 py-px text-[10px] font-semibold uppercase tracking-wide opacity-80">{{ object_type }}</span>
+          <span class="font-semibold">{{ object_label }}</span>
+        </p>
+      </div>
+
+      <div class="flex items-center gap-2">
+        <button id="meta-format" type="button"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="meta-btn border">
+          <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Format" %}
+        </button>
+        <button id="meta-save" type="button"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="meta-btn">
+          <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}
+        </button>
+      </div>
+    </header>
+
+    <!-- Status -->
+    <div id="meta-status" class="hidden rounded-lg border px-3 py-2 text-sm"></div>
+
+    <!-- Editor -->
+    <div
+      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+      class="overflow-hidden rounded-xl border shadow-sm">
+      <div id="meta-editor" style="height: calc(100vh - 16rem); min-height: 360px;"></div>
+    </div>
+
+    <p class="text-xs opacity-55">{% trans "Stored as a JSON object on this location. Must be valid JSON." %}</p>
+  </div>
+</div>
+{% endblock %}
+
+{% block locations_end_script %}
+<script>
+  (function () {
+    const darkMode = localStorage.getItem("darkMode") === "true";
+
+    ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+    const editor = ace.edit("meta-editor");
+    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+    editor.session.setMode("ace/mode/json");
+    editor.setValue(`{{ metadata_json|escapejs }}`, -1);
+    editor.setOptions({ fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2 });
+
+    const statusEl = document.getElementById("meta-status");
+    function showStatus(message, ok) {
+      statusEl.textContent = message;
+      statusEl.classList.remove("hidden");
+      statusEl.style.borderColor = ok ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)";
+      statusEl.style.background = ok ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)";
+    }
+
+    // Prettify the current JSON in-place.
+    document.getElementById("meta-format").addEventListener("click", function () {
+      try {
+        const parsed = JSON.parse(editor.getValue() || "{}");
+        editor.setValue(JSON.stringify(parsed, null, 2), -1);
+        statusEl.classList.add("hidden");
+      } catch (err) {
+        showStatus("{% trans 'Cannot format — invalid JSON:' %} " + err.message, false);
+      }
+    });
+
+    const saveBtn = document.getElementById("meta-save");
+    saveBtn.addEventListener("click", async function () {
+      const raw = editor.getValue().trim();
+
+      // Validate client-side first for instant feedback.
+      try {
+        const parsed = JSON.parse(raw || "{}");
+        if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+          showStatus("{% trans 'Metadata must be a JSON object ({ … }).' %}", false);
+          return;
+        }
+      } catch (err) {
+        showStatus("{% trans 'Invalid JSON:' %} " + err.message, false);
+        return;
+      }
+
+      saveBtn.disabled = true;
+      try {
+        const body = new FormData();
+        body.append("metadata", raw);
+        const res = await fetch("{{ save_url }}", {
+          method: "POST",
+          body: body,
+          headers: { "X-CSRFToken": "{{ csrf_token }}" },
+          credentials: "same-origin",
+        });
+        const data = await res.json();
+        if (data.status === "ok") {
+          showStatus("{% trans 'Saved.' %}", true);
+        } else {
+          showStatus(data.error || "{% trans 'Save failed.' %}", false);
+        }
+      } catch (err) {
+        showStatus("{% trans 'Save failed:' %} " + err, false);
+      } finally {
+        saveBtn.disabled = false;
+      }
+    });
+
+    // Ctrl/Cmd+S saves.
+    document.addEventListener("keydown", function (e) {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") {
+        e.preventDefault();
+        saveBtn.click();
+      }
+    });
+  })();
+</script>
+{% endblock %}
