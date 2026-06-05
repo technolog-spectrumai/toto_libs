@@ -13,10 +13,14 @@ from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
 from .access import accessible_bucket_files, user_can_access_vault_file
-from .factory import FFmpegCommandFactory, OPERATIONS, OPERATION_LABELS
+from .factory import (
+    FFmpegCommandFactory, OPERATIONS, OPERATION_LABELS, SECONDARY_OPERATIONS,
+)
 from .forms import (
     CompressForm, CutForm, ExtractMp3Form,
     GifForm, ResizeForm, ThumbnailForm, ConcatForm,
+    CropForm, ChangeFpsForm, RemoveAudioForm, ReplaceAudioForm,
+    AddSubtitlesForm, AddWatermarkForm, VstackForm, HstackForm,
 )
 from .models import MediaJob, Workspace
 
@@ -395,23 +399,39 @@ def enqueue_concat(request, file_id):
 _OP_FORMS = {
     "compress": CompressForm,
     "resize": ResizeForm,
+    "crop": CropForm,
+    "change_fps": ChangeFpsForm,
     "cut": CutForm,
     "extract_mp3": ExtractMp3Form,
+    "remove_audio": RemoveAudioForm,
+    "replace_audio": ReplaceAudioForm,
+    "add_subtitles": AddSubtitlesForm,
+    "add_watermark": AddWatermarkForm,
     "thumbnail": ThumbnailForm,
     "gif": GifForm,
+    "vstack": VstackForm,
+    "hstack": HstackForm,
     "concat": ConcatForm,
 }
 
 # Default params used to seed the YAML editor and to fill omitted keys.
 _OP_DEFAULTS = {
-    "compress":    {"quality": "medium", "output_name": "compressed"},
-    "resize":      {"preserve_aspect_ratio": True, "width": 1280, "output_name": "resized"},
-    "cut":         {"start_time": "00:00:00", "end_time": "00:00:30", "output_name": "clip"},
-    "extract_mp3": {"bitrate": "192k", "output_name": "audio"},
-    "thumbnail":   {"at_time": "00:00:01", "output_name": "thumbnail"},
-    "gif":         {"start_time": "00:00:00", "duration": 5, "fps": 12, "width": 480, "output_name": "animation"},
-    "concat":      {"reencode": False, "output_name": "merged", "extra_file_ids": []},
-    "probe":       {},
+    "compress":      {"quality": "medium", "output_name": "compressed"},
+    "resize":        {"preserve_aspect_ratio": True, "width": 1280, "output_name": "resized"},
+    "crop":          {"width": 640, "height": 480, "x": 0, "y": 0, "output_name": "cropped"},
+    "change_fps":    {"fps": 30, "output_name": "fps"},
+    "cut":           {"start_time": "00:00:00", "end_time": "00:00:30", "output_name": "clip"},
+    "extract_mp3":   {"bitrate": "192k", "output_name": "audio"},
+    "remove_audio":  {"output_name": "muted"},
+    "replace_audio": {"output_name": "dubbed", "extra_file_ids": []},
+    "add_subtitles": {"output_name": "subtitled", "extra_file_ids": []},
+    "add_watermark": {"position": "bottom-right", "output_name": "watermarked", "extra_file_ids": []},
+    "thumbnail":     {"at_time": "00:00:01", "output_name": "thumbnail"},
+    "gif":           {"start_time": "00:00:00", "duration": 5, "fps": 12, "width": 480, "output_name": "animation"},
+    "vstack":        {"output_name": "vstack", "extra_file_ids": []},
+    "hstack":        {"output_name": "hstack", "extra_file_ids": []},
+    "concat":        {"reencode": False, "output_name": "merged", "extra_file_ids": []},
+    "probe":         {},
 }
 
 # YAML keys that could smuggle a filesystem path are never trusted.
@@ -581,7 +601,8 @@ def command_builder(request, file_id):
         _bucket_file_row(f)
         for f in accessible_bucket_files(
             request.user, vf.bucket,
-            exclude_pk=vf.pk, file_types=["video", "audio", "image"],
+            # text included so subtitle files (.srt/.vtt) can be picked for add_subtitles
+            exclude_pk=vf.pk, file_types=["video", "audio", "image", "text"],
         ).order_by("title")[:200]
     ]
 
@@ -625,6 +646,17 @@ def command_builder(request, file_id):
             context["selected_ids"] = [str(i) for i in ids]
             return _render(request, "videomant/command_builder.html", context)
 
+        # Operations that consume extra inputs require the right file count.
+        if op in SECONDARY_OPERATIONS and len(ids) != 1:
+            context["errors"] = [
+                "This operation needs exactly one additional file selected from the bucket."
+            ]
+            context["selected_ids"] = [str(i) for i in ids]
+            return _render(request, "videomant/command_builder.html", context)
+        if op == "concat" and len(ids) < 1:
+            context["errors"] = ["Select at least one additional file to concatenate."]
+            return _render(request, "videomant/command_builder.html", context)
+
         spec = FFmpegCommandFactory().build(
             op,
             input_name=display_input_name(vf),
@@ -633,7 +665,12 @@ def command_builder(request, file_id):
         )
 
         if action == "run":
-            input_files = ([vf.id] + ids) if op == "concat" else []
+            if op == "concat":
+                input_files = [vf.id] + ids
+            elif op in SECONDARY_OPERATIONS:
+                input_files = [vf.id, ids[0]]
+            else:
+                input_files = []
             job = _make_job(request, f"videomant.{op}", vf, dict(cleaned), input_files=input_files)
             return _dispatch_and_redirect(request, job)
 

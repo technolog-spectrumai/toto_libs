@@ -156,6 +156,100 @@ class GifForm(forms.Form):
     )
 
 
+class CropForm(forms.Form):
+    width = forms.IntegerField(
+        initial=640,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "640"})),
+    )
+    height = forms.IntegerField(
+        initial=480,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "480"})),
+    )
+    x = forms.IntegerField(
+        initial=0, required=False,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "0"})),
+    )
+    y = forms.IntegerField(
+        initial=0, required=False,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "0"})),
+    )
+    output_name = forms.CharField(
+        initial="cropped",
+        widget=forms.TextInput(attrs=_w({"placeholder": "cropped"})),
+    )
+
+    def clean(self):
+        data = super().clean()
+        data["x"] = data.get("x") or 0
+        data["y"] = data.get("y") or 0
+        return data
+
+
+class ChangeFpsForm(forms.Form):
+    fps = forms.IntegerField(
+        initial=30,
+        widget=forms.NumberInput(attrs=_w({"placeholder": "30"})),
+    )
+    output_name = forms.CharField(
+        initial="fps",
+        widget=forms.TextInput(attrs=_w({"placeholder": "fps"})),
+    )
+
+
+class RemoveAudioForm(forms.Form):
+    output_name = forms.CharField(
+        initial="muted",
+        widget=forms.TextInput(attrs=_w({"placeholder": "muted"})),
+    )
+
+
+class ReplaceAudioForm(forms.Form):
+    output_name = forms.CharField(
+        initial="dubbed",
+        widget=forms.TextInput(attrs=_w({"placeholder": "dubbed"})),
+    )
+
+
+class AddSubtitlesForm(forms.Form):
+    output_name = forms.CharField(
+        initial="subtitled",
+        widget=forms.TextInput(attrs=_w({"placeholder": "subtitled"})),
+    )
+
+
+class AddWatermarkForm(forms.Form):
+    POSITION_CHOICES = [
+        ("top-left", "Top left"),
+        ("top-right", "Top right"),
+        ("bottom-left", "Bottom left"),
+        ("bottom-right", "Bottom right (default)"),
+        ("center", "Center"),
+    ]
+    position = forms.ChoiceField(
+        choices=POSITION_CHOICES,
+        initial="bottom-right",
+        widget=forms.Select(attrs=_w()),
+    )
+    output_name = forms.CharField(
+        initial="watermarked",
+        widget=forms.TextInput(attrs=_w({"placeholder": "watermarked"})),
+    )
+
+
+class VstackForm(forms.Form):
+    output_name = forms.CharField(
+        initial="vstack",
+        widget=forms.TextInput(attrs=_w({"placeholder": "vstack"})),
+    )
+
+
+class HstackForm(forms.Form):
+    output_name = forms.CharField(
+        initial="hstack",
+        widget=forms.TextInput(attrs=_w({"placeholder": "hstack"})),
+    )
+
+
 class ConcatForm(forms.Form):
     """
     When bucket_files is provided (workspace context), renders a multi-select

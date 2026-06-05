@@ -8,15 +8,11 @@ from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-from toto.celery_utils import celery_available
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
+from .dispatch import create_service_run, dispatch_run
 from .models import FileServiceRun
 from .plugin import FileServicePlugin
-
-# Media services handled by the videomant command builder instead of running
-# ffmpeg/ffprobe directly from a free-text arg string.
-MEDIA_BUILDER_SERVICES = {"ffmpeg", "ffprobe"}
 
 
 @login_required
@@ -44,59 +40,28 @@ def run_service(request, file_pk):
     if plugin is None or not plugin.accepts(vault_file):
         return JsonResponse({"error": "Service is not available for this file."}, status=400)
 
-    # Media operations are routed to the videomant command builder, where the
-    # user assembles and previews the ffmpeg/ffprobe command before running.
-    if service_key in MEDIA_BUILDER_SERVICES:
-        from toto.videomant.access import user_can_access_vault_file
+    # Builder-backed services collect arguments on a dedicated app page; we just
+    # verify access and hand the user off there.
+    if plugin.builder:
+        from .access import user_can_access_vault_file
         if not user_can_access_vault_file(request.user, vault_file):
             return JsonResponse({"error": "You do not have access to this file."}, status=403)
-        builder_url = (
-            reverse("videomant:command_builder", args=[vault_file.pk])
-            + f"?service={service_key}"
-        )
-        return JsonResponse({"status": "redirect", "redirect_url": builder_url})
+        url = plugin.builder_url(vault_file)
+        if url:
+            return JsonResponse({"status": "redirect", "redirect_url": url})
 
     if plugin.args_required and not args.strip():
         return JsonResponse({"error": f"{plugin.args_label} are required."}, status=400)
 
-    run = FileServiceRun.objects.create(
-        service_key=service_key,
-        owner=request.user,
-        input_file=vault_file,
-        bucket=vault_file.bucket,
-        args=args,
-        status=FileServiceRun.PENDING,
-    )
-
+    run = create_service_run(request.user, vault_file, service_key, args)
     run_url = reverse("fileservices:run_detail", args=[run.id])
-
-    if celery_available():
-        from .tasks import run_file_service_task
-        from toto.workflows.models import Workflow, WorkflowRun
-        from toto.workflows.tasks import start_workflow_run_task
-
-        wf = Workflow.objects.filter(slug="fileservices-run").first()
-        if wf is not None:
-            wf_run = WorkflowRun.objects.create(
-                workflow=wf,
-                input_data={"data": {"run_id": run.id}},
-            )
-            run.workflow_run = wf_run
-            run.save(update_fields=["workflow_run"])
-            start_workflow_run_task.delay(wf_run.pk)
-            return JsonResponse({"status": "queued", "run_id": run.id, "run_url": run_url,
-                                 "workflow_run_id": wf_run.id})
-
-        run_file_service_task.delay(run.id)
-        return JsonResponse({"status": "queued", "run_id": run.id, "run_url": run_url})
-
-    # Synchronous fallback when no worker is available.
-    from .runner import execute_run
     try:
-        execute_run(run.id)
+        queued = dispatch_run(run)
     except Exception as exc:
         return JsonResponse({"status": "failed", "run_id": run.id, "run_url": run_url,
                              "error": str(exc)}, status=200)
+    if queued:
+        return JsonResponse({"status": "queued", "run_id": run.id, "run_url": run_url})
     return JsonResponse({"status": "ok", "run_id": run.id, "run_url": run_url, "ran_inline": True})
 
 

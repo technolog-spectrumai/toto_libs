@@ -15,6 +15,11 @@ class OcrFileServicePlugin(FileServicePlugin):
     args_label = "Language code(s)"
     args_placeholder = "eng    (or eng+pol)"
     args_required = False
+    builder = True
+
+    def builder_url(self, vault_file) -> str:
+        from django.urls import reverse
+        return reverse("ocr:run_page", args=[vault_file.pk])
 
     def execute(self, run) -> list[int]:
         from toto.ocr.ocr import OcrHelper

@@ -1,9 +1,9 @@
 """
 fileservices test suite.
 
-Covers the media-service redirect: selecting ffmpeg/ffprobe on a vault file
-routes the user to the videomant command builder instead of running ffmpeg
-directly from a free-text arg string.
+Covers the builder-service redirect: the consolidated "videomant" media service,
+plus transcription (audio) and ocr (image), route the user to their app pages
+instead of running inline from a free-text arg string.
 """
 
 import os
@@ -15,7 +15,7 @@ from django.urls import reverse
 
 
 @override_settings(MEDIA_ROOT="/tmp/media_test_fs")
-class MediaServiceRedirectTests(TestCase):
+class BuilderServiceRedirectTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user("fs_owner", password="pass")
         self.stranger = User.objects.create_user("fs_stranger", password="pass")
@@ -24,40 +24,70 @@ class MediaServiceRedirectTests(TestCase):
         from toto.vault.models import Bucket, VaultFile
         self.bucket = Bucket.objects.create(name="FS Bucket", owner=self.owner, slug="fs-bucket")
         os.makedirs("/tmp/media_test_fs/vault/files", exist_ok=True)
-        self.vf = VaultFile(owner=self.owner, title="clip.mp4", file_type="video", bucket=self.bucket)
-        self.vf.file.save("clip.mp4", ContentFile(b"x"), save=True)
+        self.video = self._vf("clip.mp4", "video")
+        self.audio = self._vf("song.mp3", "audio")
+        self.image = self._vf("scan.png", "image")
 
-    def _run_url(self, vf=None):
-        return reverse("fileservices:run_service", args=[(vf or self.vf).pk])
+    def _vf(self, name, file_type, *, owner=None, is_public=False):
+        from toto.vault.models import VaultFile
+        vf = VaultFile(owner=owner or self.owner, title=name, file_type=file_type,
+                       bucket=self.bucket, is_public=is_public)
+        vf.file.save(name, ContentFile(b"x"), save=True)
+        return vf
 
-    def test_ffmpeg_redirects_to_builder(self):
+    def _run_url(self, vf):
+        return reverse("fileservices:run_service", args=[vf.pk])
+
+    def test_videomant_service_redirects_to_builder(self):
         self.client.login(username="fs_owner", password="pass")
-        resp = self.client.post(self._run_url(), {"service_key": "ffmpeg"})
+        resp = self.client.post(self._run_url(self.video), {"service_key": "videomant"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "redirect")
-        self.assertIn(f"/videomant/vault/{self.vf.pk}/builder/", data["redirect_url"])
-        self.assertIn("service=ffmpeg", data["redirect_url"])
+        self.assertIn(f"/videomant/vault/{self.video.pk}/builder/", data["redirect_url"])
 
-    def test_ffprobe_redirects_to_builder(self):
+    def test_transcription_audio_redirects_to_app(self):
         self.client.login(username="fs_owner", password="pass")
-        resp = self.client.post(self._run_url(), {"service_key": "ffprobe"})
+        resp = self.client.post(self._run_url(self.audio), {"service_key": "transcription"})
         data = resp.json()
         self.assertEqual(data["status"], "redirect")
-        self.assertIn("service=ffprobe", data["redirect_url"])
+        self.assertIn(f"/transcription/vault/{self.audio.pk}/", data["redirect_url"])
+
+    def test_ocr_image_redirects_to_app(self):
+        self.client.login(username="fs_owner", password="pass")
+        resp = self.client.post(self._run_url(self.image), {"service_key": "ocr"})
+        data = resp.json()
+        self.assertEqual(data["status"], "redirect")
+        self.assertIn(f"/ocr/vault/{self.image.pk}/", data["redirect_url"])
+
+    def test_ffmpeg_and_ffprobe_hidden_from_menu(self):
+        self.client.login(username="fs_owner", password="pass")
+        resp = self.client.get(reverse("fileservices:services_for_file", args=[self.video.pk]))
+        keys = {s["key"] for s in resp.json()["services"]}
+        self.assertEqual(keys, {"videomant"})  # ffmpeg/ffprobe collapsed into one entry
+
+    def test_transcription_not_offered_for_video(self):
+        self.client.login(username="fs_owner", password="pass")
+        resp = self.client.get(reverse("fileservices:services_for_file", args=[self.video.pk]))
+        keys = {s["key"] for s in resp.json()["services"]}
+        self.assertNotIn("transcription", keys)
 
     def test_redirect_does_not_create_a_run(self):
         from .models import FileServiceRun
         self.client.login(username="fs_owner", password="pass")
         before = FileServiceRun.objects.count()
-        self.client.post(self._run_url(), {"service_key": "ffmpeg"})
+        self.client.post(self._run_url(self.video), {"service_key": "videomant"})
         self.assertEqual(FileServiceRun.objects.count(), before)  # builder defers the job
 
     def test_inaccessible_file_is_denied(self):
-        from toto.vault.models import VaultFile
-        private = VaultFile(owner=self.owner, title="private.mp4", file_type="video",
-                            bucket=self.bucket, is_public=False)
-        private.file.save("private.mp4", ContentFile(b"x"), save=True)
+        private = self._vf("private.mp4", "video", is_public=False)
+        # Re-own to owner already; make a stranger who cannot access a non-public file
+        # in a bucket they do not own.
+        from toto.vault.models import Bucket, VaultFile
+        other_bucket = Bucket.objects.create(name="Other", owner=self.owner, slug="fs-other")
+        secret = VaultFile(owner=self.owner, title="secret.mp4", file_type="video",
+                           bucket=other_bucket, is_public=False)
+        secret.file.save("secret.mp4", ContentFile(b"x"), save=True)
         self.client.login(username="fs_stranger", password="pass")
-        resp = self.client.post(self._run_url(private), {"service_key": "ffmpeg"})
+        resp = self.client.post(self._run_url(secret), {"service_key": "videomant"})
         self.assertEqual(resp.status_code, 403)

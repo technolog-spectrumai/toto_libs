@@ -13,6 +13,7 @@ The runner resolves trusted paths separately at execution time.
 
 from __future__ import annotations
 
+import os
 import shlex
 from dataclasses import dataclass, field
 
@@ -24,10 +25,18 @@ from . import builders
 OPERATIONS: tuple[str, ...] = (
     "compress",
     "resize",
+    "crop",
+    "change_fps",
     "cut",
     "extract_mp3",
+    "remove_audio",
+    "replace_audio",
+    "add_subtitles",
+    "add_watermark",
     "thumbnail",
     "gif",
+    "vstack",
+    "hstack",
     "concat",
     "probe",
 )
@@ -35,13 +44,26 @@ OPERATIONS: tuple[str, ...] = (
 OPERATION_LABELS: dict[str, str] = {
     "compress": "Compress",
     "resize": "Resize",
+    "crop": "Crop",
+    "change_fps": "Change FPS",
     "cut": "Cut / trim",
     "extract_mp3": "Extract MP3",
+    "remove_audio": "Remove audio",
+    "replace_audio": "Replace audio",
+    "add_subtitles": "Add subtitles",
+    "add_watermark": "Add watermark",
     "thumbnail": "Thumbnail",
     "gif": "Animated GIF",
+    "vstack": "Stack vertically",
+    "hstack": "Stack horizontally",
     "concat": "Concatenate",
-    "probe": "Probe (ffprobe)",
+    "probe": "Probe → JSON file",
 }
+
+# Operations that consume exactly one extra (secondary) input file.
+SECONDARY_OPERATIONS: frozenset[str] = frozenset({
+    "replace_audio", "add_subtitles", "add_watermark", "vstack", "hstack",
+})
 
 
 @dataclass(frozen=True)
@@ -80,7 +102,8 @@ class FFmpegCommandFactory:
         output_name = str(params.get("output_name") or "output")
 
         if operation == "probe":
-            return self._spec(operation, [builders.build_probe(input_name)], ())
+            base = os.path.splitext(input_name)[0] or "probe"
+            return self._spec(operation, [builders.build_probe(input_name)], (f"{base}.ffprobe.json",))
 
         if operation == "compress":
             out = f"{output_name}.mp4"
@@ -126,6 +149,52 @@ class FFmpegCommandFactory:
             gif_argv = builders.build_gif(input_name, palette, out, start, duration, fps, width)
             return self._spec(operation, [palette_argv, gif_argv], (out,))
 
+        if operation == "crop":
+            out = f"{output_name}.mp4"
+            argv = builders.build_crop(
+                input_name, out,
+                int(params.get("width", 0)), int(params.get("height", 0)),
+                int(params.get("x", 0)), int(params.get("y", 0)),
+            )
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "change_fps":
+            out = f"{output_name}.mp4"
+            argv = builders.build_change_fps(input_name, out, int(params.get("fps", 30)))
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "remove_audio":
+            out = f"{output_name}.mp4"
+            return self._spec(operation, [builders.build_remove_audio(input_name, out)], (out,))
+
+        if operation == "replace_audio":
+            out = f"{output_name}.mp4"
+            argv = builders.build_replace_audio(input_name, self._secondary(extra_input_names), out)
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "add_subtitles":
+            out = f"{output_name}.mp4"
+            argv = builders.build_add_subtitles(input_name, self._secondary(extra_input_names), out)
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "add_watermark":
+            out = f"{output_name}.mp4"
+            argv = builders.build_add_watermark(
+                input_name, self._secondary(extra_input_names), out,
+                params.get("position", "bottom-right"),
+            )
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "vstack":
+            out = f"{output_name}.mp4"
+            argv = builders.build_vstack(input_name, self._secondary(extra_input_names), out)
+            return self._spec(operation, [argv], (out,))
+
+        if operation == "hstack":
+            out = f"{output_name}.mp4"
+            argv = builders.build_hstack(input_name, self._secondary(extra_input_names), out)
+            return self._spec(operation, [argv], (out,))
+
         if operation == "concat":
             out = f"{output_name}.mp4"
             # Individual sources live inside the concat list file, not the argv.
@@ -133,6 +202,11 @@ class FFmpegCommandFactory:
             return self._spec(operation, [argv], (out,))
 
         raise UnknownOperation(f"Unknown operation: {operation!r}")
+
+    @staticmethod
+    def _secondary(extra_input_names) -> str:
+        names = extra_input_names or []
+        return names[0] if names else "second.mp4"
 
     @staticmethod
     def _spec(operation, commands, output_names) -> FFmpegCommandSpec:

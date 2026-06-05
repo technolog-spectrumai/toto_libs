@@ -29,9 +29,18 @@ class FileServicePlugin(BasePlugin):
     args_placeholder: ClassVar[str] = ""
     args_required: ClassVar[bool] = False
 
-    #: When True, selecting this service redirects to a builder UI that collects
-    #: arguments on its own page rather than running from a free-text arg string.
+    #: When True, selecting this service redirects to a builder UI (see
+    #: ``builder_url``) that collects arguments on its own page rather than
+    #: running from a free-text arg string.
     builder: ClassVar[bool] = False
+
+    #: When False, the service is hidden from the file's service menu but stays
+    #: registered (e.g. for direct/workflow execution).
+    listed: ClassVar[bool] = True
+
+    def builder_url(self, vault_file) -> str | None:
+        """Redirect target for builder services. Override in subclasses."""
+        return None
 
     def accepts(self, vault_file) -> bool:
         if vault_file.is_encrypted:
@@ -42,7 +51,7 @@ class FileServicePlugin(BasePlugin):
 
     @classmethod
     def for_file(cls, vault_file) -> list["FileServicePlugin"]:
-        return [p for p in cls.all() if p.accepts(vault_file)]
+        return [p for p in cls.all() if p.listed and p.accepts(vault_file)]
 
     def to_dict(self) -> dict:
         return {

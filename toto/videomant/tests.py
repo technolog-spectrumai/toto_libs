@@ -908,11 +908,29 @@ class FFmpegCommandFactoryTests(SimpleTestCase):
         self.assertIn("out.mp4", spec.shell_display)
         self.assertNotIn("/", spec.shell_display)  # display names only, no fs paths
 
-    def test_probe_has_no_outputs(self):
+    def test_probe_writes_json_file(self):
         from .factory import FFmpegCommandFactory
         spec = FFmpegCommandFactory().build("probe", input_name="clip.mp4")
-        self.assertEqual(spec.output_names, ())
+        self.assertEqual(spec.output_names, ("clip.ffprobe.json",))
         self.assertTrue(spec.shell_display.startswith("ffprobe"))
+
+    def test_secondary_op_uses_extra_input(self):
+        from .factory import FFmpegCommandFactory
+        spec = FFmpegCommandFactory().build(
+            "replace_audio", input_name="clip.mp4",
+            extra_input_names=["track.mp3"], params={"output_name": "dubbed"},
+        )
+        self.assertIn("-i clip.mp4", spec.shell_display)
+        self.assertIn("-i track.mp3", spec.shell_display)
+        self.assertEqual(spec.output_names, ("dubbed.mp4",))
+
+    def test_watermark_position_maps_to_overlay(self):
+        from .factory import FFmpegCommandFactory
+        spec = FFmpegCommandFactory().build(
+            "add_watermark", input_name="clip.mp4",
+            extra_input_names=["logo.png"], params={"position": "center", "output_name": "wm"},
+        )
+        self.assertIn("overlay=(W-w)/2:(H-h)/2", spec.shell_display)
 
     def test_gif_emits_two_commands(self):
         from .factory import FFmpegCommandFactory
@@ -1086,3 +1104,48 @@ class CommandBuilderTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(MediaJob.objects.count(), before)
         self.assertContains(resp, "not in this bucket")
+
+    # -- new operations ---------------------------------------------------
+
+    def test_run_single_input_op_creates_job(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            resp = self.client.post(self._url(), {
+                "op": "crop",
+                "action": "run",
+                "spec_yaml": "width: 320\nheight: 240\nx: 0\ny: 0\noutput_name: cropped\n",
+            })
+        self.assertEqual(MediaJob.objects.count(), before + 1)
+        job = MediaJob.objects.filter(task_name="videomant.crop").last()
+        self.assertIsNotNone(job)
+        self.assertEqual(job.input_files, [])
+        self.assertRedirects(resp, f"/videomant/jobs/{job.pk}/", fetch_redirect_response=False)
+
+    def test_secondary_op_stores_primary_and_secondary(self):
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(self._url(), {
+                "op": "vstack",
+                "action": "run",
+                "spec_yaml": f"output_name: stacked\nextra_file_ids: [{self.extra.pk}]\n",
+            })
+        job = MediaJob.objects.filter(task_name="videomant.vstack").last()
+        self.assertIsNotNone(job)
+        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_secondary_op_requires_one_extra(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post(self._url(), {
+                "op": "vstack",
+                "action": "run",
+                "spec_yaml": "output_name: stacked\nextra_file_ids: []\n",
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(MediaJob.objects.count(), before)  # no file selected → rejected
+        self.assertFalse(delay.called)
+        self.assertContains(resp, "exactly one additional file")
+
+    def test_builder_lists_new_operations(self):
+        resp = self.client.get(self._url())
+        for label in ["Crop", "Replace audio", "Add watermark", "Stack vertically"]:
+            self.assertContains(resp, label)

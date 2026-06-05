@@ -1849,18 +1849,6 @@
             </div>
           </div>
 
-          <!-- Args -->
-          <div x-show="svcCurrent">
-            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">
-              <span x-text="svcCurrent ? svcCurrent.args_label : ''"></span>
-              <span x-show="svcCurrent && svcCurrent.args_required" class="opacity-50">*</span>
-            </label>
-            <textarea x-model="svcArgs" rows="3"
-                      :placeholder="svcCurrent ? svcCurrent.args_placeholder : ''"
-                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-                      class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition"></textarea>
-          </div>
-
           <p x-show="svcError" x-text="svcError"
              :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
              class="text-xs font-semibold"></p>

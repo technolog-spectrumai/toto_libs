@@ -22,23 +22,8 @@ from __future__ import annotations
 
 from django.db.models import Q
 
-
-def user_can_access_vault_file(user, vf) -> bool:
-    if vf is None:
-        return False
-    if user is None or not getattr(user, "is_authenticated", False):
-        return bool(vf.is_public)
-    if user.is_superuser:
-        return True
-    if vf.owner_id == user.id:
-        return True
-    if vf.is_public:
-        return True
-    if vf.bucket_id and vf.bucket.owner_id == user.id:
-        return True
-    if vf.directory_id and vf.directory.allowed_users.filter(pk=user.pk).exists():
-        return True
-    return False
+# Canonical implementation lives in fileservices so transcription/ocr can share it.
+from toto.fileservices.access import user_can_access_vault_file  # noqa: F401
 
 
 def accessible_bucket_files(user, bucket, *, exclude_pk=None, file_types=None):

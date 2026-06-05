@@ -167,3 +167,152 @@ def build_concat(
         argv += ["-c", "copy"]
     argv.append(output_path)
     return argv
+
+
+def build_crop(
+    input_path: str,
+    output_path: str,
+    width: int,
+    height: int,
+    x: int = 0,
+    y: int = 0,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vf", f"crop={width}:{height}:{x}:{y}",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "copy",
+        output_path,
+    ]
+
+
+def build_change_fps(
+    input_path: str,
+    output_path: str,
+    fps: int = 30,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-vf", f"fps={fps}",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "copy",
+        output_path,
+    ]
+
+
+def build_remove_audio(input_path: str, output_path: str) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", input_path,
+        "-c:v", "copy",
+        "-an",
+        output_path,
+    ]
+
+
+def build_replace_audio(
+    video_path: str,
+    audio_path: str,
+    output_path: str,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", audio_path,
+        "-map", "0:v:0",
+        "-map", "1:a:0",
+        "-c:v", "copy",
+        "-c:a", "aac",
+        "-shortest",
+        output_path,
+    ]
+
+
+def build_add_subtitles(
+    video_path: str,
+    subtitle_path: str,
+    output_path: str,
+) -> list[str]:
+    # Soft-mux the subtitle as a selectable track (mov_text for mp4 containers).
+    return [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", subtitle_path,
+        "-map", "0",
+        "-map", "1",
+        "-c", "copy",
+        "-c:s", "mov_text",
+        output_path,
+    ]
+
+
+_WATERMARK_POSITIONS = {
+    "top-left":     "10:10",
+    "top-right":    "W-w-10:10",
+    "bottom-left":  "10:H-h-10",
+    "bottom-right": "W-w-10:H-h-10",
+    "center":       "(W-w)/2:(H-h)/2",
+}
+
+
+def build_add_watermark(
+    video_path: str,
+    image_path: str,
+    output_path: str,
+    position: str = "bottom-right",
+) -> list[str]:
+    pos = _WATERMARK_POSITIONS.get(position, _WATERMARK_POSITIONS["bottom-right"])
+    return [
+        "ffmpeg", "-y",
+        "-i", video_path,
+        "-i", image_path,
+        "-filter_complex", f"overlay={pos}",
+        "-c:a", "copy",
+        output_path,
+    ]
+
+
+def build_vstack(
+    video1_path: str,
+    video2_path: str,
+    output_path: str,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", video1_path,
+        "-i", video2_path,
+        "-filter_complex", "[0:v][1:v]vstack=inputs=2[v]",
+        "-map", "[v]",
+        "-map", "0:a?",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "aac",
+        output_path,
+    ]
+
+
+def build_hstack(
+    video1_path: str,
+    video2_path: str,
+    output_path: str,
+) -> list[str]:
+    return [
+        "ffmpeg", "-y",
+        "-i", video1_path,
+        "-i", video2_path,
+        "-filter_complex", "[0:v][1:v]hstack=inputs=2[v]",
+        "-map", "[v]",
+        "-map", "0:a?",
+        "-c:v", "libx264",
+        "-preset", "medium",
+        "-crf", "23",
+        "-c:a", "aac",
+        output_path,
+    ]

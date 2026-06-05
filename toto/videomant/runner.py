@@ -70,6 +70,15 @@ def _save_vault_file(job: MediaJob, path: str, filename: str, content_type: str)
     return vf
 
 
+def _secondary_path(job: MediaJob) -> str:
+    """Trusted filesystem path of the secondary input (input_files[1])."""
+    from toto.vault.models import VaultFile
+    ids = job.input_files or []
+    if len(ids) < 2:
+        raise ValueError("This operation requires a secondary input file.")
+    return VaultFile.objects.get(pk=ids[1]).file.path
+
+
 def _probe_file(input_path: str) -> dict | None:
     client = FFmpegClient()
     argv = builders.build_probe(input_path)
@@ -107,7 +116,7 @@ class MediaJobRunner:
 
         with tempfile.TemporaryDirectory(dir=_work_root()) as tmpdir:
             if job.task_name == "videomant.probe":
-                self._run_probe(job, client)
+                self._run_probe(job, client, tmpdir)
                 return
 
             input_path = job.input_file.file.path
@@ -158,7 +167,7 @@ class MediaJobRunner:
                 "status", "progress_percent", "finished_at", "duration_seconds",
             ])
 
-    def _run_probe(self, job: MediaJob, client: FFmpegClient) -> None:
+    def _run_probe(self, job: MediaJob, client: FFmpegClient, tmpdir: str) -> None:
         job.progress_percent = 0
         job.save(update_fields=["progress_percent"])
 
@@ -189,13 +198,25 @@ class MediaJobRunner:
         )
         probe.save()
 
+        # Also persist the pretty-printed ffprobe JSON as an output VaultFile.
+        try:
+            content = json.dumps(raw, indent=2)
+        except Exception:
+            content = result.stdout
+        base = os.path.splitext(job.input_file.title or "probe")[0]
+        out_name = f"{base}.ffprobe.json"
+        out_path = os.path.join(tmpdir, out_name)
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+        job.output_file = _save_vault_file(job, out_path, out_name, "application/json")
+
         job.output_metadata = parsed
         job.status = MediaJob.Status.SUCCEEDED
         job.progress_percent = 100
         job.finished_at = timezone.now()
         job.duration_seconds = (job.finished_at - job.started_at).total_seconds()
         job.save(update_fields=[
-            "stdout", "stderr", "exit_code", "output_metadata",
+            "stdout", "stderr", "exit_code", "output_metadata", "output_file",
             "status", "progress_percent", "finished_at", "duration_seconds",
         ])
 
@@ -276,6 +297,44 @@ class MediaJobRunner:
         if job.task_name == "videomant.thumbnail":
             out = os.path.join(tmpdir, f"{output_name}.jpg")
             return builders.build_thumbnail(input_path, out, params.get("at_time", "00:00:01")), out, f"{output_name}.jpg", "image/jpeg"
+
+        if job.task_name == "videomant.crop":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_crop(
+                input_path, out,
+                int(params.get("width", 0)), int(params.get("height", 0)),
+                int(params.get("x", 0)), int(params.get("y", 0)),
+            ), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.change_fps":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_change_fps(input_path, out, int(params.get("fps", 30))), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.remove_audio":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_remove_audio(input_path, out), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.replace_audio":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_replace_audio(input_path, _secondary_path(job), out), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.add_subtitles":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_add_subtitles(input_path, _secondary_path(job), out), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.add_watermark":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_add_watermark(
+                input_path, _secondary_path(job), out, params.get("position", "bottom-right"),
+            ), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.vstack":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_vstack(input_path, _secondary_path(job), out), out, f"{output_name}.mp4", "video/mp4"
+
+        if job.task_name == "videomant.hstack":
+            out = os.path.join(tmpdir, f"{output_name}.mp4")
+            return builders.build_hstack(input_path, _secondary_path(job), out), out, f"{output_name}.mp4", "video/mp4"
 
         if job.task_name == "videomant.concat":
             from toto.vault.models import VaultFile

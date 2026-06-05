@@ -5,6 +5,8 @@ import mimetypes
 import os
 import tempfile
 
+from django.urls import reverse
+
 from toto.fileservices.plugin import FileServicePlugin
 from toto.fileservices.runner import (
     run_subprocess,
@@ -14,15 +16,37 @@ from toto.fileservices.runner import (
 )
 
 
-@FileServicePlugin.plugin(key="ffmpeg", title="FFmpeg", order=10)
-class FFmpegServicePlugin(FileServicePlugin):
+@FileServicePlugin.plugin(key="videomant", title="Videomant (media tools)", order=10)
+class VideomantServicePlugin(FileServicePlugin):
+    """Single menu entry for all ffmpeg/ffprobe operations.
+
+    Selecting it hands the user off to the videomant command builder, where they
+    pick an operation, preview the command, and run it.
+    """
+
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-film"
-    description = "Build and preview an ffmpeg command, then run it on the media builder page."
+    description = "Build, preview and run ffmpeg/ffprobe operations on the media builder page."
+    builder = True
+
+    def builder_url(self, vault_file) -> str:
+        return reverse("videomant:command_builder", args=[vault_file.pk]) + "?service=videomant"
+
+    def execute(self, run):
+        raise NotImplementedError("Videomant runs through its command builder, not inline.")
+
+
+@FileServicePlugin.plugin(key="ffmpeg", title="FFmpeg", order=11)
+class FFmpegServicePlugin(FileServicePlugin):
+    # Hidden from the menu (superseded by the Videomant builder) but kept
+    # registered for direct/workflow execution from a raw arg string.
+    listed = False
+    accepted_file_types = ["video", "audio", "image"]
+    icon = "fa-solid fa-film"
+    description = "Run ffmpeg with custom arguments. The input is supplied as -i; end your args with an output filename."
     args_label = "ffmpeg arguments"
     args_placeholder = "-vf scale=640:-2 -c:v libx264 output.mp4"
     args_required = True
-    builder = True
 
     def execute(self, run) -> list[int]:
         from toto.vault.models import VaultFile
@@ -58,15 +82,17 @@ class FFmpegServicePlugin(FileServicePlugin):
             return out_pks
 
 
-@FileServicePlugin.plugin(key="ffprobe", title="FFprobe", order=20)
+@FileServicePlugin.plugin(key="ffprobe", title="FFprobe", order=21)
 class FFprobeServicePlugin(FileServicePlugin):
+    # Hidden from the menu (superseded by the Videomant builder) but kept
+    # registered for direct/workflow execution.
+    listed = False
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-circle-info"
-    description = "Inspect a media file with ffprobe on the media builder page."
+    description = "Inspect a media file with ffprobe. Output JSON is saved as a new file."
     args_label = "ffprobe arguments (optional)"
     args_placeholder = "-show_format -show_streams"
     args_required = False
-    builder = True
 
     _DEFAULT = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams"]
 
