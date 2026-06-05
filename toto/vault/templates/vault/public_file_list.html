@@ -185,12 +185,27 @@
           }
           return 0;
         },
+        // Glob → anchored, case-insensitive RegExp. Supports * (any run) and ? (one char).
+        // e.g. "*.mp4" → /^.*\.mp4$/i , "aa_*_.png" → /^aa_.*_\.png$/i
+        _globToRegExp(glob) {
+          const escaped = glob
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')   // escape regex specials (leave * and ?)
+            .replace(/\*/g, '.*')
+            .replace(/\?/g, '.');
+          return new RegExp('^' + escaped + '$', 'i');
+        },
         _updateSearch() {
           const q = this.search.trim().toLowerCase();
           if (!q) { this._matchingIds = null; this._visibleAncestorIds = null; return; }
+          // Wildcard mode: glob match the whole filename instead of fuzzy scoring.
+          const globRe = (q.includes('*') || q.includes('?')) ? this._globToRegExp(q) : null;
           const matched = {};
           for (const item of this.items) {
-            if (item.t === 'file' && this._scoreMatch(q, item.title) > 0) matched[item.id] = true;
+            if (item.t !== 'file') continue;
+            const ok = globRe
+              ? globRe.test((item.title || '').toLowerCase())
+              : this._scoreMatch(q, item.title) > 0;
+            if (ok) matched[item.id] = true;
           }
           const ancestors = {};
           for (const item of this.items) {
@@ -778,7 +793,7 @@
                  autocorrect="off"
                  spellcheck="false"
                  readonly
-                 placeholder="{% trans "Search files…" %}"
+                 placeholder="{% trans "Search files… (use * or ? for wildcards, e.g. *.mp4)" %}"
                  @focus="$el.removeAttribute('readonly')"
                  @keydown.escape.stop="search = ''"
                  :class="darkMode
