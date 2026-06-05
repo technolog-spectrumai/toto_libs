@@ -857,12 +857,12 @@
                     <i class="fa-solid fa-play text-xs"></i>
                   </button>
 
-                  <!-- Open in TeX editor — latex files that are in a texlab workspace -->
+                  <!-- Open in editor (latex → texlab, python → antaresia) -->
                   <button x-show="item.editor_url"
                           @click.stop="window.location.href = item.editor_url"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Edit ${item.title} in TeX editor`' %}">
+                          :title="`Edit ${item.title}`">
                     <i class="fa-solid fa-pen-to-square text-xs"></i>
                   </button>
 
@@ -963,11 +963,11 @@
                             class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
                       <i class="fa-solid fa-play"></i>
                     </button>
-                    <!-- Open in TeX editor -->
+                    <!-- Open in editor -->
                     <button x-show="item.editor_url"
                             @click.stop="window.location.href = item.editor_url"
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Edit in TeX editor" %}">
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Edit ${item.title}`">
                       <i class="fa-solid fa-pen-to-square"></i>
                     </button>
                     <!-- Delete -->
