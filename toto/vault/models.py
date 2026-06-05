@@ -143,6 +143,7 @@ class VaultFile(models.Model):
         ('audio', 'Audio'),
         ('video', 'Video'),
         ('python', 'Python'),
+        ('notebook', 'Notebook'),
     ]
 
     _EXT_MAP = {
@@ -157,6 +158,7 @@ class VaultFile(models.Model):
         ".html": "html", ".htm": "html",
         ".md": "text", ".txt": "text", ".rst": "text",
         ".py": "python",
+        ".tpy": "notebook",
         ".mp3": "audio", ".ogg": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
         ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
         ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",

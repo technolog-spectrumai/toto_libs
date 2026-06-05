@@ -1196,7 +1196,7 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg"}
+    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
@@ -1204,6 +1204,22 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         "latex": "",
         "bib":   "",
         "svg":   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n</svg>\n',
+        # Blank .tpy notebook: one empty code cell, no dependencies.
+        # Mirrors toto.mandragora.tpy_format.dumps(new_notebook()).
+        "notebook": (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<notebook version="1" title="">\n'
+            "  <dependencies />\n"
+            "  <cells>\n"
+            '    <cell type="code" execution_count="0">\n'
+            "      <source />\n"
+            "      <stdout />\n"
+            "      <stderr />\n"
+            "      <rich_output>[]</rich_output>\n"
+            "    </cell>\n"
+            "  </cells>\n"
+            "</notebook>\n"
+        ),
     }
 
     def post(self, request):

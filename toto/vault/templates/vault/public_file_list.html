@@ -129,7 +129,7 @@
           const map = { pdf:'fa-file-pdf', image:'fa-image', audio:'fa-music', video:'fa-film',
             text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
             html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
-            latex:'fa-file-lines', bib:'fa-book' };
+            latex:'fa-file-lines', bib:'fa-book', notebook:'fa-book' };
           return map[ft] || 'fa-file';
         },
         fileTypeColor(ft) {
@@ -529,7 +529,7 @@
         },
 
         // ── Create new file ───────────────────────────────────
-        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', latex: '.tex', bib: '.bib', svg: '.svg' },
+        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', latex: '.tex', bib: '.bib', svg: '.svg', notebook: '.tpy' },
 
         openCreateFile(dirItem) {
           this.createDirId = dirItem.id;
@@ -1644,6 +1644,7 @@
               <option value="bib">bib</option>
               <option value="csv">csv</option>
               <option value="svg">svg</option>
+              <option value="notebook">notebook</option>
               <option value="audio">audio</option>
               <option value="video">video</option>
             </select>
@@ -1690,7 +1691,7 @@
           <div>
             <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Type" %}</p>
             <div class="flex flex-wrap gap-1.5">
-              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['latex','.tex'],['bib','.bib'],['svg','.svg']]" :key="key">
+              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['latex','.tex'],['bib','.bib'],['svg','.svg'],['notebook','.tpy']]" :key="key">
                 <button type="button"
                         @click="setCreateType(key)"
                         :class="createType === key

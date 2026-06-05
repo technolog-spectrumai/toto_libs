@@ -9,12 +9,25 @@ from .views import (
     notebook_vault_files,
     create_cell, delete_cell, promote_cell_to_lambda,
 )
+from .tpy_views import (
+    TpyDisplayView, tpy_save, tpy_delete, tpy_run_cell,
+    tpy_start_kernel, tpy_stop_kernel, tpy_kernel_status,
+)
 
 app_name = "mandragora"
 
 urlpatterns = [
     path("", NotebookListView.as_view(), name="notebook_list"),
     path("new/", notebook_create, name="notebook_create"),
+
+    # .tpy file-backed notebook editor (wired to the vault as the "notebook" editor)
+    path("tpy/<int:file_pk>/",                TpyDisplayView.as_view(), name="tpy_display"),
+    path("tpy/<int:file_pk>/save/",           tpy_save,                 name="tpy_save"),
+    path("tpy/<int:file_pk>/delete/",         tpy_delete,               name="tpy_delete"),
+    path("tpy/<int:file_pk>/run/",            tpy_run_cell,             name="tpy_run_cell"),
+    path("tpy/<int:file_pk>/kernel/start/",   tpy_start_kernel,         name="tpy_start_kernel"),
+    path("tpy/<int:file_pk>/kernel/stop/",    tpy_stop_kernel,          name="tpy_stop_kernel"),
+    path("tpy/<int:file_pk>/kernel/status/",  tpy_kernel_status,        name="tpy_kernel_status"),
 
     # Cell and kernel API endpoints (ID-based, called from JS)
     path("cells/<int:cell_id>/run/", run_cell, name="run_cell"),
