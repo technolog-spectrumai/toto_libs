@@ -899,6 +899,13 @@ class VaultPlayPluginRegistryTests(TestCase):
         self.assertIn(str(vf.pk), url)
         self.assertIn("/vod/", url)
 
+    def test_audio_plugin_registered_when_vod_installed(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vod"):
+            self.skipTest("toto.vod not installed")
+        plugin = VaultPlayPlugin.for_file_type("audio")
+        self.assertIsNotNone(plugin)
+
     def test_no_plugin_for_pdf(self):
         plugin = VaultPlayPlugin.for_file_type("pdf")
         self.assertIsNone(plugin)

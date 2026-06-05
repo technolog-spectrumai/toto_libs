@@ -20,14 +20,26 @@
 
   {# Player #}
   {% if source_url %}
-    <div class="overflow-hidden rounded-2xl bg-black shadow-lg aspect-video">
-      <video id="vault-player"
-             controls
-             playsinline
-             preload="metadata"
-             class="h-full w-full"
-             src="{{ source_url }}"></video>
-    </div>
+    {% if vault_file.file_type == "audio" %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+           class="rounded-2xl border p-6 shadow-lg flex flex-col items-center gap-4">
+        <i class="fa-solid fa-music text-5xl opacity-30"></i>
+        <audio id="vault-player"
+               controls
+               preload="metadata"
+               class="w-full"
+               src="{{ source_url }}"></audio>
+      </div>
+    {% else %}
+      <div class="overflow-hidden rounded-2xl bg-black shadow-lg aspect-video">
+        <video id="vault-player"
+               controls
+               playsinline
+               preload="metadata"
+               class="h-full w-full"
+               src="{{ source_url }}"></video>
+      </div>
+    {% endif %}
   {% else %}
     <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
          class="flex flex-col items-center justify-center rounded-2xl border py-16 text-center shadow-sm">

@@ -9,3 +9,11 @@ class VideoVaultPlayPlugin(VaultPlayPlugin):
 
     def get_play_url(self, vault_file) -> str:
         return reverse("vod:vault_file_play", args=[vault_file.pk])
+
+
+@VaultPlayPlugin.plugin(key="audio", title="Audio Player", order=20)
+class AudioVaultPlayPlugin(VaultPlayPlugin):
+    file_type = "audio"
+
+    def get_play_url(self, vault_file) -> str:
+        return reverse("vod:vault_file_play", args=[vault_file.pk])
