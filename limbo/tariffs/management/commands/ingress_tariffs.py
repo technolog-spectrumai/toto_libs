@@ -336,7 +336,7 @@ class Command(IngressCommand):
                 _item(t_steven, m_ai_output, "LLM output tokens",  banana_token, "0.254", bu_output_token, rev_banana_base, uq=1000)
                 self.stdout.write("    +/✓ tariff AI-INFERENCE-BASE (steven, BANANA, GPT-4o×2.7 PLN)")
 
-            if django_apps.is_installed("toto.videomant"):
+            if django_apps.is_installed("toto.manta"):
                 t_videomant, _ = _tariff(
                     "VIDEOMANT-BASE",
                     "VideoMant Base Tariff",

@@ -15,8 +15,8 @@ from .models import FileServiceRun
 from .plugin import FileServicePlugin
 
 
-# The single tool a file type opens directly from the vault (no service picker).
-PRIMARY_SERVICE_BY_TYPE = {"video": "videomant", "audio": "transcription", "image": "ocr"}
+# Every media type opens the one Manta builder (it picks the right command).
+PRIMARY_SERVICE_BY_TYPE = {"video": "manta", "audio": "manta", "image": "manta"}
 
 
 @login_required

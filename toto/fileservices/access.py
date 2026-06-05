@@ -1,5 +1,5 @@
 """
-Vault-file access policy shared by file-service apps (videomant, transcription,
+Vault-file access policy shared by file-service apps (manta, transcription,
 ocr).  A user may read a VaultFile when they are a superuser, own it, it is
 public, they own its bucket, or a directory sharing whitelist grants access.
 """
