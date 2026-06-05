@@ -8,7 +8,8 @@ time is safe: it skips creation if a file with the same key already exists.
 
 from django.contrib.auth import get_user_model
 from django.core.files.base import ContentFile
-from django.core.management.base import BaseCommand
+
+from toto.ingress import IngressCommand
 
 User = get_user_model()
 
@@ -62,10 +63,10 @@ And Euler's celebrated identity:
 """
 
 
-class Command(BaseCommand):
+class Command(IngressCommand):
     help = "Seed a sample .tex VaultFile for texplay user-testing."
 
-    def handle(self, *args, **options):
+    def process(self):
         from toto.vault.models import Bucket, VaultFile
 
         owner = User.objects.filter(is_superuser=True).order_by("pk").first()

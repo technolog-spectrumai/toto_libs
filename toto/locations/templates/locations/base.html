@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
+{% load app_tags %}
 
 {% block title %}{% block locations_title %}Locations{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -32,6 +33,13 @@
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-route fa-fw"></i> {% trans "Routes" %}
     </a>
+    {% if "toto.weather"|app_installed %}
+    <a href="{% url 'weather:index' %}"
+       :class="{% if request.resolver_match.namespace == 'weather' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-cloud-sun fa-fw"></i> {% trans "Weather" %}
+    </a>
+    {% endif %}
   </nav>
 
   {% block locations_content %}{% endblock %}
