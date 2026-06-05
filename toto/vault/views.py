@@ -9,6 +9,7 @@ from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, JsonResponse, HttpResponseForbidden
+from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.utils.text import slugify
@@ -18,6 +19,7 @@ from django.urls import reverse
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from django.contrib import messages
+from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
 from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 from .storage_backends import get_bucket_storage
@@ -35,7 +37,7 @@ class PublicFileListView(TemplateView):
     """
     template_name = "vault/public_file_list.html"
 
-    def _build_flat_items(self, dirs, files, dir_gateway_map):
+    def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None):
         from toto.vault.plugins import VaultPlayPlugin
 
         def _play_url_for(f):
@@ -83,6 +85,7 @@ class PublicFileListView(TemplateView):
                     "n_dirs": n_dirs,
                     "locked": d.allowed_users.exists(),
                     "upload_url": dir_gateway_map.get(d.pk, ""),
+                    "can_create": d.bucket_id in user_bucket_pks if user_bucket_pks else False,
                 })
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
@@ -174,7 +177,11 @@ class PublicFileListView(TemplateView):
             _gw_url = reverse("vault:gateway_page", kwargs={"dir_pk": _gw_pk})
             dir_gateway_map[_d.pk] = _gw_url if _gw_pk == _d.pk else f"{_gw_url}?target_dir={_d.pk}"
 
-        flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map)
+        user_bucket_pks = (
+            set(Bucket.objects.filter(owner=self.request.user).values_list("pk", flat=True))
+            if self.request.user.is_authenticated else set()
+        )
+        flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map, user_bucket_pks)
 
         context["flat_items"] = flat_items
         context["selected_bucket"] = bucket_slug
@@ -1124,3 +1131,60 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
             bucket.save(update_fields=["storage_backend", "storage_config"])
 
         return JsonResponse({"slug": bucket.slug, "created": created}, status=201 if created else 200)
+
+
+@method_decorator(csrf_exempt, "dispatch")
+class CreateEmptyFileView(LoginRequiredMixin, View):
+    """Create an empty text-based vault file directly in a directory."""
+
+    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg"}
+    _INITIAL = {
+        "text":  "",
+        "json":  "{}\n",
+        "yaml":  "",
+        "latex": "",
+        "bib":   "",
+        "svg":   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n</svg>\n',
+    }
+
+    def post(self, request):
+        from django.core.files.base import ContentFile as _CF
+        from toto.vault.plugins import VaultEditorPlugin
+
+        title      = request.POST.get("title", "").strip()
+        file_type  = request.POST.get("file_type", "").strip()
+        dir_id     = request.POST.get("directory_id", "").strip()
+
+        if not title:
+            return JsonResponse({"error": "Filename is required."}, status=400)
+        if file_type not in self._ALLOWED:
+            return JsonResponse({"error": f"Unsupported type: {file_type}"}, status=400)
+        if not dir_id:
+            return JsonResponse({"error": "directory_id is required."}, status=400)
+
+        directory = get_object_or_404(VaultDirectory, pk=int(dir_id))
+        if directory.bucket.owner != request.user:
+            return JsonResponse({"error": "Permission denied."}, status=403)
+
+        vault_file = VaultFile(
+            owner=request.user,
+            title=title,
+            file_type=file_type,
+            bucket=directory.bucket,
+            directory=directory,
+            is_public=False,
+        )
+        vault_file.save()
+        vault_file.file.save(title, _CF(self._INITIAL[file_type].encode("utf-8")), save=True)
+        vault_file.content_hash = vault_file.create_hash()
+        vault_file.save()
+
+        plugin = VaultEditorPlugin.for_file_type(file_type)
+        editor_url = plugin.get_editor_url(vault_file) if plugin else None
+
+        return JsonResponse({
+            "status": "ok",
+            "file_pk": vault_file.pk,
+            "title": vault_file.title,
+            "editor_url": editor_url,
+        }, status=201)

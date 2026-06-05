@@ -27,25 +27,6 @@
       setTimeout(() => refreshAutosaveStatus(), 100);
     "
 >
-  <!-- Sync -->
-  <button
-    @click="painter.toggleSync(); refreshSyncStatus()"
-    :class="[
-      syncEnabled
-        ? (darkMode
-            ? 'bg-success-dark text-primary-bg-dark border-success-dark font-bold hover:opacity-90'
-            : 'bg-success-light text-primary-bg-light border-success-light font-bold hover:opacity-90')
-        : (darkMode
-            ? 'bg-sunken-dark text-text-main-dark border-accent-1 shadow-inner opacity-70'
-            : 'bg-sunken-light text-text-main-light border-accent-2 shadow-inner opacity-70'),
-      'border'
-    ]"
-    class="w-full flex items-center gap-2 px-3 py-2 rounded text-sm transition"
-  >
-    <i :class="syncEnabled ? 'fa-solid fa-arrows-rotate' : 'fa-solid fa-link-slash'"></i>
-    <span x-text="syncEnabled ? (syncConnected ? 'Auto Sync On' : 'Sync Connecting') : 'Sync Off'"></span>
-  </button>
-
   <!-- Autosave -->
   <button
     @click="painter.toggleAutosave(); refreshAutosaveStatus()"

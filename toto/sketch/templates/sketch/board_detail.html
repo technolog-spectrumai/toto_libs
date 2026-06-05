@@ -595,7 +595,6 @@
 </div>
 {% endblock %}
 {% block end_script %}
-{% include "sketch/socket_script.html" %}
 <script type="module">
 
 
@@ -649,8 +648,6 @@ document.addEventListener("DOMContentLoaded", () => {
             metadata: { preferredImportMode: "insert", boardId: "{{ board.id }}" },
         });
     }
-
-    window.boardSocket = new BoardSocketProvider(ydoc, "{{ board.id }}", Y);
 
     // 4. Setup tool dispatcher (tools now use painter)
     const dispatcher = new ToolDispatcher(() => Alpine.store("sketch"));

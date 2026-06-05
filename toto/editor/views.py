@@ -105,6 +105,13 @@ class JsonFileDisplayView(BaseFileDisplayView):
     delete_url_name = "editor:json_delete"
 
 
+class YamlFileDisplayView(BaseFileDisplayView):
+    ace_mode = "yaml"
+    ws_path = "editor"
+    save_url_name = "editor:yaml_save"
+    delete_url_name = "editor:yaml_delete"
+
+
 class SvgFileDisplayView(BaseFileDisplayView):
     ace_mode = "svg"
     ws_path = "editor"

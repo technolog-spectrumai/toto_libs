@@ -355,6 +355,7 @@ const PySync = (() => {
 </script>
 
 <script>
+ace.config.set("basePath", "{% static 'vendor/ace/' %}");
 const editor = ace.edit("editor");
 editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
 editor.session.setMode("ace/mode/python");

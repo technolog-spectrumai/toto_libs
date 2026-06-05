@@ -96,6 +96,14 @@
         renameError: '',
         renameLoading: false,
 
+        // create new file state
+        createModal: false,
+        createDirId: null,
+        createTitle: '',
+        createType: 'text',
+        createLoading: false,
+        createError: '',
+
         setViewMode(m) {
           this.viewMode = m;
           localStorage.setItem('vault_view_mode', m);
@@ -503,6 +511,58 @@
           }
           this.renameLoading = false;
         },
+
+        // ── Create new file ───────────────────────────────────
+        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', latex: '.tex', bib: '.bib', svg: '.svg' },
+
+        openCreateFile(dirItem) {
+          this.createDirId = dirItem.id;
+          this.createType = 'text';
+          this.createTitle = 'untitled.txt';
+          this.createError = '';
+          this.createModal = true;
+        },
+
+        setCreateType(t) {
+          const ext = this._typeExtMap[t] || '';
+          const old = this._typeExtMap[this.createType] || '';
+          if (this.createTitle.endsWith(old)) {
+            this.createTitle = this.createTitle.slice(0, -old.length) + ext;
+          }
+          this.createType = t;
+        },
+
+        async submitCreateFile() {
+          this.createError = '';
+          if (!this.createTitle.trim()) { this.createError = 'Filename is required.'; return; }
+          this.createLoading = true;
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams({
+              directory_id: this.createDirId,
+              title: this.createTitle.trim(),
+              file_type: this.createType,
+            });
+            const res = await fetch('{% url "vault:create_file" %}', {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf },
+              credentials: 'same-origin',
+              body,
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+              this.createModal = false;
+              if (data.editor_url) { window.location.href = data.editor_url; }
+              else { window.location.reload(); }
+            } else {
+              this.createError = data.error || 'Failed to create file.';
+            }
+          } catch {
+            this.createError = 'Network error. Please try again.';
+          }
+          this.createLoading = false;
+        },
       };
     });
   });
@@ -761,13 +821,21 @@
                     <i class="fa-solid fa-lock"></i>
                   </span>
 
-                  <a x-show="item.upload_url" :href="item.upload_url" @click.stop
-                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                     class="ml-auto inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85 shrink-0">
-                    <i class="fa-solid fa-upload text-xs"></i>
-                    {% trans "Upload" %}
-                  </a>
-                  <span x-show="!item.upload_url" class="ml-auto"></span>
+                  <div class="ml-auto flex items-center gap-1 shrink-0">
+                    <button x-show="item.can_create"
+                            @click.stop="openCreateFile(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-file-circle-plus text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "New" %}</span>
+                    </button>
+                    <a x-show="item.upload_url" :href="item.upload_url" @click.stop
+                       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                      <i class="fa-solid fa-upload text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Upload" %}</span>
+                    </a>
+                  </div>
                 </div>
               </template>
 
@@ -1535,6 +1603,71 @@
               <span x-show="renameLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
             </button>
             <button @click="renameModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Create New File modal ───────────────────────────────── -->
+      <div x-show="createModal"
+           x-cloak
+           @keydown.escape.window="createModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="createModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-file-circle-plus opacity-60"></i>{% trans "New File" %}
+          </h2>
+
+          <!-- Type pills -->
+          <div>
+            <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Type" %}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['latex','.tex'],['bib','.bib'],['svg','.svg']]" :key="key">
+                <button type="button"
+                        @click="setCreateType(key)"
+                        :class="createType === key
+                          ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                          : (darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15')"
+                        class="rounded-lg border px-3 py-1 text-xs font-semibold transition font-mono"
+                        :style="createType !== key ? (darkMode ? 'border-color:var(--color-accent-1)' : 'border-color:var(--color-accent-2)') : ''"
+                        x-text="label">
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Filename -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Filename" %}</label>
+            <input x-model="createTitle"
+                   @keydown.enter="submitCreateFile"
+                   type="text"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Error -->
+          <p x-show="createError" x-text="createError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-1">
+            <button @click="submitCreateFile"
+                    :disabled="createLoading"
+                    :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!createLoading"><i class="fa-solid fa-plus mr-1"></i>{% trans "Create" %}</span>
+              <span x-show="createLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="createModal = false"
                     :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
                     class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
               {% trans "Cancel" %}

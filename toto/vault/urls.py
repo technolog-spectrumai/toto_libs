@@ -12,6 +12,7 @@ from .views import (
     EncryptFileView, DecryptFileView, EncryptedDownloadView,
     MoveFileView, RenameFileView, DeleteFileView,
     BucketConnectionUrlView, RemoteBucketImportView,
+    CreateEmptyFileView,
 )
 
 app_name = "vault"
@@ -43,4 +44,5 @@ urlpatterns = [
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
     path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),
     path("buckets/import-remote/", RemoteBucketImportView.as_view(), name="bucket_import_remote"),
+    path("file/create/", CreateEmptyFileView.as_view(), name="create_file"),
 ]
