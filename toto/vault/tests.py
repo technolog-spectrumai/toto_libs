@@ -8,6 +8,8 @@ from django.test import TestCase, Client, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
+from toto.vault.plugins import VaultPlayPlugin
+
 from toto.core.models import Platform
 from toto.vault.models import Bucket, VaultDirectory, VaultFile
 
@@ -868,3 +870,87 @@ class StorageDriverTest(TestCase):
         data = vf.file.read()
         vf.file.close()
         self.assertEqual(data, b"backward compat")
+
+
+# ===========================================================================
+# VaultPlayPlugin registry tests
+# ===========================================================================
+
+class VaultPlayPluginRegistryTests(TestCase):
+    def test_video_plugin_registered_when_vod_installed(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vod"):
+            self.skipTest("toto.vod not installed")
+        plugin = VaultPlayPlugin.for_file_type("video")
+        self.assertIsNotNone(plugin)
+
+    def test_video_plugin_returns_play_url(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vod"):
+            self.skipTest("toto.vod not installed")
+        plugin = VaultPlayPlugin.for_file_type("video")
+        user = User.objects.create_user("plugin_owner", password="pass")
+        bucket = Bucket.objects.create(name="plugin-bucket", slug="plugin-bucket", owner=user)
+        vf = VaultFile.objects.create(
+            owner=user, title="clip.mp4", file_type="video",
+            file=SimpleUploadedFile("clip.mp4", b"data"), bucket=bucket,
+        )
+        url = plugin.get_play_url(vf)
+        self.assertIn(str(vf.pk), url)
+        self.assertIn("/vod/", url)
+
+    def test_no_plugin_for_pdf(self):
+        plugin = VaultPlayPlugin.for_file_type("pdf")
+        self.assertIsNone(plugin)
+
+    def test_no_plugin_for_text(self):
+        plugin = VaultPlayPlugin.for_file_type("text")
+        self.assertIsNone(plugin)
+
+    def test_no_plugin_for_image(self):
+        plugin = VaultPlayPlugin.for_file_type("image")
+        self.assertIsNone(plugin)
+
+
+class FlatItemsPlayUrlTests(TestCase):
+    def setUp(self):
+        self.user = User.objects.create_user("flat_owner", password="pass")
+        self.bucket = Bucket.objects.create(name="flat-bucket", slug="flat-bucket", owner=self.user)
+
+    def _make_file(self, file_type, is_encrypted=False):
+        vf = VaultFile(
+            owner=self.user, title=f"file.{file_type}",
+            file_type=file_type, bucket=self.bucket,
+            is_public=True, is_encrypted=is_encrypted,
+        )
+        vf.file.save(f"file.{file_type}", SimpleUploadedFile(f"f.{file_type}", b"x"), save=False)
+        vf.file_size_bytes = 1
+        vf.save()
+        return vf
+
+    def _flat_items_for(self, files):
+        from toto.vault.views import PublicFileListView
+        view = PublicFileListView()
+        return view._build_flat_items([], files, {})
+
+    def test_video_file_has_play_url_when_vod_installed(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vod"):
+            self.skipTest("toto.vod not installed")
+        vf = self._make_file("video")
+        items = self._flat_items_for([vf])
+        self.assertEqual(len(items), 1)
+        self.assertTrue(items[0]["play_url"])
+
+    def test_pdf_file_has_empty_play_url(self):
+        vf = self._make_file("pdf")
+        items = self._flat_items_for([vf])
+        self.assertEqual(items[0]["play_url"], "")
+
+    def test_encrypted_video_has_empty_play_url(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.vod"):
+            self.skipTest("toto.vod not installed")
+        vf = self._make_file("video", is_encrypted=True)
+        items = self._flat_items_for([vf])
+        self.assertEqual(items[0]["play_url"], "")

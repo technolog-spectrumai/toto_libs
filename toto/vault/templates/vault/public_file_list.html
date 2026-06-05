@@ -848,6 +848,21 @@
                     <i class="fa-solid fa-pencil text-xs"></i>
                   </button>
 
+                  <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                  <button x-show="item.play_url"
+                          @click.stop="window.location.href = item.play_url"
+                          :class="darkMode ? 'text-green-400 hover:bg-green-400/15' : 'text-green-600 hover:bg-green-600/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Play ${item.title}`' %}">
+                    <i class="fa-solid fa-play text-xs"></i>
+                  </button>
+                  <button x-show="item.owner === currentUser && !item.play_url && item.t === 'file'"
+                          disabled
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 opacity-20 cursor-not-allowed"
+                          :title="{% trans 'No player available for this file type' %}">
+                    <i class="fa-solid fa-play text-xs"></i>
+                  </button>
+
                   <!-- Delete trash — owner only, revealed on row hover -->
                   <button x-show="item.owner === currentUser"
                           @click.stop="openDelete(item)"
@@ -938,6 +953,19 @@
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
                             class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Rename" %}">
                       <i class="fa-solid fa-pencil"></i>
+                    </button>
+                    <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                    <button x-show="item.play_url"
+                            @click.stop="window.location.href = item.play_url"
+                            class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
+                      <i class="fa-solid fa-play"></i>
+                    </button>
+                    <button x-show="item.owner === currentUser && !item.play_url"
+                            disabled
+                            class="rounded-lg border px-2 py-1 text-xs opacity-20 cursor-not-allowed transition"
+                            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                            title="{% trans "No player available for this file type" %}">
+                      <i class="fa-solid fa-play"></i>
                     </button>
                     <!-- Delete -->
                     <button x-show="item.owner === currentUser"

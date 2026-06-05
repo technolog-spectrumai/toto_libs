@@ -36,6 +36,14 @@ class PublicFileListView(TemplateView):
     template_name = "vault/public_file_list.html"
 
     def _build_flat_items(self, dirs, files, dir_gateway_map):
+        from toto.vault.plugins import VaultPlayPlugin
+
+        def _play_url_for(f):
+            if f.is_encrypted:
+                return ""
+            plugin = VaultPlayPlugin.for_file_type(f.file_type)
+            return plugin.get_play_url(f) if plugin else ""
+
         by_parent = {}
         for d in dirs:
             pid = d.parent_id
@@ -86,6 +94,7 @@ class PublicFileListView(TemplateView):
                         "url": _url if not f.is_encrypted else "",
                         "raw_url": _url,
                         "bpk": f.bucket_id,
+                        "play_url": _play_url_for(f),
                     })
 
         visit(None, 0)
@@ -105,6 +114,7 @@ class PublicFileListView(TemplateView):
                 "url": _url if not f.is_encrypted else "",
                 "raw_url": _url,
                 "bpk": f.bucket_id,
+                "play_url": _play_url_for(f),
             })
 
         return flat

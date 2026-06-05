@@ -249,10 +249,6 @@ class Command(IngressCommand):
         m_nb_exec    = _metric("mandragora.execution",      "Notebook cell execution", "compute", "mandragora", bu_execution)
         m_nb_cpu_s   = _metric("mandragora.compute_second", "Notebook CPU·second",     "compute", "mandragora", bu_second)
 
-        # — VOD (app: vod) —
-        m_vod_upload = _metric("vod.upload_mb",  "VOD upload MB",   "storage", "vod", bu_mb)
-        m_vod_stream = _metric("vod.stream_mb",  "VOD stream MB",   "storage", "vod", bu_mb)
-
         # — Transcription (app: transcription) —
         m_tr_req  = _metric("transcription.request", "Transcription job",          "ai", "transcription", bu_request)
         m_tr_sec  = _metric("transcription.second",  "Transcribed audio second",   "ai", "transcription", bu_second)
@@ -339,16 +335,6 @@ class Command(IngressCommand):
                 _item(t_steven, m_ai_input,  "LLM input tokens",   banana_token, "0.063", bu_input_token,  rev_banana_base, uq=1000)
                 _item(t_steven, m_ai_output, "LLM output tokens",  banana_token, "0.254", bu_output_token, rev_banana_base, uq=1000)
                 self.stdout.write("    +/✓ tariff AI-INFERENCE-BASE (steven, BANANA, GPT-4o×2.7 PLN)")
-
-            if django_apps.is_installed("toto.vod"):
-                t_vod_base, _ = _tariff(
-                    "VOD-BASE",
-                    "VOD Base Tariff",
-                    "Base VOD tariff using STORAGE_TOKEN. 1 token = 1 MB.",
-                )
-                _item(t_vod_base, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage_base)
-                _item(t_vod_base, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage_base)
-                self.stdout.write("    +/✓ tariff VOD-BASE (vod)")
 
             if django_apps.is_installed("toto.videomant"):
                 t_videomant, _ = _tariff(
@@ -525,16 +511,6 @@ class Command(IngressCommand):
         _item(tf_nb, m_nb_exec,  "Cell execution",   compute_token, "0.1", bu_execution, rev_compute)
         _item(tf_nb, m_nb_cpu_s, "Compute second",   compute_token, "0.1", bu_second,    rev_compute)
         self.stdout.write(f"    + {tf_nb.code}")
-
-        # — Tariff I: VOD —
-        tf_vod, _ = _tariff(
-            "VOD-STANDARD",
-            "VOD Storage & Streaming Tariff",
-            "1.0 STORAGE_TOKEN per MB uploaded or streamed.",
-        )
-        _item(tf_vod, m_vod_upload, "VOD upload MB",  storage_token, "1.0", bu_mb, rev_storage)
-        _item(tf_vod, m_vod_stream, "VOD stream MB",  storage_token, "1.0", bu_mb, rev_storage)
-        self.stdout.write(f"    + {tf_vod.code}")
 
         # — Tariff J: Transcription —
         tf_tr, _ = _tariff(
