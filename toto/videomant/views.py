@@ -1,13 +1,19 @@
 import json
+import mimetypes
+import os
+import re
 
+import yaml
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
+from .access import accessible_bucket_files, user_can_access_vault_file
+from .factory import FFmpegCommandFactory, OPERATIONS, OPERATION_LABELS
 from .forms import (
     CompressForm, CutForm, ExtractMp3Form,
     GifForm, ResizeForm, ThumbnailForm, ConcatForm,
@@ -379,3 +385,260 @@ def enqueue_concat(request, file_id):
     params = {k: v for k, v in form.cleaned_data.items() if k != "extra_file_ids"}
     job = _make_job(request, "videomant.concat", vf, params, input_files=all_ids)
     return _dispatch_and_redirect(request, job)
+
+
+# ---------------------------------------------------------------------------
+# Iterative command builder
+# ---------------------------------------------------------------------------
+
+# Form classes used purely to validate the parsed YAML for each operation.
+_OP_FORMS = {
+    "compress": CompressForm,
+    "resize": ResizeForm,
+    "cut": CutForm,
+    "extract_mp3": ExtractMp3Form,
+    "thumbnail": ThumbnailForm,
+    "gif": GifForm,
+    "concat": ConcatForm,
+}
+
+# Default params used to seed the YAML editor and to fill omitted keys.
+_OP_DEFAULTS = {
+    "compress":    {"quality": "medium", "output_name": "compressed"},
+    "resize":      {"preserve_aspect_ratio": True, "width": 1280, "output_name": "resized"},
+    "cut":         {"start_time": "00:00:00", "end_time": "00:00:30", "output_name": "clip"},
+    "extract_mp3": {"bitrate": "192k", "output_name": "audio"},
+    "thumbnail":   {"at_time": "00:00:01", "output_name": "thumbnail"},
+    "gif":         {"start_time": "00:00:00", "duration": 5, "fps": 12, "width": 480, "output_name": "animation"},
+    "concat":      {"reencode": False, "output_name": "merged", "extra_file_ids": []},
+    "probe":       {},
+}
+
+# YAML keys that could smuggle a filesystem path are never trusted.
+_PATH_KEYS = {
+    "input", "inputs", "input_path", "input_paths", "input_file", "input_files",
+    "output", "output_path", "source", "sources", "path", "paths", "file", "files",
+}
+
+_ROLE_HINTS = {
+    "video": ["source", "concat input"],
+    "audio": ["audio input"],
+    "image": ["watermark / overlay", "thumbnail"],
+    "text": ["subtitle"],
+}
+
+
+def display_input_name(vf) -> str:
+    """A path-free, human display filename for a VaultFile.
+
+    Never returns a real filesystem path — the factory builds the command
+    preview from this, so it must not leak vault internals.
+    """
+    name = (getattr(vf, "title", "") or "").strip()
+    base = os.path.basename(name)
+    return base or f"file{vf.pk}"
+
+
+def _sanitize_output_name(value) -> str:
+    base = os.path.basename(str(value or "").strip())
+    base = re.sub(r"[^A-Za-z0-9 ._-]", "", base).strip()
+    return base or "output"
+
+
+def _strip_path_keys(params: dict) -> dict:
+    return {k: v for k, v in params.items() if k not in _PATH_KEYS}
+
+
+def _default_yaml(op: str) -> str:
+    return yaml.safe_dump(_OP_DEFAULTS.get(op, {}), sort_keys=False, default_flow_style=False)
+
+
+def _form_errors(form) -> list[str]:
+    out = []
+    for err in form.non_field_errors():
+        out.append(str(err))
+    for field, errs in form.errors.items():
+        if field == "__all__":
+            continue
+        for e in errs:
+            out.append(f"{field}: {e}")
+    return out
+
+
+def _role_hints(file_type: str) -> list[str]:
+    return _ROLE_HINTS.get(file_type, [])
+
+
+def _bucket_file_row(f) -> dict:
+    mime, _ = mimetypes.guess_type(f.title or "")
+    return {
+        "id": f.id,
+        "title": f.title,
+        "file_type": f.file_type,
+        "mimetype": mime or "",
+        "size": f.file_size_bytes,
+        "roles": _role_hints(f.file_type),
+    }
+
+
+def _parse_and_validate(raw_yaml: str, op: str):
+    """Parse the YAML spec and validate it against the operation form.
+
+    Returns ``(cleaned_params, parsed_dict, errors)``. ``cleaned_params`` is
+    ``None`` when there are errors.
+    """
+    try:
+        parsed = yaml.safe_load(raw_yaml) if raw_yaml.strip() else {}
+    except yaml.YAMLError as exc:
+        return None, {}, [f"YAML parse error: {exc}"]
+    if parsed is None:
+        parsed = {}
+    if not isinstance(parsed, dict):
+        return None, {}, ["The operation spec must be a YAML mapping (key: value pairs)."]
+
+    parsed = _strip_path_keys(parsed)
+
+    if op == "probe":
+        return {}, parsed, []
+
+    form_cls = _OP_FORMS.get(op)
+    if form_cls is None:
+        return None, parsed, [f"Unknown operation: {op!r}"]
+
+    defaults = _OP_DEFAULTS.get(op, {})
+    data = {**defaults, **{k: v for k, v in parsed.items() if k != "extra_file_ids"}}
+    if "output_name" in data:
+        data["output_name"] = _sanitize_output_name(data["output_name"])
+
+    form = form_cls(data=data, bucket_files=None) if op == "concat" else form_cls(data=data)
+    if not form.is_valid():
+        return None, parsed, _form_errors(form)
+
+    cleaned = {k: v for k, v in form.cleaned_data.items() if k != "extra_file_ids"}
+    return cleaned, parsed, []
+
+
+def _resolve_extra_ids(user, vf, id_list):
+    """Validate referenced VaultFile ids: existence, same bucket, access.
+
+    Returns ``(ids, display_names, objects, errors)``.
+    """
+    from toto.vault.models import VaultFile
+
+    ids, names, objs, errors = [], [], [], []
+    seen = set()
+    for raw in id_list:
+        try:
+            fid = int(raw)
+        except (ValueError, TypeError):
+            errors.append(f"Invalid file id: {raw!r}")
+            continue
+        if fid in seen:
+            continue
+        seen.add(fid)
+        try:
+            f = VaultFile.objects.select_related("bucket", "directory").get(pk=fid)
+        except VaultFile.DoesNotExist:
+            errors.append(f"Referenced file {fid} does not exist.")
+            continue
+        if f.bucket_id != vf.bucket_id:
+            errors.append(f"File {fid} is not in this bucket and cannot be referenced.")
+            continue
+        if not user_can_access_vault_file(user, f):
+            errors.append(f"You do not have access to file {fid}.")
+            continue
+        ids.append(fid)
+        names.append(display_input_name(f))
+        objs.append(f)
+    return ids, names, objs, errors
+
+
+@login_required
+def command_builder(request, file_id):
+    """Iterative ffmpeg/ffprobe command builder for a vault media file.
+
+    GET shows the builder; POST ``action=preview`` renders the generated
+    command without creating a job; POST ``action=run`` validates again and
+    enqueues the job through the existing runner.
+    """
+    from toto.vault.models import VaultFile
+
+    vf = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory", "owner"), pk=file_id
+    )
+    # Independent access check — do not trust the referring app.
+    if not user_can_access_vault_file(request.user, vf):
+        raise Http404
+
+    service = request.GET.get("service", "").strip()
+    op = (request.POST.get("op") or request.GET.get("op") or "").strip()
+    if not op:
+        op = "probe" if service == "ffprobe" else "compress"
+    if op not in OPERATIONS:
+        op = "compress"
+
+    bucket_files = [
+        _bucket_file_row(f)
+        for f in accessible_bucket_files(
+            request.user, vf.bucket,
+            exclude_pk=vf.pk, file_types=["video", "audio", "image"],
+        ).order_by("title")[:200]
+    ]
+
+    spec_yaml = request.POST.get("spec_yaml")
+    if spec_yaml is None:
+        spec_yaml = _default_yaml(op)
+
+    context = {
+        "vf": vf,
+        "op": op,
+        "operations": [(o, OPERATION_LABELS[o]) for o in OPERATIONS],
+        "bucket_files": bucket_files,
+        "spec_yaml": spec_yaml,
+        "selected_ids": [],
+        "command_preview": None,
+        "expected_outputs": [],
+        "errors": [],
+        "service": service,
+    }
+
+    if request.method == "POST":
+        action = request.POST.get("action", "preview")
+        checkbox_ids = request.POST.getlist("extra_file_ids")
+        context["selected_ids"] = [str(s) for s in checkbox_ids]
+
+        cleaned, parsed, errors = _parse_and_validate(spec_yaml, op)
+        if errors:
+            context["errors"] = errors
+            return _render(request, "videomant/command_builder.html", context)
+
+        # YAML extra_file_ids are canonical; merge in any checkbox selections.
+        yaml_ids = parsed.get("extra_file_ids") or []
+        if not isinstance(yaml_ids, (list, tuple)):
+            context["errors"] = ["extra_file_ids must be a YAML list of file ids."]
+            return _render(request, "videomant/command_builder.html", context)
+        merged_ids = list(yaml_ids) + [c for c in checkbox_ids if c not in {str(y) for y in yaml_ids}]
+
+        ids, extra_names, _objs, ref_errors = _resolve_extra_ids(request.user, vf, merged_ids)
+        if ref_errors:
+            context["errors"] = ref_errors
+            context["selected_ids"] = [str(i) for i in ids]
+            return _render(request, "videomant/command_builder.html", context)
+
+        spec = FFmpegCommandFactory().build(
+            op,
+            input_name=display_input_name(vf),
+            extra_input_names=extra_names,
+            params=cleaned,
+        )
+
+        if action == "run":
+            input_files = ([vf.id] + ids) if op == "concat" else []
+            job = _make_job(request, f"videomant.{op}", vf, dict(cleaned), input_files=input_files)
+            return _dispatch_and_redirect(request, job)
+
+        context["command_preview"] = spec.shell_display
+        context["expected_outputs"] = list(spec.output_names)
+        context["selected_ids"] = [str(i) for i in ids]
+
+    return _render(request, "videomant/command_builder.html", context)

@@ -890,3 +890,199 @@ class ViewTests(TestCase):
         )
         # redirects back to actions on invalid form
         self.assertRedirects(resp, f"/videomant/vault/{vf.pk}/actions/", fetch_redirect_response=False)
+
+
+# ---------------------------------------------------------------------------
+# Command factory (pure)
+# ---------------------------------------------------------------------------
+
+class FFmpegCommandFactoryTests(SimpleTestCase):
+    def test_compress_shell_display_has_no_paths(self):
+        from .factory import FFmpegCommandFactory
+        spec = FFmpegCommandFactory().build(
+            "compress", input_name="clip.mp4",
+            params={"quality": "high", "output_name": "out"},
+        )
+        self.assertEqual(spec.output_names, ("out.mp4",))
+        self.assertIn("-i clip.mp4", spec.shell_display)
+        self.assertIn("out.mp4", spec.shell_display)
+        self.assertNotIn("/", spec.shell_display)  # display names only, no fs paths
+
+    def test_probe_has_no_outputs(self):
+        from .factory import FFmpegCommandFactory
+        spec = FFmpegCommandFactory().build("probe", input_name="clip.mp4")
+        self.assertEqual(spec.output_names, ())
+        self.assertTrue(spec.shell_display.startswith("ffprobe"))
+
+    def test_gif_emits_two_commands(self):
+        from .factory import FFmpegCommandFactory
+        spec = FFmpegCommandFactory().build(
+            "gif", input_name="clip.mp4", params={"output_name": "anim"},
+        )
+        self.assertEqual(len(spec.commands), 2)  # palette + encode
+        self.assertEqual(spec.output_names, ("anim.gif",))
+
+
+# ---------------------------------------------------------------------------
+# Iterative command builder view
+# ---------------------------------------------------------------------------
+
+@override_settings(VIDEOMANT_WORK_ROOT="/tmp/videomant_test", MEDIA_ROOT="/tmp/media_test")
+class CommandBuilderTests(TestCase):
+    BUILDER_URL = "/videomant/vault/{pk}/builder/"
+
+    def setUp(self):
+        # curator owns the bucket; owner (viewer) owns files but not the bucket,
+        # so non-owner access filtering is actually exercised.
+        self.curator = User.objects.create_user("cb_curator", password="pass")
+        self.owner = User.objects.create_user("cb_owner", password="pass")
+        self.stranger = User.objects.create_user("cb_stranger", password="pass")
+        self.client = DjangoClient()
+        self.client.login(username="cb_owner", password="pass")
+        patcher = patch("toto.ui.page.PageProcessor._get_config", return_value=None)
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+        from toto.vault.models import Bucket
+        self.bucket = Bucket.objects.create(name="CB Bucket", owner=self.curator, slug="cb-bucket")
+        self.other_bucket = Bucket.objects.create(name="Other", owner=self.curator, slug="cb-other")
+
+        self.src = self._vf(self.owner, "source.mp4")
+        self.extra = self._vf(self.owner, "second.mp4")
+        self.secret = self._vf(self.stranger, "secret.mp4", is_public=False)
+        self.foreign = self._vf(self.owner, "foreign.mp4", bucket=self.other_bucket)
+
+    def _vf(self, owner, name, *, file_type="video", bucket=None, is_public=False):
+        from toto.vault.models import VaultFile
+        from django.core.files.base import ContentFile
+        import os
+        os.makedirs("/tmp/media_test/vault/files", exist_ok=True)
+        vf = VaultFile(
+            owner=owner, title=name, file_type=file_type,
+            bucket=bucket if bucket is not None else self.bucket,
+            is_public=is_public,
+        )
+        vf.file.save(name, ContentFile(b"x"), save=True)
+        return vf
+
+    def _url(self, vf=None):
+        return self.BUILDER_URL.format(pk=(vf or self.src).pk)
+
+    # -- access + listing -------------------------------------------------
+
+    def test_builder_shows_source_and_same_bucket_accessible_files(self):
+        resp = self.client.get(self._url())
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "source.mp4")   # the selected source file
+        self.assertContains(resp, "second.mp4")   # accessible same-bucket file
+        self.assertNotContains(resp, "secret.mp4")  # stranger's private file hidden
+        self.assertNotContains(resp, "foreign.mp4")  # different bucket hidden
+
+    def test_builder_denies_inaccessible_source(self):
+        resp = self.client.get(self._url(self.secret))
+        self.assertEqual(resp.status_code, 404)
+
+    # -- preview ----------------------------------------------------------
+
+    def test_preview_renders_command_without_creating_job(self):
+        before = MediaJob.objects.count()
+        resp = self.client.post(self._url(), {
+            "op": "compress",
+            "action": "preview",
+            "spec_yaml": "quality: medium\noutput_name: compressed\n",
+        })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(MediaJob.objects.count(), before)  # no job created
+        self.assertContains(resp, "compressed.mp4")
+
+    def test_preview_equals_factory_shell_display(self):
+        from .factory import FFmpegCommandFactory
+        from .views import display_input_name
+        spec = FFmpegCommandFactory().build(
+            "compress",
+            input_name=display_input_name(self.src),
+            params={"quality": "medium", "output_name": "compressed"},
+        )
+        resp = self.client.post(self._url(), {
+            "op": "compress",
+            "action": "preview",
+            "spec_yaml": "quality: medium\noutput_name: compressed\n",
+        })
+        self.assertContains(resp, spec.shell_display)
+
+    def test_user_absolute_input_path_is_ignored(self):
+        resp = self.client.post(self._url(), {
+            "op": "compress",
+            "action": "preview",
+            "spec_yaml": "quality: medium\noutput_name: compressed\ninput_path: /etc/passwd\n",
+        })
+        self.assertEqual(resp.status_code, 200)
+        # The YAML is echoed back into the editor (value preservation), but the
+        # path must never reach the generated command — input comes from the
+        # resolved vault file only.
+        self.assertNotContains(resp, "-i /etc/passwd")
+        self.assertContains(resp, "-i source.mp4")
+
+    # -- run --------------------------------------------------------------
+
+    def test_run_creates_and_enqueues_job(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post(self._url(), {
+                "op": "compress",
+                "action": "run",
+                "spec_yaml": "quality: medium\noutput_name: compressed\n",
+            })
+        self.assertEqual(MediaJob.objects.count(), before + 1)
+        job = MediaJob.objects.filter(task_name="videomant.compress").last()
+        self.assertIsNotNone(job)
+        self.assertTrue(delay.called)
+        self.assertRedirects(resp, f"/videomant/jobs/{job.pk}/", fetch_redirect_response=False)
+
+    def test_run_invalid_yaml_creates_no_job(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post(self._url(), {
+                "op": "compress",
+                "action": "run",
+                "spec_yaml": "quality: medium\n  bad: : indent",  # malformed YAML
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(MediaJob.objects.count(), before)
+        self.assertFalse(delay.called)
+
+    def test_run_concat_with_accessible_extra(self):
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.extra.pk}]\n",
+            })
+        job = MediaJob.objects.filter(task_name="videomant.concat").last()
+        self.assertIsNotNone(job)
+        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_unauthorized_bucket_file_cannot_be_referenced(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.secret.pk}]\n",
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(MediaJob.objects.count(), before)  # rejected, no job
+        self.assertFalse(delay.called)
+        self.assertContains(resp, "access")
+
+    def test_out_of_bucket_file_cannot_be_referenced(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            resp = self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.foreign.pk}]\n",
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(MediaJob.objects.count(), before)
+        self.assertContains(resp, "not in this bucket")

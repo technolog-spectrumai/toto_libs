@@ -14,6 +14,7 @@ urlpatterns = [
     path("jobs/<int:pk>/", views.job_detail, name="job_detail"),
     path("jobs/<int:pk>/status.json", views.job_status_json, name="job_status_json"),
     path("vault/<int:file_id>/actions/", views.vault_file_actions, name="vault_file_actions"),
+    path("vault/<int:file_id>/builder/", views.command_builder, name="command_builder"),
     path("vault/<int:file_id>/compress/", views.enqueue_compress, name="enqueue_compress"),
     path("vault/<int:file_id>/resize/", views.enqueue_resize, name="enqueue_resize"),
     path("vault/<int:file_id>/cut/", views.enqueue_cut, name="enqueue_cut"),

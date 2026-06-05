@@ -18,10 +18,11 @@ from toto.fileservices.runner import (
 class FFmpegServicePlugin(FileServicePlugin):
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-film"
-    description = "Run ffmpeg with custom arguments. The input is supplied as -i; end your args with an output filename."
+    description = "Build and preview an ffmpeg command, then run it on the media builder page."
     args_label = "ffmpeg arguments"
     args_placeholder = "-vf scale=640:-2 -c:v libx264 output.mp4"
     args_required = True
+    builder = True
 
     def execute(self, run) -> list[int]:
         from toto.vault.models import VaultFile
@@ -61,10 +62,11 @@ class FFmpegServicePlugin(FileServicePlugin):
 class FFprobeServicePlugin(FileServicePlugin):
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-circle-info"
-    description = "Inspect a media file with ffprobe. Output JSON is saved as a new file."
+    description = "Inspect a media file with ffprobe on the media builder page."
     args_label = "ffprobe arguments (optional)"
     args_placeholder = "-show_format -show_streams"
     args_required = False
+    builder = True
 
     _DEFAULT = ["-v", "quiet", "-print_format", "json", "-show_format", "-show_streams"]
 

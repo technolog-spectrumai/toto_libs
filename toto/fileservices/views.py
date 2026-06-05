@@ -14,6 +14,10 @@ from toto.vault.models import VaultFile
 from .models import FileServiceRun
 from .plugin import FileServicePlugin
 
+# Media services handled by the videomant command builder instead of running
+# ffmpeg/ffprobe directly from a free-text arg string.
+MEDIA_BUILDER_SERVICES = {"ffmpeg", "ffprobe"}
+
 
 @login_required
 def services_for_file(request, file_pk):
@@ -39,6 +43,19 @@ def run_service(request, file_pk):
     plugin = FileServicePlugin.get(service_key)
     if plugin is None or not plugin.accepts(vault_file):
         return JsonResponse({"error": "Service is not available for this file."}, status=400)
+
+    # Media operations are routed to the videomant command builder, where the
+    # user assembles and previews the ffmpeg/ffprobe command before running.
+    if service_key in MEDIA_BUILDER_SERVICES:
+        from toto.videomant.access import user_can_access_vault_file
+        if not user_can_access_vault_file(request.user, vault_file):
+            return JsonResponse({"error": "You do not have access to this file."}, status=403)
+        builder_url = (
+            reverse("videomant:command_builder", args=[vault_file.pk])
+            + f"?service={service_key}"
+        )
+        return JsonResponse({"status": "redirect", "redirect_url": builder_url})
+
     if plugin.args_required and not args.strip():
         return JsonResponse({"error": f"{plugin.args_label} are required."}, status=400)
 

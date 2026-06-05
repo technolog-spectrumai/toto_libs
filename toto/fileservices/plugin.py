@@ -29,6 +29,10 @@ class FileServicePlugin(BasePlugin):
     args_placeholder: ClassVar[str] = ""
     args_required: ClassVar[bool] = False
 
+    #: When True, selecting this service redirects to a builder UI that collects
+    #: arguments on its own page rather than running from a free-text arg string.
+    builder: ClassVar[bool] = False
+
     def accepts(self, vault_file) -> bool:
         if vault_file.is_encrypted:
             return False
@@ -49,6 +53,7 @@ class FileServicePlugin(BasePlugin):
             "args_label": self.args_label,
             "args_placeholder": self.args_placeholder,
             "args_required": self.args_required,
+            "builder": self.builder,
         }
 
     # ------------------------------------------------------------------
