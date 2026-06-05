@@ -423,14 +423,14 @@ _OP_DEFAULTS = {
     "cut":           {"start_time": "00:00:00", "end_time": "00:00:30", "output_name": "clip"},
     "extract_mp3":   {"bitrate": "192k", "output_name": "audio"},
     "remove_audio":  {"output_name": "muted"},
-    "replace_audio": {"output_name": "dubbed", "extra_file_ids": []},
-    "add_subtitles": {"output_name": "subtitled", "extra_file_ids": []},
-    "add_watermark": {"position": "bottom-right", "output_name": "watermarked", "extra_file_ids": []},
+    "replace_audio": {"output_name": "dubbed", "extra_files": []},
+    "add_subtitles": {"output_name": "subtitled", "extra_files": []},
+    "add_watermark": {"position": "bottom-right", "output_name": "watermarked", "extra_files": []},
     "thumbnail":     {"at_time": "00:00:01", "output_name": "thumbnail"},
     "gif":           {"start_time": "00:00:00", "duration": 5, "fps": 12, "width": 480, "output_name": "animation"},
-    "vstack":        {"output_name": "vstack", "extra_file_ids": []},
-    "hstack":        {"output_name": "hstack", "extra_file_ids": []},
-    "concat":        {"reencode": False, "output_name": "merged", "extra_file_ids": []},
+    "vstack":        {"output_name": "vstack", "extra_files": []},
+    "hstack":        {"output_name": "hstack", "extra_files": []},
+    "concat":        {"reencode": False, "output_name": "merged", "extra_files": []},
     "probe":         {},
 }
 
@@ -526,7 +526,7 @@ def _parse_and_validate(raw_yaml: str, op: str):
         return None, parsed, [f"Unknown operation: {op!r}"]
 
     defaults = _OP_DEFAULTS.get(op, {})
-    data = {**defaults, **{k: v for k, v in parsed.items() if k != "extra_file_ids"}}
+    data = {**defaults, **{k: v for k, v in parsed.items() if k not in ("extra_files", "extra_file_ids")}}
     if "output_name" in data:
         data["output_name"] = _sanitize_output_name(data["output_name"])
 
@@ -534,43 +534,48 @@ def _parse_and_validate(raw_yaml: str, op: str):
     if not form.is_valid():
         return None, parsed, _form_errors(form)
 
-    cleaned = {k: v for k, v in form.cleaned_data.items() if k != "extra_file_ids"}
+    cleaned = {k: v for k, v in form.cleaned_data.items() if k not in ("extra_files", "extra_file_ids")}
     return cleaned, parsed, []
 
 
-def _resolve_extra_ids(user, vf, id_list):
-    """Validate referenced VaultFile ids: existence, same bucket, access.
+def _resolve_extra_files(user, vf, name_list):
+    """Resolve bucket file *names* to accessible VaultFile objects in vf.bucket.
 
-    Returns ``(ids, display_names, objects, errors)``.
+    A name matches a file's ``title`` or ``key`` within the same bucket. Access
+    is re-checked per file; out-of-bucket / unauthorized / ambiguous names are
+    rejected. Returns ``(objects, display_names, errors)``.
     """
+    from django.db.models import Q
     from toto.vault.models import VaultFile
 
-    ids, names, objs, errors = [], [], [], []
+    objs, display_names, errors = [], [], []
     seen = set()
-    for raw in id_list:
-        try:
-            fid = int(raw)
-        except (ValueError, TypeError):
-            errors.append(f"Invalid file id: {raw!r}")
+    for raw in name_list:
+        name = str(raw).strip()
+        if not name or name in seen:
             continue
-        if fid in seen:
+        seen.add(name)
+        matches = list(
+            VaultFile.objects
+            .filter(bucket=vf.bucket)
+            .filter(Q(title=name) | Q(key=name))
+            .exclude(pk=vf.pk)
+            .select_related("bucket", "directory")
+        )
+        if not matches:
+            errors.append(f"No file named '{name}' in this bucket.")
             continue
-        seen.add(fid)
-        try:
-            f = VaultFile.objects.select_related("bucket", "directory").get(pk=fid)
-        except VaultFile.DoesNotExist:
-            errors.append(f"Referenced file {fid} does not exist.")
+        accessible = [m for m in matches if user_can_access_vault_file(user, m)]
+        if not accessible:
+            errors.append(f"You do not have access to file '{name}'.")
             continue
-        if f.bucket_id != vf.bucket_id:
-            errors.append(f"File {fid} is not in this bucket and cannot be referenced.")
+        if len(accessible) > 1:
+            errors.append(f"Ambiguous file name '{name}' — multiple matches in this bucket.")
             continue
-        if not user_can_access_vault_file(user, f):
-            errors.append(f"You do not have access to file {fid}.")
-            continue
-        ids.append(fid)
-        names.append(display_input_name(f))
+        f = accessible[0]
         objs.append(f)
-    return ids, names, objs, errors
+        display_names.append(display_input_name(f))
+    return objs, display_names, errors
 
 
 @login_required
@@ -616,7 +621,7 @@ def command_builder(request, file_id):
         "operations": [(o, OPERATION_LABELS[o]) for o in OPERATIONS],
         "bucket_files": bucket_files,
         "spec_yaml": spec_yaml,
-        "selected_ids": [],
+        "selected_names": [],
         "command_preview": None,
         "expected_outputs": [],
         "errors": [],
@@ -625,35 +630,36 @@ def command_builder(request, file_id):
 
     if request.method == "POST":
         action = request.POST.get("action", "preview")
-        checkbox_ids = request.POST.getlist("extra_file_ids")
-        context["selected_ids"] = [str(s) for s in checkbox_ids]
+        checkbox_names = request.POST.getlist("extra_files")
+        context["selected_names"] = [str(s) for s in checkbox_names]
 
         cleaned, parsed, errors = _parse_and_validate(spec_yaml, op)
         if errors:
             context["errors"] = errors
             return _render(request, "videomant/command_builder.html", context)
 
-        # YAML extra_file_ids are canonical; merge in any checkbox selections.
-        yaml_ids = parsed.get("extra_file_ids") or []
-        if not isinstance(yaml_ids, (list, tuple)):
-            context["errors"] = ["extra_file_ids must be a YAML list of file ids."]
+        # YAML extra_files (bucket file names) are canonical; merge selector picks.
+        yaml_names = parsed.get("extra_files") or []
+        if not isinstance(yaml_names, (list, tuple)):
+            context["errors"] = ["extra_files must be a YAML list of bucket file names."]
             return _render(request, "videomant/command_builder.html", context)
-        merged_ids = list(yaml_ids) + [c for c in checkbox_ids if c not in {str(y) for y in yaml_ids}]
+        seen = {str(y) for y in yaml_names}
+        merged_names = [str(y) for y in yaml_names] + [c for c in checkbox_names if c not in seen]
 
-        ids, extra_names, _objs, ref_errors = _resolve_extra_ids(request.user, vf, merged_ids)
+        objs, extra_names, ref_errors = _resolve_extra_files(request.user, vf, merged_names)
         if ref_errors:
             context["errors"] = ref_errors
-            context["selected_ids"] = [str(i) for i in ids]
+            context["selected_names"] = [o.title for o in objs]
             return _render(request, "videomant/command_builder.html", context)
 
         # Operations that consume extra inputs require the right file count.
-        if op in SECONDARY_OPERATIONS and len(ids) != 1:
+        if op in SECONDARY_OPERATIONS and len(objs) != 1:
             context["errors"] = [
                 "This operation needs exactly one additional file selected from the bucket."
             ]
-            context["selected_ids"] = [str(i) for i in ids]
+            context["selected_names"] = [o.title for o in objs]
             return _render(request, "videomant/command_builder.html", context)
-        if op == "concat" and len(ids) < 1:
+        if op == "concat" and len(objs) < 1:
             context["errors"] = ["Select at least one additional file to concatenate."]
             return _render(request, "videomant/command_builder.html", context)
 
@@ -665,6 +671,7 @@ def command_builder(request, file_id):
         )
 
         if action == "run":
+            ids = [o.id for o in objs]
             if op == "concat":
                 input_files = [vf.id] + ids
             elif op in SECONDARY_OPERATIONS:
@@ -676,6 +683,6 @@ def command_builder(request, file_id):
 
         context["command_preview"] = spec.shell_display
         context["expected_outputs"] = list(spec.output_names)
-        context["selected_ids"] = [str(i) for i in ids]
+        context["selected_names"] = [o.title for o in objs]
 
     return _render(request, "videomant/command_builder.html", context)

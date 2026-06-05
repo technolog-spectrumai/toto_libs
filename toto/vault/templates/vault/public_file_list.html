@@ -960,7 +960,11 @@
                         :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
                         x-text="item.file_type"></span>
 
-                  <span class="hidden sm:block text-xs opacity-50 shrink-0" x-text="item.owner"></span>
+                  <span class="hidden sm:inline-flex items-center gap-1 shrink-0 rounded-full border px-2 py-0.5 text-[10px] opacity-70"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        :title="`Author: ${item.owner}`">
+                    <i class="fa-solid fa-user opacity-60"></i><span x-text="item.owner"></span>
+                  </span>
 
                   <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="item.uploaded"></span>
 
@@ -1073,8 +1077,12 @@
                     <span class="text-xs opacity-40" x-text="item.uploaded"></span>
                   </div>
 
-                  <!-- Owner -->
-                  <p class="text-xs opacity-40 truncate" x-text="item.owner"></p>
+                  <!-- Author -->
+                  <span class="inline-flex max-w-full items-center gap-1 self-start rounded-full border px-2 py-0.5 text-[10px] opacity-70"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        :title="`Author: ${item.owner}`">
+                    <i class="fa-solid fa-user opacity-60"></i><span class="truncate" x-text="item.owner"></span>
+                  </span>
 
                   <!-- Actions -->
                   <div class="mt-auto flex flex-wrap gap-1">

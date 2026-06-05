@@ -49,7 +49,11 @@
     </div>
     {% endif %}
 
-    <form method="post" action="{% url 'videomant:command_builder' vf.id %}" class="space-y-6">
+    {{ spec_yaml|json_script:"spec-yaml-data" }}
+    {{ selected_names|json_script:"selected-names-data" }}
+
+    <form method="post" action="{% url 'videomant:command_builder' vf.id %}" class="space-y-6"
+      x-data="builderForm()">
       {% csrf_token %}
       <input type="hidden" name="op" value="{{ op }}">
 
@@ -60,7 +64,7 @@
       >
         <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket files" %}</h2>
         <p class="mb-3 text-xs opacity-50">
-          {% trans "Accessible files in the same bucket. Tick to reference as extra inputs (e.g. concat). Selections are by file id — never a path." %}
+          {% trans "Accessible files in the same bucket. Tick to reference as extra inputs (e.g. concat); the selection is written into the YAML below by file name — never a path." %}
         </p>
         {% if bucket_files %}
         <div class="overflow-x-auto">
@@ -78,9 +82,9 @@
               {% for file in bucket_files %}
               <tr class="border-t" x-bind:class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
                 <td class="py-1.5 pr-2">
-                  <input type="checkbox" name="extra_file_ids" value="{{ file.id }}"
-                    class="rounded border" x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                    {% if file.id|stringformat:"s" in selected_ids %}checked{% endif %}>
+                  <input type="checkbox" name="extra_files" value="{{ file.title }}"
+                    x-model="selected" @change="syncExtraFiles()"
+                    class="rounded border" x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
                 </td>
                 <td class="py-1.5 pr-3 font-mono">{{ file.title }}</td>
                 <td class="py-1.5 pr-3 opacity-70">{{ file.file_type }}{% if file.mimetype %} <span class="opacity-50">/ {{ file.mimetype }}</span>{% endif %}</td>
@@ -107,12 +111,12 @@
         class="rounded-lg border p-5 shadow-sm"
       >
         <label class="mb-1 block text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Operation spec (YAML)" %}</label>
-        <p class="mb-3 text-xs opacity-50">{% trans "Edit arguments here. This YAML is the source of truth for the command. Absolute input paths are ignored." %}</p>
+        <p class="mb-3 text-xs opacity-50">{% trans "Edit arguments here. This YAML is the source of truth for the command. Ticking bucket files above fills in extra_files. Absolute input paths are ignored." %}</p>
         <textarea
-          name="spec_yaml" rows="10" spellcheck="false"
+          name="spec_yaml" rows="10" spellcheck="false" x-model="yamlText"
           class="w-full rounded-lg border px-3 py-2 font-mono text-sm focus:outline-none focus:ring-2"
           x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-        >{{ spec_yaml }}</textarea>
+        ></textarea>
 
         <div class="mt-4 flex flex-wrap gap-2">
           <button type="submit" name="action" value="preview"
@@ -160,4 +164,35 @@
 
   </div>
 </div>
+
+<script>
+  function builderForm() {
+    return {
+      yamlText: JSON.parse(document.getElementById('spec-yaml-data').textContent),
+      selected: JSON.parse(document.getElementById('selected-names-data').textContent),
+      // Rewrite the `extra_files:` entry in the YAML from the ticked bucket files.
+      syncExtraFiles() {
+        const flow = '[' + this.selected.map(n => JSON.stringify(n)).join(', ') + ']';
+        const newLine = 'extra_files: ' + flow;
+        const lines = this.yamlText.split('\n');
+        const out = [];
+        let found = false;
+        for (let i = 0; i < lines.length; i++) {
+          if (/^\s*extra_files\s*:/.test(lines[i])) {
+            out.push(newLine);
+            found = true;
+            // drop any following block-style list items belonging to extra_files
+            let j = i + 1;
+            while (j < lines.length && /^\s*-\s/.test(lines[j])) j++;
+            i = j - 1;
+          } else {
+            out.push(lines[i]);
+          }
+        }
+        if (!found) out.push(newLine);
+        this.yamlText = out.join('\n');
+      }
+    };
+  }
+</script>
 {% endblock %}

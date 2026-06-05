@@ -1069,16 +1069,70 @@ class CommandBuilderTests(TestCase):
         self.assertEqual(MediaJob.objects.count(), before)
         self.assertFalse(delay.called)
 
-    def test_run_concat_with_accessible_extra(self):
+    def test_run_concat_with_accessible_extra_by_name(self):
         with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
             self.client.post(self._url(), {
                 "op": "concat",
                 "action": "run",
-                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.extra.pk}]\n",
+                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["second.mp4"]\n',
             })
         job = MediaJob.objects.filter(task_name="videomant.concat").last()
         self.assertIsNotNone(job)
         self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_run_concat_extra_referenced_by_key(self):
+        # A file resolves by its key (slug) as well as its title.
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": f'reencode: false\noutput_name: merged\nextra_files: ["{self.extra.key}"]\n',
+            })
+        job = MediaJob.objects.filter(task_name="videomant.concat").last()
+        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_extra_file_via_checkbox_selector(self):
+        # The selector posts names under extra_files even if the YAML omits them.
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": "reencode: false\noutput_name: merged\nextra_files: []\n",
+                "extra_files": ["second.mp4"],
+            })
+        job = MediaJob.objects.filter(task_name="videomant.concat").last()
+        self.assertEqual(job.input_files, [self.src.pk, self.extra.pk])
+
+    def test_unknown_extra_file_name_rejected(self):
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay") as delay:
+            resp = self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["nope.mp4"]\n',
+            })
+        self.assertEqual(MediaJob.objects.count(), before)
+        self.assertFalse(delay.called)
+        self.assertContains(resp, "No file named")
+
+    def test_ambiguous_extra_file_name_rejected(self):
+        # Two accessible files share the same title (distinct keys) in the bucket.
+        from toto.vault.models import VaultFile
+        from django.core.files.base import ContentFile
+        import os
+        os.makedirs("/tmp/media_test/vault/files", exist_ok=True)
+        for fname in ("dupa.mp4", "dupb.mp4"):
+            d = VaultFile(owner=self.owner, title="dup.mp4", file_type="video", bucket=self.bucket)
+            d.file.save(fname, ContentFile(b"x"), save=True)
+        before = MediaJob.objects.count()
+        with patch("toto.videomant.tasks_direct.run_direct_job.delay"):
+            resp = self.client.post(self._url(), {
+                "op": "concat",
+                "action": "run",
+                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["dup.mp4"]\n',
+            })
+        self.assertEqual(MediaJob.objects.count(), before)
+        self.assertContains(resp, "Ambiguous")
 
     def test_unauthorized_bucket_file_cannot_be_referenced(self):
         before = MediaJob.objects.count()
@@ -1086,7 +1140,7 @@ class CommandBuilderTests(TestCase):
             resp = self.client.post(self._url(), {
                 "op": "concat",
                 "action": "run",
-                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.secret.pk}]\n",
+                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["secret.mp4"]\n',
             })
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(MediaJob.objects.count(), before)  # rejected, no job
@@ -1099,11 +1153,11 @@ class CommandBuilderTests(TestCase):
             resp = self.client.post(self._url(), {
                 "op": "concat",
                 "action": "run",
-                "spec_yaml": f"reencode: false\noutput_name: merged\nextra_file_ids: [{self.foreign.pk}]\n",
+                "spec_yaml": 'reencode: false\noutput_name: merged\nextra_files: ["foreign.mp4"]\n',
             })
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(MediaJob.objects.count(), before)
-        self.assertContains(resp, "not in this bucket")
+        self.assertContains(resp, "this bucket")
 
     # -- new operations ---------------------------------------------------
 
@@ -1126,7 +1180,7 @@ class CommandBuilderTests(TestCase):
             self.client.post(self._url(), {
                 "op": "vstack",
                 "action": "run",
-                "spec_yaml": f"output_name: stacked\nextra_file_ids: [{self.extra.pk}]\n",
+                "spec_yaml": 'output_name: stacked\nextra_files: ["second.mp4"]\n',
             })
         job = MediaJob.objects.filter(task_name="videomant.vstack").last()
         self.assertIsNotNone(job)
@@ -1138,7 +1192,7 @@ class CommandBuilderTests(TestCase):
             resp = self.client.post(self._url(), {
                 "op": "vstack",
                 "action": "run",
-                "spec_yaml": "output_name: stacked\nextra_file_ids: []\n",
+                "spec_yaml": "output_name: stacked\nextra_files: []\n",
             })
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(MediaJob.objects.count(), before)  # no file selected → rejected
