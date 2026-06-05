@@ -91,10 +91,10 @@
 
     <!-- Header -->
     <header class="space-y-2">
-      <a href="{% url 'core:dashboard' %}"
+      <a href="{% url 'vault:public_list' %}"
          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
         <i class="fa-solid fa-arrow-left"></i>
-        {% trans "Dashboard" %}
+        {% trans "Buckets" %}
       </a>
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

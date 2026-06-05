@@ -858,7 +858,7 @@
                   </button>
                   <button x-show="item.owner === currentUser && !item.play_url && item.t === 'file'"
                           disabled
-                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 opacity-20 cursor-not-allowed"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-30 transition-opacity duration-150 cursor-not-allowed"
                           :title="{% trans 'No player available for this file type' %}">
                     <i class="fa-solid fa-play text-xs"></i>
                   </button>
@@ -962,7 +962,7 @@
                     </button>
                     <button x-show="item.owner === currentUser && !item.play_url"
                             disabled
-                            class="rounded-lg border px-2 py-1 text-xs opacity-20 cursor-not-allowed transition"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-0 group-hover:opacity-30 cursor-not-allowed transition-opacity duration-150"
                             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                             title="{% trans "No player available for this file type" %}">
                       <i class="fa-solid fa-play"></i>
