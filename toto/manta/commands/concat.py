@@ -1,9 +1,21 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import ConcatForm
+from ..forms import _w, _XBIND
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class ConcatCommand(BaseCommand):
+class ConcatForm(forms.Form):
+    reencode = forms.BooleanField(
+        required=False, initial=False,
+        widget=forms.CheckboxInput(attrs={"class": "rounded border", "x-bind:class": _XBIND}),
+        help_text="Re-encode (slower, but handles incompatible streams).",
+    )
+    output_name = forms.CharField(initial="merged", widget=forms.TextInput(attrs=_w({"placeholder": "merged"})))
+
+
+class ConcatCommand(FfmpegCommand):
     key = "concat"
     label = "Concatenate"
     inputs = {"videos": {"file_type": "video", "name": "Videos to concatenate", "multiple": True}}

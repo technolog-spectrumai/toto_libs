@@ -1,9 +1,21 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import CompressForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class CompressCommand(BaseCommand):
+class CompressForm(forms.Form):
+    QUALITY_CHOICES = [
+        ("tiny", "Tiny (smallest)"), ("small", "Small"),
+        ("medium", "Medium (default)"), ("high", "High"), ("archive", "Archive (best)"),
+    ]
+    quality = forms.ChoiceField(choices=QUALITY_CHOICES, initial="medium", widget=forms.Select(attrs=_w()))
+    output_name = forms.CharField(initial="compressed", widget=forms.TextInput(attrs=_w({"placeholder": "compressed"})))
+
+
+class CompressCommand(FfmpegCommand):
     key = "compress"
     label = "Compress"
     inputs = {"video": {"file_type": "video", "name": "Input video"}}

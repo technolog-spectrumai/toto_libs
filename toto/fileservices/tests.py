@@ -1,9 +1,9 @@
 """
 fileservices test suite.
 
-Covers the builder-service redirect: the consolidated "videomant" media service,
-plus transcription (audio) and ocr (image), route the user to their app pages
-instead of running inline from a free-text arg string.
+The single media service is now "manta": picking it (or the wand "Open tool")
+redirects to the manta command builder. ffmpeg/ffprobe/transcription/ocr are
+backend-only (hidden from the menu).
 """
 
 import os
@@ -15,13 +15,13 @@ from django.urls import reverse
 
 
 @override_settings(MEDIA_ROOT="/tmp/media_test_fs")
-class BuilderServiceRedirectTests(TestCase):
+class MantaServiceRedirectTests(TestCase):
     def setUp(self):
         self.owner = User.objects.create_user("fs_owner", password="pass")
         self.stranger = User.objects.create_user("fs_stranger", password="pass")
         self.client = DjangoClient()
 
-        from toto.vault.models import Bucket, VaultFile
+        from toto.vault.models import Bucket
         self.bucket = Bucket.objects.create(name="FS Bucket", owner=self.owner, slug="fs-bucket")
         os.makedirs("/tmp/media_test_fs/vault/files", exist_ok=True)
         self.video = self._vf("clip.mp4", "video")
@@ -38,54 +38,29 @@ class BuilderServiceRedirectTests(TestCase):
     def _run_url(self, vf):
         return reverse("fileservices:run_service", args=[vf.pk])
 
-    def test_videomant_service_redirects_to_builder(self):
+    def test_manta_service_redirects_to_builder(self):
         self.client.login(username="fs_owner", password="pass")
-        resp = self.client.post(self._run_url(self.video), {"service_key": "videomant"})
+        resp = self.client.post(self._run_url(self.video), {"service_key": "manta"})
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "redirect")
-        self.assertIn("/videomant/builder/", data["redirect_url"])
+        self.assertIn("/manta/", data["redirect_url"])
         self.assertIn(f"file={self.video.pk}", data["redirect_url"])
 
-    def test_transcription_audio_redirects_to_app(self):
+    def test_menu_shows_only_manta(self):
         self.client.login(username="fs_owner", password="pass")
-        resp = self.client.post(self._run_url(self.audio), {"service_key": "transcription"})
-        data = resp.json()
-        self.assertEqual(data["status"], "redirect")
-        self.assertIn(f"/transcription/vault/{self.audio.pk}/", data["redirect_url"])
+        for vf in (self.video, self.audio, self.image):
+            resp = self.client.get(reverse("fileservices:services_for_file", args=[vf.pk]))
+            keys = {s["key"] for s in resp.json()["services"]}
+            self.assertEqual(keys, {"manta"})  # ffmpeg/ffprobe/transcription/ocr are hidden
 
-    def test_ocr_image_redirects_to_app(self):
+    def test_open_primary_routes_all_media_to_manta(self):
         self.client.login(username="fs_owner", password="pass")
-        resp = self.client.post(self._run_url(self.image), {"service_key": "ocr"})
-        data = resp.json()
-        self.assertEqual(data["status"], "redirect")
-        self.assertIn(f"/ocr/vault/{self.image.pk}/", data["redirect_url"])
-
-    def test_ffmpeg_and_ffprobe_hidden_from_menu(self):
-        self.client.login(username="fs_owner", password="pass")
-        resp = self.client.get(reverse("fileservices:services_for_file", args=[self.video.pk]))
-        keys = {s["key"] for s in resp.json()["services"]}
-        self.assertEqual(keys, {"videomant"})  # ffmpeg/ffprobe collapsed into one entry
-
-    def test_transcription_not_offered_for_video(self):
-        self.client.login(username="fs_owner", password="pass")
-        resp = self.client.get(reverse("fileservices:services_for_file", args=[self.video.pk]))
-        keys = {s["key"] for s in resp.json()["services"]}
-        self.assertNotIn("transcription", keys)
-
-    def test_open_primary_routes_by_file_type(self):
-        self.client.login(username="fs_owner", password="pass")
-        cases = [
-            (self.video, "/videomant/builder/", f"file={self.video.pk}"),
-            (self.audio, f"/transcription/vault/{self.audio.pk}/", None),
-            (self.image, f"/ocr/vault/{self.image.pk}/", None),
-        ]
-        for vf, expect, extra in cases:
+        for vf in (self.video, self.audio, self.image):
             resp = self.client.get(reverse("fileservices:open_primary", args=[vf.pk]))
             self.assertEqual(resp.status_code, 302)
-            self.assertIn(expect, resp.url)
-            if extra:
-                self.assertIn(extra, resp.url)
+            self.assertIn("/manta/", resp.url)
+            self.assertIn(f"file={vf.pk}", resp.url)
 
     def test_open_primary_denies_inaccessible(self):
         from toto.vault.models import Bucket, VaultFile
@@ -100,18 +75,15 @@ class BuilderServiceRedirectTests(TestCase):
         from .models import FileServiceRun
         self.client.login(username="fs_owner", password="pass")
         before = FileServiceRun.objects.count()
-        self.client.post(self._run_url(self.video), {"service_key": "videomant"})
-        self.assertEqual(FileServiceRun.objects.count(), before)  # builder defers the job
+        self.client.post(self._run_url(self.video), {"service_key": "manta"})
+        self.assertEqual(FileServiceRun.objects.count(), before)
 
     def test_inaccessible_file_is_denied(self):
-        private = self._vf("private.mp4", "video", is_public=False)
-        # Re-own to owner already; make a stranger who cannot access a non-public file
-        # in a bucket they do not own.
         from toto.vault.models import Bucket, VaultFile
         other_bucket = Bucket.objects.create(name="Other", owner=self.owner, slug="fs-other")
         secret = VaultFile(owner=self.owner, title="secret.mp4", file_type="video",
                            bucket=other_bucket, is_public=False)
         secret.file.save("secret.mp4", ContentFile(b"x"), save=True)
         self.client.login(username="fs_stranger", password="pass")
-        resp = self.client.post(self._run_url(secret), {"service_key": "videomant"})
+        resp = self.client.post(self._run_url(secret), {"service_key": "manta"})
         self.assertEqual(resp.status_code, 403)

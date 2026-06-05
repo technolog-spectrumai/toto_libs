@@ -1,152 +1,49 @@
 {% extends "oya/base.html" %}
-{% load static %}
 {% load i18n %}
 
-{% block title %}Job #{{ job.pk }} — {{ job.task_name }}{% endblock %}
+{% block title %}{{ job.name|default:"Job" }}{% endblock %}
 
 {% block content %}
 <div
-  x-data="jobDetail()"
-  x-init="init()"
+  x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }"
   x-bind:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-5 py-8 transition-colors duration-300"
 >
-  <script>
-    const STATUS_URL = "{% url 'manta:job_status_json' job.pk %}";
-    const INITIAL_TERMINAL = {{ job.is_terminal|yesno:"true,false" }};
-  </script>
-
-  <div class="mx-auto max-w-4xl space-y-6">
-
-    <div class="flex items-center gap-4">
-      <a href="{% url 'manta:job_list' %}" class="opacity-50 hover:opacity-100 text-sm">
-        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "Jobs" %}</a>
-      <h1 class="text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-        Job #{{ job.pk }} &mdash; <span class="font-mono text-xl">{{ job.task_name }}</span>
-      </h1>
+  <div class="mx-auto max-w-2xl space-y-6">
+    <div>
+      <a href="{% url 'manta:command_builder' %}" class="text-sm opacity-50 hover:opacity-100">
+        <i class="fa-solid fa-arrow-left mr-1"></i>{% trans "New command" %}</a>
+      <h1 class="mt-2 text-2xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+        {{ job.name|default:job.command }}</h1>
+      <p class="mt-1 text-sm opacity-60">
+        {% trans "Command:" %} <span class="font-mono">{{ job.command }}</span> ·
+        {% trans "Status:" %} <span class="font-semibold">{{ job.get_status_display }}</span>
+      </p>
     </div>
 
-    <!-- Status + progress -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4 space-y-3"
-    >
-      <div class="flex items-center gap-3">
-        <span class="text-sm font-semibold opacity-60 uppercase tracking-wide">{% trans "Status" %}</span>
-        <span
-          :class="{
-            'bg-success-light/20 text-success-light': state.status === 'succeeded',
-            'bg-warn-light/20 text-warn-light': state.status === 'failed',
-            'bg-link-light/20 text-link-light': state.status === 'running',
-            'bg-accent-light/20 text-accent-light': state.status === 'pending',
-            'bg-gray-500/20 opacity-60': !['succeeded','failed','running','pending'].includes(state.status),
-          }"
-          class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
-          x-text="state.status"
-        ></span>
-      </div>
-
-      <div>
-        <div class="flex justify-between text-xs mb-1">
-          <span x-text="state.progress_message || 'Progress'"></span>
-          <span x-text="state.progress_percent + '%'"></span>
-        </div>
-        <div class="w-full rounded-full h-2" :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
-          <div
-            class="h-2 rounded-full transition-all duration-500"
-            :class="state.status === 'succeeded' ? 'bg-success-light' : state.status === 'failed' ? 'bg-warn-light' : 'bg-link-light'"
-            :style="'width: ' + state.progress_percent + '%'"
-          ></div>
-        </div>
-      </div>
-
-      <div x-show="state.error_message" class="rounded bg-warn-light/10 px-3 py-2 text-sm text-warn-light">
-        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
-        <span x-text="state.error_message"></span>
-      </div>
-
-      <div x-show="state.output_file_id" class="flex items-center gap-2 text-sm">
-        <i class="fa-solid fa-file-video opacity-60"></i>
-        <a
-          :href="'/vault/download/' + state.output_file_id + '/'"
-          class="underline"
-          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-          x-show="state.output_file_id"
-        >{% trans "Download output" %}</a>
-      </div>
-    </div>
-
-    {% if job.output_file %}
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4"
-    >
-      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mb-2">{% trans "Output File" %}</h2>
-      <a href="{{ job.output_file.file.url }}" target="_blank" class="underline text-sm">
-        <i class="fa-solid fa-download mr-1"></i>{{ job.output_file.title }}
-      </a>
+    {% if out_files %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Output files" %}</h2>
+      <ul class="space-y-1 text-sm">
+        {% for f in out_files %}
+        <li class="flex items-center gap-2">
+          <i class="fa-regular fa-file opacity-40"></i>
+          {% if f.get_public_url %}<a class="font-mono underline" href="{{ f.get_public_url }}">{{ f.title }}</a>
+          {% else %}<span class="font-mono">{{ f.title }}</span>{% endif %}
+          <span class="text-xs opacity-50">{{ f.file_type }}</span>
+        </li>
+        {% endfor %}
+      </ul>
     </div>
     {% endif %}
 
-    <!-- Rendered argv -->
-    {% if job.rendered_argv %}
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4"
-    >
-      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mb-2">{% trans "Command" %}</h2>
-      <pre class="text-xs font-mono overflow-x-auto whitespace-pre-wrap opacity-80">{{ job.rendered_argv|safe }}</pre>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Result" %}</h2>
+      <pre class="overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed"
+        x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'">{{ job.output|pprint }}</pre>
     </div>
-    {% endif %}
-
-    <!-- stderr tail -->
-    <div
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4"
-    >
-      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60 mb-2">{% trans "Stderr (tail)" %}</h2>
-      <pre
-        id="stderr-tail"
-        class="text-xs font-mono overflow-x-auto whitespace-pre-wrap opacity-70 max-h-64 overflow-y-auto"
-        x-text="state.stderr_tail || '(empty)'"
-      ></pre>
-    </div>
-
   </div>
 </div>
-
-<script>
-function jobDetail() {
-  return {
-    darkMode: localStorage.getItem('darkMode') === 'true',
-    state: {
-      status: '{{ job.status }}',
-      progress_percent: {{ job.progress_percent }},
-      progress_message: '{{ job.progress_message|escapejs }}',
-      is_terminal: INITIAL_TERMINAL,
-      output_file_id: {{ job.output_file_id|default:"null" }},
-      error_message: '{{ job.error_message|escapejs }}',
-      stderr_tail: '',
-    },
-    _timer: null,
-    init() {
-      if (!this.state.is_terminal) {
-        this._poll();
-      }
-    },
-    _poll() {
-      this._timer = setInterval(async () => {
-        try {
-          const r = await fetch(STATUS_URL);
-          const data = await r.json();
-          this.state = { ...this.state, ...data };
-          if (data.is_terminal) {
-            clearInterval(this._timer);
-          }
-        } catch {}
-      }, 1500);
-    },
-  };
-}
-</script>
 {% endblock %}

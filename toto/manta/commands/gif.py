@@ -1,9 +1,20 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import GifForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class GifCommand(BaseCommand):
+class GifForm(forms.Form):
+    start_time = forms.CharField(initial="00:00:00", widget=forms.TextInput(attrs=_w({"placeholder": "00:00:00"})))
+    duration = forms.IntegerField(initial=5, widget=forms.NumberInput(attrs=_w({"placeholder": "5"})))
+    fps = forms.IntegerField(initial=12, widget=forms.NumberInput(attrs=_w({"placeholder": "12"})))
+    width = forms.IntegerField(initial=480, widget=forms.NumberInput(attrs=_w({"placeholder": "480"})))
+    output_name = forms.CharField(initial="animation", widget=forms.TextInput(attrs=_w({"placeholder": "animation"})))
+
+
+class GifCommand(FfmpegCommand):
     key = "gif"
     label = "Animated GIF"
     inputs = {"video": {"file_type": "video", "name": "Input video"}}

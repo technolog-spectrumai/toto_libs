@@ -1,9 +1,17 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import ChangeFpsForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class ChangeFpsCommand(BaseCommand):
+class ChangeFpsForm(forms.Form):
+    fps = forms.IntegerField(initial=30, widget=forms.NumberInput(attrs=_w({"placeholder": "30"})))
+    output_name = forms.CharField(initial="fps", widget=forms.TextInput(attrs=_w({"placeholder": "fps"})))
+
+
+class ChangeFpsCommand(FfmpegCommand):
     key = "change_fps"
     label = "Change FPS"
     inputs = {"video": {"file_type": "video", "name": "Input video"}}

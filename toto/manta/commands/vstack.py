@@ -1,9 +1,16 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import VstackForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class VstackCommand(BaseCommand):
+class VstackForm(forms.Form):
+    output_name = forms.CharField(initial="vstack", widget=forms.TextInput(attrs=_w({"placeholder": "vstack"})))
+
+
+class VstackCommand(FfmpegCommand):
     key = "vstack"
     label = "Stack vertically"
     inputs = {
@@ -16,5 +23,4 @@ class VstackCommand(BaseCommand):
     def build_spec(self, *, input_name, extra_input_names=None, params=None):
         p = params or {}
         out = f"{self.output_name(p)}.mp4"
-        return CommandSpec([builders.build_vstack(
-            input_name, self.secondary(extra_input_names), out)], (out,))
+        return CommandSpec([builders.build_vstack(input_name, self.secondary(extra_input_names), out)], (out,))

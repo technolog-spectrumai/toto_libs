@@ -1,9 +1,16 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import RemoveAudioForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class RemoveAudioCommand(BaseCommand):
+class RemoveAudioForm(forms.Form):
+    output_name = forms.CharField(initial="muted", widget=forms.TextInput(attrs=_w({"placeholder": "muted"})))
+
+
+class RemoveAudioCommand(FfmpegCommand):
     key = "remove_audio"
     label = "Remove audio"
     inputs = {"video": {"file_type": "video", "name": "Input video"}}

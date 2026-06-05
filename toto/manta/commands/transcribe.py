@@ -1,12 +1,20 @@
-from .base import BaseCommand
-from ..forms import TranscribeForm
+from django import forms
+
+from ..forms import _w
+from .backends import WhisperCommand
 
 
-class TranscribeCommand(BaseCommand):
+class TranscribeForm(forms.Form):
+    language = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs=_w({"placeholder": "en — leave blank to auto-detect"})),
+        help_text="Language code (optional).",
+    )
+
+
+class TranscribeCommand(WhisperCommand):
     key = "transcribe"
     label = "Transcribe (speech → text)"
-    backend = "service"
-    service_key = "transcription"
     inputs = {"audio": {"file_type": "audio", "name": "Audio file"}}
     outputs = {
         "text": {"file_type": "text", "extension": "txt", "name": "Transcript"},
@@ -16,4 +24,4 @@ class TranscribeCommand(BaseCommand):
 
     def describe(self, *, input_name, params=None):
         lang = (params or {}).get("language") or "auto"
-        return f"transcribe {input_name}  (whisper, language={lang})  ->  .txt + .srt"
+        return f"whisper transcribe {input_name}  (language={lang})  ->  .txt + .srt"

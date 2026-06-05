@@ -1,9 +1,21 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import AddWatermarkForm
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class AddWatermarkCommand(BaseCommand):
+class AddWatermarkForm(forms.Form):
+    POSITION_CHOICES = [
+        ("top-left", "Top left"), ("top-right", "Top right"),
+        ("bottom-left", "Bottom left"), ("bottom-right", "Bottom right (default)"), ("center", "Center"),
+    ]
+    position = forms.ChoiceField(choices=POSITION_CHOICES, initial="bottom-right", widget=forms.Select(attrs=_w()))
+    output_name = forms.CharField(initial="watermarked", widget=forms.TextInput(attrs=_w({"placeholder": "watermarked"})))
+
+
+class AddWatermarkCommand(FfmpegCommand):
     key = "add_watermark"
     label = "Add watermark"
     inputs = {
@@ -16,5 +28,4 @@ class AddWatermarkCommand(BaseCommand):
     def build_spec(self, *, input_name, extra_input_names=None, params=None):
         p = params or {}
         out = f"{self.output_name(p)}.mp4"
-        return CommandSpec([builders.build_add_watermark(
-            input_name, self.secondary(extra_input_names), out, p.get("position", "bottom-right"))], (out,))
+        return CommandSpec([builders.build_add_watermark(input_name, self.secondary(extra_input_names), out, p.get("position", "bottom-right"))], (out,))

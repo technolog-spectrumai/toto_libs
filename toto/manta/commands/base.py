@@ -46,6 +46,7 @@ class BaseCommand(ABC):
     key: str = ""
     label: str = ""
     backend: str = "ffmpeg"          # "ffmpeg" | "ffprobe" | "service"
+    backend_label: str = ""          # tool shown in the UI (defaults to backend)
     service_key: str = ""            # for backend == "service"
     inputs: dict = {}
     outputs: dict = {}
@@ -73,6 +74,10 @@ class BaseCommand(ABC):
     # service commands implement this (the "command" shown in the UI):
     def describe(self, *, input_name, params=None) -> str:
         return f"{self.label}: {input_name}"
+
+    # backend base classes implement this (they own execution):
+    def execute(self, job) -> None:
+        raise NotImplementedError
 
     # ------------------------------------------------------------------ registry
     @classmethod

@@ -9,17 +9,15 @@ from toto.fileservices.runner import save_output, stage_input
 
 @FileServicePlugin.plugin(key="ocr", title="OCR (text extraction)", order=30)
 class OcrFileServicePlugin(FileServicePlugin):
+    # Backend-only: the menu entry + UI live in the manta builder (ocr command);
+    # this plugin just runs tesseract via FileServiceRun.
+    listed = False
     accepted_file_types = ["image"]
     icon = "fa-solid fa-eye"
     description = "Extract text from an image with Tesseract. The result is saved as a .txt file."
     args_label = "Language code(s)"
     args_placeholder = "eng    (or eng+pol)"
     args_required = False
-    builder = True
-
-    def builder_url(self, vault_file) -> str:
-        from django.urls import reverse
-        return reverse("ocr:run_page", args=[vault_file.pk])
 
     def execute(self, run) -> list[int]:
         from toto.ocr.ocr import OcrHelper

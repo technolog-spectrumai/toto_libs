@@ -1,13 +1,13 @@
 import os
 
-from .base import BaseCommand, CommandSpec
 from .. import builders
+from .backends import FfprobeCommand
+from .base import CommandSpec
 
 
-class ProbeCommand(BaseCommand):
+class ProbeCommand(FfprobeCommand):
     key = "probe"
     label = "Probe → JSON file"
-    backend = "ffprobe"
     inputs = {"media": {"file_type": "video", "name": "Media file"}}
     outputs = {"output": {"file_type": "json", "extension": "ffprobe.json", "name": "Probe JSON"}}
     form_class = None

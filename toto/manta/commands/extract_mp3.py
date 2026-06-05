@@ -1,9 +1,18 @@
-from .base import BaseCommand, CommandSpec
+from django import forms
+
 from .. import builders
-from ..forms import ExtractMp3Form
+from ..forms import _w
+from .backends import FfmpegCommand
+from .base import CommandSpec
 
 
-class ExtractMp3Command(BaseCommand):
+class ExtractMp3Form(forms.Form):
+    BITRATE_CHOICES = [("128k", "128k"), ("192k", "192k (default)"), ("256k", "256k"), ("320k", "320k")]
+    bitrate = forms.ChoiceField(choices=BITRATE_CHOICES, initial="192k", widget=forms.Select(attrs=_w()))
+    output_name = forms.CharField(initial="audio", widget=forms.TextInput(attrs=_w({"placeholder": "audio"})))
+
+
+class ExtractMp3Command(FfmpegCommand):
     key = "extract_mp3"
     label = "Extract MP3"
     inputs = {"media": {"file_type": "video", "name": "Source video"}}

@@ -16,17 +16,15 @@ def _ms_to_srt(ms: int) -> str:
 
 @FileServicePlugin.plugin(key="transcription", title="Transcription (speech → text)", order=40)
 class TranscriptionFileServicePlugin(FileServicePlugin):
+    # Backend-only: the menu entry + UI live in the manta builder (transcribe
+    # command); this plugin just runs whisper via FileServiceRun.
+    listed = False
     accepted_file_types = ["audio"]
     icon = "fa-solid fa-wave-square"
     description = "Transcribe speech to text with Whisper. Saves a .txt transcript and an .srt subtitle file."
     args_label = "Language code (optional)"
     args_placeholder = "en    (leave blank to auto-detect)"
     args_required = False
-    builder = True
-
-    def builder_url(self, vault_file) -> str:
-        from django.urls import reverse
-        return reverse("transcription:run_page", args=[vault_file.pk])
 
     def execute(self, run) -> list[int]:
         from toto.transcription.services import transcribe_demo_file

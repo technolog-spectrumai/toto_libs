@@ -58,6 +58,26 @@ def save_output(run, local_path: str, filename: str, file_type: str):
     return vf
 
 
+def _sync_manta_job(run) -> None:
+    """Serialize a finished FileServiceRun into its linked manta FileJob (if any)."""
+    from .models import FileServiceRun
+    try:
+        from toto.manta.models import FileJob
+    except Exception:
+        return
+    job = FileJob.objects.filter(output__service_run_id=run.id).first()
+    if job is None:
+        return
+    if run.status == FileServiceRun.SUCCESS:
+        job.status = FileJob.Status.DONE
+        job.output = {"service_run_id": run.id, "files": list(run.output_file_pks or []),
+                      "stdout": (run.stdout or "")[:4000]}
+    else:
+        job.status = FileJob.Status.FAILED
+        job.output = {"service_run_id": run.id, "error": (run.stderr or "")[:4000]}
+    job.save(update_fields=["status", "output"])
+
+
 def execute_run(run_id: int) -> dict:
     """Load the plugin for a FileServiceRun and execute it, tracking status."""
     from .models import FileServiceRun
@@ -81,6 +101,7 @@ def execute_run(run_id: int) -> dict:
         run.status = FileServiceRun.SUCCESS
         run.finished_at = timezone.now()
         run.save(update_fields=["output_file_pks", "stdout", "stderr", "status", "finished_at"])
+        _sync_manta_job(run)
         return {"run_id": run.id, "status": run.status, "output_file_pks": run.output_file_pks}
     except Exception as exc:
         run.status = FileServiceRun.FAILED
@@ -88,6 +109,7 @@ def execute_run(run_id: int) -> dict:
             run.stderr = str(exc)
         run.finished_at = timezone.now()
         run.save(update_fields=["status", "stdout", "stderr", "finished_at"])
+        _sync_manta_job(run)
         raise
 
 
