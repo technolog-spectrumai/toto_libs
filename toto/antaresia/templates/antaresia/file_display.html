@@ -187,33 +187,65 @@
 
       <div x-show="open" x-transition x-cloak class="border-t border-current/10">
         {% for run in runs %}
-        <div :class="darkMode ? 'border-accent-1/30 hover:bg-primary-bg-dark/30' : 'border-accent-2/30 hover:bg-primary-bg-light/30'"
-             class="flex items-center gap-3 px-4 py-2.5 border-b last:border-0 transition-colors">
+        <div x-data="{ out: false }"
+             :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'"
+             class="border-b last:border-0">
 
-          <span class="h-2 w-2 rounded-full shrink-0
-            {% if run.status == 'success' %}bg-success-light{% elif run.status == 'failed' %}bg-warn-light{% elif run.status == 'running' %}bg-accent-light{% else %}bg-current opacity-30{% endif %}">
-          </span>
+          <!-- Summary row — click to toggle output -->
+          <div @click="out = !out"
+               :class="darkMode ? 'hover:bg-primary-bg-dark/30' : 'hover:bg-primary-bg-light/30'"
+               class="flex items-center gap-3 px-4 py-2.5 cursor-pointer select-none transition-colors">
 
-          <span class="text-xs font-semibold w-14 shrink-0
-            {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-warn-light{% else %}opacity-60{% endif %}">
-            {{ run.status }}
-          </span>
+            <span class="h-2 w-2 rounded-full shrink-0
+              {% if run.status == 'success' %}bg-success-light{% elif run.status == 'failed' %}bg-warn-light{% elif run.status == 'running' %}bg-accent-light{% else %}bg-current opacity-30{% endif %}">
+            </span>
 
-          {% if run.exit_code is not None %}
-          <span class="text-xs opacity-40 shrink-0 font-mono">exit {{ run.exit_code }}</span>
-          {% endif %}
+            <span class="text-xs font-semibold w-14 shrink-0
+              {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-warn-light{% else %}opacity-60{% endif %}">
+              {{ run.status }}
+            </span>
 
-          <span class="text-xs opacity-45 flex-1">{{ run.started_at|date:"Y-m-d H:i" }}</span>
+            {% if run.exit_code is not None %}
+            <span class="text-xs opacity-40 shrink-0 font-mono">exit {{ run.exit_code }}</span>
+            {% endif %}
 
-          {% if run.finished_at %}
-          <span class="text-xs opacity-40 shrink-0">{{ run.started_at|timesince:run.finished_at }}</span>
-          {% endif %}
+            <span class="text-xs opacity-45 flex-1">{{ run.started_at|date:"Y-m-d H:i" }}</span>
 
-          {% if run.workflow_run_id %}
-          <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}" target="_blank"
-             class="text-xs underline underline-offset-2 shrink-0 opacity-45 hover:opacity-80">
-            <i class="fa-solid fa-diagram-project mr-0.5"></i>run
-          </a>
+            {% if run.finished_at %}
+            <span class="text-xs opacity-40 shrink-0">{{ run.started_at|timesince:run.finished_at }}</span>
+            {% endif %}
+
+            {% if run.workflow_run_id %}
+            <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}" target="_blank"
+               @click.stop
+               class="text-xs underline underline-offset-2 shrink-0 opacity-45 hover:opacity-80">
+              <i class="fa-solid fa-diagram-project mr-0.5"></i>run
+            </a>
+            {% endif %}
+
+            {% if run.stdout or run.stderr %}
+            <i class="fa-solid fa-chevron-down text-[10px] opacity-35 shrink-0 transition-transform"
+               :class="out ? 'rotate-180' : ''"></i>
+            {% endif %}
+
+          </div>
+
+          <!-- Expandable output -->
+          {% if run.stdout or run.stderr %}
+          <div x-show="out" x-transition x-cloak
+               :class="darkMode ? 'border-accent-1/20 bg-primary-bg-dark/40' : 'border-accent-2/20 bg-primary-bg-light/40'"
+               class="border-t">
+            {% if run.stdout %}
+            <div class="px-4 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-widest opacity-35">stdout</div>
+            <pre class="px-4 pb-3 max-h-48 overflow-auto text-xs whitespace-pre-wrap opacity-75 font-mono">{{ run.stdout }}</pre>
+            {% endif %}
+            {% if run.stderr %}
+            <div class="px-4 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-widest"
+                 :class="darkMode ? 'text-warn-dark opacity-60' : 'text-warn-light opacity-60'">stderr</div>
+            <pre class="px-4 pb-3 max-h-48 overflow-auto text-xs whitespace-pre-wrap opacity-70 font-mono"
+                 :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ run.stderr }}</pre>
+            {% endif %}
+          </div>
           {% endif %}
 
         </div>
