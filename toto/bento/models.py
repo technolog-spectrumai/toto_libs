@@ -43,23 +43,15 @@ class Category(DomainEntity):
 
 
 class IdeaBox(DomainEntity):
-    title = models.CharField(max_length=160, blank=True)
-    body = models.TextField(blank=True)
+    """A graph node: a free-text ``label`` plus a ``properties`` bag.
 
-    is_concept = models.BooleanField(
-        default=False,
-        help_text="Marks this box as a concept/tag-like node rather than a normal captured idea.",
-    )
+    Everything that used to be a dedicated column (body, is_concept,
+    source_title, source_url, source_type, quote, ...) now lives inside
+    ``properties``. ``category`` stays a real relation and the lock state
+    columns stay first-class because they are operational, not content.
+    """
 
-    source_title = models.CharField(max_length=255, blank=True)
-    source_url = models.URLField(blank=True)
-    source_type = models.CharField(
-        max_length=40,
-        blank=True,
-        help_text="Book, article, movie, video, podcast, conversation, etc.",
-    )
-
-    quote = models.TextField(blank=True)
+    label = models.CharField(max_length=160, blank=True)
 
     category = models.ForeignKey(
         Category,
@@ -72,7 +64,10 @@ class IdeaBox(DomainEntity):
     properties = models.JSONField(
         default=dict,
         blank=True,
-        help_text="Flexible metadata, e.g. {'topic': 'memory', 'rating': 4, 'status': 'raw'}.",
+        help_text=(
+            "All node data: body, is_concept, source_title, source_url, "
+            "source_type, quote, plus any custom keys."
+        ),
     )
 
     is_locked = models.BooleanField(default=False)
@@ -87,11 +82,38 @@ class IdeaBox(DomainEntity):
         ordering = ["-created_at"]
 
     def __str__(self):
-        return self.title or self.body[:80] or "Untitled box"
+        return self.label or self.body[:80] or "Untitled box"
+
+    # ── Well-known property accessors ───────────────────────────────
+    # Convenience read-only views over keys inside ``properties`` so views
+    # and templates can keep saying ``box.body`` / ``box.is_concept``.
+    @property
+    def body(self):
+        return self.properties.get("body", "")
+
+    @property
+    def is_concept(self):
+        return bool(self.properties.get("is_concept", False))
 
     @property
     def is_note(self):
         return not self.is_concept
+
+    @property
+    def source_title(self):
+        return self.properties.get("source_title", "")
+
+    @property
+    def source_url(self):
+        return self.properties.get("source_url", "")
+
+    @property
+    def source_type(self):
+        return self.properties.get("source_type", "")
+
+    @property
+    def quote(self):
+        return self.properties.get("quote", "")
 
     def get_property(self, key, default=None):
         return self.properties.get(key, default)
@@ -111,9 +133,9 @@ class IdeaBox(DomainEntity):
         self.lock_salt = salt
         self.encrypted_body = ciphertext
         self.lock_nonce = nonce
-        self.body = ""
+        self.properties["body"] = ""
         self.is_locked = True
-        self.save(update_fields=["body", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
+        self.save(update_fields=["properties", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
 
     def unlock(self, password: str) -> str:
         if not self.is_locked:
@@ -124,12 +146,12 @@ class IdeaBox(DomainEntity):
         key = _derive_lock_key(password, salt)
         plaintext = aes_gcm_decrypt(key, bytes(self.encrypted_body), bytes(self.lock_nonce))
         body = plaintext.decode("utf-8")
-        self.body = body
+        self.properties["body"] = body
         self.is_locked = False
         self.lock_salt = None
         self.encrypted_body = None
         self.lock_nonce = None
-        self.save(update_fields=["body", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
+        self.save(update_fields=["properties", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
         return body
 
 

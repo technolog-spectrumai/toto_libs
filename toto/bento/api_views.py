@@ -15,16 +15,17 @@ def _category_to_dict(c):
 
 
 def _box_to_dict(box):
+    properties = dict(box.properties)
+    if box.is_locked:
+        properties["body"] = ""
     return {
         "id": box.id,
-        "title": box.title,
-        "body": box.body if not box.is_locked else "",
+        "label": box.label,
         "is_concept": box.is_concept,
         "is_locked": box.is_locked,
         "category_id": box.category_id,
         "category_name": box.category.name if box.category else None,
-        "source_title": box.source_title,
-        "source_url": box.source_url,
+        "properties": properties,
         "created_at": box.created_at.isoformat(),
         "updated_at": box.updated_at.isoformat(),
     }
@@ -37,7 +38,7 @@ class BoxListApiView(CorsApiView):
         q = request.GET.get("q", "").strip()
         if q:
             qs = qs.filter(
-                db_models.Q(title__icontains=q) | db_models.Q(body__icontains=q)
+                db_models.Q(label__icontains=q) | db_models.Q(properties__body__icontains=q)
             )
         return JsonResponse({"boxes": [_box_to_dict(b) for b in qs]})
 
@@ -49,10 +50,12 @@ class BoxListApiView(CorsApiView):
         except (json.JSONDecodeError, ValueError):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
 
-        title = data.get("title", "").strip()
-        body = data.get("body", "")
-        is_concept = bool(data.get("is_concept", False))
+        label = data.get("label", "").strip()
+        properties = data.get("properties") or {}
         category_id = data.get("category_id")
+
+        if not isinstance(properties, dict):
+            return JsonResponse({"error": "properties must be an object."}, status=400)
 
         category = None
         if category_id:
@@ -62,9 +65,8 @@ class BoxListApiView(CorsApiView):
                 return JsonResponse({"error": "Category not found."}, status=404)
 
         box = IdeaBox.objects.create(
-            title=title,
-            body=body,
-            is_concept=is_concept,
+            label=label,
+            properties=properties,
             category=category,
         )
         return JsonResponse(_box_to_dict(box), status=201)
@@ -96,15 +98,15 @@ class BoxDetailApiView(CorsApiView):
             return JsonResponse({"error": "Invalid JSON."}, status=400)
 
         fields = []
-        if "title" in data:
-            box.title = data["title"]
-            fields.append("title")
-        if "body" in data:
-            box.body = data["body"]
-            fields.append("body")
-        if "is_concept" in data:
-            box.is_concept = bool(data["is_concept"])
-            fields.append("is_concept")
+        if "label" in data:
+            box.label = data["label"]
+            fields.append("label")
+        if "properties" in data:
+            properties = data["properties"] or {}
+            if not isinstance(properties, dict):
+                return JsonResponse({"error": "properties must be an object."}, status=400)
+            box.properties = properties
+            fields.append("properties")
         if "category_id" in data:
             cid = data["category_id"]
             if cid is None:
@@ -144,8 +146,8 @@ def _link_to_dict(link):
         "from_box": link.from_box_id,
         "to_box": link.to_box_id,
         "label": link.label or "related to",
-        "from_box_title": link.from_box.title or "Untitled",
-        "to_box_title": link.to_box.title or "Untitled",
+        "from_box_label": link.from_box.label or "Untitled",
+        "to_box_label": link.to_box.label or "Untitled",
     }
 
 
@@ -234,7 +236,7 @@ class FullGraphApiView(CorsApiView):
             {
                 "id": f"b{b.id}",
                 "real_id": b.id,
-                "label": b.title or "Untitled",
+                "label": b.label or "Untitled",
                 "is_concept": b.is_concept,
                 "node_type": "concept" if b.is_concept else "box",
             }

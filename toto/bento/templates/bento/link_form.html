@@ -18,16 +18,20 @@
   <form method="post" class="mt-6 space-y-5">
     {% csrf_token %}
     {% for field in form %}
-      <div>
-        <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ field.label }}</label>
-        {{ field }}
-        {% if field.help_text %}
-          <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
-        {% endif %}
-        {% if field.errors %}
-          <div class="mt-1 text-sm text-warn-light">{{ field.errors }}</div>
-        {% endif %}
-      </div>
+      {% if field.name == "properties" %}
+        <div>{% include "bento/_metadata_ace.html" with field=field %}</div>
+      {% else %}
+        <div>
+          <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ field.label }}</label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
+          {% endif %}
+          {% if field.errors %}
+            <div class="mt-1 text-sm text-warn-light">{{ field.errors }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
     {% endfor %}
 
     <div class="flex justify-end gap-2 border-t border-current/10 pt-5">
@@ -44,4 +48,9 @@
     </div>
   </form>
 </section>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
 {% endblock %}

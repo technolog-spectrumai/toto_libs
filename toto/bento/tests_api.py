@@ -12,8 +12,8 @@ class BoxListApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="bentouser", password="pass")
         self.cat = Category.objects.create(name="Science", slug="science")
-        IdeaBox.objects.create(title="Alpha", body="first idea", category=self.cat)
-        IdeaBox.objects.create(title="Beta", body="second idea")
+        IdeaBox.objects.create(label="Alpha", properties={"body": "first idea"}, category=self.cat)
+        IdeaBox.objects.create(label="Beta", properties={"body": "second idea"})
 
     def test_list_returns_200(self):
         res = self.client.get("/bento/api/boxes/")
@@ -26,7 +26,7 @@ class BoxListApiTests(TestCase):
         res = self.client.get("/bento/api/boxes/?q=Alpha")
         data = res.json()
         self.assertEqual(len(data["boxes"]), 1)
-        self.assertEqual(data["boxes"][0]["title"], "Alpha")
+        self.assertEqual(data["boxes"][0]["label"], "Alpha")
 
     def test_search_no_match(self):
         res = self.client.get("/bento/api/boxes/?q=zzznomatch")
@@ -36,7 +36,7 @@ class BoxListApiTests(TestCase):
     def test_create_unauthenticated(self):
         res = self.client.post(
             "/bento/api/boxes/",
-            json.dumps({"title": "New", "body": "text"}),
+            json.dumps({"label": "New", "properties": {"body": "text"}}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 401)
@@ -45,19 +45,20 @@ class BoxListApiTests(TestCase):
         self.client.force_login(self.user)
         res = self.client.post(
             "/bento/api/boxes/",
-            json.dumps({"title": "New box", "body": "content", "is_concept": False}),
+            json.dumps({"label": "New box", "properties": {"body": "content", "is_concept": False}}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 201)
         data = res.json()
-        self.assertEqual(data["title"], "New box")
+        self.assertEqual(data["label"], "New box")
         self.assertFalse(data["is_concept"])
+        self.assertEqual(data["properties"]["body"], "content")
 
     def test_create_with_category(self):
         self.client.force_login(self.user)
         res = self.client.post(
             "/bento/api/boxes/",
-            json.dumps({"title": "Categorised", "body": "", "category_id": self.cat.id}),
+            json.dumps({"label": "Categorised", "category_id": self.cat.id}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 201)
@@ -67,7 +68,7 @@ class BoxListApiTests(TestCase):
         self.client.force_login(self.user)
         res = self.client.post(
             "/bento/api/boxes/",
-            json.dumps({"title": "X", "category_id": 9999}),
+            json.dumps({"label": "X", "category_id": 9999}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 404)
@@ -76,12 +77,12 @@ class BoxListApiTests(TestCase):
 class BoxDetailApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="bentodet", password="pass")
-        self.box = IdeaBox.objects.create(title="Detail box", body="some content")
+        self.box = IdeaBox.objects.create(label="Detail box", properties={"body": "some content"})
 
     def test_get_box(self):
         res = self.client.get(f"/bento/api/boxes/{self.box.pk}/")
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["title"], "Detail box")
+        self.assertEqual(res.json()["label"], "Detail box")
 
     def test_get_missing_box(self):
         res = self.client.get("/bento/api/boxes/99999/")
@@ -90,22 +91,33 @@ class BoxDetailApiTests(TestCase):
     def test_patch_unauthenticated(self):
         res = self.client.patch(
             f"/bento/api/boxes/{self.box.pk}/",
-            json.dumps({"title": "Updated"}),
+            json.dumps({"label": "Updated"}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 401)
 
-    def test_patch_updates_title(self):
+    def test_patch_updates_label(self):
         self.client.force_login(self.user)
         res = self.client.patch(
             f"/bento/api/boxes/{self.box.pk}/",
-            json.dumps({"title": "Updated title"}),
+            json.dumps({"label": "Updated label"}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["title"], "Updated title")
+        self.assertEqual(res.json()["label"], "Updated label")
         self.box.refresh_from_db()
-        self.assertEqual(self.box.title, "Updated title")
+        self.assertEqual(self.box.label, "Updated label")
+
+    def test_patch_updates_properties(self):
+        self.client.force_login(self.user)
+        res = self.client.patch(
+            f"/bento/api/boxes/{self.box.pk}/",
+            json.dumps({"properties": {"body": "new body", "rating": 5}}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.box.refresh_from_db()
+        self.assertEqual(self.box.properties, {"body": "new body", "rating": 5})
 
     def test_delete_unauthenticated(self):
         res = self.client.delete(f"/bento/api/boxes/{self.box.pk}/")
@@ -126,8 +138,8 @@ class BoxDetailApiTests(TestCase):
 class LinkApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="linkuser", password="pass")
-        self.box_a = IdeaBox.objects.create(title="Alpha", body="first")
-        self.box_b = IdeaBox.objects.create(title="Beta", body="second")
+        self.box_a = IdeaBox.objects.create(label="Alpha", properties={"body": "first"})
+        self.box_b = IdeaBox.objects.create(label="Beta", properties={"body": "second"})
 
     def test_create_link_unauthenticated(self):
         res = self.client.post(
@@ -184,8 +196,8 @@ class FullGraphApiTests(TestCase):
     def setUp(self):
         from toto.bento.models import IdeaLink
         self.cat = Category.objects.create(name="Science", slug="science")
-        self.box_a = IdeaBox.objects.create(title="A", body="aaa", category=self.cat)
-        self.box_b = IdeaBox.objects.create(title="B", body="bbb", is_concept=True)
+        self.box_a = IdeaBox.objects.create(label="A", properties={"body": "aaa"}, category=self.cat)
+        self.box_b = IdeaBox.objects.create(label="B", properties={"body": "bbb", "is_concept": True})
         IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="leads to")
 
     def test_full_graph_returns_all(self):

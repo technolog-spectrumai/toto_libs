@@ -1,7 +1,7 @@
 {% extends "bento/base.html" %}
 {% load i18n %}
 
-{% block bento_title %}{{ box.title|default:"Untitled box" }}{% endblock %}
+{% block bento_title %}{{ box.label|default:"Untitled box" }}{% endblock %}
 
 {% block bento_content %}
 <div
@@ -47,7 +47,7 @@
             {% trans "All boxes" %}
           </a>
           <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="break-words text-3xl font-bold">
-            {{ box.title|default:"Untitled box" }}
+            {{ box.label|default:"Untitled box" }}
           </h2>
           <div class="flex flex-wrap items-center gap-2 text-xs opacity-75">
             {% if box.is_concept %}
@@ -67,12 +67,6 @@
               <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
                 <i class="fa-solid fa-shapes"></i>
                 {{ box.category }}
-              </span>
-            {% endif %}
-            {% if box.topic %}
-              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                <i class="fa-solid fa-tag"></i>
-                {{ box.topic }}
               </span>
             {% endif %}
           </div>
@@ -299,7 +293,7 @@
         <i :class="lockMode === 'lock' ? 'fa-solid fa-lock' : 'fa-solid fa-lock-open'"></i>
         <span x-text="lockMode === 'lock' ? '{% trans "Lock box" %}' : '{% trans "Unlock box" %}'"></span>
       </h3>
-      <p class="mt-2 text-sm opacity-70">{{ box.title|default:"Untitled box" }}</p>
+      <p class="mt-2 text-sm opacity-70">{{ box.label|default:"Untitled box" }}</p>
 
       <div class="mt-4 space-y-3">
         <div>

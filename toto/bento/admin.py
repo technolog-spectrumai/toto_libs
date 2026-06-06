@@ -36,34 +36,22 @@ class IncomingIdeaLinkInline(admin.TabularInline):
 class IdeaBoxAdmin(admin.ModelAdmin):
     list_display = (
         "display_name",
-        "is_concept",
+        "concept_flag",
         "category",
         "source_type",
         "source_title",
         "created_at",
         "updated_at",
     )
-    list_filter = ("is_concept", "category", "source_type", "created_at", "updated_at")
+    list_filter = ("category", "created_at", "updated_at")
     search_fields = (
-        "title",
-        "body",
-        "quote",
-        "source_title",
-        "source_url",
-        "source_type",
+        "label",
         "category__name",
         "category__slug",
     )
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("title", "body", "is_concept", "category")}),
-        (
-            "Source",
-            {
-                "fields": ("source_title", "source_url", "source_type", "quote"),
-                "classes": ("collapse",),
-            },
-        ),
+        (None, {"fields": ("label", "category")}),
         ("Properties", {"fields": ("properties",)}),
         (
             "Timestamps",
@@ -77,16 +65,18 @@ class IdeaBoxAdmin(admin.ModelAdmin):
 
     display_name.short_description = "IdeaBox"
 
+    @admin.display(boolean=True, description="Concept")
+    def concept_flag(self, obj):
+        return obj.is_concept
+
 
 @admin.register(IdeaLink)
 class IdeaLinkAdmin(admin.ModelAdmin):
     list_display = ("from_box", "label", "to_box", "created_at")
     list_filter = ("label", "created_at")
     search_fields = (
-        "from_box__title",
-        "from_box__body",
-        "to_box__title",
-        "to_box__body",
+        "from_box__label",
+        "to_box__label",
         "label",
     )
     autocomplete_fields = ("from_box", "to_box")

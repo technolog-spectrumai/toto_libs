@@ -22,38 +22,36 @@ def filtered_boxes(request):
 
     if query:
         boxes = boxes.filter(
-            Q(title__icontains=query)
-            | Q(body__icontains=query)
-            | Q(source_title__icontains=query)
-            | Q(source_type__icontains=query)
-            | Q(quote__icontains=query)
+            Q(label__icontains=query)
+            | Q(properties__body__icontains=query)
+            | Q(properties__source_title__icontains=query)
+            | Q(properties__source_type__icontains=query)
+            | Q(properties__quote__icontains=query)
         )
 
     if concept_filter == "yes":
-        boxes = boxes.filter(is_concept=True)
+        boxes = boxes.filter(properties__is_concept=True)
     elif concept_filter == "no":
-        boxes = boxes.filter(is_concept=False)
+        boxes = boxes.exclude(properties__is_concept=True)
 
     return boxes, query, concept_filter
 
 
 def serialize_box(box):
+    properties = dict(box.properties)
+    if box.is_locked:
+        properties["body"] = None
     return {
         "id": box.pk,
-        "title": box.title or _("Untitled box"),
-        "body": None if box.is_locked else box.body,
+        "label": box.label or _("Untitled box"),
         "is_locked": box.is_locked,
         "is_concept": box.is_concept,
-        "source_title": box.source_title,
-        "source_url": box.source_url,
-        "source_type": box.source_type,
-        "quote": box.quote,
         "category": {
             "id": box.category_id,
             "name": str(box.category),
             "slug": box.category.slug,
         } if box.category_id else None,
-        "properties": box.properties,
+        "properties": properties,
         "created_at": box.created_at.isoformat(),
         "updated_at": box.updated_at.isoformat(),
     }
@@ -78,8 +76,8 @@ def box_list(request):
         "query": query,
         "concept_filter": concept_filter,
         "total_boxes": IdeaBox.objects.count(),
-        "concept_count": IdeaBox.objects.filter(is_concept=True).count(),
-        "note_count": IdeaBox.objects.filter(is_concept=False).count(),
+        "concept_count": IdeaBox.objects.filter(properties__is_concept=True).count(),
+        "note_count": IdeaBox.objects.exclude(properties__is_concept=True).count(),
         "link_count": IdeaLink.objects.count(),
     })
 

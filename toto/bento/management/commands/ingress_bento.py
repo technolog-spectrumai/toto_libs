@@ -145,39 +145,31 @@ class Command(IngressCommand):
         quote="",
         properties=None,
     ):
-        box, created = IdeaBox.objects.get_or_create(
-            title=title,
-            defaults={
-                "body": body,
-                "is_concept": is_concept,
-                "category": category,
-                "source_title": source_title,
-                "source_url": source_url,
-                "source_type": source_type,
-                "quote": quote,
-                "properties": properties or {},
-            },
-        )
-
-        # Update if needed
-        updates = {
+        # Everything but the label now lives in the properties bag.
+        props = {
             "body": body,
             "is_concept": is_concept,
-            "category": category,
             "source_title": source_title,
             "source_url": source_url,
             "source_type": source_type,
             "quote": quote,
-            "properties": properties or {},
+            **(properties or {}),
         }
 
-        changed = False
-        for field, value in updates.items():
-            if getattr(box, field) != value:
-                setattr(box, field, value)
-                changed = True
+        box, created = IdeaBox.objects.get_or_create(
+            label=title,
+            defaults={"category": category, "properties": props},
+        )
 
-        if changed:
+        changed = False
+        if box.category != category:
+            box.category = category
+            changed = True
+        if box.properties != props:
+            box.properties = props
+            changed = True
+
+        if changed and not created:
             box.save()
             self.stdout.write(self.style.SUCCESS(f"🔁 Updated box: {title}"))
         elif created:

@@ -338,7 +338,7 @@
               href="{% url 'bento:box_detail' box.pk %}"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
               class="break-words text-xl font-bold underline-offset-4 hover:underline">
-              {{ box.title|default:"Untitled box" }}
+              {{ box.label|default:"Untitled box" }}
             </a>
             <div class="flex flex-wrap items-center gap-2 text-xs opacity-75">
               {% if box.is_concept %}
@@ -365,12 +365,6 @@
                 <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
                   <i class="fa-solid fa-shapes"></i>
                   {{ box.category }}
-                </span>
-              {% endif %}
-              {% if box.topic %}
-                <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                  <i class="fa-solid fa-tag"></i>
-                  {{ box.topic }}
                 </span>
               {% endif %}
               <span>Updated {{ box.updated_at|date:"M d, Y H:i" }}</span>
