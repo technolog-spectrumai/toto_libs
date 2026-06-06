@@ -132,6 +132,12 @@ class LogoutApiView(CorsApiView):
         return JsonResponse({"ok": True})
 
 
+def _supported_languages():
+    """`{code: label}` of languages the platform offers (e.g. en, pl)."""
+    from django.conf import settings
+    return dict(settings.LANGUAGES)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class MeApiView(CorsApiView):
     def get(self, request):
@@ -145,6 +151,7 @@ class MeApiView(CorsApiView):
             "full_name": user.get_full_name() or user.username,
             "avatar_url": None,
             "profile_url": None,
+            "language": "en",
         }
 
         try:
@@ -154,10 +161,37 @@ class MeApiView(CorsApiView):
                 data["full_name"] = person.full_name or data["full_name"]
                 data["avatar_url"] = request.build_absolute_uri(person.avatar.url) if person.avatar else None
                 data["profile_url"] = f"/socialhub/profiles/{person.slug}/"
+                data["language"] = person.preferred_language or "en"
         except Exception:
             pass
 
         return JsonResponse(data)
+
+    def patch(self, request):
+        """Persist a client's language choice onto the user's Person profile."""
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        language = str(body.get("language", "")).strip()
+        if language not in _supported_languages():
+            return JsonResponse({"error": "Unsupported language."}, status=400)
+
+        stored = False
+        try:
+            from toto.people.models import Person
+            person = Person.objects.filter(user=request.user).first()
+            if person:
+                person.preferred_language = language
+                person.save(update_fields=["preferred_language"])
+                stored = True
+        except Exception:
+            pass
+
+        return JsonResponse({"ok": True, "language": language, "stored": stored})
 
 
 @method_decorator(csrf_exempt, name="dispatch")

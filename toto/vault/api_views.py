@@ -8,7 +8,15 @@ from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 
 from toto.telegraph.api_views import CorsApiView
-from toto.vault.models import VaultFile, Bucket
+from toto.vault.models import VaultFile, Bucket, VaultDirectory
+
+# Text-ish file types editable in the Enigma Ace editor. Mirrors the file types
+# the toto editor app handles, kept deliberately narrow (no binary/media).
+EDITABLE_FILE_TYPES = {
+    "text", "json", "yaml", "xml", "csv", "latex", "bib", "python", "svg", "html",
+}
+# Refuse to load very large files into the editor.
+MAX_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB
 
 
 def _file_to_dict(request, vf):
@@ -27,6 +35,8 @@ def _file_to_dict(request, vf):
         "uploaded_at": vf.uploaded_at.isoformat(),
         "download_url": download_url,
         "bucket_slug": vf.bucket.slug if vf.bucket else None,
+        "directory_id": vf.directory_id,
+        "is_editable": (vf.file_type in EDITABLE_FILE_TYPES) and not vf.is_encrypted,
     }
 
 
@@ -286,3 +296,129 @@ class FileDownloadApiView(CorsApiView):
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
         return HttpResponseRedirect(vf.file.url)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class BucketTreeApiView(CorsApiView):
+    """The user's storage skeleton: buckets and their nested directories.
+
+    Files are NOT included here — the client overlays them from the file-list
+    endpoint using each file's ``bucket_slug`` + ``directory_id``. Together they
+    reproduce the toto storage tree (bucket → folders → files).
+    """
+
+    def get(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+
+        # Buckets the user owns, plus any bucket holding one of their files.
+        owned = Bucket.objects.filter(owner=request.user)
+        from_files = Bucket.objects.filter(files__owner=request.user)
+        buckets = owned.union(from_files).order_by("name")
+
+        dirs = (
+            VaultDirectory.objects.filter(owner=request.user)
+            .select_related("parent")
+            .order_by("name")
+        )
+        dirs_by_bucket = {}
+        for d in dirs:
+            dirs_by_bucket.setdefault(d.bucket_id, []).append(d)
+
+        out = []
+        for b in buckets:
+            out.append({
+                "id": b.id,
+                "slug": b.slug,
+                "name": b.name,
+                "directories": [
+                    {
+                        "id": d.id,
+                        "name": d.name,
+                        "parent_id": d.parent_id,
+                        "path": d.full_path(),
+                    }
+                    for d in dirs_by_bucket.get(b.id, [])
+                ],
+            })
+        return JsonResponse({"buckets": out})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FileContentApiView(CorsApiView):
+    """Read / write the text content of an editable vault file (Ace editor).
+
+    GET  → ``{content, file_type, is_editable, size}``
+    PUT  → save new ``content`` and return the refreshed file dict.
+
+    Only non-encrypted, text-ish files are accepted; binary/media and encrypted
+    files are rejected so we never hand back mojibake or clobber ciphertext.
+    """
+
+    def _get_file(self, user, key):
+        try:
+            return VaultFile.objects.select_related("bucket").get(owner=user, key=key)
+        except VaultFile.DoesNotExist:
+            return None
+
+    def get(self, request, key):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        vf = self._get_file(request.user, key)
+        if not vf:
+            return JsonResponse({"error": "File not found."}, status=404)
+        if vf.is_encrypted:
+            return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
+        if vf.file_type not in EDITABLE_FILE_TYPES:
+            return JsonResponse({"error": "This file type is not editable."}, status=415)
+        if vf.file_size_bytes and vf.file_size_bytes > MAX_EDIT_BYTES:
+            return JsonResponse({"error": "File is too large to edit."}, status=413)
+        try:
+            vf.file.open("rb")
+            try:
+                raw = vf.file.read()
+            finally:
+                vf.file.close()
+            content = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            return JsonResponse({"error": "File is not valid UTF-8 text."}, status=415)
+        except Exception as e:
+            return JsonResponse({"error": f"Could not read file: {e}"}, status=500)
+        return JsonResponse({
+            "key": vf.key,
+            "title": vf.title,
+            "file_type": vf.file_type,
+            "is_editable": True,
+            "size": vf.file_size_bytes,
+            "content": content,
+        })
+
+    def put(self, request, key):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        vf = self._get_file(request.user, key)
+        if not vf:
+            return JsonResponse({"error": "File not found."}, status=404)
+        if vf.is_encrypted:
+            return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
+        if vf.file_type not in EDITABLE_FILE_TYPES:
+            return JsonResponse({"error": "This file type is not editable."}, status=415)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        content = data.get("content")
+        if not isinstance(content, str):
+            return JsonResponse({"error": "content (string) is required."}, status=400)
+        encoded = content.encode("utf-8")
+        if len(encoded) > MAX_EDIT_BYTES:
+            return JsonResponse({"error": "Content is too large to save."}, status=413)
+        try:
+            with vf.file.open("w") as f:
+                f.write(content)
+            vf.file_size_bytes = len(encoded)
+            vf.content_hash = hashlib.sha256(encoded).hexdigest()
+            vf.save(update_fields=["file_size_bytes", "content_hash"])
+        except Exception as e:
+            return JsonResponse({"error": f"Could not save file: {e}"}, status=500)
+        return JsonResponse(_file_to_dict(request, vf))
