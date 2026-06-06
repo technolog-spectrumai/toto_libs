@@ -4,6 +4,7 @@ from . import views
 from .api_views import (
     BoxListApiView, BoxDetailApiView, CategoryListApiView,
     LinkListCreateApiView, LinkDeleteApiView, FullGraphApiView,
+    ReferenceListApiView, ReferenceDeleteApiView,
 )
 
 app_name = "bento"
@@ -14,8 +15,11 @@ urlpatterns = [
     path("api/boxes/", BoxListApiView.as_view(), name="api_box_list"),
     path("api/boxes/<int:pk>/", BoxDetailApiView.as_view(), name="api_box_detail"),
     path("api/boxes/<int:pk>/links/", LinkListCreateApiView.as_view(), name="api_box_links"),
+    path("api/boxes/<int:pk>/references/", ReferenceListApiView.as_view(), name="api_box_references"),
     path("api/links/", LinkListCreateApiView.as_view(), name="api_link_list"),
     path("api/links/<int:pk>/", LinkDeleteApiView.as_view(), name="api_link_detail"),
+    path("api/references/", ReferenceListApiView.as_view(), name="api_reference_list"),
+    path("api/references/<int:pk>/", ReferenceDeleteApiView.as_view(), name="api_reference_detail"),
     path("api/categories/", CategoryListApiView.as_view(), name="api_category_list"),
     path("api/graph/", FullGraphApiView.as_view(), name="api_full_graph"),
     # Legacy HTML-support API

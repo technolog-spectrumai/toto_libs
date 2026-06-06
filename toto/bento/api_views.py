@@ -201,6 +201,46 @@ class LinkDeleteApiView(CorsApiView):
         return JsonResponse({}, status=204)
 
 
+def _reference_to_dict(ref):
+    return {
+        "id": ref.id,
+        "box": ref.box_id,
+        "box_label": ref.box.label or "Untitled",
+        "label": ref.label or "references",
+        "subject_label": ref.subject_label,
+        "model": ref.target_model_label,
+        "content_type": ref.content_type_id,
+        "object_id": ref.object_id,
+        "created_at": ref.created_at.isoformat(),
+    }
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ReferenceListApiView(CorsApiView):
+    """All SubjectReferences (bento node → external toto object), or those of one
+    box when ``pk`` is given. Read + delete; references are *created* in toto
+    (they need an external-subject picker)."""
+
+    def get(self, request, pk=None):
+        qs = SubjectReference.objects.select_related("box", "content_type").order_by("-created_at")
+        if pk is not None:
+            qs = qs.filter(box_id=pk)
+        return JsonResponse({"references": [_reference_to_dict(r) for r in qs[:200]]})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ReferenceDeleteApiView(CorsApiView):
+    def delete(self, request, pk):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            ref = SubjectReference.objects.get(pk=pk)
+        except SubjectReference.DoesNotExist:
+            return JsonResponse({"error": "Not found."}, status=404)
+        ref.delete()
+        return JsonResponse({}, status=204)
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class FullGraphApiView(CorsApiView):
     """

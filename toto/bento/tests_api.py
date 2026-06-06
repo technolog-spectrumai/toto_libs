@@ -262,3 +262,70 @@ class CategoryListApiTests(TestCase):
         res = self.client.get("/bento/api/categories/")
         names = [c["name"] for c in res.json()["categories"]]
         self.assertEqual(names, sorted(names))
+
+
+class ReferenceApiTests(TestCase):
+    def setUp(self):
+        from django.contrib.contenttypes.models import ContentType
+        from toto.bento.models import SubjectReference
+        from toto.events.models import EventCategory
+
+        self.user = User.objects.create_user(username="refuser", password="pass")
+        self.box = IdeaBox.objects.create(label="Box with refs")
+        self.other_box = IdeaBox.objects.create(label="Other box")
+        ec = EventCategory.objects.create(name="Workshops")
+        ct = ContentType.objects.get_for_model(EventCategory)
+        self.ref = SubjectReference.objects.create(
+            box=self.box, content_type=ct, object_id=str(ec.pk), label="about",
+        )
+        self.other_ref = SubjectReference.objects.create(
+            box=self.other_box, content_type=ct, object_id=str(ec.pk), label="see",
+        )
+
+    def test_list_returns_all_references(self):
+        res = self.client.get("/bento/api/references/")
+        self.assertEqual(res.status_code, 200)
+        refs = res.json()["references"]
+        self.assertEqual(len(refs), 2)
+        first = next(r for r in refs if r["id"] == self.ref.id)
+        self.assertEqual(first["box_label"], "Box with refs")
+        self.assertEqual(first["label"], "about")
+        self.assertIn("Workshops", first["subject_label"])
+        self.assertTrue(first["model"])  # content-type label present
+
+    def test_per_box_references(self):
+        res = self.client.get(f"/bento/api/boxes/{self.box.id}/references/")
+        self.assertEqual(res.status_code, 200)
+        refs = res.json()["references"]
+        self.assertEqual(len(refs), 1)
+        self.assertEqual(refs[0]["box"], self.box.id)
+
+    def test_delete_unauthenticated(self):
+        res = self.client.delete(f"/bento/api/references/{self.ref.id}/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_delete_authenticated(self):
+        from toto.bento.models import SubjectReference
+        self.client.force_login(self.user)
+        res = self.client.delete(f"/bento/api/references/{self.ref.id}/")
+        self.assertEqual(res.status_code, 204)
+        self.assertFalse(SubjectReference.objects.filter(pk=self.ref.id).exists())
+
+    def test_delete_missing(self):
+        self.client.force_login(self.user)
+        res = self.client.delete("/bento/api/references/99999/")
+        self.assertEqual(res.status_code, 404)
+
+
+class AllLinksApiTests(TestCase):
+    def test_list_all_links_includes_box_labels(self):
+        from toto.bento.models import IdeaLink
+        a = IdeaBox.objects.create(label="From")
+        b = IdeaBox.objects.create(label="To")
+        IdeaLink.objects.create(from_box=a, to_box=b, label="supports")
+        res = self.client.get("/bento/api/links/")
+        self.assertEqual(res.status_code, 200)
+        links = res.json()["links"]
+        self.assertEqual(len(links), 1)
+        self.assertEqual(links[0]["from_box_label"], "From")
+        self.assertEqual(links[0]["to_box_label"], "To")
