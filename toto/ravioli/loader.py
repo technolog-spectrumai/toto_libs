@@ -142,12 +142,15 @@ def validate_configs(configs):
         for link in config.get("links", []):
             from_label = link.get("from_label", "")
             to_label = link.get("to_label", "")
+            generic = bool(link.get("generic"))
 
             if from_label not in declared_labels:
                 errors.append(
                     f"{source}: link references unknown from_label '{from_label}'"
                 )
-            if to_label not in declared_labels:
+            # Generic (GenericForeignKey) junction links resolve their target
+            # label at runtime, so they declare no fixed to_label.
+            if not generic and to_label not in declared_labels:
                 errors.append(
                     f"{source}: link references unknown to_label '{to_label}'"
                 )

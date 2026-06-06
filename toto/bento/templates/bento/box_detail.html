@@ -121,53 +121,8 @@
           </button>
           {% endif %}
         </div>
-      {% elif box.body %}
-        <div class="mt-5 border-t border-current/10 pt-5 text-sm leading-7 opacity-90">
-          {{ box.body|linebreaks }}
-        </div>
       {% endif %}
     </article>
-
-    <div class="grid gap-5 xl:grid-cols-2">
-      <section
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-lg border p-5 shadow-sm">
-        <h3 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-book-open"></i>
-          {% trans "Source" %}
-        </h3>
-        {% if box.source_title or box.source_url or box.source_type %}
-          <div class="mt-4 space-y-2 text-sm">
-            {% if box.source_title %}<p class="font-semibold">{{ box.source_title }}</p>{% endif %}
-            {% if box.source_type %}<p class="opacity-75">{{ box.source_type }}</p>{% endif %}
-            {% if box.source_url %}
-              <a href="{{ box.source_url }}" target="_blank" rel="noopener" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                <i class="fa-solid fa-up-right-from-square"></i>
-                {% trans "Open source" %}
-              </a>
-            {% endif %}
-          </div>
-        {% else %}
-          <p class="mt-4 text-sm opacity-60">{% trans "No source." %}</p>
-        {% endif %}
-      </section>
-
-      <section
-        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-        class="rounded-lg border p-5 shadow-sm">
-        <h3 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-quote-left"></i>
-          {% trans "Quote" %}
-        </h3>
-        {% if box.quote %}
-          <blockquote class="mt-4 border-l-4 border-current/20 pl-4 text-sm leading-7 opacity-85">
-            {{ box.quote|linebreaks }}
-          </blockquote>
-        {% else %}
-          <p class="mt-4 text-sm opacity-60">{% trans "No quote." %}</p>
-        {% endif %}
-      </section>
-    </div>
 
     <section
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -201,6 +156,42 @@
           <i class="fa-solid fa-arrow-down"></i>
           {% trans "Link to this" %}
         </a>
+      </div>
+    </section>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-arrow-up-right-from-square"></i>
+        {% trans "References" %}
+      </h3>
+      <div class="mt-4">
+        <a href="{% url 'bento:subject_reference_create' %}?box={{ box.pk }}" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "Add reference" %}
+        </a>
+      </div>
+      <div class="mt-3 space-y-3">
+        {% for ref in references %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 text-sm">
+            <div class="flex items-center gap-2">
+              <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ ref.target_model_label|capfirst }}</span>
+              <span class="truncate font-semibold">{{ ref.subject_label }}</span>
+            </div>
+            {% if ref.label %}<div class="mt-1 text-xs opacity-75">{{ ref.label }}</div>{% endif %}
+            <div class="mt-2 flex items-center gap-3">
+              <a href="{% url 'bento:subject_reference_update' ref.pk %}" class="inline-flex items-center gap-1 text-xs font-semibold underline hover:opacity-80">
+                <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+              </a>
+              <a href="{% url 'bento:subject_reference_delete' ref.pk %}" class="inline-flex items-center gap-1 text-xs font-semibold underline hover:opacity-80">
+                <i class="fa-solid fa-trash"></i> {% trans "Delete" %}
+              </a>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No references." %}</p>
+        {% endfor %}
       </div>
     </section>
 

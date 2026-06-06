@@ -13,13 +13,8 @@ nodes:
     model: toto.bento.models.IdeaBox
     uuid_field: uid
     fields:
-      title: title
-      body: body
-      is_concept: is_concept
-      source_title: source_title
-      source_url: source_url
-      source_type: source_type
-      quote: quote
+      label: label
+      # body / source_* / quote now live inside the properties bag.
       properties:
         source: properties
         transform: default_dict
@@ -41,6 +36,23 @@ links:
     via_model: toto.bento.models.IdeaLink
     from_field: from_box
     to_field: to_box
+    props:
+      label: label
+      properties: properties
+      created_at: created_at
+
+  # SubjectReference is a polymorphic junction: an edge from IdeaBox out to one
+  # of the allowed external models (resolved via a GenericForeignKey). `generic:
+  # true` tells the projector to resolve the target per-row and pick its graph
+  # label automatically, so no fixed to_label is declared. Targets:
+  # KanbanMission / KanbanCampaign / KanbanProject / Federation / Event /
+  # EventCategory / Address / Territory / Route / Zone / Community / Person.
+  - from_label: IdeaBox
+    relation: REFERENCES
+    via_model: toto.bento.models.SubjectReference
+    from_field: box
+    to_field: subject
+    generic: true
     props:
       label: label
       properties: properties

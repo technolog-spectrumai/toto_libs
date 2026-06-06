@@ -97,6 +97,12 @@ class ProjectionRunner:
         self.client = client
         self.configs = configs if configs is not None else load_all_configs()
         self._label_map = self._build_label_map()
+        # Reverse map (model class → label, uuid_field) for resolving the target
+        # of a `generic: true` junction link (a GenericForeignKey).
+        self._label_by_model = {
+            info["model"]: (label, info["uuid_field"])
+            for label, info in self._label_map.items()
+        }
         self._node_defs_by_label = self._build_node_def_map()
         self._links_by_from_label = self._build_links_by_from_label()
         self._links_by_key = self._build_links_by_key()
@@ -358,24 +364,22 @@ class ProjectionRunner:
     # ------------------------------------------------------------------
 
     def _project_junction_link(self, link_def):
-        from_label = link_def["from_label"]
-        to_label = link_def["to_label"]
         relation = link_def["relation"]
         via_model_path = link_def["via_model"]
         from_field = link_def["from_field"]
         to_field = link_def["to_field"]
-        props_map = link_def.get("props", {})
+        generic = bool(link_def.get("generic"))
 
         via_model = import_model(via_model_path)
-        from_info = self._label_map[from_label]
-        to_info = self._label_map[to_label]
-        from_uuid_field = from_info["uuid_field"]
-        to_uuid_field = to_info["uuid_field"]
 
         # Wipe all relationships of this type globally before re-creating.
         self.client.run_cypher(f"MATCH ()-[r:{relation}]->() DELETE r")
 
-        qs = via_model.objects.select_related(from_field, to_field).all()
+        # A GenericForeignKey target can't be select_related — for generic links
+        # only the concrete `from` side is prefetched; the target is resolved
+        # per-row in the instance projector.
+        related = [from_field] if generic else [from_field, to_field]
+        qs = via_model.objects.select_related(*related).all()
         for junction_obj in qs.iterator():
             self._project_junction_link_instance(link_def, junction_obj)
 
@@ -386,21 +390,29 @@ class ProjectionRunner:
 
     def _project_junction_link_instance(self, link_def, junction_obj):
         from_label = link_def["from_label"]
-        to_label = link_def["to_label"]
         relation = link_def["relation"]
         from_field = link_def["from_field"]
         to_field = link_def["to_field"]
+        generic = bool(link_def.get("generic"))
         props_map = link_def.get("props", {})
 
         from_info = self._label_map[from_label]
-        to_info = self._label_map[to_label]
         from_uuid_field = from_info["uuid_field"]
-        to_uuid_field = to_info["uuid_field"]
 
         from_obj = getattr(junction_obj, from_field, None)
         to_obj = getattr(junction_obj, to_field, None)
         if from_obj is None or to_obj is None:
             return
+
+        if generic:
+            # Resolve the target's graph label from its model class.
+            target = self._label_by_model.get(type(to_obj))
+            if target is None:
+                return  # target model isn't projected to the graph
+            to_label, to_uuid_field = target
+        else:
+            to_label = link_def["to_label"]
+            to_uuid_field = self._label_map[to_label]["uuid_field"]
 
         rel_uuid = self._junction_relation_uuid(junction_obj)
         props = {

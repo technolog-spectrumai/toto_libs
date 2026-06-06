@@ -65,6 +65,11 @@ class ProjectionPlanner:
         self.configs = configs if configs is not None else load_all_configs()
         self.selected_labels = set(selected_labels or [])
         self._label_map = self._build_label_map()
+        # Reverse map for resolving `generic: true` junction targets (GenericFK).
+        self._label_by_model = {
+            info["model"]: (label, info["uuid_field"])
+            for label, info in self._label_map.items()
+        }
 
     def _build_label_map(self):
         mapping = {}
@@ -186,27 +191,37 @@ class ProjectionPlanner:
     def _expected_junction_relationships(self, link_def):
         via_model = import_model(link_def["via_model"])
         from_info = self._label_map[link_def["from_label"]]
-        to_info = self._label_map[link_def["to_label"]]
         from_uuid_field = from_info["uuid_field"]
-        to_uuid_field = to_info["uuid_field"]
         from_field = link_def["from_field"]
         to_field = link_def["to_field"]
+        generic = bool(link_def.get("generic"))
         props_map = link_def.get("props", {})
         result = {}
 
-        qs = via_model.objects.select_related(from_field, to_field).all()
+        # A GenericForeignKey target can't be select_related.
+        related = [from_field] if generic else [from_field, to_field]
+        qs = via_model.objects.select_related(*related).all()
         for junction_obj in qs.iterator():
             from_obj = getattr(junction_obj, from_field, None)
             to_obj = getattr(junction_obj, to_field, None)
             if from_obj is None or to_obj is None:
                 continue
 
+            if generic:
+                target = self._label_by_model.get(type(to_obj))
+                if target is None:
+                    continue
+                to_label, to_uuid_field = target
+            else:
+                to_label = link_def["to_label"]
+                to_uuid_field = self._label_map[to_label]["uuid_field"]
+
             rel = {
                 "kind": "junction",
                 "from_label": link_def["from_label"],
                 "from_uuid": str(getattr(from_obj, from_uuid_field)),
                 "relation": link_def["relation"],
-                "to_label": link_def["to_label"],
+                "to_label": to_label,
                 "to_uuid": str(getattr(to_obj, to_uuid_field)),
                 "ravioli_uuid": _junction_relation_uuid(junction_obj),
                 "props": {
@@ -280,25 +295,41 @@ class ProjectionPlanner:
 
     def _actual_junction_relationships(self, link_def):
         from_label = link_def["from_label"]
-        to_label = link_def["to_label"]
         relation = link_def["relation"]
-        records = self.client.run_cypher(
-            (
+        generic = bool(link_def.get("generic"))
+
+        if generic:
+            # Target label varies — match any node and capture its labels.
+            query = (
+                f"MATCH (a:{from_label})-[r:{relation}]->(b) "
+                "WHERE r.ravioli_uuid IS NOT NULL "
+                "AND a.uuid IS NOT NULL AND b.uuid IS NOT NULL "
+                "RETURN a.uuid AS from_uuid, b.uuid AS to_uuid, labels(b) AS to_labels, "
+                "r.ravioli_uuid AS ravioli_uuid, properties(r) AS props"
+            )
+        else:
+            to_label = link_def["to_label"]
+            query = (
                 f"MATCH (a:{from_label})-[r:{relation}]->(b:{to_label}) "
                 "WHERE r.ravioli_uuid IS NOT NULL "
                 "AND a.uuid IS NOT NULL AND b.uuid IS NOT NULL "
                 "RETURN a.uuid AS from_uuid, b.uuid AS to_uuid, "
                 "r.ravioli_uuid AS ravioli_uuid, properties(r) AS props"
             )
-        )
+        records = self.client.run_cypher(query)
         result = {}
         for record in records:
+            if generic:
+                labels = [lbl for lbl in (record.get("to_labels") or []) if lbl in self._label_map]
+                row_to_label = labels[0] if labels else ""
+            else:
+                row_to_label = link_def["to_label"]
             rel = {
                 "kind": "junction",
                 "from_label": from_label,
                 "from_uuid": str(record["from_uuid"]),
                 "relation": relation,
-                "to_label": to_label,
+                "to_label": row_to_label,
                 "to_uuid": str(record["to_uuid"]),
                 "ravioli_uuid": str(record["ravioli_uuid"]),
                 "props": clean_props(record["props"]),

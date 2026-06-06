@@ -1,0 +1,114 @@
+{% extends "bento/base.html" %}
+{% load i18n %}
+
+{% block bento_title %}{{ title }}{% endblock %}
+
+{% block bento_content %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="mx-auto max-w-3xl rounded-lg border p-6 shadow-sm">
+  <a href="{% if reference %}{% url 'bento:box_detail' reference.box.pk %}{% else %}{% url 'bento:subject_reference_list' %}{% endif %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "Back" %}
+  </a>
+  <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mt-3 text-3xl font-bold">
+    {{ title }}
+  </h2>
+  <p class="mt-1 text-sm opacity-70">{% trans "A reference links a box out to an object in another part of the platform." %}</p>
+
+  <form method="post" class="mt-6 space-y-5" x-data="subjectRef()" x-init="init()">
+    {% csrf_token %}
+
+    <div>
+      <label for="{{ form.box.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ form.box.label }}</label>
+      {{ form.box }}
+      {% if form.box.errors %}<div class="mt-1 text-sm text-warn-light">{{ form.box.errors }}</div>{% endif %}
+    </div>
+
+    <div>
+      <label for="{{ form.content_type.id_for_label }}" class="mb-1 block text-sm font-semibold">{% trans "Target model" %}</label>
+      {{ form.content_type }}
+      {% if form.content_type.errors %}<div class="mt-1 text-sm text-warn-light">{{ form.content_type.errors }}</div>{% endif %}
+    </div>
+
+    <div>
+      <label for="ref-object" class="mb-1 block text-sm font-semibold">{% trans "Subject" %}</label>
+      <select
+        id="ref-object"
+        name="object_id"
+        x-model="objectId"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="w-full rounded-lg border px-3 py-2 text-sm outline-none shadow-inner transition focus:ring-2 focus:ring-current/20">
+        <option value="" x-show="!contentTypeId">{% trans "— choose a target model first —" %}</option>
+        <option value="" x-show="contentTypeId">{% trans "— select a subject —" %}</option>
+        <template x-for="o in options" :key="o.value">
+          <option :value="o.value" x-text="o.label"></option>
+        </template>
+      </select>
+      <p x-show="loading" x-cloak class="mt-1 text-xs opacity-60">{% trans "Loading subjects…" %}</p>
+      <p x-show="contentTypeId && !loading && options.length === 0" x-cloak class="mt-1 text-xs opacity-60">{% trans "No objects of this type yet." %}</p>
+      {% if form.object_id.errors %}<div class="mt-1 text-sm text-warn-light">{{ form.object_id.errors }}</div>{% endif %}
+    </div>
+
+    <div>
+      <label for="{{ form.label.id_for_label }}" class="mb-1 block text-sm font-semibold">{{ form.label.label }}</label>
+      {{ form.label }}
+      {% if form.label.help_text %}<p class="mt-1 text-xs opacity-60">{{ form.label.help_text }}</p>{% endif %}
+      {% if form.label.errors %}<div class="mt-1 text-sm text-warn-light">{{ form.label.errors }}</div>{% endif %}
+    </div>
+
+    <div>{% include "bento/_metadata_ace.html" with field=form.properties %}</div>
+
+    <div class="flex justify-end gap-2 border-t border-current/10 pt-5">
+      <a
+        href="{% if reference %}{% url 'bento:box_detail' reference.box.pk %}{% else %}{% url 'bento:subject_reference_list' %}{% endif %}"
+        class="inline-flex items-center justify-center rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        {% trans "Cancel" %}
+      </a>
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk"></i>
+        {% trans "Save reference" %}
+      </button>
+    </div>
+  </form>
+</section>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
+<script>
+function subjectRef() {
+  return {
+    contentTypeId: '{{ form.content_type.value|default:"" }}',
+    objectId: '{{ form.object_id.value|default:"" }}',
+    options: [],
+    loading: false,
+    async init() {
+      if (this.contentTypeId) { await this.loadOptions(); }
+    },
+    async onTypeChange() {
+      this.objectId = '';
+      await this.loadOptions();
+    },
+    async loadOptions() {
+      this.options = [];
+      if (!this.contentTypeId) { return; }
+      this.loading = true;
+      try {
+        const res = await fetch(`{% url 'bento:api_subject_options' %}?content_type=${encodeURIComponent(this.contentTypeId)}`);
+        const data = await res.json();
+        this.options = data.options || [];
+      } catch (e) {
+        this.options = [];
+      } finally {
+        this.loading = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

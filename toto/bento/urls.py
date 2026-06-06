@@ -33,4 +33,9 @@ urlpatterns = [
     path("relations/", views.link_list, name="link_list"),
     path("links/new/", views.link_create, name="link_create"),
     path("links/<int:pk>/delete/", views.link_delete, name="link_delete"),
+    path("references/", views.subject_reference_list, name="subject_reference_list"),
+    path("references/new/", views.subject_reference_create, name="subject_reference_create"),
+    path("references/<int:pk>/edit/", views.subject_reference_update, name="subject_reference_update"),
+    path("references/<int:pk>/delete/", views.subject_reference_delete, name="subject_reference_delete"),
+    path("api/subjects/", views.api_subject_options, name="api_subject_options"),
 ]

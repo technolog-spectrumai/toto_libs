@@ -223,6 +223,28 @@ class FullGraphApiTests(TestCase):
         self.assertEqual(len(box_nodes), 2)
         self.assertEqual({n["label"] for n in box_nodes}, {"A", "B"})
 
+    def test_graph_includes_reference_node_and_edge(self):
+        from django.contrib.contenttypes.models import ContentType
+        from toto.bento.models import SubjectReference
+        from toto.events.models import EventCategory
+
+        ec = EventCategory.objects.create(name="Workshops")
+        ct = ContentType.objects.get_for_model(EventCategory)
+        SubjectReference.objects.create(
+            box=self.box_a, content_type=ct, object_id=str(ec.pk), label="about",
+        )
+
+        data = self.client.get("/bento/api/graph/").json()
+
+        ref_nodes = [n for n in data["nodes"] if n["node_type"] == "reference"]
+        self.assertEqual(len(ref_nodes), 1)
+        self.assertIn("Workshops", ref_nodes[0]["label"])
+
+        ref_edges = [e for e in data["edges"] if e["edge_type"] == "reference"]
+        self.assertEqual(len(ref_edges), 1)
+        self.assertEqual(ref_edges[0]["source"], f"b{self.box_a.id}")
+        self.assertEqual(ref_edges[0]["target"], ref_nodes[0]["id"])
+
 
 class CategoryListApiTests(TestCase):
     def setUp(self):

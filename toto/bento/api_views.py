@@ -7,7 +7,7 @@ from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
 from toto.telegraph.api_views import CorsApiView
-from toto.bento.models import Category, IdeaBox, IdeaLink
+from toto.bento.models import Category, IdeaBox, IdeaLink, SubjectReference
 
 
 def _category_to_dict(c):
@@ -204,20 +204,25 @@ class LinkDeleteApiView(CorsApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class FullGraphApiView(CorsApiView):
     """
-    Return ALL boxes, ALL IdeaLinks, and ALL categories as a unified graph.
+    Return ALL boxes, ALL IdeaLinks, ALL categories, and the external objects
+    referenced via SubjectReference as a unified graph.
 
     Node types:
-      "box"      — IdeaBox, id prefixed "b{id}"
-      "category" — Category, id prefixed "cat{id}"
+      "box"       — IdeaBox, id prefixed "b{id}"
+      "category"  — Category, id prefixed "cat{id}"
+      "reference" — external object pointed at by a SubjectReference (hexagon),
+                    id "ref{content_type_id}-{object_id}"
 
     Edge types:
-      "link"     — IdeaLink between two boxes
-      "category" — box → its category
+      "link"      — IdeaLink between two boxes
+      "category"  — box → its category
+      "reference" — box → referenced external object
     """
     def get(self, request):
         boxes = list(IdeaBox.objects.select_related("category").order_by("id"))
         links = list(IdeaLink.objects.all())
         categories = list(Category.objects.all())
+        references = list(SubjectReference.objects.select_related("content_type").order_by("id"))
 
         # category nodes (ellipses)
         cat_nodes = [
@@ -264,7 +269,30 @@ class FullGraphApiView(CorsApiView):
             for b in boxes if b.category_id
         ]
 
+        # referenced external objects (hexagons) + box → reference edges
+        ref_nodes = {}
+        ref_edges = []
+        for ref in references:
+            subject = ref.subject  # resolves the GenericForeignKey; may be None
+            if subject is None:
+                continue
+            node_id = f"ref{ref.content_type_id}-{ref.object_id}"
+            if node_id not in ref_nodes:
+                ref_nodes[node_id] = {
+                    "id": node_id,
+                    "label": ref.subject_label,
+                    "node_type": "reference",
+                    "model": ref.target_model_label,
+                }
+            ref_edges.append({
+                "id": f"sr{ref.id}",
+                "source": f"b{ref.box_id}",
+                "target": node_id,
+                "label": ref.label or "references",
+                "edge_type": "reference",
+            })
+
         return JsonResponse({
-            "nodes": box_nodes + cat_nodes,
-            "edges": link_edges + cat_edges,
+            "nodes": box_nodes + cat_nodes + list(ref_nodes.values()),
+            "edges": link_edges + cat_edges + ref_edges,
         })

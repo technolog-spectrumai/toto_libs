@@ -3,7 +3,8 @@
 Bento is a small **idea-graph** app: a personal knowledge base of *boxes* (nodes)
 connected by *links* (edges). Each box captures an idea, note, or quote; links
 describe how ideas relate (`about`, `supports`, `contradicts`, `expands`, …).
-The whole thing can be browsed as a list or explored as an interactive graph.
+The graph can be browsed as a **Boxes** list, a **Relations** list, or explored
+as an interactive Cytoscape map.
 
 The design centre is deliberately minimal: **a node is a `label` plus a `properties`
 bag**, and **an edge is a `label` plus a `properties` bag**. Everything that used to
@@ -15,8 +16,8 @@ be a dedicated column (body, source, quote, …) now lives inside `properties` a
 
 ### As a user
 
-The app lives under `/bento/` and the top nav has five tabs: **Boxes**,
-**Relations**, **New box**, **New link**, **Categories**.
+The app lives under `/bento/` and the top nav has six tabs: **Boxes**,
+**Relations**, **References**, **New box**, **New link**, **Categories**.
 
 - **Create a box** — *New box*. Give it a short **label**, optionally pick a
   **category**, and fill in the **Metadata (JSON)** editor. Well-known keys the UI
@@ -47,7 +48,13 @@ The app lives under `/bento/` and the top nav has five tabs: **Boxes**,
 
 - **Browse relations** — the **Relations** page lists every link as a thin
   `label · from → to` row (each box clickable to its detail), with a search over the
-  relation label and the linked boxes' labels.
+  relation label and the linked boxes' labels, and a **New relation** button.
+
+- **Reference external objects** — a box can also point *out* of bento to an object
+  in another app (a kanban mission, an event, a person, …) via a **SubjectReference**.
+  Manage these on the **References** tab, or via **Add reference** on a box's detail
+  page. Pick a target model, then a subject; the link carries its own label +
+  properties. In the graph view, referenced objects appear as **hexagons**.
 
 - **Categories** — lightweight groupings (name + slug + description) managed under
   **Categories**.
@@ -80,7 +87,7 @@ cd portal/
 
 ## 2. Technical design
 
-App module: `toto.bento` (`app_name = "bento"`). Three models, all inheriting
+App module: `toto.bento` (`app_name = "bento"`). Four models, all inheriting
 `toto.core.domain.DomainEntity` (which adds a universal `uid` UUID for cross-system
 identity / graph projection).
 
@@ -90,7 +97,7 @@ identity / graph projection).
 
 | Field | Type | Notes |
 |---|---|---|
-| `label` | `CharField` | The node title (the only first-class content field). |
+| `label` | `CharField` | The node's display name (was `title`); the only first-class content field. |
 | `category` | `FK → Category` | Optional, `SET_NULL`. A real relation, not a property. |
 | `properties` | `JSONField` | **All node data**: `body`, `source_*`, `quote`, plus any custom keys. |
 | `is_locked`, `lock_salt`, `encrypted_body`, `lock_nonce` | lock state | Operational columns for the encryption feature. |
@@ -104,6 +111,14 @@ the generic accessors.
 
 **`IdeaLink`** — the edge: `from_box`, `to_box` (FKs, `CASCADE`), a free-text
 `label`, and a `properties` JSONField. `unique_together = (from_box, to_box, label)`.
+
+**`SubjectReference`** — a *polymorphic* edge from a box out to an external object
+in another app (via the contenttypes framework): `box` (FK), `content_type` (FK,
+`limit_choices_to` the 12 allowed targets — kanban Mission/Campaign/Project,
+Federation, ScheduledEvent, EventCategory, Address, Territory, Route, Zone,
+Community, Person), `object_id` (CharField — targets have mixed int/UUID PKs),
+a `subject` GenericForeignKey, plus a free-text `label` and `properties`.
+`subject_label` / `target_model_label` are display helpers.
 
 **`Category`** — `name`, auto-`slug`, `description`.
 
@@ -138,6 +153,9 @@ reverses it. Serializers null out the body while a box is locked.
 - `IdeaBoxForm` → `label`, `category`, `properties` (the properties widget is a
   textarea upgraded to the ACE JSON editor).
 - `IdeaLinkForm` → `from_box`, `label`, `to_box`, `properties`.
+- `SubjectReferenceForm` → `box`, `content_type` (limited to the 12 targets),
+  `object_id`, `label`, `properties`. The subject is chosen via an Alpine dependent
+  `<select>` populated from `api_subject_options`; existence is validated server-side.
 - `CategoryForm` → `name`, `slug`, `description`.
 
 ### Routes — [urls.py](urls.py)
@@ -148,10 +166,12 @@ reverses it. Serializers null out the body while a box is locked.
 |---|---|---|
 | `box_list` | `/bento/` | box list + search + graph modal |
 | `link_list` | `/bento/relations/` | relations list (thin `label · from → to` rows) |
+| `subject_reference_list` | `/bento/references/` | references list (`label · box → [Model] subject`) |
 | `box_create` / `box_update` / `box_delete` | `/bento/new/`, `/bento/<pk>/edit/`, `/bento/<pk>/delete/` | box CRUD |
 | `box_detail` | `/bento/<pk>/` | detail page |
 | `box_lock` / `box_unlock` | `/bento/<pk>/lock/`, `/unlock/` | POST, federal-agent only |
 | `link_create` / `link_delete` | `/bento/links/new/`, `/links/<pk>/delete/` | edge CRUD |
+| `subject_reference_create` / `subject_reference_update` / `subject_reference_delete` | `/bento/references/new/`, `/references/<pk>/edit/`, `/references/<pk>/delete/` | reference CRUD |
 | `category_list` / `category_create` / `category_update` | `/bento/categories/…` | category CRUD |
 
 **JSON endpoints** ([api_views.py](api_views.py))
@@ -163,7 +183,8 @@ reverses it. Serializers null out the body while a box is locked.
 | `api_box_links` / `api_link_list` | `/bento/api/boxes/<pk>/links/`, `/api/links/` | list / create links |
 | `api_link_detail` | `/bento/api/links/<pk>/` | `DELETE` |
 | `api_category_list` | `/bento/api/categories/` | list categories |
-| `api_full_graph` | `/bento/api/graph/` | all nodes + edges for the Cytoscape modal |
+| `api_full_graph` | `/bento/api/graph/` | all nodes (boxes / categories / referenced objects) + edges for the Cytoscape modal |
+| `api_subject_options` | `/bento/api/subjects/?content_type=<id>` | objects of a chosen target model, for the reference form's dependent select |
 | `api_boxes` / `api_box_graph` | `/bento/api/boxes-graph/`, `/api/boxes/<pk>/graph/` | HTML-page support feeds |
 
 The JSON API is the contract consumed by the **Enigma** Tauri app. It returns
@@ -184,28 +205,36 @@ reset during the redesign rather than data-migrated, so an existing DB needs a f
 Bento's templates extend `oya/base.html` and use the platform's **Tailwind +
 Alpine.js** styling with a dark/light theme (`darkMode`) and FontAwesome icons.
 Base shell: [templates/bento/base.html](templates/bento/base.html) — a "Toto Studio /
-Bento" header, a Dashboard back-link, and the five-item nav.
+Bento" header, a Dashboard back-link, and the six-item nav.
 
 - **Box list** ([box_list.html](templates/bento/box_list.html)) — left sidebar with
   search and two stat tiles (boxes / links). The main column is a card per box showing
-  label, locked/source badges, a body excerpt, and the source title. A **Graph view**
-  button opens a full-screen modal rendering the whole graph with **Cytoscape**
-  (`cose` layout): boxes are rounded rectangles, categories are plain ellipses; link
-  edges are solid arrows, category-membership edges are dashed. Clicking a node
-  navigates to its detail page; colors track the active theme.
+  label, a locked badge, category, and the updated time. A **Graph view** button opens
+  a full-screen modal rendering the whole graph with **Cytoscape** (`cose` layout):
+  boxes are rounded rectangles, categories are plain ellipses, **referenced external
+  objects are hexagons**; link edges are solid arrows, category-membership edges are
+  dashed, and reference edges are dashed accent arrows. Clicking a box node navigates to
+  its detail page; colors track the active theme.
 
 - **Relations list** ([link_list.html](templates/bento/link_list.html)) — mirrors the
   box list shell (sidebar search + stat tiles) but the main column is one thin row per
   link: a relation-label chip, then `from → to` with an arrow icon, each box clickable
   to its detail page.
 
+- **References list** ([subject_reference_list.html](templates/bento/subject_reference_list.html)) —
+  same thin-row shell; each row is `label · box → [Model] subject` with inline edit/delete.
+  The **form** ([subject_reference_form.html](templates/bento/subject_reference_form.html))
+  picks a target model then an Alpine-populated subject `<select>`. The box detail page
+  also lists a box's references in its sidebar with **Add reference**.
+
 - **Box detail** ([box_detail.html](templates/bento/box_detail.html)) — title and
-  timestamps, the rendered **body** (or a locked placeholder),
-  and side-by-side **Source** and **Quote** panels, plus a **Properties** panel that
-  shows the JSON in a **read-only ACE viewer** (syntax-highlit, theme-aware, cursor
-  hidden, auto-sized). A right sidebar lists outgoing/incoming links (with quick
-  "Link from/to this" actions) and a small live API-graph summary. Delete, lock, and
-  unlock are Alpine-driven modals; lock/unlock post to the API via `fetch` and reload.
+  timestamps, a locked placeholder when the box is locked, and a single **Properties**
+  panel that shows the whole `properties` bag in a **read-only ACE viewer**
+  (syntax-highlit, theme-aware, cursor hidden, auto-sized). There are no separate
+  body/source/quote panels — those keys are just part of the JSON. A right sidebar
+  lists outgoing/incoming links (with quick "Link from/to this" actions) and a small
+  live API-graph summary. Delete, lock, and unlock are Alpine-driven modals; lock/unlock
+  post to the API via `fetch` and reload.
 
 - **ACE JSON editor / viewer** — `properties` is always presented through ACE, vendored
   at `toto/toto/core/static/vendor/ace/`, with the init script

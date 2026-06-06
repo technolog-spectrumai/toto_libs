@@ -1,11 +1,13 @@
 from cryptography.exceptions import InvalidTag
 from django.contrib.auth.models import User
+from django.contrib.contenttypes.models import ContentType
 from django.test import Client, TestCase
 from django.urls import reverse
 
+from toto.events.models import EventCategory
 from toto.people.models import Person
 
-from .models import Category, IdeaBox, IdeaLink
+from .models import Category, IdeaBox, IdeaLink, SubjectReference
 
 
 class BoxPageRenderTests(TestCase):
@@ -37,8 +39,8 @@ class BoxPageRenderTests(TestCase):
         res = self.client.get(reverse("bento:box_list"))
         self.assertEqual(res.status_code, 200)
         html = res.content.decode()
-        self.assertIn("Stories beat facts", html)
-        self.assertIn("Made to Stick", html)  # source_title from properties
+        self.assertIn("Stories beat facts", html)   # label
+        self.assertNotIn("Made to Stick", html)     # source is no longer shown in the list
 
     def test_link_list_renders(self):
         res = self.client.get(reverse("bento:link_list"))
@@ -62,9 +64,15 @@ class BoxPageRenderTests(TestCase):
         res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
         self.assertEqual(res.status_code, 200)
         html = res.content.decode()
-        self.assertIn("Stories beat facts", html)
-        self.assertIn("People remember stories.", html)  # body
-        self.assertIn("A memorable quote.", html)         # quote
+        self.assertIn("Stories beat facts", html)  # label
+
+    def test_box_detail_has_no_body_source_quote_panels(self):
+        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
+        html = res.content.decode()
+        # body / source / quote live only inside the read-only properties JSON viewer now,
+        # not in dedicated panels (Source used fa-book-open, Quote used fa-quote-left).
+        self.assertNotIn("fa-book-open", html)
+        self.assertNotIn("fa-quote-left", html)
 
     def test_box_detail_renders_readonly_ace_properties(self):
         res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
@@ -299,3 +307,111 @@ class MetadataAceEditorTests(TestCase):
         self.assertEqual(res.status_code, 200)  # re-rendered with errors, not saved
         box.refresh_from_db()
         self.assertEqual(box.properties, {"keep": True})
+
+
+class SubjectReferenceTests(TestCase):
+    """SubjectReference is an edge from a box out to an external model."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="T", author="A", publication_year=2024, active=True)
+        self.client = Client()
+        self.box = IdeaBox.objects.create(label="Anchor box")
+        self.category = EventCategory.objects.create(name="Workshops")
+        self.ct = ContentType.objects.get_for_model(EventCategory)
+
+    def _make_ref(self, label="references"):
+        return SubjectReference.objects.create(
+            box=self.box, content_type=self.ct, object_id=str(self.category.pk), label=label,
+        )
+
+    def test_subject_resolves(self):
+        ref = self._make_ref()
+        self.assertEqual(ref.subject, self.category)
+        self.assertIn("Workshops", ref.subject_label)
+        self.assertIn("Workshops", str(ref))
+
+    def test_list_renders(self):
+        self._make_ref("about")
+        res = self.client.get(reverse("bento:subject_reference_list"))
+        self.assertEqual(res.status_code, 200)
+        html = res.content.decode()
+        self.assertIn("about", html)
+        self.assertIn("Anchor box", html)
+        self.assertIn("Workshops", html)
+
+    def test_options_endpoint_lists_subjects(self):
+        res = self.client.get(reverse("bento:api_subject_options"), {"content_type": self.ct.pk})
+        self.assertEqual(res.status_code, 200)
+        options = res.json()["options"]
+        self.assertTrue(
+            any(o["value"] == str(self.category.pk) and "Workshops" in o["label"] for o in options)
+        )
+
+    def test_options_endpoint_rejects_disallowed_type(self):
+        ct = ContentType.objects.get_for_model(IdeaBox)  # not an allowed target
+        res = self.client.get(reverse("bento:api_subject_options"), {"content_type": ct.pk})
+        self.assertEqual(res.json()["options"], [])
+
+    def test_create_view(self):
+        res = self.client.post(reverse("bento:subject_reference_create"), {
+            "box": self.box.pk,
+            "content_type": self.ct.pk,
+            "object_id": str(self.category.pk),
+            "label": "about",
+            "properties": "{}",
+        })
+        self.assertEqual(res.status_code, 302)
+        ref = SubjectReference.objects.get()
+        self.assertEqual(ref.box, self.box)
+        self.assertEqual(ref.subject, self.category)
+        self.assertEqual(ref.label, "about")
+
+    def test_create_rejects_nonexistent_object(self):
+        res = self.client.post(reverse("bento:subject_reference_create"), {
+            "box": self.box.pk,
+            "content_type": self.ct.pk,
+            "object_id": "999999",
+            "label": "",
+            "properties": "{}",
+        })
+        self.assertEqual(res.status_code, 200)  # re-rendered with error
+        self.assertFalse(SubjectReference.objects.exists())
+
+    def test_create_rejects_disallowed_content_type(self):
+        ct = ContentType.objects.get_for_model(IdeaBox)
+        res = self.client.post(reverse("bento:subject_reference_create"), {
+            "box": self.box.pk,
+            "content_type": ct.pk,
+            "object_id": str(self.box.pk),
+            "label": "",
+            "properties": "{}",
+        })
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(SubjectReference.objects.exists())
+
+    def test_update_view(self):
+        ref = self._make_ref("about")
+        res = self.client.post(reverse("bento:subject_reference_update", args=[ref.pk]), {
+            "box": self.box.pk,
+            "content_type": self.ct.pk,
+            "object_id": str(self.category.pk),
+            "label": "located at",
+            "properties": "{}",
+        })
+        self.assertEqual(res.status_code, 302)
+        ref.refresh_from_db()
+        self.assertEqual(ref.label, "located at")
+
+    def test_delete_view(self):
+        ref = self._make_ref()
+        res = self.client.post(reverse("bento:subject_reference_delete", args=[ref.pk]))
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(SubjectReference.objects.filter(pk=ref.pk).exists())
+
+    def test_box_detail_shows_references(self):
+        self._make_ref("about")
+        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
+        html = res.content.decode()
+        self.assertIn("References", html)
+        self.assertIn("Workshops", html)

@@ -2,6 +2,8 @@ import base64
 import os
 
 from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+from django.contrib.contenttypes.fields import GenericForeignKey
+from django.contrib.contenttypes.models import ContentType
 from django.db import models
 from django.utils.text import slugify
 
@@ -181,3 +183,95 @@ class IdeaLink(DomainEntity):
     def __str__(self):
         label = self.label or "related to"
         return f"{self.from_box} → {label} → {self.to_box}"
+
+
+# External targets a SubjectReference may point at: (app_label, model, human label).
+# `model` is the ContentType model name (the lowercased class name).
+SUBJECT_REFERENCE_TARGETS = [
+    ("kanban", "mission", "Kanban mission"),
+    ("kanban", "campaign", "Kanban campaign"),
+    ("kanban", "project", "Kanban project"),
+    ("core", "federation", "Federation"),
+    ("events", "scheduledevent", "Event"),
+    ("events", "eventcategory", "Event category"),
+    ("locations", "address", "Address"),
+    ("locations", "territory", "Territory"),
+    ("locations", "route", "Route"),
+    ("locations", "zone", "Zone"),
+    ("socialhub", "community", "Community"),
+    ("people", "person", "Person"),
+]
+
+
+def subject_reference_content_type_limit():
+    """`limit_choices_to` for the ContentType FK — restricts it to the allowed targets."""
+    q = models.Q()
+    for app_label, model_name, _label in SUBJECT_REFERENCE_TARGETS:
+        q |= models.Q(app_label=app_label, model=model_name)
+    return q
+
+
+class SubjectReference(DomainEntity):
+    """An edge from a bento node out to an external object in another toto app.
+
+    Unlike ``IdeaLink`` (node → node, inside bento), a ``SubjectReference`` reaches
+    OUT to one of a fixed set of external models via the contenttypes framework.
+    """
+
+    box = models.ForeignKey(
+        IdeaBox,
+        on_delete=models.CASCADE,
+        related_name="references",
+    )
+
+    content_type = models.ForeignKey(
+        ContentType,
+        on_delete=models.CASCADE,
+        limit_choices_to=subject_reference_content_type_limit,
+        help_text="Which external model the reference points at.",
+    )
+    # CharField rather than the usual PositiveIntegerField: the targets have mixed
+    # PK types — most are bigint, but events.ScheduledEvent has a UUID primary key.
+    object_id = models.CharField(max_length=255)
+    subject = GenericForeignKey("content_type", "object_id")
+
+    label = models.CharField(
+        max_length=80,
+        blank=True,
+        help_text="Optional relationship label, e.g. references, about, located at.",
+    )
+    properties = models.JSONField(
+        default=dict,
+        blank=True,
+        help_text="Flexible metadata for the reference.",
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [models.Index(fields=["content_type", "object_id"])]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["box", "content_type", "object_id", "label"],
+                name="unique_subject_reference",
+            )
+        ]
+
+    def __str__(self):
+        return f"{self.box} → {self.label or 'references'} → {self.subject_label}"
+
+    @property
+    def subject_label(self):
+        """Human label for the external target, resilient to dangling references."""
+        try:
+            subject = self.subject
+        except Exception:
+            subject = None
+        if subject is not None:
+            return str(subject)
+        return f"{self.content_type} #{self.object_id}"
+
+    @property
+    def target_model_label(self):
+        return self.content_type.name if self.content_type_id else ""

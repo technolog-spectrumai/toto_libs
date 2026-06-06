@@ -1,4 +1,5 @@
 from cryptography.exceptions import InvalidTag
+from django.contrib.contenttypes.models import ContentType
 from django.db.models import Q
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
@@ -6,8 +7,14 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
-from .models import Category, IdeaBox, IdeaLink
+from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm, SubjectReferenceForm
+from .models import (
+    Category,
+    IdeaBox,
+    IdeaLink,
+    SubjectReference,
+    subject_reference_content_type_limit,
+)
 
 
 def bento_render(request, template_name, context):
@@ -81,6 +88,7 @@ def box_detail(request, pk):
         "box": box,
         "outgoing_links": outgoing_links,
         "incoming_links": incoming_links,
+        "references": box.references.select_related("content_type"),
         "can_lock": _is_federal_agent(request),
     })
 
@@ -171,6 +179,88 @@ def link_delete(request, pk):
         return redirect("bento:box_detail", pk=from_box_pk)
 
     return bento_render(request, "bento/link_confirm_delete.html", {"link": link})
+
+
+def subject_reference_list(request):
+    query = request.GET.get("q", "")
+
+    references = SubjectReference.objects.select_related("box", "content_type")
+
+    if query:
+        references = references.filter(
+            Q(label__icontains=query) | Q(box__label__icontains=query)
+        )
+
+    return bento_render(request, "bento/subject_reference_list.html", {
+        "references": references,
+        "query": query,
+        "total_references": SubjectReference.objects.count(),
+        "total_boxes": IdeaBox.objects.count(),
+    })
+
+
+def subject_reference_create(request):
+    initial = {}
+    box_id = request.GET.get("box")
+    if box_id:
+        initial["box"] = box_id
+
+    if request.method == "POST":
+        form = SubjectReferenceForm(request.POST)
+        if form.is_valid():
+            reference = form.save()
+            return redirect("bento:box_detail", pk=reference.box_id)
+    else:
+        form = SubjectReferenceForm(initial=initial)
+
+    return bento_render(request, "bento/subject_reference_form.html", {"form": form, "title": _("New reference")})
+
+
+def subject_reference_update(request, pk):
+    reference = get_object_or_404(SubjectReference, pk=pk)
+
+    if request.method == "POST":
+        form = SubjectReferenceForm(request.POST, instance=reference)
+        if form.is_valid():
+            form.save()
+            return redirect("bento:box_detail", pk=reference.box_id)
+    else:
+        form = SubjectReferenceForm(instance=reference)
+
+    return bento_render(request, "bento/subject_reference_form.html", {
+        "form": form, "title": _("Edit reference"), "reference": reference,
+    })
+
+
+def subject_reference_delete(request, pk):
+    reference = get_object_or_404(SubjectReference, pk=pk)
+    box_pk = reference.box_id
+
+    if request.method == "POST":
+        reference.delete()
+        return redirect("bento:box_detail", pk=box_pk)
+
+    return bento_render(request, "bento/subject_reference_confirm_delete.html", {"reference": reference})
+
+
+def api_subject_options(request):
+    """Options for the reference form's dependent select: every object of a chosen
+    (allowed) content type, as ``{value, label}``."""
+    options = []
+    ct_id = request.GET.get("content_type")
+    if ct_id:
+        try:
+            content_type = ContentType.objects.filter(
+                subject_reference_content_type_limit()
+            ).get(pk=ct_id)
+        except (ContentType.DoesNotExist, ValueError):
+            content_type = None
+        if content_type is not None:
+            model = content_type.model_class()
+            if model is not None:
+                for obj in model.objects.all()[:500]:
+                    options.append({"value": str(obj.pk), "label": str(obj)})
+    return JsonResponse({"options": options})
 
 
 def category_list(request):
