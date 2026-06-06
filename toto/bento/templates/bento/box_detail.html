@@ -188,7 +188,7 @@
         {% trans "Properties" %}
       </h3>
       {% if box.properties %}
-        <pre :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="mt-4 overflow-auto rounded-lg p-4 text-xs">{{ box.properties }}</pre>
+        <div class="mt-4">{% include "bento/_metadata_ace_view.html" with value=box.properties id="box_properties_json" %}</div>
       {% else %}
         <p class="mt-4 text-sm opacity-60">{% trans "No properties." %}</p>
       {% endif %}
@@ -355,4 +355,9 @@
     </div>
   {% endfor %}
 </div>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
 {% endblock %}

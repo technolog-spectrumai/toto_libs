@@ -63,5 +63,31 @@
       });
     }
   });
+
+  // Read-only JSON viewers (e.g. the box detail Properties panel). Seeded from a
+  // `json_script` <script> element and never editable.
+  document.querySelectorAll(".metadata-ace-view").forEach(function (wrap) {
+    const source = document.getElementById(wrap.dataset.source);
+    const host = document.getElementById(wrap.dataset.source + "_ace");
+    if (!source || !host) { return; }
+
+    const editor = ace.edit(host);
+    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+    editor.session.setMode("ace/mode/json");
+    editor.setReadOnly(true);
+    editor.setHighlightActiveLine(false);
+    editor.setOptions({
+      fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2,
+      minLines: 3, maxLines: 40, highlightGutterLine: false,
+    });
+    if (editor.renderer.$cursorLayer) {
+      editor.renderer.$cursorLayer.element.style.display = "none";
+    }
+
+    let data = {};
+    try { data = JSON.parse(source.textContent || "{}"); } catch (e) { data = {}; }
+    editor.setValue(JSON.stringify(data, null, 2), -1);
+    editor.clearSelection();
+  });
 })();
 </script>

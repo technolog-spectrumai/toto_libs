@@ -63,6 +63,14 @@ class BoxPageRenderTests(TestCase):
         self.assertIn("People remember stories.", html)  # body
         self.assertIn("A memorable quote.", html)         # quote
 
+    def test_box_detail_renders_readonly_ace_properties(self):
+        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
+        html = res.content.decode()
+        # Properties are shown as a read-only ACE JSON viewer seeded via json_script.
+        self.assertIn('class="metadata-ace-view"', html)
+        self.assertIn('id="box_properties_json"', html)
+        self.assertIn("vendor/ace/ace.", html)
+
 
 class IdeaBoxLockTests(TestCase):
     def setUp(self):
