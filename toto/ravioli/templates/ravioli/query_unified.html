@@ -270,10 +270,19 @@
             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
             class="rounded-lg border shadow-sm overflow-hidden"
           >
-            <div class="flex items-center justify-between border-b border-current/10 px-4 py-2 text-xs opacity-60">
-              <span><i class="fa-solid fa-diagram-project mr-1"></i>{% trans "Graph" %}</span>
-              <span x-text="`${nodeCount} nodes · ${edgeCount} edges`"></span>
+            <div class="flex items-center justify-between border-b border-current/10 px-4 py-2 text-xs">
+              <span class="opacity-60"><i class="fa-solid fa-diagram-project mr-1"></i>{% trans "Graph" %}</span>
+              <div class="flex items-center gap-3">
+                <span class="opacity-60" x-text="`${nodeCount} nodes · ${edgeCount} edges`"></span>
+                <button @click="colorModal = true" class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-0.5 font-semibold opacity-70 transition hover:opacity-100">
+                  <i class="fa-solid fa-palette"></i>{% trans "Colours" %}
+                </button>
+              </div>
             </div>
+
+            {# Warm-up: keep every swatch class in the DOM so the Tailwind Play CDN generates them. #}
+            <span class="hidden bg-accent-light bg-accent-dark bg-warn-light bg-warn-dark bg-success-light bg-success-dark bg-sunken-light bg-sunken-dark bg-link-light bg-link-dark bg-caution-light bg-caution-dark"></span>
+
             <div id="cy" style="width:100%;height:580px;"></div>
           </div>
         </div>
@@ -319,6 +328,77 @@
           >{% trans "No properties on this element." %}</p>
         </article>
 
+        {# ── Post-processing colour modal: pick a system colour per node / edge type ── #}
+        <template x-if="colorModal">
+          <div class="fixed inset-0 z-50 flex items-center justify-center p-4" :class="darkMode ? 'bg-black/70' : 'bg-black/40'" @click.self="colorModal = false" @keydown.escape.window="colorModal = false">
+            <div :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'" class="flex max-h-[85vh] w-full max-w-2xl flex-col rounded-xl border shadow-2xl">
+              <div class="flex shrink-0 items-center justify-between border-b border-current/10 px-5 py-3">
+                <h3 class="flex items-center gap-2 text-lg font-bold">
+                  <i class="fa-solid fa-palette opacity-70"></i>{% trans "Post-processing colours" %}
+                </h3>
+                <div class="flex items-center gap-2">
+                  <button @click="resetColors()" class="rounded-lg border border-current/20 px-3 py-1.5 text-sm transition hover:opacity-80">
+                    <i class="fa-solid fa-rotate-left"></i>{% trans "Reset" %}
+                  </button>
+                  <button @click="colorModal = false" class="rounded-lg border border-current/20 px-3 py-1.5 text-sm transition hover:opacity-80">
+                    <i class="fa-solid fa-xmark"></i>{% trans "Close" %}
+                  </button>
+                </div>
+              </div>
+
+              <div class="flex-1 space-y-6 overflow-y-auto px-5 py-4 text-sm">
+                {# Node types #}
+                <section>
+                  <h4 class="mb-2 text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Node types — border colour" %}</h4>
+                  <p x-show="nodeTypes.length === 0" class="italic opacity-60">{% trans "Run a query to load node types." %}</p>
+                  <div class="space-y-1.5">
+                    <template x-for="t in nodeTypes" :key="'n:'+t">
+                      <div class="flex items-center justify-between gap-3 rounded-lg px-2 py-1" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                        <span class="truncate font-semibold" x-text="t || '(no label)'"></span>
+                        <div class="flex shrink-0 items-center gap-1.5">
+                          <button @click="setColor('node', t, '')" :class="!nodeTypeColors[t] ? 'ring-2 ring-current' : ''" class="rounded border border-current/20 px-2 py-0.5 text-xs">{% trans "Default" %}</button>
+                          <template x-for="c in palette" :key="'n:'+t+':'+c">
+                            <button :title="c" @click="setColor('node', t, c)" :class="(darkMode ? 'bg-'+c+'-dark' : 'bg-'+c+'-light') + (nodeTypeColors[t]===c ? ' ring-2 ring-current ring-offset-1' : '')" class="h-5 w-5 rounded-full"></button>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </section>
+
+                {# Edge types #}
+                <section>
+                  <h4 class="mb-2 text-xs font-bold uppercase tracking-wide opacity-60">{% trans "Edge types — line colour" %}</h4>
+                  <p x-show="edgeTypes.length === 0" class="italic opacity-60">{% trans "No edges in this result." %}</p>
+                  <div class="space-y-1.5">
+                    <template x-for="t in edgeTypes" :key="'e:'+t">
+                      <div class="flex items-center justify-between gap-3 rounded-lg px-2 py-1" :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                        <span class="truncate font-semibold" x-text="t || '(untyped)'"></span>
+                        <div class="flex shrink-0 items-center gap-1.5">
+                          <button @click="setColor('edge', t, '')" :class="!edgeTypeColors[t] ? 'ring-2 ring-current' : ''" class="rounded border border-current/20 px-2 py-0.5 text-xs">{% trans "Default" %}</button>
+                          <template x-for="c in palette" :key="'e:'+t+':'+c">
+                            <button :title="c" @click="setColor('edge', t, c)" :class="(darkMode ? 'bg-'+c+'-dark' : 'bg-'+c+'-light') + (edgeTypeColors[t]===c ? ' ring-2 ring-current ring-offset-1' : '')" class="h-5 w-5 rounded-full"></button>
+                          </template>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </section>
+
+                <p class="flex flex-wrap items-center gap-x-4 gap-y-1 border-t border-current/10 pt-3 text-xs opacity-60">
+                  <span>{% trans "Palette:" %}</span>
+                  <template x-for="c in palette" :key="'legend:'+c">
+                    <span class="inline-flex items-center gap-1.5">
+                      <span class="inline-block h-3 w-3 rounded-full" :class="darkMode ? 'bg-'+c+'-dark' : 'bg-'+c+'-light'"></span>
+                      <span x-text="c"></span>
+                    </span>
+                  </template>
+                </p>
+              </div>
+            </div>
+          </div>
+        </template>
+
       </main>
     </div>
 
@@ -344,6 +424,14 @@ function queryViewer() {
     selectedElement: null,
     cy: null,
     _pollTimer: null,
+
+    // Post-processing colours — chosen per node/edge type, applied after layout.
+    colorModal: false,
+    palette: ['accent', 'warn', 'success', 'sunken', 'link', 'caution'],
+    nodeTypes: [],
+    edgeTypes: [],
+    nodeTypeColors: {},
+    edgeTypeColors: {},
 
     init() {
       this.queries = JSON.parse(document.getElementById('ravioli-queries').textContent);
@@ -461,6 +549,54 @@ function queryViewer() {
       }
     },
 
+    // ── Post-processing colours (per node / edge type) ───────────────────
+    _dark() { return localStorage.getItem('darkMode') === 'true'; },
+
+    // Resolve a system-colour name to its theme hex for the current mode.
+    sysColor(name) {
+      if (!name) return null;
+      const tw = tailwind.config.theme.extend.colors;
+      return tw[name + '-' + (this._dark() ? 'dark' : 'light')] || null;
+    },
+
+    setColor(kind, type, name) {
+      const map = (kind === 'node') ? this.nodeTypeColors : this.edgeTypeColors;
+      if (!name || map[type] === name) {
+        delete map[type];               // toggle off → back to default
+      } else {
+        map[type] = name;
+      }
+      // Reassign so Alpine tracks the change (swatch highlighting).
+      if (kind === 'node') this.nodeTypeColors = { ...map };
+      else this.edgeTypeColors = { ...map };
+      this.applyColors();
+    },
+
+    resetColors() {
+      this.nodeTypeColors = {};
+      this.edgeTypeColors = {};
+      this.applyColors();
+    },
+
+    applyColors() {
+      if (!this.cy) return;
+      // Nodes: reset all borders to default, then recolour per type.
+      this.cy.nodes().removeStyle('border-color');
+      for (const [type, name] of Object.entries(this.nodeTypeColors)) {
+        const col = this.sysColor(name);
+        if (col) this.cy.nodes().filter(n => n.data('type') === type).style('border-color', col);
+      }
+      // Edges: reset line/arrow/label colour, then recolour per type.
+      this.cy.edges().removeStyle('line-color target-arrow-color color');
+      for (const [type, name] of Object.entries(this.edgeTypeColors)) {
+        const col = this.sysColor(name);
+        if (col) {
+          this.cy.edges().filter(e => e.data('type') === type)
+            .style({ 'line-color': col, 'target-arrow-color': col, 'color': col });
+        }
+      }
+    },
+
     _renderGraph(nodes, edges) {
       if (this.cy) this.cy.destroy();
 
@@ -535,6 +671,11 @@ function queryViewer() {
 
       this.cy.on('tap', 'node, edge', function(evt) { self.selectedElement = evt.target.data(); });
       this.cy.on('tap', function(evt) { if (evt.target === self.cy) self.selectedElement = null; });
+
+      // Distinct types for the colour modal, then re-apply overrides on the fresh styles.
+      this.nodeTypes = [...new Set(nodes.map(n => n.labels.join(', ')))].sort();
+      this.edgeTypes = [...new Set(edges.map(e => e.type))].sort();
+      this.applyColors();
     },
   };
 }
