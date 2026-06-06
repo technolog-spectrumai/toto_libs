@@ -36,7 +36,6 @@ class IncomingIdeaLinkInline(admin.TabularInline):
 class IdeaBoxAdmin(admin.ModelAdmin):
     list_display = (
         "display_name",
-        "concept_flag",
         "category",
         "source_type",
         "source_title",
@@ -64,10 +63,6 @@ class IdeaBoxAdmin(admin.ModelAdmin):
         return str(obj)[:100]
 
     display_name.short_description = "IdeaBox"
-
-    @admin.display(boolean=True, description="Concept")
-    def concept_flag(self, obj):
-        return obj.is_concept
 
 
 @admin.register(IdeaLink)

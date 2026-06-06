@@ -45,13 +45,12 @@ class BoxListApiTests(TestCase):
         self.client.force_login(self.user)
         res = self.client.post(
             "/bento/api/boxes/",
-            json.dumps({"label": "New box", "properties": {"body": "content", "is_concept": False}}),
+            json.dumps({"label": "New box", "properties": {"body": "content"}}),
             content_type="application/json",
         )
         self.assertEqual(res.status_code, 201)
         data = res.json()
         self.assertEqual(data["label"], "New box")
-        self.assertFalse(data["is_concept"])
         self.assertEqual(data["properties"]["body"], "content")
 
     def test_create_with_category(self):
@@ -197,7 +196,7 @@ class FullGraphApiTests(TestCase):
         from toto.bento.models import IdeaLink
         self.cat = Category.objects.create(name="Science", slug="science")
         self.box_a = IdeaBox.objects.create(label="A", properties={"body": "aaa"}, category=self.cat)
-        self.box_b = IdeaBox.objects.create(label="B", properties={"body": "bbb", "is_concept": True})
+        self.box_b = IdeaBox.objects.create(label="B", properties={"body": "bbb"})
         IdeaLink.objects.create(from_box=self.box_a, to_box=self.box_b, label="leads to")
 
     def test_full_graph_returns_all(self):
@@ -207,9 +206,7 @@ class FullGraphApiTests(TestCase):
         # 2 box nodes + 1 category node
         self.assertEqual(len(data["nodes"]), 3)
         node_types = {n["node_type"] for n in data["nodes"]}
-        self.assertIn("box", node_types)
-        self.assertIn("concept", node_types)
-        self.assertIn("category", node_types)
+        self.assertEqual(node_types, {"box", "category"})
 
     def test_graph_edges_include_category_and_link(self):
         res = self.client.get("/bento/api/graph/")
@@ -220,11 +217,11 @@ class FullGraphApiTests(TestCase):
         # Category membership edge (box_a → cat)
         self.assertIn("category", edge_types)
 
-    def test_concept_node_type(self):
+    def test_box_nodes_use_box_type(self):
         res = self.client.get("/bento/api/graph/")
-        concept_nodes = [n for n in res.json()["nodes"] if n["node_type"] == "concept"]
-        self.assertEqual(len(concept_nodes), 1)
-        self.assertEqual(concept_nodes[0]["label"], "B")
+        box_nodes = [n for n in res.json()["nodes"] if n["node_type"] == "box"]
+        self.assertEqual(len(box_nodes), 2)
+        self.assertEqual({n["label"] for n in box_nodes}, {"A", "B"})
 
 
 class CategoryListApiTests(TestCase):

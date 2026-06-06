@@ -28,8 +28,7 @@ class IdeaBoxForm(forms.ModelForm):
             "category": forms.Select(),
             "properties": forms.Textarea(attrs={"rows": 14, "placeholder": (
                 '{\n'
-                '  "body": "Main idea / concept description",\n'
-                '  "is_concept": false,\n'
+                '  "body": "Main idea / description",\n'
                 '  "source_title": "",\n'
                 '  "source_url": "",\n'
                 '  "source_type": "",\n'

@@ -1,14 +1,13 @@
 # Bento
 
 Bento is a small **idea-graph** app: a personal knowledge base of *boxes* (nodes)
-connected by *links* (edges). Each box captures an idea, note, quote, or concept;
-links describe how ideas relate (`about`, `supports`, `contradicts`, `expands`, …).
+connected by *links* (edges). Each box captures an idea, note, or quote; links
+describe how ideas relate (`about`, `supports`, `contradicts`, `expands`, …).
 The whole thing can be browsed as a list or explored as an interactive graph.
 
 The design centre is deliberately minimal: **a node is a `label` plus a `properties`
 bag**, and **an edge is a `label` plus a `properties` bag**. Everything that used to
-be a dedicated column (body, source, quote, the concept flag, …) now lives inside
-`properties` as JSON.
+be a dedicated column (body, source, quote, …) now lives inside `properties` as JSON.
 
 ---
 
@@ -16,8 +15,8 @@ be a dedicated column (body, source, quote, the concept flag, …) now lives ins
 
 ### As a user
 
-The app lives under `/bento/` and the top nav has four actions: **Boxes**,
-**New box**, **New link**, **Categories**.
+The app lives under `/bento/` and the top nav has five tabs: **Boxes**,
+**Relations**, **New box**, **New link**, **Categories**.
 
 - **Create a box** — *New box*. Give it a short **label**, optionally pick a
   **category**, and fill in the **Metadata (JSON)** editor. Well-known keys the UI
@@ -26,7 +25,6 @@ The app lives under `/bento/` and the top nav has four actions: **Boxes**,
   ```json
   {
     "body": "The main idea / description",
-    "is_concept": false,
     "source_title": "Made to Stick",
     "source_url": "https://…",
     "source_type": "book",
@@ -36,17 +34,20 @@ The app lives under `/bento/` and the top nav has four actions: **Boxes**,
   ```
 
   Any extra keys you add (e.g. `rating`, `status`, `tags`) are kept verbatim and
-  shown in the box's **Properties** panel. `is_concept: true` marks a box as a
-  concept/tag-like node (rendered differently in the graph and filterable in the list).
+  shown in the box's **Properties** panel.
 
 - **Link boxes** — *New link*, or use **Link from this / Link to this** on a box's
   detail page. A link has a **from box**, a free-text **label**, a **to box**, and its
   own **properties** JSON (e.g. `{"strength": 0.9}`).
 
 - **Browse & search** — the **Boxes** page has full-text search (matches the label and
-  the `body` / `source_title` / `source_type` / `quote` keys inside `properties`), a
-  Notes/Concepts filter, summary stats, and a **Graph view** button that opens a
-  Cytoscape map of all boxes, concepts, categories, and their edges.
+  the `body` / `source_title` / `source_type` / `quote` keys inside `properties`),
+  summary stats, and a **Graph view** button that opens a Cytoscape map of all boxes,
+  categories, and their edges.
+
+- **Browse relations** — the **Relations** page lists every link as a thin
+  `label · from → to` row (each box clickable to its detail), with a search over the
+  relation label and the linked boxes' labels.
 
 - **Categories** — lightweight groupings (name + slug + description) managed under
   **Categories**.
@@ -61,7 +62,7 @@ The app lives under `/bento/` and the top nav has four actions: **Boxes**,
 ../venv/bin/python manage.py ingress_bento --full
 ```
 
-This creates sample categories, concept boxes, idea boxes, and links.
+This creates sample categories, idea boxes, and links.
 
 ### Running / testing
 
@@ -91,15 +92,15 @@ identity / graph projection).
 |---|---|---|
 | `label` | `CharField` | The node title (the only first-class content field). |
 | `category` | `FK → Category` | Optional, `SET_NULL`. A real relation, not a property. |
-| `properties` | `JSONField` | **All node data**: `body`, `is_concept`, `source_*`, `quote`, plus any custom keys. |
+| `properties` | `JSONField` | **All node data**: `body`, `source_*`, `quote`, plus any custom keys. |
 | `is_locked`, `lock_salt`, `encrypted_body`, `lock_nonce` | lock state | Operational columns for the encryption feature. |
 | `created_at`, `updated_at` | timestamps | |
 
 The well-known property keys are re-exposed as **read-only `@property` accessors**
-(`body`, `is_concept`, `is_note`, `source_title`, `source_url`, `source_type`,
-`quote`) so views and templates can keep saying `box.body` / `box.is_concept`
-while the storage is a single JSON column. `get_property(key, default)` /
-`set_property(key, value)` are the generic accessors.
+(`body`, `source_title`, `source_url`, `source_type`, `quote`) so views and
+templates can keep saying `box.body` / `box.source_title` while the storage is a
+single JSON column. `get_property(key, default)` / `set_property(key, value)` are
+the generic accessors.
 
 **`IdeaLink`** — the edge: `from_box`, `to_box` (FKs, `CASCADE`), a free-text
 `label`, and a `properties` JSONField. `unique_together = (from_box, to_box, label)`.
@@ -116,13 +117,12 @@ the property-graph model (label + property bag) used elsewhere in the platform.
 
 ### Querying JSON
 
-Because `is_concept`, `body`, etc. are JSON keys, filters use Django's JSONField
+Because `body`, `source_title`, etc. are JSON keys, search uses Django's JSONField
 lookups rather than column lookups:
 
 ```python
-IdeaBox.objects.filter(properties__is_concept=True)            # concepts
-IdeaBox.objects.exclude(properties__is_concept=True)           # notes
-IdeaBox.objects.filter(properties__body__icontains="memory")   # body search
+IdeaBox.objects.filter(properties__body__icontains="memory")          # body search
+IdeaBox.objects.filter(properties__source_title__icontains="stick")   # source search
 ```
 
 ### Locking — [views.py](views.py) · `box_lock` / `box_unlock`
@@ -146,7 +146,8 @@ reverses it. Serializers null out the body while a box is locked.
 
 | Name | Path | View |
 |---|---|---|
-| `box_list` | `/bento/` | list + search + filter + graph modal |
+| `box_list` | `/bento/` | box list + search + graph modal |
+| `link_list` | `/bento/relations/` | relations list (thin `label · from → to` rows) |
 | `box_create` / `box_update` / `box_delete` | `/bento/new/`, `/bento/<pk>/edit/`, `/bento/<pk>/delete/` | box CRUD |
 | `box_detail` | `/bento/<pk>/` | detail page |
 | `box_lock` / `box_unlock` | `/bento/<pk>/lock/`, `/unlock/` | POST, federal-agent only |
@@ -167,8 +168,8 @@ reverses it. Serializers null out the body while a box is locked.
 
 The JSON API is the contract consumed by the **Enigma** Tauri app. It returns
 `label` + a `properties` object (body nulled when locked) — **not** top-level
-`title`/`body`/`is_concept` (this changed in the label+properties redesign, so Enigma's
-bento screens need updating to match).
+`title`/`body` (this changed in the label+properties redesign, so Enigma's bento
+screens need updating to match).
 
 ### Migrations
 
@@ -183,19 +184,23 @@ reset during the redesign rather than data-migrated, so an existing DB needs a f
 Bento's templates extend `oya/base.html` and use the platform's **Tailwind +
 Alpine.js** styling with a dark/light theme (`darkMode`) and FontAwesome icons.
 Base shell: [templates/bento/base.html](templates/bento/base.html) — a "Toto Studio /
-Bento" header, a Dashboard back-link, and the four-item nav.
+Bento" header, a Dashboard back-link, and the five-item nav.
 
 - **Box list** ([box_list.html](templates/bento/box_list.html)) — left sidebar with
-  search, a Notes/Concepts type filter, and four stat tiles (boxes / links / notes /
-  concepts). The main column is a card per box showing label, type/locked/source
-  badges, a body excerpt, and the source title. A **Graph view** button opens a
-  full-screen modal rendering the whole graph with **Cytoscape** (`cose` layout):
-  notes are rounded rectangles, concepts are dashed ellipses, categories are plain
-  ellipses; link edges are solid arrows, category-membership edges are dashed.
-  Clicking a node navigates to its detail page; colors track the active theme.
+  search and two stat tiles (boxes / links). The main column is a card per box showing
+  label, locked/source badges, a body excerpt, and the source title. A **Graph view**
+  button opens a full-screen modal rendering the whole graph with **Cytoscape**
+  (`cose` layout): boxes are rounded rectangles, categories are plain ellipses; link
+  edges are solid arrows, category-membership edges are dashed. Clicking a node
+  navigates to its detail page; colors track the active theme.
 
-- **Box detail** ([box_detail.html](templates/bento/box_detail.html)) — title with
-  concept/note badge and timestamps, the rendered **body** (or a locked placeholder),
+- **Relations list** ([link_list.html](templates/bento/link_list.html)) — mirrors the
+  box list shell (sidebar search + stat tiles) but the main column is one thin row per
+  link: a relation-label chip, then `from → to` with an arrow icon, each box clickable
+  to its detail page.
+
+- **Box detail** ([box_detail.html](templates/bento/box_detail.html)) — title and
+  timestamps, the rendered **body** (or a locked placeholder),
   and side-by-side **Source** and **Quote** panels, plus a **Properties** panel that
   shows the JSON in a **read-only ACE viewer** (syntax-highlit, theme-aware, cursor
   hidden, auto-sized). A right sidebar lists outgoing/incoming links (with quick

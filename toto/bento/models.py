@@ -45,10 +45,10 @@ class Category(DomainEntity):
 class IdeaBox(DomainEntity):
     """A graph node: a free-text ``label`` plus a ``properties`` bag.
 
-    Everything that used to be a dedicated column (body, is_concept,
-    source_title, source_url, source_type, quote, ...) now lives inside
-    ``properties``. ``category`` stays a real relation and the lock state
-    columns stay first-class because they are operational, not content.
+    Everything that used to be a dedicated column (body, source_title,
+    source_url, source_type, quote, ...) now lives inside ``properties``.
+    ``category`` stays a real relation and the lock state columns stay
+    first-class because they are operational, not content.
     """
 
     label = models.CharField(max_length=160, blank=True)
@@ -65,8 +65,8 @@ class IdeaBox(DomainEntity):
         default=dict,
         blank=True,
         help_text=(
-            "All node data: body, is_concept, source_title, source_url, "
-            "source_type, quote, plus any custom keys."
+            "All node data: body, source_title, source_url, source_type, "
+            "quote, plus any custom keys."
         ),
     )
 
@@ -86,18 +86,10 @@ class IdeaBox(DomainEntity):
 
     # ── Well-known property accessors ───────────────────────────────
     # Convenience read-only views over keys inside ``properties`` so views
-    # and templates can keep saying ``box.body`` / ``box.is_concept``.
+    # and templates can keep saying ``box.body`` / ``box.source_title``.
     @property
     def body(self):
         return self.properties.get("body", "")
-
-    @property
-    def is_concept(self):
-        return bool(self.properties.get("is_concept", False))
-
-    @property
-    def is_note(self):
-        return not self.is_concept
 
     @property
     def source_title(self):

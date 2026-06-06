@@ -21,7 +21,6 @@ def _box_to_dict(box):
     return {
         "id": box.id,
         "label": box.label,
-        "is_concept": box.is_concept,
         "is_locked": box.is_locked,
         "category_id": box.category_id,
         "category_name": box.category.name if box.category else None,
@@ -209,7 +208,6 @@ class FullGraphApiView(CorsApiView):
 
     Node types:
       "box"      — IdeaBox, id prefixed "b{id}"
-      "concept"  — IdeaBox with is_concept=True, same prefix
       "category" — Category, id prefixed "cat{id}"
 
     Edge types:
@@ -231,14 +229,13 @@ class FullGraphApiView(CorsApiView):
             for c in categories
         ]
 
-        # box nodes (rectangles for notes, concept style for concepts)
+        # box nodes (rounded rectangles)
         box_nodes = [
             {
                 "id": f"b{b.id}",
                 "real_id": b.id,
                 "label": b.label or "Untitled",
-                "is_concept": b.is_concept,
-                "node_type": "concept" if b.is_concept else "box",
+                "node_type": "box",
             }
             for b in boxes
         ]

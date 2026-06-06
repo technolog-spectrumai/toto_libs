@@ -33,7 +33,7 @@ class Migration(migrations.Migration):
                 ('id', models.BigAutoField(auto_created=True, primary_key=True, serialize=False, verbose_name='ID')),
                 ('uid', models.UUIDField(default=uuid.uuid4, editable=False, unique=True)),
                 ('label', models.CharField(blank=True, max_length=160)),
-                ('properties', models.JSONField(blank=True, default=dict, help_text='All node data: body, is_concept, source_title, source_url, source_type, quote, plus any custom keys.')),
+                ('properties', models.JSONField(blank=True, default=dict, help_text='All node data: body, source_title, source_url, source_type, quote, plus any custom keys.')),
                 ('is_locked', models.BooleanField(default=False)),
                 ('lock_salt', models.BinaryField(blank=True, null=True)),
                 ('encrypted_body', models.BinaryField(blank=True, null=True)),

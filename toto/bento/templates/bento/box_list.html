@@ -90,7 +90,6 @@
           label: (n.label || n.title || 'Untitled').slice(0, 36),
           url: n.node_type === 'category' ? null : '/bento/' + n.real_id + '/',
           node_type: n.node_type || 'box',
-          is_concept: !!n.is_concept,
         }
       })),
       ...edges.map(e => ({
@@ -110,7 +109,7 @@
       wheelSensitivity: 0.2,
       style: [
         {
-          // Default: note box — rounded rectangle
+          // Default: box — rounded rectangle
           selector: 'node',
           style: {
             'shape': 'round-rectangle',
@@ -142,19 +141,6 @@
             'font-size': 10,
             'font-style': 'italic',
             'cursor': 'default',
-          }
-        },
-        {
-          // Concept box — ellipse with thick dashed accent border
-          selector: 'node[node_type = "concept"]',
-          style: {
-            'shape': 'ellipse',
-            'border-color': c.accent,
-            'border-width': 3,
-            'border-style': 'dashed',
-            'font-style': 'italic',
-            'width': 170,
-            'height': 56,
           }
         },
         {
@@ -252,7 +238,7 @@
           const c = document.getElementById('bento-graph-container');
           if (c) {
             const dark = Alpine.evaluate(document.documentElement, 'darkMode');
-            buildGraph(c, cy ? cy.nodes().map(n => ({ id: parseInt(n.id()), title: n.data('label'), is_concept: n.data('is_concept') })) : [], cy ? cy.edges().map(e => ({ id: parseInt(e.id().slice(1)), from_box: parseInt(e.data('source')), to_box: parseInt(e.data('target')), label: e.data('label') })) : [], !dark);
+            buildGraph(c, cy ? cy.nodes().map(n => ({ id: parseInt(n.id()), title: n.data('label') })) : [], cy ? cy.edges().map(e => ({ id: parseInt(e.id().slice(1)), from_box: parseInt(e.data('source')), to_box: parseInt(e.data('target')), label: e.data('label') })) : [], !dark);
           }
         }, 50);
       });
@@ -283,21 +269,6 @@
         </div>
       </div>
 
-      <div>
-        <label for="concept" class="mb-1 block text-sm font-semibold">{% trans "Type" %}</label>
-        <select
-          id="concept"
-          name="concept"
-          :class="darkMode
-            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
-            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
-          <option value="" {% if concept_filter == "" %}selected{% endif %}>{% trans "All boxes" %}</option>
-          <option value="no" {% if concept_filter == "no" %}selected{% endif %}>{% trans "Notes only" %}</option>
-          <option value="yes" {% if concept_filter == "yes" %}selected{% endif %}>{% trans "Concepts only" %}</option>
-        </select>
-      </div>
-
       <button
         type="submit"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -316,14 +287,6 @@
         <div class="text-xl font-bold">{{ link_count }}</div>
         <div class="text-xs opacity-65">{% trans "Links" %}</div>
       </div>
-      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-        <div class="text-xl font-bold">{{ note_count }}</div>
-        <div class="text-xs opacity-65">{% trans "Notes" %}</div>
-      </div>
-      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-        <div class="text-xl font-bold">{{ concept_count }}</div>
-        <div class="text-xs opacity-65">{% trans "Concepts" %}</div>
-      </div>
     </div>
   </aside>
 
@@ -341,17 +304,6 @@
               {{ box.label|default:"Untitled box" }}
             </a>
             <div class="flex flex-wrap items-center gap-2 text-xs opacity-75">
-              {% if box.is_concept %}
-                <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                  <i class="fa-solid fa-lightbulb"></i>
-                  {% trans "Concept" %}
-                </span>
-              {% else %}
-                <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                  <i class="fa-solid fa-note-sticky"></i>
-                  {% trans "Note" %}
-                </span>
-              {% endif %}
               {% if box.is_locked %}
                 <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
                   <i class="fa-solid fa-lock"></i>

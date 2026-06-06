@@ -50,17 +50,6 @@
             {{ box.label|default:"Untitled box" }}
           </h2>
           <div class="flex flex-wrap items-center gap-2 text-xs opacity-75">
-            {% if box.is_concept %}
-              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                <i class="fa-solid fa-lightbulb"></i>
-                {% trans "Concept" %}
-              </span>
-            {% else %}
-              <span class="inline-flex items-center gap-1 rounded border border-current/20 px-2 py-1 font-semibold">
-                <i class="fa-solid fa-note-sticky"></i>
-                {% trans "Note" %}
-              </span>
-            {% endif %}
             {% blocktrans with date=box.created_at|date:"M d, Y H:i" %}Created {{ date }}{% endblocktrans %}
             {% blocktrans with date=box.updated_at|date:"M d, Y H:i" %}Updated {{ date }}{% endblocktrans %}
             {% if box.category %}

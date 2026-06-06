@@ -9,8 +9,8 @@ from .models import Category, IdeaBox, IdeaLink
 
 
 class BoxPageRenderTests(TestCase):
-    """The list and detail pages read the folded `properties` keys (body,
-    is_concept, source_*, quote) through the model accessors, so render them
+    """The list, detail, and relations pages read the folded `properties` keys
+    (body, source_*, quote) through the model accessors, so render them
     end-to-end to guard the redesign."""
 
     def setUp(self):
@@ -23,7 +23,6 @@ class BoxPageRenderTests(TestCase):
             category=self.category,
             properties={
                 "body": "People remember stories.",
-                "is_concept": False,
                 "source_title": "Made to Stick",
                 "source_type": "book",
                 "source_url": "https://example.com",
@@ -31,10 +30,8 @@ class BoxPageRenderTests(TestCase):
                 "rating": 5,
             },
         )
-        self.concept = IdeaBox.objects.create(
-            label="Memory", properties={"is_concept": True}
-        )
-        IdeaLink.objects.create(from_box=self.box, to_box=self.concept, label="about")
+        self.other = IdeaBox.objects.create(label="Memory", properties={"body": "recall"})
+        IdeaLink.objects.create(from_box=self.box, to_box=self.other, label="about")
 
     def test_box_list_renders(self):
         res = self.client.get(reverse("bento:box_list"))
@@ -43,12 +40,18 @@ class BoxPageRenderTests(TestCase):
         self.assertIn("Stories beat facts", html)
         self.assertIn("Made to Stick", html)  # source_title from properties
 
-    def test_box_list_concept_filter(self):
-        res = self.client.get(reverse("bento:box_list"), {"concept": "yes"})
+    def test_link_list_renders(self):
+        res = self.client.get(reverse("bento:link_list"))
         self.assertEqual(res.status_code, 200)
         html = res.content.decode()
-        self.assertIn("Memory", html)
-        self.assertNotIn("Stories beat facts", html)
+        self.assertIn("about", html)               # relation label
+        self.assertIn("Stories beat facts", html)  # from box
+        self.assertIn("Memory", html)              # to box
+
+    def test_link_list_search(self):
+        res = self.client.get(reverse("bento:link_list"), {"q": "Memory"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("about", res.content.decode())
 
     def test_box_list_search_hits_properties_body(self):
         res = self.client.get(reverse("bento:box_list"), {"q": "remember"})

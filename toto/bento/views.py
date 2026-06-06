@@ -16,7 +16,6 @@ def bento_render(request, template_name, context):
 
 def filtered_boxes(request):
     query = request.GET.get("q", "")
-    concept_filter = request.GET.get("concept", "")
 
     boxes = IdeaBox.objects.select_related("category")
 
@@ -29,12 +28,7 @@ def filtered_boxes(request):
             | Q(properties__quote__icontains=query)
         )
 
-    if concept_filter == "yes":
-        boxes = boxes.filter(properties__is_concept=True)
-    elif concept_filter == "no":
-        boxes = boxes.exclude(properties__is_concept=True)
-
-    return boxes, query, concept_filter
+    return boxes, query
 
 
 def serialize_box(box):
@@ -45,7 +39,6 @@ def serialize_box(box):
         "id": box.pk,
         "label": box.label or _("Untitled box"),
         "is_locked": box.is_locked,
-        "is_concept": box.is_concept,
         "category": {
             "id": box.category_id,
             "name": str(box.category),
@@ -69,15 +62,12 @@ def serialize_link(link):
 
 
 def box_list(request):
-    boxes, query, concept_filter = filtered_boxes(request)
+    boxes, query = filtered_boxes(request)
 
     return bento_render(request, "bento/box_list.html", {
         "boxes": boxes,
         "query": query,
-        "concept_filter": concept_filter,
         "total_boxes": IdeaBox.objects.count(),
-        "concept_count": IdeaBox.objects.filter(properties__is_concept=True).count(),
-        "note_count": IdeaBox.objects.exclude(properties__is_concept=True).count(),
         "link_count": IdeaLink.objects.count(),
     })
 
@@ -129,6 +119,26 @@ def box_delete(request, pk):
         return redirect("bento:box_list")
 
     return bento_render(request, "bento/box_confirm_delete.html", {"box": box})
+
+
+def link_list(request):
+    query = request.GET.get("q", "")
+
+    links = IdeaLink.objects.select_related("from_box", "to_box")
+
+    if query:
+        links = links.filter(
+            Q(label__icontains=query)
+            | Q(from_box__label__icontains=query)
+            | Q(to_box__label__icontains=query)
+        )
+
+    return bento_render(request, "bento/link_list.html", {
+        "links": links,
+        "query": query,
+        "total_links": IdeaLink.objects.count(),
+        "total_boxes": IdeaBox.objects.count(),
+    })
 
 
 def link_create(request):
@@ -198,10 +208,9 @@ def category_update(request, pk):
 
 
 def api_boxes(request):
-    boxes, query, concept_filter = filtered_boxes(request)
+    boxes, query = filtered_boxes(request)
     return JsonResponse({
         "query": query,
-        "concept": concept_filter,
         "count": boxes.count(),
         "results": [serialize_box(box) for box in boxes[:100]],
     })
