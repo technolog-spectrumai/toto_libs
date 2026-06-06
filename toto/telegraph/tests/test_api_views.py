@@ -74,6 +74,57 @@ class MeApiViewTests(TestCase):
         data = res.json()
         self.assertEqual(data["username"], "meuser")
 
+    def test_me_includes_default_language(self):
+        self.client.force_login(self.user)
+        data = self.client.get("/telegraph/api/me/").json()
+        self.assertEqual(data["language"], "en")
+
+    def test_me_reflects_profile_language(self):
+        from toto.people.models import Person
+        Person.objects.create(user=self.user, display_name="Me", preferred_language="pl")
+        self.client.force_login(self.user)
+        data = self.client.get("/telegraph/api/me/").json()
+        self.assertEqual(data["language"], "pl")
+
+    def test_patch_language_unauthenticated(self):
+        res = self.client.patch(
+            "/telegraph/api/me/", data=json.dumps({"language": "pl"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 401)
+
+    def test_patch_language_rejects_unsupported(self):
+        self.client.force_login(self.user)
+        res = self.client.patch(
+            "/telegraph/api/me/", data=json.dumps({"language": "fr"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_patch_language_without_profile_is_ok_but_not_stored(self):
+        self.client.force_login(self.user)
+        res = self.client.patch(
+            "/telegraph/api/me/", data=json.dumps({"language": "pl"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        self.assertEqual(body["language"], "pl")
+        self.assertFalse(body["stored"])
+
+    def test_patch_language_persists_to_profile(self):
+        from toto.people.models import Person
+        person = Person.objects.create(user=self.user, display_name="Me", preferred_language="en")
+        self.client.force_login(self.user)
+        res = self.client.patch(
+            "/telegraph/api/me/", data=json.dumps({"language": "pl"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(res.json()["stored"])
+        person.refresh_from_db()
+        self.assertEqual(person.preferred_language, "pl")
+
 
 class ChannelListApiViewTests(TestCase):
     def setUp(self):
