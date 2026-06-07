@@ -211,6 +211,50 @@ impl RotorSession {
         Ok((welcome_bytes, commit_bytes))
     }
 
+    /// List the device identities of all current MLS group members. This is the
+    /// authenticated roster — it reflects exactly who is in the cryptographic group.
+    pub fn members(&self) -> RotorResult<Vec<String>> {
+        let group = self.load_group()?;
+        let mut ids = Vec::new();
+        for member in group.members() {
+            let basic = BasicCredential::try_from(member.credential).map_err(rotor_err)?;
+            ids.push(String::from_utf8_lossy(basic.identity()).to_string());
+        }
+        Ok(ids)
+    }
+
+    /// Remove a member by device identity (admin action). Returns the remove
+    /// commit bytes to broadcast so the other members update their group.
+    pub fn remove_member(&mut self, identity: &str) -> RotorResult<Vec<u8>> {
+        let mut group = self.load_group()?;
+
+        let signature_keys = self
+            .signature_keys
+            .as_ref()
+            .ok_or_else(|| "signing keys are missing; cannot remove a member".to_string())?;
+
+        let target = {
+            let mut found = None;
+            for member in group.members() {
+                let basic = BasicCredential::try_from(member.credential).map_err(rotor_err)?;
+                if basic.identity() == identity.as_bytes() {
+                    found = Some(member.index);
+                    break;
+                }
+            }
+            found.ok_or_else(|| format!("member {identity} not found in group"))?
+        };
+
+        let (commit, _welcome, _group_info) = group
+            .remove_members(&self.provider, signature_keys, &[target])
+            .map_err(rotor_err)?;
+
+        group.merge_pending_commit(&self.provider).map_err(rotor_err)?;
+        self.group_id = Some(group.group_id().clone());
+
+        commit.to_bytes().map_err(rotor_err)
+    }
+
     pub fn key_package(&mut self) -> RotorResult<Vec<u8>> {
         let ciphersuite = Self::ciphersuite();
 
