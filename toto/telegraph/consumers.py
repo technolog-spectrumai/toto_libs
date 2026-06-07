@@ -111,15 +111,13 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         for field in (
             "id",                # message dedup key used by the browser's renderedIds set
-            "message_id",
             "device_id",
             "key_package",
             "package",           # browser sends key-package bytes under this name
             "welcome",
             "commit",
             "ciphertext",
-            "epoch",
-            "group_id",
+            "reset_id",          # mls_reset_request dedup key
             "sender_name",
             "sender_avatar_url",
             # handshake routing — needed for key_package/welcome exchange
