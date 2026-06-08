@@ -407,7 +407,7 @@ def graph_analysis_view(request):
             "buckets": buckets,
             "buckets_json": buckets_json,
             "directories_json": directories_json,
-            "formats": ["json", "yaml", "csv"],
+            "formats": ["json", "yaml", "csv", "neojson"],
             "runs_with_files": runs_with_files,
         },
         request,
@@ -432,7 +432,7 @@ def start_graph_analysis_view(request):
         errors.append("Select a workflow.")
     if not bucket_id:
         errors.append("Select an output bucket.")
-    if fmt not in ("json", "yaml", "csv"):
+    if fmt not in ("json", "yaml", "csv", "neojson"):
         errors.append(f"Invalid format: {fmt!r}.")
     if errors:
         return JsonResponse({"error": " ".join(errors)}, status=400)

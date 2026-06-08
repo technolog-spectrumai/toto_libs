@@ -144,6 +144,7 @@ class VaultFile(models.Model):
         ('video', 'Video'),
         ('python', 'Python'),
         ('notebook', 'Notebook'),
+        ('neojson', 'NeoJSON'),
     ]
 
     _EXT_MAP = {
@@ -153,6 +154,7 @@ class VaultFile(models.Model):
         ".svg": "svg",
         ".csv": "csv",
         ".json": "json",
+        ".neojson": "neojson",
         ".yaml": "yaml", ".yml": "yaml",
         ".xml": "xml",
         ".html": "html", ".htm": "html",
@@ -183,6 +185,8 @@ class VaultFile(models.Model):
             return "image"
         if "html" in mime:
             return "html"
+        if "neojson" in mime:
+            return "neojson"
         if "json" in mime:
             return "json"
         if "yaml" in mime:

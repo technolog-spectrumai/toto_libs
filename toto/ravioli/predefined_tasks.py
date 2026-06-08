@@ -136,8 +136,8 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
         raise ValueError("ravioli_save_graph_analysis_output requires bucket_id.")
     if not owner_id:
         raise ValueError("ravioli_save_graph_analysis_output requires owner_id.")
-    if fmt not in ("json", "yaml", "csv"):
-        raise ValueError(f"Unsupported format: {fmt!r}. Use json, yaml, or csv.")
+    if fmt not in ("json", "yaml", "csv", "neojson"):
+        raise ValueError(f"Unsupported format: {fmt!r}. Use json, yaml, csv, or neojson.")
 
     try:
         bucket = Bucket.objects.get(pk=bucket_id)
@@ -158,12 +158,34 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
     except User.DoesNotExist:
         raise ValueError(f"User #{owner_id} does not exist.")
 
-    # Strip plumbing and the raw graph blob; serialize what's left as the result
-    _skip = {"bucket_id", "directory_id", "owner_id", "format", "title", "graph"}
-    payload = {k: v for k, v in data.items() if k not in _skip}
+    if fmt == "neojson":
+        # NeoJSON serializes the graph DATA itself (nodes + relationships), not a
+        # summary — so load the query's cached graph and emit a NeoJSON document.
+        from . import neojson
+        from .graph_analysis import load_query_graph
 
-    content, mime_type, ext = serialize_output(payload, fmt)
-    file_type = VaultFile.detect_type(mime_type)
+        if not query_id:
+            raise ValueError("neojson output requires query_id in input data.")
+
+        nodes, edges = load_query_graph(query_id)
+        graph = neojson.from_ravioli(
+            nodes,
+            edges,
+            metadata={
+                "generated_at": timezone.now().isoformat(),
+                "source": f"ravioli:cypher_query/{query_id}",
+            },
+        )
+        content = neojson.dumps(graph).encode("utf-8")
+        mime_type, ext = neojson.MIME, neojson.EXTENSION
+        file_type = "neojson"
+    else:
+        # Strip plumbing and the raw graph blob; serialize what's left as the result
+        _skip = {"bucket_id", "directory_id", "owner_id", "format", "title", "graph"}
+        payload = {k: v for k, v in data.items() if k not in _skip}
+
+        content, mime_type, ext = serialize_output(payload, fmt)
+        file_type = VaultFile.detect_type(mime_type)
 
     timestamp = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
     filename = f"graph_analysis_q{query_id or 'x'}_{timestamp}{ext}"

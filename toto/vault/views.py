@@ -1198,7 +1198,7 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook"}
+    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook", "neojson"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
@@ -1206,6 +1206,22 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         "latex": "",
         "bib":   "",
         "svg":   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n</svg>\n',
+        # Empty NeoJSON graph. Mirrors toto.ravioli.neojson.dumps(neojson.new_graph()).
+        "neojson": (
+            "{\n"
+            '  "neojson": "1.0",\n'
+            '  "type": "Graph",\n'
+            '  "directed": true,\n'
+            '  "nodes": [],\n'
+            '  "relationships": [],\n'
+            '  "metadata": {\n'
+            '    "node_count": 0,\n'
+            '    "relationship_count": 0,\n'
+            '    "labels": [],\n'
+            '    "relationship_types": []\n'
+            "  }\n"
+            "}\n"
+        ),
         # Blank .tpy notebook: one empty code cell, no dependencies.
         # Mirrors toto.mandragora.tpy_format.dumps(new_notebook()).
         "notebook": (
