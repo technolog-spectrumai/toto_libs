@@ -1,6 +1,6 @@
 from django.urls import path
 from .views import ChannelDetailView, ChannelJoinView, ChannelLeaveView, ChannelListView
-from .api_views import HealthApiView, LoginApiView, LogoutApiView, MeApiView, ChannelListApiView, ChannelDetailApiView, ChannelJoinApiView, ChannelLeaveApiView, ChannelLeaveAllApiView, ImageUploadApiView, AudioUploadApiView
+from .api_views import HealthApiView, LoginApiView, LogoutApiView, MeApiView, MeshMeApiView, ChannelListApiView, ChannelDetailApiView, ChannelJoinApiView, ChannelLeaveApiView, ChannelLeaveAllApiView, ImageUploadApiView, AudioUploadApiView
 
 app_name = "telegraph"
 
@@ -16,6 +16,7 @@ urlpatterns = [
     path("api/login/", LoginApiView.as_view(), name="api_login"),
     path("api/logout/", LogoutApiView.as_view(), name="api_logout"),
     path("api/me/", MeApiView.as_view(), name="api_me"),
+    path("api/me/mesh/", MeshMeApiView.as_view(), name="api_me_mesh"),
     path("api/channels/", ChannelListApiView.as_view(), name="api_channel_list"),
     path("api/channels/leave-all/", ChannelLeaveAllApiView.as_view(), name="api_channel_leave_all"),
     path("api/channels/<slug:slug>/", ChannelDetailApiView.as_view(), name="api_channel_detail"),

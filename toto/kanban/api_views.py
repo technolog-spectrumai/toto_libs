@@ -5,7 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
-from toto.telegraph.api_views import CorsApiView
+from toto.telegraph.api_views import CorsApiView, MeshGatedApiView
 from toto.kanban.models import Project, Column, Task, Mission, Campaign, Practitioner, ProjectCommitment
 
 
@@ -237,7 +237,7 @@ class TaskDemoteApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class MissionDetailApiView(CorsApiView):
+class MissionDetailApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -313,7 +313,7 @@ class MissionDetailApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ProjectMissionsApiView(CorsApiView):
+class ProjectMissionsApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)

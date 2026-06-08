@@ -71,6 +71,85 @@ class CorsApiView(View):
         return _cors(request, response)
 
 
+# ── Decentralized data mesh: server access-gate ────────────────────────────────
+#
+# A single Django group ("data_mesh") decides who may read the gated data *from the
+# server*. Members get it; everyone else is denied and must pull it peer-to-peer from
+# someone who has it (the Enigma "Sync" feature) — building a decentralized mesh where a
+# few server-privileged seed users fan the data out to everyone else.
+
+DATA_MESH_GROUP = "data_mesh"
+
+# The domains behind the gate (informational; all share the one group).
+MESH_DOMAINS = ["missions", "tasks", "locations", "events", "people"]
+
+
+def in_data_mesh(user) -> bool:
+    """True if `user` may read gated data directly from the server."""
+    return bool(
+        user
+        and getattr(user, "is_authenticated", False)
+        and user.groups.filter(name=DATA_MESH_GROUP).exists()
+    )
+
+
+class MeshGatedApiView(CorsApiView):
+    """A CorsApiView whose **reads (GET)** are gated by `data_mesh` membership. Non-members
+    get 403 `{"gated": true}` so the client keeps its local (possibly peer-pulled) copy and
+    prompts a peer pull. Writes (POST/PATCH/DELETE) are unaffected."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "OPTIONS":
+            return _cors(request, HttpResponse())
+        _try_bearer_auth(request)
+        if request.method == "GET" and not in_data_mesh(getattr(request, "user", None)):
+            if not request.user or not request.user.is_authenticated:
+                return _cors(request, JsonResponse({"error": "Not authenticated."}, status=401))
+            return _cors(request, JsonResponse({
+                "error": "server access gated",
+                "gated": True,
+                "detail": "This data is part of the mesh — pull it from a peer who has it.",
+            }, status=403))
+        return super().dispatch(request, *args, **kwargs)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class MeshMeApiView(CorsApiView):
+    """`GET /telegraph/api/me/mesh/` — whether the user can read gated data from the
+    server (else the client must peer-pull)."""
+
+    def get(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        member = in_data_mesh(request.user)
+        return JsonResponse({
+            "member": member,
+            "group": DATA_MESH_GROUP,
+            "gated": MESH_DOMAINS,
+            "allowed": MESH_DOMAINS if member else [],
+        })
+
+
+def render_access_denied(request, status=403):
+    """Nice HTML access-denied page for browser (template) access to gated data."""
+    from django.shortcuts import render
+    return render(request, "telegraph/access_denied.html", {"group": DATA_MESH_GROUP}, status=status)
+
+
+def mesh_required(view_func):
+    """Decorator for HTML (template) views: members see the page; others get the nice
+    access-denied template instead."""
+    from functools import wraps
+
+    @wraps(view_func)
+    def _wrapped(request, *args, **kwargs):
+        if not in_data_mesh(getattr(request, "user", None)):
+            return render_access_denied(request)
+        return view_func(request, *args, **kwargs)
+
+    return _wrapped
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class HealthApiView(CorsApiView):
     def get(self, request):

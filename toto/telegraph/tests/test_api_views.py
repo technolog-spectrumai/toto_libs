@@ -2,11 +2,59 @@ import json
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.test import TestCase
 from django.urls import reverse
 
 from toto.telegraph.models import TelegraphChannel, TelegraphMember
+
+
+class MeshGateApiViewTests(TestCase):
+    """The decentralized data-mesh server gate: members read gated data from the server;
+    non-members get 403 and must peer-pull."""
+
+    def setUp(self):
+        self.user = get_user_model().objects.create_user(username="meshu", password="pass123")
+        self.group, _ = Group.objects.get_or_create(name="data_mesh")
+
+    def test_me_mesh_non_member(self):
+        self.client.force_login(self.user)
+        res = self.client.get("/telegraph/api/me/mesh/")
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertFalse(data["member"])
+        self.assertEqual(data["allowed"], [])
+        self.assertIn("missions", data["gated"])
+
+    def test_me_mesh_member(self):
+        self.user.groups.add(self.group)
+        self.client.force_login(self.user)
+        data = self.client.get("/telegraph/api/me/mesh/").json()
+        self.assertTrue(data["member"])
+        self.assertIn("missions", data["allowed"])
+
+    # Missions are the gated (mesh) domain; the gate short-circuits in dispatch before
+    # the view runs, so a missing project id still 403s for a non-member.
+    GATED_URL = "/kanban/api/projects/1/missions/"
+
+    def test_gated_read_denied_for_non_member(self):
+        self.client.force_login(self.user)
+        res = self.client.get(self.GATED_URL)
+        self.assertEqual(res.status_code, 403)
+        self.assertTrue(res.json().get("gated"))
+
+    def test_gated_read_allowed_for_member(self):
+        self.user.groups.add(self.group)
+        self.client.force_login(self.user)
+        res = self.client.get(self.GATED_URL)
+        # Member passes the gate (the view itself may 404 for a missing project).
+        self.assertNotEqual(res.status_code, 403)
+        self.assertNotEqual(res.status_code, 401)
+
+    def test_non_member_blocked_unauthenticated(self):
+        res = self.client.get(self.GATED_URL)
+        self.assertEqual(res.status_code, 401)
 
 User = get_user_model()
 
