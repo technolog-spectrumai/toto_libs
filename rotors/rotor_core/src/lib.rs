@@ -363,6 +363,17 @@ impl RotorSession {
         Ok(bytes)
     }
 
+    /// Export a symmetric secret from the current MLS epoch (RFC 9420 exporter).
+    /// Two members of the same group at the same epoch derive identical bytes for
+    /// the same `(label, context, length)` — used to key out-of-band media such as
+    /// Vox voice calls without sending every audio frame through MLS itself.
+    pub fn export_secret(&self, label: &str, context: &[u8], length: usize) -> RotorResult<Vec<u8>> {
+        let group = self.load_group()?;
+        group
+            .export_secret(self.provider.crypto(), label, context, length)
+            .map_err(rotor_err)
+    }
+
     pub fn export_state(&self) -> RotorResult<Vec<u8>> {
         let mut storage = Vec::new();
 
@@ -428,5 +439,33 @@ impl RotorSession {
             signature_keys,
             group_id,
         })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Two members that join the same 2-member group derive an identical
+    /// exporter secret for the same (label, context) — the basis for keying
+    /// out-of-band media like Vox.
+    #[test]
+    fn exported_secret_matches_across_members() {
+        let mut admin = RotorSession::new("call-123".into(), "alice".into()).unwrap();
+        let mut guest = RotorSession::new("call-123".into(), "bob".into()).unwrap();
+
+        admin.create_group().unwrap();
+        let guest_kp = guest.key_package().unwrap();
+        let (welcome, _commit) = admin.add_member(&guest_kp).unwrap();
+        guest.join_from_welcome(&welcome).unwrap();
+
+        let a = admin.export_secret("enigma/vox/c2s", b"call-123", 32).unwrap();
+        let b = guest.export_secret("enigma/vox/c2s", b"call-123", 32).unwrap();
+        assert_eq!(a.len(), 32);
+        assert_eq!(a, b, "both members derive the same exporter secret");
+
+        // Different labels (per-direction keys) must differ.
+        let other = admin.export_secret("enigma/vox/s2c", b"call-123", 32).unwrap();
+        assert_ne!(a, other, "different labels yield independent keys");
     }
 }
