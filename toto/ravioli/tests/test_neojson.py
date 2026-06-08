@@ -1,7 +1,8 @@
 import json
 
 from django.contrib.auth.models import User
-from django.test import SimpleTestCase, TestCase
+from django.test import Client, SimpleTestCase, TestCase
+from django.urls import reverse
 
 from toto.ravioli import neojson
 
@@ -57,7 +58,6 @@ class NeoJsonSerializerTests(SimpleTestCase):
     def test_round_trip(self):
         g = neojson.from_ravioli(_raw_nodes(), _raw_edges())
         text = neojson.dumps(g)
-        # Output must be valid JSON and re-parse to the same structure.
         json.loads(text)
         g2 = neojson.loads(text)
         self.assertEqual(g2.to_dict(), g.to_dict())
@@ -68,7 +68,6 @@ class NeoJsonSerializerTests(SimpleTestCase):
         )
         d = neojson.loads(neojson.dumps(g)).to_dict()
         self.assertEqual(d["metadata"]["source"], "ravioli:cypher_query/7")
-        # Computed members still present and correct alongside the passthrough.
         self.assertEqual(d["metadata"]["node_count"], 2)
 
     def test_loads_empty_returns_empty_graph(self):
@@ -190,3 +189,68 @@ class NeoJsonSaveTaskTests(TestCase):
         self.assertEqual({n["id"] for n in d["nodes"]}, {"n1", "n2"})
         self.assertEqual(d["relationships"][0]["relType"], "KNOWS")
         self.assertEqual(d["metadata"]["source"], f"ravioli:cypher_query/{self.query.pk}")
+
+
+class NeoJsonExportViewTests(TestCase):
+    """export_query_neojson_view turns a cached query result into a .neojson VaultFile."""
+
+    def setUp(self):
+        from toto.ravioli.models import CypherQuery, CypherQueryResult
+        from toto.vault.models import Bucket
+
+        self.user = User.objects.create_superuser("neojson_super", password="pw")
+        self.bucket = Bucket.objects.create(name="Export Bucket", owner=self.user, slug="export-bucket")
+        self.query = CypherQuery.objects.create(name="People", query="MATCH (n) RETURN n")
+        CypherQueryResult.objects.create(
+            query=self.query, result_nodes=_raw_nodes(), result_edges=_raw_edges(),
+        )
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def test_export_creates_vault_file(self):
+        from toto.vault.models import VaultFile
+
+        url = reverse("ravioli:export_query_neojson", args=[self.query.pk])
+        resp = self.client.post(url, {"bucket_id": self.bucket.pk, "title": "My Graph"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["node_count"], 2)
+        self.assertEqual(data["relationship_count"], 1)
+        self.assertIn("editor_url", data)
+
+        vf = VaultFile.objects.get(pk=data["vault_file_id"])
+        self.assertEqual(vf.file_type, "neojson")
+        self.assertEqual(vf.title, "My Graph")
+        with vf.file.open("rb") as fh:
+            graph = neojson.loads(fh.read().decode("utf-8"))
+        self.assertEqual(neojson.validate(graph), [])
+        self.assertEqual({n.id for n in graph.nodes}, {"n1", "n2"})
+
+    def test_export_requires_bucket(self):
+        url = reverse("ravioli:export_query_neojson", args=[self.query.pk])
+        resp = self.client.post(url, {})
+        self.assertEqual(resp.status_code, 400)
+
+
+class NeoJsonIngressTests(TestCase):
+    """ingress_ravioli seeds a sample .neojson file idempotently."""
+
+    def test_ingress_seeds_sample_file(self):
+        from io import StringIO
+        from django.core.management import call_command
+        from toto.vault.models import Bucket, VaultFile
+
+        owner = User.objects.create_superuser("ingress_super", password="pw")
+        Bucket.objects.create(name="General", owner=owner, slug="general")
+
+        call_command("ingress_ravioli", stdout=StringIO(), stderr=StringIO())
+        qs = VaultFile.objects.filter(file_type="neojson", key="sample-graph-neojson")
+        self.assertEqual(qs.count(), 1)
+
+        # Idempotent: a second run does not create a duplicate.
+        call_command("ingress_ravioli", stdout=StringIO(), stderr=StringIO())
+        self.assertEqual(qs.count(), 1)
+
+        with qs.first().file.open("rb") as fh:
+            graph = neojson.loads(fh.read().decode("utf-8"))
+        self.assertEqual(neojson.validate(graph), [])

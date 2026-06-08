@@ -69,6 +69,18 @@ def query_unified_view(request):
     from toto.quota import usage_summary
     quota_data = usage_summary("ravioli", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
 
+    # Buckets / directories for the "Export → NeoJSON → Vault" modal.
+    from toto.vault.models import Bucket, VaultDirectory
+    buckets = list(Bucket.objects.all().order_by("name"))
+    directories = list(
+        VaultDirectory.objects.select_related("bucket").order_by("bucket__name", "name")
+    )
+    buckets_json = json.dumps([{"id": b.id, "name": b.name} for b in buckets])
+    directories_json = json.dumps([
+        {"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()}
+        for d in directories
+    ])
+
     context = PageProcessor().decorate(
         {
             "queries": queries,
@@ -77,6 +89,8 @@ def query_unified_view(request):
             "total_nodes": total_nodes,
             "total_edges": total_edges,
             "quota_data": quota_data,
+            "buckets_json": buckets_json,
+            "directories_json": directories_json,
         },
         request,
     )
@@ -346,6 +360,74 @@ def query_cached_data(request, query_id):
             "name": selected_query.name,
             "description": selected_query.description,
         },
+    })
+
+
+# ---------------------------------------------------------------------------
+# NeoJSON: export a query result to the vault (the editor lives in toto.neo_editor)
+# ---------------------------------------------------------------------------
+
+@require_POST
+@superuser_required
+def export_query_neojson_view(request, query_id):
+    """Convert a Cypher query's cached graph into a .neojson VaultFile (synchronous)."""
+    import re
+    from django.core.files.base import ContentFile
+    from django.urls import reverse
+    from django.utils import timezone
+
+    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+    from . import neojson
+    from .graph_analysis import load_query_graph
+
+    selected_query = get_object_or_404(CypherQuery, pk=query_id)
+
+    bucket_id = request.POST.get("bucket_id")
+    directory_id = request.POST.get("directory_id") or None
+    title = (request.POST.get("title") or "").strip() or f"{selected_query.name} (NeoJSON)"
+
+    if not bucket_id:
+        return JsonResponse({"error": "Select an output bucket."}, status=400)
+
+    bucket = get_object_or_404(Bucket, pk=bucket_id)
+    directory = None
+    if directory_id:
+        directory = get_object_or_404(VaultDirectory, pk=directory_id, bucket=bucket)
+
+    try:
+        nodes, edges = load_query_graph(query_id)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+
+    graph = neojson.from_ravioli(
+        nodes,
+        edges,
+        metadata={
+            "generated_at": timezone.now().isoformat(),
+            "source": f"ravioli:cypher_query/{query_id}",
+        },
+    )
+    content = neojson.dumps(graph).encode("utf-8")
+
+    timestamp = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
+    filename = f"query_{query_id}_{timestamp}{neojson.EXTENSION}"
+
+    vault_file = VaultFile(
+        owner=request.user,
+        title=title,
+        bucket=bucket,
+        directory=directory,
+        file_type="neojson",
+        is_public=False,
+    )
+    vault_file.file.save(filename, ContentFile(content), save=False)
+    vault_file.save()
+
+    return JsonResponse({
+        "vault_file_id": vault_file.pk,
+        "editor_url": reverse("neo_editor:neojson_editor", args=[vault_file.pk]),
+        "node_count": len(graph.nodes),
+        "relationship_count": len(graph.relationships),
     })
 
 

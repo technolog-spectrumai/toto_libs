@@ -9,6 +9,7 @@ class Command(IngressCommand):
         self._ensure_workflows()
         self._ensure_graph_analysis_workflow()
         self._ensure_cypher_queries()
+        self._ensure_sample_neojson_file()
 
     def _ensure_workflows(self):
         from toto.workflows.models import Workflow, WorkflowEdge, WorkflowNode
@@ -258,3 +259,61 @@ class Command(IngressCommand):
 
         CypherQueryResult.objects.get_or_create(query=q)
         self.stdout.write(self.style.SUCCESS("📊 Created query result entry"))
+
+    def _ensure_sample_neojson_file(self):
+        """Seed a demo .neojson VaultFile so the NeoJSON editor has content to open."""
+        from django.contrib.auth.models import User
+        from django.core.files.base import ContentFile
+
+        from toto.ravioli import neojson
+        from toto.vault.models import Bucket, VaultFile
+
+        owner = User.objects.filter(is_superuser=True).order_by("pk").first()
+        if owner is None:
+            self.stdout.write(self.style.WARNING("ℹ️  No superuser found — skipping NeoJSON sample seed."))
+            return
+
+        # Prefer the General bucket, then Media, then any bucket owned by the superuser.
+        bucket = (
+            Bucket.objects.filter(slug="general").first()
+            or Bucket.objects.filter(slug="media").first()
+            or Bucket.objects.filter(owner=owner).first()
+        )
+        if bucket is None:
+            self.stdout.write(self.style.WARNING("ℹ️  No bucket found — run ingress_vault first; skipping NeoJSON sample."))
+            return
+
+        key = "sample-graph-neojson"
+        if VaultFile.objects.filter(bucket=bucket, key=key).exists():
+            self.stdout.write(self.style.WARNING(f"ℹ️  Sample .neojson file already exists in bucket '{bucket.slug}'."))
+            return
+
+        graph = neojson.from_ravioli(
+            [
+                {"id": "n1", "labels": ["Person"], "props": {"name": "Alice", "role": "Architect"}},
+                {"id": "n2", "labels": ["Person"], "props": {"name": "Bob", "role": "Engineer"}},
+            ],
+            [
+                {"id": "rel-1", "type": "KNOWS", "start": "n1", "end": "n2", "props": {"since": 2021}},
+            ],
+            metadata={"source": "ingress:ravioli/sample"},
+        )
+        content = neojson.dumps(graph).encode("utf-8")
+
+        vf = VaultFile(
+            owner=owner,
+            title="sample-graph.neojson",
+            bucket=bucket,
+            file_type="neojson",
+            is_public=True,
+            key=key,
+        )
+        vf.file.save("sample-graph.neojson", ContentFile(content), save=False)
+        vf.file_size_bytes = len(content)
+        vf.save()
+
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"✅ Created sample .neojson file (pk={vf.pk}) in bucket '{bucket.slug}'."
+            )
+        )

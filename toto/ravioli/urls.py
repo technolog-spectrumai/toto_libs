@@ -11,6 +11,7 @@ from .views import (
     query_graph_data,
     query_cached_data,
     run_cypher_query_view,
+    export_query_neojson_view,
     projection_plan_detail,
     projection_sync_view,
     run_projection_stream,
@@ -28,6 +29,7 @@ urlpatterns = [
     path("queries/<int:query_id>/data/", query_graph_data, name="query_graph_data"),
     path("queries/<int:query_id>/cached/", query_cached_data, name="query_cached_data"),
     path("queries/<int:query_id>/run/", run_cypher_query_view, name="run_cypher_query"),
+    path("queries/<int:query_id>/export-neojson/", export_query_neojson_view, name="export_query_neojson"),
     path("projections/", projection_sync_view, name="projection_sync"),
     path("projections/plans/", create_projection_plan, name="create_projection_plan"),
     path(
