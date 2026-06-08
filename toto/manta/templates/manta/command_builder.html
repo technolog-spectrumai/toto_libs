@@ -22,15 +22,32 @@
               x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
           <i class="fa-solid fa-microchip mr-1 opacity-60"></i>{{ backend }}</span>
       </h1>
-      {% if vf %}
-      <p class="mt-1 text-sm opacity-60">
-        {% trans "Source:" %} <span class="font-mono">{{ vf.title }}</span>
-        ({{ vf.file_type }}{% if vf.file_size_bytes %}, {{ vf.file_size_bytes|filesizeformat }}{% endif %})
-      </p>
-      {% else %}
-      <p class="mt-1 text-sm opacity-60">{% trans "Choose a command and a source file to begin." %}</p>
-      {% endif %}
     </div>
+
+    <!-- Tabs: one per command family -->
+    <div class="flex flex-wrap gap-2 border-b" :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
+      {% for t in tabs %}
+      <a href="?tab={{ t.key }}"
+         class="-mb-px inline-flex items-center gap-2 rounded-t-lg border-b-2 px-4 py-2 text-sm font-semibold transition {% if not t.active %}border-transparent opacity-60 hover:opacity-100{% endif %}"
+         {% if t.active %}x-bind:class="darkMode ? 'border-accent-dark text-accent-dark' : 'border-accent-light text-accent-light'"{% endif %}>
+        <i class="fa-solid {{ t.icon }}"></i>{{ t.label }}
+      </a>
+      {% endfor %}
+    </div>
+
+    <!-- Active tab blurb + source -->
+    <p class="text-sm opacity-60">{{ tab_ui.blurb }}</p>
+
+    {% if tab == "transcribe" %}
+    {% include "manta/_quick_transcribe.html" %}
+    {% endif %}
+
+    {% if vf %}
+    <p class="-mt-3 text-sm opacity-60">
+      {% trans "Source:" %} <span class="font-mono">{{ vf.title }}</span>
+      ({{ vf.file_type }}{% if vf.file_size_bytes %}, {{ vf.file_size_bytes|filesizeformat }}{% endif %})
+    </p>
+    {% endif %}
 
     {% if errors %}
     <div class="rounded-lg bg-warn-light/10 px-4 py-3 text-sm text-warn-light space-y-1">
@@ -39,12 +56,13 @@
     </div>
     {% endif %}
 
-    <!-- 1) Operation (decides how many files you pick) -->
+    <!-- ffmpeg tab: command dropdown decides how many files you pick -->
+    {% if tab == "ffmpeg" %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
-      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "1. Command" %}</label>
+      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Command" %}</label>
       <select
-        @change="window.location.href = '{% if vf %}?file={{ vf.id }}&op={% else %}?op={% endif %}' + $event.target.value"
+        @change="window.location.href = '{% if vf %}?tab=ffmpeg&file={{ vf.id }}&op={% else %}?tab=ffmpeg&op={% endif %}' + $event.target.value"
         class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
         x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
       >
@@ -53,102 +71,88 @@
         {% endfor %}
       </select>
     </div>
+    {% endif %}
 
-    <!-- 2) Source video picker (always shown) -->
+    <!-- Source picker (heading varies per tab) -->
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
-      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-60">{% blocktrans with t=source_types %}2. Source ({{ t }}){% endblocktrans %}</h2>
+      <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-60">
+        {{ tab_ui.source_heading }} <span class="opacity-50 lowercase">({{ source_types }})</span></h2>
+
+      {% if allow_upload %}
+      <!-- Upload a new file straight into a bucket, then use it as the source -->
+      <div x-data="mantaUpload()" class="mb-4 rounded-lg border border-dashed p-4"
+           x-bind:class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
+        <h3 class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-cloud-arrow-up mr-1"></i>{% trans "Upload a new file" %}</h3>
+        <div class="grid gap-2 sm:grid-cols-3">
+          <select x-model="bucket"
+            class="rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+            x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+            <option value="">{% trans "Personal bucket" %}</option>
+            {% for b in upload_buckets %}
+            <option value="{{ b.slug }}">{{ b.name }}</option>
+            {% endfor %}
+          </select>
+          <input type="file" accept="{{ upload_accept }}"
+            @change="file = $event.target.files[0]; error = ''"
+            class="rounded-lg border px-3 py-1.5 text-sm file:mr-2 file:rounded file:border-0 file:px-2 file:py-1 file:text-xs sm:col-span-2"
+            x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+        </div>
+        <div class="mt-2 flex items-center gap-3">
+          <button type="button" @click="upload()" :disabled="!file || busy"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
+            class="inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
+            <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-upload'"></i>
+            <span x-text="busy ? '{% trans "Uploading…" %}' : '{% trans "Upload & use" %}'"></span>
+          </button>
+          <span x-show="error" x-text="error" class="text-xs text-warn-light"></span>
+        </div>
+      </div>
+      <p class="mb-2 text-xs opacity-50">{% trans "…or choose an existing file:" %}</p>
+      {% endif %}
+
       {% include "vault/_file_tree.html" with tree=source_tree tree_link_prefix=source_link_prefix tree_current_id=vf.id %}
     </div>
 
     {% if vf %}
-    <form method="post" action="{% url 'manta:command_builder' %}" class="space-y-6"
-      x-data="builderForm()" x-init="preview()"
-      @input.debounce.400ms="preview()" @change.debounce.400ms="preview()">
-      {% csrf_token %}
-      <input type="hidden" name="file" value="{{ vf.id }}">
-      <input type="hidden" name="op" value="{{ op }}">
-
-      <!-- 3) Preset-driven extra-input picker -->
-      {% if needs_extra %}
-      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-lg border p-5 shadow-sm">
-        <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">3. {{ extra_slot.label }}</h2>
-        <p class="mb-3 text-xs opacity-50">
-          {% blocktrans with t=extra_slot.types %}Pick {{ t }} file(s) from this bucket.{% endblocktrans %}
-        </p>
-        {% include "vault/_file_tree.html" with tree=extra_tree tree_input_name=extra_slot.name tree_value_field="id" tree_selected=None tree_alpine=False %}
-      </div>
-      {% endif %}
-
-      <!-- 4) Parameters -->
-      {% if form %}
-      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-lg border p-5 shadow-sm space-y-4">
-        <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Options" %}</h2>
-        {% for field in form %}
-        <div>
-          {% if field.field.widget.input_type == 'checkbox' %}
-          <label class="flex items-center gap-2 text-sm cursor-pointer">
-            {{ field }}
-            <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</span>
-          </label>
-          {% else %}
-          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</label>
-          {{ field }}
-          {% endif %}
-          {% if field.help_text %}<p class="mt-0.5 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
-        </div>
-        {% endfor %}
-      </div>
-      {% endif %}
-
-      <!-- 5) Generated command (live) -->
-      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-           class="rounded-lg border p-5 shadow-sm">
-        <div class="mb-2 flex items-center justify-between">
-          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
-            {% trans "Command" %} <span class="opacity-50 lowercase" x-text="backend ? '(' + backend + ')' : ''"></span></h2>
-          <button type="button" x-show="command"
-            @click="navigator.clipboard.writeText($refs.cmd.innerText); copied = true; setTimeout(() => copied = false, 1500)"
-            class="text-xs opacity-60 hover:opacity-100">
-            <i class="fa-solid fa-copy mr-1"></i><span x-text="copied ? '{% trans "Copied" %}' : '{% trans "Copy" %}'"></span>
-          </button>
-        </div>
-        <pre x-ref="cmd" class="overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed"
-          x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'"
-          x-text="command || '{% trans "Fill the form to generate the command…" %}'"></pre>
-
-        <template x-if="previewErrors.length">
-          <div class="mt-2 text-xs text-warn-light space-y-0.5">
-            <template x-for="e in previewErrors" :key="e"><p class="font-mono" x-text="e"></p></template>
-          </div>
-        </template>
-
-        <template x-if="outputs.length">
-          <div class="mt-3">
-            <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Expected output(s)" %}</h3>
-            <ul class="list-inside list-disc text-sm opacity-80">
-              <template x-for="o in outputs" :key="o"><li class="font-mono" x-text="o"></li></template>
-            </ul>
-          </div>
-        </template>
-
-        <div class="mt-4">
-          <button type="submit" name="action" value="run" :disabled="!command"
-            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
-            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
-            <i class="fa-solid fa-play"></i> {% trans "Run" %}
-          </button>
-        </div>
-      </div>
-    </form>
+    {% include "manta/_command_form.html" %}
     {% endif %}
 
   </div>
 </div>
 
 <script>
+  // Push the chosen file through the existing vault API, then reload with it selected.
+  function mantaUpload() {
+    return {
+      file: null,
+      bucket: "",
+      busy: false,
+      error: "",
+      async upload() {
+        if (!this.file || this.busy) return;
+        this.busy = true; this.error = "";
+        const fd = new FormData();
+        fd.append("file", this.file);
+        if (this.bucket) fd.append("bucket_slug", this.bucket);
+        try {
+          const res = await fetch("{% url 'vault:api_file_upload' %}", {
+            method: "POST", body: fd, credentials: "same-origin",
+          });
+          const data = await res.json();
+          if (res.ok && data.id) {
+            window.location.href = "?tab={{ tab }}&file=" + data.id;
+          } else {
+            this.error = data.error || "Upload failed."; this.busy = false;
+          }
+        } catch (e) {
+          this.error = "Upload failed."; this.busy = false;
+        }
+      },
+    };
+  }
+
   function builderForm() {
     return {
       preserve: true,           // used by the resize form's aspect-ratio toggle

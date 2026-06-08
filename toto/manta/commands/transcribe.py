@@ -3,12 +3,24 @@ from django import forms
 from ..forms import _w
 from .backends import WhisperCommand
 
+# Curated set of common Whisper languages; blank = auto-detect.
+LANGUAGE_CHOICES = [
+    ("", "Auto-detect"),
+    ("en", "English"), ("es", "Spanish"), ("fr", "French"), ("de", "German"),
+    ("it", "Italian"), ("pt", "Portuguese"), ("nl", "Dutch"), ("pl", "Polish"),
+    ("ru", "Russian"), ("uk", "Ukrainian"), ("cs", "Czech"), ("sv", "Swedish"),
+    ("zh", "Chinese"), ("ja", "Japanese"), ("ko", "Korean"), ("ar", "Arabic"),
+    ("hi", "Hindi"), ("tr", "Turkish"),
+]
+
 
 class TranscribeForm(forms.Form):
-    language = forms.CharField(
+    language = forms.ChoiceField(
+        choices=LANGUAGE_CHOICES,
         required=False,
-        widget=forms.TextInput(attrs=_w({"placeholder": "en — leave blank to auto-detect"})),
-        help_text="Language code (optional).",
+        initial="",
+        widget=forms.Select(attrs=_w()),
+        help_text="Leave on auto-detect unless Whisper guesses wrong.",
     )
 
 

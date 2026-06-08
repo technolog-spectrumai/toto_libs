@@ -128,6 +128,7 @@ class FfmpegCommand(BaseCommand):
 class FfprobeCommand(FfmpegCommand):
     backend = "ffprobe"
     backend_label = "ffprobe"
+    tab = "ffprobe"
 
 
 class ServiceCommand(BaseCommand):
@@ -152,8 +153,10 @@ class ServiceCommand(BaseCommand):
 class WhisperCommand(ServiceCommand):
     backend_label = "whisper"
     service_key = "transcription"
+    tab = "transcribe"
 
 
 class TesseractCommand(ServiceCommand):
     backend_label = "tesseract"
     service_key = "ocr"
+    tab = "ocr"

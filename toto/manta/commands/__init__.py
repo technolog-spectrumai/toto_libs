@@ -19,6 +19,14 @@ OPERATIONS = tuple(c.key for c in COMMANDS)
 OPERATION_LABELS = {c.key: c.label for c in COMMANDS}
 COMMAND_FILE_PRESETS = {c.key: {"inputs": c.inputs, "outputs": c.outputs} for c in COMMANDS}
 
+# Builder tabs, in display order. ``ffmpeg`` groups the many ffmpeg commands
+# behind a command dropdown; the others are single-command, focused tabs.
+TAB_ORDER = ("ffmpeg", "ffprobe", "transcribe", "ocr")
+
+
+def commands_for_tab(tab) -> list[type[BaseCommand]]:
+    return [c for c in COMMANDS if c.tab == tab]
+
 
 def get_command(key):
     return BaseCommand.get(key)

@@ -9,7 +9,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from toto.ui import PageProcessor
 
 from .access import user_can_access_vault_file
-from .commands import BaseCommand, OPERATIONS, get_command
+from .commands import OPERATIONS, TAB_ORDER, commands_for_tab, get_command
 from .models import FileJob
 
 # Logical preset file-type → VaultFile.file_type values for the tree pickers.
@@ -17,6 +17,50 @@ _PRESET_TO_VAULT_TYPES = {
     "video": ["video"], "audio": ["audio"], "image": ["image"],
     "subtitle": ["text"], "gif": ["image"], "json": ["json"],
 }
+
+# Per-tab presentation + behaviour. ``ffmpeg`` keeps the command dropdown; the
+# other three are single-command, focused tabs with a friendlier interface.
+TAB_UI = {
+    "ffmpeg": {
+        "label": "ffmpeg", "icon": "fa-film",
+        "blurb": "Convert, trim, resize, watermark and combine media with ffmpeg.",
+        "source_heading": "Source", "upload_accept": "",
+    },
+    "ffprobe": {
+        "label": "ffprobe", "icon": "fa-circle-info",
+        "blurb": "Inspect a media file's streams, codecs, duration and metadata. "
+                 "Produces a .ffprobe.json file.",
+        "source_heading": "Media file to inspect", "upload_accept": "audio/*,video/*,image/*",
+    },
+    "transcribe": {
+        "label": "Transcribe", "icon": "fa-closed-captioning",
+        "blurb": "Turn speech into a text transcript and .srt subtitles with Whisper.",
+        "source_heading": "Audio to transcribe", "upload_accept": "audio/*",
+    },
+    "ocr": {
+        "label": "OCR", "icon": "fa-image",
+        "blurb": "Extract text from an image with Tesseract.",
+        "source_heading": "Image to read", "upload_accept": "image/*",
+    },
+}
+
+# The focused tabs let you upload a new file (to a bucket of your choice) instead
+# of only picking an existing vault file. The ffmpeg tab keeps its existing flow.
+_UPLOAD_TABS = {"ffprobe", "transcribe", "ocr"}
+
+# The single command behind each focused tab.
+_TAB_OP = {"ffprobe": "probe", "transcribe": "transcribe", "ocr": "ocr"}
+
+# Source file types each focused tab accepts (ffmpeg derives them from the op).
+_TAB_SOURCE_TYPES = {
+    "ffprobe": ["video", "audio", "image"],
+    "transcribe": ["audio"],
+    "ocr": ["image"],
+}
+
+# When a file arrives with no tab/op (e.g. from the vault wand), route it to the
+# most useful tab for its type.
+_DEFAULT_TAB_BY_TYPE = {"video": "ffmpeg", "audio": "transcribe", "image": "ocr"}
 
 
 def _render(request, template, context):
@@ -94,10 +138,6 @@ def _resolve_extra_pks(user, vf, pks):
     return objs, names, errors
 
 
-# When a file is picked with no command chosen, default the command by type.
-_DEFAULT_OP_BY_TYPE = {"video": "compress", "audio": "transcribe", "image": "ocr"}
-
-
 def _validate(request, vf, cmd_cls):
     """Returns (params, extra_objs, extra_names, errors)."""
     form = _build_form(cmd_cls, request.POST)
@@ -125,54 +165,104 @@ def _validate(request, vf, cmd_cls):
     return params, objs, names, errors
 
 
+def _user_upload_buckets(user):
+    """Buckets the user can upload into via the vault upload API (owner-matched)."""
+    from toto.vault.models import Bucket
+
+    return list(Bucket.objects.filter(owner=user).order_by("name").values("slug", "name"))
+
+
+def _resolve_tab(tab_req, op_req, vf):
+    """Pick the active tab from explicit request, the op, or the file type."""
+    if tab_req in TAB_UI:
+        return tab_req
+    if op_req in OPERATIONS:
+        return get_command(op_req).tab
+    if vf is not None:
+        return _DEFAULT_TAB_BY_TYPE.get(vf.file_type, "ffmpeg")
+    return "ffmpeg"
+
+
+def _resolve_op(tab, op_req):
+    """The op for the tab: fixed for focused tabs, dropdown-chosen for ffmpeg."""
+    if tab != "ffmpeg":
+        return _TAB_OP[tab]
+    if op_req in OPERATIONS and get_command(op_req).tab == "ffmpeg":
+        return op_req
+    return "compress"
+
+
 @login_required
 def command_builder(request):
     from toto.vault.filetree import build_file_tree
     from toto.vault.models import VaultFile
 
+    tab_req = (request.POST.get("tab") or request.GET.get("tab") or "").strip()
     op_req = (request.POST.get("op") or request.GET.get("op") or "").strip()
-    service = request.GET.get("service", "").strip()
     file_pk = request.POST.get("file") or request.GET.get("file")
 
-    # Resolve the source first so we can default the command from its type.
+    # Resolve the source first so we can default the tab from its type.
     vf, source_error = None, None
     if file_pk:
         vf = VaultFile.objects.select_related("bucket", "directory", "owner").filter(pk=file_pk).first()
         if vf is None or not user_can_access_vault_file(request.user, vf):
             vf, source_error = None, "Pick a file you can access."
 
-    op = op_req or (_DEFAULT_OP_BY_TYPE.get(vf.file_type, "compress") if vf else "compress")
-    if op not in OPERATIONS:
-        op = "compress"
+    tab = _resolve_tab(tab_req, op_req, vf)
+    op = _resolve_op(tab, op_req)
     cmd_cls = get_command(op)
 
-    primary_types = _primary_types(cmd_cls)
-    if vf is not None and vf.file_type not in primary_types:
-        vf, source_error = None, f"This command needs a {' / '.join(primary_types)} file."
+    allowed_types = _TAB_SOURCE_TYPES.get(tab) or _primary_types(cmd_cls)
+    if vf is not None and vf.file_type not in allowed_types:
+        vf, source_error = None, f"This command needs a {' / '.join(allowed_types)} file."
 
-    # Bare landing (no command and no source yet) → show every accessible media
-    # file; once a command or source is in play, filter to the command's type.
-    browsing = not op_req and vf is None
-    tree_types = ["video", "audio", "image"] if browsing else primary_types
+    # Bare landing (no tab/op/source yet) → show every accessible media file and
+    # route the click to the right tab by type; otherwise filter to this tab.
+    browsing = vf is None and not tab_req and not op_req
+    tree_types = ["video", "audio", "image"] if browsing else allowed_types
     source_tree = build_file_tree(request.user, file_types=tree_types)
     out_slot = next(iter(cmd_cls.outputs.values()), {})
+
+    if browsing:
+        source_link_prefix = "?file="
+        source_types = "media"
+    elif tab == "ffmpeg":
+        source_link_prefix = f"?tab=ffmpeg&op={op}&file="
+        source_types = " / ".join(allowed_types)
+    else:
+        source_link_prefix = f"?tab={tab}&file="
+        source_types = " / ".join(allowed_types)
+
+    allow_upload = tab in _UPLOAD_TABS
+    upload_buckets = _user_upload_buckets(request.user) if allow_upload else []
+
+    quick_languages = []
+    if tab == "transcribe":
+        from .commands.transcribe import LANGUAGE_CHOICES
+        quick_languages = LANGUAGE_CHOICES
 
     context = {
         "vf": vf,
         "op": op,
-        "operations": [(c.key, c.label) for c in BaseCommand.all()],
+        "tab": tab,
+        "tabs": [dict(key=k, active=(k == tab), **TAB_UI[k]) for k in TAB_ORDER],
+        "tab_ui": TAB_UI[tab],
+        "operations": [(c.key, c.label) for c in commands_for_tab("ffmpeg")],
         "backend": (cmd_cls.backend_label or cmd_cls.backend),
         "is_service": cmd_cls.backend == "service",
         "source_tree": source_tree,
-        "source_types": "media" if browsing else " / ".join(primary_types),
-        "source_link_prefix": "?file=" if browsing else f"?op={op}&file=",
+        "source_types": source_types,
+        "source_link_prefix": source_link_prefix,
         "needs_extra": False,
         "extra_slot": None,
         "extra_tree": [],
         "form": None,
         "output_label": out_slot.get("name", "Output"),
         "errors": [source_error] if source_error else [],
-        "service": service,
+        "allow_upload": allow_upload,
+        "upload_buckets": upload_buckets,
+        "upload_accept": TAB_UI[tab]["upload_accept"],
+        "quick_languages": quick_languages,
     }
 
     if vf is None:
@@ -240,3 +330,83 @@ def job_detail(request, pk):
     job = get_object_or_404(FileJob, pk=pk)
     out_files = list(VaultFile.objects.filter(pk__in=job.output_file_ids)) if job.output_file_ids else []
     return _render(request, "manta/job_detail.html", {"job": job, "out_files": out_files})
+
+
+def _save_text_file(user, bucket, directory, filename: str, text: str):
+    """Persist *text* as a new text VaultFile in *bucket*, picking a free key
+    (transcript, transcript-1, …) so repeated saves never overwrite. The key is
+    set explicitly so it stays predictable even if storage suffixes the file."""
+    from django.core.files.base import ContentFile
+    from django.utils.text import slugify
+    from toto.vault.models import VaultFile
+
+    base, ext = os.path.splitext(os.path.basename(filename))
+    base, ext = (base or "transcript"), (ext or ".txt")
+    base_key = slugify(base) or "transcript"
+
+    name, key, n = f"{base}{ext}", base_key, 1
+    while VaultFile.objects.filter(bucket=bucket, key=key).exists():
+        name, key, n = f"{base}-{n}{ext}", f"{base_key}-{n}", n + 1
+
+    vf = VaultFile(owner=user, title=name, key=key, file_type="text",
+                   bucket=bucket, directory=directory)
+    vf.file.save(name, ContentFile(text.encode("utf-8")), save=False)
+    vf.save()
+    try:
+        vf.content_hash = vf.create_hash()
+        vf.save(update_fields=["content_hash"])
+    except Exception:
+        pass
+    return vf
+
+
+@login_required
+def quick_transcribe(request):
+    """Synchronously transcribe an already-saved audio file and write the result
+    to a text file in the same bucket. Used by the transcribe tab's quick modal.
+
+    POST: audio_id, output_name (default transcript.txt), language (optional).
+    Returns JSON {ok, text, output:{id,title,download_url}}.
+    """
+    if request.method != "POST":
+        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
+
+    import tempfile
+
+    from toto.fileservices.runner import stage_input
+    from toto.transcription.services import transcribe_demo_file
+    from toto.vault.models import VaultFile
+
+    audio = (VaultFile.objects.select_related("bucket", "directory")
+             .filter(pk=request.POST.get("audio_id")).first())
+    if audio is None or not user_can_access_vault_file(request.user, audio):
+        return JsonResponse({"ok": False, "error": "Audio file not found or not accessible."}, status=404)
+    # Recorded blobs are detected as audio (we name them .ogg/.weba/.m4a); video is
+    # accepted too since Whisper can read it.
+    if audio.file_type not in ("audio", "video"):
+        return JsonResponse({"ok": False, "error": "That file is not audio."}, status=400)
+
+    output_name = _sanitize_output_name(request.POST.get("output_name") or "transcript.txt")
+    if not output_name.lower().endswith(".txt"):
+        output_name += ".txt"
+    language = (request.POST.get("language") or "").strip()
+
+    try:
+        with tempfile.TemporaryDirectory() as tmp:
+            local = stage_input(audio, tmp)
+            result = transcribe_demo_file(local, language=language)
+    except Exception as exc:
+        return JsonResponse({"ok": False, "error": f"Transcription failed: {exc}"}, status=500)
+
+    text = (result.get("text") or "").strip()
+    out_vf = _save_text_file(request.user, audio.bucket, audio.directory, output_name, text)
+    try:
+        download_url = request.build_absolute_uri(out_vf.file.url)
+    except Exception:
+        download_url = ""
+
+    return JsonResponse({
+        "ok": True,
+        "text": text,
+        "output": {"id": out_vf.id, "title": out_vf.title, "download_url": download_url},
+    })

@@ -1,0 +1,215 @@
+{% comment %}
+Quick record-and-transcribe modal for the transcribe tab. Records up to 60s of
+audio in the browser, saves it to the chosen bucket via the vault upload API,
+then synchronously transcribes it (manta:quick_transcribe), displaying the text
+and saving it to a .txt file in the same bucket. Expects: upload_buckets,
+quick_languages, csrf_token (inherits darkMode from the page scope).
+{% endcomment %}
+{% load i18n %}
+<style>[x-cloak]{display:none!important}</style>
+<div x-data="quickTranscribe()">
+  <button type="button" @click="open = true"
+    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+    class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+    <i class="fa-solid fa-microphone"></i>{% trans "Quick record & transcribe" %}
+  </button>
+
+  <!-- Modal -->
+  <div x-show="open" x-cloak @keydown.escape.window="closeModal()"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+    <div @click.outside="closeModal()"
+      x-bind:class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1' : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+      class="max-h-[90vh] w-full max-w-lg space-y-4 overflow-y-auto rounded-xl border p-6 shadow-xl">
+
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-microphone mr-2"></i>{% trans "Quick transcribe" %}</h2>
+        <button type="button" @click="closeModal()" class="opacity-50 hover:opacity-100"><i class="fa-solid fa-xmark text-lg"></i></button>
+      </div>
+
+      <!-- Form: bucket, language, output name -->
+      <div class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Save to bucket" %}</label>
+          <select x-model="bucket" :disabled="recording || !!audioFile"
+            class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 disabled:opacity-50"
+            x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+            <option value="">{% trans "Personal bucket" %}</option>
+            {% for b in upload_buckets %}<option value="{{ b.slug }}">{{ b.name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Language" %}</label>
+          <select x-model="language"
+            class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+            x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+            {% for code, name in quick_languages %}<option value="{{ code }}">{{ name }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="sm:col-span-2">
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Save transcript as" %}</label>
+          <input type="text" x-model="outputName" placeholder="transcript.txt"
+            class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+            x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+        </div>
+      </div>
+
+      <!-- Recorder -->
+      <div class="rounded-lg border border-dashed p-4 text-center"
+           x-bind:class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
+        <p class="font-mono text-3xl tabular-nums" x-text="timeLabel"
+           :class="seconds >= maxSeconds - 10 && recording ? 'text-warn-light' : ''"></p>
+        <p class="mb-3 text-xs opacity-50">{% trans "Max 60 seconds" %}</p>
+        <div class="flex items-center justify-center gap-3">
+          <button type="button" x-show="!recording && !audioUrl" @click="startRecording()"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+            x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <i class="fa-solid fa-circle text-red-500"></i>{% trans "Record" %}</button>
+          <button type="button" x-show="recording" @click="stopRecording()"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+            x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <i class="fa-solid fa-stop"></i>{% trans "Stop" %}</button>
+          <button type="button" x-show="audioUrl && !recording" @click="reset()"
+            class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-xs opacity-70 transition hover:opacity-100">
+            <i class="fa-solid fa-rotate-left"></i>{% trans "Re-record" %}</button>
+        </div>
+        <audio x-show="audioUrl" :src="audioUrl" controls class="mt-3 w-full"></audio>
+        <p x-show="audioFile" class="mt-2 text-xs opacity-70">
+          <i class="fa-solid fa-circle-check mr-1 text-green-500"></i>{% trans "Saved audio:" %}
+          <span class="font-mono" x-text="audioFile && audioFile.title"></span>
+        </p>
+      </div>
+
+      <!-- Transcribe action -->
+      <div class="flex items-center gap-3">
+        <button type="button" @click="transcribe()" :disabled="!audioFile || busy"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40">
+          <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
+          <span x-text="busy && status ? status : '{% trans "Transcribe" %}'"></span>
+        </button>
+        <span x-show="error" x-text="error" class="text-xs text-warn-light"></span>
+      </div>
+
+      <!-- Result -->
+      <template x-if="transcript !== null && !busy">
+        <div class="space-y-2">
+          <h3 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Transcript" %}</h3>
+          <pre class="max-h-48 overflow-y-auto whitespace-pre-wrap rounded-md p-3 text-sm leading-relaxed"
+            x-bind:class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light border border-accent-2'"
+            x-text="transcript || '{% trans "(no speech detected)" %}'"></pre>
+          <p x-show="savedText" class="text-xs opacity-70">
+            <i class="fa-solid fa-file-lines mr-1"></i>{% trans "Saved to:" %}
+            <a :href="savedText && savedText.download_url" class="font-mono underline" x-text="savedText && savedText.title"></a>
+          </p>
+        </div>
+      </template>
+    </div>
+  </div>
+</div>
+
+<script>
+  function quickTranscribe() {
+    return {
+      open: false,
+      bucket: "",
+      language: "",
+      outputName: "transcript.txt",
+      recording: false,
+      seconds: 0,
+      maxSeconds: 60,
+      _timer: null, _recorder: null, _chunks: [], _stream: null,
+      audioBlob: null, audioUrl: "", audioFile: null,
+      transcript: null, savedText: null,
+      busy: false, status: "", error: "",
+
+      get timeLabel() {
+        const s = this.seconds % 60, m = Math.floor(this.seconds / 60);
+        return (m < 10 ? "0" : "") + m + ":" + (s < 10 ? "0" : "") + s;
+      },
+      closeModal() { if (this.recording) this.stopRecording(); this._cleanupStream(); this.open = false; },
+      _cleanupStream() {
+        if (this._stream) { this._stream.getTracks().forEach(t => t.stop()); this._stream = null; }
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+      },
+      reset() {
+        if (this.audioUrl) URL.revokeObjectURL(this.audioUrl);
+        this.audioUrl = ""; this.audioBlob = null; this.audioFile = null;
+        this.transcript = null; this.savedText = null; this.error = ""; this.seconds = 0;
+      },
+      _pickMime() {
+        const prefs = ["audio/ogg;codecs=opus", "audio/ogg", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"];
+        for (const m of prefs) { try { if (window.MediaRecorder && MediaRecorder.isTypeSupported(m)) return m; } catch (e) {} }
+        return "";
+      },
+      _extFor(mime) {
+        if (mime.includes("ogg")) return ".ogg";
+        if (mime.includes("webm")) return ".weba";   // audio-only webm; avoids video detection
+        if (mime.includes("mp4")) return ".m4a";
+        if (mime.includes("wav")) return ".wav";
+        return ".ogg";
+      },
+      async startRecording() {
+        this.reset();
+        if (!navigator.mediaDevices || !window.MediaRecorder) { this.error = "Recording is not supported in this browser."; return; }
+        try { this._stream = await navigator.mediaDevices.getUserMedia({ audio: true }); }
+        catch (e) { this.error = "Microphone access denied."; return; }
+        const mime = this._pickMime();
+        try { this._recorder = mime ? new MediaRecorder(this._stream, { mimeType: mime }) : new MediaRecorder(this._stream); }
+        catch (e) { this._recorder = new MediaRecorder(this._stream); }
+        this._chunks = [];
+        this._recorder.ondataavailable = (ev) => { if (ev.data && ev.data.size) this._chunks.push(ev.data); };
+        this._recorder.onstop = () => this._onStop();
+        this._recorder.start();
+        this.recording = true; this.seconds = 0;
+        this._timer = setInterval(() => { this.seconds++; if (this.seconds >= this.maxSeconds) this.stopRecording(); }, 1000);
+      },
+      stopRecording() {
+        if (!this.recording) return;
+        try { this._recorder.stop(); } catch (e) {}
+        this.recording = false;
+        if (this._timer) { clearInterval(this._timer); this._timer = null; }
+      },
+      async _onStop() {
+        const type = (this._recorder && this._recorder.mimeType) || this._pickMime() || "audio/ogg";
+        this.audioBlob = new Blob(this._chunks, { type });
+        this.audioUrl = URL.createObjectURL(this.audioBlob);
+        this._cleanupStream();
+        await this.saveAudio(type);
+      },
+      async saveAudio(type) {
+        this.busy = true; this.status = "{% trans "Saving audio…" %}"; this.error = "";
+        const fname = "recording-" + Date.now() + this._extFor(type);
+        const fd = new FormData();
+        fd.append("file", this.audioBlob, fname);
+        if (this.bucket) fd.append("bucket_slug", this.bucket);
+        try {
+          const res = await fetch("{% url 'vault:api_file_upload' %}", { method: "POST", body: fd, credentials: "same-origin" });
+          const data = await res.json();
+          if (res.ok && data.id) { this.audioFile = data; }
+          else { this.error = data.error || "Could not save the recording."; }
+        } catch (e) { this.error = "Could not save the recording."; }
+        this.busy = false; this.status = "";
+      },
+      async transcribe() {
+        if (!this.audioFile || this.busy) return;
+        this.busy = true; this.status = "{% trans "Transcribing…" %}"; this.error = "";
+        this.transcript = null; this.savedText = null;
+        const fd = new FormData();
+        fd.append("audio_id", this.audioFile.id);
+        fd.append("output_name", this.outputName || "transcript.txt");
+        fd.append("language", this.language || "");
+        try {
+          const res = await fetch("{% url 'manta:quick_transcribe' %}", {
+            method: "POST", body: fd, credentials: "same-origin",
+            headers: { "X-CSRFToken": "{{ csrf_token }}" },
+          });
+          const data = await res.json();
+          if (res.ok && data.ok) { this.transcript = data.text || ""; this.savedText = data.output || null; }
+          else { this.error = data.error || "Transcription failed."; }
+        } catch (e) { this.error = "Transcription failed."; }
+        this.busy = false; this.status = "";
+      },
+    };
+  }
+</script>

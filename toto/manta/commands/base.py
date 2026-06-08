@@ -48,6 +48,7 @@ class BaseCommand(ABC):
     backend: str = "ffmpeg"          # "ffmpeg" | "ffprobe" | "service"
     backend_label: str = ""          # tool shown in the UI (defaults to backend)
     service_key: str = ""            # for backend == "service"
+    tab: str = "ffmpeg"              # which builder tab the command lives under
     inputs: dict = {}
     outputs: dict = {}
     form_class = None

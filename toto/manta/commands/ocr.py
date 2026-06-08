@@ -3,12 +3,23 @@ from django import forms
 from ..forms import _w
 from .backends import TesseractCommand
 
+# Common Tesseract language packs (3-letter codes). Availability depends on the
+# installed traineddata, but these cover the usual cases.
+LANGUAGE_CHOICES = [
+    ("eng", "English"), ("pol", "Polish"), ("deu", "German"), ("fra", "French"),
+    ("spa", "Spanish"), ("ita", "Italian"), ("por", "Portuguese"), ("nld", "Dutch"),
+    ("rus", "Russian"), ("ukr", "Ukrainian"), ("ces", "Czech"), ("swe", "Swedish"),
+    ("chi_sim", "Chinese (Simplified)"), ("jpn", "Japanese"), ("kor", "Korean"),
+    ("ara", "Arabic"),
+]
+
 
 class OcrForm(forms.Form):
-    language = forms.CharField(
+    language = forms.ChoiceField(
+        choices=LANGUAGE_CHOICES,
         initial="eng",
-        widget=forms.TextInput(attrs=_w({"placeholder": "eng (or eng+pol)"})),
-        help_text="Tesseract language code(s).",
+        widget=forms.Select(attrs=_w()),
+        help_text="Language of the text in the image.",
     )
 
 
