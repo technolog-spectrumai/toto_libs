@@ -192,13 +192,14 @@ class NeoJsonSaveTaskTests(TestCase):
 
 
 class NeoJsonExportViewTests(TestCase):
-    """export_query_neojson_view turns a cached query result into a .neojson VaultFile."""
+    """export_query_neojson_view turns a cached query result into a vault file (one-click)."""
 
     def setUp(self):
         from toto.ravioli.models import CypherQuery, CypherQueryResult
         from toto.vault.models import Bucket
 
         self.user = User.objects.create_superuser("neojson_super", password="pw")
+        # Not slug 'general' — exercises the "caller-owned" auto-pick fallback.
         self.bucket = Bucket.objects.create(name="Export Bucket", owner=self.user, slug="export-bucket")
         self.query = CypherQuery.objects.create(name="People", query="MATCH (n) RETURN n")
         CypherQueryResult.objects.create(
@@ -207,28 +208,55 @@ class NeoJsonExportViewTests(TestCase):
         self.client = Client()
         self.client.force_login(self.user)
 
-    def test_export_creates_vault_file(self):
+    def test_export_auto_saves_json_named_neojson_file(self):
         from toto.vault.models import VaultFile
 
         url = reverse("ravioli:export_query_neojson", args=[self.query.pk])
-        resp = self.client.post(url, {"bucket_id": self.bucket.pk, "title": "My Graph"})
+        resp = self.client.post(url)   # one-click: no bucket, no title
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["node_count"], 2)
         self.assertEqual(data["relationship_count"], 1)
+        self.assertEqual(data["filename"], "people.json")
         self.assertIn("editor_url", data)
 
         vf = VaultFile.objects.get(pk=data["vault_file_id"])
-        self.assertEqual(vf.file_type, "neojson")
-        self.assertEqual(vf.title, "My Graph")
+        self.assertEqual(vf.bucket, self.bucket)          # auto-picked owned bucket
+        self.assertEqual(vf.file_type, "neojson")          # stored as neojson…
+        self.assertTrue(vf.title.endswith(".json"))        # …but named .json
+        self.assertTrue(vf.file.name.endswith(".json"))
         with vf.file.open("rb") as fh:
             graph = neojson.loads(fh.read().decode("utf-8"))
         self.assertEqual(neojson.validate(graph), [])
         self.assertEqual({n.id for n in graph.nodes}, {"n1", "n2"})
 
-    def test_export_requires_bucket(self):
+    def test_export_with_chosen_bucket_and_name(self):
+        from toto.vault.models import Bucket, VaultFile
+
+        other = Bucket.objects.create(name="Other", owner=self.user, slug="other-bucket")
         url = reverse("ravioli:export_query_neojson", args=[self.query.pk])
-        resp = self.client.post(url, {})
+        resp = self.client.post(url, {"bucket_id": other.pk, "name": "My Graph.json"})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["filename"], "My Graph.json")
+        self.assertEqual(data["bucket"], "Other")
+
+        vf = VaultFile.objects.get(pk=data["vault_file_id"])
+        self.assertEqual(vf.bucket, other)
+        self.assertEqual(vf.file_type, "neojson")
+        self.assertTrue(vf.file.name.endswith(".json"))
+
+    def test_export_unique_key_on_repeat(self):
+        url = reverse("ravioli:export_query_neojson", args=[self.query.pk])
+        self.assertEqual(self.client.post(url).status_code, 200)
+        # A second export of the same query must not collide on the bucket+key.
+        self.assertEqual(self.client.post(url).status_code, 200)
+
+    def test_export_no_bucket_available(self):
+        from toto.vault.models import Bucket
+
+        Bucket.objects.all().delete()
+        resp = self.client.post(reverse("ravioli:export_query_neojson", args=[self.query.pk]))
         self.assertEqual(resp.status_code, 400)
 
 

@@ -284,7 +284,13 @@ async function saveFile() {
 }
 saveBtn.addEventListener("click", saveFile);
 
-showJson();   // start in JSON mode
+// Open straight into the graph when arrived via ?view=graph (e.g. from export);
+// otherwise default to the editable JSON view.
+if (new URLSearchParams(window.location.search).get("view") === "graph") {
+  showGraph();
+} else {
+  showJson();
+}
 </script>
 {% endblock %}
 

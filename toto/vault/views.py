@@ -153,10 +153,11 @@ class PublicFileListView(TemplateView):
             dir_qs = dir_qs.filter(bucket__slug=bucket_slug)
         accessible_dirs = [d for d in dir_qs if d.user_can_access(user)]
 
-        # Public files + the authenticated owner's encrypted-but-private files
-        # (so they can decrypt from this view after encrypting)
+        # Public files + the authenticated owner's own files (private files they
+        # created/exported — e.g. .neojson graphs — must be visible to their owner,
+        # not only public ones or encrypted-privates).
         if user.is_authenticated:
-            visibility_q = Q(is_public=True) | Q(owner=user, is_encrypted=True)
+            visibility_q = Q(is_public=True) | Q(owner=user)
         else:
             visibility_q = Q(is_public=True)
         file_qs = VaultFile.objects.filter(visibility_q).distinct().select_related(

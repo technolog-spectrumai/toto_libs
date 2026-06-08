@@ -406,24 +406,22 @@
           </div>
         </template>
 
-        {# ── Export → NeoJSON → Vault modal ── #}
+        {# ── Export → NeoJSON → Vault dialog ── #}
         <template x-if="exportModal">
           <div class="fixed inset-0 z-50 flex items-center justify-center p-4" :class="darkMode ? 'bg-black/70' : 'bg-black/40'" @click.self="exportModal = false" @keydown.escape.window="exportModal = false">
             <div :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'" class="flex w-full max-w-md flex-col rounded-xl border shadow-2xl">
               <div class="flex shrink-0 items-center justify-between border-b border-current/10 px-5 py-3">
                 <h3 class="flex items-center gap-2 text-lg font-bold">
-                  <i class="fa-solid fa-file-export opacity-70"></i>{% trans "Export → NeoJSON" %}
+                  <i class="fa-solid fa-file-export opacity-70"></i>{% trans "Save graph as NeoJSON" %}
                 </h3>
                 <button @click="exportModal = false" class="rounded-lg border border-current/20 px-3 py-1.5 text-sm transition hover:opacity-80">
                   <i class="fa-solid fa-xmark"></i>
                 </button>
               </div>
               <div class="flex flex-col gap-4 px-5 py-4 text-sm">
-                <p class="opacity-60">{% trans "Save the current query's graph as a .neojson file in the vault." %}</p>
-
                 <label class="flex flex-col gap-1">
                   <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket" %}</span>
-                  <select x-model="exportBucketId" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'" class="rounded-lg border px-3 py-1.5">
+                  <select x-model="exportBucketId" @change="exportDirId = ''" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'" class="rounded-lg border px-3 py-1.5">
                     <option value="">{% trans "Select a bucket…" %}</option>
                     <template x-for="b in buckets" :key="b.id">
                       <option :value="b.id" x-text="b.name"></option>
@@ -432,7 +430,7 @@
                 </label>
 
                 <label class="flex flex-col gap-1" x-show="exportDirsForBucket().length">
-                  <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Folder (optional)" %}</span>
+                  <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Folder" %}</span>
                   <select x-model="exportDirId" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'" class="rounded-lg border px-3 py-1.5">
                     <option value="">{% trans "Bucket root" %}</option>
                     <template x-for="d in exportDirsForBucket()" :key="d.id">
@@ -442,40 +440,24 @@
                 </label>
 
                 <label class="flex flex-col gap-1">
-                  <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Title" %}</span>
-                  <input type="text" x-model="exportTitle" :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'" class="rounded-lg border px-3 py-1.5">
+                  <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "File name" %}</span>
+                  <input type="text" x-model="exportName" @keydown.enter="doExportNeojson()" placeholder="graph.json"
+                         :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'" class="rounded-lg border px-3 py-1.5 font-mono">
+                  <span class="text-xs opacity-50">{% trans "Saved as a NeoJSON-type file (opens in the graph editor)." %}</span>
                 </label>
               </div>
               <div class="flex shrink-0 justify-end gap-2 border-t border-current/10 px-5 py-3">
                 <button @click="exportModal = false" class="rounded-lg border border-current/20 px-4 py-1.5 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
-                <button @click="doExportNeojson()" :disabled="!exportBucketId || exporting"
-                        :class="(darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light') + ((!exportBucketId || exporting) ? ' opacity-50' : '')"
+                <button @click="doExportNeojson()" :disabled="!exportBucketId || !exportName.trim() || exporting"
+                        :class="(darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light') + ((!exportBucketId || !exportName.trim() || exporting) ? ' opacity-50' : '')"
                         class="rounded-lg px-4 py-1.5 text-sm font-semibold transition hover:opacity-85">
-                  <i class="fa-solid" :class="exporting ? 'fa-spinner fa-spin' : 'fa-file-export'"></i>
-                  <span x-text="exporting ? 'Exporting…' : 'Export'"></span>
+                  <i class="fa-solid" :class="exporting ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+                  <span x-text="exporting ? '{% trans "Saving…" %}' : '{% trans "Save" %}'"></span>
                 </button>
               </div>
             </div>
           </div>
         </template>
-
-        {# ── Export success toast ── #}
-        <div x-show="exportDone" x-transition @click.outside="exportDone = null"
-             class="fixed bottom-5 right-5 z-50 max-w-sm rounded-xl border p-4 shadow-2xl"
-             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">
-          <div class="flex items-start gap-3">
-            <i class="fa-solid fa-circle-check mt-0.5 text-lg" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            <div class="flex-1 text-sm">
-              <p class="font-semibold">{% trans "Saved as NeoJSON" %}</p>
-              <p class="opacity-60" x-text="`${exportDone?.node_count} nodes · ${exportDone?.relationship_count} relationships`"></p>
-              <a :href="exportDone?.editor_url" class="mt-1 inline-flex items-center gap-1 font-semibold underline underline-offset-2"
-                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-                <i class="fa-solid fa-up-right-from-square text-xs"></i>{% trans "Open in editor" %}
-              </a>
-            </div>
-            <button @click="exportDone = null" class="text-lg leading-none opacity-60 hover:opacity-100">&times;</button>
-          </div>
-        </div>
 
       </main>
     </div>
@@ -517,9 +499,8 @@ function queryViewer() {
     directories: [],
     exportBucketId: '',
     exportDirId: '',
-    exportTitle: '',
+    exportName: '',
     exporting: false,
-    exportDone: null,
 
     init() {
       this.queries = JSON.parse(document.getElementById('ravioli-queries').textContent);
@@ -528,8 +509,12 @@ function queryViewer() {
     },
 
     openExport() {
-      this.exportDone = null;
-      this.exportTitle = this.queryInfo ? `${this.queryInfo.name} (NeoJSON)` : '';
+      // Suggested file name "<query>.json"; type stays neojson in the vault.
+      const slug = (this.queryInfo?.name || 'query').toLowerCase()
+        .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'query';
+      this.exportName = `${slug}.json`;
+      if (!this.exportBucketId && this.buckets.length) this.exportBucketId = String(this.buckets[0].id);
+      this.exportDirId = '';
       this.exportModal = true;
     },
 
@@ -538,24 +523,22 @@ function queryViewer() {
     },
 
     async doExportNeojson() {
-      if (!this.selectedId || !this.exportBucketId || this.exporting) return;
+      if (!this.selectedId || !this.exportBucketId || !this.exportName.trim() || this.exporting) return;
       this.exporting = true;
       const url = EXPORT_NEOJSON_URL.replace('{id}', this.selectedId);
       const fd = new FormData();
       fd.append('bucket_id', this.exportBucketId);
-      if (this.exportDirId)  fd.append('directory_id', this.exportDirId);
-      if (this.exportTitle)  fd.append('title', this.exportTitle);
+      if (this.exportDirId) fd.append('directory_id', this.exportDirId);
+      fd.append('name', this.exportName.trim());
       try {
         const res = await fetch(url, { method: 'POST', body: fd, headers: { 'X-CSRFToken': CSRF_TOKEN } });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
-        data.editor_url = NEOJSON_EDITOR_URL.replace('{id}', data.vault_file_id);
-        this.exportDone = data;
-        this.exportModal = false;
+        // Jump straight to the new file's graph view so the result is visible.
+        window.location.href = NEOJSON_EDITOR_URL.replace('{id}', data.vault_file_id) + '?view=graph';
       } catch (e) {
         this.error = e.message;
         this.exportModal = false;
-      } finally {
         this.exporting = false;
       }
     },

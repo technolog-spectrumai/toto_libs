@@ -69,7 +69,7 @@ def query_unified_view(request):
     from toto.quota import usage_summary
     quota_data = usage_summary("ravioli", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
 
-    # Buckets / directories for the "Export → NeoJSON → Vault" modal.
+    # Buckets / directories for the "Export → NeoJSON → Vault" dialog.
     from toto.vault.models import Bucket, VaultDirectory
     buckets = list(Bucket.objects.all().order_by("name"))
     directories = list(
@@ -370,11 +370,19 @@ def query_cached_data(request, query_id):
 @require_POST
 @superuser_required
 def export_query_neojson_view(request, query_id):
-    """Convert a Cypher query's cached graph into a .neojson VaultFile (synchronous)."""
-    import re
+    """Serialize a Cypher query's cached graph into a vault file.
+
+    Driven by the export dialog: the caller chooses ``bucket_id`` (required),
+    an optional ``directory_id``, and a ``name``. The file keeps a JSON-friendly
+    extension but is stored with ``file_type='neojson'`` so it opens in the
+    neo_editor graph editor. ``bucket_id`` is auto-picked only as a fallback.
+    """
+    import os
+
     from django.core.files.base import ContentFile
     from django.urls import reverse
     from django.utils import timezone
+    from django.utils.text import slugify
 
     from toto.vault.models import Bucket, VaultDirectory, VaultFile
     from . import neojson
@@ -382,15 +390,21 @@ def export_query_neojson_view(request, query_id):
 
     selected_query = get_object_or_404(CypherQuery, pk=query_id)
 
+    # Target bucket: chosen in the dialog; fall back to general → owned → any.
     bucket_id = request.POST.get("bucket_id")
-    directory_id = request.POST.get("directory_id") or None
-    title = (request.POST.get("title") or "").strip() or f"{selected_query.name} (NeoJSON)"
+    if bucket_id:
+        bucket = get_object_or_404(Bucket, pk=bucket_id)
+    else:
+        bucket = (
+            Bucket.objects.filter(slug="general").first()
+            or Bucket.objects.filter(owner=request.user).first()
+            or Bucket.objects.first()
+        )
+    if bucket is None:
+        return JsonResponse({"error": "No vault bucket available to save into."}, status=400)
 
-    if not bucket_id:
-        return JsonResponse({"error": "Select an output bucket."}, status=400)
-
-    bucket = get_object_or_404(Bucket, pk=bucket_id)
     directory = None
+    directory_id = request.POST.get("directory_id") or None
     if directory_id:
         directory = get_object_or_404(VaultDirectory, pk=directory_id, bucket=bucket)
 
@@ -409,8 +423,19 @@ def export_query_neojson_view(request, query_id):
     )
     content = neojson.dumps(graph).encode("utf-8")
 
-    timestamp = re.sub(r"[^0-9]", "", timezone.now().isoformat()[:19])
-    filename = f"query_{query_id}_{timestamp}{neojson.EXTENSION}"
+    # Filename from the dialog (defaults to "<query>.json"). Stored as neojson
+    # regardless of the extension; the vault key is kept unique in the bucket.
+    raw_name = (request.POST.get("name") or "").strip()
+    if not raw_name:
+        raw_name = f"{slugify(selected_query.name) or 'query'}.json"
+    stem, ext = os.path.splitext(raw_name)
+    ext = ext or ".json"
+    key_base = slugify(stem) or "query"
+    key = key_base
+    if VaultFile.objects.filter(bucket=bucket, key=key).exists():
+        key = f"{key_base}-{timezone.now().strftime('%H%M%S')}"
+    filename = f"{key}{ext}"
+    title = raw_name if raw_name.lower().endswith(ext.lower()) else f"{raw_name}{ext}"
 
     vault_file = VaultFile(
         owner=request.user,
@@ -419,6 +444,7 @@ def export_query_neojson_view(request, query_id):
         directory=directory,
         file_type="neojson",
         is_public=False,
+        key=key,
     )
     vault_file.file.save(filename, ContentFile(content), save=False)
     vault_file.save()
@@ -426,6 +452,8 @@ def export_query_neojson_view(request, query_id):
     return JsonResponse({
         "vault_file_id": vault_file.pk,
         "editor_url": reverse("neo_editor:neojson_editor", args=[vault_file.pk]),
+        "filename": title,
+        "bucket": bucket.name,
         "node_count": len(graph.nodes),
         "relationship_count": len(graph.relationships),
     })
@@ -489,7 +517,7 @@ def graph_analysis_view(request):
             "buckets": buckets,
             "buckets_json": buckets_json,
             "directories_json": directories_json,
-            "formats": ["json", "yaml", "csv", "neojson"],
+            "formats": ["json", "yaml", "csv"],
             "runs_with_files": runs_with_files,
         },
         request,
