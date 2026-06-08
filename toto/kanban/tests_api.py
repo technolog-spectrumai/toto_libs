@@ -5,6 +5,7 @@ from django.test import TestCase
 
 from toto.kanban.models import Project, Column, Task, Campaign, Mission, Practitioner, ProjectCommitment
 from toto.people.models import Person
+from toto.telegraph.testutils import add_to_mesh
 
 User = get_user_model()
 
@@ -29,7 +30,7 @@ def _make_task(project, column, title="Task"):
 
 class ProjectListApiTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="kanbanuser", password="pass")
+        self.user = add_to_mesh(User.objects.create_user(username="kanbanuser", password="pass"))
         self.other = User.objects.create_user(username="kanbanother", password="pass")
         self.person = Person.objects.create(user=self.user, display_name="Kanban User", email="k@x.com")
         self.other_person = Person.objects.create(user=self.other, display_name="Other", email="o@x.com")
@@ -59,7 +60,7 @@ class ProjectListApiTests(TestCase):
 
 class ProjectDetailApiTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="projdet", password="pass")
+        self.user = add_to_mesh(User.objects.create_user(username="projdet", password="pass"))
         self.person = Person.objects.create(user=self.user, display_name="Det", email="det@x.com")
         self.project, self.columns = _make_project_with_columns(self.person)
 
@@ -83,7 +84,7 @@ class ProjectDetailApiTests(TestCase):
 
 class TaskListCreateApiTests(TestCase):
     def setUp(self):
-        self.user = User.objects.create_user(username="tasker", password="pass")
+        self.user = add_to_mesh(User.objects.create_user(username="tasker", password="pass"))
         self.person = Person.objects.create(user=self.user, display_name="Tasker", email="t@x.com")
         self.project, self.columns = _make_project_with_columns(self.person)
         self.col = self.columns[0]

@@ -4,7 +4,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-from toto.telegraph.api_views import CorsApiView
+from toto.telegraph.api_views import CorsApiView, MeshGatedApiView
 from toto.locations.models import Address, Zone, Territory, Route, RouteChain, MapLayer
 
 
@@ -48,14 +48,14 @@ def _zone_to_dict(zone):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ZoneListApiView(CorsApiView):
+class ZoneListApiView(MeshGatedApiView):
     def get(self, request):
         zones = Zone.objects.select_related("territory").order_by("name")[:200]
         return JsonResponse({"zones": [_zone_to_dict(z) for z in zones]})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class AddressListCreateApiView(CorsApiView):
+class AddressListCreateApiView(MeshGatedApiView):
     def get(self, request):
         addresses = Address.objects.order_by("locality_name", "street")[:200]
         return JsonResponse({"addresses": [_address_to_dict(a) for a in addresses]})
@@ -90,7 +90,7 @@ class AddressDetailApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class MapDataApiView(CorsApiView):
+class MapDataApiView(MeshGatedApiView):
     def get(self, request):
         locations = []
 
@@ -150,7 +150,7 @@ class MapDataApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class MapLayersApiView(CorsApiView):
+class MapLayersApiView(MeshGatedApiView):
     def get(self, request):
         layers = []
         for layer in MapLayer.objects.filter(is_active=True).prefetch_related("polygons").order_by("name"):

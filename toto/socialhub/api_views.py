@@ -3,7 +3,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
-from toto.telegraph.api_views import CorsApiView
+from toto.telegraph.api_views import CorsApiView, MeshGatedApiView
 from toto.people.models import Person
 from toto.socialhub.models import Community
 
@@ -39,14 +39,14 @@ def _community_to_dict(c):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ProfileListApiView(CorsApiView):
+class ProfileListApiView(MeshGatedApiView):
     def get(self, request):
         profiles = Person.objects.prefetch_related("communities").order_by("display_name")[:100]
         return JsonResponse({"profiles": [_profile_to_dict(request, p) for p in profiles]})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ProfileDetailApiView(CorsApiView):
+class ProfileDetailApiView(MeshGatedApiView):
     def get(self, request, slug):
         try:
             person = Person.objects.prefetch_related("communities").get(slug=slug)
@@ -61,14 +61,14 @@ class ProfileDetailApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class CommunityListApiView(CorsApiView):
+class CommunityListApiView(MeshGatedApiView):
     def get(self, request):
         communities = Community.objects.prefetch_related("senior_members").order_by("name")[:100]
         return JsonResponse({"communities": [_community_to_dict(c) for c in communities]})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class CommunityDetailApiView(CorsApiView):
+class CommunityDetailApiView(MeshGatedApiView):
     def get(self, request, slug):
         try:
             community = Community.objects.prefetch_related("senior_members").get(slug=slug)
@@ -88,7 +88,7 @@ class CommunityDetailApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class CommunityOrgChartApiView(CorsApiView):
+class CommunityOrgChartApiView(MeshGatedApiView):
     def get(self, request, slug):
         try:
             community = Community.objects.get(slug=slug)

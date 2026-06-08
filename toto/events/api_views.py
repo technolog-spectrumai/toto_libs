@@ -6,7 +6,7 @@ from django.utils.timezone import localtime, now, make_aware
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-from toto.telegraph.api_views import CorsApiView
+from toto.telegraph.api_views import CorsApiView, MeshGatedApiView
 from .models import EventCategory, ScheduledEvent, EventInvite
 
 
@@ -48,7 +48,7 @@ def _require_auth(request):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class EventListApiView(CorsApiView):
+class EventListApiView(MeshGatedApiView):
     def get(self, request):
         err = _require_auth(request)
         if err:
@@ -140,7 +140,7 @@ class EventListApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class EventDetailApiView(CorsApiView):
+class EventDetailApiView(MeshGatedApiView):
     def get(self, request, pk):
         err = _require_auth(request)
         if err:
@@ -218,7 +218,7 @@ class EventInviteApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class FormDataApiView(CorsApiView):
+class FormDataApiView(MeshGatedApiView):
     """Return categories, addresses, and people for the create-event form."""
 
     def get(self, request):
@@ -245,7 +245,7 @@ class FormDataApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class MyInvitesApiView(CorsApiView):
+class MyInvitesApiView(MeshGatedApiView):
     def get(self, request):
         err = _require_auth(request)
         if err:

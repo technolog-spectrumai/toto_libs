@@ -3,12 +3,14 @@ from django.test import TestCase
 
 from toto.people.models import Person
 from toto.socialhub.models import Community
+from toto.telegraph.testutils import login_mesh_member
 
 User = get_user_model()
 
 
 class ProfileListApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.user1 = User.objects.create_user(username="alice", password="pass")
         self.user2 = User.objects.create_user(username="bob", password="pass")
         Person.objects.create(user=self.user1, display_name="Alice", email="alice@ex.com", slug="alice")
@@ -29,6 +31,7 @@ class ProfileListApiTests(TestCase):
 
 class ProfileDetailApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.user = User.objects.create_user(username="charlie", password="pass")
         self.person = Person.objects.create(
             user=self.user, display_name="Charlie", email="charlie@ex.com", slug="charlie"
@@ -48,6 +51,7 @@ class ProfileDetailApiTests(TestCase):
 
 class CommunityListApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         Community.objects.create(name="Guild Alpha", slug="guild-alpha", org_type="guild")
         Community.objects.create(name="Zeta Corp", slug="zeta-corp", org_type="company")
 
@@ -66,6 +70,7 @@ class CommunityListApiTests(TestCase):
 
 class CommunityDetailApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.community = Community.objects.create(
             name="Test Community", slug="test-community", org_type="non_profit"
         )

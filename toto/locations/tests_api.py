@@ -4,12 +4,14 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from toto.locations.models import Address, Territory, Zone
+from toto.telegraph.testutils import login_mesh_member
 
 User = get_user_model()
 
 
 class ZoneListApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.territory = Territory.objects.create(
             name="North",
             geometry="POLYGON((0 0, 1 0, 1 1, 0 1, 0 0))",
@@ -45,6 +47,7 @@ class ZoneListApiTests(TestCase):
 
 class AddressListCreateApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.user = User.objects.create_user(username="locuser", password="pass")
         Address.objects.create(street="Main St", building="1", locality_name="Springfield", country_name="US")
         Address.objects.create(street="Oak Ave", building="5", locality_name="Shelbyville", country_name="US")
@@ -64,6 +67,7 @@ class AddressListCreateApiTests(TestCase):
         self.assertIn("display", addr)
 
     def test_create_unauthenticated(self):
+        self.client.logout()
         res = self.client.post(
             "/locations/api/addresses/",
             json.dumps({"street": "New St", "building": "2", "locality_name": "City", "country_name": "US"}),
@@ -86,6 +90,7 @@ class AddressListCreateApiTests(TestCase):
 
 class AddressDetailApiTests(TestCase):
     def setUp(self):
+        login_mesh_member(self)
         self.address = Address.objects.create(
             street="Elm St", building="3", locality_name="Townsville", country_name="AU"
         )

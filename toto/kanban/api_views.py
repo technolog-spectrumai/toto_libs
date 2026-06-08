@@ -59,7 +59,7 @@ def _get_user_projects(user):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ProjectListApiView(CorsApiView):
+class ProjectListApiView(MeshGatedApiView):
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -68,7 +68,7 @@ class ProjectListApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ProjectDetailApiView(CorsApiView):
+class ProjectDetailApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -83,7 +83,7 @@ class ProjectDetailApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class TaskListCreateApiView(CorsApiView):
+class TaskListCreateApiView(MeshGatedApiView):
     def get(self, request, project_pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -339,7 +339,7 @@ class ProjectMissionsApiView(MeshGatedApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class SprintMetricsApiView(CorsApiView):
+class SprintMetricsApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -403,7 +403,7 @@ class SprintMetricsApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class BacklogApiView(CorsApiView):
+class BacklogApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -448,7 +448,7 @@ class BacklogApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class EisenhowerMatrixApiView(CorsApiView):
+class EisenhowerMatrixApiView(MeshGatedApiView):
     def get(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
