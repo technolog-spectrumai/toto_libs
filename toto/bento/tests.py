@@ -394,24 +394,39 @@ class TableViewTests(TestCase):
         self.client.login(username="tab", password="pw")
 
     def test_node_list_renders_table_and_forwards_filters(self):
-        rows = [{"uid": "u1", "display": "A", "category_name": "Idea", "category_slug": "idea"}]
+        rows = [{"uid": "u1", "display": "Node A", "category_name": "Idea", "category_slug": "idea"}]
         with patch.object(gs, "list_nodes", return_value=(rows, 1)) as m:
             resp = self.client.get(reverse("bento:node_list"), {"category": "idea", "q": "x"})
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "bentoNodeTable")     # lazy-load component
-        self.assertContains(resp, "bento-rows")         # first page json
+        self.assertContains(resp, "Node A")        # row rendered server-side
+        self.assertContains(resp, "Per page")      # page-size selector
         self.assertEqual(m.call_args.kwargs["cat_slug"], "idea")
         self.assertEqual(m.call_args.kwargs["q"], "x")
+        self.assertEqual(m.call_args.kwargs["limit"], 25)
+        self.assertEqual(m.call_args.kwargs["offset"], 0)
+
+    def test_node_list_pagination_offset_and_per_page(self):
+        with patch.object(gs, "list_nodes", return_value=([], 0)) as m:
+            self.client.get(reverse("bento:node_list"), {"page": "3", "per_page": "10"})
+        self.assertEqual(m.call_args.kwargs["limit"], 10)
+        self.assertEqual(m.call_args.kwargs["offset"], 20)
+
+    def test_node_list_bad_per_page_falls_back_to_default(self):
+        with patch.object(gs, "list_nodes", return_value=([], 0)) as m:
+            self.client.get(reverse("bento:node_list"), {"per_page": "9999"})
+        self.assertEqual(m.call_args.kwargs["limit"], 25)
 
     def test_edge_list_renders_table_and_forwards_filters(self):
-        rows = [{"id": "e1", "source": "a", "target": "b", "source_display": "A",
-                 "target_display": "B", "edge_type_name": "Supports"}]
+        rows = [{"id": "e1", "source": "a", "target": "b", "source_display": "Node A",
+                 "target_display": "Node B", "edge_type_name": "Supports"}]
         with patch.object(gs, "list_edges", return_value=(rows, 1)) as m:
-            resp = self.client.get(reverse("bento:edge_list"), {"edge_type": "supports", "q": "y"})
+            resp = self.client.get(reverse("bento:edge_list"), {"edge_type": "supports", "q": "y", "per_page": "50", "page": "2"})
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "bentoEdgeTable")
+        self.assertContains(resp, "Node A")
         self.assertEqual(m.call_args.kwargs["et_slug"], "supports")
         self.assertEqual(m.call_args.kwargs["q"], "y")
+        self.assertEqual(m.call_args.kwargs["limit"], 50)
+        self.assertEqual(m.call_args.kwargs["offset"], 50)
 
 
 class NodeFormViewTests(TestCase):

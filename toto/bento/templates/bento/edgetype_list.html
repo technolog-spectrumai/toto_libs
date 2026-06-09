@@ -13,24 +13,49 @@
   </a>
 </div>
 
-<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-  {% for et in edge_types %}
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-4 shadow-sm">
-      <div class="flex items-start justify-between">
-        <span class="inline-flex items-center gap-2 font-semibold">
-          {{ et.name }}
-        </span>
-        <span class="flex gap-1">
-          <a href="{% url 'bento:edgetype_update' et.pk %}" class="rounded border border-current/20 px-2 py-1 text-sm hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
-          <a href="{% url 'bento:edgetype_delete' et.pk %}" class="rounded border border-warn-light px-2 py-1 text-sm text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
-        </span>
-      </div>
-      <p class="mt-1 text-xs opacity-65">{{ et.rel_type }}{% if not et.directed %} · {% trans "undirected" %}{% endif %}</p>
-      {% if et.description %}<p class="mt-2 text-sm opacity-80">{{ et.description }}</p>{% endif %}
-    </div>
-  {% empty %}
-    <p class="opacity-70">{% trans "No edge-type templates yet." %}</p>
-  {% endfor %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="overflow-hidden rounded-lg border shadow-sm">
+  {# desktop: compact table #}
+  <table class="hidden w-full table-fixed text-sm md:table">
+    <thead class="border-b text-left text-xs uppercase tracking-wide opacity-70"
+           :class="darkMode ? 'border-white/10' : 'border-black/10'">
+      <tr>
+        <th class="px-3 py-2">{% trans "Name" %}</th>
+        <th class="px-3 py-2">{% trans "Rel type" %}</th>
+        <th class="w-24 px-3 py-2">{% trans "Directed" %}</th>
+        <th class="w-24 px-3 py-2 text-right">{% trans "Actions" %}</th>
+      </tr>
+    </thead>
+    <tbody class="divide-y" :class="darkMode ? 'divide-white/10' : 'divide-black/10'">
+      {% for et in edge_types %}
+        <tr class="hover:bg-current/5">
+          <td class="truncate px-3 py-2 font-medium">{{ et.name }}</td>
+          <td class="truncate px-3 py-2 opacity-70">{{ et.rel_type }}</td>
+          <td class="px-3 py-2 opacity-70">{% if et.directed %}<i class="fa-solid fa-check"></i>{% else %}<i class="fa-solid fa-minus opacity-40"></i>{% endif %}</td>
+          <td class="px-3 py-2 text-right">
+            <a href="{% url 'bento:edgetype_update' et.pk %}" class="rounded border border-current/20 px-2 py-1 hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
+            <a href="{% url 'bento:edgetype_delete' et.pk %}" class="rounded border border-warn-light px-2 py-1 text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
+          </td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="4" class="px-3 py-10 text-center opacity-70">{% trans "No edge-type templates yet." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {# mobile: compact list #}
+  <ul class="divide-y md:hidden" :class="darkMode ? 'divide-white/10' : 'divide-black/10'">
+    {% for et in edge_types %}
+      <li class="flex items-center gap-3 px-3 py-2 text-sm">
+        <a href="{% url 'bento:edgetype_update' et.pk %}" class="min-w-0 grow">
+          <span class="block truncate font-medium">{{ et.name }}</span>
+          <span class="text-xs opacity-65">{{ et.rel_type }}{% if not et.directed %} · {% trans "undirected" %}{% endif %}</span>
+        </a>
+        <a href="{% url 'bento:edgetype_delete' et.pk %}" class="shrink-0 rounded border border-warn-light px-2 py-1 text-warn-light"><i class="fa-solid fa-trash"></i></a>
+      </li>
+    {% empty %}
+      <li class="px-3 py-10 text-center opacity-70">{% trans "No edge-type templates yet." %}</li>
+    {% endfor %}
+  </ul>
 </div>
 {% endblock %}

@@ -4,7 +4,7 @@
 {% block bento_title %}{% trans "Relations" %}{% endblock %}
 
 {% block bento_content %}
-<div x-data="bentoEdgeTable()" x-init="init()">
+<div x-data="{ selected: [], allIds() { return Array.from(document.querySelectorAll('input[name=ids]')).map(c => c.value); } }">
 
 <form method="get" class="mb-4 flex flex-wrap items-end gap-3">
   <div class="grow">
@@ -27,6 +27,16 @@
       {% endfor %}
     </select>
   </div>
+  <div>
+    <label for="per_page" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Per page" %}</label>
+    <select id="per_page" name="per_page" onchange="this.form.submit()"
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+      {% for n in pagination.per_page_choices %}
+        <option value="{{ n }}" {% if n == pagination.per_page %}selected{% endif %}>{{ n }}</option>
+      {% endfor %}
+    </select>
+  </div>
   <button type="submit"
     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
     class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
@@ -39,112 +49,69 @@
   </a>
 </form>
 
-{{ rows|json_script:"bento-rows" }}
-
 <div class="mb-2 flex items-center justify-between text-sm">
-  <span class="opacity-70"><span x-text="rows.length"></span> / <span x-text="total"></span> {% trans "edge(s)" %}</span>
+  <span class="opacity-70">{{ pagination.start }}–{{ pagination.end }} {% trans "of" %} {{ pagination.total }} {% trans "edge(s)" %}</span>
   <button type="submit" form="bento-batch" x-show="selected.length"
+    @click="if (!confirm('{% trans "Delete selected edges?" %}')) $event.preventDefault()"
     class="inline-flex items-center gap-2 rounded-lg border border-warn-light px-3 py-1.5 font-semibold text-warn-light transition hover:bg-warn-light/10">
     <i class="fa-solid fa-trash"></i> {% trans "Delete selected" %} (<span x-text="selected.length"></span>)
   </button>
 </div>
 
-<form method="post" action="{% url 'bento:edge_batch_delete' %}" id="bento-batch"
-      @submit="if (!confirm('{% trans "Delete selected edges?" %}')) $event.preventDefault()">
+<form method="post" action="{% url 'bento:edge_batch_delete' %}" id="bento-batch">
   {% csrf_token %}
   <input type="hidden" name="next" value="{{ request.get_full_path }}">
-  <template x-for="id in selected" :key="id"><input type="hidden" name="ids" :value="id"></template>
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="overflow-hidden rounded-lg border shadow-sm">
+    {# desktop: compact table #}
+    <table class="hidden w-full table-fixed text-sm md:table">
+      <thead class="border-b text-left text-xs uppercase tracking-wide opacity-70"
+             :class="darkMode ? 'border-white/10' : 'border-black/10'">
+        <tr>
+          <th class="w-10 px-3 py-2"><input type="checkbox" @change="selected = $event.target.checked ? allIds() : []" :checked="selected.length === {{ edges|length }} && {{ edges|length }} > 0"></th>
+          <th class="px-3 py-2">{% trans "From" %}</th>
+          <th class="w-40 px-3 py-2">{% trans "Type" %}</th>
+          <th class="px-3 py-2">{% trans "To" %}</th>
+          <th class="w-24 px-3 py-2 text-right">{% trans "Actions" %}</th>
+        </tr>
+      </thead>
+      <tbody class="divide-y" :class="darkMode ? 'divide-white/10' : 'divide-black/10'">
+        {% for edge in edges %}
+          <tr class="hover:bg-current/5">
+            <td class="px-3 py-2"><input type="checkbox" name="ids" value="{{ edge.id }}" x-model="selected"></td>
+            <td class="truncate px-3 py-2"><a href="{% url 'bento:node_detail' edge.source %}" class="hover:underline">{{ edge.source_display }}</a></td>
+            <td class="truncate px-3 py-2 font-medium" :class="darkMode ? 'text-link-dark' : 'text-link-light'">{{ edge.edge_type_name }}</td>
+            <td class="truncate px-3 py-2"><a href="{% url 'bento:node_detail' edge.target %}" class="hover:underline">{{ edge.target_display }}</a></td>
+            <td class="px-3 py-2 text-right">
+              <a href="{% url 'bento:edge_update' edge.id %}" class="rounded border border-current/20 px-2 py-1 hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
+              <a href="{% url 'bento:edge_delete' edge.id %}" class="rounded border border-warn-light px-2 py-1 text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="px-3 py-10 text-center opacity-70">{% trans "No edges found." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    {# mobile: compact list #}
+    <ul class="divide-y md:hidden" :class="darkMode ? 'divide-white/10' : 'divide-black/10'">
+      {% for edge in edges %}
+        <li class="flex items-center gap-3 px-3 py-2 text-sm">
+          <input type="checkbox" name="ids" value="{{ edge.id }}" x-model="selected" class="shrink-0">
+          <span class="min-w-0 grow truncate">
+            <a href="{% url 'bento:node_detail' edge.source %}" class="hover:underline">{{ edge.source_display }}</a>
+            <span class="mx-1 font-medium" :class="darkMode ? 'text-link-dark' : 'text-link-light'">→ {{ edge.edge_type_name }} →</span>
+            <a href="{% url 'bento:node_detail' edge.target %}" class="hover:underline">{{ edge.target_display }}</a>
+          </span>
+          <a href="{% url 'bento:edge_update' edge.id %}" class="shrink-0 rounded border border-current/20 px-2 py-1"><i class="fa-solid fa-pen"></i></a>
+        </li>
+      {% empty %}
+        <li class="px-3 py-10 text-center opacity-70">{% trans "No edges found." %}</li>
+      {% endfor %}
+    </ul>
+  </div>
 </form>
 
-<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     class="overflow-hidden rounded-lg border shadow-sm">
-  {# desktop: compact table #}
-  <table class="hidden w-full table-fixed text-sm md:table">
-    <thead class="border-b border-current/10 text-left text-xs uppercase tracking-wide opacity-70">
-      <tr>
-        <th class="w-10 px-3 py-2"><input type="checkbox" :checked="allSelected()" @change="toggleAll($event)"></th>
-        <th class="px-3 py-2">{% trans "From" %}</th>
-        <th class="w-40 px-3 py-2">{% trans "Type" %}</th>
-        <th class="px-3 py-2">{% trans "To" %}</th>
-        <th class="w-24 px-3 py-2 text-right">{% trans "Actions" %}</th>
-      </tr>
-    </thead>
-    <tbody>
-      <template x-for="e in rows" :key="e.id">
-        <tr class="border-b border-current/5 hover:bg-current/5">
-          <td class="px-3 py-2"><input type="checkbox" :value="e.id" x-model="selected"></td>
-          <td class="truncate px-3 py-2"><a :href="nodeUrl(e.source)" class="hover:underline" x-text="e.source_display"></a></td>
-          <td class="truncate px-3 py-2 font-medium" :class="darkMode ? 'text-link-dark' : 'text-link-light'" x-text="e.edge_type_name"></td>
-          <td class="truncate px-3 py-2"><a :href="nodeUrl(e.target)" class="hover:underline" x-text="e.target_display"></a></td>
-          <td class="px-3 py-2 text-right">
-            <a :href="editUrl(e.id)" class="rounded border border-current/20 px-2 py-1 hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
-            <a :href="deleteUrl(e.id)" class="rounded border border-warn-light px-2 py-1 text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
-          </td>
-        </tr>
-      </template>
-    </tbody>
-  </table>
-
-  {# mobile: compact list #}
-  <ul class="divide-y divide-current/10 md:hidden">
-    <template x-for="e in rows" :key="e.id">
-      <li class="flex items-center gap-3 px-3 py-2 text-sm">
-        <input type="checkbox" :value="e.id" x-model="selected" class="shrink-0">
-        <span class="min-w-0 grow truncate">
-          <a :href="nodeUrl(e.source)" class="hover:underline" x-text="e.source_display"></a>
-          <span class="mx-1 font-medium" :class="darkMode ? 'text-link-dark' : 'text-link-light'" x-text="'→ ' + e.edge_type_name + ' →'"></span>
-          <a :href="nodeUrl(e.target)" class="hover:underline" x-text="e.target_display"></a>
-        </span>
-        <a :href="editUrl(e.id)" class="shrink-0 rounded border border-current/20 px-2 py-1"><i class="fa-solid fa-pen"></i></a>
-      </li>
-    </template>
-  </ul>
-
-  <div x-show="!rows.length" class="px-3 py-10 text-center">
-    <i class="fa-solid fa-arrow-right-arrow-left text-3xl opacity-60"></i>
-    <p class="mt-2 text-sm opacity-70">{% trans "No edges found." %}</p>
-  </div>
+{% include "bento/_pagination.html" with qs=filter_qs %}
 </div>
-
-<div x-ref="sentinel" class="h-8"></div>
-<div class="py-2 text-center text-sm opacity-60">
-  <span x-show="loading"><i class="fa-solid fa-spinner fa-spin"></i> {% trans "Loading…" %}</span>
-  <button type="button" x-show="!loading && !done" @click="loadMore()" class="underline hover:opacity-80">{% trans "Load more" %}</button>
-</div>
-</div>
-
-<script>
-  const BENTO_EDGE_FILTER = "{% if active_edge_type %}&edge_type={{ active_edge_type|urlencode }}{% endif %}{% if query %}&q={{ query|urlencode }}{% endif %}";
-
-  function bentoEdgeTable() {
-    return {
-      rows: JSON.parse(document.getElementById("bento-rows").textContent || "[]"),
-      total: {{ total }}, perPage: {{ per_page }}, page: 1,
-      loading: false, done: false, selected: [],
-      init() {
-        this.done = this.rows.length >= this.total;
-        new IntersectionObserver((e) => { if (e[0].isIntersecting) this.loadMore(); }, { rootMargin: "300px" })
-          .observe(this.$refs.sentinel);
-      },
-      async loadMore() {
-        if (this.loading || this.done) return;
-        this.loading = true; this.page += 1;
-        try {
-          const url = "{% url 'bento:api_edge_list' %}?per_page=" + this.perPage + "&page=" + this.page + BENTO_EDGE_FILTER;
-          const d = await (await fetch(url, { headers: { "Accept": "application/json" } })).json();
-          const more = d.edges || [];
-          this.rows.push(...more);
-          this.total = d.total ?? this.total;
-          if (more.length < this.perPage || this.rows.length >= this.total) this.done = true;
-        } catch (e) { this.done = true; }
-        finally { this.loading = false; }
-      },
-      allSelected() { return this.rows.length > 0 && this.selected.length === this.rows.length; },
-      toggleAll(e) { this.selected = e.target.checked ? this.rows.map(r => r.id) : []; },
-      nodeUrl(uid) { return "{% url 'bento:node_detail' 'UID' %}".replace("UID", uid); },
-      editUrl(id) { return "{% url 'bento:edge_update' 'EID' %}".replace("EID", id); },
-      deleteUrl(id) { return "{% url 'bento:edge_delete' 'EID' %}".replace("EID", id); },
-    };
-  }
-</script>
 {% endblock %}

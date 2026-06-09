@@ -7,6 +7,7 @@ and support batch delete. The graph view lazily expands neighborhoods.
 
 import json
 from functools import wraps
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -51,23 +52,56 @@ def graph_view(fn):
 # nodes
 # --------------------------------------------------------------------------
 
-_TABLE_PER_PAGE = 50
+PER_PAGE_CHOICES = [10, 25, 50, 100]
+DEFAULT_PER_PAGE = 25
+
+
+def _paginate(request):
+    try:
+        per_page = int(request.GET.get("per_page", DEFAULT_PER_PAGE))
+    except (TypeError, ValueError):
+        per_page = DEFAULT_PER_PAGE
+    if per_page not in PER_PAGE_CHOICES:
+        per_page = DEFAULT_PER_PAGE
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    return page, per_page
+
+
+def _page_context(page, per_page, total):
+    num_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, num_pages)
+    lo, hi = max(1, page - 2), min(num_pages, page + 2)
+    return {
+        "page": page, "per_page": per_page, "total": total, "num_pages": num_pages,
+        "has_prev": page > 1, "has_next": page < num_pages, "prev": page - 1, "next": page + 1,
+        "start": 0 if total == 0 else (page - 1) * per_page + 1,
+        "end": min(page * per_page, total),
+        "page_range": range(lo, hi + 1),
+        "per_page_choices": PER_PAGE_CHOICES,
+    }
 
 
 @graph_view
 def node_list(request):
     category = request.GET.get("category") or ""
     q = request.GET.get("q", "")
-    # First page server-side: fast initial render + detects GraphUnavailable.
-    # Further pages are lazy-loaded from api_node_list (same filters).
-    rows, total = gs.list_nodes(cat_slug=category or None, q=q, limit=_TABLE_PER_PAGE, offset=0)
+    page, per_page = _paginate(request)
+    rows, total = gs.list_nodes(cat_slug=category or None, q=q, limit=per_page, offset=(page - 1) * per_page)
+    params = {"per_page": per_page}
+    if category:
+        params["category"] = category
+    if q:
+        params["q"] = q
     return bento_render(request, "bento/node_list.html", {
-        "rows": rows,
-        "total": total,
-        "per_page": _TABLE_PER_PAGE,
+        "nodes": rows,
         "categories": BentoCategory.objects.all(),
         "active_category": category,
         "query": q,
+        "pagination": _page_context(page, per_page, total),
+        "filter_qs": urlencode(params),
     })
 
 
@@ -206,14 +240,20 @@ def node_batch_delete(request):
 def edge_list(request):
     et = request.GET.get("edge_type") or ""
     q = request.GET.get("q", "")
-    rows, total = gs.list_edges(et_slug=et or None, q=q, limit=_TABLE_PER_PAGE, offset=0)
+    page, per_page = _paginate(request)
+    rows, total = gs.list_edges(et_slug=et or None, q=q, limit=per_page, offset=(page - 1) * per_page)
+    params = {"per_page": per_page}
+    if et:
+        params["edge_type"] = et
+    if q:
+        params["q"] = q
     return bento_render(request, "bento/edge_list.html", {
-        "rows": rows,
-        "total": total,
-        "per_page": _TABLE_PER_PAGE,
+        "edges": rows,
         "edge_types": BentoEdgeType.objects.all(),
         "active_edge_type": et,
         "query": q,
+        "pagination": _page_context(page, per_page, total),
+        "filter_qs": urlencode(params),
     })
 
 
