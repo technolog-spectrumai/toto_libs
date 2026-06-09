@@ -40,7 +40,7 @@ The single most important architectural divide is `BUILD_STUDIO`.
 Build flags: `BUILD_STUDIO`, `BUILD_NEO4J`, `BUILD_LABS`
 
 Studio apps (only when `BUILD_STUDIO=1`): `telegraph`, `mandragora`, `workflows`, `videomant`
-Neo4j apps (only when `BUILD_NEO4J=1`): `ravioli`, `vicuna`
+Neo4j apps (only when `BUILD_NEO4J=1`): `ravioli`, `bento`, `vicuna`
 Labs apps (only when `BUILD_LABS=1`): `texlab`, `sketch`, `ocr`, `steven`
 
 ---
@@ -87,7 +87,6 @@ Labs apps (only when `BUILD_LABS=1`): `texlab`, `sketch`, `ocr`, `steven`
 | App | Purpose |
 |---|---|
 | `memo` | Flashcard decks and SVG diagrams. Deck-based lecture material. |
-| `bento` | Idea management and concept mapping. IdeaBox graph with directional links. |
 | `verbena` | Abstract page/section/tag bases inherited by content apps. |
 
 ### Geography
@@ -113,7 +112,8 @@ Labs apps (only when `BUILD_LABS=1`): `texlab`, `sketch`, `ocr`, `steven`
 ### Neo4j (requires `BUILD_NEO4J=1`)
 | App | Purpose |
 |---|---|
-| `ravioli` | Sole Neo4j boundary. GraphChangeEvent drain → graph upserts. Saved Cypher queries. Quota-tracked. |
+| `ravioli` | Sole Neo4j boundary. GraphChangeEvent drain → graph upserts. Saved Cypher queries. Owns the neomodel connection. Quota-tracked. |
+| `bento` | First-class Neo4j graph editor. SQL holds only node-category/edge-type templates; nodes and relationships live in Neo4j. Requires `ravioli`. No quota. |
 | `vicuna` | Ollama / Qwen service layer (no UI). |
 
 ### Labs (requires `BUILD_LABS=1`)

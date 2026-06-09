@@ -1,309 +1,309 @@
-from cryptography.exceptions import InvalidTag
+import json
+from contextlib import contextmanager
+from io import StringIO
+from unittest.mock import patch
+
+from django.apps import apps
 from django.contrib.auth.models import User
-from django.contrib.contenttypes.models import ContentType
-from django.test import Client, TestCase
+from django.core.exceptions import ImproperlyConfigured, ValidationError
+from django.core.management import call_command
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
-from toto.events.models import EventCategory
-from toto.people.models import Person
+from toto.bento import graph_service as gs
+from toto.bento import registry
+from toto.bento.models import BentoCategory, BentoEdgeType
 
-from .models import Category, IdeaBox, IdeaLink
+
+# ---------------------------------------------------------------------------
+# template validation
+# ---------------------------------------------------------------------------
+
+class TemplateValidationTests(TestCase):
+    def test_valid_category_autofills_slug_and_label(self):
+        cat = BentoCategory(name="Big Idea", property_schema=[
+            {"name": "title", "type": "string", "required": True},
+        ])
+        cat.full_clean()
+        cat.save()
+        self.assertEqual(cat.slug, "big-idea")
+        self.assertEqual(cat.neo4j_label, "BigIdea")
+
+    def test_invalid_neo4j_label_rejected(self):
+        cat = BentoCategory(name="X", neo4j_label="9bad-label")
+        with self.assertRaises(ValidationError) as ctx:
+            cat.full_clean()
+        self.assertIn("neo4j_label", ctx.exception.message_dict)
+
+    def test_reserved_property_name_rejected(self):
+        cat = BentoCategory(name="X", neo4j_label="X",
+                            property_schema=[{"name": "uid", "type": "string"}])
+        with self.assertRaises(ValidationError):
+            cat.full_clean()
+
+    def test_bad_property_type_rejected(self):
+        cat = BentoCategory(name="X", neo4j_label="X",
+                            property_schema=[{"name": "f", "type": "blob"}])
+        with self.assertRaises(ValidationError):
+            cat.full_clean()
+
+    def test_duplicate_property_rejected(self):
+        cat = BentoCategory(name="X", neo4j_label="X", property_schema=[
+            {"name": "a", "type": "string"}, {"name": "a", "type": "integer"},
+        ])
+        with self.assertRaises(ValidationError):
+            cat.full_clean()
+
+    def test_valid_edge_type_autofills_rel_type(self):
+        et = BentoEdgeType(name="Answered By")
+        et.full_clean()
+        et.save()
+        self.assertEqual(et.slug, "answered-by")
+        self.assertEqual(et.rel_type, "ANSWERED_BY")
+
+    def test_invalid_rel_type_rejected(self):
+        et = BentoEdgeType(name="X", rel_type="lower case")
+        with self.assertRaises(ValidationError) as ctx:
+            et.full_clean()
+        self.assertIn("rel_type", ctx.exception.message_dict)
 
 
-class BoxPageRenderTests(TestCase):
-    """The list, detail, and relations pages read the folded `properties` keys
-    (body, source_*, quote) through the model accessors, so render them
-    end-to-end to guard the redesign."""
+# ---------------------------------------------------------------------------
+# dynamic neomodel registry
+# ---------------------------------------------------------------------------
 
+class RegistryTests(SimpleTestCase):
+    def test_build_node_class_descriptors(self):
+        from neomodel import (
+            IntegerProperty, JSONProperty, StringProperty, StructuredNode, UniqueIdProperty,
+        )
+
+        cat = BentoCategory(
+            name="Idea", slug="idea-reg", neo4j_label="IdeaReg",
+            property_schema=[
+                {"name": "title", "type": "string", "required": True},
+                {"name": "rating", "type": "integer"},
+                {"name": "body", "type": "text"},
+            ],
+        )
+        klass = registry.build_node_class(cat)
+        self.assertTrue(issubclass(klass, StructuredNode))
+        self.assertEqual(klass.__label__, "IdeaReg")
+        props = klass.defined_properties(rels=False)
+        self.assertIsInstance(props["uid"], UniqueIdProperty)
+        self.assertIsInstance(props["extra"], JSONProperty)
+        self.assertIsInstance(props["title"], StringProperty)
+        self.assertIsInstance(props["rating"], IntegerProperty)
+        self.assertTrue(props["title"].required)
+
+    def test_build_edge_class_is_structuredrel(self):
+        from neomodel import FloatProperty, StructuredRel
+
+        et = BentoEdgeType(name="Supports", slug="supports-reg", rel_type="SUPPORTS_REG",
+                           property_schema=[{"name": "strength", "type": "float"}])
+        klass = registry.build_edge_class(et)
+        self.assertTrue(issubclass(klass, StructuredRel))
+        props = klass.defined_properties(rels=False)
+        self.assertIsInstance(props["strength"], FloatProperty)
+
+    def test_reserved_names_skipped_in_schema(self):
+        from neomodel import JSONProperty
+
+        cat = BentoCategory(name="Z", slug="z-reg", neo4j_label="ZReg",
+                            property_schema=[{"name": "extra", "type": "string"}])
+        klass = registry.build_node_class(cat)
+        # `extra` stays the JSON bag, not overridden by the (invalid) schema entry.
+        self.assertIsInstance(klass.defined_properties(rels=False)["extra"], JSONProperty)
+
+
+# ---------------------------------------------------------------------------
+# graph_service — node/edge CRUD with mocked Neo4j
+# ---------------------------------------------------------------------------
+
+class _FakeNode:
+    def __init__(self, **kw):
+        self.__dict__.update(kw)
+        self.uid = None
+
+    def save(self):
+        self.uid = "uid-123"
+
+
+class _FakeClient:
+    def __init__(self):
+        self.queries = []
+
+    def run_cypher(self, query, params=None):
+        self.queries.append((query, params or {}))
+        if "count(n)" in query or "count(r)" in query:
+            return [{"total": 3}]
+        if "RETURN n AS n" in query:
+            return [{"n": {"uid": "u1", "title": "A", "extra": "{}"}, "labels": ["Idea"]}]
+        if "CREATE (a)-[r:" in query:
+            return [{"id": "e1", "type": "SUPPORTS", "start": "u1", "end": "u2",
+                     "props": {"strength": 0.5, "extra": "{}"}}]
+        return []
+
+    def close(self):
+        pass
+
+
+@contextmanager
+def _fake_client_factory(fake):
+    yield fake
+
+
+class GraphServiceNodeTests(TestCase):
+    def setUp(self):
+        self.cat = BentoCategory.objects.create(
+            name="Idea", slug="idea", neo4j_label="Idea",
+            property_schema=[
+                {"name": "title", "type": "string", "required": True},
+                {"name": "rating", "type": "integer"},
+            ],
+        )
+
+    def test_create_node_splits_declared_and_extra(self):
+        with patch.object(gs, "_require_neomodel"), \
+             patch.object(registry, "node_class_for", return_value=_FakeNode):
+            node = gs.create_node("idea", {"title": "Hello", "rating": 5, "foo": "bar"})
+        self.assertEqual(node["uid"], "uid-123")
+        self.assertEqual(node["category_slug"], "idea")
+        self.assertEqual(node["properties"]["title"], "Hello")
+        self.assertEqual(node["properties"]["extra"], {"foo": "bar"})
+
+    def test_create_node_missing_required_raises(self):
+        with patch.object(gs, "_require_neomodel"):
+            with self.assertRaises(gs.GraphValidationError):
+                gs.create_node("idea", {"rating": 5})
+
+    def test_list_nodes_paginates_and_returns_total(self):
+        fake = _FakeClient()
+        with patch.object(gs, "_require_graph"), \
+             patch.object(gs, "_client", lambda: _fake_client_factory(fake)):
+            rows, total = gs.list_nodes(cat_slug="idea", q="a", limit=10, offset=20)
+        self.assertEqual(total, 3)
+        self.assertEqual(rows[0]["uid"], "u1")
+        row_query = [p for q, p in fake.queries if "SKIP" in q][0]
+        self.assertEqual(row_query["offset"], 20)
+        self.assertEqual(row_query["limit"], 10)
+
+    def test_delete_nodes_batch(self):
+        fake = _FakeClient()
+        with patch.object(gs, "_require_graph"), \
+             patch.object(gs, "_client", lambda: _fake_client_factory(fake)):
+            count = gs.delete_nodes(["a", "b", "c"])
+        self.assertEqual(count, 3)
+        self.assertIn("DETACH DELETE", fake.queries[0][0])
+        self.assertEqual(fake.queries[0][1]["uids"], ["a", "b", "c"])
+
+
+class GraphServiceEdgeTests(TestCase):
+    def setUp(self):
+        self.idea = BentoCategory.objects.create(name="Idea", slug="idea", neo4j_label="Idea")
+        self.source = BentoCategory.objects.create(name="Source", slug="source", neo4j_label="Source")
+        self.et = BentoEdgeType.objects.create(name="Supports", slug="supports", rel_type="SUPPORTS",
+                                               property_schema=[{"name": "strength", "type": "float"}])
+        self.et.allowed_sources.set([self.idea])
+        self.et.allowed_targets.set([self.idea])
+
+    def test_create_edge_rejects_disallowed_target(self):
+        def fake_get_node(uid):
+            return {"category_slug": "idea" if uid == "u1" else "source",
+                    "category_name": "Idea" if uid == "u1" else "Source"}
+
+        with patch.object(gs, "_require_graph"), patch.object(gs, "get_node", fake_get_node):
+            with self.assertRaises(gs.GraphValidationError):
+                gs.create_edge("supports", "u1", "u2", {"strength": 0.5})
+
+    def test_create_edge_ok(self):
+        fake = _FakeClient()
+
+        def fake_get_node(uid):
+            return {"category_slug": "idea", "category_name": "Idea"}
+
+        with patch.object(gs, "_require_graph"), patch.object(gs, "get_node", fake_get_node), \
+             patch.object(gs, "_client", lambda: _fake_client_factory(fake)):
+            edge = gs.create_edge("supports", "u1", "u2", {"strength": 0.5})
+        self.assertEqual(edge["id"], "e1")
+        self.assertEqual(edge["edge_type_slug"], "supports")
+
+    def test_delete_edges_batch(self):
+        fake = _FakeClient()
+        with patch.object(gs, "_require_graph"), \
+             patch.object(gs, "_client", lambda: _fake_client_factory(fake)):
+            count = gs.delete_edges(["e1", "e2"])
+        self.assertEqual(count, 2)
+        self.assertIn("DELETE r", fake.queries[0][0])
+        self.assertEqual(fake.queries[0][1]["ids"], ["e1", "e2"])
+
+
+# ---------------------------------------------------------------------------
+# graph disabled
+# ---------------------------------------------------------------------------
+
+@override_settings(RAVIOLI_ENABLED=False)
+class GraphDisabledTests(TestCase):
+    def setUp(self):
+        BentoCategory.objects.create(name="Idea", slug="idea", neo4j_label="Idea")
+
+    def test_list_nodes_raises_unavailable(self):
+        with self.assertRaises(gs.GraphUnavailable):
+            gs.list_nodes()
+
+    def test_create_node_raises_unavailable(self):
+        with self.assertRaises(gs.GraphUnavailable):
+            gs.create_node("idea", {})
+
+
+# ---------------------------------------------------------------------------
+# app guard, views, migration command
+# ---------------------------------------------------------------------------
+
+class AppGuardTests(SimpleTestCase):
+    def test_ready_requires_ravioli(self):
+        cfg = apps.get_app_config("bento")
+        with patch.object(apps, "is_installed", return_value=False):
+            with self.assertRaises(ImproperlyConfigured):
+                cfg.ready()
+
+
+class ViewPermissionTests(TestCase):
     def setUp(self):
         from toto.core.models import Platform
-        Platform.objects.create(site_name="T", author="A", publication_year=2024, active=True)
-        self.client = Client()
-        self.category = Category.objects.create(name="Principle")
-        self.box = IdeaBox.objects.create(
-            label="Stories beat facts",
-            category=self.category,
-            properties={
-                "body": "People remember stories.",
-                "source_title": "Made to Stick",
-                "source_type": "book",
-                "source_url": "https://example.com",
-                "quote": "A memorable quote.",
-                "rating": 5,
-            },
-        )
-        self.other = IdeaBox.objects.create(label="Memory", properties={"body": "recall"})
-        IdeaLink.objects.create(from_box=self.box, to_box=self.other, label="about")
+        Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_user("bob", password="pw")
+        self.cat = BentoCategory.objects.create(name="Idea", slug="idea", neo4j_label="Idea")
 
-    def test_box_list_renders(self):
-        res = self.client.get(reverse("bento:box_list"))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn("Stories beat facts", html)   # label
-        self.assertNotIn("Made to Stick", html)     # source is no longer shown in the list
+    def test_node_list_requires_login(self):
+        resp = self.client.get(reverse("bento:node_list"))
+        self.assertEqual(resp.status_code, 302)
 
-    def test_link_list_renders(self):
-        res = self.client.get(reverse("bento:link_list"))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn("about", html)               # relation label
-        self.assertIn("Stories beat facts", html)  # from box
-        self.assertIn("Memory", html)              # to box
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_node_list_shows_unavailable_when_graph_off(self):
+        self.client.login(username="bob", password="pw")
+        resp = self.client.get(reverse("bento:node_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "unavailable")
 
-    def test_link_list_search(self):
-        res = self.client.get(reverse("bento:link_list"), {"q": "Memory"})
-        self.assertEqual(res.status_code, 200)
-        self.assertIn("about", res.content.decode())
+    def test_category_template_crud_is_pure_sql(self):
+        self.client.login(username="bob", password="pw")
+        resp = self.client.post(reverse("bento:category_create"), {
+            "name": "Question", "slug": "", "neo4j_label": "",
+            "description": "", "property_schema": "[]", "color": "#fff", "icon": "",
+        })
+        self.assertEqual(resp.status_code, 302)
+        self.assertTrue(BentoCategory.objects.filter(name="Question").exists())
 
-    def test_box_list_search_hits_properties_body(self):
-        res = self.client.get(reverse("bento:box_list"), {"q": "remember"})
-        self.assertEqual(res.status_code, 200)
-        self.assertIn("Stories beat facts", res.content.decode())
-
-    def test_box_detail_renders(self):
-        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn("Stories beat facts", html)  # label
-
-    def test_box_detail_has_no_body_source_quote_panels(self):
-        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
-        html = res.content.decode()
-        # body / source / quote live only inside the read-only properties JSON viewer now,
-        # not in dedicated panels (Source used fa-book-open, Quote used fa-quote-left).
-        self.assertNotIn("fa-book-open", html)
-        self.assertNotIn("fa-quote-left", html)
-
-    def test_box_detail_renders_readonly_ace_properties(self):
-        res = self.client.get(reverse("bento:box_detail", args=[self.box.pk]))
-        html = res.content.decode()
-        # Properties are shown as a read-only ACE JSON viewer seeded via json_script.
-        self.assertIn('class="metadata-ace-view"', html)
-        self.assertIn('id="box_properties_json"', html)
-        self.assertIn("vendor/ace/ace.", html)
+    def test_node_list_happy_path_with_mocked_graph(self):
+        self.client.login(username="bob", password="pw")
+        with patch.object(gs, "list_nodes", return_value=([], 0)):
+            resp = self.client.get(reverse("bento:node_list"))
+        self.assertEqual(resp.status_code, 200)
 
 
-class IdeaBoxLockTests(TestCase):
-    def setUp(self):
-        self.box = IdeaBox.objects.create(label="Secret note", properties={"body": "Hidden content"})
-
-    def test_lock_encrypts_body(self):
-        self.box.lock("pass123")
-        self.box.refresh_from_db()
-        self.assertTrue(self.box.is_locked)
-        self.assertEqual(self.box.body, "")
-        self.assertIsNotNone(self.box.encrypted_body)
-        self.assertIsNotNone(self.box.lock_nonce)
-        self.assertIsNotNone(self.box.lock_salt)
-
-    def test_unlock_restores_body(self):
-        self.box.lock("pass123")
-        self.box.unlock("pass123")
-        self.box.refresh_from_db()
-        self.assertFalse(self.box.is_locked)
-        self.assertEqual(self.box.body, "Hidden content")
-        self.assertIsNone(self.box.encrypted_body)
-        self.assertIsNone(self.box.lock_nonce)
-        self.assertIsNone(self.box.lock_salt)
-
-    def test_unlock_wrong_password_raises(self):
-        self.box.lock("pass123")
-        with self.assertRaises(InvalidTag):
-            self.box.unlock("wrong")
-
-    def test_lock_already_locked_raises(self):
-        self.box.lock("pass123")
-        with self.assertRaises(ValueError):
-            self.box.lock("pass123")
-
-    def test_unlock_not_locked_raises(self):
-        with self.assertRaises(ValueError):
-            self.box.unlock("pass123")
-
-    def test_lock_empty_password_raises(self):
-        with self.assertRaises(ValueError):
-            self.box.lock("")
-
-    def test_different_ciphertexts_for_same_input(self):
-        box2 = IdeaBox.objects.create(label="Copy", properties={"body": "Hidden content"})
-        self.box.lock("pass123")
-        box2.lock("pass123")
-        self.assertNotEqual(bytes(self.box.lock_nonce), bytes(box2.lock_nonce))
-        self.assertNotEqual(bytes(self.box.encrypted_body), bytes(box2.encrypted_body))
-
-
-class BoxLockViewTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user("tester", password="pw")
-        Person.objects.create(user=self.user, is_federal_agent=True)
-        self.client = Client()
-        self.client.force_login(self.user)
-        self.box = IdeaBox.objects.create(label="Note", properties={"body": "Secret"})
-
-    def _lock_url(self):
-        return reverse("bento:box_lock", args=[self.box.pk])
-
-    def _unlock_url(self):
-        return reverse("bento:box_unlock", args=[self.box.pk])
-
-    def test_lock_missing_password_returns_400(self):
-        res = self.client.post(self._lock_url(), {})
-        self.assertEqual(res.status_code, 400)
-        self.assertFalse(res.json()["ok"])
-
-    def test_lock_success(self):
-        res = self.client.post(self._lock_url(), {"password": "secret"})
-        self.assertEqual(res.status_code, 200)
-        self.assertTrue(res.json()["ok"])
-        self.box.refresh_from_db()
-        self.assertTrue(self.box.is_locked)
-
-    def test_lock_already_locked_returns_400(self):
-        self.box.lock("secret")
-        res = self.client.post(self._lock_url(), {"password": "secret"})
-        self.assertEqual(res.status_code, 400)
-        self.assertFalse(res.json()["ok"])
-
-    def test_unlock_missing_password_returns_400(self):
-        self.box.lock("secret")
-        res = self.client.post(self._unlock_url(), {})
-        self.assertEqual(res.status_code, 400)
-
-    def test_unlock_correct_password_success(self):
-        self.box.lock("secret")
-        res = self.client.post(self._unlock_url(), {"password": "secret"})
-        self.assertEqual(res.status_code, 200)
-        self.assertTrue(res.json()["ok"])
-        self.box.refresh_from_db()
-        self.assertFalse(self.box.is_locked)
-        self.assertEqual(self.box.body, "Secret")
-
-    def test_unlock_wrong_password_returns_400(self):
-        self.box.lock("secret")
-        res = self.client.post(self._unlock_url(), {"password": "nope"})
-        self.assertEqual(res.status_code, 400)
-        data = res.json()
-        self.assertFalse(data["ok"])
-        self.assertIn("error", data)
-
-    def test_unlock_not_locked_returns_400(self):
-        res = self.client.post(self._unlock_url(), {"password": "secret"})
-        self.assertEqual(res.status_code, 400)
-
-    def test_lock_get_not_allowed(self):
-        res = self.client.get(self._lock_url())
-        self.assertEqual(res.status_code, 405)
-
-    def test_unlock_get_not_allowed(self):
-        res = self.client.get(self._unlock_url())
-        self.assertEqual(res.status_code, 405)
-
-
-class BoxLockPermissionTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user("civilian", password="pw")
-        # No Person / is_federal_agent=False
-        self.client = Client()
-        self.client.force_login(self.user)
-        self.box = IdeaBox.objects.create(label="Note", properties={"body": "Secret"})
-
-    def test_non_agent_cannot_lock(self):
-        res = self.client.post(reverse("bento:box_lock", args=[self.box.pk]), {"password": "pw"})
-        self.assertEqual(res.status_code, 403)
-        self.assertFalse(res.json()["ok"])
-        self.box.refresh_from_db()
-        self.assertFalse(self.box.is_locked)
-
-    def test_non_agent_cannot_unlock(self):
-        # Lock via model directly, bypassing view
-        self.box.lock("pw")
-        res = self.client.post(reverse("bento:box_unlock", args=[self.box.pk]), {"password": "pw"})
-        self.assertEqual(res.status_code, 403)
-        self.assertFalse(res.json()["ok"])
-        self.box.refresh_from_db()
-        self.assertTrue(self.box.is_locked)
-
-    def test_non_agent_with_false_flag_cannot_lock(self):
-        Person.objects.create(user=self.user, is_federal_agent=False)
-        res = self.client.post(reverse("bento:box_lock", args=[self.box.pk]), {"password": "pw"})
-        self.assertEqual(res.status_code, 403)
-
-
-class SerializeBoxLockTests(TestCase):
-    def setUp(self):
-        self.user = User.objects.create_user("tester2", password="pw")
-        Person.objects.create(user=self.user, is_federal_agent=True)
-        self.client = Client()
-        self.client.force_login(self.user)
-
-    def test_api_boxes_hides_body_when_locked(self):
-        box = IdeaBox.objects.create(label="Private", properties={"body": "Top secret"})
-        box.lock("pw")
-        res = self.client.get(reverse("bento:api_boxes"))
-        data = res.json()
-        result = next(r for r in data["results"] if r["id"] == box.pk)
-        self.assertIsNone(result["properties"]["body"])
-        self.assertTrue(result["is_locked"])
-
-    def test_api_boxes_shows_body_when_unlocked(self):
-        box = IdeaBox.objects.create(label="Public", properties={"body": "Visible"})
-        res = self.client.get(reverse("bento:api_boxes"))
-        data = res.json()
-        result = next(r for r in data["results"] if r["id"] == box.pk)
-        self.assertEqual(result["properties"]["body"], "Visible")
-        self.assertFalse(result["is_locked"])
-
-
-class MetadataAceEditorTests(TestCase):
-    """The node/link `properties` field is edited as JSON via an ACE editor."""
-
-    def setUp(self):
-        from toto.core.models import Platform
-        Platform.objects.create(site_name="T", author="A", publication_year=2024, active=True)
-        self.user = User.objects.create_user("aceuser", password="pw")
-        self.client = Client()
-        self.client.force_login(self.user)
-
-    def test_box_create_renders_ace_editor(self):
-        res = self.client.get(reverse("bento:box_create"))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn('class="metadata-ace"', html)
-        self.assertIn('id_properties_ace', html)
-        self.assertIn('vendor/ace/ace.', html)
-        self.assertIn("Metadata (JSON)", html)
-
-    def test_box_update_seeds_existing_properties(self):
-        box = IdeaBox.objects.create(label="C", properties={"rating": 4})
-        res = self.client.get(reverse("bento:box_update", args=[box.pk]))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn('class="metadata-ace"', html)
-        self.assertIn("rating", html)
-
-    def test_link_create_renders_ace_editor(self):
-        res = self.client.get(reverse("bento:link_create"))
-        self.assertEqual(res.status_code, 200)
-        html = res.content.decode()
-        self.assertIn('class="metadata-ace"', html)
-        self.assertIn('vendor/ace/ace.', html)
-
-    def test_box_update_saves_json_metadata(self):
-        box = IdeaBox.objects.create(label="C")
-        res = self.client.post(
-            reverse("bento:box_update", args=[box.pk]),
-            {"label": "C", "properties": '{"rating": 5, "tags": ["a"]}'},
-        )
-        self.assertEqual(res.status_code, 302)
-        box.refresh_from_db()
-        self.assertEqual(box.properties, {"rating": 5, "tags": ["a"]})
-
-    def test_box_update_rejects_invalid_json_metadata(self):
-        box = IdeaBox.objects.create(label="C", properties={"keep": True})
-        res = self.client.post(
-            reverse("bento:box_update", args=[box.pk]),
-            {"label": "C", "properties": "{not json}"},
-        )
-        self.assertEqual(res.status_code, 200)  # re-rendered with errors, not saved
-        box.refresh_from_db()
-        self.assertEqual(box.properties, {"keep": True})
+class MigrationCommandTests(TestCase):
+    def test_dry_run_no_legacy_tables_is_noop(self):
+        out = StringIO()
+        call_command("migrate_bento_to_neo4j", "--dry-run", stdout=out)
+        self.assertIn("nothing to migrate", out.getvalue())

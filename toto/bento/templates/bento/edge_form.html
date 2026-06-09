@@ -1,0 +1,61 @@
+{% extends "bento/base.html" %}
+{% load i18n %}
+
+{% block bento_title %}{{ title }}{% endblock %}
+
+{% block bento_content %}
+<div class="mx-auto max-w-2xl">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="mb-1 text-xl font-bold">{{ title }}</h2>
+    <p class="mb-4 text-sm opacity-70">{% trans "Edge type" %}: <span class="font-semibold">{{ edge_type.name }}</span> ({{ edge_type.rel_type }})</p>
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+        <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      {% if not edge %}
+        <input type="hidden" name="edge_type" value="{{ edge_type.slug }}">
+        <div class="space-y-1">
+          <label for="from_uid" class="block text-sm font-semibold">{% trans "From node (uid)" %} <span class="opacity-60">*</span></label>
+          <input id="from_uid" name="from_uid" value="{{ from_uid }}" required
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+        <div class="space-y-1">
+          <label for="to_uid" class="block text-sm font-semibold">{% trans "To node (uid)" %} <span class="opacity-60">*</span></label>
+          <input id="to_uid" name="to_uid" required
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+      {% else %}
+        <p class="text-sm opacity-70">{{ edge.source }} → {{ edge.target }}</p>
+      {% endif %}
+
+      {% for field in form %}
+        {% if field.name == "extra" %}
+          {% include "bento/_metadata_ace.html" with field=field %}
+        {% else %}
+          {% include "bento/_field.html" with field=field %}
+        {% endif %}
+      {% endfor %}
+
+      <div class="flex gap-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
+        </button>
+        <a href="{% url 'bento:edge_list' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
+{% endblock %}

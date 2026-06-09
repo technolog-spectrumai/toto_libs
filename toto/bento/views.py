@@ -1,279 +1,390 @@
-from cryptography.exceptions import InvalidTag
-from django.db.models import Q
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, redirect, render
+"""Server-rendered Bento UI: a Neo4j graph editor.
+
+All graph access goes through :mod:`graph_service`; nothing here imports neo4j or
+neomodel. Node/edge lists are paginated, filterable by type, quick-searchable,
+and support batch delete. The graph view lazily expands neighborhoods.
+"""
+
+from functools import wraps
+
+from django.contrib import messages
+from django.contrib.auth.decorators import login_required
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect
+from django.shortcuts import render
+from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
-from django.views.decorators.http import require_POST
+
 from toto.ui import PageProcessor
 
-from .forms import CategoryForm, IdeaBoxForm, IdeaLinkForm
-from .models import (
-    Category,
-    IdeaBox,
-    IdeaLink,
+from . import graph_service as gs
+from .forms import (
+    BentoCategoryForm,
+    BentoEdgeTypeForm,
+    build_edge_form,
+    build_node_form,
+    collect_props,
 )
+from .models import BentoCategory, BentoEdgeType
 
 
 def bento_render(request, template_name, context):
     return render(request, template_name, PageProcessor().decorate(context, request))
 
 
-def filtered_boxes(request):
-    query = request.GET.get("q", "")
-
-    boxes = IdeaBox.objects.select_related("category")
-
-    if query:
-        boxes = boxes.filter(
-            Q(label__icontains=query)
-            | Q(properties__body__icontains=query)
-            | Q(properties__source_title__icontains=query)
-            | Q(properties__source_type__icontains=query)
-            | Q(properties__quote__icontains=query)
-        )
-
-    return boxes, query
+def _unavailable(request, exc):
+    return bento_render(request, "bento/unavailable.html", {"error": str(exc)})
 
 
-def serialize_box(box):
-    properties = dict(box.properties)
-    if box.is_locked:
-        properties["body"] = None
+def graph_view(fn):
+    """Login-required + graceful handling of a disabled/missing graph."""
+
+    @wraps(fn)
+    @login_required
+    def wrapper(request, *args, **kwargs):
+        try:
+            return fn(request, *args, **kwargs)
+        except gs.GraphUnavailable as exc:
+            return _unavailable(request, exc)
+        except gs.NotFound:
+            raise Http404()
+
+    return wrapper
+
+
+def _page_params(request, default=25):
+    try:
+        per_page = max(1, min(int(request.GET.get("per_page", default)), 200))
+    except (TypeError, ValueError):
+        per_page = default
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except (TypeError, ValueError):
+        page = 1
+    return page, per_page, (page - 1) * per_page
+
+
+def _page_context(page, per_page, total):
+    num_pages = max(1, (total + per_page - 1) // per_page)
+    page = min(page, num_pages)
     return {
-        "id": box.pk,
-        "label": box.label or _("Untitled box"),
-        "is_locked": box.is_locked,
-        "category": {
-            "id": box.category_id,
-            "name": str(box.category),
-            "slug": box.category.slug,
-        } if box.category_id else None,
-        "properties": properties,
-        "created_at": box.created_at.isoformat(),
-        "updated_at": box.updated_at.isoformat(),
+        "page": page, "per_page": per_page, "total": total, "num_pages": num_pages,
+        "has_prev": page > 1, "has_next": page < num_pages,
+        "prev": page - 1, "next": page + 1,
+        "start_index": 0 if total == 0 else (page - 1) * per_page + 1,
+        "end_index": min(page * per_page, total),
+        "page_range": range(1, num_pages + 1),
     }
 
 
-def serialize_link(link):
-    return {
-        "id": link.pk,
-        "from_box": link.from_box_id,
-        "to_box": link.to_box_id,
-        "label": link.label or _("related to"),
-        "properties": link.properties,
-        "created_at": link.created_at.isoformat(),
-    }
+# --------------------------------------------------------------------------
+# nodes
+# --------------------------------------------------------------------------
 
-
-def box_list(request):
-    boxes, query = filtered_boxes(request)
-
-    return bento_render(request, "bento/box_list.html", {
-        "boxes": boxes,
-        "query": query,
-        "total_boxes": IdeaBox.objects.count(),
-        "link_count": IdeaLink.objects.count(),
+@graph_view
+def node_list(request):
+    page, per_page, offset = _page_params(request)
+    category = request.GET.get("category") or ""
+    q = request.GET.get("q", "")
+    rows, total = gs.list_nodes(cat_slug=category or None, q=q, limit=per_page, offset=offset)
+    return bento_render(request, "bento/node_list.html", {
+        "nodes": rows,
+        "categories": BentoCategory.objects.all(),
+        "active_category": category,
+        "query": q,
+        "pagination": _page_context(page, per_page, total),
     })
 
 
-def box_detail(request, pk):
-    box = get_object_or_404(IdeaBox.objects.select_related("category"), pk=pk)
-    outgoing_links = box.outgoing_links.select_related("to_box")
-    incoming_links = box.incoming_links.select_related("from_box")
-
-    return bento_render(request, "bento/box_detail.html", {
-        "box": box,
-        "outgoing_links": outgoing_links,
-        "incoming_links": incoming_links,
-        "can_lock": _is_federal_agent(request),
+@graph_view
+def node_detail(request, uid):
+    node = gs.get_node(uid)
+    edges, _total = gs.list_edges(node_uid=uid, limit=200, offset=0)
+    return bento_render(request, "bento/node_detail.html", {
+        "node": node,
+        "edges": edges,
+        "edge_types": BentoEdgeType.objects.all(),
     })
 
 
-def box_create(request):
+@graph_view
+def node_create(request):
+    slug = request.GET.get("category") or request.POST.get("category")
+    category = BentoCategory.objects.filter(slug=slug).first() if slug else None
+    if not category:
+        return bento_render(request, "bento/node_pick_category.html", {
+            "categories": BentoCategory.objects.all(),
+        })
+
     if request.method == "POST":
-        form = IdeaBoxForm(request.POST)
+        form = build_node_form(category, data=request.POST)
         if form.is_valid():
-            box = form.save()
-            return redirect("bento:box_detail", pk=box.pk)
+            try:
+                node = gs.create_node(category.slug, collect_props(form))
+                messages.success(request, _("Node created."))
+                return redirect("bento:node_detail", uid=node["uid"])
+            except (gs.GraphValidationError, ValueError) as exc:
+                form.add_error(None, str(exc))
     else:
-        form = IdeaBoxForm()
-
-    return bento_render(request, "bento/box_form.html", {"form": form, "title": _("New box")})
-
-
-def box_update(request, pk):
-    box = get_object_or_404(IdeaBox, pk=pk)
-
-    if request.method == "POST":
-        form = IdeaBoxForm(request.POST, instance=box)
-        if form.is_valid():
-            box = form.save()
-            return redirect("bento:box_detail", pk=box.pk)
-    else:
-        form = IdeaBoxForm(instance=box)
-
-    return bento_render(request, "bento/box_form.html", {"form": form, "title": _("Edit box"), "box": box})
-
-
-def box_delete(request, pk):
-    box = get_object_or_404(IdeaBox, pk=pk)
-
-    if request.method == "POST":
-        box.delete()
-        return redirect("bento:box_list")
-
-    return bento_render(request, "bento/box_confirm_delete.html", {"box": box})
-
-
-def link_list(request):
-    query = request.GET.get("q", "")
-
-    links = IdeaLink.objects.select_related("from_box", "to_box")
-
-    if query:
-        links = links.filter(
-            Q(label__icontains=query)
-            | Q(from_box__label__icontains=query)
-            | Q(to_box__label__icontains=query)
-        )
-
-    return bento_render(request, "bento/link_list.html", {
-        "links": links,
-        "query": query,
-        "total_links": IdeaLink.objects.count(),
-        "total_boxes": IdeaBox.objects.count(),
+        form = build_node_form(category)
+    return bento_render(request, "bento/node_form.html", {
+        "form": form, "category": category, "title": _("New %(name)s") % {"name": category.name},
     })
 
 
-def link_create(request):
-    initial = {}
-    from_box_id = request.GET.get("from")
-    to_box_id = request.GET.get("to")
-
-    if from_box_id:
-        initial["from_box"] = from_box_id
-    if to_box_id:
-        initial["to_box"] = to_box_id
+@graph_view
+def node_update(request, uid):
+    node = gs.get_node(uid)
+    category = get_object_or_404(BentoCategory, slug=node["category_slug"])
+    props = node["properties"]
+    initial = {k: props.get(k) for k in props}
+    if isinstance(props.get("extra"), dict):
+        import json
+        initial["extra"] = json.dumps(props["extra"], indent=2) if props["extra"] else ""
 
     if request.method == "POST":
-        form = IdeaLinkForm(request.POST)
+        form = build_node_form(category, data=request.POST)
         if form.is_valid():
-            link = form.save()
-            return redirect("bento:box_detail", pk=link.from_box.pk)
+            try:
+                gs.update_node(uid, collect_props(form))
+                messages.success(request, _("Node updated."))
+                return redirect("bento:node_detail", uid=uid)
+            except (gs.GraphValidationError, ValueError) as exc:
+                form.add_error(None, str(exc))
     else:
-        form = IdeaLinkForm(initial=initial)
+        form = build_node_form(category, initial=initial)
+    return bento_render(request, "bento/node_form.html", {
+        "form": form, "category": category, "node": node, "title": _("Edit node"),
+    })
 
-    return bento_render(request, "bento/link_form.html", {"form": form, "title": _("New link")})
+
+@graph_view
+def node_delete(request, uid):
+    node = gs.get_node(uid)
+    if request.method == "POST":
+        gs.delete_node(uid)
+        messages.success(request, _("Node deleted."))
+        return redirect("bento:node_list")
+    return bento_render(request, "bento/node_confirm_delete.html", {"node": node})
 
 
-def link_delete(request, pk):
-    link = get_object_or_404(IdeaLink, pk=pk)
-    from_box_pk = link.from_box.pk
+@graph_view
+def node_batch_delete(request):
+    if request.method == "POST":
+        uids = request.POST.getlist("uids")
+        count = gs.delete_nodes(uids)
+        messages.success(request, _("%(n)d node(s) deleted.") % {"n": count})
+    return redirect(request.POST.get("next") or "bento:node_list")
+
+
+# --------------------------------------------------------------------------
+# edges
+# --------------------------------------------------------------------------
+
+@graph_view
+def edge_list(request):
+    page, per_page, offset = _page_params(request)
+    et = request.GET.get("edge_type") or ""
+    q = request.GET.get("q", "")
+    rows, total = gs.list_edges(et_slug=et or None, q=q, limit=per_page, offset=offset)
+    return bento_render(request, "bento/edge_list.html", {
+        "edges": rows,
+        "edge_types": BentoEdgeType.objects.all(),
+        "active_edge_type": et,
+        "query": q,
+        "pagination": _page_context(page, per_page, total),
+    })
+
+
+@graph_view
+def edge_create(request):
+    slug = request.GET.get("edge_type") or request.POST.get("edge_type")
+    edge_type = BentoEdgeType.objects.filter(slug=slug).first() if slug else None
+    if not edge_type:
+        return bento_render(request, "bento/edge_pick_type.html", {
+            "edge_types": BentoEdgeType.objects.all(),
+            "from_uid": request.GET.get("from", ""),
+        })
 
     if request.method == "POST":
-        link.delete()
-        return redirect("bento:box_detail", pk=from_box_pk)
+        form = build_edge_form(edge_type, data=request.POST)
+        from_uid = request.POST.get("from_uid", "").strip()
+        to_uid = request.POST.get("to_uid", "").strip()
+        if form.is_valid():
+            try:
+                gs.create_edge(edge_type.slug, from_uid, to_uid, collect_props(form))
+                messages.success(request, _("Edge created."))
+                return redirect("bento:node_detail", uid=from_uid)
+            except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
+                form.add_error(None, str(exc))
+    else:
+        form = build_edge_form(edge_type)
+    return bento_render(request, "bento/edge_form.html", {
+        "form": form, "edge_type": edge_type,
+        "from_uid": request.GET.get("from", ""),
+        "title": _("New %(name)s edge") % {"name": edge_type.name},
+    })
 
-    return bento_render(request, "bento/link_confirm_delete.html", {"link": link})
+
+@graph_view
+def edge_update(request, edge_id):
+    edge = gs.get_edge(edge_id)
+    edge_type = get_object_or_404(BentoEdgeType, slug=edge["edge_type_slug"])
+    props = edge["properties"]
+    initial = {k: props.get(k) for k in props}
+
+    if request.method == "POST":
+        form = build_edge_form(edge_type, data=request.POST)
+        if form.is_valid():
+            try:
+                gs.update_edge(edge_id, collect_props(form))
+                messages.success(request, _("Edge updated."))
+                return redirect("bento:node_detail", uid=edge["source"])
+            except (gs.GraphValidationError, ValueError) as exc:
+                form.add_error(None, str(exc))
+    else:
+        form = build_edge_form(edge_type, initial=initial)
+    return bento_render(request, "bento/edge_form.html", {
+        "form": form, "edge_type": edge_type, "edge": edge, "title": _("Edit edge"),
+    })
 
 
+@graph_view
+def edge_delete(request, edge_id):
+    edge = gs.get_edge(edge_id)
+    if request.method == "POST":
+        gs.delete_edge(edge_id)
+        messages.success(request, _("Edge deleted."))
+        return redirect(request.POST.get("next") or "bento:edge_list")
+    return bento_render(request, "bento/edge_confirm_delete.html", {"edge": edge})
+
+
+@graph_view
+def edge_batch_delete(request):
+    if request.method == "POST":
+        ids = request.POST.getlist("ids")
+        count = gs.delete_edges(ids)
+        messages.success(request, _("%(n)d edge(s) deleted.") % {"n": count})
+    return redirect(request.POST.get("next") or "bento:edge_list")
+
+
+# --------------------------------------------------------------------------
+# graph (lazy) JSON endpoints
+# --------------------------------------------------------------------------
+
+@login_required
+def api_full_graph(request):
+    try:
+        return JsonResponse(gs.full_graph(
+            cat_slug=request.GET.get("category") or None,
+            et_slug=request.GET.get("edge_type") or None,
+            q=request.GET.get("q"),
+        ))
+    except gs.GraphUnavailable as exc:
+        return JsonResponse({"error": str(exc), "nodes": [], "edges": []}, status=503)
+
+
+@login_required
+def api_node_graph(request, uid):
+    try:
+        depth = int(request.GET.get("depth", 1))
+    except (TypeError, ValueError):
+        depth = 1
+    try:
+        return JsonResponse(gs.node_graph(uid, depth=depth))
+    except gs.GraphUnavailable as exc:
+        return JsonResponse({"error": str(exc), "nodes": [], "edges": []}, status=503)
+
+
+# --------------------------------------------------------------------------
+# templates: categories
+# --------------------------------------------------------------------------
+
+@login_required
 def category_list(request):
-    categories = Category.objects.prefetch_related("idea_boxes")
-
     return bento_render(request, "bento/category_list.html", {
-        "categories": categories,
+        "categories": BentoCategory.objects.all(),
     })
 
 
+@login_required
 def category_create(request):
     if request.method == "POST":
-        form = CategoryForm(request.POST)
-        if form.is_valid():
-            category = form.save()
-            return redirect("bento:category_update", pk=category.pk)
-    else:
-        form = CategoryForm()
-
-    return bento_render(request, "bento/category_form.html", {"form": form, "title": _("New category")})
-
-
-def category_update(request, pk):
-    category = get_object_or_404(Category, pk=pk)
-
-    if request.method == "POST":
-        form = CategoryForm(request.POST, instance=category)
+        form = BentoCategoryForm(request.POST)
         if form.is_valid():
             form.save()
             return redirect("bento:category_list")
     else:
-        form = CategoryForm(instance=category)
+        form = BentoCategoryForm()
+    return bento_render(request, "bento/category_form.html", {"form": form, "title": _("New category template")})
 
-    return bento_render(request, "bento/category_form.html", {"form": form, "title": _("Edit category"), "category": category})
 
-
-def api_boxes(request):
-    boxes, query = filtered_boxes(request)
-    return JsonResponse({
-        "query": query,
-        "count": boxes.count(),
-        "results": [serialize_box(box) for box in boxes[:100]],
+@login_required
+def category_update(request, pk):
+    category = get_object_or_404(BentoCategory, pk=pk)
+    if request.method == "POST":
+        form = BentoCategoryForm(request.POST, instance=category)
+        if form.is_valid():
+            form.save()
+            return redirect("bento:category_list")
+    else:
+        form = BentoCategoryForm(instance=category)
+    return bento_render(request, "bento/category_form.html", {
+        "form": form, "category": category, "title": _("Edit category template"),
     })
 
 
-def _is_federal_agent(request) -> bool:
-    person = getattr(request.user, "community_profile", None)
-    return bool(person and getattr(person, "is_federal_agent", False))
+@login_required
+def category_delete(request, pk):
+    category = get_object_or_404(BentoCategory, pk=pk)
+    if request.method == "POST":
+        category.delete()
+        return redirect("bento:category_list")
+    return bento_render(request, "bento/category_confirm_delete.html", {"category": category})
 
 
-@require_POST
-def box_lock(request, pk):
-    if not _is_federal_agent(request):
-        return JsonResponse({"ok": False, "error": str(_("Only federal agents can lock boxes."))}, status=403)
-    box = get_object_or_404(IdeaBox, pk=pk)
-    password = request.POST.get("password", "").strip()
-    if not password:
-        return JsonResponse({"ok": False, "error": str(_("Password is required."))}, status=400)
-    if box.is_locked:
-        return JsonResponse({"ok": False, "error": str(_("Box is already locked."))}, status=400)
-    try:
-        box.lock(password)
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": str(e)}, status=500)
-    return JsonResponse({"ok": True})
+# --------------------------------------------------------------------------
+# templates: edge types
+# --------------------------------------------------------------------------
 
-
-@require_POST
-def box_unlock(request, pk):
-    if not _is_federal_agent(request):
-        return JsonResponse({"ok": False, "error": str(_("Only federal agents can unlock boxes."))}, status=403)
-    box = get_object_or_404(IdeaBox, pk=pk)
-    password = request.POST.get("password", "").strip()
-    if not password:
-        return JsonResponse({"ok": False, "error": str(_("Password is required."))}, status=400)
-    if not box.is_locked:
-        return JsonResponse({"ok": False, "error": str(_("Box is not locked."))}, status=400)
-    try:
-        box.unlock(password)
-    except InvalidTag:
-        return JsonResponse({"ok": False, "error": str(_("Wrong password."))}, status=400)
-    except Exception as e:
-        return JsonResponse({"ok": False, "error": str(e)}, status=500)
-    return JsonResponse({"ok": True})
-
-
-def api_box_graph(request, pk):
-    box = get_object_or_404(IdeaBox, pk=pk)
-    outgoing_links = list(box.outgoing_links.select_related("to_box"))
-    incoming_links = list(box.incoming_links.select_related("from_box"))
-    related_boxes = {box.pk: box}
-
-    for link in outgoing_links:
-        related_boxes[link.to_box.pk] = link.to_box
-    for link in incoming_links:
-        related_boxes[link.from_box.pk] = link.from_box
-
-    return JsonResponse({
-        "focus": box.pk,
-        "nodes": [serialize_box(related_box) for related_box in related_boxes.values()],
-        "links": [serialize_link(link) for link in outgoing_links + incoming_links],
+@login_required
+def edgetype_list(request):
+    return bento_render(request, "bento/edgetype_list.html", {
+        "edge_types": BentoEdgeType.objects.all(),
     })
+
+
+@login_required
+def edgetype_create(request):
+    if request.method == "POST":
+        form = BentoEdgeTypeForm(request.POST)
+        if form.is_valid():
+            form.save()
+            return redirect("bento:edgetype_list")
+    else:
+        form = BentoEdgeTypeForm()
+    return bento_render(request, "bento/edgetype_form.html", {"form": form, "title": _("New edge-type template")})
+
+
+@login_required
+def edgetype_update(request, pk):
+    edge_type = get_object_or_404(BentoEdgeType, pk=pk)
+    if request.method == "POST":
+        form = BentoEdgeTypeForm(request.POST, instance=edge_type)
+        if form.is_valid():
+            form.save()
+            return redirect("bento:edgetype_list")
+    else:
+        form = BentoEdgeTypeForm(instance=edge_type)
+    return bento_render(request, "bento/edgetype_form.html", {
+        "form": form, "edge_type": edge_type, "title": _("Edit edge-type template"),
+    })
+
+
+@login_required
+def edgetype_delete(request, pk):
+    edge_type = get_object_or_404(BentoEdgeType, pk=pk)
+    if request.method == "POST":
+        edge_type.delete()
+        return redirect("bento:edgetype_list")
+    return bento_render(request, "bento/edgetype_confirm_delete.html", {"edge_type": edge_type})

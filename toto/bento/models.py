@@ -1,183 +1,214 @@
-import base64
-import os
+"""Bento SQL models — **templates only**.
 
-from cryptography.hazmat.primitives.kdf.argon2 import Argon2id
+Bento's source of truth is Neo4j: the actual nodes and relationships live in the
+graph. SQL keeps only the *templates* that describe their shape:
+
+* :class:`BentoCategory`  → a node-type template (one Neo4j label + a property schema)
+* :class:`BentoEdgeType`  → an edge-type template (one relationship type + allowed
+  source/target categories + a property schema)
+
+From these rows, :mod:`toto.bento.registry` builds neomodel ``StructuredNode`` /
+``StructuredRel`` classes on the fly, and :mod:`toto.bento.graph_service` performs
+all graph CRUD. Nothing in this module touches Neo4j.
+"""
+
+import re
+
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
-from toto.gervazy.crypto import aes_gcm_decrypt, aes_gcm_encrypt
 
-_LOCK_MEMORY_COST = 65536
-_LOCK_ITERATIONS = 3
-_LOCK_LANES = 4
+# Property types a template may declare. These map to neomodel descriptors in
+# toto.bento.registry.PROP_TYPES — keep the two in sync.
+ALLOWED_PROP_TYPES = {
+    "string",
+    "text",
+    "integer",
+    "float",
+    "boolean",
+    "datetime",
+    "json",
+}
+
+# Names that collide with structural node/edge attributes and may not be used as
+# template property names.
+RESERVED_PROP_NAMES = {"uid", "extra", "id", "element_id"}
+
+LABEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+REL_TYPE_RE = re.compile(r"^[A-Z_][A-Z0-9_]*$")
+PROP_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
-def _derive_lock_key(password: str, salt: bytes) -> bytes:
-    kdf = Argon2id(
-        salt=salt,
-        length=32,
-        iterations=_LOCK_ITERATIONS,
-        lanes=_LOCK_LANES,
-        memory_cost=_LOCK_MEMORY_COST,
-    )
-    return kdf.derive(password.encode("utf-8"))
+def validate_property_schema(schema):
+    """Return a list of human-readable errors for a ``property_schema`` value.
+
+    A schema is a list of field definitions::
+
+        [{"name": "title", "type": "string", "required": true,
+          "label": "Title", "help": "..."}]
+
+    Empty list (no errors) means the schema is valid.
+    """
+    errors = []
+    if schema in (None, ""):
+        return errors
+    if not isinstance(schema, list):
+        return ["property_schema must be a list of field definitions."]
+
+    seen = set()
+    for i, field in enumerate(schema):
+        if not isinstance(field, dict):
+            errors.append(f"property_schema[{i}] must be an object.")
+            continue
+        name = field.get("name")
+        ftype = field.get("type")
+        if not isinstance(name, str) or not PROP_NAME_RE.match(name or ""):
+            errors.append(f"property_schema[{i}]: invalid property name {name!r}.")
+            continue
+        if name in RESERVED_PROP_NAMES:
+            errors.append(f"property_schema[{i}]: '{name}' is a reserved name.")
+        if name in seen:
+            errors.append(f"property_schema[{i}]: duplicate property '{name}'.")
+        seen.add(name)
+        if ftype not in ALLOWED_PROP_TYPES:
+            errors.append(
+                f"property_schema[{i}]: type {ftype!r} not in "
+                f"{sorted(ALLOWED_PROP_TYPES)}."
+            )
+    return errors
 
 
-class Category(DomainEntity):
+def default_label(name):
+    """Derive a CamelCase Neo4j label from a display name."""
+    parts = re.split(r"[^A-Za-z0-9]+", name or "")
+    label = "".join(p[:1].upper() + p[1:] for p in parts if p)
+    if not label or not label[0].isalpha():
+        label = "Node" + label
+    return label or "Node"
+
+
+def default_rel_type(name):
+    """Derive an UPPER_SNAKE Neo4j relationship type from a display name."""
+    rel = re.sub(r"[^A-Za-z0-9]+", "_", (name or "").strip()).strip("_").upper()
+    if not rel or not REL_TYPE_RE.match(rel):
+        rel = ("REL_" + rel) if rel else "REL"
+    return rel
+
+
+class BentoCategory(DomainEntity):
+    """Node-type template: defines one class of Neo4j node."""
+
     name = models.CharField(max_length=120)
     slug = models.SlugField(max_length=140, unique=True, blank=True)
     description = models.TextField(blank=True)
 
-    class Meta:
-        ordering = ["name"]
-        verbose_name_plural = "categories"
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = slugify(self.name)
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return self.name
-
-
-class IdeaBox(DomainEntity):
-    """A graph node: a free-text ``label`` plus a ``properties`` bag.
-
-    Everything that used to be a dedicated column (body, source_title,
-    source_url, source_type, quote, ...) now lives inside ``properties``.
-    ``category`` stays a real relation and the lock state columns stay
-    first-class because they are operational, not content.
-    """
-
-    label = models.CharField(max_length=160, blank=True)
-
-    category = models.ForeignKey(
-        Category,
-        on_delete=models.SET_NULL,
-        related_name="idea_boxes",
-        null=True,
+    neo4j_label = models.CharField(
+        max_length=120,
         blank=True,
+        help_text="Neo4j node label for nodes of this category, e.g. 'Idea'.",
+    )
+    property_schema = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="List of {name, type, required, label, help} field definitions.",
     )
 
-    properties = models.JSONField(
-        default=dict,
-        blank=True,
-        help_text=(
-            "All node data: body, source_title, source_url, source_type, "
-            "quote, plus any custom keys."
-        ),
-    )
-
-    is_locked = models.BooleanField(default=False)
-    lock_salt = models.BinaryField(null=True, blank=True)
-    encrypted_body = models.BinaryField(null=True, blank=True)
-    lock_nonce = models.BinaryField(null=True, blank=True)
+    # UI metadata
+    color = models.CharField(max_length=20, blank=True, default="#2563eb")
+    icon = models.CharField(max_length=40, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["-created_at"]
+        ordering = ["name"]
+        verbose_name = "node category template"
+        verbose_name_plural = "node category templates"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        if not self.neo4j_label:
+            self.neo4j_label = default_label(self.name)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        errors = {}
+        if self.neo4j_label and not LABEL_RE.match(self.neo4j_label):
+            errors["neo4j_label"] = (
+                "Must start with a letter or underscore and contain only "
+                "letters, digits, and underscores."
+            )
+        schema_errors = validate_property_schema(self.property_schema)
+        if schema_errors:
+            errors["property_schema"] = schema_errors
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
-        return self.label or self.body[:80] or "Untitled box"
-
-    # ── Well-known property accessors ───────────────────────────────
-    # Convenience read-only views over keys inside ``properties`` so views
-    # and templates can keep saying ``box.body`` / ``box.source_title``.
-    @property
-    def body(self):
-        return self.properties.get("body", "")
-
-    @property
-    def source_title(self):
-        return self.properties.get("source_title", "")
-
-    @property
-    def source_url(self):
-        return self.properties.get("source_url", "")
-
-    @property
-    def source_type(self):
-        return self.properties.get("source_type", "")
-
-    @property
-    def quote(self):
-        return self.properties.get("quote", "")
-
-    def get_property(self, key, default=None):
-        return self.properties.get(key, default)
-
-    def set_property(self, key, value):
-        self.properties[key] = value
-        self.save(update_fields=["properties", "updated_at"])
-
-    def lock(self, password: str) -> None:
-        if self.is_locked:
-            raise ValueError("Box is already locked.")
-        if not password:
-            raise ValueError("Password is required.")
-        salt = os.urandom(16)
-        key = _derive_lock_key(password, salt)
-        ciphertext, nonce = aes_gcm_encrypt(key, self.body.encode("utf-8"))
-        self.lock_salt = salt
-        self.encrypted_body = ciphertext
-        self.lock_nonce = nonce
-        self.properties["body"] = ""
-        self.is_locked = True
-        self.save(update_fields=["properties", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
-
-    def unlock(self, password: str) -> str:
-        if not self.is_locked:
-            raise ValueError("Box is not locked.")
-        if not password:
-            raise ValueError("Password is required.")
-        salt = bytes(self.lock_salt)
-        key = _derive_lock_key(password, salt)
-        plaintext = aes_gcm_decrypt(key, bytes(self.encrypted_body), bytes(self.lock_nonce))
-        body = plaintext.decode("utf-8")
-        self.properties["body"] = body
-        self.is_locked = False
-        self.lock_salt = None
-        self.encrypted_body = None
-        self.lock_nonce = None
-        self.save(update_fields=["properties", "is_locked", "lock_salt", "encrypted_body", "lock_nonce", "updated_at"])
-        return body
+        return self.name
 
 
-class IdeaLink(DomainEntity):
-    from_box = models.ForeignKey(
-        IdeaBox,
-        on_delete=models.CASCADE,
-        related_name="outgoing_links",
-    )
+class BentoEdgeType(DomainEntity):
+    """Edge-type template: defines one class of Neo4j relationship."""
 
-    to_box = models.ForeignKey(
-        IdeaBox,
-        on_delete=models.CASCADE,
-        related_name="incoming_links",
-    )
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, unique=True, blank=True)
+    description = models.TextField(blank=True)
 
-    label = models.CharField(
-        max_length=80,
+    rel_type = models.CharField(
+        max_length=120,
         blank=True,
-        help_text="Free-text relationship label, e.g. about, supports, contradicts, expands.",
+        help_text="Neo4j relationship type, e.g. 'SUPPORTS' (UPPER_SNAKE_CASE).",
     )
-
-    properties = models.JSONField(
-        default=dict,
+    allowed_sources = models.ManyToManyField(
+        BentoCategory,
         blank=True,
-        help_text="Flexible metadata for the link.",
+        related_name="outgoing_edge_types",
+        help_text="Categories whose nodes may be the source of this edge. "
+        "Empty means any.",
     )
+    allowed_targets = models.ManyToManyField(
+        BentoCategory,
+        blank=True,
+        related_name="incoming_edge_types",
+        help_text="Categories whose nodes may be the target of this edge. "
+        "Empty means any.",
+    )
+    property_schema = models.JSONField(default=list, blank=True)
+    directed = models.BooleanField(default=True)
+
+    color = models.CharField(max_length=20, blank=True, default="#64748b")
 
     created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        unique_together = [("from_box", "to_box", "label")]
-        ordering = ["-created_at"]
+        ordering = ["name"]
+        verbose_name = "edge type template"
+        verbose_name_plural = "edge type templates"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        if not self.rel_type:
+            self.rel_type = default_rel_type(self.name)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        errors = {}
+        if self.rel_type and not REL_TYPE_RE.match(self.rel_type):
+            errors["rel_type"] = (
+                "Must be UPPER_SNAKE_CASE: start with a letter or underscore and "
+                "contain only A-Z, 0-9, and underscores."
+            )
+        schema_errors = validate_property_schema(self.property_schema)
+        if schema_errors:
+            errors["property_schema"] = schema_errors
+        if errors:
+            raise ValidationError(errors)
 
     def __str__(self):
-        label = self.label or "related to"
-        return f"{self.from_box} → {label} → {self.to_box}"
+        return self.name

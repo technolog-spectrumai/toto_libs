@@ -1,256 +1,77 @@
 # Bento
 
-Bento is a small **idea-graph** app: a personal knowledge base of *boxes* (nodes)
-connected by *links* (edges). Each box captures an idea, note, or quote; links
-describe how ideas relate (`about`, `supports`, `contradicts`, `expands`, …).
-The graph can be browsed as a **Boxes** list, a **Relations** list, or explored
-as an interactive Cytoscape map.
+Bento is a **first-class Neo4j graph editor**. You define *node-category* and
+*edge-type* **templates** in SQL; the actual nodes and relationships live in
+**Neo4j**. Bento builds neomodel classes from the templates at runtime and edits
+the graph through them.
 
-The design centre is deliberately minimal: **a node is a `label` plus a `properties`
-bag**, and **an edge is a `label` plus a `properties` bag**. Everything that used to
-be a dedicated column (body, source, quote, …) now lives inside `properties` as JSON.
+## Source of truth
 
----
+| Lives in | What |
+|---|---|
+| **SQL** (`BentoCategory`, `BentoEdgeType`) | *Templates only* — labels, relationship types, allowed endpoints, typed property schemas, UI metadata. |
+| **Neo4j** | The real data — every node `(:Label {uid, …props, extra})` and relationship `[:REL_TYPE {…props, extra}]`. |
 
-## 1. How to use it
+`BentoCategory` defines a Neo4j label + a `property_schema` (a list of
+`{name, type, required, label, help}`). `BentoEdgeType` defines a relationship
+type, allowed source/target categories, and its own property schema. Supported
+property types: `string, text, integer, float, boolean, datetime, json` — plus a
+free-form `extra` JSON bag on every node/edge for ad-hoc keys.
 
-### As a user
+## Dynamic neomodel registry
 
-The app lives under `/bento/` and the top nav has six tabs: **Boxes**,
-**Relations**, **References**, **New box**, **New link**, **Categories**.
+[`registry.py`](registry.py) turns each template row into a neomodel
+`StructuredNode` / `StructuredRel` subclass via `type()` (template definitions are
+treated as **data only** — never `eval`/`exec`). Classes are cached per slug and
+keyed on the template's `updated_at`; the cache is invalidated by
+`post_save`/`post_delete` signals ([`signals.py`](signals.py)) so every worker
+rebuilds deterministically from the same DB state.
 
-- **Create a box** — *New box*. Give it a short **label**, optionally pick a
-  **category**, and fill in the **Metadata (JSON)** editor. Well-known keys the UI
-  understands are:
+## Neo4j access
 
-  ```json
-  {
-    "body": "The main idea / description",
-    "source_title": "Made to Stick",
-    "source_url": "https://…",
-    "source_type": "book",
-    "quote": "An optional quote",
-    "rating": 5
-  }
-  ```
+All graph I/O is isolated in [`graph_service.py`](graph_service.py) — the only
+module that touches Neo4j. It uses:
 
-  Any extra keys you add (e.g. `rating`, `status`, `tags`) are kept verbatim and
-  shown in the box's **Properties** panel.
+* **neomodel** dynamic classes for typed node create/update (schema validation +
+  `uid` generation), and
+* ravioli's `Neo4jClient` (raw Cypher) for listing/search/pagination, edges,
+  batch delete and lazy graph extraction.
 
-- **Link boxes** — *New link*, or use **Link from this / Link to this** on a box's
-  detail page. A link has a **from box**, a free-text **label**, a **to box**, and its
-  own **properties** JSON (e.g. `{"strength": 0.9}`).
+**ravioli owns the connection.** Bento requires `toto.ravioli` to be installed
+(`BentoConfig.ready()` raises otherwise) and calls
+`toto.ravioli.neomodel_conn.ensure_configured()` — the single place
+`neomodel.config.DATABASE_URL` is set, from the same `NEO4J_*` settings
+`Neo4jClient` uses. When `RAVIOLI_ENABLED` is False, every operation raises
+`GraphUnavailable` and the views render a "graph unavailable" page instead of
+crashing.
 
-- **Browse & search** — the **Boxes** page has full-text search (matches the label and
-  the `body` / `source_title` / `source_type` / `quote` keys inside `properties`),
-  summary stats, and a **Graph view** button that opens a Cytoscape map of all boxes,
-  categories, and their edges.
+## UI
 
-- **Browse relations** — the **Relations** page lists every link as a thin
-  `label · from → to` row (each box clickable to its detail), with a search over the
-  relation label and the linked boxes' labels, and a **New relation** button.
+Server-rendered (Tailwind + Alpine) with a lazy Cytoscape graph (tap a node to
+expand its neighborhood). Node and edge lists are **paginated**, filterable by
+**type** (`?category=` / `?edge_type=`), **quick-searchable** (`?q=`), and support
+multi-select **batch delete**. Templates (categories, edge types) have their own
+CRUD screens and are registered in the Django admin.
 
-- **Reference external objects** — a box can also point *out* of bento to an object
-  in another app (a kanban mission, an event, a person, …) via a **SubjectReference**.
-  Manage these on the **References** tab, or via **Add reference** on a box's detail
-  page. Pick a target model, then a subject; the link carries its own label +
-  properties. In the graph view, referenced objects appear as **hexagons**.
+## No quota
 
-- **Categories** — lightweight groupings (name + slug + description) managed under
-  **Categories**.
+Bento has **no** quota integration — no `check_quota()` / `record_usage()`.
 
-- **Lock a note** — privileged users (see *Locking* below) can password-lock a box.
-  The body is encrypted at rest and hidden until someone unlocks it.
+## Migrating legacy SQL data
 
-### Seeding sample data
+The old SQL models (`IdeaBox`/`IdeaLink`) are removed. If a legacy database still
+has their tables, migrate the content into Neo4j (nothing is deleted):
 
-```bash
-# from the repo's portal/ directory
-../venv/bin/python manage.py ingress_bento --full
+```
+python manage.py migrate_bento_to_neo4j --dry-run
+python manage.py migrate_bento_to_neo4j --category <slug> --edge-type <slug>
 ```
 
-This creates sample categories, idea boxes, and links.
+The command reads the legacy tables via raw SQL and is a no-op when they're
+absent.
 
-### Running / testing
+## Seeding example templates
 
-```bash
-cd portal/
-../venv/bin/python manage.py migrate
-../venv/bin/python manage.py runserver        # browse http://127.0.0.1:8000/bento/
-../venv/bin/python manage.py test toto.bento  # run the test suite
 ```
-
-> Tests must be run from `portal/` — running from the repo root causes a
-> `toto.toto.X` double-import model conflict.
-
----
-
-## 2. Technical design
-
-App module: `toto.bento` (`app_name = "bento"`). Four models, all inheriting
-`toto.core.domain.DomainEntity` (which adds a universal `uid` UUID for cross-system
-identity / graph projection).
-
-### Models — [models.py](models.py)
-
-**`IdeaBox`** — the node:
-
-| Field | Type | Notes |
-|---|---|---|
-| `label` | `CharField` | The node's display name (was `title`); the only first-class content field. |
-| `category` | `FK → Category` | Optional, `SET_NULL`. A real relation, not a property. |
-| `properties` | `JSONField` | **All node data**: `body`, `source_*`, `quote`, plus any custom keys. |
-| `is_locked`, `lock_salt`, `encrypted_body`, `lock_nonce` | lock state | Operational columns for the encryption feature. |
-| `created_at`, `updated_at` | timestamps | |
-
-The well-known property keys are re-exposed as **read-only `@property` accessors**
-(`body`, `source_title`, `source_url`, `source_type`, `quote`) so views and
-templates can keep saying `box.body` / `box.source_title` while the storage is a
-single JSON column. `get_property(key, default)` / `set_property(key, value)` are
-the generic accessors.
-
-**`IdeaLink`** — the edge: `from_box`, `to_box` (FKs, `CASCADE`), a free-text
-`label`, and a `properties` JSONField. `unique_together = (from_box, to_box, label)`.
-
-**`SubjectReference`** — a *polymorphic* edge from a box out to an external object
-in another app (via the contenttypes framework): `box` (FK), `content_type` (FK,
-`limit_choices_to` the 12 allowed targets — kanban Mission/Campaign/Project,
-Federation, ScheduledEvent, EventCategory, Address, Territory, Route, Zone,
-Community, Person), `object_id` (CharField — targets have mixed int/UUID PKs),
-a `subject` GenericForeignKey, plus a free-text `label` and `properties`.
-`subject_label` / `target_model_label` are display helpers.
-
-**`Category`** — `name`, auto-`slug`, `description`.
-
-### Why `label` + `properties`
-
-The node/edge were collapsed to a generic graph shape: the only structural fields are
-the label, the relations (`category`, `from_box`/`to_box`), and operational columns
-(lock state, timestamps, `uid`). Everything semantic is JSON. This keeps the schema
-stable as the set of "fields" evolves — you add a key, not a migration — and mirrors
-the property-graph model (label + property bag) used elsewhere in the platform.
-
-### Querying JSON
-
-Because `body`, `source_title`, etc. are JSON keys, search uses Django's JSONField
-lookups rather than column lookups:
-
-```python
-IdeaBox.objects.filter(properties__body__icontains="memory")          # body search
-IdeaBox.objects.filter(properties__source_title__icontains="stick")   # source search
+python manage.py ingress_bento --full
 ```
-
-### Locking — [views.py](views.py) · `box_lock` / `box_unlock`
-
-Locking is gated to **federal agents** (`request.user.community_profile.is_federal_agent`,
-from `toto.people`). `IdeaBox.lock(password)` derives a key with **Argon2id**
-(`lock_salt`) and **AES-GCM**-encrypts `properties['body']` into `encrypted_body` /
-`lock_nonce`, then blanks the plaintext body and sets `is_locked`. `unlock(password)`
-reverses it. Serializers null out the body while a box is locked.
-
-### Forms — [forms.py](forms.py)
-
-- `IdeaBoxForm` → `label`, `category`, `properties` (the properties widget is a
-  textarea upgraded to the ACE JSON editor).
-- `IdeaLinkForm` → `from_box`, `label`, `to_box`, `properties`.
-- `SubjectReferenceForm` → `box`, `content_type` (limited to the 12 targets),
-  `object_id`, `label`, `properties`. The subject is chosen via an Alpine dependent
-  `<select>` populated from `api_subject_options`; existence is validated server-side.
-- `CategoryForm` → `name`, `slug`, `description`.
-
-### Routes — [urls.py](urls.py)
-
-**HTML pages**
-
-| Name | Path | View |
-|---|---|---|
-| `box_list` | `/bento/` | box list + search + graph modal |
-| `link_list` | `/bento/relations/` | relations list (thin `label · from → to` rows) |
-| `subject_reference_list` | `/bento/references/` | references list (`label · box → [Model] subject`) |
-| `box_create` / `box_update` / `box_delete` | `/bento/new/`, `/bento/<pk>/edit/`, `/bento/<pk>/delete/` | box CRUD |
-| `box_detail` | `/bento/<pk>/` | detail page |
-| `box_lock` / `box_unlock` | `/bento/<pk>/lock/`, `/unlock/` | POST, federal-agent only |
-| `link_create` / `link_delete` | `/bento/links/new/`, `/links/<pk>/delete/` | edge CRUD |
-| `subject_reference_create` / `subject_reference_update` / `subject_reference_delete` | `/bento/references/new/`, `/references/<pk>/edit/`, `/references/<pk>/delete/` | reference CRUD |
-| `category_list` / `category_create` / `category_update` | `/bento/categories/…` | category CRUD |
-
-**JSON endpoints** ([api_views.py](api_views.py))
-
-| Name | Path | Purpose |
-|---|---|---|
-| `api_box_list` | `/bento/api/boxes/` | `GET` list, `POST` create (`label` + `properties` + `category_id`) |
-| `api_box_detail` | `/bento/api/boxes/<pk>/` | `GET` / `PATCH` / `DELETE` |
-| `api_box_links` / `api_link_list` | `/bento/api/boxes/<pk>/links/`, `/api/links/` | list / create links |
-| `api_link_detail` | `/bento/api/links/<pk>/` | `DELETE` |
-| `api_category_list` | `/bento/api/categories/` | list categories |
-| `api_full_graph` | `/bento/api/graph/` | all nodes (boxes / categories / referenced objects) + edges for the Cytoscape modal |
-| `api_subject_options` | `/bento/api/subjects/?content_type=<id>` | objects of a chosen target model, for the reference form's dependent select |
-| `api_boxes` / `api_box_graph` | `/bento/api/boxes-graph/`, `/api/boxes/<pk>/graph/` | HTML-page support feeds |
-
-The JSON API is the contract consumed by the **Enigma** Tauri app. It returns
-`label` + a `properties` object (body nulled when locked) — **not** top-level
-`title`/`body` (this changed in the label+properties redesign, so Enigma's bento
-screens need updating to match).
-
-### Migrations
-
-`0001_initial` defines the `label` + `properties` shape directly. (The schema was
-reset during the redesign rather than data-migrated, so an existing DB needs a fresh
-`migrate` and re-seed.)
-
----
-
-## 3. User-interface design
-
-Bento's templates extend `oya/base.html` and use the platform's **Tailwind +
-Alpine.js** styling with a dark/light theme (`darkMode`) and FontAwesome icons.
-Base shell: [templates/bento/base.html](templates/bento/base.html) — a "Toto Studio /
-Bento" header, a Dashboard back-link, and the six-item nav.
-
-- **Box list** ([box_list.html](templates/bento/box_list.html)) — left sidebar with
-  search and two stat tiles (boxes / links). The main column is a card per box showing
-  label, a locked badge, category, and the updated time. A **Graph view** button opens
-  a full-screen modal rendering the whole graph with **Cytoscape** (`cose` layout):
-  boxes are rounded rectangles, categories are plain ellipses, **referenced external
-  objects are hexagons**; link edges are solid arrows, category-membership edges are
-  dashed, and reference edges are dashed accent arrows. Clicking a box node navigates to
-  its detail page; colors track the active theme.
-
-- **Relations list** ([link_list.html](templates/bento/link_list.html)) — mirrors the
-  box list shell (sidebar search + stat tiles) but the main column is one thin row per
-  link: a relation-label chip, then `from → to` with an arrow icon, each box clickable
-  to its detail page.
-
-- **References list** ([subject_reference_list.html](templates/bento/subject_reference_list.html)) —
-  same thin-row shell; each row is `label · box → [Model] subject` with inline edit/delete.
-  The **form** ([subject_reference_form.html](templates/bento/subject_reference_form.html))
-  picks a target model then an Alpine-populated subject `<select>`. The box detail page
-  also lists a box's references in its sidebar with **Add reference**.
-
-- **Box detail** ([box_detail.html](templates/bento/box_detail.html)) — title and
-  timestamps, a locked placeholder when the box is locked, and a single **Properties**
-  panel that shows the whole `properties` bag in a **read-only ACE viewer**
-  (syntax-highlit, theme-aware, cursor hidden, auto-sized). There are no separate
-  body/source/quote panels — those keys are just part of the JSON. A right sidebar
-  lists outgoing/incoming links (with quick "Link from/to this" actions) and a small
-  live API-graph summary. Delete, lock, and unlock are Alpine-driven modals; lock/unlock
-  post to the API via `fetch` and reload.
-
-- **ACE JSON editor / viewer** — `properties` is always presented through ACE, vendored
-  at `toto/toto/core/static/vendor/ace/`, with the init script
-  [_metadata_ace_scripts.html](templates/bento/_metadata_ace_scripts.html) handling two
-  modes:
-  - **Editable** ([_metadata_ace.html](templates/bento/_metadata_ace.html)) — used in the
-    box/link forms. The real form control is hidden and kept in sync with the editor,
-    giving a live **Valid/Invalid JSON** status chip and a submit guard that blocks
-    invalid JSON.
-  - **Read-only** ([_metadata_ace_view.html](templates/bento/_metadata_ace_view.html)) —
-    used on the detail page. Seeded from a Django `json_script` element and locked with
-    `setReadOnly(true)`.
-
-- **Forms** ([box_form.html](templates/bento/box_form.html),
-  [link_form.html](templates/bento/link_form.html)) — a generic field loop where the
-  `properties` field renders the editable ACE editor above.
-
-- **Confirm/delete & category** pages are simple themed forms following the same
-  card-and-modal conventions.

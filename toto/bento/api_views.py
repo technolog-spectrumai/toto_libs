@@ -1,270 +1,181 @@
+"""JSON / CORS API for Bento, routed entirely through :mod:`graph_service`.
+
+A small local CORS base keeps bento decoupled from studio-only apps (the old
+code imported telegraph's ``CorsApiView``; bento is now a Neo4j-group app and
+must not depend on the studio group).
+"""
+
 import json
 
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
+from django.utils.decorators import method_decorator
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
-from django.utils.decorators import method_decorator
-from django.db import models as db_models
 
-from toto.telegraph.api_views import CorsApiView
-from toto.bento.models import Category, IdeaBox, IdeaLink
+from . import graph_service as gs
+from .models import BentoCategory, BentoEdgeType
 
 
-def _category_to_dict(c):
-    return {"id": c.id, "name": c.name, "slug": c.slug, "description": c.description}
-
-
-def _box_to_dict(box):
-    properties = dict(box.properties)
-    if box.is_locked:
-        properties["body"] = ""
-    return {
-        "id": box.id,
-        "label": box.label,
-        "is_locked": box.is_locked,
-        "category_id": box.category_id,
-        "category_name": box.category.name if box.category else None,
-        "properties": properties,
-        "created_at": box.created_at.isoformat(),
-        "updated_at": box.updated_at.isoformat(),
-    }
+def _cors(response):
+    response["Access-Control-Allow-Origin"] = "*"
+    response["Access-Control-Allow-Methods"] = "GET, POST, PATCH, DELETE, OPTIONS"
+    response["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    return response
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class BoxListApiView(CorsApiView):
-    def get(self, request):
-        qs = IdeaBox.objects.select_related("category").order_by("-created_at")
-        q = request.GET.get("q", "").strip()
-        if q:
-            qs = qs.filter(
-                db_models.Q(label__icontains=q) | db_models.Q(properties__body__icontains=q)
-            )
-        return JsonResponse({"boxes": [_box_to_dict(b) for b in qs]})
-
-    def post(self, request):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
+class CorsApiView(View):
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "OPTIONS":
+            return _cors(HttpResponse())
         try:
-            data = json.loads(request.body)
+            response = super().dispatch(request, *args, **kwargs)
+        except gs.GraphUnavailable as exc:
+            response = JsonResponse({"error": str(exc)}, status=503)
+        except gs.GraphValidationError as exc:
+            response = JsonResponse({"error": str(exc)}, status=400)
+        except gs.NotFound as exc:
+            response = JsonResponse({"error": str(exc)}, status=404)
+        return _cors(response)
+
+    def _json(self, request):
+        try:
+            return json.loads(request.body or "{}")
         except (json.JSONDecodeError, ValueError):
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        label = data.get("label", "").strip()
-        properties = data.get("properties") or {}
-        category_id = data.get("category_id")
-
-        if not isinstance(properties, dict):
-            return JsonResponse({"error": "properties must be an object."}, status=400)
-
-        category = None
-        if category_id:
-            try:
-                category = Category.objects.get(pk=category_id)
-            except Category.DoesNotExist:
-                return JsonResponse({"error": "Category not found."}, status=404)
-
-        box = IdeaBox.objects.create(
-            label=label,
-            properties=properties,
-            category=category,
-        )
-        return JsonResponse(_box_to_dict(box), status=201)
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class BoxDetailApiView(CorsApiView):
-    def _get_box(self, pk):
-        try:
-            return IdeaBox.objects.select_related("category").get(pk=pk)
-        except IdeaBox.DoesNotExist:
             return None
 
-    def get(self, request, pk):
-        box = self._get_box(pk)
-        if not box:
-            return JsonResponse({"error": "Not found."}, status=404)
-        return JsonResponse(_box_to_dict(box))
-
-    def patch(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        box = self._get_box(pk)
-        if not box:
-            return JsonResponse({"error": "Not found."}, status=404)
-        try:
-            data = json.loads(request.body)
-        except (json.JSONDecodeError, ValueError):
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        fields = []
-        if "label" in data:
-            box.label = data["label"]
-            fields.append("label")
-        if "properties" in data:
-            properties = data["properties"] or {}
-            if not isinstance(properties, dict):
-                return JsonResponse({"error": "properties must be an object."}, status=400)
-            box.properties = properties
-            fields.append("properties")
-        if "category_id" in data:
-            cid = data["category_id"]
-            if cid is None:
-                box.category = None
-            else:
-                try:
-                    box.category = Category.objects.get(pk=cid)
-                except Category.DoesNotExist:
-                    return JsonResponse({"error": "Category not found."}, status=404)
-            fields.append("category")
-
-        if fields:
-            fields.append("updated_at")
-            box.save(update_fields=fields)
-        return JsonResponse(_box_to_dict(box))
-
-    def delete(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        box = self._get_box(pk)
-        if not box:
-            return JsonResponse({"error": "Not found."}, status=404)
-        box.delete()
-        return JsonResponse({}, status=204)
+    def _auth(self, request):
+        return bool(request.user and request.user.is_authenticated)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class CategoryListApiView(CorsApiView):
+def _page(request):
+    try:
+        per_page = max(1, min(int(request.GET.get("per_page", 25)), 200))
+    except ValueError:
+        per_page = 25
+    try:
+        page = max(1, int(request.GET.get("page", 1)))
+    except ValueError:
+        page = 1
+    return page, per_page, (page - 1) * per_page
+
+
+class NodeListApiView(CorsApiView):
     def get(self, request):
-        cats = Category.objects.order_by("name")
-        return JsonResponse({"categories": [_category_to_dict(c) for c in cats]})
-
-
-def _link_to_dict(link):
-    return {
-        "id": link.id,
-        "from_box": link.from_box_id,
-        "to_box": link.to_box_id,
-        "label": link.label or "related to",
-        "from_box_label": link.from_box.label or "Untitled",
-        "to_box_label": link.to_box.label or "Untitled",
-    }
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class LinkListCreateApiView(CorsApiView):
-    def get(self, request, pk=None):
-        qs = IdeaLink.objects.select_related("from_box", "to_box").order_by("-created_at")
-        if pk is not None:
-            qs = qs.filter(db_models.Q(from_box_id=pk) | db_models.Q(to_box_id=pk))
-        return JsonResponse({"links": [_link_to_dict(l) for l in qs[:200]]})
+        page, per_page, offset = _page(request)
+        rows, total = gs.list_nodes(
+            cat_slug=request.GET.get("category") or None,
+            q=request.GET.get("q"),
+            limit=per_page,
+            offset=offset,
+        )
+        return JsonResponse({"nodes": rows, "total": total, "page": page, "per_page": per_page})
 
     def post(self, request):
-        if not request.user or not request.user.is_authenticated:
+        if not self._auth(request):
             return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            data = json.loads(request.body)
-        except (json.JSONDecodeError, ValueError):
+        data = self._json(request)
+        if data is None:
             return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        from_id = data.get("from_box")
-        to_id = data.get("to_box")
-        label = data.get("label", "").strip()
-
-        if not from_id or not to_id:
-            return JsonResponse({"error": "from_box and to_box are required."}, status=400)
-        if from_id == to_id:
-            return JsonResponse({"error": "A box cannot link to itself."}, status=400)
-
-        try:
-            from_box = IdeaBox.objects.get(pk=from_id)
-            to_box = IdeaBox.objects.get(pk=to_id)
-        except IdeaBox.DoesNotExist:
-            return JsonResponse({"error": "Box not found."}, status=404)
-
-        link, created = IdeaLink.objects.get_or_create(
-            from_box=from_box, to_box=to_box, label=label,
-            defaults={}
-        )
-        return JsonResponse(_link_to_dict(link), status=201 if created else 200)
+        node = gs.create_node(data.get("category"), data.get("properties") or {})
+        return JsonResponse(node, status=201)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class LinkDeleteApiView(CorsApiView):
-    def delete(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
+class NodeDetailApiView(CorsApiView):
+    def get(self, request, uid):
+        return JsonResponse(gs.get_node(uid))
+
+    def patch(self, request, uid):
+        if not self._auth(request):
             return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            link = IdeaLink.objects.get(pk=pk)
-        except IdeaLink.DoesNotExist:
-            return JsonResponse({"error": "Not found."}, status=404)
-        link.delete()
+        data = self._json(request)
+        if data is None:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        return JsonResponse(gs.update_node(uid, data.get("properties") or {}))
+
+    def delete(self, request, uid):
+        if not self._auth(request):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        gs.delete_node(uid)
         return JsonResponse({}, status=204)
 
 
-@method_decorator(csrf_exempt, name="dispatch")
-class FullGraphApiView(CorsApiView):
-    """
-    Return ALL boxes, ALL IdeaLinks, and ALL categories as a unified graph.
-
-    Node types:
-      "box"       — IdeaBox, id prefixed "b{id}"
-      "category"  — Category, id prefixed "cat{id}"
-
-    Edge types:
-      "link"      — IdeaLink between two boxes
-      "category"  — box → its category
-    """
+class EdgeListApiView(CorsApiView):
     def get(self, request):
-        boxes = list(IdeaBox.objects.select_related("category").order_by("id"))
-        links = list(IdeaLink.objects.all())
-        categories = list(Category.objects.all())
+        page, per_page, offset = _page(request)
+        rows, total = gs.list_edges(
+            node_uid=request.GET.get("node") or None,
+            et_slug=request.GET.get("edge_type") or None,
+            q=request.GET.get("q"),
+            limit=per_page,
+            offset=offset,
+        )
+        return JsonResponse({"edges": rows, "total": total, "page": page, "per_page": per_page})
 
-        # category nodes (ellipses)
-        cat_nodes = [
-            {
-                "id": f"cat{c.id}",
-                "label": c.name,
-                "node_type": "category",
-            }
-            for c in categories
+    def post(self, request):
+        if not self._auth(request):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        data = self._json(request)
+        if data is None:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        edge = gs.create_edge(
+            data.get("edge_type"), data.get("from"), data.get("to"), data.get("properties") or {}
+        )
+        return JsonResponse(edge, status=201)
+
+
+class EdgeDetailApiView(CorsApiView):
+    def patch(self, request, edge_id):
+        if not self._auth(request):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        data = self._json(request)
+        if data is None:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+        return JsonResponse(gs.update_edge(edge_id, data.get("properties") or {}))
+
+    def delete(self, request, edge_id):
+        if not self._auth(request):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        gs.delete_edge(edge_id)
+        return JsonResponse({}, status=204)
+
+
+class CategoryListApiView(CorsApiView):
+    def get(self, request):
+        cats = [
+            {"slug": c.slug, "name": c.name, "neo4j_label": c.neo4j_label,
+             "color": c.color, "icon": c.icon, "property_schema": c.property_schema}
+            for c in BentoCategory.objects.all()
         ]
+        return JsonResponse({"categories": cats})
 
-        # box nodes (rounded rectangles)
-        box_nodes = [
-            {
-                "id": f"b{b.id}",
-                "real_id": b.id,
-                "label": b.label or "Untitled",
-                "node_type": "box",
-            }
-            for b in boxes
+
+class EdgeTypeListApiView(CorsApiView):
+    def get(self, request):
+        ets = [
+            {"slug": e.slug, "name": e.name, "rel_type": e.rel_type,
+             "directed": e.directed, "color": e.color,
+             "allowed_sources": list(e.allowed_sources.values_list("slug", flat=True)),
+             "allowed_targets": list(e.allowed_targets.values_list("slug", flat=True)),
+             "property_schema": e.property_schema}
+            for e in BentoEdgeType.objects.all()
         ]
+        return JsonResponse({"edge_types": ets})
 
-        # idea-link edges (box ↔ box)
-        link_edges = [
-            {
-                "id": f"l{l.id}",
-                "source": f"b{l.from_box_id}",
-                "target": f"b{l.to_box_id}",
-                "label": l.label or "related to",
-                "edge_type": "link",
-            }
-            for l in links
-        ]
 
-        # category edges (box → category)
-        cat_edges = [
-            {
-                "id": f"cl{b.id}",
-                "source": f"b{b.id}",
-                "target": f"cat{b.category_id}",
-                "label": "",
-                "edge_type": "category",
-            }
-            for b in boxes if b.category_id
-        ]
+class FullGraphApiView(CorsApiView):
+    def get(self, request):
+        return JsonResponse(gs.full_graph(
+            cat_slug=request.GET.get("category") or None,
+            et_slug=request.GET.get("edge_type") or None,
+            q=request.GET.get("q"),
+        ))
 
-        return JsonResponse({
-            "nodes": box_nodes + cat_nodes,
-            "edges": link_edges + cat_edges,
-        })
+
+class NodeGraphApiView(CorsApiView):
+    def get(self, request, uid):
+        try:
+            depth = int(request.GET.get("depth", 1))
+        except ValueError:
+            depth = 1
+        return JsonResponse(gs.node_graph(uid, depth=depth))

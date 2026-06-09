@@ -1,83 +1,33 @@
 from django.contrib import admin
 
-from .models import Category, IdeaBox, IdeaLink
+from .models import BentoCategory, BentoEdgeType
 
 
-@admin.register(Category)
-class CategoryAdmin(admin.ModelAdmin):
-    list_display = ("name", "slug", "description")
-    search_fields = ("name", "slug", "description")
+@admin.register(BentoCategory)
+class BentoCategoryAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "neo4j_label", "color", "updated_at")
+    search_fields = ("name", "slug", "neo4j_label")
     prepopulated_fields = {"slug": ("name",)}
-
-
-class OutgoingIdeaLinkInline(admin.TabularInline):
-    model = IdeaLink
-    fk_name = "from_box"
-    extra = 1
-    autocomplete_fields = ["to_box"]
-    fields = ("label", "to_box", "properties", "created_at")
-    readonly_fields = ("created_at",)
-
-
-class IncomingIdeaLinkInline(admin.TabularInline):
-    model = IdeaLink
-    fk_name = "to_box"
-    extra = 0
-    autocomplete_fields = ["from_box"]
-    fields = ("label", "from_box", "properties", "created_at")
-    readonly_fields = ("label", "from_box", "properties", "created_at")
-    can_delete = False
-
-    def has_add_permission(self, request, obj=None):
-        return False
-
-
-@admin.register(IdeaBox)
-class IdeaBoxAdmin(admin.ModelAdmin):
-    list_display = (
-        "display_name",
-        "category",
-        "source_type",
-        "source_title",
-        "created_at",
-        "updated_at",
-    )
-    list_filter = ("category", "created_at", "updated_at")
-    search_fields = (
-        "label",
-        "category__name",
-        "category__slug",
-    )
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("label", "category")}),
-        ("Properties", {"fields": ("properties",)}),
-        (
-            "Timestamps",
-            {"fields": ("created_at", "updated_at"), "classes": ("collapse",)},
-        ),
+        (None, {"fields": ("name", "slug", "neo4j_label", "description")}),
+        ("Schema", {"fields": ("property_schema",)}),
+        ("UI", {"fields": ("color", "icon")}),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )
-    inlines = [OutgoingIdeaLinkInline, IncomingIdeaLinkInline]
-
-    def display_name(self, obj):
-        return str(obj)[:100]
-
-    display_name.short_description = "IdeaBox"
 
 
-@admin.register(IdeaLink)
-class IdeaLinkAdmin(admin.ModelAdmin):
-    list_display = ("from_box", "label", "to_box", "created_at")
-    list_filter = ("label", "created_at")
-    search_fields = (
-        "from_box__label",
-        "to_box__label",
-        "label",
-    )
-    autocomplete_fields = ("from_box", "to_box")
-    readonly_fields = ("created_at",)
+@admin.register(BentoEdgeType)
+class BentoEdgeTypeAdmin(admin.ModelAdmin):
+    list_display = ("name", "slug", "rel_type", "directed", "color", "updated_at")
+    search_fields = ("name", "slug", "rel_type")
+    prepopulated_fields = {"slug": ("name",)}
+    filter_horizontal = ("allowed_sources", "allowed_targets")
+    readonly_fields = ("created_at", "updated_at")
     fieldsets = (
-        (None, {"fields": ("from_box", "label", "to_box")}),
-        ("Properties", {"fields": ("properties",)}),
-        ("Timestamps", {"fields": ("created_at",), "classes": ("collapse",)}),
+        (None, {"fields": ("name", "slug", "rel_type", "directed", "description")}),
+        ("Allowed endpoints", {"fields": ("allowed_sources", "allowed_targets")}),
+        ("Schema", {"fields": ("property_schema",)}),
+        ("UI", {"fields": ("color",)}),
+        ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
     )

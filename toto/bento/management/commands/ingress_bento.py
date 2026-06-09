@@ -1,197 +1,99 @@
 from toto.ingress import IngressCommand
-from toto.bento.models import Category, IdeaBox, IdeaLink
+from toto.bento.models import BentoCategory, BentoEdgeType
 
 
 class Command(IngressCommand):
-    help = "Seed Bento with sample categories, idea boxes, and links (no topics)"
+    help = "Seed Bento with example node-category and edge-type templates."
 
     def process(self):
         if not self.full:
             return
 
-        self.stdout.write(self.style.WARNING("🍱 Seeding Bento…"))
+        self.stdout.write(self.style.WARNING("🍱 Seeding Bento templates…"))
 
-        # 1) Create or find categories
-        categories = {}
-        category_data = [
-            ("Principle", "A reusable rule of thumb or general insight."),
-            ("Observation", "Something noticed while reading, watching, or thinking."),
-            ("Question", "An open question worth returning to."),
-            ("Technique", "A practical method or move."),
-            ("Concept", "A concept-like idea box used as a local knowledge node."),
-        ]
-        for name, description in category_data:
-            category, created = Category.objects.get_or_create(
-                name=name,
-                defaults={"description": description},
-            )
-            categories[name] = category
-            self.stdout.write(
-                self.style.SUCCESS(f"🏷️ Created category: {name}") if created else
-                self.style.WARNING(f"ℹ️ Category already exists: {name}")
-            )
-
-        # 2) Create some boxes
-        storytelling_box = self._box(
-            title="Storytelling",
-            body="A way of structuring information as narrative.",
-            category=categories["Concept"],
-            properties={"kind": "concept", "domain": "communication", "color": "orange"},
-        )
-
-        memory_box = self._box(
-            title="Memory",
-            body="The process of encoding, storing, and recalling information.",
-            category=categories["Concept"],
-            properties={"kind": "concept", "domain": "psychology", "color": "blue"},
-        )
-
-        explanation_box = self._box(
-            title="Explanation",
-            body="Making something understandable by connecting it to what is already known.",
-            category=categories["Concept"],
-            properties={"kind": "concept", "domain": "learning", "color": "green"},
-        )
-
-        # 3) Create normal idea boxes
-        stories_beat_facts = self._box(
-            title="Stories beat facts",
-            body=(
-                "People remember information better when it is wrapped in a story "
-                "instead of presented as isolated facts."
-            ),
-            category=categories["Principle"],
-            source_title="Made to Stick",
-            source_type="book",
-            properties={"kind": "idea", "rating": 5, "status": "raw"},
-        )
-
-        examples_before_definitions = self._box(
-            title="Examples before definitions",
-            body=(
-                "A difficult concept is often easier to understand when the learner "
-                "first sees a concrete example."
-            ),
-            category=categories["Technique"],
-            source_title="Personal note",
-            source_type="note",
-            properties={"kind": "idea", "rating": 4, "status": "raw"},
-        )
-
-        compression = self._box(
-            title="Good notes compress experience",
-            body=(
-                "A good note is not a transcript. It compresses an experience into "
-                "something reusable."
-            ),
-            category=categories["Principle"],
-            source_title="Bento seed",
-            source_type="note",
-            properties={"kind": "idea", "rating": 5, "status": "processed"},
-        )
-
-        question = self._box(
-            title="What makes an idea worth saving?",
-            body=(
-                "Maybe an idea is worth saving when it changes a future decision, "
-                "explanation, design, or conversation."
-            ),
-            category=categories["Question"],
-            source_title="Bento seed",
-            source_type="question",
-            properties={"kind": "question", "rating": 3, "status": "open"},
-        )
-
-        # 4) Link ideas to other boxes
-        self._link(stories_beat_facts, storytelling_box, "about", {"strength": 0.95})
-        self._link(stories_beat_facts, memory_box, "about", {"strength": 0.9})
-        self._link(examples_before_definitions, explanation_box, "about", {"strength": 0.85})
-        self._link(compression, explanation_box, "related to", {"strength": 0.7})
-
-        # 5) Link ideas to ideas
-        self._link(stories_beat_facts, examples_before_definitions, "supports", {
-            "reason": "Both suggest that concrete structure improves understanding."
-        })
-        self._link(compression, stories_beat_facts, "related to", {
-            "reason": "Both are about making information easier to reuse."
-        })
-        self._link(question, compression, "answered by", {
-            "reason": "The compression idea gives one possible answer."
-        })
-
-        self.stdout.write(self.style.SUCCESS("✅ Bento seeding complete."))
-
-    # ────────────────────────────────────────────────
-    # Helper methods
-    # ────────────────────────────────────────────────
-
-    def _box(
-        self,
-        *,
-        title,
-        body,
-        category=None,
-        source_title="",
-        source_url="",
-        source_type="",
-        quote="",
-        properties=None,
-    ):
-        # Everything but the label now lives in the properties bag.
-        props = {
-            "body": body,
-            "source_title": source_title,
-            "source_url": source_url,
-            "source_type": source_type,
-            "quote": quote,
-            **(properties or {}),
+        categories = {
+            "idea": {
+                "name": "Idea",
+                "neo4j_label": "Idea",
+                "color": "#2563eb",
+                "icon": "fa-solid fa-lightbulb",
+                "description": "A reusable idea, principle, or insight.",
+                "property_schema": [
+                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "body", "type": "text", "required": False, "label": "Body"},
+                    {"name": "rating", "type": "integer", "required": False, "label": "Rating"},
+                ],
+            },
+            "source": {
+                "name": "Source",
+                "neo4j_label": "Source",
+                "color": "#16a34a",
+                "icon": "fa-solid fa-book",
+                "description": "A book, article, or note an idea came from.",
+                "property_schema": [
+                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "url", "type": "string", "required": False, "label": "URL"},
+                    {"name": "kind", "type": "string", "required": False, "label": "Kind"},
+                ],
+            },
+            "question": {
+                "name": "Question",
+                "neo4j_label": "Question",
+                "color": "#d97706",
+                "icon": "fa-solid fa-circle-question",
+                "description": "An open question worth returning to.",
+                "property_schema": [
+                    {"name": "title", "type": "string", "required": True, "label": "Question"},
+                    {"name": "status", "type": "string", "required": False, "label": "Status"},
+                ],
+            },
         }
 
-        box, created = IdeaBox.objects.get_or_create(
-            label=title,
-            defaults={"category": category, "properties": props},
-        )
-
-        changed = False
-        if box.category != category:
-            box.category = category
-            changed = True
-        if box.properties != props:
-            box.properties = props
-            changed = True
-
-        if changed and not created:
-            box.save()
-            self.stdout.write(self.style.SUCCESS(f"🔁 Updated box: {title}"))
-        elif created:
-            self.stdout.write(self.style.SUCCESS(f"💡 Created box: {title}"))
-        else:
-            self.stdout.write(self.style.WARNING(f"ℹ️ Box already exists: {title}"))
-
-        return box
-
-    def _link(self, from_box, to_box, label, properties=None):
-        link, created = IdeaLink.objects.get_or_create(
-            from_box=from_box,
-            to_box=to_box,
-            label=label,
-            defaults={"properties": properties or {}},
-        )
-
-        if not created:
-            new_properties = properties or {}
-            if link.properties != new_properties:
-                link.properties = new_properties
-                link.save(update_fields=["properties"])
-                self.stdout.write(
-                    self.style.SUCCESS(f"🔁 Updated link: {from_box} → {label} → {to_box}")
-                )
-            else:
-                self.stdout.write(
-                    self.style.WARNING(f"ℹ️ Link already exists: {from_box} → {label} → {to_box}")
-                )
-        else:
-            self.stdout.write(
-                self.style.SUCCESS(f"🔗 Linked: {from_box} → {label} → {to_box}")
+        cat_objs = {}
+        for slug, data in categories.items():
+            obj, created = BentoCategory.objects.get_or_create(
+                slug=slug, defaults=data
             )
-        return link
+            cat_objs[slug] = obj
+            self.stdout.write(
+                self.style.SUCCESS(f"🏷️ Created category template: {obj.name}")
+                if created
+                else self.style.WARNING(f"ℹ️ Category template exists: {obj.name}")
+            )
+
+        edge_types = [
+            {
+                "slug": "supports", "name": "Supports", "rel_type": "SUPPORTS",
+                "color": "#0ea5e9",
+                "property_schema": [
+                    {"name": "strength", "type": "float", "required": False, "label": "Strength"},
+                ],
+                "sources": ["idea"], "targets": ["idea"],
+            },
+            {
+                "slug": "about", "name": "About", "rel_type": "ABOUT",
+                "color": "#64748b", "property_schema": [],
+                "sources": ["idea", "question"], "targets": ["source"],
+            },
+            {
+                "slug": "answered-by", "name": "Answered by", "rel_type": "ANSWERED_BY",
+                "color": "#a855f7", "property_schema": [],
+                "sources": ["question"], "targets": ["idea"],
+            },
+        ]
+
+        for data in edge_types:
+            sources = data.pop("sources", [])
+            targets = data.pop("targets", [])
+            obj, created = BentoEdgeType.objects.get_or_create(
+                slug=data["slug"], defaults=data
+            )
+            obj.allowed_sources.set([cat_objs[s] for s in sources if s in cat_objs])
+            obj.allowed_targets.set([cat_objs[t] for t in targets if t in cat_objs])
+            self.stdout.write(
+                self.style.SUCCESS(f"🔗 Created edge-type template: {obj.name}")
+                if created
+                else self.style.WARNING(f"ℹ️ Edge-type template exists: {obj.name}")
+            )
+
+        self.stdout.write(self.style.SUCCESS("✅ Bento template seeding complete."))

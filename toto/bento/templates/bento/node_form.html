@@ -7,26 +7,32 @@
 <div class="mx-auto max-w-2xl">
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-6 shadow-sm">
-    <h2 class="mb-4 text-xl font-bold">{{ title }}</h2>
+    <h2 class="mb-1 text-xl font-bold">{{ title }}</h2>
+    <p class="mb-4 text-sm opacity-70">{% trans "Type" %}: <span class="font-semibold">{{ category.name }}</span></p>
+
     <form method="post" class="space-y-4">
       {% csrf_token %}
       {% if form.non_field_errors %}
         <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ form.non_field_errors }}</div>
       {% endif %}
+      {% if category %}<input type="hidden" name="category" value="{{ category.slug }}">{% endif %}
+
       {% for field in form %}
-        {% if field.name == "property_schema" %}
+        {% if field.name == "extra" %}
           {% include "bento/_metadata_ace.html" with field=field %}
         {% else %}
           {% include "bento/_field.html" with field=field %}
         {% endif %}
       {% endfor %}
+
       <div class="flex gap-2">
         <button type="submit"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
         </button>
-        <a href="{% url 'bento:category_list' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>
+        {% if node %}<a href="{% url 'bento:node_detail' node.uid %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>
+        {% else %}<a href="{% url 'bento:node_list' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>{% endif %}
       </div>
     </form>
   </div>
