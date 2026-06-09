@@ -7,7 +7,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 
-from toto.telegraph.api_views import CorsApiView
+from toto.api.cors import CorsApiView
 from toto.vault.models import VaultFile, Bucket, VaultDirectory
 
 # Text-ish file types editable in the Enigma Ace editor. Mirrors the file types

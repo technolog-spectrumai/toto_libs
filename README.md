@@ -624,7 +624,7 @@ Redis          — Celery broker + result backend
 Nginx          — reverse proxy / static files
 ```
 
-**Config file:** `configs/portal_mini.yaml`
+**Config file:** `deployment/portal_mini.yaml`
 ```yaml
 BUILD_STUDIO: "0"
 http_port: 8081
@@ -695,7 +695,7 @@ Prometheus + Grafana    — metrics (optional but included in portal_max.yaml)
 Loki + Promtail         — log aggregation (optional but included in portal_max.yaml)
 ```
 
-**Config file:** `configs/portal_max.yaml`
+**Config file:** `deployment/portal_max.yaml`
 ```yaml
 BUILD_STUDIO: "1"
 services:
@@ -736,8 +736,8 @@ Daily allowances are posted at 17:00 on weekdays; subscription billing runs ever
 `deploy.py` is the entry point for building any deployment. It reads a YAML config and emits `docker-compose.yaml` + `.env`:
 
 ```
-deploy.py --config configs/portal_mini.yaml   →  gunicorn WSGI stack
-deploy.py --config configs/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
+deploy.py deployment/portal_mini.yaml   →  gunicorn WSGI stack
+deploy.py deployment/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
 ```
 
 The script conditionally adds Docker services based on the config:
@@ -745,4 +745,4 @@ The script conditionally adds Docker services based on the config:
 - `BUILD_STUDIO=0` → uses `gunicorn` command, omits those services
 - `services.prometheus: true` → adds `prometheus`, `grafana`, `loki`, `promtail` services
 
-The `settings_builder.py` shared module mirrors this logic on the Python/Django side: it reads the same YAML keys and injects the appropriate `INSTALLED_APPS`, `CHANNEL_LAYERS`, `NEO4J_*`, and `KERNEL_SERVER_ADDR` settings automatically so the YAML config remains the single source of truth for both the Docker topology and the Django runtime.
+`portal/portal/settings.py` mirrors this on the Django side, but reads **only environment variables** — no YAML. `deploy.py` flattens the config's `env:` block (including `BUILD_STUDIO` / `BUILD_NEO4J` / `BUILD_LABS`) into `.env.<name>`, which the container loads; `settings.py` then keys `INSTALLED_APPS`, `CHANNEL_LAYERS`, `NEO4J_*`, and `KERNEL_SERVER_ADDR` off those same `BUILD_*` flags. So the flags drive both the Docker topology and the Django runtime, with the `.env` file as the hand-off between them.

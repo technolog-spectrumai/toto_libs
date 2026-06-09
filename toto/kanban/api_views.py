@@ -5,7 +5,7 @@ from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
-from toto.telegraph.api_views import CorsApiView, MeshGatedApiView
+from toto.api.cors import CorsApiView, MeshGatedApiView
 from toto.kanban.models import Project, Column, Task, Mission, Campaign, Practitioner, ProjectCommitment
 
 

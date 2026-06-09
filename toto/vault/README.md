@@ -28,7 +28,7 @@ Encrypted file storage: buckets, directories, files, gateways, and storage backe
 
 ## Billing — tariffs optional
 
-Vault charges for storage via `toto.metering.charge`. When `toto.tariffs` is **not** installed (`BUILD_ECONOMY=0`) all uploads proceed normally, uncharged.
+Vault can charge for storage via `toto.metering.charge`. The metering/tariffs apps are not part of the standard build (they live in `toto/limbo/`); when they are **not** installed all uploads proceed normally, uncharged.
 
 When tariffs is installed, upload views use:
 

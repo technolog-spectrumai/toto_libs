@@ -701,7 +701,7 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
     def dispatch(self, request, *args, **kwargs):
         # Missions are gated to the data mesh: non-members get the nice access-denied page
         # and must pull this data from a peer (see telegraph.api_views).
-        from toto.telegraph.api_views import in_data_mesh, render_access_denied
+        from toto.api.cors import in_data_mesh, render_access_denied
         if request.user.is_authenticated and not in_data_mesh(request.user):
             return render_access_denied(request)
         return super().dispatch(request, *args, **kwargs)
