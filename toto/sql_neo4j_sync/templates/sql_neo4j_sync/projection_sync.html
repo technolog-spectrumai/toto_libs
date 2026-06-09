@@ -24,7 +24,7 @@
       </div>
 
       <div class="flex flex-wrap items-center gap-2">
-        <form method="post" action="{% url 'ravioli:full_sync' %}"
+        <form method="post" action="{% url 'sql_neo4j_sync:full_sync' %}"
               x-data="{ going: false }" @submit="going = true">
           {% csrf_token %}
           <button type="submit" :disabled="going"
@@ -35,7 +35,7 @@
           </button>
         </form>
 
-        <form method="post" action="{% url 'ravioli:clear_db' %}"
+        <form method="post" action="{% url 'sql_neo4j_sync:clear_db' %}"
               x-data="{ going: false }"
               @submit.prevent="if (confirm('Delete ALL ravioli-owned nodes and relationships from Neo4j?')) { going = true; $el.submit() }">
           {% csrf_token %}
@@ -51,7 +51,7 @@
 
     <form
       method="post"
-      action="{% url 'ravioli:create_projection_plan' %}"
+      action="{% url 'sql_neo4j_sync:create_projection_plan' %}"
       x-data="{ submitting: false }"
       @submit="submitting = true"
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -133,7 +133,7 @@
                   <td class="py-3 pr-4">{{ plan.total_changes }}</td>
                   <td class="py-3 pr-4">{{ plan.created_at|date:"M d, Y H:i" }}</td>
                   <td class="py-3 text-right">
-                    <a href="{% url 'ravioli:projection_plan_detail' plan.pk %}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
+                    <a href="{% url 'sql_neo4j_sync:projection_plan_detail' plan.pk %}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
                       <i class="fa-solid fa-eye"></i>{% trans "Review" %}</a>
                   </td>
                 </tr>

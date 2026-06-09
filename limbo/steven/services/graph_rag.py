@@ -104,7 +104,7 @@ def _compact_props(props: dict[str, Any], limit=6) -> dict[str, Any]:
 
 def available_graph_labels():
     try:
-        from toto.ravioli.loader import load_all_configs
+        from toto.sql_neo4j_sync.loader import load_all_configs
     except Exception:
         return []
 

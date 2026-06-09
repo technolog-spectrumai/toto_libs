@@ -12,7 +12,7 @@
   <div class="mx-auto max-w-7xl space-y-6">
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
-        <a href="{% url 'ravioli:projection_sync' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <a href="{% url 'sql_neo4j_sync:projection_sync' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
           <i class="fa-solid fa-arrow-left"></i>{% trans "Projection plans" %}</a>
         <div>
           <p
@@ -26,7 +26,7 @@
       </div>
 
       {% if plan.status == "ready" %}
-        <form method="post" action="{% url 'ravioli:apply_projection_plan' plan.pk %}">
+        <form method="post" action="{% url 'sql_neo4j_sync:apply_projection_plan' plan.pk %}">
           {% csrf_token %}
           <button
             type="submit"
@@ -127,9 +127,9 @@
 
       {% trans "Create" as lbl_create %}{% trans "Update" as lbl_update %}{% trans "Delete" as lbl_delete %}
       <div class="mt-5 grid gap-5 lg:grid-cols-3">
-        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_create icon="fa-plus" items=node_create %}
-        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_update icon="fa-pen" items=node_update %}
-        {% include "ravioli/projection_plan_node_bucket.html" with title=lbl_delete icon="fa-trash" items=node_delete %}
+        {% include "sql_neo4j_sync/projection_plan_node_bucket.html" with title=lbl_create icon="fa-plus" items=node_create %}
+        {% include "sql_neo4j_sync/projection_plan_node_bucket.html" with title=lbl_update icon="fa-pen" items=node_update %}
+        {% include "sql_neo4j_sync/projection_plan_node_bucket.html" with title=lbl_delete icon="fa-trash" items=node_delete %}
       </div>
     </section>
 
@@ -140,9 +140,9 @@
         <i class="fa-solid fa-link"></i>{% trans "Relationship changes" %}</h2>
 
       <div class="mt-5 grid gap-5 lg:grid-cols-3">
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_create icon="fa-plus" items=relationship_create %}
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_update icon="fa-pen" items=relationship_update %}
-        {% include "ravioli/projection_plan_relationship_bucket.html" with title=lbl_delete icon="fa-trash" items=relationship_delete %}
+        {% include "sql_neo4j_sync/projection_plan_relationship_bucket.html" with title=lbl_create icon="fa-plus" items=relationship_create %}
+        {% include "sql_neo4j_sync/projection_plan_relationship_bucket.html" with title=lbl_update icon="fa-pen" items=relationship_update %}
+        {% include "sql_neo4j_sync/projection_plan_relationship_bucket.html" with title=lbl_delete icon="fa-trash" items=relationship_delete %}
       </div>
     </section>
 

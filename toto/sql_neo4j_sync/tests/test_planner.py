@@ -3,9 +3,9 @@ import json
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase, override_settings
 
-from .connection import connection_uris
-from .planner import ProjectionPlanApplier, prop_changes, summarize_diff
-from .projection import _get_value
+from toto.ravioli.connection import connection_uris
+from toto.sql_neo4j_sync.planner import ProjectionPlanApplier, prop_changes, summarize_diff
+from toto.sql_neo4j_sync.projection import _get_value
 
 
 class FakeNeo4jClient:
@@ -179,7 +179,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         except ImportError:
             self.skipTest("networkx not installed")
 
-        from .graph_analysis import build_networkx_graph
+        from toto.ravioli.graph_analysis import build_networkx_graph
 
         G = build_networkx_graph(self._raw_nodes(), self._raw_edges())
 
@@ -194,7 +194,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         except ImportError:
             self.skipTest("networkx not installed")
 
-        from .graph_analysis import build_networkx_graph, serialize_graph
+        from toto.ravioli.graph_analysis import build_networkx_graph, serialize_graph
 
         G = build_networkx_graph(self._raw_nodes(), self._raw_edges())
         data = serialize_graph(G)
@@ -204,7 +204,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         self.assertIn("nodes", json.loads(serialised))
 
     def test_serialize_output_json(self):
-        from .graph_analysis import serialize_output
+        from toto.ravioli.graph_analysis import serialize_output
 
         payload = {"node_count": 5, "density": 0.25}
         content, mime, ext = serialize_output(payload, "json")
@@ -220,7 +220,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         except ImportError:
             self.skipTest("PyYAML not installed")
 
-        from .graph_analysis import serialize_output
+        from toto.ravioli.graph_analysis import serialize_output
 
         payload = {"key": "value"}
         content, mime, ext = serialize_output(payload, "yaml")
@@ -230,7 +230,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         self.assertIn(b"key: value", content)
 
     def test_serialize_output_csv_dict(self):
-        from .graph_analysis import serialize_output
+        from toto.ravioli.graph_analysis import serialize_output
 
         payload = {"alpha": 1, "beta": 2}
         content, mime, ext = serialize_output(payload, "csv")
@@ -240,7 +240,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         self.assertIn(b"alpha", content)
 
     def test_serialize_output_csv_list_of_dicts(self):
-        from .graph_analysis import serialize_output
+        from toto.ravioli.graph_analysis import serialize_output
 
         payload = [{"name": "Alice", "score": 9}, {"name": "Bob", "score": 7}]
         content, mime, ext = serialize_output(payload, "csv")
@@ -250,7 +250,7 @@ class GraphAnalysisHelpersTests(SimpleTestCase):
         self.assertIn("Alice", lines[1])
 
     def test_serialize_output_unsupported_format_raises(self):
-        from .graph_analysis import serialize_output
+        from toto.ravioli.graph_analysis import serialize_output
 
         with self.assertRaises(ValueError):
             serialize_output({}, "xml")
@@ -269,7 +269,7 @@ class GraphAnalysisVaultSaveTests(TestCase):
         )
 
     def test_save_creates_vault_file(self):
-        from .predefined_tasks import ravioli_save_graph_analysis_output
+        from toto.ravioli.predefined_tasks import ravioli_save_graph_analysis_output
 
         result = ravioli_save_graph_analysis_output({
             "data": {
@@ -294,13 +294,13 @@ class GraphAnalysisVaultSaveTests(TestCase):
         self.assertEqual(vf.file_type, "json")
 
     def test_save_missing_bucket_raises(self):
-        from .predefined_tasks import ravioli_save_graph_analysis_output
+        from toto.ravioli.predefined_tasks import ravioli_save_graph_analysis_output
 
         with self.assertRaises(ValueError, msg="requires bucket_id"):
             ravioli_save_graph_analysis_output({"data": {"owner_id": self.user.pk, "format": "json"}})
 
     def test_save_invalid_bucket_raises(self):
-        from .predefined_tasks import ravioli_save_graph_analysis_output
+        from toto.ravioli.predefined_tasks import ravioli_save_graph_analysis_output
 
         with self.assertRaises(ValueError):
             ravioli_save_graph_analysis_output({
@@ -308,7 +308,7 @@ class GraphAnalysisVaultSaveTests(TestCase):
             })
 
     def test_save_unsupported_format_raises(self):
-        from .predefined_tasks import ravioli_save_graph_analysis_output
+        from toto.ravioli.predefined_tasks import ravioli_save_graph_analysis_output
 
         with self.assertRaises(ValueError):
             ravioli_save_graph_analysis_output({

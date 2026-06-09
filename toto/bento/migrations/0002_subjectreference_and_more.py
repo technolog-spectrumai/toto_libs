@@ -2,7 +2,6 @@
 
 from django.db import migrations, models
 import django.db.models.deletion
-import toto.bento.models
 import uuid
 
 
@@ -24,7 +23,7 @@ class Migration(migrations.Migration):
                 ('properties', models.JSONField(blank=True, default=dict, help_text='Flexible metadata for the reference.')),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
                 ('box', models.ForeignKey(on_delete=django.db.models.deletion.CASCADE, related_name='references', to='bento.ideabox')),
-                ('content_type', models.ForeignKey(help_text='Which external model the reference points at.', limit_choices_to=toto.bento.models.subject_reference_content_type_limit, on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
+                ('content_type', models.ForeignKey(help_text='Which external model the reference points at.', on_delete=django.db.models.deletion.CASCADE, to='contenttypes.contenttype')),
             ],
             options={
                 'ordering': ['-created_at'],

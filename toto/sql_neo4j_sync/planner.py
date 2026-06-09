@@ -59,6 +59,27 @@ def _junction_relation_uuid(junction_obj):
     return str(junction_obj.pk)
 
 
+# Stable diff keys for relationships. Module-level so the NeoJSON loader can build
+# `expected` sets that compare against the planner's `actual` sets identically.
+def direct_relationship_key(rel):
+    return "|".join([
+        "direct",
+        rel["from_label"],
+        rel["from_uuid"],
+        rel["relation"],
+        rel["to_label"],
+        rel["to_uuid"],
+    ])
+
+
+def junction_relationship_key(rel):
+    return "|".join([
+        "junction",
+        rel["relation"],
+        rel["ravioli_uuid"],
+    ])
+
+
 class ProjectionPlanner:
     def __init__(self, client, configs=None, selected_labels=None):
         self.client = client
@@ -128,21 +149,10 @@ class ProjectionPlanner:
         return expected
 
     def _direct_relationship_key(self, rel):
-        return "|".join([
-            "direct",
-            rel["from_label"],
-            rel["from_uuid"],
-            rel["relation"],
-            rel["to_label"],
-            rel["to_uuid"],
-        ])
+        return direct_relationship_key(rel)
 
     def _junction_relationship_key(self, rel):
-        return "|".join([
-            "junction",
-            rel["relation"],
-            rel["ravioli_uuid"],
-        ])
+        return junction_relationship_key(rel)
 
     def _expected_fk_relationships(self, link_def):
         from_info = self._label_map[link_def["from_label"]]
@@ -340,66 +350,75 @@ class ProjectionPlanner:
         return result
 
     def build_diff(self):
-        expected_nodes = self.expected_nodes()
-        actual_nodes = self.actual_nodes()
-        expected_relationships = self.expected_relationships()
-        actual_relationships = self.actual_relationships()
+        return compute_diff(
+            self.expected_nodes(),
+            self.actual_nodes(),
+            self.expected_relationships(),
+            self.actual_relationships(),
+        )
 
-        diff = {
-            "nodes": {"create": [], "update": [], "delete": [], "ignored": []},
-            "relationships": {
-                "create": [],
-                "update": [],
-                "delete": [],
-                "ignored": [],
-            },
-        }
 
-        for label, nodes in expected_nodes.items():
-            graph_nodes = actual_nodes.get(label, {})
-            for uuid, expected in nodes.items():
-                actual = graph_nodes.get(uuid)
-                if actual is None:
-                    diff["nodes"]["create"].append(expected)
-                    continue
+def compute_diff(expected_nodes, actual_nodes, expected_relationships, actual_relationships):
+    """Compare desired (`expected`) vs current (`actual`) node/relationship sets and
+    return ``(diff, totals)``. This is the shared sync algorithm: the SQL projection
+    planner and the NeoJSON loader both feed it ``expected``/``actual`` in the same
+    dict shape (nodes keyed ``{label: {uuid: node}}``; relationships keyed by their
+    stable diff key)."""
+    diff = {
+        "nodes": {"create": [], "update": [], "delete": [], "ignored": []},
+        "relationships": {
+            "create": [],
+            "update": [],
+            "delete": [],
+            "ignored": [],
+        },
+    }
 
-                changes = prop_changes(expected["props"], actual["props"])
-                if changes:
-                    diff["nodes"]["update"].append({**expected, "changes": changes})
-
-            for uuid, actual in graph_nodes.items():
-                if uuid not in nodes:
-                    diff["nodes"]["delete"].append(actual)
-
-        for key, expected in expected_relationships.items():
-            actual = actual_relationships.get(key)
+    for label, nodes in expected_nodes.items():
+        graph_nodes = actual_nodes.get(label, {})
+        for uuid, expected in nodes.items():
+            actual = graph_nodes.get(uuid)
             if actual is None:
-                diff["relationships"]["create"].append(expected)
+                diff["nodes"]["create"].append(expected)
                 continue
 
             changes = prop_changes(expected["props"], actual["props"])
-            endpoint_changed = (
-                expected["from_uuid"] != actual["from_uuid"]
-                or expected["to_uuid"] != actual["to_uuid"]
-            )
-            if changes or endpoint_changed:
-                diff["relationships"]["update"].append({
-                    **expected,
-                    "changes": changes,
-                    "endpoint_changed": endpoint_changed,
-                })
+            if changes:
+                diff["nodes"]["update"].append({**expected, "changes": changes})
 
-        for key, actual in actual_relationships.items():
-            if key not in expected_relationships:
-                diff["relationships"]["delete"].append(actual)
+        for uuid, actual in graph_nodes.items():
+            if uuid not in nodes:
+                diff["nodes"]["delete"].append(actual)
 
-        totals = {
-            "expected_nodes": sum(len(nodes) for nodes in expected_nodes.values()),
-            "actual_nodes": sum(len(nodes) for nodes in actual_nodes.values()),
-            "expected_relationships": len(expected_relationships),
-            "actual_relationships": len(actual_relationships),
-        }
-        return diff, totals
+    for key, expected in expected_relationships.items():
+        actual = actual_relationships.get(key)
+        if actual is None:
+            diff["relationships"]["create"].append(expected)
+            continue
+
+        changes = prop_changes(expected["props"], actual["props"])
+        endpoint_changed = (
+            expected["from_uuid"] != actual["from_uuid"]
+            or expected["to_uuid"] != actual["to_uuid"]
+        )
+        if changes or endpoint_changed:
+            diff["relationships"]["update"].append({
+                **expected,
+                "changes": changes,
+                "endpoint_changed": endpoint_changed,
+            })
+
+    for key, actual in actual_relationships.items():
+        if key not in expected_relationships:
+            diff["relationships"]["delete"].append(actual)
+
+    totals = {
+        "expected_nodes": sum(len(nodes) for nodes in expected_nodes.values()),
+        "actual_nodes": sum(len(nodes) for nodes in actual_nodes.values()),
+        "expected_relationships": len(expected_relationships),
+        "actual_relationships": len(actual_relationships),
+    }
+    return diff, totals
 
 
 def prop_changes(expected_props, actual_props):

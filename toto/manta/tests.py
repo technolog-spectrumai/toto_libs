@@ -275,6 +275,33 @@ class BuilderTests(TestCase):
     def test_quick_transcribe_get_not_allowed(self):
         self.assertEqual(self.client.get(self.QUICK_URL).status_code, 405)
 
+    # -- job page: wait + spinner while running ---------------------------
+
+    def test_job_status_endpoint(self):
+        job = FileJob.objects.create(command="ocr", owner=self.owner, status=FileJob.Status.PENDING)
+        data = self.client.get(f"/manta/jobs/{job.pk}/status/").json()
+        self.assertEqual(data["status"], "pending")
+        self.assertFalse(data["is_terminal"])
+        job.status = FileJob.Status.DONE
+        job.save(update_fields=["status"])
+        data = self.client.get(f"/manta/jobs/{job.pk}/status/").json()
+        self.assertTrue(data["is_terminal"])
+
+    def test_job_detail_spinner_while_running(self):
+        job = FileJob.objects.create(command="ocr", owner=self.owner, status=FileJob.Status.PENDING)
+        resp = self.client.get(f"/manta/jobs/{job.pk}/")
+        self.assertContains(resp, "Processing")
+        self.assertContains(resp, "fa-spinner")
+        self.assertContains(resp, f"/manta/jobs/{job.pk}/status/")   # poll target
+        self.assertNotContains(resp, "Result")                       # no result box yet
+
+    def test_job_detail_shows_result_when_done(self):
+        job = FileJob.objects.create(command="ocr", owner=self.owner,
+                                     status=FileJob.Status.DONE, output={"files": []})
+        resp = self.client.get(f"/manta/jobs/{job.pk}/")
+        self.assertContains(resp, "Result")
+        self.assertNotContains(resp, "Processing")
+
     # -- live preview -----------------------------------------------------
 
     def test_preview_ffmpeg(self):

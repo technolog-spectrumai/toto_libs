@@ -42,6 +42,7 @@ def neojson_editor_view(request, file_pk):
             "content": content,
             "directory_name": directory_name,
             "save_url": reverse("neo_editor:neojson_save", args=[file_pk]),
+            "load_url": reverse("neo_editor:neojson_load", args=[file_pk]),
         },
         request,
     )
@@ -73,3 +74,51 @@ def neojson_save_view(request, file_pk):
         return JsonResponse({"status": "ok"})
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
+
+
+@csrf_exempt
+@login_required
+def neojson_load_view(request, file_pk):
+    """Load the editor's NeoJSON into Neo4j (merge | replace) via ravioli's sync engine."""
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=400)
+
+    # Ownership check (the file_pk scopes the request to the user's own file).
+    get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+
+    # The SQL→Neo4j sync engine is an optional, retirable app. Degrade gracefully
+    # (the editor still saves/edits) if it isn't installed.
+    try:
+        from toto.sql_neo4j_sync import graphsync
+    except ImportError:
+        return JsonResponse(
+            {"error": "Graph sync engine (toto.sql_neo4j_sync) is not installed."},
+            status=400,
+        )
+    from toto.ravioli.connection import Neo4jClient, is_enabled
+
+    content = request.POST.get("content", "")
+    mode = (request.POST.get("mode") or graphsync.MODE_MERGE).strip().lower()
+    if mode not in graphsync.MODES:
+        return JsonResponse({"error": f"Invalid mode {mode!r}; use 'merge' or 'replace'."}, status=400)
+
+    try:
+        graph = neojson.loads(content)
+    except neojson.NeoJsonParseError as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    errors = neojson.validate(graph)
+    if errors:
+        return JsonResponse({"error": "Invalid NeoJSON: " + "; ".join(errors)}, status=400)
+
+    if not is_enabled():
+        return JsonResponse({"error": "Graph database is disabled (RAVIOLI_ENABLED is False)."}, status=400)
+
+    client = Neo4jClient()
+    try:
+        summary = graphsync.load_neojson(client, graph, mode=mode)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    finally:
+        client.close()
+
+    return JsonResponse({"status": "ok", "summary": summary})

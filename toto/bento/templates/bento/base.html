@@ -53,13 +53,6 @@
           {% trans "Relations" %}
         </a>
         <a
-          href="{% url 'bento:subject_reference_list' %}"
-          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-arrow-up-right-from-square"></i>
-          {% trans "References" %}
-        </a>
-        <a
           href="{% url 'bento:box_create' %}"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">

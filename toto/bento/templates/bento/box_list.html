@@ -88,7 +88,7 @@
         data: {
           id: n.id,
           label: (n.label || n.title || 'Untitled').slice(0, 36),
-          url: (n.node_type === 'category' || n.node_type === 'reference') ? null : '/bento/' + n.real_id + '/',
+          url: (n.node_type === 'category') ? null : '/bento/' + n.real_id + '/',
           node_type: n.node_type || 'box',
         }
       })),
@@ -144,20 +144,6 @@
           }
         },
         {
-          // Referenced external object (SubjectReference target) — hexagon
-          selector: 'node[node_type = "reference"]',
-          style: {
-            'shape': 'hexagon',
-            'background-color': c.node,
-            'border-color': c.accent,
-            'border-width': 2,
-            'width': 150,
-            'height': 54,
-            'font-size': 10,
-            'cursor': 'default',
-          }
-        },
-        {
           selector: 'node:selected',
           style: {
             'background-color': c.accent,
@@ -193,25 +179,6 @@
             'curve-style': 'bezier',
             'target-arrow-shape': 'none',
             'opacity': 0.5,
-          }
-        },
-        {
-          // SubjectReference edge (box → referenced object) — dashed accent arrow
-          selector: 'edge[edge_type = "reference"]',
-          style: {
-            'width': 1.5,
-            'line-color': c.accent,
-            'line-style': 'dashed',
-            'curve-style': 'bezier',
-            'target-arrow-shape': 'triangle',
-            'target-arrow-color': c.accent,
-            'label': 'data(label)',
-            'font-size': 9,
-            'color': c.text,
-            'text-opacity': 0.7,
-            'text-background-color': c.bg,
-            'text-background-opacity': 0.8,
-            'text-background-padding': '2px',
           }
         },
       ],

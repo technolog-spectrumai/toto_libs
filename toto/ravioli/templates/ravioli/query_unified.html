@@ -47,12 +47,6 @@
           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
         >
           <i class="fa-solid fa-chart-network"></i>{% trans "Graph Analysis" %}</a>
-        <a
-          href="{% url 'ravioli:projection_sync' %}"
-          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
-        >
-          <i class="fa-solid fa-arrows-rotate"></i>{% trans "Sync view" %}</a>
       </div>
       {% endif %}
     </div>

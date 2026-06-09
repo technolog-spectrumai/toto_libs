@@ -16,7 +16,7 @@ Exit code 1 if any errors are found.
 
 from django.core.management.base import BaseCommand
 
-from toto.ravioli.loader import load_all_configs, validate_configs
+from toto.sql_neo4j_sync.loader import load_all_configs, validate_configs
 
 
 class Command(BaseCommand):

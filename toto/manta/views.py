@@ -332,6 +332,18 @@ def job_detail(request, pk):
     return _render(request, "manta/job_detail.html", {"job": job, "out_files": out_files})
 
 
+@login_required
+def job_status(request, pk):
+    """Lightweight poll endpoint so the job page can wait for an async command
+    (ffmpeg / ocr / transcribe) and refresh itself when it finishes."""
+    job = get_object_or_404(FileJob, pk=pk)
+    return JsonResponse({
+        "status": job.status,
+        "status_display": job.get_status_display(),
+        "is_terminal": job.is_terminal,
+    })
+
+
 def _save_text_file(user, bucket, directory, filename: str, text: str):
     """Persist *text* as a new text VaultFile in *bucket*, picking a free key
     (transcript, transcript-1, …) so repeated saves never overwrite. The key is

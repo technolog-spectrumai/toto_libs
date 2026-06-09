@@ -1,10 +1,10 @@
 from django.core.management.base import BaseCommand
 
 from toto.ravioli.connection import Neo4jClient, is_enabled
-from toto.ravioli.loader import load_all_configs, validate_configs
-from toto.ravioli.models import GraphChangeEvent
-from toto.ravioli.projection import ProjectionRunner
-from toto.ravioli.sync import (
+from toto.sql_neo4j_sync.loader import load_all_configs, validate_configs
+from toto.sql_neo4j_sync.models import GraphChangeEvent
+from toto.sql_neo4j_sync.projection import ProjectionRunner
+from toto.sql_neo4j_sync.sync import (
     mark_event_done,
     mark_event_failed,
     mark_event_processing,

@@ -124,7 +124,7 @@ def _build_beat_schedule() -> dict:
             "schedule": crontab(minute=0),  # every hour
         },
         "ravioli-periodic-sync": {
-            "task": "toto.ravioli.tasks.periodic_graph_sync",
+            "task": "toto.sql_neo4j_sync.tasks.periodic_graph_sync",
             "schedule": crontab(minute="*"),  # every minute; task self-gates on interval_minutes
         },
     }

@@ -1,6 +1,6 @@
 from django.contrib import admin
 
-from .models import Category, IdeaBox, IdeaLink, SubjectReference
+from .models import Category, IdeaBox, IdeaLink
 
 
 @admin.register(Category)
@@ -81,21 +81,3 @@ class IdeaLinkAdmin(admin.ModelAdmin):
         ("Properties", {"fields": ("properties",)}),
         ("Timestamps", {"fields": ("created_at",), "classes": ("collapse",)}),
     )
-
-
-@admin.register(SubjectReference)
-class SubjectReferenceAdmin(admin.ModelAdmin):
-    list_display = ("box", "target_model", "object_id", "label", "created_at")
-    list_filter = ("content_type", "created_at")
-    search_fields = ("box__label", "label", "object_id")
-    autocomplete_fields = ("box",)
-    readonly_fields = ("created_at",)
-    fieldsets = (
-        (None, {"fields": ("box", "content_type", "object_id", "label")}),
-        ("Properties", {"fields": ("properties",)}),
-        ("Timestamps", {"fields": ("created_at",), "classes": ("collapse",)}),
-    )
-
-    @admin.display(description="Target")
-    def target_model(self, obj):
-        return obj.content_type

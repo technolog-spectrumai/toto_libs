@@ -54,13 +54,26 @@
 
       <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
 
-      <!-- Save (JSON mode only) -->
-      <button id="save-file" title="{% trans 'Save' %}"
-        :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
-        class="toolbar-btn-primary">
-        <i class="fa-solid fa-floppy-disk"></i>
-        <span class="hidden sm:inline">{% trans "Save" %}</span>
-      </button>
+      <!-- JSON-mode tools: save the file + load it into the live graph -->
+      <div id="json-tools" class="flex items-center gap-2">
+        <button id="save-file" title="{% trans 'Save' %}"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span class="hidden sm:inline">{% trans "Save" %}</span>
+        </button>
+
+        <div class="flex items-center rounded-lg border border-current/15 overflow-hidden text-sm">
+          <button id="load-merge" title="{% trans 'Merge this NeoJSON into the graph' %}"
+            class="px-3 py-1 font-semibold">
+            <i class="fa-solid fa-code-merge mr-1"></i><span class="hidden sm:inline">{% trans "Merge → graph" %}</span>
+          </button>
+          <button id="load-replace" title="{% trans 'Replace the ravioli-owned graph with this NeoJSON' %}"
+            class="px-3 py-1 font-semibold border-l border-current/15">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i><span class="hidden sm:inline">{% trans "Replace graph" %}</span>
+          </button>
+        </div>
+      </div>
     </div>
 
     <!-- ── JSON (Ace) view ─────────────────────────────────── -->
@@ -119,11 +132,13 @@ editor.setValue(`{{ content|escapejs }}`, -1);
 editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: false, useWorker: true });
 
 const SAVE_URL = "{{ save_url }}";
+const LOAD_URL = "{{ load_url }}";
 
 // ── Mode switching ───────────────────────────────────────────
 const jsonWrap  = document.getElementById("json-wrap");
 const graphWrap = document.getElementById("graph-wrap");
 const saveBtn   = document.getElementById("save-file");
+const jsonTools = document.getElementById("json-tools");
 const tabJson   = document.getElementById("mode-json");
 const tabGraph  = document.getElementById("mode-graph");
 let cy = null;
@@ -132,7 +147,7 @@ function showJson() {
   jsonWrap.classList.remove("hidden");
   graphWrap.classList.add("hidden");
   graphWrap.classList.remove("flex");
-  saveBtn.style.display = "";
+  jsonTools.style.display = "";
   tabJson.classList.add("active");
   tabGraph.classList.remove("active");
   editor.resize();
@@ -142,7 +157,7 @@ function showGraph() {
   jsonWrap.classList.add("hidden");
   graphWrap.classList.remove("hidden");
   graphWrap.classList.add("flex");
-  saveBtn.style.display = "none";
+  jsonTools.style.display = "none";
   tabGraph.classList.add("active");
   tabJson.classList.remove("active");
   renderGraph();
@@ -283,6 +298,36 @@ async function saveFile() {
   }
 }
 saveBtn.addEventListener("click", saveFile);
+
+// ── Load into the live graph (merge / replace) ───────────────
+async function loadIntoGraph(mode) {
+  if (mode === "replace" && !confirm(
+    "Replace the ravioli-owned graph with this document?\n\n" +
+    "Nodes and relationships in the managed graph that aren't in this document will be DELETED."
+  )) return;
+  const fd = new FormData();
+  fd.append("content", editor.getValue());
+  fd.append("mode", mode);
+  try {
+    const res = await fetch(LOAD_URL, {
+      method: "POST", body: fd,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status !== "ok") { alert(data.error || "Failed to load into graph."); return; }
+    const s = data.summary || {}, n = s.nodes || {}, r = s.relationships || {};
+    alert(
+      `Loaded into graph (${s.mode}).\n` +
+      `Nodes:  +${n.create || 0}  ~${n.update || 0}  -${n.delete || 0}\n` +
+      `Edges:  +${r.create || 0}  ~${r.update || 0}  -${r.delete || 0}`
+    );
+  } catch (err) {
+    alert("Load failed: " + err);
+  }
+}
+document.getElementById("load-merge").addEventListener("click", () => loadIntoGraph("merge"));
+document.getElementById("load-replace").addEventListener("click", () => loadIntoGraph("replace"));
 
 // Open straight into the graph when arrived via ?view=graph (e.g. from export);
 // otherwise default to the editable JSON view.

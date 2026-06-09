@@ -19,8 +19,8 @@ Usage:
 from django.apps import apps as django_apps
 from django.core.management.base import BaseCommand
 
-from toto.ravioli.loader import GRAPH_DIR
-from toto.ravioli.scaffold import config_to_yaml, scaffold_app
+from toto.sql_neo4j_sync.loader import GRAPH_DIR
+from toto.sql_neo4j_sync.scaffold import config_to_yaml, scaffold_app
 
 
 # Third-party / Django built-in app names to always skip.

@@ -11,13 +11,8 @@ class RavioliConfig(AppConfig):
     verbose_name = 'Knowledge Graph'
 
     def ready(self):
+        # SQL→Neo4j projection signals now live in the toto.sql_neo4j_sync app.
         try:
-            from .signals import register_graph_signals
-            register_graph_signals()
-        except Exception as exc:
-            logger.warning("ravioli: failed to register graph signals: %s: %s", type(exc).__name__, exc)
-
-        try:
-            from . import predefined_tasks  # noqa: F401 — registers ravioli workflow tasks
+            from . import predefined_tasks  # noqa: F401 — registers ravioli query/analysis tasks
         except Exception as exc:
             logger.error("ravioli: failed to load predefined_tasks — workflow nodes will not work: %s: %s", type(exc).__name__, exc)
