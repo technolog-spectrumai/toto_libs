@@ -15,8 +15,6 @@ class Command(IngressCommand):
             "idea": {
                 "name": "Idea",
                 "neo4j_label": "Idea",
-                "color": "#2563eb",
-                "icon": "fa-solid fa-lightbulb",
                 "description": "A reusable idea, principle, or insight.",
                 "property_schema": [
                     {"name": "title", "type": "string", "required": True, "label": "Title"},
@@ -27,8 +25,6 @@ class Command(IngressCommand):
             "source": {
                 "name": "Source",
                 "neo4j_label": "Source",
-                "color": "#16a34a",
-                "icon": "fa-solid fa-book",
                 "description": "A book, article, or note an idea came from.",
                 "property_schema": [
                     {"name": "title", "type": "string", "required": True, "label": "Title"},
@@ -39,8 +35,6 @@ class Command(IngressCommand):
             "question": {
                 "name": "Question",
                 "neo4j_label": "Question",
-                "color": "#d97706",
-                "icon": "fa-solid fa-circle-question",
                 "description": "An open question worth returning to.",
                 "property_schema": [
                     {"name": "title", "type": "string", "required": True, "label": "Question"},
@@ -64,7 +58,6 @@ class Command(IngressCommand):
         edge_types = [
             {
                 "slug": "supports", "name": "Supports", "rel_type": "SUPPORTS",
-                "color": "#0ea5e9",
                 "property_schema": [
                     {"name": "strength", "type": "float", "required": False, "label": "Strength"},
                 ],
@@ -72,12 +65,12 @@ class Command(IngressCommand):
             },
             {
                 "slug": "about", "name": "About", "rel_type": "ABOUT",
-                "color": "#64748b", "property_schema": [],
+                "property_schema": [],
                 "sources": ["idea", "question"], "targets": ["source"],
             },
             {
                 "slug": "answered-by", "name": "Answered by", "rel_type": "ANSWERED_BY",
-                "color": "#a855f7", "property_schema": [],
+                "property_schema": [],
                 "sources": ["question"], "targets": ["idea"],
             },
         ]

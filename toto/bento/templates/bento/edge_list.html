@@ -57,9 +57,9 @@
                class="flex items-center gap-3 rounded-lg border p-4 shadow-sm">
         <input type="checkbox" name="ids" value="{{ edge.id }}" x-model="selected" class="size-4 shrink-0">
         <span class="min-w-0 grow text-sm">
-          <a href="{% url 'bento:node_detail' edge.source %}" class="underline hover:opacity-80">{{ edge.source|truncatechars:10 }}</a>
-          <span class="mx-1 font-semibold" style="color: {{ edge.color }}">→ {{ edge.edge_type_name }} →</span>
-          <a href="{% url 'bento:node_detail' edge.target %}" class="underline hover:opacity-80">{{ edge.target|truncatechars:10 }}</a>
+          <a href="{% url 'bento:node_detail' edge.source %}" class="underline hover:opacity-80">{{ edge.source_display|truncatechars:18 }}</a>
+          <span class="mx-1 font-semibold" :class="darkMode ? 'text-link-dark' : 'text-link-light'">→ {{ edge.edge_type_name }} →</span>
+          <a href="{% url 'bento:node_detail' edge.target %}" class="underline hover:opacity-80">{{ edge.target_display|truncatechars:18 }}</a>
         </span>
         <a href="{% url 'bento:edge_update' edge.id %}" class="rounded-lg border border-current/20 px-3 py-1.5 text-sm hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
       </article>

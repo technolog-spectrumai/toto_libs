@@ -19,12 +19,7 @@ from django.utils.translation import gettext_lazy as _
 from toto.ui import PageProcessor
 
 from . import graph_service as gs
-from .forms import (
-    BentoCategoryForm,
-    BentoEdgeTypeForm,
-    build_node_form,
-    collect_props,
-)
+from .forms import BentoCategoryForm, BentoEdgeTypeForm
 from .models import BentoCategory, BentoEdgeType
 
 
@@ -96,14 +91,55 @@ def node_list(request):
     })
 
 
+def _flat_props(properties):
+    """Node/edge props as a flat dict (the ``extra`` bag merged in)."""
+    flat = {k: v for k, v in (properties or {}).items() if k != "extra"}
+    flat.update((properties or {}).get("extra") or {})
+    return flat
+
+
+def _skeleton(category):
+    """A starter JSON object for a new node, one key per schema field."""
+    defaults = {"string": "", "text": "", "integer": 0, "float": 0.0,
+                "boolean": False, "datetime": "", "json": {}}
+    sk = {f["name"]: defaults.get(f.get("type"), "") for f in (category.property_schema or [])}
+    return json.dumps(sk, indent=2) if sk else "{}"
+
+
+def _edge_type_choices(node_category_slug, *, as_source):
+    """Edge types valid for a node of this category, with the allowed categories
+    for the *other* endpoint. ``as_source`` True → node is the edge source."""
+    out = []
+    for et in BentoEdgeType.objects.prefetch_related("allowed_sources", "allowed_targets"):
+        my_side = et.allowed_sources if as_source else et.allowed_targets
+        other_side = et.allowed_targets if as_source else et.allowed_sources
+        my_slugs = list(my_side.values_list("slug", flat=True))
+        if my_slugs and node_category_slug not in my_slugs:
+            continue  # this node's category can't sit on this end
+        out.append({
+            "slug": et.slug, "name": et.name,
+            "cats": list(other_side.values_list("slug", flat=True)),  # [] = any
+        })
+    return out
+
+
+def _relations_context(uid, cat_slug):
+    """Context for the Relations to/from panels (shared by detail + edit)."""
+    edges, _total = gs.list_edges(node_uid=uid, limit=500, offset=0)
+    return {
+        "relations_to": [e for e in edges if e["source"] == uid],     # outgoing
+        "relations_from": [e for e in edges if e["target"] == uid],   # incoming
+        "to_edge_types": _edge_type_choices(cat_slug, as_source=True),
+        "from_edge_types": _edge_type_choices(cat_slug, as_source=False),
+    }
+
+
 @graph_view
 def node_detail(request, uid):
     node = gs.get_node(uid)
-    edges, _total = gs.list_edges(node_uid=uid, limit=200, offset=0)
     return bento_render(request, "bento/node_detail.html", {
         "node": node,
-        "edges": edges,
-        "edge_types": BentoEdgeType.objects.all(),
+        **_relations_context(uid, node["category_slug"]),
     })
 
 
@@ -116,19 +152,23 @@ def node_create(request):
             "categories": BentoCategory.objects.all(),
         })
 
+    error = None
     if request.method == "POST":
-        form = build_node_form(category, data=request.POST)
-        if form.is_valid():
+        data_raw = request.POST.get("data", "")
+        props, error = _parse_json_object(data_raw)
+        if error is None:
             try:
-                node = gs.create_node(category.slug, collect_props(form))
+                node = gs.create_node(category.slug, props)
                 messages.success(request, _("Node created."))
                 return redirect("bento:node_detail", uid=node["uid"])
             except (gs.GraphValidationError, ValueError) as exc:
-                form.add_error(None, str(exc))
+                error = str(exc)
     else:
-        form = build_node_form(category)
+        data_raw = _skeleton(category)
+
     return bento_render(request, "bento/node_form.html", {
-        "form": form, "category": category, "title": _("New %(name)s") % {"name": category.name},
+        "category": category, "data": data_raw, "error": error,
+        "title": _("New %(name)s") % {"name": category.name},
     })
 
 
@@ -136,25 +176,26 @@ def node_create(request):
 def node_update(request, uid):
     node = gs.get_node(uid)
     category = get_object_or_404(BentoCategory, slug=node["category_slug"])
-    props = node["properties"]
-    initial = {k: props.get(k) for k in props}
-    if isinstance(props.get("extra"), dict):
-        import json
-        initial["extra"] = json.dumps(props["extra"], indent=2) if props["extra"] else ""
+    error = None
 
     if request.method == "POST":
-        form = build_node_form(category, data=request.POST)
-        if form.is_valid():
+        data_raw = request.POST.get("data", "")
+        props, error = _parse_json_object(data_raw)
+        if error is None:
             try:
-                gs.update_node(uid, collect_props(form))
+                gs.update_node(uid, props)
                 messages.success(request, _("Node updated."))
                 return redirect("bento:node_detail", uid=uid)
             except (gs.GraphValidationError, ValueError) as exc:
-                form.add_error(None, str(exc))
+                error = str(exc)
     else:
-        form = build_node_form(category, initial=initial)
+        flat = _flat_props(node["properties"])
+        data_raw = json.dumps(flat, indent=2) if flat else "{}"
+
     return bento_render(request, "bento/node_form.html", {
-        "form": form, "category": category, "node": node, "title": _("Edit node"),
+        "category": category, "node": node, "data": data_raw, "error": error,
+        "title": _("Edit node"),
+        **_relations_context(uid, node["category_slug"]),
     })
 
 
@@ -216,6 +257,7 @@ def edge_create(request):
     from_uid = (request.POST.get("from_uid") or request.GET.get("from") or "").strip()
     to_uid = (request.POST.get("to_uid") or request.GET.get("to") or "").strip()
     et_slug = (request.POST.get("edge_type") or request.GET.get("edge_type") or "").strip()
+    origin = (request.POST.get("origin") or request.GET.get("origin") or "").strip()
     data_raw = request.POST.get("data", "")
     error = None
 
@@ -229,15 +271,20 @@ def edge_create(request):
             try:
                 gs.create_edge(et_slug, from_uid, to_uid, props)
                 messages.success(request, _("Edge created."))
-                return redirect("bento:node_detail", uid=from_uid)
+                return redirect("bento:node_detail", uid=origin or from_uid)
             except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
                 error = str(exc)
+        # Posted from a node modal → surface the error on that node, no full page.
+        if error and origin:
+            messages.error(request, error)
+            return redirect("bento:node_detail", uid=origin)
 
     nodes, _total = gs.list_nodes(limit=500)
     return bento_render(request, "bento/edge_form.html", {
         "edge_types": BentoEdgeType.objects.all(),
         "nodes": nodes,
-        "selected": {"from_uid": from_uid, "to_uid": to_uid, "edge_type": et_slug, "data": data_raw},
+        "selected": {"from_uid": from_uid, "to_uid": to_uid, "edge_type": et_slug,
+                     "data": data_raw, "origin": origin},
         "error": error,
         "title": _("New edge"),
     })

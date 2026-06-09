@@ -1,0 +1,13 @@
+{% load i18n %}
+{# Editable ACE JSON editor; args field/label/value/height; wired by _metadata_ace_scripts.html #}
+<div class="metadata-ace space-y-1" data-target="id_{{ field }}">
+  <div class="flex items-center justify-between gap-3">
+    <label for="id_{{ field }}" class="block text-sm font-semibold">{{ label }}</label>
+    <span class="metadata-ace-status hidden rounded px-2 py-0.5 text-xs font-medium"></span>
+  </div>
+  <div class="hidden" aria-hidden="true"><textarea id="id_{{ field }}" name="{{ field }}">{{ value }}</textarea></div>
+  <div id="id_{{ field }}_ace"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="metadata-ace-editor w-full overflow-hidden rounded-lg border text-sm"
+       style="height: {{ height|default:'22rem' }};"></div>
+</div>

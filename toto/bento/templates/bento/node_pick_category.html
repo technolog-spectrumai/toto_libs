@@ -13,8 +13,6 @@
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
            class="rounded-lg border p-4 shadow-sm transition">
           <span class="inline-flex items-center gap-2 font-semibold">
-            <span class="inline-block size-3 rounded-full" style="background: {{ c.color }}"></span>
-            {% if c.icon %}<i class="{{ c.icon }}"></i>{% endif %}
             {{ c.name }}
           </span>
           <p class="mt-1 text-xs opacity-65">{{ c.description|default:c.neo4j_label }}</p>

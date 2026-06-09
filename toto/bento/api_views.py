@@ -144,7 +144,7 @@ class CategoryListApiView(CorsApiView):
     def get(self, request):
         cats = [
             {"slug": c.slug, "name": c.name, "neo4j_label": c.neo4j_label,
-             "color": c.color, "icon": c.icon, "property_schema": c.property_schema}
+             "property_schema": c.property_schema}
             for c in BentoCategory.objects.all()
         ]
         return JsonResponse({"categories": cats})
@@ -154,7 +154,7 @@ class EdgeTypeListApiView(CorsApiView):
     def get(self, request):
         ets = [
             {"slug": e.slug, "name": e.name, "rel_type": e.rel_type,
-             "directed": e.directed, "color": e.color,
+             "directed": e.directed,
              "allowed_sources": list(e.allowed_sources.values_list("slug", flat=True)),
              "allowed_targets": list(e.allowed_targets.values_list("slug", flat=True)),
              "property_schema": e.property_schema}

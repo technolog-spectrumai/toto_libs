@@ -154,7 +154,6 @@ def _serialize_node(props, labels):
         "label": label,
         "category_slug": category.slug if category else None,
         "category_name": category.name if category else label,
-        "color": (category.color if category else "") or "#2563eb",
         "display": _display_name(props),
         "properties": props,
     }
@@ -270,14 +269,19 @@ def _serialize_edge(rec):
         except ValueError:
             props["extra"] = {}
     et = BentoEdgeType.objects.filter(rel_type=rec["type"]).first()
+    # Endpoint display names when the query returned them (aprops/bprops).
+    keys = rec.keys() if hasattr(rec, "keys") else rec
+    source_display = _display_name(dict(rec["aprops"])) if "aprops" in keys else rec["start"]
+    target_display = _display_name(dict(rec["bprops"])) if "bprops" in keys else rec["end"]
     return {
         "id": rec["id"],
         "type": rec["type"],
         "edge_type_slug": et.slug if et else None,
         "edge_type_name": et.name if et else rec["type"],
-        "color": (et.color if et else "") or "#64748b",
         "source": rec["start"],
         "target": rec["end"],
+        "source_display": source_display,
+        "target_display": target_display,
         "properties": props,
     }
 
@@ -341,7 +345,8 @@ def list_edges(node_uid=None, et_slug=None, q=None, limit=25, offset=0):
         records = c.run_cypher(
             f"MATCH (a)-[r]->(b) WHERE {where} "
             "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props "
+            "b.uid AS end, properties(r) AS props, "
+            "properties(a) AS aprops, properties(b) AS bprops "
             "ORDER BY id SKIP $offset LIMIT $limit",
             params,
         )
@@ -354,7 +359,8 @@ def get_edge(edge_id):
         records = c.run_cypher(
             "MATCH (a)-[r]->(b) WHERE elementId(r) = $id "
             "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props",
+            "b.uid AS end, properties(r) AS props, "
+            "properties(a) AS aprops, properties(b) AS bprops",
             {"id": edge_id},
         )
     if not records:
@@ -407,14 +413,14 @@ def _graph_payload(node_records, edge_records):
     nodes = [
         {
             "id": n["uid"], "label": n["display"], "category": n["category_slug"],
-            "color": n["color"], "properties": n["properties"],
+            "properties": n["properties"],
         }
         for n in node_records
     ]
     edges = [
         {
             "id": e["id"], "source": e["source"], "target": e["target"],
-            "label": e["edge_type_name"], "type": e["type"], "color": e["color"],
+            "label": e["edge_type_name"], "type": e["type"],
         }
         for e in edge_records
     ]

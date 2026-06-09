@@ -61,7 +61,6 @@
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="flex items-center gap-3 rounded-lg border p-4 shadow-sm">
         <input type="checkbox" name="uids" value="{{ node.uid }}" x-model="selected" class="size-4 shrink-0">
-        <span class="inline-block size-3 shrink-0 rounded-full" style="background: {{ node.color }}"></span>
         <a href="{% url 'bento:node_detail' node.uid %}" class="min-w-0 grow">
           <span class="block truncate font-semibold">{{ node.display }}</span>
           <span class="text-xs opacity-65">{{ node.category_name }}</span>
@@ -110,13 +109,13 @@
   function colors(dark) {
     const s = getComputedStyle(document.documentElement); const g = v => s.getPropertyValue(v).trim();
     return dark
-      ? { bg: g('--color-primary-bg-dark') || '#0a0c11', text: g('--color-text-main-dark') || '#d3d7e0', edge: g('--color-accent-1') || '#4f5fa1' }
-      : { bg: g('--color-primary-bg-light') || '#f2f3f5', text: g('--color-text-main-light') || '#0f1114', edge: g('--color-accent-2') || '#2f3d63' };
+      ? { bg: g('--color-primary-bg-dark') || '#0a0c11', node: g('--color-bubble-bg-dark') || '#131929', text: g('--color-text-main-dark') || '#d3d7e0', border: g('--color-accent-1') || '#4f5fa1', edge: g('--color-accent-1') || '#4f5fa1' }
+      : { bg: g('--color-primary-bg-light') || '#f2f3f5', node: g('--color-bubble-bg-light') || '#ffffff', text: g('--color-text-main-light') || '#0f1114', border: g('--color-accent-2') || '#2f3d63', edge: g('--color-accent-2') || '#2f3d63' };
   }
   function toElements(data) {
     return [
-      ...(data.nodes || []).map(n => ({ data: { id: n.id, label: (n.label || 'node').slice(0, 36), color: n.color || '#2563eb' } })),
-      ...(data.edges || []).map(e => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label || '', color: e.color || '#64748b' } })),
+      ...(data.nodes || []).map(n => ({ data: { id: n.id, label: (n.label || 'node').slice(0, 36) } })),
+      ...(data.edges || []).map(e => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label || '' } })),
     ];
   }
   function build(container, data, dark) {
@@ -125,8 +124,8 @@
     cy = cytoscape({
       container, elements: toElements(data), wheelSensitivity: 0.2,
       style: [
-        { selector: 'node', style: { 'shape': 'round-rectangle', 'background-color': 'data(color)', 'label': 'data(label)', 'color': c.text, 'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'ellipsis', 'text-max-width': 140, 'width': 150, 'height': 44, 'cursor': 'pointer' } },
-        { selector: 'edge', style: { 'width': 1.5, 'line-color': 'data(color)', 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': 'data(color)', 'label': 'data(label)', 'font-size': 9, 'color': c.text, 'text-opacity': 0.7 } },
+        { selector: 'node', style: { 'shape': 'round-rectangle', 'background-color': c.node, 'border-color': c.border, 'border-width': 1.5, 'label': 'data(label)', 'color': c.text, 'font-size': 11, 'text-valign': 'center', 'text-halign': 'center', 'text-wrap': 'ellipsis', 'text-max-width': 140, 'width': 150, 'height': 44, 'cursor': 'pointer' } },
+        { selector: 'edge', style: { 'width': 1.5, 'line-color': c.edge, 'curve-style': 'bezier', 'target-arrow-shape': 'triangle', 'target-arrow-color': c.edge, 'label': 'data(label)', 'font-size': 9, 'color': c.text, 'text-opacity': 0.7 } },
       ],
       layout: { name: 'cose', animate: false, nodeRepulsion: 8000, idealEdgeLength: 120, padding: 24, fit: true },
     });

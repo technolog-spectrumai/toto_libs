@@ -115,10 +115,6 @@ class BentoCategory(DomainEntity):
         help_text="List of {name, type, required, label, help} field definitions.",
     )
 
-    # UI metadata
-    color = models.CharField(max_length=20, blank=True, default="#2563eb")
-    icon = models.CharField(max_length=40, blank=True)
-
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -179,8 +175,6 @@ class BentoEdgeType(DomainEntity):
     )
     property_schema = models.JSONField(default=list, blank=True)
     directed = models.BooleanField(default=True)
-
-    color = models.CharField(max_length=20, blank=True, default="#64748b")
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

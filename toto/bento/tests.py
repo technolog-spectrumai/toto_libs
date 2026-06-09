@@ -290,7 +290,7 @@ class ViewPermissionTests(TestCase):
         self.client.login(username="bob", password="pw")
         resp = self.client.post(reverse("bento:category_create"), {
             "name": "Question", "slug": "", "neo4j_label": "",
-            "description": "", "property_schema": "[]", "color": "#fff", "icon": "",
+            "description": "", "property_schema": "[]",
         })
         self.assertEqual(resp.status_code, 302)
         self.assertTrue(BentoCategory.objects.filter(name="Question").exists())
@@ -353,6 +353,99 @@ class AddEdgeViewTests(TestCase):
                                      "data": '{"strength": 0.5}'})
         self.assertEqual(resp.status_code, 302)
         mock.assert_called_once_with("supports", "a", "b", {"strength": 0.5})
+
+    def test_link_from_prefills_target(self):
+        # "Link from" on node b → ?to=b: the To dropdown should be preselected.
+        with patch.object(gs, "list_nodes", return_value=self._NODES):
+            resp = self.client.get(reverse("bento:edge_create"), {"to": "b", "origin": "b"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'value="b" selected')
+
+    def test_origin_redirects_back_to_that_node(self):
+        with patch.object(gs, "create_edge", return_value={"id": "e1"}):
+            resp = self.client.post(reverse("bento:edge_create"),
+                                    {"from_uid": "a", "to_uid": "b", "edge_type": "supports",
+                                     "origin": "b", "data": ""})
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp.url, reverse("bento:node_detail", kwargs={"uid": "b"}))
+
+    def test_node_detail_splits_relations_to_and_from(self):
+        node = {"uid": "n1", "display": "This", "category_name": "Idea", "category_slug": "idea",
+                "color": "#fff", "properties": {"title": "This"}}
+        out = {"id": "e1", "source": "n1", "target": "n2", "source_display": "This",
+               "target_display": "Node Two", "edge_type_name": "Supports", "color": "#0ea5e9"}
+        inc = {"id": "e2", "source": "n3", "target": "n1", "source_display": "Node Three",
+               "target_display": "This", "edge_type_name": "About", "color": "#64748b"}
+        with patch.object(gs, "get_node", return_value=node), \
+             patch.object(gs, "list_edges", return_value=([out, inc], 2)):
+            resp = self.client.get(reverse("bento:node_detail", kwargs={"uid": "n1"}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Relations to")
+        self.assertContains(resp, "Relations from")
+        self.assertContains(resp, "Node Two")    # outgoing target shown by name
+        self.assertContains(resp, "Node Three")  # incoming source shown by name
+
+
+class NodeFormViewTests(TestCase):
+    def setUp(self):
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_user("ned", password="pw")
+        self.cat = BentoCategory.objects.create(
+            name="Idea", slug="idea", neo4j_label="Idea",
+            property_schema=[{"name": "title", "type": "string", "required": True},
+                             {"name": "rating", "type": "integer"}],
+        )
+        self.client.login(username="ned", password="pw")
+
+    def test_create_get_shows_ace_json_skeleton(self):
+        resp = self.client.get(reverse("bento:node_create"), {"category": "idea"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, 'name="data"')       # ACE-backed hidden textarea
+        self.assertContains(resp, "metadata-ace")
+        self.assertContains(resp, "title")             # skeleton key from schema
+
+    def test_create_post_valid_calls_service(self):
+        with patch.object(gs, "create_node", return_value={"uid": "u1"}) as mock:
+            resp = self.client.post(reverse("bento:node_create") + "?category=idea",
+                                    {"category": "idea", "data": '{"title": "Hi"}'})
+        self.assertEqual(resp.status_code, 302)
+        mock.assert_called_once_with("idea", {"title": "Hi"})
+
+    def test_create_post_invalid_json_shows_error(self):
+        resp = self.client.post(reverse("bento:node_create") + "?category=idea",
+                                {"category": "idea", "data": "{bad"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "valid JSON")
+
+    def test_create_post_schema_validation_error_shown(self):
+        with patch.object(gs, "create_node", side_effect=gs.GraphValidationError("'title' is required.")):
+            resp = self.client.post(reverse("bento:node_create") + "?category=idea",
+                                    {"category": "idea", "data": "{}"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "required")
+
+    def test_update_get_seeds_flat_props_and_shows_relations(self):
+        node = {"uid": "u1", "display": "Hi", "category_name": "Idea", "category_slug": "idea",
+                "properties": {"title": "Hi", "extra": {"foo": "bar"}}}
+        with patch.object(gs, "get_node", return_value=node), \
+             patch.object(gs, "list_edges", return_value=([], 0)):
+            resp = self.client.get(reverse("bento:node_update", kwargs={"uid": "u1"}))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "title")
+        self.assertContains(resp, "foo")            # extra merged in flat
+        self.assertContains(resp, "Relations to")   # edit page keeps the link panels
+        self.assertContains(resp, "Relations from")
+
+    def test_update_post_calls_service(self):
+        node = {"uid": "u1", "display": "Hi", "category_name": "Idea", "category_slug": "idea",
+                "properties": {"title": "Hi"}}
+        with patch.object(gs, "get_node", return_value=node), \
+             patch.object(gs, "update_node", return_value=node) as mock:
+            resp = self.client.post(reverse("bento:node_update", kwargs={"uid": "u1"}),
+                                    {"data": '{"title": "X"}'})
+        self.assertEqual(resp.status_code, 302)
+        mock.assert_called_once_with("u1", {"title": "X"})
 
 
 class MigrationCommandTests(TestCase):

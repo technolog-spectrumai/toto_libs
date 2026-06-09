@@ -16,12 +16,13 @@
     <form method="post" class="space-y-4">
       {% csrf_token %}
 
+      <input type="hidden" name="origin" value="{{ selected.origin }}">
       {% if edge %}
         {# editing: endpoints + type are fixed, only the data changes #}
         <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
           <span class="font-mono">{{ edge.source|truncatechars:12 }}</span>
-          <span class="font-semibold" style="color: {{ edge.color }}">→ {{ edge.edge_type_name }} →</span>
+          <span class="font-semibold" :class="darkMode ? 'text-link-dark' : 'text-link-light'">→ {{ edge.edge_type_name }} →</span>
           <span class="font-mono">{{ edge.target|truncatechars:12 }}</span>
         </div>
       {% else %}
@@ -62,13 +63,8 @@
         </div>
       {% endif %}
 
-      <div class="space-y-1">
-        <label for="data" class="block text-sm font-semibold">{% trans "Data (JSON)" %}</label>
-        <textarea id="data" name="data" rows="8" placeholder="{ }"
-          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-          class="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-current/20">{{ selected.data }}</textarea>
-        <p class="text-xs opacity-60">{% trans "Optional. A JSON object of edge properties." %}</p>
-      </div>
+      {% trans "Data (JSON)" as data_label %}
+      {% include "bento/_ace_json.html" with field="data" label=data_label value=selected.data height="16rem" %}
 
       <div class="flex gap-2">
         <button type="submit"
@@ -81,4 +77,9 @@
     </form>
   </div>
 </div>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
 {% endblock %}
