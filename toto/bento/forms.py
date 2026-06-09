@@ -4,10 +4,11 @@ Two kinds:
 
 * ``BentoCategoryForm`` / ``BentoEdgeTypeForm`` — ordinary ModelForms for the SQL
   **templates**.
-* ``build_node_form`` / ``build_edge_form`` — *dynamic* forms built at runtime
-  from a template's ``property_schema`` (one typed field per declared property,
-  plus a free-form ``extra`` JSON box). This mirrors manta's ``_build_form``
-  pattern: classes are produced with ``type()`` from validated DB data.
+* ``build_node_form`` — a *dynamic* form built at runtime from a category's
+  ``property_schema`` (one typed field per declared property, plus a free-form
+  ``extra`` JSON box). Mirrors manta's ``_build_form``: the class is produced
+  with ``type()`` from validated DB data. (Edges use one plain form with a JSON
+  data box — see ``bento.views.edge_create``.)
 """
 
 import json
@@ -120,14 +121,6 @@ def build_node_form(category, data=None, initial=None):
     fields = {spec["name"]: _schema_field(spec) for spec in (category.property_schema or [])}
     fields["extra"] = _extra_field()
     form_cls = type("BentoNodeForm", (forms.Form,), fields)
-    return form_cls(data=data, initial=initial)
-
-
-def build_edge_form(edge_type, data=None, initial=None):
-    """Dynamic form for an edge type's properties (source/target handled in view)."""
-    fields = {spec["name"]: _schema_field(spec) for spec in (edge_type.property_schema or [])}
-    fields["extra"] = _extra_field()
-    form_cls = type("BentoEdgeForm", (forms.Form,), fields)
     return form_cls(data=data, initial=initial)
 
 

@@ -7,48 +7,68 @@
 <div class="mx-auto max-w-2xl">
   <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="rounded-lg border p-6 shadow-sm">
-    <h2 class="mb-1 text-xl font-bold">{{ title }}</h2>
-    <p class="mb-4 text-sm opacity-70">{% trans "Edge type" %}: <span class="font-semibold">{{ edge_type.name }}</span> ({{ edge_type.rel_type }})</p>
+    <h2 class="mb-4 text-xl font-bold">{{ title }}</h2>
+
+    {% if error %}
+      <div class="mb-4 rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ error }}</div>
+    {% endif %}
 
     <form method="post" class="space-y-4">
       {% csrf_token %}
-      {% if form.non_field_errors %}
-        <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ form.non_field_errors }}</div>
-      {% endif %}
 
-      {% if not edge %}
-        {% trans "From node" as from_label %}
-        {% trans "To node" as to_label %}
-        <input type="hidden" name="edge_type" value="{{ edge_type.slug }}">
-
-        {% if source_node %}
-          <div class="space-y-1">
-            <label class="block text-sm font-semibold">{% trans "From" %}</label>
-            <input type="hidden" name="from_uid" value="{{ source_node.uid }}">
-            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                 class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm">
-              <span class="inline-block size-2.5 rounded-full" style="background: {{ source_node.color }}"></span>
-              <span class="font-semibold">{{ source_node.display }}</span>
-              <span class="opacity-60">· {{ source_node.category_name }}</span>
-            </div>
-          </div>
-        {% else %}
-          {% include "bento/_node_picker.html" with field="from_uid" label=from_label category=source_filter %}
-        {% endif %}
-
-        <div class="flex justify-center text-lg opacity-50"><i class="fa-solid fa-arrow-down"></i></div>
-        {% include "bento/_node_picker.html" with field="to_uid" label=to_label category=target_filter %}
+      {% if edge %}
+        {# editing: endpoints + type are fixed, only the data changes #}
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+          <span class="font-mono">{{ edge.source|truncatechars:12 }}</span>
+          <span class="font-semibold" style="color: {{ edge.color }}">→ {{ edge.edge_type_name }} →</span>
+          <span class="font-mono">{{ edge.target|truncatechars:12 }}</span>
+        </div>
       {% else %}
-        <p class="text-sm opacity-70">{{ edge.source }} → {{ edge.target }}</p>
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="space-y-1">
+            <label for="from_uid" class="block text-sm font-semibold">{% trans "Link from" %}</label>
+            <select id="from_uid" name="from_uid"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for n in nodes %}
+                <option value="{{ n.uid }}" {% if n.uid == selected.from_uid %}selected{% endif %}>{{ n.display }} · {{ n.category_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label for="edge_type" class="block text-sm font-semibold">{% trans "Edge type" %}</label>
+            <select id="edge_type" name="edge_type"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for et in edge_types %}
+                <option value="{{ et.slug }}" {% if et.slug == selected.edge_type %}selected{% endif %}>{{ et.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label for="to_uid" class="block text-sm font-semibold">{% trans "Link to" %}</label>
+            <select id="to_uid" name="to_uid"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for n in nodes %}
+                <option value="{{ n.uid }}" {% if n.uid == selected.to_uid %}selected{% endif %}>{{ n.display }} · {{ n.category_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
       {% endif %}
 
-      {% for field in form %}
-        {% if field.name == "extra" %}
-          {% include "bento/_metadata_ace.html" with field=field %}
-        {% else %}
-          {% include "bento/_field.html" with field=field %}
-        {% endif %}
-      {% endfor %}
+      <div class="space-y-1">
+        <label for="data" class="block text-sm font-semibold">{% trans "Data (JSON)" %}</label>
+        <textarea id="data" name="data" rows="8" placeholder="{ }"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="w-full rounded-lg border px-3 py-2 font-mono text-sm outline-none focus:ring-2 focus:ring-current/20">{{ selected.data }}</textarea>
+        <p class="text-xs opacity-60">{% trans "Optional. A JSON object of edge properties." %}</p>
+      </div>
 
       <div class="flex gap-2">
         <button type="submit"
@@ -61,30 +81,4 @@
     </form>
   </div>
 </div>
-{% endblock %}
-
-{% block end_script %}
-{{ block.super }}
-{% include "bento/_metadata_ace_scripts.html" %}
-<script>
-  // Searchable node picker used by bento/_node_picker.html. Queries the bento
-  // node API and lets the user select a node instead of pasting its uid.
-  function nodePicker(category) {
-    return {
-      query: "", results: [], open: false, selectedUid: "", selectedLabel: "",
-      async search() {
-        let url = "{% url 'bento:api_node_list' %}?per_page=10&q=" + encodeURIComponent(this.query.trim());
-        if (category) { url += "&category=" + encodeURIComponent(category); }
-        try {
-          const res = await fetch(url, { headers: { "Accept": "application/json" } });
-          const data = await res.json();
-          this.results = data.nodes || [];
-          this.open = true;
-        } catch (e) { this.results = []; }
-      },
-      pick(n) { this.selectedUid = n.uid; this.selectedLabel = n.display; this.query = ""; this.open = false; },
-      clear() { this.selectedUid = ""; this.selectedLabel = ""; },
-    };
-  }
-</script>
 {% endblock %}

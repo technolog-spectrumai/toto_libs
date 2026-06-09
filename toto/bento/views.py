@@ -5,6 +5,7 @@ neomodel. Node/edge lists are paginated, filterable by type, quick-searchable,
 and support batch delete. The graph view lazily expands neighborhoods.
 """
 
+import json
 from functools import wraps
 
 from django.contrib import messages
@@ -21,7 +22,6 @@ from . import graph_service as gs
 from .forms import (
     BentoCategoryForm,
     BentoEdgeTypeForm,
-    build_edge_form,
     build_node_form,
     collect_props,
 )
@@ -196,90 +196,79 @@ def edge_list(request):
     })
 
 
-def _safe_get_node(uid):
-    """get_node that returns None on a missing uid (GraphUnavailable still propagates)."""
-    if not uid:
-        return None
+def _parse_json_object(raw):
+    """Parse a JSON-object textarea. Returns (dict, error_message_or_None)."""
+    raw = (raw or "").strip()
+    if not raw:
+        return {}, None
     try:
-        return gs.get_node(uid)
-    except gs.NotFound:
-        return None
+        obj = json.loads(raw)
+    except ValueError as exc:
+        return {}, _("Data must be valid JSON: %(e)s") % {"e": exc}
+    if not isinstance(obj, dict):
+        return {}, _("Data must be a JSON object.")
+    return obj, None
 
 
 @graph_view
 def edge_create(request):
-    slug = request.GET.get("edge_type") or request.POST.get("edge_type")
-    edge_type = BentoEdgeType.objects.filter(slug=slug).first() if slug else None
+    """One simple form: from-node, edge type, to-node, and a JSON data box."""
     from_uid = (request.POST.get("from_uid") or request.GET.get("from") or "").strip()
-
-    # Step 1: choose an edge type (filtered to ones that may start from this node).
-    if not edge_type:
-        edge_types = list(BentoEdgeType.objects.all())
-        source_node = _safe_get_node(from_uid)
-        if source_node and source_node.get("category_slug"):
-            edge_types = [
-                et for et in edge_types
-                if not et.allowed_sources.exists()
-                or et.allowed_sources.filter(slug=source_node["category_slug"]).exists()
-            ]
-        return bento_render(request, "bento/edge_pick_type.html", {
-            "edge_types": edge_types,
-            "from_uid": from_uid,
-        })
-
-    # Step 2: pick endpoints + properties.
-    source_node = _safe_get_node(from_uid)
-    src_slugs = list(edge_type.allowed_sources.values_list("slug", flat=True))
-    tgt_slugs = list(edge_type.allowed_targets.values_list("slug", flat=True))
+    to_uid = (request.POST.get("to_uid") or request.GET.get("to") or "").strip()
+    et_slug = (request.POST.get("edge_type") or request.GET.get("edge_type") or "").strip()
+    data_raw = request.POST.get("data", "")
+    error = None
 
     if request.method == "POST":
-        form = build_edge_form(edge_type, data=request.POST)
-        to_uid = request.POST.get("to_uid", "").strip()
-        if form.is_valid():
-            if not from_uid or not to_uid:
-                form.add_error(None, _("Pick both a source and a target node."))
-            elif from_uid == to_uid:
-                form.add_error(None, _("A node cannot link to itself."))
-            else:
-                try:
-                    gs.create_edge(edge_type.slug, from_uid, to_uid, collect_props(form))
-                    messages.success(request, _("Edge created."))
-                    return redirect("bento:node_detail", uid=from_uid)
-                except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
-                    form.add_error(None, str(exc))
-    else:
-        form = build_edge_form(edge_type)
+        props, error = _parse_json_object(data_raw)
+        if error is None and not (from_uid and to_uid and et_slug):
+            error = _("Choose an edge type, a from-node and a to-node.")
+        if error is None and from_uid == to_uid:
+            error = _("A node cannot link to itself.")
+        if error is None:
+            try:
+                gs.create_edge(et_slug, from_uid, to_uid, props)
+                messages.success(request, _("Edge created."))
+                return redirect("bento:node_detail", uid=from_uid)
+            except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
+                error = str(exc)
 
+    nodes, _total = gs.list_nodes(limit=500)
     return bento_render(request, "bento/edge_form.html", {
-        "form": form, "edge_type": edge_type,
-        "from_uid": from_uid,
-        "source_node": source_node,
-        "source_filter": src_slugs[0] if len(src_slugs) == 1 else "",
-        "target_filter": tgt_slugs[0] if len(tgt_slugs) == 1 else "",
-        "title": _("New %(name)s edge") % {"name": edge_type.name},
+        "edge_types": BentoEdgeType.objects.all(),
+        "nodes": nodes,
+        "selected": {"from_uid": from_uid, "to_uid": to_uid, "edge_type": et_slug, "data": data_raw},
+        "error": error,
+        "title": _("New edge"),
     })
 
 
 @graph_view
 def edge_update(request, edge_id):
     edge = gs.get_edge(edge_id)
-    edge_type = get_object_or_404(BentoEdgeType, slug=edge["edge_type_slug"])
-    props = edge["properties"]
-    initial = {k: props.get(k) for k in props}
+    error = None
 
     if request.method == "POST":
-        form = build_edge_form(edge_type, data=request.POST)
-        if form.is_valid():
+        data_raw = request.POST.get("data", "")
+        props, error = _parse_json_object(data_raw)
+        if error is None:
             try:
-                gs.update_edge(edge_id, collect_props(form))
+                gs.update_edge(edge_id, props)
                 messages.success(request, _("Edge updated."))
                 return redirect("bento:node_detail", uid=edge["source"])
             except (gs.GraphValidationError, ValueError) as exc:
-                form.add_error(None, str(exc))
+                error = str(exc)
     else:
-        form = build_edge_form(edge_type, initial=initial)
+        # seed the data box with the flat properties (extra merged in)
+        flat = {k: v for k, v in edge["properties"].items() if k != "extra"}
+        flat.update(edge["properties"].get("extra") or {})
+        data_raw = json.dumps(flat, indent=2) if flat else ""
+
     return bento_render(request, "bento/edge_form.html", {
-        "form": form, "edge_type": edge_type, "edge": edge, "title": _("Edit edge"),
+        "edge": edge,
+        "selected": {"data": data_raw},
+        "error": error,
+        "title": _("Edit edge"),
     })
 
 

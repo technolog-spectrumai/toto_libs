@@ -314,39 +314,45 @@ class AddEdgeViewTests(TestCase):
         self.et.allowed_targets.set([self.idea])
         self.client.login(username="ann", password="pw")
 
-    def test_pick_type_screen_lists_edge_types(self):
-        resp = self.client.get(reverse("bento:edge_create"))
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Supports")
+    _NODES = ([{"uid": "a", "display": "Node A", "category_name": "Idea", "color": "#fff"},
+               {"uid": "b", "display": "Node B", "category_name": "Idea", "color": "#fff"}], 2)
 
-    def test_form_renders_node_pickers(self):
-        resp = self.client.get(reverse("bento:edge_create"), {"edge_type": "supports"})
+    def test_single_form_lists_types_and_nodes(self):
+        with patch.object(gs, "list_nodes", return_value=self._NODES):
+            resp = self.client.get(reverse("bento:edge_create"))
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "nodePicker")
-        self.assertContains(resp, 'name="to_uid"')
+        self.assertContains(resp, "Supports")        # edge type select
+        self.assertContains(resp, "Node A")          # from/to node select
+        self.assertContains(resp, 'name="edge_type"')
+        self.assertContains(resp, 'name="data"')
 
-    def test_missing_target_shows_error(self):
-        with patch.object(gs, "get_node", return_value=None):
-            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
-                                    {"from_uid": "", "to_uid": ""})
+    def test_missing_fields_shows_error(self):
+        with patch.object(gs, "list_nodes", return_value=self._NODES):
+            resp = self.client.post(reverse("bento:edge_create"), {"from_uid": "", "to_uid": "", "edge_type": ""})
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Pick both")
+        self.assertContains(resp, "Choose an edge type")
 
     def test_self_edge_rejected(self):
-        with patch.object(gs, "get_node", return_value=None):
-            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
-                                    {"from_uid": "x", "to_uid": "x"})
+        with patch.object(gs, "list_nodes", return_value=self._NODES):
+            resp = self.client.post(reverse("bento:edge_create"),
+                                    {"from_uid": "a", "to_uid": "a", "edge_type": "supports"})
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "cannot link to itself")
 
+    def test_invalid_json_data_shows_error(self):
+        with patch.object(gs, "list_nodes", return_value=self._NODES):
+            resp = self.client.post(reverse("bento:edge_create"),
+                                    {"from_uid": "a", "to_uid": "b", "edge_type": "supports", "data": "{bad"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "valid JSON")
+
     def test_create_edge_calls_service_and_redirects(self):
-        with patch.object(gs, "get_node", return_value=None), \
-             patch.object(gs, "create_edge", return_value={"id": "e1"}) as mock:
-            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
-                                    {"from_uid": "a", "to_uid": "b", "strength": "0.5"})
+        with patch.object(gs, "create_edge", return_value={"id": "e1"}) as mock:
+            resp = self.client.post(reverse("bento:edge_create"),
+                                    {"from_uid": "a", "to_uid": "b", "edge_type": "supports",
+                                     "data": '{"strength": 0.5}'})
         self.assertEqual(resp.status_code, 302)
-        mock.assert_called_once()
-        self.assertEqual(mock.call_args[0][:3], ("supports", "a", "b"))
+        mock.assert_called_once_with("supports", "a", "b", {"strength": 0.5})
 
 
 class MigrationCommandTests(TestCase):
