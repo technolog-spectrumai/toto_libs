@@ -16,6 +16,15 @@
       {% for field in form %}
         {% if field.name == "property_schema" %}
           {% include "bento/_metadata_ace.html" with field=field %}
+        {% elif field.name == "allowed_sources" or field.name == "allowed_targets" %}
+          {% include "bento/_checkbox_list.html" with field=field %}
+        {% elif field.name == "directed" %}
+          <div class="space-y-1">
+            <label for="{{ field.id_for_label }}" class="flex w-fit cursor-pointer items-center gap-2 text-sm font-semibold">
+              {{ field }} {{ field.label }}
+            </label>
+            {% if field.help_text %}<p class="text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+          </div>
         {% else %}
           {% include "bento/_field.html" with field=field %}
         {% endif %}

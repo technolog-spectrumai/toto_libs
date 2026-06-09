@@ -58,9 +58,15 @@ class BentoEdgeTypeForm(forms.ModelForm):
             "rel_type": forms.TextInput(attrs={"placeholder": "auto from name if blank"}),
             "description": forms.Textarea(attrs={"rows": 3}),
             "property_schema": forms.Textarea(attrs={"rows": 8}),
+            "allowed_sources": forms.CheckboxSelectMultiple,
+            "allowed_targets": forms.CheckboxSelectMultiple,
+            "directed": forms.CheckboxInput(attrs={"class": "size-4 cursor-pointer"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            _style(field)
+        # Don't apply the text-input styling to the checkbox fields.
+        skip = {"allowed_sources", "allowed_targets", "directed"}
+        for name, field in self.fields.items():
+            if name not in skip:
+                _style(field)

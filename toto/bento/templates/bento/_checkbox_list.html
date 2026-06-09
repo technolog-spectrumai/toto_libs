@@ -1,0 +1,11 @@
+{% load i18n %}
+{# Renders a CheckboxSelectMultiple field as a scrollable checkbox list. Arg: field #}
+<div class="space-y-1">
+  <label class="block text-sm font-semibold">{{ field.label }}</label>
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="max-h-44 space-y-0.5 overflow-y-auto rounded-lg border p-2 text-sm [&_input]:mr-2 [&_input]:size-4 [&_label]:flex [&_label]:cursor-pointer [&_label]:items-center [&_label]:rounded [&_label]:px-2 [&_label]:py-1">
+    {{ field }}
+  </div>
+  {% if field.help_text %}<p class="text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+  {% if field.errors %}<div class="text-sm text-warn-light">{{ field.errors }}</div>{% endif %}
+</div>
