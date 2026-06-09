@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block bento_title %}Bento{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block bento_title %}Data{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 <style>
@@ -19,6 +19,8 @@
   :style="darkMode ? 'color-scheme: dark' : 'color-scheme: light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-7xl space-y-6">
+    {# Shared Knowledge Graph tab bar — always offers a one-click way back to ravioli. #}
+    {% include "ravioli/_tabs.html" with active_tab="data" %}
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
         <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
@@ -33,7 +35,7 @@
           </p>
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-cubes-stacked"></i>
-            {% trans "Bento" %}
+            {% trans "Data" %}
             <span class="rounded bg-current/10 px-2 py-0.5 text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Neo4j" %}</span>
           </h1>
         </div>

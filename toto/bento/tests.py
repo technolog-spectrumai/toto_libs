@@ -496,3 +496,36 @@ class MigrationCommandTests(TestCase):
         out = StringIO()
         call_command("migrate_bento_to_neo4j", "--dry-run", stdout=out)
         self.assertIn("nothing to migrate", out.getvalue())
+
+
+# ---------------------------------------------------------------------------
+# navigation — bento is surfaced as ravioli's "Data" tab at /ravioli/data/
+# ---------------------------------------------------------------------------
+
+class NavigationTests(TestCase):
+    def setUp(self):
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_user("nav", password="pw")
+
+    def test_node_list_mounted_under_ravioli_data(self):
+        self.assertTrue(reverse("bento:node_list").startswith("/ravioli/data/"))
+
+    def test_legacy_bento_root_redirects_to_data(self):
+        resp = self.client.get("/bento/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], reverse("bento:node_list"))
+
+    def test_legacy_bento_subpath_redirect_preserves_path(self):
+        resp = self.client.get("/bento/nodes/abc123/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(resp["Location"], "/ravioli/data/nodes/abc123/")
+
+    def test_data_page_has_tab_bar_back_to_ravioli(self):
+        """The shared tab bar gives a one-click way back to the rest of ravioli."""
+        self.client.login(username="nav", password="pw")
+        with patch.object(gs, "list_nodes", return_value=([], 0)):
+            resp = self.client.get(reverse("bento:node_list"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, reverse("ravioli:query_unified"))
+        self.assertContains(resp, reverse("ravioli:search"))

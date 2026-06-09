@@ -27,28 +27,13 @@
   <div class="mx-auto max-w-7xl space-y-6">
 
     <!-- Page header -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-database mr-2 text-2xl"></i>{% trans "Knowledge Graph" %}</h1>
         <p class="mt-1 text-sm opacity-60">{% trans "Run saved Cypher queries against Neo4j and inspect the knowledge graph." %}</p>
       </div>
-      {% if request.user.is_superuser %}
-      <div class="flex shrink-0 items-center gap-2">
-        <a
-          href="{% url 'ravioli:search' %}"
-          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
-        >
-          <i class="fa-solid fa-magnifying-glass"></i>{% trans "Search" %}</a>
-        <a
-          href="{% url 'ravioli:graph_analysis' %}"
-          :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
-          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80"
-        >
-          <i class="fa-solid fa-chart-network"></i>{% trans "Graph Analysis" %}</a>
-      </div>
-      {% endif %}
+      {% include "ravioli/_tabs.html" with active_tab="queries" %}
     </div>
 
     <!-- Two-column layout -->
