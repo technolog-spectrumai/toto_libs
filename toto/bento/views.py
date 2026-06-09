@@ -47,47 +47,27 @@ def graph_view(fn):
     return wrapper
 
 
-def _page_params(request, default=25):
-    try:
-        per_page = max(1, min(int(request.GET.get("per_page", default)), 200))
-    except (TypeError, ValueError):
-        per_page = default
-    try:
-        page = max(1, int(request.GET.get("page", 1)))
-    except (TypeError, ValueError):
-        page = 1
-    return page, per_page, (page - 1) * per_page
-
-
-def _page_context(page, per_page, total):
-    num_pages = max(1, (total + per_page - 1) // per_page)
-    page = min(page, num_pages)
-    return {
-        "page": page, "per_page": per_page, "total": total, "num_pages": num_pages,
-        "has_prev": page > 1, "has_next": page < num_pages,
-        "prev": page - 1, "next": page + 1,
-        "start_index": 0 if total == 0 else (page - 1) * per_page + 1,
-        "end_index": min(page * per_page, total),
-        "page_range": range(1, num_pages + 1),
-    }
-
-
 # --------------------------------------------------------------------------
 # nodes
 # --------------------------------------------------------------------------
 
+_TABLE_PER_PAGE = 50
+
+
 @graph_view
 def node_list(request):
-    page, per_page, offset = _page_params(request)
     category = request.GET.get("category") or ""
     q = request.GET.get("q", "")
-    rows, total = gs.list_nodes(cat_slug=category or None, q=q, limit=per_page, offset=offset)
+    # First page server-side: fast initial render + detects GraphUnavailable.
+    # Further pages are lazy-loaded from api_node_list (same filters).
+    rows, total = gs.list_nodes(cat_slug=category or None, q=q, limit=_TABLE_PER_PAGE, offset=0)
     return bento_render(request, "bento/node_list.html", {
-        "nodes": rows,
+        "rows": rows,
+        "total": total,
+        "per_page": _TABLE_PER_PAGE,
         "categories": BentoCategory.objects.all(),
         "active_category": category,
         "query": q,
-        "pagination": _page_context(page, per_page, total),
     })
 
 
@@ -224,16 +204,16 @@ def node_batch_delete(request):
 
 @graph_view
 def edge_list(request):
-    page, per_page, offset = _page_params(request)
     et = request.GET.get("edge_type") or ""
     q = request.GET.get("q", "")
-    rows, total = gs.list_edges(et_slug=et or None, q=q, limit=per_page, offset=offset)
+    rows, total = gs.list_edges(et_slug=et or None, q=q, limit=_TABLE_PER_PAGE, offset=0)
     return bento_render(request, "bento/edge_list.html", {
-        "edges": rows,
+        "rows": rows,
+        "total": total,
+        "per_page": _TABLE_PER_PAGE,
         "edge_types": BentoEdgeType.objects.all(),
         "active_edge_type": et,
         "query": q,
-        "pagination": _page_context(page, per_page, total),
     })
 
 

@@ -386,6 +386,34 @@ class AddEdgeViewTests(TestCase):
         self.assertContains(resp, "Node Three")  # incoming source shown by name
 
 
+class TableViewTests(TestCase):
+    def setUp(self):
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
+        User.objects.create_user("tab", password="pw")
+        self.client.login(username="tab", password="pw")
+
+    def test_node_list_renders_table_and_forwards_filters(self):
+        rows = [{"uid": "u1", "display": "A", "category_name": "Idea", "category_slug": "idea"}]
+        with patch.object(gs, "list_nodes", return_value=(rows, 1)) as m:
+            resp = self.client.get(reverse("bento:node_list"), {"category": "idea", "q": "x"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "bentoNodeTable")     # lazy-load component
+        self.assertContains(resp, "bento-rows")         # first page json
+        self.assertEqual(m.call_args.kwargs["cat_slug"], "idea")
+        self.assertEqual(m.call_args.kwargs["q"], "x")
+
+    def test_edge_list_renders_table_and_forwards_filters(self):
+        rows = [{"id": "e1", "source": "a", "target": "b", "source_display": "A",
+                 "target_display": "B", "edge_type_name": "Supports"}]
+        with patch.object(gs, "list_edges", return_value=(rows, 1)) as m:
+            resp = self.client.get(reverse("bento:edge_list"), {"edge_type": "supports", "q": "y"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "bentoEdgeTable")
+        self.assertEqual(m.call_args.kwargs["et_slug"], "supports")
+        self.assertEqual(m.call_args.kwargs["q"], "y")
+
+
 class NodeFormViewTests(TestCase):
     def setUp(self):
         from toto.core.models import Platform
