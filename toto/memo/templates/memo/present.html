@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %} Presentations | {{ platform.site_name }} {% endblock %}
+{% block title %}{{ presentation.title|default:vault_file.title }} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
   <link rel="stylesheet" href="{% static 'vendor/reveal/reveal.css' %}">
@@ -28,65 +28,55 @@
         updateRevealTheme();
       }
     }, 500);
-
   </script>
+
+  <style>
+    .reveal .slides section img,
+    .reveal .slides section svg { max-width: 100%; height: auto; }
+    .present-toolbar {
+      position: fixed; top: 12px; right: 12px; z-index: 40;
+      display: flex; gap: 8px;
+    }
+    .present-toolbar a {
+      background: rgba(0,0,0,0.55); color: #fff; padding: 6px 12px;
+      border-radius: 6px; font-size: 13px; text-decoration: none;
+    }
+    .present-toolbar a:hover { background: rgba(0,0,0,0.75); }
+  </style>
 {% endblock %}
 
 {% block content %}
 <body id="reveal-container">
 
+<div class="present-toolbar">
+  {% if edit_url %}
+    <a href="{{ edit_url }}"><i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+  {% endif %}
+  <a href="{% url 'memo:index' %}"><i class="fa-solid fa-table-cells"></i> {% trans "All" %}</a>
+</div>
+
 <div class="reveal">
   <div class="slides">
-
-    <!-- Title Slide -->
-    <section>
-      <h2>Cards in "{{ deck.title }}"</h2>
-      <p>Total cards: {{ cards|length }}</p>
-    </section>
-
-    {% if cards %}
-      {% for card in cards %}
+    {% if presentation.slides %}
+      {% for slide in presentation.slides %}
         <section>
-          <h3>{{ card.title }}</h3>
-
-          {% if card.content %}
-            <p>{{ card.content }}</p>
-          {% endif %}
-
-          {% if card.image_url %}
-            <img src="{{ card.image_url }}" alt="Image for {{ card.title }}"
-                 style="max-width: 100%; height: auto;">
-          {% endif %}
-
-          {% if card.diagram and card.diagram.svg_url %}
-            <img src="{{ card.diagram.svg_url }}" alt="{{ card.diagram.title|default:card.title }}"
-                 style="max-width: 100%; height: auto; margin-top: 20px;">
-          {% endif %}
+          {% if slide.title %}<h3>{{ slide.title }}</h3>{% endif %}
+          {{ slide.body|safe }}
         </section>
       {% endfor %}
     {% else %}
       <section>
-        <p>{% trans "No cards in this deck yet." %}</p>
+        <h2>{{ presentation.title|default:vault_file.title }}</h2>
+        <p>{% trans "This presentation has no slides yet." %}</p>
       </section>
     {% endif %}
-
-    <!-- Back to Decks Slide -->
-    <section>
-      <a href="{% url 'memo:deck-list' %}">← Back to Decks</a>
-    </section>
-
   </div>
 </div>
 {% endblock %}
 
 {% block end_script %}
 <script src="{% static 'vendor/reveal/reveal.js' %}"></script>
-
 <script>
-  Reveal.initialize({
-    transition: 'slide',
-    hash: true
-  });
-
+  Reveal.initialize({ transition: 'slide', hash: true });
 </script>
 {% endblock %}

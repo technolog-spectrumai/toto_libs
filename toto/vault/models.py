@@ -136,6 +136,7 @@ class VaultFile(models.Model):
         ('json', 'JSON'),
         ('yaml', 'YAML'),
         ('xml', 'XML'),
+        ('presentation', 'Presentation'),
         ('latex', 'LaTeX'),
         ('bib', 'Bibliography'),
         ('csv', 'CSV'),
@@ -157,6 +158,7 @@ class VaultFile(models.Model):
         ".neojson": "neojson",
         ".yaml": "yaml", ".yml": "yaml",
         ".xml": "xml",
+        ".pml": "presentation",
         ".html": "html", ".htm": "html",
         ".md": "text", ".txt": "text", ".rst": "text",
         ".py": "python",
@@ -210,7 +212,7 @@ class VaultFile(models.Model):
     key = models.SlugField(max_length=255, blank=True)
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
     file = models.FileField(upload_to='vault/files/')
-    file_type = models.CharField(max_length=10, choices=FILE_TYPES)
+    file_type = models.CharField(max_length=16, choices=FILE_TYPES)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     is_encrypted = models.BooleanField(default=False)
     is_public = models.BooleanField(default=False, help_text="If true, file is visible to others")

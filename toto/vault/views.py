@@ -1199,7 +1199,7 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook", "neojson"}
+    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook", "neojson", "presentation"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
@@ -1238,6 +1238,17 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "    </cell>\n"
             "  </cells>\n"
             "</notebook>\n"
+        ),
+        # Blank presentation: one empty slide.
+        # Mirrors toto.memo.presentation_format.dumps(new_presentation()).
+        "presentation": (
+            '<?xml version="1.0" encoding="utf-8"?>\n'
+            '<presentation version="1" title="">\n'
+            "  <slide>\n"
+            "    <title></title>\n"
+            "    <body><![CDATA[]]></body>\n"
+            "  </slide>\n"
+            "</presentation>\n"
         ),
     }
 

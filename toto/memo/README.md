@@ -1,26 +1,60 @@
 # toto.memo
 
-Flashcard and diagram system. Supports spaced-repetition deck creation and inline diagram (Mermaid/Graphviz) storage. Decks are embedded in `academy` lessons.
+File-based **presentation** viewer and browser editor. Memo renders and edits
+self-contained presentation `.pml` (Presentation Markup Language) files stored in
+the vault — it has no database models of its own.
 
-## Purpose
+## How it works
 
-Teachers build `MemoDeck` collections of `MemoCard` flashcards — each card has a front (prompt) and back (answer) plus optional difficulty rating and embedded diagram. Diagrams are stored as `MemoDiagram` records with raw source (Mermaid or Graphviz syntax) and cached SVG output. A `Lesson` in the academy is backed by a `MemoDeck` as its lecture content. Members can also create decks independently for personal study.
+A presentation is a single self-contained XML document
+(`file_type="presentation"`) parsed by [`presentation_format.py`](presentation_format.py):
 
-## Models
+```xml
+<?xml version="1.0" encoding="utf-8"?>
+<presentation version="1" title="My Talk">
+  <slide>
+    <title>Welcome</title>
+    <body><![CDATA[
+      <p>HTML content</p>
+      <img src="data:image/png;base64,...">      <!-- raster, embedded ≤640px -->
+      <svg ...>...</svg>                          <!-- vector, inlined verbatim -->
+    ]]></body>
+  </slide>
+</presentation>
+```
 
-- `Tag` — simple tag model for memo decks. Fields: `name`, `slug`.
+The file is the single source of truth (same model as `.tpy` notebooks in
+`toto.mandragora`): parsed when the viewer/editor opens, serialized back on Save.
+Slide bodies are CDATA-wrapped so pasted HTML / `<img>` data URIs / inline
+`<svg>` stay literal. Each `<slide>` becomes one reveal.js `<section>`.
 
-- `MemoDiagram` — a named diagram. Fields: `title`, `diagram_type` (`mermaid / graphviz / svg`), `source` (raw diagram source code), `rendered_svg` (cached SVG output), `author` (FK to `people.Person`), `created_at`.
+## Entry points
 
-- `MemoDeck` — a flashcard deck. Fields: `title`, `description`, `tags` (M2M), `author` (FK to `people.Person`), `is_public`, `community` (FK to `socialhub.Community`, nullable), `created_at`.
+- **Vault Play button** → `memo:present` — reveal.js slideshow viewer
+  (registered via `plugins/vault_play_plugins.py`).
+- **Vault Edit button** → `memo:edit` — in-browser slide editor with client-side
+  image resize (≤640px) + base64 embedding and SVG inlining
+  (registered via `plugins/vault_editor_plugins.py`).
+- `memo:save` — persists edited slides back to the vault file as XML.
+- `memo:index` — gallery of presentations the user can open.
 
-- `MemoCard` — a single flashcard within a deck. Fields: `deck` FK, `front` (question / prompt), `back` (answer / explanation), `order`, `difficulty` (`easy / medium / hard`), `diagram` (FK to `MemoDiagram`, nullable), `hint`, `tags` (M2M).
+New presentations are created from the vault's *New File → presentation* menu
+(`vault.CreateEmptyFileView` seeds a blank document and routes to the editor).
 
-## Key coupling
+## Detection
 
-- `academy.Lesson.memo_deck` — lessons of type `deck` embed a `MemoDeck` directly in the course module.
-- `MemoDiagram` can be embedded in `MemoCard.diagram` to show visual content on the card back.
+The dedicated `.pml` extension is what marks a file as a presentation —
+`VaultFile._EXT_MAP` maps `.pml` → `presentation` (extension-first, the same way
+`.tpy` → `notebook`). Generic `.xml` files stay typed `xml`. `.pml` is plain XML
+internally; the extension just disambiguates intent.
+
+## Trust
+
+The viewer renders slide bodies as raw HTML (`|safe`), the same trust model as
+serving an uploaded `.html`/`.svg` vault file. Presentations are owner-authored
+and viewing respects vault visibility.
 
 ## Dependencies
 
-- `vault` — MemoDiagram rendered SVG optionally stored as VaultFile
+- `vault` — presentations are `VaultFile`s; play/editor plugins wire the buttons.
+- reveal.js (`static/vendor/reveal/`) — slideshow rendering.
