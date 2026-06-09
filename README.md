@@ -736,8 +736,8 @@ Daily allowances are posted at 17:00 on weekdays; subscription billing runs ever
 `deploy.py` is the entry point for building any deployment. It reads a YAML config and emits `docker-compose.yaml` + `.env`:
 
 ```
-deploy.py deployment/portal_mini.yaml   →  gunicorn WSGI stack
-deploy.py deployment/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
+python portal/scripts/deploy.py deployment/portal_mini.yaml   →  gunicorn WSGI stack
+python portal/scripts/deploy.py deployment/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
 ```
 
 The script conditionally adds Docker services based on the config:
