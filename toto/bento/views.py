@@ -196,32 +196,66 @@ def edge_list(request):
     })
 
 
+def _safe_get_node(uid):
+    """get_node that returns None on a missing uid (GraphUnavailable still propagates)."""
+    if not uid:
+        return None
+    try:
+        return gs.get_node(uid)
+    except gs.NotFound:
+        return None
+
+
 @graph_view
 def edge_create(request):
     slug = request.GET.get("edge_type") or request.POST.get("edge_type")
     edge_type = BentoEdgeType.objects.filter(slug=slug).first() if slug else None
+    from_uid = (request.POST.get("from_uid") or request.GET.get("from") or "").strip()
+
+    # Step 1: choose an edge type (filtered to ones that may start from this node).
     if not edge_type:
+        edge_types = list(BentoEdgeType.objects.all())
+        source_node = _safe_get_node(from_uid)
+        if source_node and source_node.get("category_slug"):
+            edge_types = [
+                et for et in edge_types
+                if not et.allowed_sources.exists()
+                or et.allowed_sources.filter(slug=source_node["category_slug"]).exists()
+            ]
         return bento_render(request, "bento/edge_pick_type.html", {
-            "edge_types": BentoEdgeType.objects.all(),
-            "from_uid": request.GET.get("from", ""),
+            "edge_types": edge_types,
+            "from_uid": from_uid,
         })
+
+    # Step 2: pick endpoints + properties.
+    source_node = _safe_get_node(from_uid)
+    src_slugs = list(edge_type.allowed_sources.values_list("slug", flat=True))
+    tgt_slugs = list(edge_type.allowed_targets.values_list("slug", flat=True))
 
     if request.method == "POST":
         form = build_edge_form(edge_type, data=request.POST)
-        from_uid = request.POST.get("from_uid", "").strip()
         to_uid = request.POST.get("to_uid", "").strip()
         if form.is_valid():
-            try:
-                gs.create_edge(edge_type.slug, from_uid, to_uid, collect_props(form))
-                messages.success(request, _("Edge created."))
-                return redirect("bento:node_detail", uid=from_uid)
-            except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
-                form.add_error(None, str(exc))
+            if not from_uid or not to_uid:
+                form.add_error(None, _("Pick both a source and a target node."))
+            elif from_uid == to_uid:
+                form.add_error(None, _("A node cannot link to itself."))
+            else:
+                try:
+                    gs.create_edge(edge_type.slug, from_uid, to_uid, collect_props(form))
+                    messages.success(request, _("Edge created."))
+                    return redirect("bento:node_detail", uid=from_uid)
+                except (gs.GraphValidationError, gs.NotFound, ValueError) as exc:
+                    form.add_error(None, str(exc))
     else:
         form = build_edge_form(edge_type)
+
     return bento_render(request, "bento/edge_form.html", {
         "form": form, "edge_type": edge_type,
-        "from_uid": request.GET.get("from", ""),
+        "from_uid": from_uid,
+        "source_node": source_node,
+        "source_filter": src_slugs[0] if len(src_slugs) == 1 else "",
+        "target_filter": tgt_slugs[0] if len(tgt_slugs) == 1 else "",
         "title": _("New %(name)s edge") % {"name": edge_type.name},
     })
 

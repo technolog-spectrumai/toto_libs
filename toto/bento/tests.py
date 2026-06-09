@@ -302,6 +302,53 @@ class ViewPermissionTests(TestCase):
         self.assertEqual(resp.status_code, 200)
 
 
+class AddEdgeViewTests(TestCase):
+    def setUp(self):
+        from toto.core.models import Platform
+        Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_user("ann", password="pw")
+        self.idea = BentoCategory.objects.create(name="Idea", slug="idea", neo4j_label="Idea")
+        self.et = BentoEdgeType.objects.create(name="Supports", slug="supports", rel_type="SUPPORTS",
+                                               property_schema=[{"name": "strength", "type": "float"}])
+        self.et.allowed_sources.set([self.idea])
+        self.et.allowed_targets.set([self.idea])
+        self.client.login(username="ann", password="pw")
+
+    def test_pick_type_screen_lists_edge_types(self):
+        resp = self.client.get(reverse("bento:edge_create"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Supports")
+
+    def test_form_renders_node_pickers(self):
+        resp = self.client.get(reverse("bento:edge_create"), {"edge_type": "supports"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "nodePicker")
+        self.assertContains(resp, 'name="to_uid"')
+
+    def test_missing_target_shows_error(self):
+        with patch.object(gs, "get_node", return_value=None):
+            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
+                                    {"from_uid": "", "to_uid": ""})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "Pick both")
+
+    def test_self_edge_rejected(self):
+        with patch.object(gs, "get_node", return_value=None):
+            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
+                                    {"from_uid": "x", "to_uid": "x"})
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "cannot link to itself")
+
+    def test_create_edge_calls_service_and_redirects(self):
+        with patch.object(gs, "get_node", return_value=None), \
+             patch.object(gs, "create_edge", return_value={"id": "e1"}) as mock:
+            resp = self.client.post(reverse("bento:edge_create") + "?edge_type=supports",
+                                    {"from_uid": "a", "to_uid": "b", "strength": "0.5"})
+        self.assertEqual(resp.status_code, 302)
+        mock.assert_called_once()
+        self.assertEqual(mock.call_args[0][:3], ("supports", "a", "b"))
+
+
 class MigrationCommandTests(TestCase):
     def test_dry_run_no_legacy_tables_is_noop(self):
         out = StringIO()

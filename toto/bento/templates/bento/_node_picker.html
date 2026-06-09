@@ -1,0 +1,28 @@
+{% load i18n %}
+{# Searchable node picker. Args: field (hidden input name), label, category (optional slug filter). #}
+<div class="space-y-1" x-data="nodePicker('{{ category|default:'' }}')">
+  <label class="block text-sm font-semibold">{{ label }} <span class="opacity-60">*</span></label>
+  <input type="hidden" name="{{ field }}" :value="selectedUid">
+  <div class="relative" @click.outside="open = false">
+    <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-60"></i>
+    <input type="text" x-model="query" @input.debounce.250ms="search()" @focus="open = true"
+      :placeholder="selectedLabel || '{% trans "Search a node by name…" %}'"
+      :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+      class="w-full rounded-lg border py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-current/20">
+    <ul x-show="open && results.length" x-cloak
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="absolute z-20 mt-1 max-h-60 w-full overflow-auto rounded-lg border shadow-lg">
+      <template x-for="n in results" :key="n.uid">
+        <li @click="pick(n)" class="flex cursor-pointer items-center gap-2 px-3 py-2 text-sm hover:bg-current/10">
+          <span class="inline-block size-2.5 shrink-0 rounded-full" :style="'background:' + (n.color || '#2563eb')"></span>
+          <span class="truncate" x-text="n.display"></span>
+          <span class="ml-auto shrink-0 text-xs opacity-60" x-text="n.category_name"></span>
+        </li>
+      </template>
+    </ul>
+  </div>
+  <p x-show="selectedUid" x-cloak class="text-xs opacity-70">
+    {% trans "Selected" %}: <span class="font-semibold" x-text="selectedLabel"></span>
+    <button type="button" @click="clear()" class="ml-1 underline hover:opacity-80">{% trans "change" %}</button>
+  </p>
+</div>
