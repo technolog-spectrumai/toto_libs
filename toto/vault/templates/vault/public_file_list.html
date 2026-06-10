@@ -546,7 +546,7 @@
         },
 
         // ── Create new file ───────────────────────────────────
-        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', latex: '.tex', bib: '.bib', svg: '.svg', notebook: '.tpy', presentation: '.pml' },
+        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', xml: '.xml', csv: '.csv', html: '.html', latex: '.tex', bib: '.bib', svg: '.svg', notebook: '.tpy', presentation: '.pml' },
 
         openCreateFile(dirItem) {
           this.createDirId = dirItem.id;
@@ -1720,7 +1720,7 @@
           <div>
             <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Type" %}</p>
             <div class="flex flex-wrap gap-1.5">
-              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['latex','.tex'],['bib','.bib'],['svg','.svg'],['notebook','.tpy'],['presentation','.pml']]" :key="key">
+              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['xml','.xml'],['csv','.csv'],['html','.html'],['latex','.tex'],['bib','.bib'],['svg','.svg'],['notebook','.tpy'],['presentation','.pml']]" :key="key">
                 <button type="button"
                         @click="setCreateType(key)"
                         :class="createType === key

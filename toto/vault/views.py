@@ -1199,11 +1199,24 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "latex", "bib", "svg", "notebook", "neojson", "presentation"}
+    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "notebook", "neojson", "presentation"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
         "yaml":  "",
+        "csv":   "",
+        "xml":   '<?xml version="1.0" encoding="utf-8"?>\n<root>\n</root>\n',
+        "html": (
+            "<!DOCTYPE html>\n"
+            '<html lang="en">\n'
+            "<head>\n"
+            '  <meta charset="utf-8">\n'
+            "  <title></title>\n"
+            "</head>\n"
+            "<body>\n"
+            "</body>\n"
+            "</html>\n"
+        ),
         "latex": "",
         "bib":   "",
         "svg":   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n</svg>\n',
