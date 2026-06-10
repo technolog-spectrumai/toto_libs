@@ -16,6 +16,11 @@
 <script src="{% static 'vendor/ace/mode-svg.min.js' %}"></script>
 {% elif ace_mode == "latex" %}
 <script src="{% static 'vendor/ace/mode-latex.min.js' %}"></script>
+{% elif ace_mode == "xml" %}
+<script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
+{% elif ace_mode == "html" %}
+<!-- mode-html bundles its embedded css/javascript/xml highlighters; self-contained. -->
+<script src="{% static 'vendor/ace/mode-html.min.js' %}"></script>
 {% else %}
 <script src="{% static 'vendor/ace/mode-text.min.js' %}"></script>
 {% endif %}

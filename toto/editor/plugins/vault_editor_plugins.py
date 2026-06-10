@@ -33,3 +33,27 @@ class SvgEditorPlugin(VaultEditorPlugin):
 
     def get_editor_url(self, vault_file) -> str:
         return reverse("sketch:svg_file_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="xml", title="XML Editor", order=46)
+class XmlEditorPlugin(VaultEditorPlugin):
+    file_type = "xml"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:xml_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="csv", title="CSV Editor", order=47)
+class CsvEditorPlugin(VaultEditorPlugin):
+    file_type = "csv"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:csv_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="html", title="HTML Editor", order=48)
+class HtmlEditorPlugin(VaultEditorPlugin):
+    file_type = "html"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:html_display", args=[vault_file.pk])

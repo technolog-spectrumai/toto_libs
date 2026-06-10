@@ -117,3 +117,26 @@ class SvgFileDisplayView(BaseFileDisplayView):
     ws_path = "editor"
     save_url_name = "editor:svg_save"
     delete_url_name = "editor:svg_delete"
+
+
+class XmlFileDisplayView(BaseFileDisplayView):
+    ace_mode = "xml"
+    ws_path = "editor"
+    save_url_name = "editor:xml_save"
+    delete_url_name = "editor:xml_delete"
+
+
+class HtmlFileDisplayView(BaseFileDisplayView):
+    ace_mode = "html"
+    ws_path = "editor"
+    save_url_name = "editor:html_save"
+    delete_url_name = "editor:html_delete"
+
+
+class CsvFileDisplayView(BaseFileDisplayView):
+    # Ace ships no CSV mode; plain-text highlighting is the correct fallback.
+    ace_mode = "text"
+    ws_path = "editor"
+    wrap_lines = False
+    save_url_name = "editor:csv_save"
+    delete_url_name = "editor:csv_delete"
