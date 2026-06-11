@@ -39,38 +39,26 @@ def is_connection_error(exc):
     )
 
 
-def is_alive(timeout=3.0):
-    """Fast probe: True if Neo4j answers a trivial query.
+def is_alive():
+    """True if the app can actually run a query against Neo4j.
 
     Unlike :func:`is_enabled` (which only reads the ``RAVIOLI_ENABLED`` setting),
-    this actually connects. It returns ``False`` on any failure instead of
-    raising, and uses a short connection timeout so a down server doesn't hang
-    the caller (used by the "Neo4j is not running" warning banner).
+    this connects. It deliberately reuses :class:`Neo4jClient` — the same path
+    real queries take, including the multi-URI / local-fallback logic — so the
+    "Neo4j is not running" banner reflects whether graph features work, not just
+    whether some socket happens to open quickly. Returns ``False`` on any
+    failure instead of raising.
     """
     if not is_enabled():
         return False
+    client = Neo4jClient()
     try:
-        from neo4j import GraphDatabase  # lazy — only when actually probed
+        client.run_cypher("RETURN 1")
+        return True
     except Exception:
         return False
-
-    auth = (settings.NEO4J_USER, settings.NEO4J_PASSWORD)
-    for uri in connection_uris(settings.NEO4J_URI):
-        driver = None
-        try:
-            driver = GraphDatabase.driver(uri, auth=auth, connection_timeout=timeout)
-            with driver.session() as session:
-                session.run("RETURN 1").consume()
-            return True
-        except Exception:
-            continue
-        finally:
-            if driver is not None:
-                try:
-                    driver.close()
-                except Exception:
-                    pass
-    return False
+    finally:
+        client.close()
 
 
 class Neo4jClient:
