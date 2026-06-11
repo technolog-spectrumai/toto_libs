@@ -1,0 +1,15 @@
+{% load i18n %}
+{% if show %}
+<form method="post"
+      action="{% url 'sql_neo4j_sync:export_object' app_label model_name object_uuid %}"
+      class="inline-block">
+  <input type="hidden" name="csrfmiddlewaretoken" value="{{ csrf_token }}">
+  <button type="submit"
+          title="{% blocktrans %}Create a {{ graph_label }} node in the knowledge graph and connect it to related records{% endblocktrans %}"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 {{ css_class }}">
+    <i class="fa-solid fa-diagram-project"></i>
+    {% trans "Export to graph" %}
+  </button>
+</form>
+{% endif %}

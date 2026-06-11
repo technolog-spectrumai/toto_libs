@@ -5,6 +5,7 @@ No Neo4j imports here. This module is safe to run without a live database.
 """
 
 import importlib
+from functools import lru_cache
 from pathlib import Path
 
 import yaml
@@ -58,6 +59,42 @@ def import_model(model_path):
         raise ValueError(f"Invalid model path: {model_path!r}")
     module = importlib.import_module(module_path)
     return getattr(module, class_name)
+
+
+# ---------------------------------------------------------------------------
+# Model → graph-label lookup (used by the per-object "Export to graph" button)
+# ---------------------------------------------------------------------------
+
+def build_label_by_model(configs=None):
+    """Return ``{model_class: (label, uuid_field)}`` for every projected node."""
+    if configs is None:
+        configs = load_all_configs()
+    mapping = {}
+    for config in configs:
+        for node in config.get("nodes", []):
+            try:
+                model = import_model(node["model"])
+            except Exception:
+                continue
+            mapping[model] = (node["label"], node.get("uuid_field", "uid"))
+    return mapping
+
+
+@lru_cache(maxsize=1)
+def _cached_label_by_model():
+    # Graph configs are static YAML files read once per process.
+    return build_label_by_model(load_all_configs())
+
+
+def label_for_model(model, configs=None):
+    """Return ``(label, uuid_field)`` for a Django model class, or None.
+
+    None means the model is not declared in any graph/*.yaml — i.e. it has no
+    graph representation and cannot be exported.
+    """
+    if configs is not None:
+        return build_label_by_model(configs).get(model)
+    return _cached_label_by_model().get(model)
 
 
 # ---------------------------------------------------------------------------

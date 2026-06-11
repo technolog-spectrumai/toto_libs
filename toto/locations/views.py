@@ -979,6 +979,7 @@ def location_detail(request, kind, pk):
         geom_json = geometry_json(geom) if geom else None
 
     context = {
+        "obj": obj,
         "object_label": str(obj),
         "object_type": model._meta.verbose_name.title(),
         "fields": [(label, value) for label, value in _detail_fields(kind, obj)],

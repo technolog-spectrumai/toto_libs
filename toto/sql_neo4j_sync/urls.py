@@ -4,6 +4,7 @@ from .views import (
     apply_projection_plan_view,
     clear_db_view,
     create_projection_plan,
+    export_object_to_graph,
     full_sync_view,
     projection_plan_detail,
     projection_sync_view,
@@ -28,4 +29,9 @@ urlpatterns = [
     path("projections/run-stream/", run_projection_stream, name="run_projection_stream"),
     path("projections/full-sync/", full_sync_view, name="full_sync"),
     path("projections/clear-db/", clear_db_view, name="clear_db"),
+    path(
+        "export/<str:app_label>/<str:model_name>/<str:object_uuid>/",
+        export_object_to_graph,
+        name="export_object",
+    ),
 ]
