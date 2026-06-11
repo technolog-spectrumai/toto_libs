@@ -859,7 +859,9 @@ def history_data(request):
             "WITH pk, hs[i] AS h, i AS depth "
             "OPTIONAL MATCH (c) WHERE c.uuid = pk AND coalesce(c._historical, false) = false "
             "RETURN labels(h) AS h_labels, h.uuid AS h_uuid, pk AS prev_uuid, "
-            "(CASE WHEN c IS NULL THEN [] ELSE labels(c) END) AS c_labels, depth "
+            "(CASE WHEN c IS NULL THEN [] ELSE labels(c) END) AS c_labels, depth, "
+            "properties(h) AS h_props, "
+            "(CASE WHEN c IS NULL THEN {} ELSE properties(c) END) AS c_props "
             "LIMIT 2000"
         )
     except Exception as exc:
@@ -870,6 +872,13 @@ def history_data(request):
     def label0(labels):
         return (labels or [""])[0]
 
+    def jsonable(props):
+        # Neo4j temporal/spatial values aren't JSON-serialisable; stringify them.
+        out = {}
+        for k, v in (props or {}).items():
+            out[k] = v if isinstance(v, (str, int, float, bool, type(None))) else str(v)
+        return out
+
     nodes, edges = {}, []
     for row in rows:
         h_label = label0(row["h_labels"])
@@ -879,11 +888,11 @@ def history_data(request):
         c_id, h_id = f"{c_label}:{c_uuid}", f"{h_label}:{h_uuid}"
         nodes.setdefault(c_id, {
             "id": c_id, "label": c_label, "uuid": c_uuid,
-            "kind": "canonical", "present": present,
+            "kind": "canonical", "present": present, "props": jsonable(row["c_props"]),
         })
         nodes[h_id] = {
             "id": h_id, "label": h_label, "uuid": h_uuid,
-            "kind": "snapshot", "depth": row["depth"],
+            "kind": "snapshot", "depth": row["depth"], "props": jsonable(row["h_props"]),
         }
         edges.append({"id": f"hist:{c_id}->{h_id}", "source": c_id, "target": h_id})
 

@@ -34,7 +34,7 @@ Both share the same machinery so nothing is duplicated:
 - one review modal partial **`templates/ravioli/_review_modal.html`** (Cytoscape diff graph + itemized list + Apply/Cancel),
 - one shared Alpine factory **`templates/ravioli/_review_flow.html`** (`reviewFlow()` → `openReview`/`applyReview`/`closeReview`/`renderReviewGraph`), spread into both the Knowledge Graph and History page components.
 
-The **History** tab (`history.html`) shows every kept `:_HISTORICAL` snapshot as a Cytoscape graph (canonical nodes + version chains), coloured by a **keep-depth** control: versions beyond the depth are flagged prunable (red). **Prune history** opens the same review modal for the delete-only plan, keeping the N newest snapshots per node (default `RAVIOLI_DEFAULT_MAX_HISTORY`).
+The **History** tab (`history.html`) shows every kept `:_HISTORICAL` snapshot as a Cytoscape graph (canonical nodes + version chains), coloured by a **keep-depth** control: versions beyond the depth are flagged prunable (red). Clicking any node opens a property detail panel (same as the query view; `history_data` returns each node's `props`). **Prune history** opens the same review modal for the delete-only plan, keeping the N newest snapshots per node (default `RAVIOLI_DEFAULT_MAX_HISTORY`).
 
 ## How it works
 

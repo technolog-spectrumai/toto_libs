@@ -98,6 +98,46 @@
         </div>
       </div>
     </div>
+
+    <!-- Node detail panel — click a node in the history graph (like the query view) -->
+    <article
+      x-show="selectedElement"
+      x-transition
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 class="flex items-center gap-2 text-lg font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            <i class="fa-solid fa-circle-info text-base"></i>
+            <span x-text="selectedElement?.name || 'Node'"></span>
+          </h3>
+          <p class="mt-0.5 text-xs opacity-60">
+            <span x-text="selectedElement?.kind === 'snapshot' ? ('{% trans "snapshot" %} v' + selectedElement?.depth) : '{% trans "canonical" %}'"></span>
+            <span x-show="selectedElement?.kind === 'canonical' && selectedElement?.present === false" class="italic"> · {% trans "deleted" %}</span>
+            <span class="font-mono opacity-70" x-text="' · ' + (selectedElement?.uuid || '')"></span>
+          </p>
+        </div>
+        <button @click="selectedElement = null"
+          :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+          class="rounded-lg border px-2 py-1 text-xs font-semibold transition">
+          <i class="fa-solid fa-xmark"></i> {% trans "Close" %}
+        </button>
+      </div>
+      <div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <template x-for="[k, v] in Object.entries(selectedElement?.props || {})" :key="k">
+          <template x-if="v !== null && v !== undefined && v !== ''">
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="mb-0.5 text-xs uppercase tracking-wide opacity-50" x-text="k"></div>
+              <div class="break-all font-mono text-sm font-semibold" x-text="v"></div>
+            </div>
+          </template>
+        </template>
+      </div>
+      <p x-show="Object.keys(selectedElement?.props || {}).length === 0"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="rounded-lg border border-dashed p-4 text-center text-sm italic opacity-60">
+        {% trans "No properties on this node." %}</p>
+    </article>
   </div>
 
   {% include "ravioli/_review_modal.html" %}
@@ -117,6 +157,7 @@ function historyViewer() {
     loaded: false,
     loading: false,
     error: null,
+    selectedElement: null,
     _historyCy: null,
 
     get snapshotCount() { return this.nodes.filter(n => n.kind === 'snapshot').length; },
@@ -127,6 +168,7 @@ function historyViewer() {
     async loadHistory() {
       this.loading = true;
       this.error = null;
+      this.selectedElement = null;
       try {
         const res = await fetch(HISTORY_DATA_URL);
         const data = await res.json();
@@ -163,6 +205,9 @@ function historyViewer() {
           ...this.nodes.map(n => ({ data: {
             id: n.id,
             label: n.kind === 'snapshot' ? ('v' + n.depth) : n.label,
+            name: n.label,                  // model label (for the detail panel)
+            uuid: n.uuid,
+            props: n.props || {},
             kind: n.kind,
             depth: n.depth ?? -1,
             present: n.present !== false,   // orphan canonical (deleted) when false
@@ -184,6 +229,9 @@ function historyViewer() {
         ],
         layout: { name: 'cose', animate: false, padding: 30 },
       });
+      const self = this;
+      this._historyCy.on('tap', 'node', function (evt) { self.selectedElement = evt.target.data(); });
+      this._historyCy.on('tap', function (evt) { if (evt.target === self._historyCy) self.selectedElement = null; });
       this.recolor();
       setTimeout(() => { try { this._historyCy.resize(); this._historyCy.fit(undefined, 30); } catch (_) {} }, 80);
     },
