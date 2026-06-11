@@ -1,8 +1,10 @@
 from toto.ingress import IngressCommand
 from toto.telegraph.models import TelegraphMember, TelegraphChannel
 from django.contrib.auth import get_user_model
+from django.contrib.auth.models import Group
 from django.utils.text import slugify
 from toto.people.models import Person
+from toto.api.cors import DATA_MESH_GROUP
 
 User = get_user_model()
 
@@ -31,6 +33,17 @@ class Command(IngressCommand):
                 "display_name": admin_user.get_full_name() or admin_user.username,
                 "email": admin_user.email,
             },
+        )
+
+        # Grant the admin direct (server-side) read access to the gated data mesh so we
+        # can do user testing without pulling data from a peer. We intentionally do NOT
+        # add the test/'tester' user to this group for now.
+        mesh_group, _ = Group.objects.get_or_create(name=DATA_MESH_GROUP)
+        admin_user.groups.add(mesh_group)
+        self.stdout.write(
+            self.style.SUCCESS(
+                f"🔗 Added 'admin' to the '{DATA_MESH_GROUP}' group (data-mesh read access)."
+            )
         )
 
         for name in channel_names:
