@@ -248,21 +248,49 @@ class ExportViewTests(TestCase):
         self.assertEqual(resp.status_code, 405)
 
 
-class SyncAllStreamTests(TestCase):
-    def test_requires_superuser(self):
-        User.objects.create_user("plain", password="pw")
-        self.client.login(username="plain", password="pw")
-        resp = self.client.get("/ravioli/graph-sync/stream/")
+class SyncPlanApplyViewTests(TestCase):
+    def _ready_plan(self, total=0):
+        from toto.sql_neo4j_sync.models import GraphProjectionPlan
+        return GraphProjectionPlan.objects.create(
+            status=GraphProjectionPlan.STATUS_READY,
+            summary={"total_changes": total},
+            diff={},
+        )
+
+    def test_plan_requires_superuser(self):
+        User.objects.create_user("plain2", password="pw")
+        self.client.login(username="plain2", password="pw")
+        resp = self.client.post("/ravioli/graph-sync/plan/")
         self.assertEqual(resp.status_code, 302)  # bounced by superuser_required
 
     @override_settings(RAVIOLI_ENABLED=False)
-    def test_superuser_disabled_streams_error_event(self):
-        User.objects.create_superuser("admin2", email="a@b.c", password="pw")
-        self.client.login(username="admin2", password="pw")
-        resp = self.client.get("/ravioli/graph-sync/stream/")
-        self.assertEqual(resp.status_code, 200)
-        body = b"".join(resp.streaming_content).decode()
-        self.assertIn("RAVIOLI_ENABLED is False", body)
+    def test_plan_disabled_returns_503(self):
+        User.objects.create_superuser("admin3", email="a@b.c", password="pw")
+        self.client.login(username="admin3", password="pw")
+        resp = self.client.post("/ravioli/graph-sync/plan/")
+        self.assertEqual(resp.status_code, 503)
+        self.assertIn("RAVIOLI_ENABLED", resp.json()["error"])
+
+    def test_apply_requires_superuser(self):
+        plan = self._ready_plan()
+        User.objects.create_user("plain3", password="pw")
+        self.client.login(username="plain3", password="pw")
+        resp = self.client.post(f"/ravioli/graph-sync/plan/{plan.id}/apply/")
+        self.assertEqual(resp.status_code, 302)
+
+    def test_apply_missing_plan_404(self):
+        User.objects.create_superuser("admin6", email="a@b.c", password="pw")
+        self.client.login(username="admin6", password="pw")
+        resp = self.client.post("/ravioli/graph-sync/plan/999999/apply/")
+        self.assertEqual(resp.status_code, 404)
+
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_apply_ready_plan_disabled_returns_503(self):
+        plan = self._ready_plan(total=3)
+        User.objects.create_superuser("admin5", email="a@b.c", password="pw")
+        self.client.login(username="admin5", password="pw")
+        resp = self.client.post(f"/ravioli/graph-sync/plan/{plan.id}/apply/")
+        self.assertEqual(resp.status_code, 503)
 
 
 class GraphHealthViewTests(TestCase):

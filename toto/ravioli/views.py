@@ -2,7 +2,7 @@ import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
-from django.http import JsonResponse, StreamingHttpResponse
+from django.http import JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
@@ -718,44 +718,74 @@ def graph_export_apply(request, app_label, model_name, object_uuid):
 
 
 # ---------------------------------------------------------------------------
-# Bulk "Sync all to graph" — full SQL→Neo4j projection, streamed from ravioli
+# Bulk "Sync all to graph" — compute a diff, review it, then apply on approval
 # ---------------------------------------------------------------------------
 
-@require_GET
+@require_POST
 @superuser_required
-def graph_sync_all_stream(request):
-    """Run the full projection for every graph label, streaming progress (SSE).
+def graph_sync_plan(request):
+    """Compute (but don't apply) the full SQL→Neo4j diff for every label.
 
-    Reuses sql_neo4j_sync's ProjectionRunner so ravioli's UI can trigger a bulk
-    sync without going through the admin. Runs in-process (no Celery needed).
+    Stores a GraphProjectionPlan and returns its summary so the UI can show the
+    diff and ask for approval before anything is written. No Celery needed.
     """
     from toto.sql_neo4j_sync.loader import load_all_configs
-    from toto.sql_neo4j_sync.projection import ProjectionRunner
+    from toto.sql_neo4j_sync.planner import create_projection_plan
 
     from .connection import Neo4jClient, is_enabled
 
-    def event_stream():
-        if not is_enabled():
-            yield "data: " + json.dumps({
-                "status": "error",
-                "message": "RAVIOLI_ENABLED is False — cannot connect to Neo4j.",
-            }) + "\n\n"
-            return
+    if not is_enabled():
+        return JsonResponse(
+            {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
+        )
 
-        client = Neo4jClient()
-        try:
-            runner = ProjectionRunner(client, load_all_configs())
-            for event in runner.run_with_progress():
-                yield f"data: {json.dumps(event)}\n\n"
-        except Exception as exc:
-            yield "data: " + json.dumps({"status": "error", "message": str(exc)}) + "\n\n"
-        finally:
-            client.close()
+    client = Neo4jClient()
+    try:
+        plan = create_projection_plan(client, labels=None, configs=load_all_configs())
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    finally:
+        client.close()
 
-    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
-    response["Cache-Control"] = "no-cache"
-    response["X-Accel-Buffering"] = "no"
-    return response
+    return JsonResponse({
+        "plan_id": plan.id,
+        "summary": plan.summary,
+        "total_changes": plan.total_changes,
+        "diff": plan.diff,
+        "apply_url": reverse("ravioli:graph_sync_apply", args=[plan.id]),
+        "detail_url": reverse("sql_neo4j_sync:projection_plan_detail", args=[plan.id]),
+    })
+
+
+@require_POST
+@superuser_required
+def graph_sync_apply(request, plan_id):
+    """Apply a previously computed projection plan (the approval step)."""
+    from toto.sql_neo4j_sync.models import GraphProjectionPlan
+    from toto.sql_neo4j_sync.planner import apply_projection_plan
+
+    from .connection import Neo4jClient, is_enabled
+
+    plan = get_object_or_404(GraphProjectionPlan, pk=plan_id)
+    if plan.status != GraphProjectionPlan.STATUS_READY:
+        return JsonResponse(
+            {"error": f"Plan #{plan.id} is '{plan.status}', not ready to apply."},
+            status=400,
+        )
+    if not is_enabled():
+        return JsonResponse(
+            {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
+        )
+
+    client = Neo4jClient()
+    try:
+        apply_projection_plan(client, plan)
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    finally:
+        client.close()
+
+    return JsonResponse({"status": "applied", "total_changes": plan.total_changes})
 
 
 @require_GET

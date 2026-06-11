@@ -23,7 +23,7 @@ The graph layer answers questions relational queries handle poorly: "communities
 - `neojson.py` — NeoJSON (de)serialization for graph documents.
 - `services/search.py`, `vector_search.py` — keyword / fulltext / semantic search.
 - `graph_analysis.py`, `predefined_tasks.py` — NetworkX analysis run via workflows, results saved to the vault.
-- `views.py` — query browser, Cypher console, search, graph-analysis endpoints (Cytoscape front-end), the per-object export preview/apply, and a bulk **"Sync all to graph"** control (SSE-streamed full projection via `sql_neo4j_sync.ProjectionRunner`, superuser-only) on the Knowledge Graph page.
+- `views.py` — query browser, Cypher console, search, graph-analysis endpoints (Cytoscape front-end), the per-object export preview/apply, the **"Neo4j is not running"** health probe, and a bulk **"Sync all to graph"** control (computes a projection diff via the `sql_neo4j_sync` planner, shows it for approval, then applies — superuser-only) on the Knowledge Graph page.
 
 ## How it works
 

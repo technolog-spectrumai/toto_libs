@@ -12,7 +12,8 @@ from .views import (
     search_status_view,
     graph_export_preview,
     graph_export_apply,
-    graph_sync_all_stream,
+    graph_sync_plan,
+    graph_sync_apply,
     graph_health_view,
 )
 
@@ -39,6 +40,7 @@ urlpatterns = [
         graph_export_apply,
         name="graph_export_apply",
     ),
-    path("graph-sync/stream/", graph_sync_all_stream, name="graph_sync_all_stream"),
+    path("graph-sync/plan/", graph_sync_plan, name="graph_sync_plan"),
+    path("graph-sync/plan/<int:plan_id>/apply/", graph_sync_apply, name="graph_sync_apply"),
     path("graph-health/", graph_health_view, name="graph_health"),
 ]
