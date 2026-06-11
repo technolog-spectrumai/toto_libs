@@ -1,7 +1,7 @@
 import json
 
 from django.contrib import messages
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import user_passes_test
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.views.decorators.http import require_GET, require_POST
@@ -227,65 +227,3 @@ def run_projection_stream(request):
     response["Cache-Control"] = "no-cache"
     response["X-Accel-Buffering"] = "no"
     return response
-
-
-# ---------------------------------------------------------------------------
-# Per-object "Export to graph" button (rendered on app detail pages)
-# ---------------------------------------------------------------------------
-
-@require_POST
-@login_required
-def export_object_to_graph(request, app_label, model_name, object_uuid):
-    """Project a single object plus its immediate neighbours into the graph.
-
-    Triggered by the {% export_to_graph_button %} tag on detail pages. Runs
-    synchronously (one-hop export is a handful of Cypher statements) and
-    redirects back to the page the user came from with a status message.
-    """
-    from django.apps import apps as django_apps
-
-    from toto.ravioli.connection import Neo4jClient, is_enabled
-
-    from .loader import label_for_model, load_all_configs
-    from .projection import ProjectionRunner
-
-    back = request.META.get("HTTP_REFERER") or "/"
-
-    if not is_enabled():
-        messages.error(request, "Graph database is disabled (RAVIOLI_ENABLED is False).")
-        return redirect(back)
-
-    try:
-        model = django_apps.get_model(app_label, model_name)
-    except (LookupError, ValueError):
-        messages.error(request, "Unknown model for graph export.")
-        return redirect(back)
-
-    mapping = label_for_model(model)
-    if mapping is None:
-        messages.error(
-            request,
-            f"{model._meta.verbose_name.title()} is not mapped to the graph.",
-        )
-        return redirect(back)
-    label, _uuid_field = mapping
-
-    client = Neo4jClient()
-    try:
-        runner = ProjectionRunner(client, load_all_configs())
-        summary = runner.export_node_one_hop(label, object_uuid)
-    except model.DoesNotExist:
-        messages.error(request, "That object no longer exists.")
-        return redirect(back)
-    except Exception as exc:
-        messages.error(request, f"Graph export failed: {exc}")
-        return redirect(back)
-    finally:
-        client.close()
-
-    n = summary["neighbours"]
-    messages.success(
-        request,
-        f"Exported to graph as {label} with {n} connection{'' if n == 1 else 's'}.",
-    )
-    return redirect(back)

@@ -1,43 +1,53 @@
 # toto.ravioli
 
-*(Studio only — requires BUILD_STUDIO=1)*
+*(Neo4j only — requires BUILD_NEO4J=1)*
 
-Sole boundary to Neo4j. All apps that need graph storage emit `GraphChangeEvent` records; a Celery worker drains them and applies upserts/deletes to Neo4j. Apps never call Neo4j directly.
+Sole boundary to Neo4j. Every app that touches the graph goes through `ravioli.connection.Neo4jClient` (raw Cypher over Bolt) or the single neomodel connection ravioli configures — no other app opens its own driver. Ravioli owns the **connection, saved queries, search, graph analysis, and the per-object "Export to graph" sync** (`graph_export.py`). The graph *shape* (which models/fields/links become nodes and edges) is declared as YAML in the sibling app `toto.sql_neo4j_sync`, whose bulk projection/planner ravioli reuses.
 
 ## Purpose
 
-The graph layer lets toto answer questions that relational queries can't handle efficiently: "find all communities connected within 3 hops", "shortest path between two members", "what instruments does this account participate in". Apps emit `GraphChangeEvent` records through Django signals — ravioli drains them in batches to Neo4j. Stored `CypherQuery` records let admins run graph queries from the dashboard. `GraphProjectionPlan` manages full-resync operations when the graph drifts from Postgres.
+The graph layer answers questions relational queries handle poorly: "communities within 3 hops", "shortest path between two members", "what instruments does this account touch". Ravioli provides the connection plus the read side — stored `CypherQuery` records admins run from the dashboard, keyword/fulltext/semantic search, NetworkX-based graph analysis, and NeoJSON import/export.
 
 ## Models
 
-- `CypherQuery` — a saved Cypher query. Fields: `name`, `slug`, `description`, `query` (Cypher text), `parameters_schema` (JSON schema for query params), `is_active`, `community` (FK, nullable — community-scoped queries).
+- `CypherQuery` — a saved Cypher query: `name`, `slug`, `description`, `query` (Cypher text), `parameters_schema`, `is_active`, optional `community` scope.
+- `CypherQueryResult` — a cached execution of a `CypherQuery` (extracted nodes/edges + timing/provenance).
 
-- `CypherQueryResult` — the result of executing a `CypherQuery`. Fields: `query` FK, `parameters` (JSON), `result` (JSON), `executed_at`, `duration_ms`, `executed_by` (FK to `people.Person`).
+> The graph outbox/projection models — `GraphChangeEvent`, `GraphProjectionPlan`, `GraphSync`, `GraphSyncSchedule` — now live in **`toto.sql_neo4j_sync`**, not here.
 
-- `GraphChangeEvent` — the queue between Django and Neo4j. Fields:
-  - `event_type` — `upsert_node / delete_node / upsert_edge / delete_edge`
-  - `node_label` / `edge_type` — Neo4j label or relationship type
-  - `node_id` / `source_node_id` / `target_node_id` — stable string IDs
-  - `properties` (JSON)
-  - `status` — `pending / processing / done / failed`
-  - `error_message`, `attempts`, `processed_at`
-  - `source_app`, `source_model`, `source_pk` — provenance
+## Modules
 
-- `GraphProjectionPlan` — a named graph projection for GDS (Graph Data Science) algorithms. Fields: `name`, `node_labels` (JSON array), `relationship_types` (JSON array), `node_properties` / `relationship_properties`, `is_active`.
-
-- `GraphSync` — a record of a full graph synchronization run. Fields: `started_at`, `finished_at`, `status`, `events_processed`, `events_failed`, `error_log`.
+- `connection.py` — `Neo4jClient` (`run_cypher`, `extract_graph`, node/edge CRUD, subgraph) + `is_enabled()` + local-fallback URI logic.
+- `graph_export.py` — `GraphExporter`: the per-object "Export to graph" engine. Reads the YAML mapping from `sql_neo4j_sync`, but owns the read-diff-write sync (see below).
+- `neomodel_conn.py` — configures the one neomodel connection; raises `Neo4jDisabled` when `RAVIOLI_ENABLED` is False.
+- `neojson.py` — NeoJSON (de)serialization for graph documents.
+- `services/search.py`, `vector_search.py` — keyword / fulltext / semantic search.
+- `graph_analysis.py`, `predefined_tasks.py` — NetworkX analysis run via workflows, results saved to the vault.
+- `views.py` — query browser, Cypher console, search, and graph-analysis endpoints (Cytoscape front-end).
 
 ## How it works
 
-1. Any app that needs graph nodes/edges emits `GraphChangeEvent.objects.create(...)` — typically from a Django signal in `signals.py`.
-2. A Celery task (`toto.ravioli.tasks.drain_graph_events`) polls for `status=pending` events in batches and applies them to Neo4j via the `bolt://neo4j:7687` connection.
-3. Views execute saved `CypherQuery` records or raw Cypher for graph exploration.
+1. Callers construct `Neo4jClient()`, run Cypher (`MERGE` upserts / `MATCH` reads), and `close()`. Always guard with `is_enabled()`.
+2. Views execute saved `CypherQuery` records or raw Cypher and render results with Cytoscape.
+
+### Per-object "Export to graph" (`graph_export.py`)
+
+The `{% export_to_graph_button obj %}` tag (in `toto.core`) links to a **preview** page; the user reviews the slice in Cytoscape, then applies. For one object the exporter:
+
+1. computes the desired **1-hop slice** from SQL — the object node plus the neighbours its outgoing FK/M2M links point to, and those edges (uses the YAML mapping from `sql_neo4j_sync`; junction/`via_model` links are out of scope);
+2. reads the matching slice currently in Neo4j;
+3. diffs them — each node's status is decided by a content **checksum** (`new` / `changed` / `existing`), each edge is `new` / `existing`;
+4. **applies without destroying prior state**: an unchanged checksum is a no-op; a changed one updates the canonical node *and* snapshots its previous state into a `:HISTORICAL` child node (fresh uuid, old uuid kept in `prev_uuid`, `_historical=true`), capped at `RAVIOLI_MAX_HISTORY` (default 3) newest versions. The root's outgoing edges are merged and stale ones (declared relations) removed.
+
+`RAVIOLI_EXPORT_EXCLUDED_APPS` (default `workflows`, `fileservices`, `vault`) are never exported. Historical snapshots carry `_historical=true` so the bulk `sql_neo4j_sync` full-sync skips them.
+
+> Bulk SQL→Neo4j projection (and opt-in auto-sync on save/delete) is a separate, declarative path owned by `sql_neo4j_sync` — see that app's README.
 
 ## Key coupling
 
-- All apps with graph-visible models import from `ravioli.signals` or call `ravioli.events.emit_*` helpers.
-- `RAVIOLI_ENABLED` setting must be `True`; `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` must be set.
+- Sole Neo4j boundary: `sql_neo4j_sync`, `bento`, and `neo_editor` all go through ravioli; no other app imports a Neo4j driver.
+- `RAVIOLI_ENABLED` must be `True`; `NEO4J_URI` / `NEO4J_USER` / `NEO4J_PASSWORD` configure the connection (see `neo4j.md`).
 
 ## Dependencies
 
-None — standalone app.
+None — standalone Neo4j boundary. (`sql_neo4j_sync`, `bento`, and `neo_editor` depend on it.)

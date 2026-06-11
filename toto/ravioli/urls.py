@@ -10,6 +10,8 @@ from .views import (
     export_query_neojson_view,
     search_view,
     search_status_view,
+    graph_export_preview,
+    graph_export_apply,
 )
 
 app_name = "ravioli"
@@ -25,4 +27,14 @@ urlpatterns = [
     path("queries/<int:query_id>/export-neojson/", export_query_neojson_view, name="export_query_neojson"),
     path("search/", search_view, name="search"),
     path("search/status/<int:run_id>/", search_status_view, name="search_status"),
+    path(
+        "export/<str:app_label>/<str:model_name>/<str:object_uuid>/",
+        graph_export_preview,
+        name="graph_export_preview",
+    ),
+    path(
+        "export/<str:app_label>/<str:model_name>/<str:object_uuid>/apply/",
+        graph_export_apply,
+        name="graph_export_apply",
+    ),
 ]

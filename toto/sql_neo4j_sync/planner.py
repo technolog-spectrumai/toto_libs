@@ -253,6 +253,10 @@ class ProjectionPlanner:
                 (
                     f"MATCH (n:{label}) "
                     "WHERE n.uuid IS NOT NULL "
+                    # Skip :HISTORICAL version snapshots written by ravioli's
+                    # per-object export — they are not canonical SQL rows and
+                    # must not be diffed/deleted by a full sync.
+                    "AND coalesce(n._historical, false) = false "
                     "RETURN n.uuid AS uuid, properties(n) AS props"
                 )
             )

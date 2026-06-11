@@ -1,9 +1,10 @@
 import json
 
 from django.contrib import messages
-from django.contrib.auth.decorators import user_passes_test
+from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import redirect, render, get_object_or_404
+from django.urls import reverse
 from django.views.decorators.http import require_GET, require_POST
 
 from django.db import models as _models
@@ -598,3 +599,119 @@ def search_status_view(request, run_id):
 
     # still pending or running
     return JsonResponse({"status": "running", "wf_run_url": f"/workflows/runs/{run.pk}/"})
+
+
+# ---------------------------------------------------------------------------
+# Per-object "Export to graph" — preview the 1-hop slice, then apply the diff
+# ---------------------------------------------------------------------------
+
+class _ExportError(Exception):
+    """Carries a user-facing message for a failed export-target resolution."""
+
+
+def _resolve_export_target(app_label, model_name):
+    """Return ``(model, label, uuid_field)`` or raise ``_ExportError(message)``.
+
+    Constructs a client-less ``GraphExporter`` purely for the label registry;
+    no Neo4j I/O happens here.
+    """
+    from django.apps import apps as django_apps
+
+    from .connection import is_enabled
+    from .graph_export import GraphExporter, is_app_excluded
+
+    if not is_enabled():
+        raise _ExportError("Graph database is disabled (RAVIOLI_ENABLED is False).")
+    if is_app_excluded(app_label):
+        raise _ExportError("This kind of record is not exported to the graph.")
+    try:
+        model = django_apps.get_model(app_label, model_name)
+    except (LookupError, ValueError):
+        raise _ExportError("Unknown model for graph export.")
+
+    mapping = GraphExporter(None).label_for_model(model)
+    if mapping is None:
+        raise _ExportError(
+            f"{model._meta.verbose_name.title()} is not mapped to the graph."
+        )
+    label, uuid_field = mapping
+    return model, label, uuid_field
+
+
+@login_required
+def graph_export_preview(request, app_label, model_name, object_uuid):
+    """Cytoscape preview of the object + its 1-hop neighbours before applying."""
+    from .connection import Neo4jClient
+    from .graph_export import GraphExporter
+
+    back = request.META.get("HTTP_REFERER") or "/"
+    try:
+        model, label, uuid_field = _resolve_export_target(app_label, model_name)
+    except _ExportError as exc:
+        messages.error(request, str(exc))
+        return redirect(back)
+    try:
+        obj = model.objects.get(**{uuid_field: object_uuid})
+    except model.DoesNotExist:
+        messages.error(request, "That object no longer exists.")
+        return redirect(back)
+
+    client = Neo4jClient()
+    try:
+        nodes, edges, summary = GraphExporter(client).preview(label, obj)
+    finally:
+        client.close()
+
+    context = PageProcessor().decorate(
+        {
+            "object_label": str(obj),
+            "graph_label": label,
+            "nodes_json": json.dumps(nodes),
+            "edges_json": json.dumps(edges),
+            "summary": summary,
+            "apply_url": reverse(
+                "ravioli:graph_export_apply", args=[app_label, model_name, object_uuid]
+            ),
+            "back_url": back,
+        },
+        request,
+    )
+    return render(request, "ravioli/graph_export_preview.html", context)
+
+
+@require_POST
+@login_required
+def graph_export_apply(request, app_label, model_name, object_uuid):
+    """Apply the 1-hop slice to Neo4j (checksum-gated, history-preserving)."""
+    from .connection import Neo4jClient
+    from .graph_export import GraphExporter
+
+    back = request.POST.get("back") or request.META.get("HTTP_REFERER") or "/"
+    try:
+        model, label, uuid_field = _resolve_export_target(app_label, model_name)
+    except _ExportError as exc:
+        messages.error(request, str(exc))
+        return redirect(back)
+    try:
+        obj = model.objects.get(**{uuid_field: object_uuid})
+    except model.DoesNotExist:
+        messages.error(request, "That object no longer exists.")
+        return redirect(back)
+
+    client = Neo4jClient()
+    try:
+        result = GraphExporter(client).apply(label, obj)
+    except Exception as exc:
+        messages.error(request, f"Graph export failed: {exc}")
+        return redirect(back)
+    finally:
+        client.close()
+
+    parts = [
+        f"{result[k]} {k}"
+        for k in ("created", "updated", "unchanged")
+        if result[k]
+    ]
+    detail = ", ".join(parts) or "no changes"
+    messages.success(request, f"Exported {label} to the graph ({detail}).")
+    return redirect(back)

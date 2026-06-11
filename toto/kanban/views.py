@@ -119,7 +119,6 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 "tasks__reviewer__person",
                 "tasks__sprint",
                 "tasks__column",
-                "tasks__detection_mitigations",
             )
         )
 
@@ -724,9 +723,6 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks__sprint",
                 "tasks__assignee__person",
                 "tasks__reviewer__person",
-                "tasks__detection_mitigations",
-                "tasks__detection_mitigations__category",
-                "tasks__detection_mitigations__address",
             )
         )
 

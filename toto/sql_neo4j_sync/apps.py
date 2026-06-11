@@ -15,8 +15,8 @@ class SqlNeo4jSyncConfig(AppConfig):
 
         # Graph is opt-in: nothing reaches Neo4j on save/delete unless
         # RAVIOLI_AUTO_SYNC is explicitly enabled. The per-object "Export to
-        # graph" button does not depend on these signals — it projects
-        # synchronously via ProjectionRunner.export_node_one_hop.
+        # graph" button does not depend on these signals — it syncs
+        # synchronously via toto.ravioli.graph_export.GraphExporter.
         if getattr(settings, "RAVIOLI_AUTO_SYNC", False):
             try:
                 from .signals import register_graph_signals

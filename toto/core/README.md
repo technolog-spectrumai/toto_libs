@@ -16,6 +16,10 @@ Platform configuration and tenant identity. Defines the top-level `Platform` sin
 
 `DomainEntity` is the abstract base used by almost every domain model in the system. It provides: `uuid` (auto), `slug` (auto from name), `name`, `description`, `logo`, `metadata` (JSON), `created_at`, `updated_at`.
 
+## Template tags
+
+- `graph_export` — `{% load graph_export %}{% export_to_graph_button obj %}` renders a per-object "Export to graph" button on detail pages, linking to ravioli's export **preview** page. It lives in `core` (always installed) so templates can load it even in builds without the Neo4j layer; it renders nothing unless `RAVIOLI_ENABLED` is set and the object's model is graph-mapped (and not in `RAVIOLI_EXPORT_EXCLUDED_APPS`). The graph apps are imported lazily.
+
 ## Key coupling
 
 - `core.Platform` is read at boot time by `sso_master.services.get_active_platform()` to resolve the OIDC issuer URL.

@@ -49,13 +49,6 @@
           </span>
         </a>
 
-        {% if task.detection_mitigations.all %}
-          <span
-            :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'"
-            class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 font-semibold">
-            <i class="fa-solid fa-triangle-exclamation text-[10px]"></i>{% trans "Detection" %}</span>
-        {% endif %}
-
         {% if task.metadata.required_skills %}
           <span
             :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"

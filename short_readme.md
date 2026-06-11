@@ -17,7 +17,7 @@ A community on toto operates like a mini-state: it has members, money, rules, a 
 - **Lapis smart contracts.** A YAML-based contract VM in `assets.Contract`. Financial instruments generate Lapis programs; the VM validates state transitions.
 - **Hierarchical encryption.** `gervazy` implements a three-tier AES-256-GCM key hierarchy: password → Argon2id KDF → UKEK → VMK → DEK → encrypted objects (secrets, files, private keys).
 - **OIDC provider.** `sso_master` is a full OpenID Connect server. Signing keys are RSA stored encrypted in gervazy.
-- **Graph layer.** `ravioli` is the sole Neo4j boundary. Apps emit `GraphChangeEvent` records; a Celery worker drains them into Neo4j. No app ever calls Neo4j directly.
+- **Graph layer.** `ravioli` is the sole Neo4j boundary and owns the per-object "Export to graph" sync: it computes an object's 1-hop slice, diffs it against Neo4j by content checksum, previews it in Cytoscape, and applies it without destroying prior state (changed nodes are snapshotted into capped `:HISTORICAL` versions). The graph *shape* is declared as YAML in `sql_neo4j_sync`, which also runs the opt-in bulk projection. No app ever calls Neo4j directly.
 - **Real-time over WebSockets.** Django Channels powers chat (enigma), whiteboard (sketch), LaTeX compilation (texlab), and compute kernels (mandragora).
 - **Community-governed economy.** Each community runs an Assembly where members vote on proposals. Passed proposals enact `CommunityRule`, `CommunityTransactionFee`, or `PollTax` objects.
 - **Celery + Redis.** Background tasks handle ledger operations, graph sync, subscription billing, instrument lifecycle, workflows, and periodic tax collection.
@@ -117,7 +117,7 @@ Studio apps (only when `BUILD_STUDIO=1`): `enigma`, `ravioli`, `texlab`, `mandra
 | App | Purpose |
 |---|---|
 | `enigma` | Real-time group chat over WebSockets. |
-| `ravioli` | Sole Neo4j boundary. GraphChangeEvent drain → graph upserts. |
+| `ravioli` | Sole Neo4j boundary (connection, Cypher, search, analysis). Owns per-object "Export to graph" (checksum diff + :HISTORICAL versions); graph shape + bulk projection in `sql_neo4j_sync`. |
 | `texlab` | Async LaTeX compilation with live log streaming. |
 | `mandragora` | Jupyter-style compute engine. Notebooks, cells, ZMQ kernel backend. |
 | `workflows` | DAG-based automation engine. Lambda/split/join/report nodes. |
