@@ -10,12 +10,16 @@ function reviewFlow() {
     reviewPlan: null,      // {plan_id, summary, total_changes, diff, apply_url, detail_url}
     reviewTitle: '',
     reviewError: null,
+    reviewAllowStaging: false,   // show the "staging" checkbox (sync only)
+    reviewStaging: false,        // archive replaced nodes to :HISTORICAL on apply
     _reviewCy: null,
 
-    async openReview(url, title, body) {
+    async openReview(url, title, body, allowStaging) {
       if (this.reviewPhase !== 'idle') return;
       this.reviewPhase = 'planning';
       this.reviewTitle = title;
+      this.reviewAllowStaging = !!allowStaging;
+      this.reviewStaging = false;
       this.reviewError = null;
       this.reviewPlan = null;
       try {
@@ -42,7 +46,11 @@ function reviewFlow() {
       this.reviewPhase = 'applying';
       this.reviewError = null;
       try {
-        const res = await fetch(this.reviewPlan.apply_url, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
+        const opts = { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } };
+        if (this.reviewStaging) {
+          var fd = new FormData(); fd.append('staged', '1'); opts.body = fd;
+        }
+        const res = await fetch(this.reviewPlan.apply_url, opts);
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
         this.reviewPhase = 'done';

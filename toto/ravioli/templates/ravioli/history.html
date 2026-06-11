@@ -27,7 +27,7 @@
       <div>
         <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-clock-rotate-left mr-2 text-2xl"></i>{% trans "Graph History" %}</h1>
-        <p class="mt-1 text-sm opacity-60">{% trans "Kept :HISTORICAL snapshots of changed nodes. Prune to a depth — reviewed before deletion." %}</p>
+        <p class="mt-1 text-sm opacity-60">{% trans "Kept :_HISTORICAL snapshots of changed nodes. Prune to a depth — reviewed before deletion." %}</p>
       </div>
       {% include "ravioli/_tabs.html" with active_tab="history" %}
     </div>
@@ -165,6 +165,7 @@ function historyViewer() {
             label: n.kind === 'snapshot' ? ('v' + n.depth) : n.label,
             kind: n.kind,
             depth: n.depth ?? -1,
+            present: n.present !== false,   // orphan canonical (deleted) when false
           }})),
           ...this.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target } })),
         ],
@@ -195,7 +196,10 @@ function historyViewer() {
         const color = canonical ? this._CANON : (n.data('depth') >= keep ? this._PRUNE : this._KEPT);
         n.style('background-color', color);
         n.style('border-color', color);
-        n.style('background-opacity', canonical ? 0.5 : 0.92);
+        // Orphan canonical (its live node was deleted) → faint + dashed.
+        const orphan = canonical && n.data('present') === false;
+        n.style('border-style', orphan ? 'dashed' : 'solid');
+        n.style('background-opacity', canonical ? (orphan ? 0.15 : 0.5) : 0.92);
       });
     },
   };

@@ -797,9 +797,10 @@ def graph_plan_apply(request, plan_id):
             {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
         )
 
+    staged = request.POST.get("staged") in ("1", "true", "on")
     client = Neo4jClient()
     try:
-        graph_plans.apply_plan(client, plan)
+        graph_plans.apply_plan(client, plan, staged=staged)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
     finally:
@@ -847,14 +848,18 @@ def history_data(request):
 
     client = Neo4jClient()
     try:
+        # Anchor on the snapshots themselves (grouped by the canonical they came
+        # from, `prev_uuid`) so orphans — snapshots whose canonical was deleted by
+        # a later sync, dropping the :HISTORICAL edge — are still listed.
         rows = client.run_cypher(
-            "MATCH (c)-[:HISTORICAL]->(h) WHERE h._historical = true "
-            "WITH c, h ORDER BY h.archived_at DESC "
-            "WITH c, collect(h) AS hs "
+            "MATCH (h) WHERE h._historical = true "
+            "WITH h ORDER BY h._archived_at DESC "
+            "WITH h._prev_uuid AS pk, collect(h) AS hs "
             "UNWIND range(0, size(hs) - 1) AS i "
-            "WITH c, hs[i] AS h, i AS depth "
-            "RETURN labels(c) AS c_labels, c.uuid AS c_uuid, "
-            "labels(h) AS h_labels, h.uuid AS h_uuid, depth "
+            "WITH pk, hs[i] AS h, i AS depth "
+            "OPTIONAL MATCH (c) WHERE c.uuid = pk AND coalesce(c._historical, false) = false "
+            "RETURN labels(h) AS h_labels, h.uuid AS h_uuid, pk AS prev_uuid, "
+            "(CASE WHEN c IS NULL THEN [] ELSE labels(c) END) AS c_labels, depth "
             "LIMIT 2000"
         )
     except Exception as exc:
@@ -867,10 +872,15 @@ def history_data(request):
 
     nodes, edges = {}, []
     for row in rows:
-        c_label, c_uuid = label0(row["c_labels"]), str(row["c_uuid"])
-        h_label, h_uuid = label0(row["h_labels"]), str(row["h_uuid"])
+        h_label = label0(row["h_labels"])
+        present = bool(row["c_labels"])
+        c_label = label0(row["c_labels"]) or h_label   # canonical shares the label
+        c_uuid, h_uuid = str(row["prev_uuid"]), str(row["h_uuid"])
         c_id, h_id = f"{c_label}:{c_uuid}", f"{h_label}:{h_uuid}"
-        nodes.setdefault(c_id, {"id": c_id, "label": c_label, "uuid": c_uuid, "kind": "canonical"})
+        nodes.setdefault(c_id, {
+            "id": c_id, "label": c_label, "uuid": c_uuid,
+            "kind": "canonical", "present": present,
+        })
         nodes[h_id] = {
             "id": h_id, "label": h_label, "uuid": h_uuid,
             "kind": "snapshot", "depth": row["depth"],

@@ -78,8 +78,8 @@ class ChecksumTests(SimpleTestCase):
             "name": "X",
             "_checksum": "zzz",
             "uuid": "1",
-            "prev_uuid": "0",
-            "archived_at": 123,
+            "_prev_uuid": "0",
+            "_archived_at": 123,
             "_historical": True,
         })
         self.assertEqual(base, decorated)
@@ -182,11 +182,11 @@ class ApplyTests(TestCase):
         creates = [p for q, p in client.calls if q.startswith("CREATE (h:TUser")]
         self.assertEqual(len(creates), 1)
         snapshot = creates[0]["props"]
-        self.assertEqual(snapshot["prev_uuid"], "alice")
+        self.assertEqual(snapshot["_prev_uuid"], "alice")
         self.assertNotEqual(snapshot["uuid"], "alice")
         self.assertTrue(snapshot["_historical"])
 
-        self.assertTrue(any("MERGE (n)-[:HISTORICAL]->(h)" in q for q, _ in client.calls))
+        self.assertTrue(any("MERGE (n)-[:_HISTORICAL]->(h)" in q for q, _ in client.calls))
         # History pruning is disabled for now — no DETACH DELETE of old versions.
         self.assertFalse(any("DETACH DELETE h" in q for q, _ in client.calls))
 
@@ -300,16 +300,59 @@ class PlanViewTests(TestCase):
         self.assertEqual(resp.status_code, 503)
 
 
+class StagedApplyTests(TestCase):
+    class _Client:
+        def __init__(self):
+            self.calls = []
+
+        def run_cypher(self, query, params=None):
+            self.calls.append((query, params or {}))
+            if "RETURN properties(n) AS props" in query:
+                return [{"props": {"uuid": (params or {}).get("uuid"), "title": "OLD"}}]
+            return []
+
+        def close(self):
+            pass
+
+    def _plan_with_update(self):
+        from toto.sql_neo4j_sync.models import GraphProjectionPlan
+        diff = {
+            "nodes": {
+                "create": [], "delete": [], "ignored": [],
+                "update": [{"label": "KanbanTask", "uuid": "t1", "props": {"title": "NEW"}}],
+            },
+            "relationships": {"create": [], "update": [], "delete": [], "ignored": []},
+        }
+        return GraphProjectionPlan.objects.create(
+            status=GraphProjectionPlan.STATUS_READY, summary={"total_changes": 1}, diff=diff,
+        )
+
+    def test_staged_snapshots_updated_nodes_to_history(self):
+        from toto.ravioli.services import graph_plans
+        client = self._Client()
+        graph_plans.apply_plan(client, self._plan_with_update(), staged=True)
+
+        creates = [(q, p) for q, p in client.calls if q.startswith("CREATE (h:KanbanTask")]
+        self.assertEqual(len(creates), 1)
+        self.assertEqual(creates[0][1]["props"]["_prev_uuid"], "t1")
+        self.assertTrue(creates[0][1]["props"]["_historical"])
+        self.assertTrue(any("MERGE (n)-[:_HISTORICAL]->(h)" in q for q, _ in client.calls))
+
+    def test_unstaged_overwrites_without_history(self):
+        from toto.ravioli.services import graph_plans
+        client = self._Client()
+        graph_plans.apply_plan(client, self._plan_with_update(), staged=False)
+        self.assertFalse(any(q.startswith("CREATE (h:") for q, _ in client.calls))
+
+
 class PruneServiceTests(TestCase):
     class _PruneClient:
         """Returns two historical snapshots of one canonical KanbanTask node."""
         def run_cypher(self, query, params=None):
             if "h_labels" in query:
                 return [
-                    {"h_labels": ["KanbanTask"], "h_uuid": "t~1",
-                     "c_labels": ["KanbanTask"], "c_uuid": "t"},
-                    {"h_labels": ["KanbanTask"], "h_uuid": "t~2",
-                     "c_labels": ["KanbanTask"], "c_uuid": "t"},
+                    {"h_labels": ["KanbanTask"], "h_uuid": "t~1", "prev_uuid": "t"},
+                    {"h_labels": ["KanbanTask"], "h_uuid": "t~2", "prev_uuid": "t"},
                 ]
             return []
 
@@ -329,7 +372,7 @@ class PruneServiceTests(TestCase):
         ])
         rel_del = plan.diff["relationships"]["delete"]
         self.assertEqual(len(rel_del), 2)
-        self.assertEqual(rel_del[0]["relation"], "HISTORICAL")
+        self.assertEqual(rel_del[0]["relation"], "_HISTORICAL")
         self.assertEqual((rel_del[0]["from_uuid"], rel_del[0]["to_uuid"]), ("t", "t~1"))
         self.assertEqual(plan.total_changes, 4)  # 2 nodes + 2 edges
 

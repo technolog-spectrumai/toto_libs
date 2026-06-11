@@ -12,7 +12,7 @@ History pruning is always manual — the sync/export path never caps history its
 
 from django.conf import settings
 
-HISTORICAL_REL = "HISTORICAL"
+HISTORICAL_REL = "_HISTORICAL"
 
 
 def default_keep():
@@ -70,13 +70,15 @@ def create_prune_plan(client, keep=None):
     except (TypeError, ValueError):
         keep = default_keep()
 
+    # Anchor on the snapshots (grouped by their origin `prev_uuid`) so orphaned
+    # snapshots — whose canonical was deleted, dropping the :HISTORICAL edge —
+    # are prunable too. DETACH DELETE on the node removes any remaining edge.
     rows = client.run_cypher(
-        f"MATCH (c)-[:{HISTORICAL_REL}]->(h) WHERE h._historical = true "
-        "WITH c, h ORDER BY h.archived_at DESC "
-        "WITH c, collect(h) AS hs "
+        "MATCH (h) WHERE h._historical = true "
+        "WITH h ORDER BY h._archived_at DESC "
+        "WITH h._prev_uuid AS pk, collect(h) AS hs "
         "UNWIND hs[$keep..] AS h "
-        "RETURN labels(h) AS h_labels, h.uuid AS h_uuid, "
-        "labels(c) AS c_labels, c.uuid AS c_uuid",
+        "RETURN labels(h) AS h_labels, h.uuid AS h_uuid, h._prev_uuid AS prev_uuid",
         {"keep": keep},
     )
 
@@ -84,12 +86,11 @@ def create_prune_plan(client, keep=None):
     node_deletes, rel_deletes = [], []
     for row in rows:
         h_label = _primary_label(row["h_labels"], projected)
-        c_label = _primary_label(row["c_labels"], projected)
         node_deletes.append({"label": h_label, "uuid": str(row["h_uuid"])})
         rel_deletes.append({
             "kind": "direct",
-            "from_label": c_label,
-            "from_uuid": str(row["c_uuid"]),
+            "from_label": h_label,   # canonical shares the snapshot's label
+            "from_uuid": str(row["prev_uuid"]),
             "relation": HISTORICAL_REL,
             "to_label": h_label,
             "to_uuid": str(row["h_uuid"]),
@@ -114,10 +115,21 @@ def create_prune_plan(client, keep=None):
 # Apply (shared) + payload for the review UI
 # ---------------------------------------------------------------------------
 
-def apply_plan(client, plan):
+def apply_plan(client, plan, staged=False):
+    """Apply a plan. When ``staged``, each *updated* node's current state is
+    snapshotted into a ``:HISTORICAL`` child before being overwritten, so old
+    values are pushed to history instead of being destroyed."""
     from toto.sql_neo4j_sync.planner import apply_projection_plan
 
+    from toto.ravioli.graph_export import archive_node_to_history, relink_orphan_history
+
+    if staged:
+        for node in (plan.diff or {}).get("nodes", {}).get("update", []):
+            archive_node_to_history(client, node["label"], node["uuid"])
+
     apply_projection_plan(client, plan)
+    # Reconnect any snapshots whose canonical reappeared (same uuid).
+    relink_orphan_history(client)
 
 
 def plan_payload(plan, apply_url, detail_url):

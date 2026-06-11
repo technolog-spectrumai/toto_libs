@@ -103,7 +103,13 @@ ready. Diff colours use system theme tokens (success / caution / warn).
     </template>
 
     <!-- Footer -->
-    <div class="flex items-center justify-end gap-2 border-t border-current/10 px-6 py-4">
+    <div class="flex flex-wrap items-center justify-end gap-3 border-t border-current/10 px-6 py-4">
+      <label x-show="reviewAllowStaging && reviewPhase === 'review'"
+             class="mr-auto inline-flex cursor-pointer items-center gap-2 text-xs opacity-80"
+             title="{% trans 'Snapshot each replaced node into :_HISTORICAL instead of overwriting it' %}">
+        <input type="checkbox" x-model="reviewStaging" class="h-4 w-4 rounded border-current/40">
+        <span>{% trans "Staging — push replaced versions to history" %}</span>
+      </label>
       <p x-show="reviewError" class="mr-auto text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="reviewError"></p>
       <p x-show="reviewPhase === 'done'" class="mr-auto inline-flex items-center gap-2 text-sm font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-circle-check"></i>{% trans "Applied — refreshing…" %}</p>
       <button x-show="reviewPhase !== 'done'" @click="closeReview()" :disabled="reviewPhase === 'applying'"

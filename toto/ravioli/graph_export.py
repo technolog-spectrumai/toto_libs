@@ -33,11 +33,11 @@ from toto.sql_neo4j_sync.planner import neo4j_props, normalize
 from toto.sql_neo4j_sync.projection import _get_value
 
 
-HISTORICAL_REL = "HISTORICAL"
+HISTORICAL_REL = "_HISTORICAL"
 
 # Properties ravioli manages itself — excluded from the content checksum so that
 # bookkeeping never looks like a content change.
-RESERVED_PROPS = {"uuid", "_checksum", "_historical", "prev_uuid", "archived_at"}
+RESERVED_PROPS = {"uuid", "_checksum", "_historical", "_prev_uuid", "_archived_at"}
 
 DEFAULT_EXCLUDED_APPS = ["workflows", "fileservices", "vault"]
 
@@ -66,6 +66,57 @@ def content_checksum(props):
         cls=DjangoJSONEncoder,
     )
     return hashlib.sha256(payload.encode("utf-8")).hexdigest()
+
+
+def archive_node_to_history(client, label, uuid):
+    """Snapshot a node's current state into a ``:HISTORICAL`` child node.
+
+    Copies the live node's properties into a new node (fresh ``uuid``, the
+    original kept in ``prev_uuid``, ``_historical=true``, ``archived_at``) and
+    links ``(canonical)-[:HISTORICAL]->(snapshot)``. Does **not** modify the
+    canonical node — callers update it afterwards. No-op if the node is missing.
+
+    Shared by the per-object export and the "staging" bulk sync so both grow the
+    same history (visible/prunable in the History tab).
+    """
+    records = client.run_cypher(
+        f"MATCH (n:{label} {{uuid: $uuid}}) RETURN properties(n) AS props",
+        {"uuid": uuid},
+    )
+    if not records or records[0]["props"] is None:
+        return
+    archived_at = time.time()
+    child_uuid = f"{uuid}~{int(archived_at * 1000)}-{uuid_lib.uuid4().hex[:6]}"
+    snapshot = {k: v for k, v in records[0]["props"].items() if k != "uuid"}
+    snapshot.update(
+        {"uuid": child_uuid, "_prev_uuid": uuid, "_historical": True, "_archived_at": archived_at}
+    )
+    client.run_cypher(f"CREATE (h:{label} $props)", {"props": neo4j_props(snapshot)})
+    client.run_cypher(
+        f"MATCH (n:{label} {{uuid: $uuid}}) MATCH (h:{label} {{uuid: $child}}) "
+        f"MERGE (n)-[:{HISTORICAL_REL}]->(h)",
+        {"uuid": uuid, "child": child_uuid},
+    )
+
+
+def relink_orphan_history(client):
+    """Reconnect orphaned snapshots to their canonical node via :HISTORICAL.
+
+    A full sync that deletes a canonical node ``DETACH DELETE``\\s its
+    ``:HISTORICAL`` edges, orphaning its snapshots. If the canonical later
+    reappears (same uuid, e.g. the row is re-added to SQL), this rebuilds the
+    edge. Idempotent (``MERGE``); returns the number of edges (re)created.
+    Snapshots whose canonical no longer exists stay orphaned — prune them.
+    """
+    records = client.run_cypher(
+        "MATCH (h) WHERE h._historical = true AND NOT ()-[:" + HISTORICAL_REL + "]->(h) "
+        "MATCH (c {uuid: h._prev_uuid}) "
+        "WHERE coalesce(c._historical, false) = false "
+        "AND any(l IN labels(c) WHERE l IN labels(h)) "
+        "MERGE (c)-[:" + HISTORICAL_REL + "]->(h) "
+        "RETURN count(*) AS n"
+    )
+    return records[0]["n"] if records else 0
 
 
 # ---------------------------------------------------------------------------
@@ -282,32 +333,10 @@ class GraphExporter:
         label = node["label"]
         uuid = node["uuid"]
 
-        # 1. Snapshot the current (old) state into a :HISTORICAL child node with
-        #    a fresh uuid; the canonical uuid is preserved in prev_uuid.
-        existing = self.read_node(label, uuid) or {}
-        archived_at = time.time()
-        child_uuid = f"{uuid}~{int(archived_at * 1000)}-{uuid_lib.uuid4().hex[:6]}"
-        snapshot = {k: v for k, v in existing.items() if k != "uuid"}
-        snapshot.update(
-            {
-                "uuid": child_uuid,
-                "prev_uuid": uuid,
-                "_historical": True,
-                "archived_at": archived_at,
-            }
-        )
-        self.client.run_cypher(
-            f"CREATE (h:{label} $props)", {"props": neo4j_props(snapshot)}
-        )
-        self.client.run_cypher(
-            f"MATCH (n:{label} {{uuid: $uuid}}) "
-            f"MATCH (h:{label} {{uuid: $child}}) "
-            f"MERGE (n)-[:{HISTORICAL_REL}]->(h)",
-            {"uuid": uuid, "child": child_uuid},
-        )
-
-        # 2. Update the canonical node in place. (History is kept unpruned for
-        #    now — every change accumulates a :HISTORICAL snapshot.)
+        # Snapshot the current (old) state into a :HISTORICAL child, then update
+        # the canonical node in place. (History is kept unpruned for now — prune
+        # manually via the History tab.)
+        archive_node_to_history(self.client, label, uuid)
         props = neo4j_props(node["props"])
         props["_checksum"] = node["checksum"]
         self.client.run_cypher(

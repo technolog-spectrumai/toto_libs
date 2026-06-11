@@ -48,7 +48,7 @@
       class="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 shadow-sm">
       <button
         x-show="reviewPhase === 'idle'"
-        @click="openReview(SYNC_PLAN_URL, '{% trans "Review graph sync" %}')"
+        @click="openReview(SYNC_PLAN_URL, '{% trans "Review graph sync" %}', null, true)"
         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
       >
