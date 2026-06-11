@@ -1,5 +1,8 @@
+import logging
 from django.conf import settings
 from urllib.parse import urlparse, urlunparse
+
+logger = logging.getLogger(__name__)
 
 
 def is_enabled():
@@ -55,7 +58,8 @@ def is_alive():
     try:
         client.run_cypher("RETURN 1")
         return True
-    except Exception:
+    except Exception as exc:
+        logger.warning("ravioli is_alive() probe failed: %s: %s", type(exc).__name__, exc)
         return False
     finally:
         client.close()

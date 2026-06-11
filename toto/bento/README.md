@@ -18,6 +18,20 @@ type, allowed source/target categories, and its own property schema. Supported
 property types: `string, text, integer, float, boolean, datetime, json` — plus a
 free-form `extra` JSON bag on every node/edge for ad-hoc keys.
 
+### Templates synced from the SQL→Neo4j sync
+
+`ingress_bento` (in **every** mode, including non-`--full`) derives a `BentoCategory`
+for each graph node label and a `BentoEdgeType` for each relation declared in
+`toto.sql_neo4j_sync`'s `graph/*.yaml` configs (property schema mapped from the
+YAML field map + transforms; edge allowed-sources/targets unioned per relation).
+Bento keys a node's category off its **Neo4j label**, so nodes the SQL→Neo4j sync
+writes (`:KanbanTask`, `:Person`, …) are recognised as these categories. `--full`
+additionally seeds the demo `idea/source/question` templates + sample graph.
+
+> Note: bento addresses nodes by a `uid` property, while the sync writes `uuid` —
+> so synced node *types* are recognised, but per-node editing of synced nodes in
+> bento needs the identifiers aligned (follow-up).
+
 ## Dynamic neomodel registry
 
 [`registry.py`](registry.py) turns each template row into a neomodel

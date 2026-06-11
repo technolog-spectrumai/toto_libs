@@ -1,23 +1,29 @@
 {% load i18n %}
 {% comment %}
-Non-blocking Neo4j health banner. Hidden until an async probe reports the graph
-is enabled but unreachable, so it never delays page render.
+Non-blocking, self-correcting Neo4j health banner. Hidden via inline display
+(NOT the `hidden` attribute — a `display:` utility class would override it), shown
+only while the graph is enabled but unreachable, and hidden again as soon as Neo4j
+is reachable (polled — no page reload needed).
 {% endcomment %}
-<div id="ravioli-neo4j-warning" hidden
-     class="flex items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-600">
+<div id="ravioli-neo4j-warning" style="display:none"
+     class="items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-600">
   <i class="fa-solid fa-triangle-exclamation"></i>
   <span>{% trans "Neo4j is not running — graph features are unavailable until it is reachable." %}</span>
 </div>
 <script>
 (function () {
-  fetch("{% url 'ravioli:graph_health' %}", { headers: { 'Accept': 'application/json' } })
-    .then(function (r) { return r.json(); })
-    .then(function (d) {
-      if (d && d.enabled && !d.alive) {
-        var el = document.getElementById('ravioli-neo4j-warning');
-        if (el) el.hidden = false;
-      }
-    })
-    .catch(function () { /* probe failed — stay silent */ });
+  var HEALTH_URL = "{% url 'ravioli:graph_health' %}";
+  function setDown(down) {
+    var el = document.getElementById('ravioli-neo4j-warning');
+    if (el) el.style.display = down ? 'flex' : 'none';
+  }
+  function check() {
+    fetch(HEALTH_URL, { cache: 'no-store', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setDown(!!(d && d.enabled && !d.alive)); })
+      .catch(function () { setDown(false); });   // probe failed / not authed — hide
+  }
+  check();
+  setInterval(check, 20000);   // re-probe so the banner self-corrects
 })();
 </script>

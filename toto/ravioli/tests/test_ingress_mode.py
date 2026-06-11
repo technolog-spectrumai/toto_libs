@@ -45,3 +45,40 @@ class BentoIngressModeTests(TestCase):
         # SQL-side templates are still created.
         from toto.bento.models import BentoCategory
         self.assertTrue(BentoCategory.objects.exists())
+
+
+class BentoSyncedTemplatesTests(TestCase):
+    """Non-full bento ingress derives categories/edge-types from sql_neo4j_sync."""
+
+    def test_non_full_seeds_synced_templates(self):
+        from toto.bento.models import BentoCategory, BentoEdgeType
+
+        _run("ingress_bento")  # non-full default — no Neo4j, no demo graph
+
+        # Node categories mirror sql_neo4j_sync graph labels.
+        for label in ("KanbanTask", "Person", "Event"):
+            self.assertTrue(BentoCategory.objects.filter(neo4j_label=label).exists(), label)
+
+        # property_schema is derived from the YAML field map (+ transforms).
+        task = BentoCategory.objects.get(neo4j_label="KanbanTask")
+        types = {f["name"]: f["type"] for f in task.property_schema}
+        self.assertEqual(types.get("title"), "string")
+        self.assertEqual(types.get("metadata"), "json")   # default_dict transform
+
+        # Edge types carry allowed source/target categories.
+        et = BentoEdgeType.objects.filter(rel_type="ASSIGNED_TO").first()
+        self.assertIsNotNone(et)
+        self.assertIn("KanbanTask", [c.neo4j_label for c in et.allowed_sources.all()])
+        self.assertIn("Person", [c.neo4j_label for c in et.allowed_targets.all()])
+
+        # "Used when syncing": bento recognises a synced node by its label, so
+        # nodes the sync writes with this label are now editable as this category.
+        from toto.bento import graph_service as gs
+        self.assertIn("KanbanTask", gs._bento_labels())
+
+    def test_idempotent(self):
+        from toto.bento.models import BentoCategory
+
+        _run("ingress_bento")
+        _run("ingress_bento")
+        self.assertEqual(BentoCategory.objects.filter(neo4j_label="KanbanTask").count(), 1)

@@ -15,7 +15,6 @@
 
 <div
   x-data="historyViewer()"
-  x-init="init()"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-5 py-8 transition-colors duration-300"
 >
@@ -37,7 +36,16 @@
     <div
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border px-4 py-3 shadow-sm">
-      <div class="inline-flex items-center gap-2">
+      <button
+        @click="loadHistory()" :disabled="loading"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-50"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      >
+        <i class="fa-solid" :class="loading ? 'fa-circle-notch fa-spin' : (loaded ? 'fa-rotate' : 'fa-clock-rotate-left')"></i>
+        <span x-text="loaded ? '{% trans "Refresh" %}' : '{% trans "Show history" %}'"></span>
+      </button>
+
+      <div x-show="loaded" class="inline-flex items-center gap-2">
         <label class="text-sm font-semibold opacity-70">{% trans "Keep depth" %}</label>
         <input type="number" min="0" x-model.number="keep" @input="recolor()"
                class="w-16 rounded-lg border border-current/20 bg-transparent px-2 py-1 text-sm"
@@ -45,16 +53,17 @@
         <span class="text-xs opacity-60">{% trans "newest versions to keep per node" %}</span>
       </div>
 
-      <div class="text-xs opacity-70">
+      <div x-show="loaded" class="text-xs opacity-70">
         <span class="font-semibold" x-text="snapshotCount"></span> {% trans "snapshot(s)" %} ·
         <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="prunableCount"></span> {% trans "prunable" %}
       </div>
 
       <button
+        x-show="loaded"
         @click="pruneNow()"
         :disabled="prunableCount === 0 || reviewPhase !== 'idle'"
-        class="ml-auto inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40"
-        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="ml-auto inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40"
+        :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
       >
         <i class="fa-solid fa-scissors text-xs"></i>{% trans "Prune history" %}…
       </button>
@@ -64,14 +73,23 @@
     <div
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="flex min-h-[28rem] flex-col overflow-hidden rounded-xl border shadow-sm">
+      <div x-show="!loaded && !loading" class="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+        <i class="fa-solid fa-clock-rotate-left text-4xl opacity-25"></i>
+        <p class="text-sm opacity-60">{% trans "History isn't loaded yet." %}</p>
+        <button @click="loadHistory()"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Show history" %}
+        </button>
+      </div>
       <div x-show="loading" class="flex flex-1 items-center justify-center gap-2 text-sm opacity-60">
         <i class="fa-solid fa-circle-notch fa-spin"></i>{% trans "Loading history…" %}
       </div>
-      <div x-show="!loading && snapshotCount === 0" class="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+      <div x-show="loaded && !loading && snapshotCount === 0" class="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
         <i class="fa-solid fa-clock-rotate-left text-3xl opacity-30"></i>
         <p class="text-sm opacity-60">{% trans "No history yet — snapshots appear when an exported node changes." %}</p>
       </div>
-      <div x-show="!loading && snapshotCount > 0" class="flex min-h-0 flex-1 flex-col">
+      <div x-show="loaded && !loading && snapshotCount > 0" class="flex min-h-0 flex-1 flex-col">
         <div id="history-cy" class="min-h-[24rem] flex-1"></div>
         <div class="flex flex-wrap gap-3 border-t border-current/10 px-3 py-2 text-[10px] opacity-70">
           <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-text-main-dark/50' : 'bg-text-main-light/50'"></span>{% trans "canonical node" %}</span>
@@ -96,11 +114,10 @@ function historyViewer() {
     keep: DEFAULT_KEEP,
     nodes: [],
     edges: [],
-    loading: true,
+    loaded: false,
+    loading: false,
     error: null,
     _historyCy: null,
-
-    init() { this.loadHistory(); },
 
     get snapshotCount() { return this.nodes.filter(n => n.kind === 'snapshot').length; },
     get prunableCount() {
@@ -109,12 +126,14 @@ function historyViewer() {
 
     async loadHistory() {
       this.loading = true;
+      this.error = null;
       try {
         const res = await fetch(HISTORY_DATA_URL);
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
         this.nodes = data.nodes;
         this.edges = data.edges;
+        this.loaded = true;
       } catch (e) {
         this.error = e.message;
       }

@@ -814,7 +814,10 @@ def graph_health_view(request):
     """Lightweight connectivity probe for the 'Neo4j is not running' banner."""
     from .connection import is_alive, is_enabled
 
-    return JsonResponse({"enabled": is_enabled(), "alive": is_alive()})
+    response = JsonResponse({"enabled": is_enabled(), "alive": is_alive()})
+    # Never cache — a stale probe would keep the banner up after Neo4j recovers.
+    response["Cache-Control"] = "no-store, max-age=0"
+    return response
 
 
 # ---------------------------------------------------------------------------

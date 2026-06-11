@@ -1,17 +1,43 @@
 import random
+import re
+
+from django.utils.text import slugify
 
 from toto.ingress import IngressCommand
-from toto.bento.models import BentoCategory, BentoEdgeType
+from toto.bento.models import BentoCategory, BentoEdgeType, RESERVED_PROP_NAMES
+
+
+# Django field → bento property type (bento types: string/text/integer/float/
+# boolean/datetime/json). YAML transforms override the model lookup.
+_FIELD_TYPE = {
+    "CharField": "string", "SlugField": "string", "EmailField": "string",
+    "URLField": "string", "UUIDField": "string", "GenericIPAddressField": "string",
+    "TextField": "text",
+    "IntegerField": "integer", "PositiveIntegerField": "integer",
+    "PositiveSmallIntegerField": "integer", "SmallIntegerField": "integer",
+    "BigIntegerField": "integer", "AutoField": "integer", "BigAutoField": "integer",
+    "FloatField": "float", "DecimalField": "float",
+    "BooleanField": "boolean", "NullBooleanField": "boolean",
+    "DateTimeField": "datetime", "DateField": "datetime", "TimeField": "datetime",
+    "JSONField": "json",
+}
 
 
 class Command(IngressCommand):
-    help = "Seed Bento with example node-category and edge-type templates."
+    help = "Seed Bento templates (synced graph types always; demo data with --full)."
 
     def process(self):
+        # Always: node categories + edge types mirroring the SQL→Neo4j sync
+        # configs, so synced labels/relations map to bento templates and are
+        # recognised when the sync writes them.
+        self._seed_synced_templates()
+
         if not self.full:
             return
 
-        self.stdout.write(self.style.WARNING("🍱 Seeding Bento templates…"))
+        # Full mode also seeds the demo "idea / source / question" templates that
+        # back the sample graph seeded below.
+        self.stdout.write(self.style.WARNING("🍱 Seeding Bento demo templates…"))
 
         categories = {
             "idea": {
@@ -103,6 +129,104 @@ class Command(IngressCommand):
             self.stdout.write(self.style.WARNING(
                 "⏩ Thin ingress (RAVIOLI_RICH_INGRESS=0) — skipping Neo4j graph seeding."
             ))
+
+    # ── templates mirroring the SQL→Neo4j sync (toto.sql_neo4j_sync) ──────────
+
+    @staticmethod
+    def _display_name(label):
+        return re.sub(r"(?<!^)(?=[A-Z])", " ", label).strip() or label
+
+    @staticmethod
+    def _bento_type(model, sql_field, transform):
+        if transform in ("json", "default_dict"):
+            return "json"
+        if transform in ("str", "wkt", "file_url"):
+            return "string"
+        try:
+            internal = model._meta.get_field(sql_field).get_internal_type()
+        except Exception:  # noqa: BLE001 — property / reverse / missing field
+            return "string"
+        return _FIELD_TYPE.get(internal, "string")
+
+    def _schema_from_node(self, node):
+        from toto.sql_neo4j_sync.loader import import_model
+
+        try:
+            model = import_model(node["model"])
+        except Exception:  # noqa: BLE001
+            return []
+        schema = []
+        for neo_name, spec in (node.get("fields") or {}).items():
+            if neo_name in RESERVED_PROP_NAMES:
+                continue
+            if isinstance(spec, dict):
+                sql_field, transform = spec.get("source", neo_name), spec.get("transform")
+            else:
+                sql_field, transform = spec, None
+            schema.append({
+                "name": neo_name,
+                "type": self._bento_type(model, sql_field, transform),
+                "required": False,
+                "label": neo_name.replace("_", " ").title(),
+            })
+        return schema
+
+    def _seed_synced_templates(self):
+        from toto.sql_neo4j_sync.loader import load_all_configs
+
+        configs = load_all_configs()
+
+        # node categories (one per graph label)
+        cat_by_label, new_cats = {}, 0
+        for config in configs:
+            for node in config.get("nodes", []):
+                label = node["label"]
+                schema = self._schema_from_node(node)
+                cat = BentoCategory.objects.filter(neo4j_label=label).first()
+                if cat:
+                    cat.property_schema = schema
+                    cat.save(update_fields=["property_schema", "updated_at"])
+                else:
+                    cat = BentoCategory.objects.create(
+                        name=self._display_name(label),
+                        slug=slugify(label),
+                        neo4j_label=label,
+                        property_schema=schema,
+                        description=f"Synced from {node.get('model', '')}.",
+                    )
+                    new_cats += 1
+                cat_by_label[label] = cat
+
+        # edge types (one per relation; allowed source/target categories unioned)
+        rels = {}
+        for config in configs:
+            for link in config.get("links", []):
+                relation = link.get("relation")
+                if not relation:
+                    continue
+                entry = rels.setdefault(relation, {"sources": set(), "targets": set()})
+                if link.get("from_label"):
+                    entry["sources"].add(link["from_label"])
+                if not link.get("generic") and link.get("to_label"):
+                    entry["targets"].add(link["to_label"])
+
+        new_ets = 0
+        for relation, info in rels.items():
+            et = BentoEdgeType.objects.filter(rel_type=relation).first()
+            if not et:
+                et = BentoEdgeType.objects.create(
+                    name=relation.replace("_", " ").title(),
+                    slug=slugify(relation.replace("_", "-")),
+                    rel_type=relation,
+                )
+                new_ets += 1
+            et.allowed_sources.set([cat_by_label[l] for l in info["sources"] if l in cat_by_label])
+            et.allowed_targets.set([cat_by_label[l] for l in info["targets"] if l in cat_by_label])
+
+        self.stdout.write(self.style.SUCCESS(
+            f"🔗 Synced graph templates: {len(cat_by_label)} categor(ies) "
+            f"({new_cats} new), {len(rels)} edge type(s) ({new_ets} new)."
+        ))
 
     def _seed_graph(self, edge_rules, *, n_nodes, n_edges):
         from toto.bento import graph_service as gs
