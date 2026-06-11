@@ -94,13 +94,16 @@
 
         <!-- Summary chips -->
         <div class="flex flex-wrap items-center gap-2 px-6 pt-4 text-xs font-semibold">
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-green-500/15 px-3 py-1 text-green-500">
+          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+                :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/15 text-success-light'">
             <i class="fa-solid fa-plus text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.create ?? 0) + (syncPlan?.summary?.relationships?.create ?? 0)"></span> {% trans "create" %}
           </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-amber-500/15 px-3 py-1 text-amber-500">
+          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+                :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">
             <i class="fa-solid fa-pen text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.update ?? 0) + (syncPlan?.summary?.relationships?.update ?? 0)"></span> {% trans "update" %}
           </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full bg-red-500/15 px-3 py-1 text-red-500">
+          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
+                :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">
             <i class="fa-solid fa-minus text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.delete ?? 0) + (syncPlan?.summary?.relationships?.delete ?? 0)"></span> {% trans "delete" %}
           </span>
           <a :href="syncPlan?.detail_url" target="_blank" rel="noopener" class="ml-auto inline-flex items-center gap-1 text-xs underline opacity-60 hover:opacity-100">
@@ -111,7 +114,7 @@
         <!-- Empty state -->
         <template x-if="(syncPlan?.total_changes ?? 0) === 0">
           <div class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <i class="fa-solid fa-circle-check text-3xl text-green-500"></i>
+            <i class="fa-solid fa-circle-check text-3xl" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
             <p class="text-sm opacity-70">{% trans "Graph is already up to date — nothing to apply." %}</p>
           </div>
         </template>
@@ -124,10 +127,10 @@
                  :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
               <div id="diff-cy" class="min-h-0 flex-1"></div>
               <div class="flex flex-wrap gap-3 border-t border-current/10 px-3 py-2 text-[10px] opacity-70">
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" style="background:#22c55e"></span>{% trans "create" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" style="background:#f59e0b"></span>{% trans "update" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" style="background:#ef4444"></span>{% trans "delete" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" style="background:#9ca3af"></span>{% trans "unchanged" %}</span>
+                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-success-dark' : 'bg-success-light'"></span>{% trans "create" %}</span>
+                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-caution-dark' : 'bg-caution-light'"></span>{% trans "update" %}</span>
+                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"></span>{% trans "delete" %}</span>
+                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-text-main-dark/40' : 'bg-text-main-light/40'"></span>{% trans "unchanged" %}</span>
               </div>
             </div>
 
@@ -138,13 +141,15 @@
                   <template x-for="action in ['create','update','delete']" :key="kind + action">
                     <div x-show="(syncPlan?.diff?.[kind]?.[action]?.length ?? 0) > 0" class="mb-3">
                       <div class="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide opacity-60">
-                        <span :class="actionColor(action)" x-text="actionSign(action)"></span>
+                        <span :class="darkMode ? 'text-' + actionTone(action) + '-dark' : 'text-' + actionTone(action) + '-light'" x-text="actionSign(action)"></span>
                         <span x-text="action + ' ' + kind"></span>
                         <span class="opacity-50" x-text="'(' + (syncPlan?.diff?.[kind]?.[action]?.length ?? 0) + ')'"></span>
                       </div>
                       <ul class="space-y-0.5 font-mono">
                         <template x-for="(item, i) in (syncPlan?.diff?.[kind]?.[action] || [])" :key="kind + action + i">
-                          <li class="truncate" :class="actionColor(action)" :title="diffItemText(kind, item)" x-text="diffItemText(kind, item)"></li>
+                          <li class="truncate"
+                              :class="darkMode ? 'text-' + actionTone(action) + '-dark' : 'text-' + actionTone(action) + '-light'"
+                              :title="diffItemText(kind, item)" x-text="diffItemText(kind, item)"></li>
                         </template>
                       </ul>
                     </div>
@@ -157,8 +162,8 @@
 
         <!-- Footer -->
         <div class="flex items-center justify-end gap-2 border-t border-current/10 px-6 py-4">
-          <p x-show="syncError" class="mr-auto text-sm text-red-500" x-text="syncError"></p>
-          <p x-show="syncPhase === 'done'" class="mr-auto inline-flex items-center gap-2 text-sm font-semibold text-green-500"><i class="fa-solid fa-circle-check"></i>{% trans "Applied — refreshing…" %}</p>
+          <p x-show="syncError" class="mr-auto text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="syncError"></p>
+          <p x-show="syncPhase === 'done'" class="mr-auto inline-flex items-center gap-2 text-sm font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-circle-check"></i>{% trans "Applied — refreshing…" %}</p>
           <button x-show="syncPhase !== 'done'" @click="closeSync()" :disabled="syncPhase === 'applying'"
                   class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80 disabled:opacity-50">
             {% trans "Cancel" %}
@@ -778,15 +783,8 @@ function queryViewer() {
     },
 
     // ── diff review: same Cytoscape style as the per-object export preview ──
-    _diffStatus: {
-      create:  { bg: '#22c55e', border: '#16a34a' },
-      update:  { bg: '#f59e0b', border: '#d97706' },
-      delete:  { bg: '#ef4444', border: '#b91c1c' },
-      context: { bg: '#9ca3af', border: '#6b7280' },
-    },
-
-    actionColor(a) { return a === 'create' ? 'text-green-500' : a === 'update' ? 'text-amber-500' : 'text-red-500'; },
-    actionSign(a)  { return a === 'create' ? '+' : a === 'update' ? '~' : '−'; },
+    actionTone(a) { return a === 'create' ? 'success' : a === 'update' ? 'caution' : 'warn'; },
+    actionSign(a) { return a === 'create' ? '+' : a === 'update' ? '~' : '−'; },
 
     diffItemText(kind, item) {
       if (kind === 'nodes') return `${item.label} · ${item.uuid}`;
@@ -819,7 +817,17 @@ function queryViewer() {
           edges.push({ data: { id: 'e' + a + i, source: s, target: t, label: r.relation, status: a } });
         }));
 
-      const colorOf = (s) => this._diffStatus[s] || this._diffStatus.context;
+      // Pull hexes from the active theme so the diff graph matches system colors.
+      const tw = (window.tailwind && tailwind.config && tailwind.config.theme.extend.colors) || {};
+      const dark = localStorage.getItem('darkMode') === 'true';
+      const tone = (name, fb) => tw[name + (dark ? '-dark' : '-light')] || fb;
+      const STATUS = {
+        create:  tone('success', '#22c55e'),
+        update:  tone('caution', '#f59e0b'),
+        delete:  tone('warn', '#ef4444'),
+        context: tone('text-main', '#9ca3af'),
+      };
+      const colorOf = (s) => STATUS[s] || STATUS.context;
       const nodes = [...nodeMap.values()].map(n => ({
         data: { id: n.id, label: n.label, uuid: n.uuid, status: n.status },
       }));
@@ -829,10 +837,10 @@ function queryViewer() {
         elements: [...nodes, ...edges],
         style: [
           { selector: 'node', style: {
-            'background-color': (e) => colorOf(e.data('status')).bg,
-            'background-opacity': (e) => e.data('status') === 'context' ? 0.45 : 0.95,
+            'background-color': (e) => colorOf(e.data('status')),
+            'background-opacity': (e) => e.data('status') === 'context' ? 0.4 : 0.9,
             'border-width': 2,
-            'border-color': (e) => colorOf(e.data('status')).border,
+            'border-color': (e) => colorOf(e.data('status')),
             'label': 'data(label)',
             'color': '#111827',
             'font-size': '11px',
@@ -843,9 +851,9 @@ function queryViewer() {
           }},
           { selector: 'edge', style: {
             'width': 1.6,
-            'line-color': (e) => colorOf(e.data('status')).border,
+            'line-color': (e) => colorOf(e.data('status')),
             'line-style': (e) => e.data('status') === 'delete' ? 'dashed' : 'solid',
-            'target-arrow-color': (e) => colorOf(e.data('status')).border,
+            'target-arrow-color': (e) => colorOf(e.data('status')),
             'target-arrow-shape': 'triangle',
             'curve-style': 'bezier',
             'label': 'data(label)',
