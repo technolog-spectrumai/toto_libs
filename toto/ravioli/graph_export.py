@@ -11,7 +11,9 @@ but the read-diff-write sync lives here:
      (unchanged → skip; changed → update + snapshot history);
   4. apply without ever destroying prior state: when a node's checksum changes,
      its previous version is copied into a ``:HISTORICAL`` child node (fresh
-     uuid, old uuid kept in ``prev_uuid``), capped at ``RAVIOLI_MAX_HISTORY``.
+     uuid, old uuid kept in ``prev_uuid``). History is never capped here —
+     pruning is a separate, manual review-then-apply step
+     (``ravioli.services.graph_plans.create_prune_plan``).
 
 Workflows, file services and vault files are never exported
 (``RAVIOLI_EXPORT_EXCLUDED_APPS``).

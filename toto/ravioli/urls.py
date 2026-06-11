@@ -13,8 +13,11 @@ from .views import (
     graph_export_preview,
     graph_export_apply,
     graph_sync_plan,
-    graph_sync_apply,
+    graph_prune_plan,
+    graph_plan_apply,
     graph_health_view,
+    history_view,
+    history_data,
 )
 
 app_name = "ravioli"
@@ -41,6 +44,9 @@ urlpatterns = [
         name="graph_export_apply",
     ),
     path("graph-sync/plan/", graph_sync_plan, name="graph_sync_plan"),
-    path("graph-sync/plan/<int:plan_id>/apply/", graph_sync_apply, name="graph_sync_apply"),
+    path("graph-prune/plan/", graph_prune_plan, name="graph_prune_plan"),
+    path("graph/plan/<int:plan_id>/apply/", graph_plan_apply, name="graph_plan_apply"),
     path("graph-health/", graph_health_view, name="graph_health"),
+    path("history/", history_view, name="history"),
+    path("history/data/", history_data, name="history_data"),
 ]

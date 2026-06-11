@@ -241,7 +241,7 @@ class ExportViewTests(TestCase):
         self.assertEqual(resp.status_code, 405)
 
 
-class SyncPlanApplyViewTests(TestCase):
+class PlanViewTests(TestCase):
     def _ready_plan(self, total=0):
         from toto.sql_neo4j_sync.models import GraphProjectionPlan
         return GraphProjectionPlan.objects.create(
@@ -250,31 +250,45 @@ class SyncPlanApplyViewTests(TestCase):
             diff={},
         )
 
-    def test_plan_requires_superuser(self):
+    # -- sync plan --
+    def test_sync_plan_requires_superuser(self):
         User.objects.create_user("plain2", password="pw")
         self.client.login(username="plain2", password="pw")
-        resp = self.client.post("/ravioli/graph-sync/plan/")
-        self.assertEqual(resp.status_code, 302)  # bounced by superuser_required
+        self.assertEqual(self.client.post("/ravioli/graph-sync/plan/").status_code, 302)
 
     @override_settings(RAVIOLI_ENABLED=False)
-    def test_plan_disabled_returns_503(self):
+    def test_sync_plan_disabled_returns_503(self):
         User.objects.create_superuser("admin3", email="a@b.c", password="pw")
         self.client.login(username="admin3", password="pw")
         resp = self.client.post("/ravioli/graph-sync/plan/")
         self.assertEqual(resp.status_code, 503)
         self.assertIn("RAVIOLI_ENABLED", resp.json()["error"])
 
+    # -- prune plan --
+    def test_prune_plan_requires_superuser(self):
+        User.objects.create_user("plain4", password="pw")
+        self.client.login(username="plain4", password="pw")
+        self.assertEqual(self.client.post("/ravioli/graph-prune/plan/").status_code, 302)
+
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_prune_plan_disabled_returns_503(self):
+        User.objects.create_superuser("admin7", email="a@b.c", password="pw")
+        self.client.login(username="admin7", password="pw")
+        resp = self.client.post("/ravioli/graph-prune/plan/", {"keep": 3})
+        self.assertEqual(resp.status_code, 503)
+
+    # -- shared apply (sync or prune) --
     def test_apply_requires_superuser(self):
         plan = self._ready_plan()
         User.objects.create_user("plain3", password="pw")
         self.client.login(username="plain3", password="pw")
-        resp = self.client.post(f"/ravioli/graph-sync/plan/{plan.id}/apply/")
+        resp = self.client.post(f"/ravioli/graph/plan/{plan.id}/apply/")
         self.assertEqual(resp.status_code, 302)
 
     def test_apply_missing_plan_404(self):
         User.objects.create_superuser("admin6", email="a@b.c", password="pw")
         self.client.login(username="admin6", password="pw")
-        resp = self.client.post("/ravioli/graph-sync/plan/999999/apply/")
+        resp = self.client.post("/ravioli/graph/plan/999999/apply/")
         self.assertEqual(resp.status_code, 404)
 
     @override_settings(RAVIOLI_ENABLED=False)
@@ -282,8 +296,65 @@ class SyncPlanApplyViewTests(TestCase):
         plan = self._ready_plan(total=3)
         User.objects.create_superuser("admin5", email="a@b.c", password="pw")
         self.client.login(username="admin5", password="pw")
-        resp = self.client.post(f"/ravioli/graph-sync/plan/{plan.id}/apply/")
+        resp = self.client.post(f"/ravioli/graph/plan/{plan.id}/apply/")
         self.assertEqual(resp.status_code, 503)
+
+
+class PruneServiceTests(TestCase):
+    class _PruneClient:
+        """Returns two historical snapshots of one canonical KanbanTask node."""
+        def run_cypher(self, query, params=None):
+            if "h_labels" in query:
+                return [
+                    {"h_labels": ["KanbanTask"], "h_uuid": "t~1",
+                     "c_labels": ["KanbanTask"], "c_uuid": "t"},
+                    {"h_labels": ["KanbanTask"], "h_uuid": "t~2",
+                     "c_labels": ["KanbanTask"], "c_uuid": "t"},
+                ]
+            return []
+
+        def close(self):
+            pass
+
+    def test_create_prune_plan_builds_delete_diff(self):
+        from toto.ravioli.services import graph_plans
+
+        plan = graph_plans.create_prune_plan(self._PruneClient(), keep=1)
+        self.assertEqual(plan.scope, {"kind": "prune", "keep": 1})
+
+        node_del = plan.diff["nodes"]["delete"]
+        self.assertEqual(node_del, [
+            {"label": "KanbanTask", "uuid": "t~1"},
+            {"label": "KanbanTask", "uuid": "t~2"},
+        ])
+        rel_del = plan.diff["relationships"]["delete"]
+        self.assertEqual(len(rel_del), 2)
+        self.assertEqual(rel_del[0]["relation"], "HISTORICAL")
+        self.assertEqual((rel_del[0]["from_uuid"], rel_del[0]["to_uuid"]), ("t", "t~1"))
+        self.assertEqual(plan.total_changes, 4)  # 2 nodes + 2 edges
+
+    @override_settings(RAVIOLI_DEFAULT_MAX_HISTORY=5)
+    def test_default_keep_from_settings(self):
+        from toto.ravioli.services.graph_plans import default_keep
+        self.assertEqual(default_keep(), 5)
+
+
+class HistoryViewTests(TestCase):
+    def test_history_page_requires_superuser(self):
+        User.objects.create_user("plain5", password="pw")
+        self.client.login(username="plain5", password="pw")
+        self.assertEqual(self.client.get("/ravioli/history/").status_code, 302)
+
+    def test_history_data_requires_superuser(self):
+        User.objects.create_user("plain6", password="pw")
+        self.client.login(username="plain6", password="pw")
+        self.assertEqual(self.client.get("/ravioli/history/data/").status_code, 302)
+
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_history_data_disabled_returns_503(self):
+        User.objects.create_superuser("admin8", email="a@b.c", password="pw")
+        self.client.login(username="admin8", password="pw")
+        self.assertEqual(self.client.get("/ravioli/history/data/").status_code, 503)
 
 
 class GraphHealthViewTests(TestCase):

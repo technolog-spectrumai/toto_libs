@@ -29,6 +29,15 @@
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}>
     <i class="fa-solid fa-chart-network"></i>{% trans "Graph Analysis" %}</a>
+
+  <a href="{% url 'ravioli:history' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'history' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-clock-rotate-left"></i>{% trans "History" %}</a>
   {% endif %}
 
   <a href="{% url 'bento:node_list' %}"

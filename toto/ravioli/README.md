@@ -22,8 +22,19 @@ The graph layer answers questions relational queries handle poorly: "communities
 - `neomodel_conn.py` — configures the one neomodel connection; raises `Neo4jDisabled` when `RAVIOLI_ENABLED` is False.
 - `neojson.py` — NeoJSON (de)serialization for graph documents.
 - `services/search.py`, `vector_search.py` — keyword / fulltext / semantic search.
+- `services/graph_plans.py` — build & apply `GraphProjectionPlan`s: `create_sync_plan` (full SQL→Neo4j diff), `create_prune_plan(keep)` (delete `:HISTORICAL` snapshots beyond the N newest per node, as a delete-only plan), `apply_plan`, `plan_payload`. Backs both review flows.
 - `graph_analysis.py`, `predefined_tasks.py` — NetworkX analysis run via workflows, results saved to the vault.
-- `views.py` — query browser, Cypher console, search, graph-analysis endpoints (Cytoscape front-end), the per-object export preview/apply, the **"Neo4j is not running"** health probe, and a bulk **"Sync all to graph"** control (computes a projection diff via the `sql_neo4j_sync` planner, shows it for approval, then applies — superuser-only) on the Knowledge Graph page.
+- `views.py` — query browser, Cypher console, search, graph-analysis endpoints (Cytoscape front-end), the per-object export preview/apply, the **"Neo4j is not running"** health probe, **"Sync all to graph"** (`graph_sync_plan`, Knowledge Graph tab), and the **History** tab (`history_view` + `history_data`, with **Prune history** = `graph_prune_plan`). All review-then-apply actions apply via one endpoint (`graph_plan_apply`).
+
+### Review-then-apply (sync + prune)
+
+Both share the same machinery so nothing is duplicated:
+- a `GraphProjectionPlan` (sync = full diff; prune = delete-only diff of `:HISTORICAL` snapshots),
+- one apply endpoint `graph_plan_apply` (`apply_projection_plan` → `ProjectionPlanApplier`),
+- one review modal partial **`templates/ravioli/_review_modal.html`** (Cytoscape diff graph + itemized list + Apply/Cancel),
+- one shared Alpine factory **`templates/ravioli/_review_flow.html`** (`reviewFlow()` → `openReview`/`applyReview`/`closeReview`/`renderReviewGraph`), spread into both the Knowledge Graph and History page components.
+
+The **History** tab (`history.html`) shows every kept `:HISTORICAL` snapshot as a Cytoscape graph (canonical nodes + version chains), coloured by a **keep-depth** control: versions beyond the depth are flagged prunable (red). **Prune history** opens the same review modal for the delete-only plan, keeping the N newest snapshots per node (default `RAVIOLI_DEFAULT_MAX_HISTORY`).
 
 ## How it works
 
@@ -37,7 +48,7 @@ The `{% export_to_graph_button obj %}` tag (in `toto.core`) links to a **preview
 1. computes the desired **1-hop slice** from SQL — the object node plus the neighbours its outgoing FK/M2M links point to, and those edges (uses the YAML mapping from `sql_neo4j_sync`; junction/`via_model` links are out of scope);
 2. reads the matching slice currently in Neo4j;
 3. diffs them — each node's status is decided by a content **checksum** (`new` / `changed` / `existing`), each edge is `new` / `existing`;
-4. **applies without destroying prior state**: an unchanged checksum is a no-op; a changed one updates the canonical node *and* snapshots its previous state into a `:HISTORICAL` child node (fresh uuid, old uuid kept in `prev_uuid`, `_historical=true`). History pruning is currently disabled — every change keeps a snapshot. The root's outgoing edges are merged and stale ones (declared relations) removed.
+4. **applies without destroying prior state**: an unchanged checksum is a no-op; a changed one updates the canonical node *and* snapshots its previous state into a `:HISTORICAL` child node (fresh uuid, old uuid kept in `prev_uuid`, `_historical=true`). History is never capped here — pruning is the separate, manual **Prune history** review flow above. The root's outgoing edges are merged and stale ones (declared relations) removed.
 
 A FK link only produces an edge when the related object is actually an instance of the declared target node's model; a cross-model FK (e.g. an `assignee` FK to `Practitioner` declared as `-> Person`) is skipped so the diff converges instead of proposing an edge to a node that can't exist.
 

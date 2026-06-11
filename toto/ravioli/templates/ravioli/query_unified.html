@@ -42,144 +42,28 @@
     </div>
 
     {% if request.user.is_superuser %}
-    <!-- Bulk sync: compute the SQL→Neo4j diff, review it, then apply -->
+    <!-- Bulk graph ops: review a diff (sync) or a prune, then apply on approval -->
     <div
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 shadow-sm">
       <button
-        x-show="syncPhase === 'idle'"
-        @click="planSync()"
+        x-show="reviewPhase === 'idle'"
+        @click="openReview(SYNC_PLAN_URL, '{% trans "Review graph sync" %}')"
         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
       >
         <i class="fa-solid fa-rotate text-xs"></i>{% trans "Sync all to graph" %}
       </button>
 
-      <div x-show="syncPhase === 'planning'" class="flex items-center gap-2">
+      <div x-show="reviewPhase === 'planning'" class="flex items-center gap-2">
         <i class="fa-solid fa-rotate fa-spin text-sm opacity-70"></i>
-        <span class="text-xs opacity-70">{% trans "Calculating diff…" %}</span>
+        <span class="text-xs opacity-70">{% trans "Calculating…" %}</span>
       </div>
 
-      <span x-show="syncPhase === 'idle'" class="text-xs opacity-60">{% trans "Review the diff before writing to Neo4j (full sync)." %}</span>
+      <span x-show="reviewPhase === 'idle'" class="text-xs opacity-60">{% trans "Review before writing to Neo4j." %}</span>
     </div>
 
-    <!-- Diff review modal -->
-    <div x-show="syncPhase === 'review' || syncPhase === 'applying' || syncPhase === 'done'"
-         x-cloak
-         class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
-         @keydown.escape.window="closeSync()">
-      <div
-        :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1' : 'bg-primary-bg-light text-text-main-light border-accent-2'"
-        class="flex max-h-[88vh] w-full max-w-5xl flex-col overflow-hidden rounded-2xl border shadow-2xl">
-
-        <!-- Header -->
-        <div class="flex items-center justify-between gap-3 border-b border-current/10 px-6 py-4">
-          <div class="flex items-center gap-3">
-            <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl"
-                  :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">
-              <i class="fa-solid fa-code-compare"></i>
-            </span>
-            <div>
-              <h3 class="text-base font-bold leading-tight">{% trans "Review graph sync" %}</h3>
-              <p class="text-xs opacity-60">
-                <span class="font-semibold" x-text="syncPlan?.total_changes ?? 0"></span> {% trans "change(s) to apply" %}
-              </p>
-            </div>
-          </div>
-          <button @click="closeSync()" :disabled="syncPhase === 'applying'"
-                  class="rounded-lg p-2 text-sm opacity-60 transition hover:opacity-100 disabled:opacity-30">
-            <i class="fa-solid fa-xmark"></i>
-          </button>
-        </div>
-
-        <!-- Summary chips -->
-        <div class="flex flex-wrap items-center gap-2 px-6 pt-4 text-xs font-semibold">
-          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
-                :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/15 text-success-light'">
-            <i class="fa-solid fa-plus text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.create ?? 0) + (syncPlan?.summary?.relationships?.create ?? 0)"></span> {% trans "create" %}
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
-                :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/15 text-caution-light'">
-            <i class="fa-solid fa-pen text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.update ?? 0) + (syncPlan?.summary?.relationships?.update ?? 0)"></span> {% trans "update" %}
-          </span>
-          <span class="inline-flex items-center gap-1.5 rounded-full px-3 py-1"
-                :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">
-            <i class="fa-solid fa-minus text-[10px]"></i><span x-text="(syncPlan?.summary?.nodes?.delete ?? 0) + (syncPlan?.summary?.relationships?.delete ?? 0)"></span> {% trans "delete" %}
-          </span>
-          <a :href="syncPlan?.detail_url" target="_blank" rel="noopener" class="ml-auto inline-flex items-center gap-1 text-xs underline opacity-60 hover:opacity-100">
-            <i class="fa-solid fa-up-right-from-square text-[10px]"></i>{% trans "Open full plan" %}
-          </a>
-        </div>
-
-        <!-- Empty state -->
-        <template x-if="(syncPlan?.total_changes ?? 0) === 0">
-          <div class="flex flex-col items-center justify-center gap-2 px-6 py-12 text-center">
-            <i class="fa-solid fa-circle-check text-3xl" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-            <p class="text-sm opacity-70">{% trans "Graph is already up to date — nothing to apply." %}</p>
-          </div>
-        </template>
-
-        <!-- Body: diff graph + itemized list -->
-        <template x-if="(syncPlan?.total_changes ?? 0) > 0">
-          <div class="grid min-h-0 flex-1 gap-4 px-6 py-4 lg:grid-cols-[1.4fr_1fr]">
-            <!-- Diff graph (same Cytoscape style as the per-object export) -->
-            <div class="flex min-h-[20rem] flex-col overflow-hidden rounded-xl border border-current/10"
-                 :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
-              <div id="diff-cy" class="min-h-0 flex-1"></div>
-              <div class="flex flex-wrap gap-3 border-t border-current/10 px-3 py-2 text-[10px] opacity-70">
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-success-dark' : 'bg-success-light'"></span>{% trans "create" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-caution-dark' : 'bg-caution-light'"></span>{% trans "update" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"></span>{% trans "delete" %}</span>
-                <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-text-main-dark/40' : 'bg-text-main-light/40'"></span>{% trans "unchanged" %}</span>
-              </div>
-            </div>
-
-            <!-- Full itemized diff -->
-            <div class="min-h-[20rem] overflow-y-auto rounded-xl border border-current/10 p-3 text-xs">
-              <template x-for="kind in ['nodes','relationships']" :key="kind">
-                <div class="mb-2">
-                  <template x-for="action in ['create','update','delete']" :key="kind + action">
-                    <div x-show="(syncPlan?.diff?.[kind]?.[action]?.length ?? 0) > 0" class="mb-3">
-                      <div class="mb-1 flex items-center gap-2 text-[10px] font-semibold uppercase tracking-wide opacity-60">
-                        <span :class="darkMode ? 'text-' + actionTone(action) + '-dark' : 'text-' + actionTone(action) + '-light'" x-text="actionSign(action)"></span>
-                        <span x-text="action + ' ' + kind"></span>
-                        <span class="opacity-50" x-text="'(' + (syncPlan?.diff?.[kind]?.[action]?.length ?? 0) + ')'"></span>
-                      </div>
-                      <ul class="space-y-0.5 font-mono">
-                        <template x-for="(item, i) in (syncPlan?.diff?.[kind]?.[action] || [])" :key="kind + action + i">
-                          <li class="truncate"
-                              :class="darkMode ? 'text-' + actionTone(action) + '-dark' : 'text-' + actionTone(action) + '-light'"
-                              :title="diffItemText(kind, item)" x-text="diffItemText(kind, item)"></li>
-                        </template>
-                      </ul>
-                    </div>
-                  </template>
-                </div>
-              </template>
-            </div>
-          </div>
-        </template>
-
-        <!-- Footer -->
-        <div class="flex items-center justify-end gap-2 border-t border-current/10 px-6 py-4">
-          <p x-show="syncError" class="mr-auto text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="syncError"></p>
-          <p x-show="syncPhase === 'done'" class="mr-auto inline-flex items-center gap-2 text-sm font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-circle-check"></i>{% trans "Applied — refreshing…" %}</p>
-          <button x-show="syncPhase !== 'done'" @click="closeSync()" :disabled="syncPhase === 'applying'"
-                  class="rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80 disabled:opacity-50">
-            {% trans "Cancel" %}
-          </button>
-          <button x-show="syncPhase === 'review' && (syncPlan?.total_changes ?? 0) > 0"
-                  @click="applySync()"
-                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                  class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-            <i class="fa-solid fa-check text-xs"></i>{% trans "Apply" %}<span x-text="syncPlan?.total_changes ?? 0"></span>
-          </button>
-          <span x-show="syncPhase === 'applying'" class="inline-flex items-center gap-2 text-sm opacity-70">
-            <i class="fa-solid fa-rotate fa-spin"></i>{% trans "Applying…" %}
-          </span>
-        </div>
-      </div>
-    </div>
+    {% include "ravioli/_review_modal.html" %}
     {% endif %}
 
     <!-- Two-column layout -->
@@ -604,20 +488,18 @@
 
 {% block end_script %}
 <script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+{% include "ravioli/_review_flow.html" %}
 
 <script>
 function queryViewer() {
   return {
+    ...reviewFlow(),   // review-then-apply state + methods (see _review_flow.html)
     queries: [],
     selectedId: '',
     queryInfo: null,
     running: false,
     runStatus: '',
     runId: null,
-    syncPhase: 'idle',   // idle | planning | review | applying | done
-    syncPlan: null,      // {plan_id, summary, total_changes, diff, apply_url, detail_url}
-    syncError: null,
-    _diffCy: null,
     error: null,
     graphLoaded: false,
     nodeCount: 0,
@@ -737,134 +619,6 @@ function queryViewer() {
 
       this.runStatus = 'Running…';
       this._pollRun(runId);
-    },
-
-    async planSync() {
-      if (this.syncPhase !== 'idle') return;
-      this.syncPhase = 'planning';
-      this.syncError = null;
-      this.syncPlan = null;
-      try {
-        const res = await fetch(SYNC_PLAN_URL, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
-        const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
-        this.syncPlan = data;
-        this.syncPhase = 'review';
-        if ((data.total_changes || 0) > 0) setTimeout(() => this.renderDiffGraph(), 60);
-      } catch (e) {
-        this.syncPhase = 'idle';
-        this.error = 'Could not compute the sync diff: ' + e.message;
-      }
-    },
-
-    async applySync() {
-      if (!this.syncPlan || this.syncPhase === 'applying') return;
-      this.syncPhase = 'applying';
-      this.syncError = null;
-      try {
-        const res = await fetch(this.syncPlan.apply_url, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
-        const data = await res.json();
-        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
-        this.syncPhase = 'done';
-        // Reload so the stats and any open result reflect the new graph.
-        setTimeout(() => window.location.reload(), 900);
-      } catch (e) {
-        this.syncError = e.message;
-        this.syncPhase = 'review';
-      }
-    },
-
-    closeSync() {
-      if (this.syncPhase === 'applying') return;
-      if (this._diffCy) { this._diffCy.destroy(); this._diffCy = null; }
-      this.syncPhase = 'idle';
-      this.syncPlan = null;
-      this.syncError = null;
-    },
-
-    // ── diff review: same Cytoscape style as the per-object export preview ──
-    actionTone(a) { return a === 'create' ? 'success' : a === 'update' ? 'caution' : 'warn'; },
-    actionSign(a) { return a === 'create' ? '+' : a === 'update' ? '~' : '−'; },
-
-    diffItemText(kind, item) {
-      if (kind === 'nodes') return `${item.label} · ${item.uuid}`;
-      return `${item.from_label}:${item.from_uuid} -[${item.relation}]-> ${item.to_label}:${item.to_uuid}`;
-    },
-
-    renderDiffGraph() {
-      const diff = this.syncPlan && this.syncPlan.diff;
-      const container = document.getElementById('diff-cy');
-      if (!diff || !container || typeof cytoscape === 'undefined') return;
-      if (this._diffCy) { this._diffCy.destroy(); this._diffCy = null; }
-
-      // A node's strongest action wins if it appears as both a change and an edge endpoint.
-      const rank = { context: 0, create: 1, update: 2, delete: 3 };
-      const nodeMap = new Map();
-      const addNode = (label, uuid, status) => {
-        const id = label + ':' + uuid;
-        const prev = nodeMap.get(id);
-        if (!prev || rank[status] > rank[prev.status]) nodeMap.set(id, { id, label, uuid, status });
-        return id;
-      };
-      ['create', 'update', 'delete'].forEach(a =>
-        (diff.nodes?.[a] || []).forEach(n => addNode(n.label, n.uuid, a)));
-
-      const edges = [];
-      ['create', 'update', 'delete'].forEach(a =>
-        (diff.relationships?.[a] || []).forEach((r, i) => {
-          const s = addNode(r.from_label, r.from_uuid, 'context');
-          const t = addNode(r.to_label, r.to_uuid, 'context');
-          edges.push({ data: { id: 'e' + a + i, source: s, target: t, label: r.relation, status: a } });
-        }));
-
-      // Pull hexes from the active theme so the diff graph matches system colors.
-      const tw = (window.tailwind && tailwind.config && tailwind.config.theme.extend.colors) || {};
-      const dark = localStorage.getItem('darkMode') === 'true';
-      const tone = (name, fb) => tw[name + (dark ? '-dark' : '-light')] || fb;
-      const STATUS = {
-        create:  tone('success', '#22c55e'),
-        update:  tone('caution', '#f59e0b'),
-        delete:  tone('warn', '#ef4444'),
-        context: tone('text-main', '#9ca3af'),
-      };
-      const colorOf = (s) => STATUS[s] || STATUS.context;
-      const nodes = [...nodeMap.values()].map(n => ({
-        data: { id: n.id, label: n.label, uuid: n.uuid, status: n.status },
-      }));
-
-      this._diffCy = cytoscape({
-        container,
-        elements: [...nodes, ...edges],
-        style: [
-          { selector: 'node', style: {
-            'background-color': (e) => colorOf(e.data('status')),
-            'background-opacity': (e) => e.data('status') === 'context' ? 0.4 : 0.9,
-            'border-width': 2,
-            'border-color': (e) => colorOf(e.data('status')),
-            'label': 'data(label)',
-            'color': '#111827',
-            'font-size': '11px',
-            'text-valign': 'center',
-            'text-halign': 'center',
-            'text-wrap': 'ellipsis',
-            'text-max-width': '90px',
-          }},
-          { selector: 'edge', style: {
-            'width': 1.6,
-            'line-color': (e) => colorOf(e.data('status')),
-            'line-style': (e) => e.data('status') === 'delete' ? 'dashed' : 'solid',
-            'target-arrow-color': (e) => colorOf(e.data('status')),
-            'target-arrow-shape': 'triangle',
-            'curve-style': 'bezier',
-            'label': 'data(label)',
-            'font-size': '9px',
-            'color': '#6b7280',
-            'text-rotation': 'autorotate',
-          }},
-        ],
-        layout: { name: 'cose', animate: false, padding: 30 },
-      });
-      setTimeout(() => { try { this._diffCy.resize(); this._diffCy.fit(undefined, 30); } catch (_) {} }, 80);
     },
 
     async cancelQuery() {

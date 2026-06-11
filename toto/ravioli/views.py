@@ -718,53 +718,73 @@ def graph_export_apply(request, app_label, model_name, object_uuid):
 
 
 # ---------------------------------------------------------------------------
-# Bulk "Sync all to graph" — compute a diff, review it, then apply on approval
+# Review-then-apply plans: "Sync all to graph" and "Prune history" share one
+# review modal, one apply endpoint, and the graph_plans service.
 # ---------------------------------------------------------------------------
+
+def _plan_response(plan):
+    from .services import graph_plans
+
+    return JsonResponse(graph_plans.plan_payload(
+        plan,
+        reverse("ravioli:graph_plan_apply", args=[plan.id]),
+        reverse("sql_neo4j_sync:projection_plan_detail", args=[plan.id]),
+    ))
+
 
 @require_POST
 @superuser_required
 def graph_sync_plan(request):
-    """Compute (but don't apply) the full SQL→Neo4j diff for every label.
-
-    Stores a GraphProjectionPlan and returns its summary so the UI can show the
-    diff and ask for approval before anything is written. No Celery needed.
-    """
-    from toto.sql_neo4j_sync.loader import load_all_configs
-    from toto.sql_neo4j_sync.planner import create_projection_plan
-
+    """Compute (but don't apply) the full SQL→Neo4j diff for every label."""
     from .connection import Neo4jClient, is_enabled
+    from .services import graph_plans
 
     if not is_enabled():
         return JsonResponse(
             {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
         )
-
     client = Neo4jClient()
     try:
-        plan = create_projection_plan(client, labels=None, configs=load_all_configs())
+        plan = graph_plans.create_sync_plan(client)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
     finally:
         client.close()
-
-    return JsonResponse({
-        "plan_id": plan.id,
-        "summary": plan.summary,
-        "total_changes": plan.total_changes,
-        "diff": plan.diff,
-        "apply_url": reverse("ravioli:graph_sync_apply", args=[plan.id]),
-        "detail_url": reverse("sql_neo4j_sync:projection_plan_detail", args=[plan.id]),
-    })
+    return _plan_response(plan)
 
 
 @require_POST
 @superuser_required
-def graph_sync_apply(request, plan_id):
-    """Apply a previously computed projection plan (the approval step)."""
+def graph_prune_plan(request):
+    """Compute (but don't apply) a plan that prunes old :HISTORICAL snapshots.
+
+    ``keep`` (POST) = newest snapshots to keep per node (defaults to the setting).
+    """
+    from .connection import Neo4jClient, is_enabled
+    from .services import graph_plans
+
+    if not is_enabled():
+        return JsonResponse(
+            {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
+        )
+    client = Neo4jClient()
+    try:
+        plan = graph_plans.create_prune_plan(client, keep=request.POST.get("keep"))
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    finally:
+        client.close()
+    return _plan_response(plan)
+
+
+@require_POST
+@superuser_required
+def graph_plan_apply(request, plan_id):
+    """Apply any previously computed plan — sync or prune (the approval step)."""
     from toto.sql_neo4j_sync.models import GraphProjectionPlan
-    from toto.sql_neo4j_sync.planner import apply_projection_plan
 
     from .connection import Neo4jClient, is_enabled
+    from .services import graph_plans
 
     plan = get_object_or_404(GraphProjectionPlan, pk=plan_id)
     if plan.status != GraphProjectionPlan.STATUS_READY:
@@ -779,7 +799,7 @@ def graph_sync_apply(request, plan_id):
 
     client = Neo4jClient()
     try:
-        apply_projection_plan(client, plan)
+        graph_plans.apply_plan(client, plan)
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
     finally:
@@ -795,3 +815,63 @@ def graph_health_view(request):
     from .connection import is_alive, is_enabled
 
     return JsonResponse({"enabled": is_enabled(), "alive": is_alive()})
+
+
+# ---------------------------------------------------------------------------
+# History tab — view :HISTORICAL snapshots, then prune via the shared review flow
+# ---------------------------------------------------------------------------
+
+@require_GET
+@superuser_required
+def history_view(request):
+    """The History tab page: inspect kept :HISTORICAL snapshots and prune them."""
+    from .services.graph_plans import default_keep
+
+    context = PageProcessor().decorate({"default_keep": default_keep()}, request)
+    return render(request, "ravioli/history.html", context)
+
+
+@require_GET
+@superuser_required
+def history_data(request):
+    """JSON history graph: each canonical node + its :HISTORICAL snapshots (with depth)."""
+    from .connection import Neo4jClient, is_enabled
+
+    if not is_enabled():
+        return JsonResponse(
+            {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
+        )
+
+    client = Neo4jClient()
+    try:
+        rows = client.run_cypher(
+            "MATCH (c)-[:HISTORICAL]->(h) WHERE h._historical = true "
+            "WITH c, h ORDER BY h.archived_at DESC "
+            "WITH c, collect(h) AS hs "
+            "UNWIND range(0, size(hs) - 1) AS i "
+            "WITH c, hs[i] AS h, i AS depth "
+            "RETURN labels(c) AS c_labels, c.uuid AS c_uuid, "
+            "labels(h) AS h_labels, h.uuid AS h_uuid, depth "
+            "LIMIT 2000"
+        )
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    finally:
+        client.close()
+
+    def label0(labels):
+        return (labels or [""])[0]
+
+    nodes, edges = {}, []
+    for row in rows:
+        c_label, c_uuid = label0(row["c_labels"]), str(row["c_uuid"])
+        h_label, h_uuid = label0(row["h_labels"]), str(row["h_uuid"])
+        c_id, h_id = f"{c_label}:{c_uuid}", f"{h_label}:{h_uuid}"
+        nodes.setdefault(c_id, {"id": c_id, "label": c_label, "uuid": c_uuid, "kind": "canonical"})
+        nodes[h_id] = {
+            "id": h_id, "label": h_label, "uuid": h_uuid,
+            "kind": "snapshot", "depth": row["depth"],
+        }
+        edges.append({"id": f"hist:{c_id}->{h_id}", "source": c_id, "target": h_id})
+
+    return JsonResponse({"nodes": list(nodes.values()), "edges": edges})
