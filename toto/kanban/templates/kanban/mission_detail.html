@@ -2,7 +2,6 @@
 {% load static %}
 {% load yaml_filters %}
 {% load i18n %}
-{% load graph_export %}
 
 {% block title %}Mission | {{ mission.title }}{% endblock %}
 
@@ -52,7 +51,6 @@
       </div>
 
       <nav class="flex flex-wrap gap-2">
-        {% export_to_graph_button mission %}
         <a
           href="{% url 'kanban:project_detail' project.pk %}"
           :class="darkMode

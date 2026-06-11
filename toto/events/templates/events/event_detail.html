@@ -1,6 +1,5 @@
 {% extends "events/base.html" %}
 {% load i18n %}
-{% load graph_export %}
 
 {% block events_title %}{{ event.title }}{% endblock %}
 
@@ -33,9 +32,6 @@
         </a>
       </div>
       {% endif %}
-      <div class="flex flex-wrap gap-2 shrink-0">
-        {% export_to_graph_button event %}
-      </div>
     </div>
 
     <!-- My invite status -->

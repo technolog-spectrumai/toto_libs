@@ -1,7 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
-{% load graph_export %}
 
 {% block title %}{{ community.name }} – {{ platform.site_name }}{% endblock %}
 
@@ -48,7 +47,6 @@
       </div>
 
       <nav class="flex flex-wrap gap-2">
-        {% export_to_graph_button community %}
         <button
           type="button"
           @click="showChart = true"
