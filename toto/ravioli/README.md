@@ -37,7 +37,9 @@ The `{% export_to_graph_button obj %}` tag (in `toto.core`) links to a **preview
 1. computes the desired **1-hop slice** from SQL — the object node plus the neighbours its outgoing FK/M2M links point to, and those edges (uses the YAML mapping from `sql_neo4j_sync`; junction/`via_model` links are out of scope);
 2. reads the matching slice currently in Neo4j;
 3. diffs them — each node's status is decided by a content **checksum** (`new` / `changed` / `existing`), each edge is `new` / `existing`;
-4. **applies without destroying prior state**: an unchanged checksum is a no-op; a changed one updates the canonical node *and* snapshots its previous state into a `:HISTORICAL` child node (fresh uuid, old uuid kept in `prev_uuid`, `_historical=true`), capped at `RAVIOLI_MAX_HISTORY` (default 3) newest versions. The root's outgoing edges are merged and stale ones (declared relations) removed.
+4. **applies without destroying prior state**: an unchanged checksum is a no-op; a changed one updates the canonical node *and* snapshots its previous state into a `:HISTORICAL` child node (fresh uuid, old uuid kept in `prev_uuid`, `_historical=true`). History pruning is currently disabled — every change keeps a snapshot. The root's outgoing edges are merged and stale ones (declared relations) removed.
+
+A FK link only produces an edge when the related object is actually an instance of the declared target node's model; a cross-model FK (e.g. an `assignee` FK to `Practitioner` declared as `-> Person`) is skipped so the diff converges instead of proposing an edge to a node that can't exist.
 
 `RAVIOLI_EXPORT_EXCLUDED_APPS` (default `workflows`, `fileservices`, `vault`) are never exported. Historical snapshots carry `_historical=true` so the bulk `sql_neo4j_sync` full-sync skips them.
 

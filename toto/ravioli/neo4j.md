@@ -58,7 +58,6 @@ NEO4J_PASSWORD=neo4j-admin   # change in production
 | `NEO4J_USER` | `NEO4J_USER` | `neo4j` |
 | `NEO4J_PASSWORD` | `NEO4J_PASSWORD` | `neo4j-admin` |
 | `RAVIOLI_RICH_INGRESS` | `RAVIOLI_RICH_INGRESS` | `0` (thin) |
-| `RAVIOLI_MAX_HISTORY` | `RAVIOLI_MAX_HISTORY` | `3` |
 
 `RAVIOLI_ENABLED` is set to `True` only when `BUILD_NEO4J=1`.
 

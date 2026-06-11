@@ -187,15 +187,8 @@ class ApplyTests(TestCase):
         self.assertTrue(snapshot["_historical"])
 
         self.assertTrue(any("MERGE (n)-[:HISTORICAL]->(h)" in q for q, _ in client.calls))
-        prune = [p for q, p in client.calls if "DETACH DELETE h" in q]
-        self.assertEqual(prune[0]["keep"], 3)            # default RAVIOLI_MAX_HISTORY
-
-    @override_settings(RAVIOLI_MAX_HISTORY=1)
-    def test_history_cap_comes_from_settings(self):
-        client = ScriptedClient({("TUser", "alice"): {"name": "OLD", "_checksum": "x"}})
-        GraphExporter(client, AUTH_CONFIGS).apply("TUser", self.user)
-        prune = next(p for q, p in client.calls if "DETACH DELETE h" in q)
-        self.assertEqual(prune["keep"], 1)
+        # History pruning is disabled for now — no DETACH DELETE of old versions.
+        self.assertFalse(any("DETACH DELETE h" in q for q, _ in client.calls))
 
     def test_apply_merges_edges_and_clears_stale(self):
         client = ScriptedClient()

@@ -158,6 +158,7 @@ class ProjectionPlanner:
         from_info = self._label_map[link_def["from_label"]]
         to_info = self._label_map[link_def["to_label"]]
         from_model = from_info["model"]
+        to_model = to_info["model"]
         from_uuid_field = from_info["uuid_field"]
         to_uuid_field = to_info["uuid_field"]
         source_field = link_def["source"]
@@ -183,6 +184,13 @@ class ProjectionPlanner:
                         related_objects = [related]
 
             for related in related_objects:
+                # The FK target must actually be an instance of the declared
+                # to_label model. A cross-model link (e.g. an `assignee` FK to
+                # Practitioner declared as `-> Person`) reads a uuid that no
+                # Person node has, so the MERGE matches nothing and the diff
+                # never converges — skip it rather than propose a dead edge.
+                if not isinstance(related, to_model):
+                    continue
                 rel = {
                     "kind": "direct",
                     "from_label": link_def["from_label"],

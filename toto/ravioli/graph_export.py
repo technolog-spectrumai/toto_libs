@@ -52,13 +52,6 @@ def is_app_excluded(app_label):
     return app_label in excluded_apps()
 
 
-def max_history():
-    try:
-        return max(0, int(getattr(settings, "RAVIOLI_MAX_HISTORY", 3)))
-    except (TypeError, ValueError):
-        return 3
-
-
 # ---------------------------------------------------------------------------
 # Content checksum
 # ---------------------------------------------------------------------------
@@ -89,6 +82,7 @@ class GraphExporter:
         self.configs = configs if configs is not None else load_all_configs()
         self._node_def_by_label = {}
         self._model_to_label = {}          # model class -> (label, uuid_field)
+        self._model_by_label = {}          # label -> model class
         self._links_by_from_label = {}
         for config in self.configs:
             app = config.get("app", "")
@@ -97,10 +91,9 @@ class GraphExporter:
             for node in config.get("nodes", []):
                 label = node["label"]
                 self._node_def_by_label[label] = node
-                self._model_to_label[import_model(node["model"])] = (
-                    label,
-                    node.get("uuid_field", "uid"),
-                )
+                model = import_model(node["model"])
+                self._model_to_label[model] = (label, node.get("uuid_field", "uid"))
+                self._model_by_label[label] = model
             for link in config.get("links", []):
                 self._links_by_from_label.setdefault(link["from_label"], []).append(link)
 
@@ -145,6 +138,7 @@ class GraphExporter:
                 continue
             source_field = link_def["source"]
             relation = link_def["relation"]
+            to_model = self._model_by_label.get(to_label)
 
             if link_def.get("cardinality", "one") == "many":
                 related_objs = list(getattr(obj, source_field).all())
@@ -162,6 +156,11 @@ class GraphExporter:
                         related_objs = [related]
 
             for related in related_objs:
+                # Skip cross-model FKs (e.g. an `assignee` FK to Practitioner
+                # declared as `-> Person`): its uuid matches no Person node, so
+                # the edge could never be created.
+                if to_model is not None and not isinstance(related, to_model):
+                    continue
                 entry = self._node_entry(to_label, related)
                 nodes[(to_label, entry["uuid"])] = entry
                 edges[(label, root["uuid"], relation, to_label, entry["uuid"])] = {
@@ -305,23 +304,13 @@ class GraphExporter:
             {"uuid": uuid, "child": child_uuid},
         )
 
-        # 2. Enforce the per-node history cap (newest kept).
-        self._prune_history(label, uuid)
-
-        # 3. Update the canonical node in place.
+        # 2. Update the canonical node in place. (History is kept unpruned for
+        #    now — every change accumulates a :HISTORICAL snapshot.)
         props = neo4j_props(node["props"])
         props["_checksum"] = node["checksum"]
         self.client.run_cypher(
             f"MATCH (n:{label} {{uuid: $uuid}}) SET n += $props",
             {"uuid": uuid, "props": props},
-        )
-
-    def _prune_history(self, label, uuid):
-        self.client.run_cypher(
-            f"MATCH (n:{label} {{uuid: $uuid}})-[:{HISTORICAL_REL}]->(h) "
-            "WITH h ORDER BY h.archived_at DESC SKIP $keep "
-            "DETACH DELETE h",
-            {"uuid": uuid, "keep": max_history()},
         )
 
     def _sync_outgoing_edges(self, root, edges):
