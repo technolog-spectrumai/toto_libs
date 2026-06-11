@@ -1,4 +1,4 @@
-# toto
+_# toto
 
 **toto** is a Django-based community platform. Communities on toto can organise members, run projects, manage shared identity, store files securely, create media, and operate a knowledge graph — all tied together through a shared encryption layer and cryptographic identity foundation.
 
@@ -179,4 +179,4 @@ Import path for any limbo app: `toto.limbo.<app>` is NOT on `sys.path`. To reint
 | App | Purpose |
 |---|---|
 | `regis.geophysics` | Planet generation engine for synthetic geography. |
-| `regis.economy` | Macroeconomic simulation with cohorts, labor, fiscal, market, and infrastructure subsystems. |
+| `regis.economy` | Macroeconomic simulation with cohorts, labor, fiscal, market, and infrastructure subsystems. |_
