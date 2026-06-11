@@ -11,6 +11,8 @@
   const CACHED_DATA_URL      = "{% url 'ravioli:query_cached_data'      99999 %}".replace('/99999/', '/{id}/');
   const WORKFLOW_API_URL     = "{% url 'workflows:api_run_detail'       99999 %}".replace('/99999/', '/{id}/');
   const WORKFLOW_DETAIL_URL  = "{% url 'workflows:workflow_run_detail'  99999 %}".replace('/99999/', '/{id}/');
+  const CANCEL_RUN_URL       = "{% url 'workflows:api_cancel_run'       99999 %}".replace('/99999/', '/{id}/');
+  const SYNC_ALL_URL         = "{% url 'ravioli:graph_sync_all_stream' %}";
   const EXPORT_NEOJSON_URL   = "{% url 'ravioli:export_query_neojson'   99999 %}".replace('/99999/', '/{id}/');
   const NEOJSON_EDITOR_URL   = "{% url 'neo_editor:neojson_editor'       99999 %}".replace('/99999/', '/{id}/');
   const NEOJSON_BUCKETS      = {{ buckets_json|safe }};
@@ -26,6 +28,8 @@
 >
   <div class="mx-auto max-w-7xl space-y-6">
 
+    {% include "ravioli/_neo4j_warning.html" %}
+
     <!-- Page header -->
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
@@ -35,6 +39,35 @@
       </div>
       {% include "ravioli/_tabs.html" with active_tab="queries" %}
     </div>
+
+    {% if request.user.is_superuser %}
+    <!-- Bulk sync: project all SQL records into Neo4j -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="flex flex-wrap items-center gap-3 rounded-lg border px-4 py-3 shadow-sm">
+      <button
+        x-show="!syncing"
+        @click="syncAll()"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      >
+        <i class="fa-solid fa-rotate text-xs"></i>{% trans "Sync all to graph" %}
+      </button>
+
+      <div x-show="syncing" class="flex flex-1 items-center gap-3">
+        <i class="fa-solid fa-rotate fa-spin text-sm opacity-70"></i>
+        <div class="h-2 flex-1 overflow-hidden rounded-full bg-current/10" style="max-width:320px">
+          <div class="h-full rounded-full transition-all"
+               :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+               :style="`width: ${syncTotal ? Math.round(syncCur / syncTotal * 100) : 5}%`"></div>
+        </div>
+        <span class="text-xs opacity-70" x-text="syncMsg"></span>
+        <button @click="cancelSync()" class="text-xs font-semibold underline hover:opacity-80">{% trans "Cancel" %}</button>
+      </div>
+
+      <span x-show="!syncing" class="text-xs opacity-60">{% trans "Project every SQL record into Neo4j (full sync)." %}</span>
+    </div>
+    {% endif %}
 
     <!-- Two-column layout -->
     <div class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
@@ -96,6 +129,17 @@
               </svg>
               <i x-show="!running" class="fa-solid fa-play text-xs"></i>
               <span x-text="running ? runStatus : 'Run'"></span>
+            </button>
+
+            <!-- Cancel current query -->
+            <button
+              x-show="running"
+              @click="cancelQuery()"
+              class="mt-2 w-full inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-4 py-2 text-sm font-semibold transition hover:opacity-80"
+              :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+            >
+              <i class="fa-solid fa-stop text-xs"></i>
+              {% trans "Cancel query" %}
             </button>
           </div>
         </section>
@@ -456,6 +500,12 @@ function queryViewer() {
     queryInfo: null,
     running: false,
     runStatus: '',
+    runId: null,
+    syncing: false,
+    syncMsg: '',
+    syncCur: 0,
+    syncTotal: 0,
+    _syncES: null,
     error: null,
     graphLoaded: false,
     nodeCount: 0,
@@ -565,6 +615,7 @@ function queryViewer() {
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
         runId = data.run_id;
+        this.runId = runId;
       } catch (e) {
         this.error = e.message;
         this.running = false;
@@ -574,6 +625,62 @@ function queryViewer() {
 
       this.runStatus = 'Running…';
       this._pollRun(runId);
+    },
+
+    syncAll() {
+      if (this.syncing) return;
+      this.syncing = true;
+      this.syncMsg = 'Starting…';
+      this.syncCur = 0;
+      this.syncTotal = 0;
+      this.error = null;
+      const es = new EventSource(SYNC_ALL_URL);
+      this._syncES = es;
+      es.onmessage = (ev) => {
+        let d;
+        try { d = JSON.parse(ev.data); } catch (_) { return; }
+        if (d.status === 'error') {
+          this.error = d.message || 'Sync failed';
+          this._endSync();
+          return;
+        }
+        if (typeof d.current === 'number') this.syncCur = d.current;
+        if (typeof d.total === 'number') this.syncTotal = d.total;
+        this.syncMsg = d.message || d.status || '';
+        if (d.status === 'completed') {
+          this.syncMsg = 'Sync complete';
+          this._endSync();
+        }
+      };
+      // The stream closes when the projection finishes; close to stop the
+      // browser from auto-reconnecting and re-running the whole sync.
+      es.onerror = () => { this._endSync(); };
+    },
+
+    cancelSync() { this._endSync(); },
+
+    _endSync() {
+      if (this._syncES) { this._syncES.close(); this._syncES = null; }
+      this.syncing = false;
+    },
+
+    async cancelQuery() {
+      if (!this.running) return;
+      // Stop waiting immediately, then ask the server to cancel the run.
+      this._stopPolling();
+      this.running = false;
+      this.runStatus = '';
+      const runId = this.runId;
+      this.runId = null;
+      if (!runId) return;
+      try {
+        await fetch(CANCEL_RUN_URL.replace('{id}', runId), {
+          method: 'POST',
+          headers: { 'X-CSRFToken': CSRF_TOKEN },
+        });
+      } catch (e) {
+        /* best-effort — the UI is already unblocked */
+      }
     },
 
     _pollRun(runId) {

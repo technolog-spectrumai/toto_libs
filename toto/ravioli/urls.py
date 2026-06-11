@@ -12,6 +12,8 @@ from .views import (
     search_status_view,
     graph_export_preview,
     graph_export_apply,
+    graph_sync_all_stream,
+    graph_health_view,
 )
 
 app_name = "ravioli"
@@ -37,4 +39,6 @@ urlpatterns = [
         graph_export_apply,
         name="graph_export_apply",
     ),
+    path("graph-sync/stream/", graph_sync_all_stream, name="graph_sync_all_stream"),
+    path("graph-health/", graph_health_view, name="graph_health"),
 ]

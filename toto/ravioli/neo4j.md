@@ -57,8 +57,14 @@ NEO4J_PASSWORD=neo4j-admin   # change in production
 | `NEO4J_URI` | `NEO4J_URI` | `bolt://neo4j:7687` |
 | `NEO4J_USER` | `NEO4J_USER` | `neo4j` |
 | `NEO4J_PASSWORD` | `NEO4J_PASSWORD` | `neo4j-admin` |
+| `RAVIOLI_RICH_INGRESS` | `RAVIOLI_RICH_INGRESS` | `0` (thin) |
+| `RAVIOLI_MAX_HISTORY` | `RAVIOLI_MAX_HISTORY` | `3` |
 
 `RAVIOLI_ENABLED` is set to `True` only when `BUILD_NEO4J=1`.
+
+**Ingress is thin by default** (no Neo4j seeding — fast). Set `RAVIOLI_RICH_INGRESS=1`
+to seed sample graph data during `ingress_ravioli` / `ingress_bento` (slow — many
+Neo4j round-trips). Per-run override: `manage.py ingress_bento --rich` / `--thin`.
 
 ---
 

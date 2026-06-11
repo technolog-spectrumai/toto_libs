@@ -25,6 +25,7 @@ class IngressCommand(BaseCommand):
     def __init__(self):
         super().__init__()
         self.full = False
+        self.rich = False
 
     def add_arguments(self, parser):
         parser.add_argument(
@@ -32,9 +33,30 @@ class IngressCommand(BaseCommand):
             action="store_true",
             help="If set, run full data fill; otherwise, only process indispensable data",
         )
+        # Rich vs. thin ingress. Default comes from settings.RAVIOLI_RICH_INGRESS;
+        # --rich / --thin force it for a single run.
+        parser.add_argument(
+            "--rich",
+            dest="rich",
+            action="store_true",
+            default=None,
+            help="Force rich ingress (seed sample data into Neo4j — slow).",
+        )
+        parser.add_argument(
+            "--thin",
+            dest="rich",
+            action="store_false",
+            help="Force thin ingress (skip heavy Neo4j seeding — fast).",
+        )
 
     def handle(self, *args, **options):
         self.full = options.get("full", False)
+        rich_opt = options.get("rich", None)
+        self.rich = (
+            getattr(settings, "RAVIOLI_RICH_INGRESS", False)
+            if rich_opt is None
+            else rich_opt
+        )
         self.process()
 
     def process(self):

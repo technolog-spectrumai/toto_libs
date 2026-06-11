@@ -246,3 +246,37 @@ class ExportViewTests(TestCase):
         self.client.login(username="carol", password="pw")
         resp = self.client.get("/ravioli/export/events/scheduledevent/abc/apply/")
         self.assertEqual(resp.status_code, 405)
+
+
+class SyncAllStreamTests(TestCase):
+    def test_requires_superuser(self):
+        User.objects.create_user("plain", password="pw")
+        self.client.login(username="plain", password="pw")
+        resp = self.client.get("/ravioli/graph-sync/stream/")
+        self.assertEqual(resp.status_code, 302)  # bounced by superuser_required
+
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_superuser_disabled_streams_error_event(self):
+        User.objects.create_superuser("admin2", email="a@b.c", password="pw")
+        self.client.login(username="admin2", password="pw")
+        resp = self.client.get("/ravioli/graph-sync/stream/")
+        self.assertEqual(resp.status_code, 200)
+        body = b"".join(resp.streaming_content).decode()
+        self.assertIn("RAVIOLI_ENABLED is False", body)
+
+
+class GraphHealthViewTests(TestCase):
+    def test_requires_login(self):
+        resp = self.client.get("/ravioli/graph-health/")
+        self.assertEqual(resp.status_code, 302)
+        self.assertIn("login", resp.url.lower())
+
+    @override_settings(RAVIOLI_ENABLED=False)
+    def test_disabled_reports_not_alive(self):
+        User.objects.create_user("health", password="pw")
+        self.client.login(username="health", password="pw")
+        resp = self.client.get("/ravioli/graph-health/")
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertFalse(data["enabled"])
+        self.assertFalse(data["alive"])

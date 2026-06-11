@@ -10,6 +10,62 @@ class Command(IngressCommand):
         self._ensure_graph_analysis_workflow()
         self._ensure_cypher_queries()
 
+        # Rich ingress seeds a small demo graph into Neo4j so the default
+        # "Get Entire Graph" query returns something; thin ingress skips all
+        # Neo4j round-trips for a fast bring-up.
+        if self.rich:
+            self._seed_sample_graph()
+        else:
+            self.stdout.write(self.style.WARNING(
+                "⏩ Thin ingress (RAVIOLI_RICH_INGRESS=0) — skipping Neo4j sample graph."
+            ))
+
+    def _seed_sample_graph(self):
+        from toto.ravioli.connection import Neo4jClient, is_enabled
+
+        if not is_enabled():
+            self.stdout.write(self.style.WARNING(
+                "ℹ️ Neo4j disabled (RAVIOLI_ENABLED=0) — skipping sample graph."
+            ))
+            return
+
+        client = Neo4jClient()
+        try:
+            existing = client.run_cypher("MATCH (n:Concept) RETURN count(n) AS c")
+            if existing and existing[0]["c"]:
+                self.stdout.write(self.style.WARNING(
+                    f"ℹ️ Sample graph already present ({existing[0]['c']} Concept node(s)) — skipping."
+                ))
+                return
+
+            concepts = [
+                ("memory", "compression"), ("compression", "naming"),
+                ("naming", "caching"), ("caching", "latency"),
+                ("latency", "feedback"), ("feedback", "memory"),
+                ("trust", "incentives"),
+            ]
+            names = {n for pair in concepts for n in pair}
+            for name in sorted(names):
+                client.run_cypher(
+                    "MERGE (n:Concept {uuid: $uuid}) SET n.name = $name",
+                    {"uuid": f"concept:{name}", "name": name},
+                )
+            for a, b in concepts:
+                client.run_cypher(
+                    "MATCH (a:Concept {uuid: $a}) MATCH (b:Concept {uuid: $b}) "
+                    "MERGE (a)-[:RELATES_TO]->(b)",
+                    {"a": f"concept:{a}", "b": f"concept:{b}"},
+                )
+            self.stdout.write(self.style.SUCCESS(
+                f"💡 Seeded sample graph: {len(names)} Concept node(s), {len(concepts)} edge(s)."
+            ))
+        except Exception as exc:  # noqa: BLE001 — Neo4j unreachable: don't fail ingress
+            self.stdout.write(self.style.WARNING(
+                f"ℹ️ Neo4j unreachable — skipping sample graph: {exc}"
+            ))
+        finally:
+            client.close()
+
     def _ensure_workflows(self):
         from toto.workflows.models import Workflow, WorkflowEdge, WorkflowNode
 

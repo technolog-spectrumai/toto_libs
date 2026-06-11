@@ -715,3 +715,53 @@ def graph_export_apply(request, app_label, model_name, object_uuid):
     detail = ", ".join(parts) or "no changes"
     messages.success(request, f"Exported {label} to the graph ({detail}).")
     return redirect(back)
+
+
+# ---------------------------------------------------------------------------
+# Bulk "Sync all to graph" — full SQL→Neo4j projection, streamed from ravioli
+# ---------------------------------------------------------------------------
+
+@require_GET
+@superuser_required
+def graph_sync_all_stream(request):
+    """Run the full projection for every graph label, streaming progress (SSE).
+
+    Reuses sql_neo4j_sync's ProjectionRunner so ravioli's UI can trigger a bulk
+    sync without going through the admin. Runs in-process (no Celery needed).
+    """
+    from toto.sql_neo4j_sync.loader import load_all_configs
+    from toto.sql_neo4j_sync.projection import ProjectionRunner
+
+    from .connection import Neo4jClient, is_enabled
+
+    def event_stream():
+        if not is_enabled():
+            yield "data: " + json.dumps({
+                "status": "error",
+                "message": "RAVIOLI_ENABLED is False — cannot connect to Neo4j.",
+            }) + "\n\n"
+            return
+
+        client = Neo4jClient()
+        try:
+            runner = ProjectionRunner(client, load_all_configs())
+            for event in runner.run_with_progress():
+                yield f"data: {json.dumps(event)}\n\n"
+        except Exception as exc:
+            yield "data: " + json.dumps({"status": "error", "message": str(exc)}) + "\n\n"
+        finally:
+            client.close()
+
+    response = StreamingHttpResponse(event_stream(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache"
+    response["X-Accel-Buffering"] = "no"
+    return response
+
+
+@require_GET
+@login_required
+def graph_health_view(request):
+    """Lightweight connectivity probe for the 'Neo4j is not running' banner."""
+    from .connection import is_alive, is_enabled
+
+    return JsonResponse({"enabled": is_enabled(), "alive": is_alive()})

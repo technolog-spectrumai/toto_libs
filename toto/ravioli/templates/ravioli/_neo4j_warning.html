@@ -1,0 +1,21 @@
+{% load i18n %}
+{# Non-blocking Neo4j health banner. Hidden until an async probe reports the
+   graph is enabled but unreachable, so it never delays page render. #}
+<div id="ravioli-neo4j-warning" hidden
+     class="flex items-center gap-3 rounded-lg border border-amber-500/50 bg-amber-500/10 px-4 py-3 text-sm font-medium text-amber-600">
+  <i class="fa-solid fa-triangle-exclamation"></i>
+  <span>{% trans "Neo4j is not running — graph features are unavailable until it is reachable." %}</span>
+</div>
+<script>
+(function () {
+  fetch("{% url 'ravioli:graph_health' %}", { headers: { 'Accept': 'application/json' } })
+    .then(function (r) { return r.json(); })
+    .then(function (d) {
+      if (d && d.enabled && !d.alive) {
+        var el = document.getElementById('ravioli-neo4j-warning');
+        if (el) el.hidden = false;
+      }
+    })
+    .catch(function () { /* probe failed — stay silent */ });
+})();
+</script>

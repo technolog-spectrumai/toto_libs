@@ -13,6 +13,8 @@
   class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
   <div class="mx-auto max-w-6xl space-y-6">
 
+    {% include "ravioli/_neo4j_warning.html" %}
+
     <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-1">
         <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"

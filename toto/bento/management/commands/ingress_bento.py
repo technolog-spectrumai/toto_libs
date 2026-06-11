@@ -96,7 +96,13 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS("✅ Bento template seeding complete."))
 
         # ── populate the graph with 50 nodes + 30 edges in Neo4j ──────────
-        self._seed_graph(edge_rules, n_nodes=50, n_edges=30)
+        # This is the slow part (≈80 Neo4j round-trips). Thin ingress skips it.
+        if self.rich:
+            self._seed_graph(edge_rules, n_nodes=50, n_edges=30)
+        else:
+            self.stdout.write(self.style.WARNING(
+                "⏩ Thin ingress (RAVIOLI_RICH_INGRESS=0) — skipping Neo4j graph seeding."
+            ))
 
     def _seed_graph(self, edge_rules, *, n_nodes, n_edges):
         from toto.bento import graph_service as gs
