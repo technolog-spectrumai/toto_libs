@@ -19,10 +19,14 @@ from .views import (
     history_view,
     history_data,
 )
+from .api_views import KgQueryListApiView, KgQueryRunApiView
 
 app_name = "ravioli"
 
 urlpatterns = [
+    # CORS + data_mesh-gated JSON API for the Aurora knowledge-graph view.
+    path("api/queries/", KgQueryListApiView.as_view(), name="api_kg_query_list"),
+    path("api/queries/<int:query_id>/run/", KgQueryRunApiView.as_view(), name="api_kg_query_run"),
     path("graph-analysis/", graph_analysis_view, name="graph_analysis"),
     path("graph-analysis/start/", start_graph_analysis_view, name="start_graph_analysis"),
     path("graph-analysis/status/<int:run_id>/", graph_analysis_status_view, name="graph_analysis_status"),
