@@ -1,0 +1,42 @@
+{% load i18n %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4 flex items-center gap-3">
+    <i class="fa-solid fa-mask"
+       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    <h2 class="text-lg font-bold">{% trans "Onion Identity" %}</h2>
+  </div>
+
+  <p class="text-xs font-semibold uppercase tracking-wide opacity-50 mb-2">
+    {% trans "Current address" %}</p>
+
+  {% if current_onion %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+      class="mb-5 break-all rounded-xl border px-4 py-2 font-mono text-sm">
+      {{ current_onion }}.onion
+    </div>
+  {% else %}
+    <p class="mb-5 text-sm opacity-60">{% trans "No onion published yet." %}</p>
+  {% endif %}
+
+  <div
+    :class="darkMode ? 'border-warning-dark/30 bg-warning-dark/10' : 'border-warning-light/30 bg-warning-light/10'"
+    class="mb-4 rounded-xl border px-4 py-3 text-xs opacity-80">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+    {% trans "Migrating mints a brand-new .onion and retires this one. Clients pinned to the current address will need the new one." %}
+  </div>
+
+  <form method="post" action="{% url 'nomad:migrate' %}"
+        onsubmit="return confirm('{% trans "Migrate to a new onion address? The current address will stop working." %}');">
+    {% csrf_token %}
+    <button type="submit"
+      :class="darkMode ? 'bg-accent-dark text-bubble-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
+      class="inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition">
+      <i class="fa-solid fa-arrows-rotate"></i>{% trans "Migrate onion" %}
+    </button>
+  </form>
+
+</section>
