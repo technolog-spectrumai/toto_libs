@@ -56,9 +56,15 @@
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Confirm your access." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                Enter the verification code sent to your email. Once confirmed,
-                your membership can be activated and you can continue into
-                {{ platform.site_name }}.
+                {% if captcha_image %}
+                  Read the code shown in the image and type it below to confirm you're
+                  not a robot. Once confirmed, your membership can be activated and you
+                  can continue into {{ platform.site_name }}.
+                {% else %}
+                  Enter the verification code sent to your email. Once confirmed,
+                  your membership can be activated and you can continue into
+                  {{ platform.site_name }}.
+                {% endif %}
               </p>
             </div>
           </div>
@@ -144,6 +150,25 @@
                   : 'border-success-light bg-sunken-light text-success-light'"
                 class="rounded-lg border px-4 py-3 text-sm font-medium">
                 {{ message }}
+              </div>
+            {% endif %}
+
+            {% if captcha_image %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="space-y-2 rounded-xl border p-4 text-center">
+                <p class="text-xs font-semibold uppercase tracking-wide opacity-65">
+                  {% trans "Human check" %}
+                </p>
+                <img
+                  src="{{ captcha_image }}"
+                  alt="{% trans 'Verification code image' %}"
+                  class="mx-auto max-w-full rounded-lg border border-black/10 shadow-sm" />
+                <p class="text-xs opacity-65">
+                  {% trans "Type the digits shown above. Ignore the faint background letters." %}
+                </p>
               </div>
             {% endif %}
 

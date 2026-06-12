@@ -56,9 +56,15 @@
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Thank you for applying." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                We’ve received your application. A confirmation code should arrive by email soon.
-                Once verified, you’ll be able to access member features and continue into
-                {{ platform.site_name }}.
+                {% if email_sent %}
+                  We’ve received your application. A confirmation code should arrive by email soon.
+                  Once verified, you’ll be able to access member features and continue into
+                  {{ platform.site_name }}.
+                {% else %}
+                  We’ve received your application. Continue to verification, where you’ll be
+                  shown a code image to retype and confirm you’re human. Once verified, you’ll
+                  be able to access member features and continue into {{ platform.site_name }}.
+                {% endif %}
               </p>
             </div>
           </div>
@@ -135,9 +141,13 @@
                 </div>
 
                 <div>
-                  <p class="font-semibold">{% trans "Already have a verification code?" %}</p>
-
-                  <p class="mt-1 opacity-70">{% trans "Submit it now to complete your membership verification." %}</p>
+                  {% if email_sent %}
+                    <p class="font-semibold">{% trans "Already have a verification code?" %}</p>
+                    <p class="mt-1 opacity-70">{% trans "Submit it now to complete your membership verification." %}</p>
+                  {% else %}
+                    <p class="font-semibold">{% trans "Ready to verify?" %}</p>
+                    <p class="mt-1 opacity-70">{% trans "Continue to read your code image and complete verification." %}</p>
+                  {% endif %}
                 </div>
 
                 <a

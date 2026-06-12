@@ -8,6 +8,7 @@ from toto.ui import PageProcessor
 from django.utils import timezone
 from django.contrib.auth.models import User
 from toto.socialhub.forms import MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
+from toto.socialhub.captcha import resolve_email_service, generate_code_captcha
 import logging
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
@@ -51,27 +52,32 @@ def membership_application_view(request):
 
 def application_success_view(request, username):
     processor = PageProcessor()
-    context = {"page_title": "Application Submitted", "username": username}
+    context = {"page_title": "Application Submitted", "username": username, "email_sent": False}
 
     try:
         user = User.objects.get(username=username)
         application = MembershipApplication.objects.get(email=user.email)
         community = application.community
-        svc = community.email_service or EmailService.objects.get(name="default-email-service")
+        svc = resolve_email_service(community)
 
-        subject = "Your Membership Application"
-        body = (
-            f"Hello,\n\n"
-            f"Thank you for applying to join {application.community.name}.\n"
-            f"Your verification code is: {application.code}\n\n"
-            f"Please enter this code on the verification page.\n\n"
-            f"Best regards,\n"
-            f"{application.community.name} Team"
-        )
+        if svc is None:
+            # No email service configured: the code can't be mailed. The
+            # verification page will show it as a CAPTCHA the applicant retypes.
+            logger.info(f"No email service for '{community.name}'; using visual code for '{username}'.")
+        else:
+            subject = "Your Membership Application"
+            body = (
+                f"Hello,\n\n"
+                f"Thank you for applying to join {application.community.name}.\n"
+                f"Your verification code is: {application.code}\n\n"
+                f"Please enter this code on the verification page.\n\n"
+                f"Best regards,\n"
+                f"{application.community.name} Team"
+            )
 
-        svc.send_email(subject, body, to=user.email)
-
-        logger.info(f"Confirmation email sent to '{user.email}'.")
+            svc.send_email(subject, body, to=user.email)
+            context["email_sent"] = True
+            logger.info(f"Confirmation email sent to '{user.email}'.")
 
     except Exception as e:
         # Email failure is NOT fatal for the page
@@ -88,6 +94,16 @@ def verify_application_view(request, username):
     processor = PageProcessor()
     form = CodeVerificationForm(request.POST or None)
     context = {"form": form, "page_title": "Verify Application", "username": username}
+
+    # When the application's community has no email service, the code was never
+    # mailed — show it as a distorted CAPTCHA the applicant retypes to prove
+    # they are human. The reference/endorsement step still gates membership.
+    application = MembershipApplication.objects.filter(email=username).first()
+    if application is not None and resolve_email_service(application.community) is None:
+        try:
+            context["captcha_image"] = generate_code_captcha(application.code)
+        except Exception as e:
+            logger.error(f"Failed to render CAPTCHA for '{username}': {e}")
 
     if request.method == "POST" and form.is_valid():
         code = form.cleaned_data["code"]

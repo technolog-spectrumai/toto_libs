@@ -5,7 +5,7 @@
 {% block events_title %}{% trans "Event Calendar" %}{% endblock %}
 
 {% block events_head %}
-<link href="{% static 'vendor/fullcalendar/fullcalendar.css' %}" rel="stylesheet">
+{# FullCalendar v6 injects its own CSS via the JS bundle — no separate stylesheet. #}
 <script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
 
 <script>
