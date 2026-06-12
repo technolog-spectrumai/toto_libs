@@ -1,5 +1,6 @@
 from django.contrib import messages
 from django.core.exceptions import PermissionDenied
+from django.http import FileResponse, Http404
 from django.shortcuts import redirect
 from django.views import View
 
@@ -16,6 +17,21 @@ class _SuperuserView(View):
 
     def _back(self, request):
         return redirect(request.META.get("HTTP_REFERER") or "sso:my_profile")
+
+
+class ConnectQrView(_SuperuserView):
+    """Serve the server-rendered PNG QR of the current connect (.onion) URL.
+
+    Superuser-only — the QR encodes the hidden .onion address, so it must not be
+    fetchable by anonymous visitors (e.g. over clearnet). Rendered server-side so
+    it works in Tor Browser, which blocks the JS that drew it client-side.
+    """
+
+    def get(self, request):
+        png = service.ensure_connect_qr()
+        if png is None:
+            raise Http404("No onion published.")
+        return FileResponse(open(png, "rb"), content_type="image/png")
 
 
 class MigrateOnionView(_SuperuserView):

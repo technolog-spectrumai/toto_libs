@@ -6,7 +6,7 @@
 
 {% block content %}
 <section
-  x-data="{ showDetails: false, qrReady: false }"
+  x-data="{ showDetails: false }"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-16 transition-colors duration-300 sm:px-6 lg:px-8">
 
@@ -47,7 +47,7 @@
 
         <!-- Show Details toggle -->
         <button
-          @click="showDetails = !showDetails; if (!qrReady && !showDetails === false) { $nextTick(() => { initQR(); qrReady = true; }); }"
+          @click="showDetails = !showDetails"
           :class="darkMode
             ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
             : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
@@ -107,17 +107,22 @@
           </div>
           {% endif %}
 
-          <!-- QR code -->
+          <!-- QR code — rendered server-side so it works in Tor Browser (which
+               blocks JS). Superuser-only: it encodes the hidden .onion address. -->
+          {% if user.is_superuser and connect_qr_url %}
           <div class="flex flex-col items-center gap-3 pt-1">
             <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                class="text-xs font-semibold uppercase tracking-widest">{% trans "Scan to connect" %}</p>
             <div
               :class="darkMode ? 'border-accent-1 bg-white' : 'border-accent-2 bg-white'"
               class="rounded-xl border p-3 shadow-sm inline-block">
-              <div id="home-qr"></div>
+              <img src="{{ connect_qr_url }}" alt="{% trans 'Connect QR code' %}" class="block h-40 w-40" />
             </div>
-            <p id="home-url" class="text-xs opacity-50 break-all text-center"></p>
+            {% if connect_url %}
+            <p class="text-xs opacity-50 break-all text-center">{{ connect_url }}</p>
+            {% endif %}
           </div>
+          {% endif %}
 
         </div>
       </div>
@@ -125,24 +130,4 @@
 
   </div>
 </section>
-{% endblock %}
-
-{% block end_script %}
-<script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>
-<script>
-  function initQR() {
-    // Prefer the server-provided canonical address (the .onion / configured domain);
-    // fall back to the current origin for dev / unconfigured deployments.
-    var url = "{{ connect_url|escapejs }}" || window.location.origin;
-    document.getElementById('home-url').textContent = url;
-    new QRCode(document.getElementById('home-qr'), {
-      text: url,
-      width: 160,
-      height: 160,
-      colorDark: '#000000',
-      colorLight: '#ffffff',
-      correctLevel: QRCode.CorrectLevel.M,
-    });
-  }
-</script>
 {% endblock %}

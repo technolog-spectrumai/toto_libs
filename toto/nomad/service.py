@@ -14,7 +14,11 @@ Reachability switches (per-transport):
 from __future__ import annotations
 
 import logging
+import os
+import tempfile
+from pathlib import Path
 
+from django.conf import settings
 from django.utils import timezone
 
 from . import keystore, tor_control
@@ -94,6 +98,61 @@ def current_onion() -> str | None:
         return obj.service_id
     existing = keystore.load_key()
     return existing[0] if existing else None
+
+
+def connect_url() -> str | None:
+    """The shareable HTTPS .onion URL clients scan to connect, or None."""
+    onion = current_onion()
+    return f"https://{onion}.onion" if onion else None
+
+
+# ---------------------------------------------------------------------------
+# Connect QR — rendered server-side (Tor Browser blocks JS, so the welcome page
+# can't draw the QR client-side). The PNG is generated with the ``qrcode`` lib
+# and saved in the nomad data dir, regenerated only when the onion changes.
+# ---------------------------------------------------------------------------
+
+_QR_FILE = "connect_qr.png"
+_QR_MARKER = "connect_qr.url"
+
+
+def _data_dir() -> Path:
+    return Path(getattr(settings, "NOMAD_KEY_DIR", "/var/lib/nomad"))
+
+
+def ensure_connect_qr() -> Path | None:
+    """Return the path to a PNG QR of the current connect URL, generating it on
+    first use and whenever the onion has changed. Returns None when no onion."""
+    url = connect_url()
+    if not url:
+        return None
+
+    directory = _data_dir()
+    png = directory / _QR_FILE
+    marker = directory / _QR_MARKER
+
+    if png.exists() and marker.exists() and marker.read_text().strip() == url:
+        return png
+
+    import qrcode  # noqa: PLC0415 — optional/heavy import kept off module load
+
+    directory.mkdir(parents=True, exist_ok=True)
+    img = qrcode.make(url)
+    # Atomic write so a concurrent request never serves a half-written file.
+    fd, tmp = tempfile.mkstemp(dir=str(directory), suffix=".png")
+    os.close(fd)
+    try:
+        img.save(tmp)
+        os.replace(tmp, png)
+    except Exception:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    marker.write_text(url)
+    logger.info("nomad: generated connect QR for %s", url)
+    return png
 
 
 # ---------------------------------------------------------------------------

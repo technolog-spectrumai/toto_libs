@@ -54,6 +54,27 @@ def _connect_url(platform):
     return ""
 
 
+def _connect_qr_url():
+    """URL of the server-rendered connect QR (faros/nomad only), or "".
+
+    The QR is drawn server-side because Tor Browser blocks the JS that used to
+    render it client-side. Kept layering-safe: core never hard-depends on nomad.
+    """
+    from django.apps import apps  # noqa: PLC0415
+
+    if not apps.is_installed("toto.nomad"):
+        return ""
+    try:
+        from django.urls import reverse  # noqa: PLC0415
+
+        from toto.nomad.service import current_onion  # noqa: PLC0415
+        if current_onion():
+            return reverse("nomad:connect_qr")
+    except Exception:
+        pass
+    return ""
+
+
 def welcome_view(request):
     processor = PageProcessor()
 
@@ -63,6 +84,7 @@ def welcome_view(request):
         "platform": platform,
         "federation": platform.federation if platform else None,
         "connect_url": _connect_url(platform),
+        "connect_qr_url": _connect_qr_url(),
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))
