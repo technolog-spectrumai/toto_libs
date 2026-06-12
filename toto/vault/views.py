@@ -5,6 +5,7 @@ from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
@@ -941,6 +942,19 @@ class EncryptFileView(LoginRequiredMixin, View):
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
         if vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": "File is already encrypted."}, status=400)
+
+        # Offload to Celery when configured (faros): encryption does an S3 download
+        # → crypto → re-upload that can run for minutes, and a long synchronous
+        # request is dropped by Tor. Return a task id the browser polls instead.
+        # Ownership was just verified, so the task may trust file_pk.
+        if getattr(settings, "VAULT_ENCRYPT_ASYNC", False):
+            try:
+                from .tasks import encrypt_vault_file
+                result = encrypt_vault_file.delay(vault_file.pk, password, owner_password)
+                return JsonResponse({"ok": True, "task_id": result.id, "async": True})
+            except Exception:  # noqa: BLE001 — broker down → fall back to synchronous
+                pass
+
         try:
             vault_file.encrypt(password=password, owner_password=owner_password)
             vault_file.is_public = False
@@ -951,6 +965,32 @@ class EncryptFileView(LoginRequiredMixin, View):
                 msg = "File does not appear to be a valid PDF."
             return JsonResponse({"ok": False, "error": msg}, status=500)
         return JsonResponse({"ok": True, "raw_url": vault_file.get_public_url() or ""})
+
+
+class EncryptStatusView(LoginRequiredMixin, View):
+    """Poll the state of an async encryption task dispatched by EncryptFileView.
+
+    Returns ``{state, done}`` plus the task's ``{ok, raw_url}`` / ``{ok, error}``
+    once finished. Task ids are unguessable UUIDs and the result holds only the
+    file's (already public) raw URL, so no extra ownership binding is needed.
+    """
+
+    def get(self, request):
+        task_id = request.GET.get("task_id", "").strip()
+        if not task_id:
+            return JsonResponse({"ok": False, "error": "Missing task_id."}, status=400)
+        from celery.result import AsyncResult
+
+        result = AsyncResult(task_id)
+        state = result.state
+        payload = {"state": state, "done": False}
+        if state == "SUCCESS":
+            data = result.result if isinstance(result.result, dict) else {}
+            payload.update(data)
+            payload["done"] = True
+        elif state == "FAILURE":
+            payload.update({"ok": False, "error": "Encryption failed.", "done": True})
+        return JsonResponse(payload)
 
 
 class DecryptFileView(LoginRequiredMixin, View):

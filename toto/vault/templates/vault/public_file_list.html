@@ -8,6 +8,7 @@
 <style>[x-cloak] { display: none !important; }</style>
 <script>
   const _encryptUrl          = "{% url 'vault:encrypt_file' %}";
+  const _encryptStatusUrl    = "{% url 'vault:encrypt_status' %}";
   const _encryptedDownloadUrl = "{% url 'vault:download_encrypted' %}";
   const _decryptUrl   = "{% url 'vault:decrypt_file' %}";
   const _moveUrl      = "{% url 'vault:move_file' %}";
@@ -330,7 +331,12 @@
               headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
               body,
             });
-            const data = await res.json();
+            let data = await res.json();
+            // Async encryption (faros/Tor): the server queued a Celery job — poll
+            // for it with short requests instead of holding one long connection.
+            if (data.ok && data.task_id) {
+              data = await this.pollCipher(data.task_id, csrf);
+            }
             if (data.ok) {
               const item = this.items.find(i => i.id === this.cipherFileId);
               if (item) {
@@ -351,6 +357,19 @@
             this.cipherError = 'Network error. Please try again.';
           }
           this.cipherLoading = false;
+        },
+
+        // Poll the encrypt task until the worker finishes. Each request is short,
+        // so it survives Tor where a single multi-minute request would not.
+        async pollCipher(taskId, csrf) {
+          const url = _encryptStatusUrl + '?task_id=' + encodeURIComponent(taskId);
+          for (let i = 0; i < 150; i++) {            // ~5 min ceiling (150 × 2s)
+            await new Promise(r => setTimeout(r, 2000));
+            const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });
+            const s = await res.json();
+            if (s.done) return s;                    // {ok, raw_url} or {ok:false, error}
+          }
+          return { ok: false, error: 'Encryption timed out. Please try again.' };
         },
 
         openEncDownload(item) {
