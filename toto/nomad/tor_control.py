@@ -38,6 +38,7 @@ def _ports() -> dict[int, str]:
 @contextmanager
 def _controller(retries: int = 30, delay: float = 2.0):
     """Yield an authenticated stem Controller, retrying while tor bootstraps."""
+    import socket  # noqa: PLC0415
     import stem  # noqa: PLC0415
     from stem.control import Controller  # noqa: PLC0415
 
@@ -49,11 +50,16 @@ def _controller(retries: int = 30, delay: float = 2.0):
     last_exc: Exception | None = None
     for attempt in range(1, retries + 1):
         try:
-            controller = Controller.from_port(address=host, port=port)
+            # stem's from_port validates that `address` is an IP *literal*
+            # (otherwise: "Invalid IP address: tor"), so resolve the docker
+            # service name to its container IP first. Done inside the retry loop
+            # so a not-yet-registered DNS name is retried too.
+            ip = socket.gethostbyname(host)
+            controller = Controller.from_port(address=ip, port=port)
             break
-        except stem.SocketError as exc:
+        except (stem.SocketError, socket.gaierror, OSError) as exc:
             last_exc = exc
-            logger.info("nomad: tor control port %s:%s not ready (%s/%s)", host, port, attempt, retries)
+            logger.info("nomad: tor control port %s:%s not ready (%s/%s): %s", host, port, attempt, retries, exc)
             time.sleep(delay)
     if controller is None:
         raise RuntimeError(f"nomad: could not reach tor control port {host}:{port}: {last_exc}")
