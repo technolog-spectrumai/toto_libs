@@ -31,7 +31,7 @@ Browser UI: http://localhost:7474
 `services.neo4j: true`) is set in the deployment config. It starts with the stack:
 
 ```bash
-python portal/scripts/deploy.py deployment/portal_max.yaml up
+python portal/scripts/deploy.py portal/deploy/configs/portal_max.yaml up
 ```
 
 The web container connects to it via `bolt://neo4j:7687` (Docker internal DNS).

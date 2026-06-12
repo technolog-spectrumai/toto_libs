@@ -624,7 +624,7 @@ Redis          — Celery broker + result backend
 Nginx          — reverse proxy / static files
 ```
 
-**Config file:** `deployment/portal_mini.yaml`
+**Config file:** `portal/deploy/configs/portal_mini.yaml`
 ```yaml
 BUILD_STUDIO: "0"
 http_port: 8081
@@ -695,7 +695,7 @@ Prometheus + Grafana    — metrics (optional but included in portal_max.yaml)
 Loki + Promtail         — log aggregation (optional but included in portal_max.yaml)
 ```
 
-**Config file:** `deployment/portal_max.yaml`
+**Config file:** `portal/deploy/configs/portal_max.yaml`
 ```yaml
 BUILD_STUDIO: "1"
 services:
@@ -736,8 +736,8 @@ Daily allowances are posted at 17:00 on weekdays; subscription billing runs ever
 `deploy.py` is the entry point for building any deployment. It reads a YAML config and emits `docker-compose.yaml` + `.env`:
 
 ```
-python portal/scripts/deploy.py deployment/portal_mini.yaml   →  gunicorn WSGI stack
-python portal/scripts/deploy.py deployment/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
+python portal/scripts/deploy.py portal/deploy/configs/portal_mini.yaml   →  gunicorn WSGI stack
+python portal/scripts/deploy.py portal/deploy/configs/portal_max.yaml    →  uvicorn ASGI stack + neo4j + kernel
 ```
 
 The script conditionally adds Docker services based on the config:
