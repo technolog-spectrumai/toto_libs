@@ -71,8 +71,30 @@ def _controller(retries: int = 30, delay: float = 2.0):
         controller.close()
 
 
+def _wait_for_target(retries: int = 60, delay: float = 3.0) -> None:
+    """Block until the onion's forward target host resolves (e.g. nginx is up).
+
+    tor resolves the target at ADD_ONION time and rejects an unresolvable host with
+    "Invalid VIRTPORT/TARGET". On boot the web entrypoint publishes *before* it is
+    healthy, so nginx (which waits for web-healthy) isn't up yet — wait for it. IPs
+    resolve immediately, so this is a no-op for IP targets.
+    """
+    import socket  # noqa: PLC0415
+
+    host = _conf("NOMAD_ONION_TARGET", "nginx:443").rsplit(":", 1)[0]
+    for attempt in range(1, retries + 1):
+        try:
+            socket.gethostbyname(host)
+            return
+        except socket.gaierror:
+            logger.info("nomad: onion target %r not resolvable yet (%s/%s)", host, attempt, retries)
+            time.sleep(delay)
+    logger.warning("nomad: onion target %r still unresolvable after %s tries — publishing anyway", host, retries)
+
+
 def mint() -> tuple[str, str]:
     """Generate + publish a brand-new onion. Returns (service_id, private_key)."""
+    _wait_for_target()
     with _controller() as c:
         resp = c.create_ephemeral_hidden_service(
             _ports(),
@@ -87,6 +109,7 @@ def mint() -> tuple[str, str]:
 def publish(private_key: str) -> str:
     """(Re)publish an existing onion from a stored "TYPE:base64" key. Returns service_id."""
     key_type, _, key_content = private_key.partition(":")
+    _wait_for_target()
     with _controller() as c:
         resp = c.create_ephemeral_hidden_service(
             _ports(),
