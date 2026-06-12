@@ -57,13 +57,22 @@ class Command(BaseCommand):
         logo_path = os.path.abspath(
             os.path.join(settings.BASE_DIR, settings.PLATFORM_LOGO_PATH)
         )
-
+        if not os.path.exists(logo_path):
+            # toto core default — okti_old.png — when the deployment doesn't set a
+            # PLATFORM_LOGO_PATH (resolved relative to this command, not BASE_DIR).
+            logo_path = os.path.abspath(
+                os.path.join(os.path.dirname(__file__), "../../../../../data/img/okti_old.png")
+            )
         if not os.path.exists(logo_path):
             raise CommandError(f"Logo file not found at {logo_path}")
 
-        if not platform.logo:
+        # (Re)assign whenever the configured logo differs, so a redeploy with a new
+        # logo (e.g. studio→spider, rest→wing) takes effect; idempotent otherwise.
+        desired_stem = os.path.splitext(os.path.basename(logo_path))[0]
+        current_name = os.path.basename(platform.logo.name) if platform.logo else ""
+        if not current_name.startswith(desired_stem):
             with open(logo_path, "rb") as f:
-                platform.logo.save("platform_logo.png", File(f), save=True)
+                platform.logo.save(os.path.basename(logo_path), File(f), save=True)
 
         platform.save()
 

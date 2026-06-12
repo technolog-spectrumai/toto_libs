@@ -1,7 +1,21 @@
 from django.contrib import admin, messages
 
 from . import service
-from .models import OnionIdentity
+from .models import NomadSettings, OnionIdentity
+
+
+@admin.register(NomadSettings)
+class NomadSettingsAdmin(admin.ModelAdmin):
+    # Read-only display — toggle reachability via the profile switches (which publish/
+    # unpublish the onion and apply the anti-lockout guard) or `manage.py nomad_reachability`.
+    list_display = ("__str__", "onion_enabled", "clearnet_enabled", "updated_at", "updated_by")
+    readonly_fields = ("onion_enabled", "clearnet_enabled", "updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
 
 
 @admin.register(OnionIdentity)

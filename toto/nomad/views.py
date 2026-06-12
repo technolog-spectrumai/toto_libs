@@ -6,13 +6,20 @@ from django.views import View
 from . import service
 
 
-class MigrateOnionView(View):
-    """POST-only, superuser-only: mint a fresh onion and retire the current one."""
+class _SuperuserView(View):
+    """Base: POST-only, superuser-only, redirect back to the referring page."""
 
     def dispatch(self, request, *args, **kwargs):
         if not (request.user.is_authenticated and request.user.is_superuser):
             raise PermissionDenied
         return super().dispatch(request, *args, **kwargs)
+
+    def _back(self, request):
+        return redirect(request.META.get("HTTP_REFERER") or "sso:my_profile")
+
+
+class MigrateOnionView(_SuperuserView):
+    """Mint a fresh onion and retire the current one."""
 
     def post(self, request):
         try:
@@ -20,4 +27,28 @@ class MigrateOnionView(View):
             messages.success(request, f"Onion migrated. New address: {new_onion}.onion")
         except Exception as exc:  # noqa: BLE001 — surface any control-port failure to the admin
             messages.error(request, f"Onion migration failed: {exc}")
-        return redirect(request.META.get("HTTP_REFERER") or "sso:my_profile")
+        return self._back(request)
+
+
+class SetReachabilityView(_SuperuserView):
+    """Toggle a transport on/off: POST transport=onion|clearnet, enabled=1|0."""
+
+    def post(self, request):
+        transport = request.POST.get("transport")
+        enabled = request.POST.get("enabled") in ("1", "true", "on")
+        try:
+            if transport == service.ONION:
+                service.set_onion_enabled(enabled, by=request.user)
+            elif transport == service.CLEARNET:
+                service.set_clearnet_enabled(enabled, by=request.user)
+            else:
+                raise ValueError(f"Unknown transport: {transport!r}")
+            messages.success(
+                request,
+                f"{transport.capitalize()} reachability {'enabled' if enabled else 'disabled'}.",
+            )
+        except ValueError as exc:
+            messages.error(request, str(exc))
+        except Exception as exc:  # noqa: BLE001 — control-port failure when toggling the onion
+            messages.error(request, f"Could not change {transport} reachability: {exc}")
+        return self._back(request)

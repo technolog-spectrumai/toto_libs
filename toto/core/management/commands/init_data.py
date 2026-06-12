@@ -129,6 +129,41 @@ class Command(BaseCommand):
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
 
+        self.stdout.write(self.style.NOTICE("Creating federation..."))
+        self._create_federation()
+        self.stdout.write(self.style.SUCCESS("Federation created."))
+
+    def _create_federation(self) -> None:
+        """Always (even at non-full ingress) create the "Toto-Federation", give it the
+        okti.png logo, and assign it to the active platform."""
+        from django.core.files import File  # noqa: PLC0415
+        from toto.core.models import Federation, Platform  # noqa: PLC0415
+
+        federation, created = Federation.objects.get_or_create(
+            name="Toto-Federation",
+            defaults={"description": ""},
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS("Created federation: Toto-Federation"))
+
+        logo_path = os.path.abspath(
+            os.path.join(os.path.dirname(__file__), "../../../../../data/img/okti.png")
+        )
+        if not federation.logo and os.path.exists(logo_path):
+            with open(logo_path, "rb") as f:
+                federation.logo.save("okti.png", File(f), save=True)
+            self.stdout.write(self.style.SUCCESS("Federation logo assigned (okti.png)."))
+        elif not os.path.exists(logo_path):
+            self.stderr.write(self.style.WARNING(f"Federation logo not found at {logo_path}"))
+
+        platform = Platform.objects.filter(active=True).first()
+        if platform:
+            platform.federation = federation
+            platform.save()
+            self.stdout.write(
+                self.style.SUCCESS(f"Assigned federation to platform '{platform.site_name}'.")
+            )
+
     def _create_admin_person(self, admin_username: str) -> None:
         display_name = os.environ.get("ADMIN_DISPLAY_NAME", "")
         if not display_name:

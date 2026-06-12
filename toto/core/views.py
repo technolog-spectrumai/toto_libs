@@ -30,6 +30,30 @@ def _get_template(name):
     return os.path.join(template_dir, name)
 
 
+def _connect_url(platform):
+    """The canonical, shareable address to encode in the welcome QR.
+
+    Prefer the .onion (faros) so the QR works regardless of how the page is viewed;
+    fall back to the configured public domain; else "" (the template uses the
+    browser origin). Kept layering-safe: core never hard-depends on nomad.
+    """
+    from django.apps import apps  # noqa: PLC0415
+
+    if apps.is_installed("toto.nomad"):
+        try:
+            from toto.nomad.service import current_onion  # noqa: PLC0415
+            onion = current_onion()
+            if onion:
+                return f"https://{onion}.onion"
+        except Exception:
+            pass
+
+    domain = (platform.domain or "").strip() if platform else ""
+    if domain and domain not in ("localhost", "127.0.0.1"):
+        return f"https://{domain}"
+    return ""
+
+
 def welcome_view(request):
     processor = PageProcessor()
 
@@ -37,7 +61,8 @@ def welcome_view(request):
 
     context = {
         "platform": platform,
-        "federation": platform.federation if platform else None
+        "federation": platform.federation if platform else None,
+        "connect_url": _connect_url(platform),
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))

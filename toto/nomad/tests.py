@@ -10,11 +10,14 @@ import tempfile
 from unittest import mock
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
+from django.http import HttpResponse
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from toto.nomad import keystore, service
-from toto.nomad.models import OnionIdentity
+from toto.nomad.middleware import NomadReachabilityMiddleware
+from toto.nomad.models import NomadSettings, OnionIdentity
 from toto.nomad.plugins.profile_plugins import OnionIdentityPlugin
 
 User = get_user_model()
@@ -22,6 +25,8 @@ User = get_user_model()
 
 class NomadTestBase(TestCase):
     def setUp(self):
+        cache.clear()  # NomadSettings.load() is cached; isolate tests
+        self.addCleanup(cache.clear)
         self.tmp = tempfile.mkdtemp()
         ovr = override_settings(NOMAD_KEY_DIR=self.tmp)
         ovr.enable()
@@ -148,3 +153,130 @@ class TorHashPasswordTests(TestCase):
         self.assertEqual(len(body), 58)  # 8B salt + 1B indicator + 20B sha1 = 29B -> 58 hex
         int(body, 16)  # all hex
         self.assertEqual(body[16:18], "60")  # the count indicator byte
+
+
+class ReachabilityMiddlewareTests(NomadTestBase):
+    def _run(self, transport=None):
+        mw = NomadReachabilityMiddleware(lambda r: HttpResponse("ok"))
+        req = RequestFactory().get("/")
+        if transport:
+            req.META["HTTP_X_FAROS_TRANSPORT"] = transport
+        return mw(req)
+
+    def test_no_header_allowed(self):
+        self.assertEqual(self._run().status_code, 200)
+
+    def test_clearnet_allowed_when_enabled(self):
+        self.assertEqual(self._run("clearnet").status_code, 200)
+
+    def test_clearnet_blocked_when_disabled(self):
+        s = NomadSettings.load()
+        s.clearnet_enabled = False
+        s.save()
+        self.assertEqual(self._run("clearnet").status_code, 404)
+
+    def test_onion_blocked_when_disabled_but_clearnet_served(self):
+        s = NomadSettings.load()
+        s.onion_enabled = False
+        s.save()
+        self.assertEqual(self._run("onion").status_code, 404)
+        self.assertEqual(self._run("clearnet").status_code, 200)
+
+
+class ReachabilityServiceTests(NomadTestBase):
+    @mock.patch("toto.nomad.tor_control.unpublish")
+    def test_disable_onion_unpublishes_and_deactivates(self, unpublish):
+        keystore.save_key("svc", "ED25519-V3:K")
+        OnionIdentity.objects.create(service_id="svc", is_active=True)
+
+        service.set_onion_enabled(False)
+
+        unpublish.assert_called_once_with("svc")
+        self.assertFalse(OnionIdentity.objects.get(service_id="svc").is_active)
+        self.assertFalse(NomadSettings.load().onion_enabled)
+
+    @mock.patch("toto.nomad.tor_control.publish", return_value="svc")
+    def test_enable_onion_republishes(self, publish):
+        s = NomadSettings.load()
+        s.onion_enabled = False
+        s.save()
+        keystore.save_key("svc", "ED25519-V3:K")
+
+        service.set_onion_enabled(True)
+
+        publish.assert_called_once_with("ED25519-V3:K")
+        self.assertTrue(NomadSettings.load().onion_enabled)
+
+    def test_lockout_guard_blocks_disabling_last_transport(self):
+        s = NomadSettings.load()
+        s.onion_enabled = False  # only clearnet remains on
+        s.save()
+        with self.assertRaises(ValueError):
+            service.set_clearnet_enabled(False)
+
+    def test_ensure_onion_noop_when_disabled(self):
+        s = NomadSettings.load()
+        s.onion_enabled = False
+        s.save()
+        self.assertIsNone(service.ensure_onion())
+
+
+class SetReachabilityViewTests(NomadTestBase):
+    @mock.patch("toto.nomad.service.set_clearnet_enabled")
+    def test_superuser_can_toggle(self, setter):
+        admin = User.objects.create_superuser("a4", "a4@x.com", "pw")
+        c = Client()
+        c.force_login(admin)
+
+        resp = c.post(reverse("nomad:set_reachability"), {"transport": "clearnet", "enabled": "0"})
+
+        self.assertEqual(resp.status_code, 302)
+        setter.assert_called_once()
+        self.assertFalse(setter.call_args.args[0])  # enabled=False
+
+    @mock.patch("toto.nomad.service.set_clearnet_enabled")
+    def test_non_superuser_forbidden(self, setter):
+        bob = User.objects.create_user("bob3", "b3@x.com", "pw")
+        c = Client()
+        c.force_login(bob)
+
+        resp = c.post(reverse("nomad:set_reachability"), {"transport": "clearnet", "enabled": "0"})
+
+        self.assertEqual(resp.status_code, 403)
+        setter.assert_not_called()
+
+
+class NginxTransportHeaderTests(TestCase):
+    def _deploy(self):
+        import importlib.util
+        from pathlib import Path
+
+        path = Path(__file__).resolve().parents[3] / "portal" / "scripts" / "deploy.py"
+        spec = importlib.util.spec_from_file_location("toto_deploy_nginx", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module
+
+    def test_two_listeners_with_transport_headers(self):
+        conf = self._deploy().build_nginx_conf({
+            "deployment": {"name": "faros_test", "project_dir": "faros"},
+            "services": {"websockets": True},
+            "ssl": {"mode": "gervazy"},
+            "env": {},
+            "reachability": {"transport_header": True, "onion_listener_port": 8443},
+        })
+        self.assertIn("listen 443 ssl", conf)
+        self.assertIn("listen 8443 ssl", conf)
+        self.assertIn("X-Faros-Transport clearnet", conf)
+        self.assertIn("X-Faros-Transport onion", conf)
+
+    def test_single_listener_when_flag_off(self):
+        conf = self._deploy().build_nginx_conf({
+            "deployment": {"name": "faros_test", "project_dir": "faros"},
+            "services": {},
+            "ssl": {"mode": "gervazy"},
+            "env": {},
+        })
+        self.assertIn("listen 443 ssl", conf)
+        self.assertNotIn("listen 8443 ssl", conf)
+        self.assertNotIn("X-Faros-Transport", conf)

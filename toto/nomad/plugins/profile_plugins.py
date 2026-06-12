@@ -25,5 +25,12 @@ class OnionIdentityPlugin(ProfilePlugin):
 
     def get_context(self, **kwargs):
         context = super().get_context(**kwargs)
+        request = self.get_request_from_kwargs(**kwargs)
         context["current_onion"] = service.current_onion()
+        context["reachability"] = service.reachability()
+        # The transport the viewer is currently connected over (stamped by nginx),
+        # so the template can warn before they disable the one they're on.
+        context["current_transport"] = (
+            request.META.get("HTTP_X_FAROS_TRANSPORT") if request else None
+        )
         return context

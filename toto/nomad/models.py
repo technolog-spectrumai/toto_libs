@@ -10,7 +10,55 @@ or the "Onion Identity" section of their profile settings (``migrate_onion``).
 This app is installed on faros only, never on portal.
 """
 from django.conf import settings
+from django.core.cache import cache
 from django.db import models
+
+
+class NomadSettings(models.Model):
+    """Singleton (pk=1) holding faros's per-transport reachability switches.
+
+    - ``onion_enabled``   — whether nomad publishes the .onion (real: control port).
+    - ``clearnet_enabled`` — whether the clearnet listener is served (enforced live
+      by ``NomadReachabilityMiddleware``).
+
+    Same single-row shape as ``toto.core.models.Platform``; read on every request by
+    the middleware, so ``load()`` is cached.
+    """
+
+    CACHE_KEY = "nomad:settings"
+
+    onion_enabled = models.BooleanField(default=True)
+    clearnet_enabled = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="nomad_settings_updates",
+    )
+
+    class Meta:
+        verbose_name = "Nomad settings"
+        verbose_name_plural = "Nomad settings"
+
+    def __str__(self) -> str:
+        return f"onion={'on' if self.onion_enabled else 'off'} clearnet={'on' if self.clearnet_enabled else 'off'}"
+
+    @classmethod
+    def load(cls) -> "NomadSettings":
+        """Return the cached singleton, creating it on first access."""
+        cached = cache.get(cls.CACHE_KEY)
+        if cached is not None:
+            return cached
+        obj, _ = cls.objects.get_or_create(pk=1)
+        cache.set(cls.CACHE_KEY, obj, 300)
+        return obj
+
+    def save(self, *args, **kwargs):
+        self.pk = 1
+        super().save(*args, **kwargs)
+        cache.delete(self.CACHE_KEY)
 
 
 class OnionIdentity(models.Model):

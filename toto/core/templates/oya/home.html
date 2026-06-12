@@ -86,11 +86,24 @@
             {% endif %}
           </div>
 
-          {% if federation and federation.logo %}
-          <div class="flex justify-center">
-            <img src="{{ federation.logo.url }}"
-                 alt="{{ federation.name }} logo"
-                 class="h-16 w-auto rounded-lg opacity-90" />
+          {% if platform.logo or federation.logo %}
+          <div class="flex items-end justify-center gap-8">
+            {% if platform.logo %}
+            <div class="flex flex-col items-center gap-1">
+              <img src="{{ platform.logo.url }}"
+                   alt="{{ platform.site_name }} logo"
+                   class="h-16 w-auto rounded-lg opacity-90" />
+              <span class="text-[10px] uppercase tracking-widest opacity-40">{% trans "Platform" %}</span>
+            </div>
+            {% endif %}
+            {% if federation and federation.logo %}
+            <div class="flex flex-col items-center gap-1">
+              <img src="{{ federation.logo.url }}"
+                   alt="{{ federation.name }} logo"
+                   class="h-16 w-auto rounded-lg opacity-90" />
+              <span class="text-[10px] uppercase tracking-widest opacity-40">{% trans "Federation" %}</span>
+            </div>
+            {% endif %}
           </div>
           {% endif %}
 
@@ -118,7 +131,9 @@
 <script src="{% static 'vendor/qrcodejs/qrcode.min.js' %}"></script>
 <script>
   function initQR() {
-    var url = window.location.origin;
+    // Prefer the server-provided canonical address (the .onion / configured domain);
+    // fall back to the current origin for dev / unconfigured deployments.
+    var url = "{{ connect_url|escapejs }}" || window.location.origin;
     document.getElementById('home-url').textContent = url;
     new QRCode(document.getElementById('home-qr'), {
       text: url,
