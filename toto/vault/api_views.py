@@ -422,3 +422,55 @@ class FileContentApiView(CorsApiView):
         except Exception as e:
             return JsonResponse({"error": f"Could not save file: {e}"}, status=500)
         return JsonResponse(_file_to_dict(request, vf))
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class FileCreateApiView(CorsApiView):
+    """Create an empty editable vault file and return it (Enigma/Aurora New-file).
+
+    JSON: ``{bucket_slug, directory_id?, title, file_type}`` → the new file dict
+    (incl. ``key``), so the client can open it straight in its Ace editor.
+
+    Gated by EDITABLE_FILE_TYPES rather than the server's web editor plugins: the
+    desktop client edits text-ish files in its own Ace editor, so e.g. latex stays
+    creatable here even on a server whose web latex editor isn't installed.
+    """
+
+    def post(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        from toto.vault.views import CreateEmptyFileView, create_empty_vault_file
+
+        title = (data.get("title") or "").strip()
+        file_type = (data.get("file_type") or "").strip()
+        bucket_slug = (data.get("bucket_slug") or "").strip()
+        directory_id = data.get("directory_id")
+
+        if not title:
+            return JsonResponse({"error": "Filename is required."}, status=400)
+        # Creatable (has starter content) AND editable in the client's Ace editor.
+        creatable = set(CreateEmptyFileView._INITIAL) & EDITABLE_FILE_TYPES
+        if file_type not in creatable:
+            return JsonResponse({"error": f"Cannot create an editable {file_type or '?'} file."}, status=400)
+        if not bucket_slug:
+            return JsonResponse({"error": "bucket_slug is required."}, status=400)
+
+        try:
+            bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
+        except Bucket.DoesNotExist:
+            return JsonResponse({"error": "Bucket not found."}, status=404)
+
+        directory = None
+        if directory_id not in (None, "", 0, "0"):
+            try:
+                directory = VaultDirectory.objects.get(pk=int(directory_id), bucket=bucket)
+            except (VaultDirectory.DoesNotExist, ValueError, TypeError):
+                return JsonResponse({"error": "Directory not found."}, status=404)
+
+        vf = create_empty_vault_file(request.user, bucket, directory, title, file_type)
+        return JsonResponse(_file_to_dict(request, vf), status=201)

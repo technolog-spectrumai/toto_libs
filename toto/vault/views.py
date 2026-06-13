@@ -778,6 +778,27 @@ def _unique_copy_key(source_file, target_bucket):
     return _unique_file_key(source_file.key or slugify(source_file.title), target_bucket)
 
 
+def create_empty_vault_file(owner, bucket, directory, title, file_type):
+    """Create + persist an empty editable vault file seeded with the type's starter
+    content. Caller validates ownership and that file_type is creatable. Pre-assigns a
+    bucket-unique key (see _unique_file_key) so colliding slugs don't raise."""
+    from django.core.files.base import ContentFile
+    vault_file = VaultFile(
+        owner=owner,
+        title=title,
+        key=_unique_file_key(slugify(title), bucket),
+        file_type=file_type,
+        bucket=bucket,
+        directory=directory,
+        is_public=False,
+    )
+    vault_file.save()
+    vault_file.file.save(title, ContentFile(CreateEmptyFileView._INITIAL[file_type].encode("utf-8")), save=True)
+    vault_file.content_hash = vault_file.create_hash()
+    vault_file.save()
+    return vault_file
+
+
 class CopyFilesToBucketView(LoginRequiredMixin, View):
     template_name = "vault/copy_files.html"
 
@@ -1333,7 +1354,6 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
     }
 
     def post(self, request):
-        from django.core.files.base import ContentFile as _CF
         from toto.vault.plugins import VaultEditorPlugin
 
         title      = request.POST.get("title", "").strip()
@@ -1355,22 +1375,9 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         if directory.bucket.owner != request.user:
             return JsonResponse({"error": "Permission denied."}, status=403)
 
-        vault_file = VaultFile(
-            owner=request.user,
-            title=title,
-            # Pre-assign a bucket-unique key so a colliding slug (same name, or a
-            # different title that slugifies the same) just gets -1/-2 instead of
-            # VaultFile.save() raising a ValueError → HTML 500 → client "Network error".
-            key=_unique_file_key(slugify(title), directory.bucket),
-            file_type=file_type,
-            bucket=directory.bucket,
-            directory=directory,
-            is_public=False,
+        vault_file = create_empty_vault_file(
+            request.user, directory.bucket, directory, title, file_type,
         )
-        vault_file.save()
-        vault_file.file.save(title, _CF(self._INITIAL[file_type].encode("utf-8")), save=True)
-        vault_file.content_hash = vault_file.create_hash()
-        vault_file.save()
 
         plugin = VaultEditorPlugin.for_file_type(file_type)
         editor_url = plugin.get_editor_url(vault_file) if plugin else None
