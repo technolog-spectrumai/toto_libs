@@ -814,9 +814,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   x-data="{ sidebarOpen: false, connectionStatus: 'observer', encryptionEnabled: {{ can_send_messages|yesno:'true,false' }}, mlsKeyExchange: false }"
   data-telegraph-channel
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-6 transition-colors duration-300 sm:px-6 lg:px-8">
+  class="min-h-[100dvh] px-2 py-2 transition-colors duration-300 sm:px-6 sm:py-6 lg:px-8">
 
-  <div class="mx-auto grid h-[calc(100vh-3rem)] max-w-7xl grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
+  {# h-[100dvh-…] not 100vh: on mobile 100vh sits behind the URL bar and hides the
+     composer. The -1rem/-3rem track the main's py-2/sm:py-6 so the grid fills the
+     visible viewport exactly. #}
+  <div class="mx-auto grid h-[calc(100dvh-1rem)] sm:h-[calc(100dvh-3rem)] max-w-7xl grid-cols-1 gap-2 sm:gap-4 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
 
     {# ── Left sidebar: channel list ───────────────────────────────────────── #}
     <aside
@@ -1053,7 +1056,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           {# ── Emoji panel ──────────────────────────────────────────────────── #}
           <div id="emoji-panel"
             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-            class="hidden absolute bottom-full left-0 mb-2 w-72 rounded-xl border shadow-xl z-50 overflow-hidden">
+            class="hidden absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border shadow-xl z-50 overflow-hidden">
             <div id="emoji-tabs" class="flex overflow-x-auto border-b border-current/10 px-1 pt-1 gap-0.5 text-base">
             </div>
             <div id="emoji-grid" class="grid grid-cols-8 gap-0.5 p-2 h-44 overflow-y-auto text-xl leading-none">
@@ -1104,7 +1107,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             rows="1"
             placeholder="{% if can_send_messages %}Message {{ channel.name }}…{% else %}Join this channel to send messages{% endif %}"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-            class="min-h-[2.75rem] flex-1 resize-none rounded-xl border px-3 py-2.5 text-sm outline-none transition focus:ring-2 focus:ring-current/20"
+            class="min-h-[2.75rem] flex-1 resize-none rounded-xl border px-3 py-2.5 text-base sm:text-sm outline-none transition focus:ring-2 focus:ring-current/20"
             {% if not can_send_messages %}disabled{% endif %}></textarea>
 
           <button
