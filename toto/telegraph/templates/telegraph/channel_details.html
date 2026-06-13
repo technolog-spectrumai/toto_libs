@@ -1065,6 +1065,9 @@ document.addEventListener("DOMContentLoaded", async () => {
             </div>
           </div>
 
+          {# Composer: stacks into 3 rows on mobile (attachments / text / full-width send); single row at sm+ #}
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+          {# Row 1 (mobile): attachment buttons #}
           <div class="flex gap-2">
           <input
             id="image-file-input"
@@ -1102,26 +1105,29 @@ document.addEventListener("DOMContentLoaded", async () => {
             aria-label="{% trans 'Insert emoji' %}">
             <i class="fa-regular fa-face-smile text-sm"></i>
           </button>
+          </div>{# /row 1 attachments #}
 
+          {# Row 2 (mobile): the text field #}
           <textarea
             id="message-input"
             name="content"
             rows="1"
             placeholder="{% if can_send_messages %}Message {{ channel.name }}…{% else %}Join this channel to send messages{% endif %}"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
-            class="min-h-[2.75rem] flex-1 resize-none rounded-xl border px-3 py-2.5 text-base sm:text-sm outline-none transition focus:ring-2 focus:ring-current/20"
+            class="min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 focus:ring-current/20 sm:w-auto sm:flex-1 sm:text-sm"
             {% if not can_send_messages %}disabled{% endif %}></textarea>
 
+          {# Row 3 (mobile): send — full-width on mobile, square icon button at sm+ #}
           <button
             type="button"
             id="message-send-button"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
+            class="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:w-11"
             {% if not can_send_messages %}disabled{% endif %}
             aria-label="{% trans 'Send' %}">
-            <i class="fa-solid fa-paper-plane text-sm"></i>
+            <i class="fa-solid fa-paper-plane text-sm"></i><span class="text-sm font-semibold sm:hidden">{% trans "Send" %}</span>
           </button>
-          </div>{# /flex gap-2 #}
+          </div>{# /composer rows #}
         </div>{# /relative #}
       </div>
     </section>
