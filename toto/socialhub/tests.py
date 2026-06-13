@@ -5,6 +5,7 @@ from django.urls import reverse
 from django.utils import timezone
 
 from toto.api.models import EmailService
+from toto.core.auth_cooldown import CAPTCHA_RETRY_COOLDOWN_SESSION_KEY
 from toto.core.models import Platform
 from toto.socialhub.captcha import generate_code_captcha, resolve_email_service
 from toto.socialhub.models import Community, MembershipApplication
@@ -79,3 +80,40 @@ class VerifyCaptchaViewTests(TestCase):
         res = self.client.get(self._verify_url())
         self.assertEqual(res.status_code, 200)
         self.assertIsNone(res.context.get("captcha_image"))
+
+    def test_wrong_code_starts_cooldown_in_captcha_mode(self):
+        res = self.client.post(self._verify_url(), {"code": "000000"})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.context["error"], "Invalid code or username.")
+        self.assertGreater(res.context["cooldown_remaining"], 0)
+        self.assertIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
+
+    def test_second_attempt_blocked_during_cooldown(self):
+        self.client.post(self._verify_url(), {"code": "000000"})
+        # Even the *correct* code is refused while the cooldown is active.
+        res = self.client.post(self._verify_url(), {"code": "246810"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("Please wait", res.context["error"])
+        self.application.refresh_from_db()
+        self.assertNotEqual(self.application.status, "verified")
+
+    def test_correct_code_redirects_and_leaves_no_cooldown(self):
+        res = self.client.post(self._verify_url(), {"code": "246810"})
+        self.assertEqual(res.status_code, 302)
+        self.assertNotIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
+
+    @override_settings(CAPTCHA_RETRY_COOLDOWN_SECONDS=0)
+    def test_zero_setting_disables_cooldown(self):
+        self.client.post(self._verify_url(), {"code": "000000"})
+        # With the cooldown disabled, the correct code works on the next try.
+        res = self.client.post(self._verify_url(), {"code": "246810"})
+        self.assertEqual(res.status_code, 302)
+
+    def test_no_cooldown_when_email_service_available(self):
+        EmailService.objects.create(
+            name="default-email-service", email_address="a@b.com", host="smtp"
+        )
+        res = self.client.post(self._verify_url(), {"code": "000000"})
+        self.assertEqual(res.status_code, 200)
+        self.assertIsNone(res.context.get("cooldown_remaining"))
+        self.assertNotIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)

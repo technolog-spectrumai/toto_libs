@@ -9,6 +9,12 @@ from django.utils import timezone
 from django.contrib.auth.models import User
 from toto.socialhub.forms import MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
 from toto.socialhub.captcha import resolve_email_service, generate_code_captcha
+from toto.core.auth_cooldown import (
+    captcha_retry_cooldown_remaining,
+    captcha_retry_cooldown_seconds,
+    clear_captcha_retry_cooldown,
+    start_captcha_retry_cooldown,
+)
 import logging
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
@@ -99,11 +105,22 @@ def verify_application_view(request, username):
     # mailed — show it as a distorted CAPTCHA the applicant retypes to prove
     # they are human. The reference/endorsement step still gates membership.
     application = MembershipApplication.objects.filter(email=username).first()
-    if application is not None and resolve_email_service(application.community) is None:
+    captcha_mode = application is not None and resolve_email_service(application.community) is None
+    if captcha_mode:
         try:
             context["captcha_image"] = generate_code_captcha(application.code)
         except Exception as e:
             logger.error(f"Failed to render CAPTCHA for '{username}': {e}")
+
+    # While the CAPTCHA is shown, rate-limit retries the same way login does:
+    # a failed code starts a short cooldown during which the form is disabled.
+    if request.method == "POST" and captcha_mode:
+        remaining = captcha_retry_cooldown_remaining(request)
+        if remaining > 0:
+            context["error"] = f"Please wait {remaining} seconds before trying again."
+            context["cooldown_remaining"] = remaining
+            logger.warning(f"CAPTCHA retry blocked by cooldown for '{username}' ({remaining}s left).")
+            return render(request, "socialhub/membership_verification.html", processor.decorate(context, request))
 
     if request.method == "POST" and form.is_valid():
         code = form.cleaned_data["code"]
@@ -119,11 +136,16 @@ def verify_application_view(request, username):
                 app.verified_at = timezone.now()
                 app.status = "verified"
                 app.save()
+                if captcha_mode:
+                    clear_captcha_retry_cooldown(request)
                 logger.info(f"Verification successful for '{username}'.")
                 return redirect("socialhub:reference_request", application_id=app.id)
         except MembershipApplication.DoesNotExist:
             context["error"] = "Invalid code or username."
             logger.warning(f"Verification failed: no application found for '{username}' with code '{code}'.")
+            if captcha_mode:
+                context["cooldown_remaining"] = captcha_retry_cooldown_seconds()
+                start_captcha_retry_cooldown(request)
 
     return render(request,"socialhub/membership_verification.html", processor.decorate(context, request))
 
