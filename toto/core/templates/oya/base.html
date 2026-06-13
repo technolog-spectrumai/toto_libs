@@ -44,7 +44,7 @@
 </head>
 <body
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="transition-colors duration-300 min-h-screen flex flex-col">
+  class="transition-colors duration-300 min-h-[100dvh] flex flex-col">
 
   <div class="header">
       {% include "oya/header.html" with site=platform header=header %}
@@ -92,11 +92,13 @@
   {% endif %}
 
   <!-- Main Content -->
-  <main class="flex-grow">
+  {# main_class lets a page opt into a full-height flex layout (e.g. the chat fills the viewport); defaults to normal flow #}
+  <main class="{% block main_class %}flex-grow{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
   <!-- Footer -->
+  {% block footer %}
   <footer
         :class="darkMode
       ? `bg-footer-bg-dark text-footer-text-dark {{ platform.theme.footer.dark }}`
@@ -104,6 +106,7 @@
     class="py-4 mt-8 text-center shadow-lg">
     <p>&copy; {% blocktrans with author=platform.author %}{{ author }}. All rights reserved.{% endblocktrans %}</p>
   </footer>
+  {% endblock %}
 
   {% block end_script %}{% endblock %}
 
