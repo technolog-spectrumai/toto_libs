@@ -26,6 +26,24 @@ from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLo
 from .storage_backends import get_bucket_storage
 
 
+# Empty-file-creatable types and their extension labels (keys mirror
+# CreateEmptyFileView._INITIAL). A type is only offered/allowed in "New file" when an
+# editor plugin is registered for it — so deployments missing an editor app (e.g. faros
+# has no latex/notebook/neojson editor) neither show nor accept those types.
+CREATABLE_TYPES = [
+    ("text", ".txt"), ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
+    ("csv", ".csv"), ("html", ".html"), ("latex", ".tex"), ("bib", ".bib"),
+    ("svg", ".svg"), ("notebook", ".tpy"), ("neojson", ".neojson"),
+    ("presentation", ".pml"),
+]
+
+
+def available_create_types():
+    """[(type, ext), …] for creatable types that have a registered editor plugin."""
+    from toto.vault.plugins import VaultEditorPlugin  # local: registry filled in ready()
+    return [(t, ext) for t, ext in CREATABLE_TYPES if VaultEditorPlugin.for_file_type(t)]
+
+
 # ============================================================
 # Public File Views
 # ============================================================
@@ -234,6 +252,8 @@ class PublicFileListView(TemplateView):
                 }
         context["buckets"] = buckets
         context["bucket_quota_info"] = bucket_quota_info
+        # "New file" type pills — only types whose editor is installed on this deployment.
+        context["create_file_types"] = available_create_types()
 
         return PageProcessor().decorate(context, self.request)
 
@@ -741,14 +761,21 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 # Copy Files
 # ============================================================
 
-def _unique_copy_key(source_file, target_bucket):
-    base_key = source_file.key or slugify(source_file.title) or "file"
+def _unique_file_key(base_key, target_bucket):
+    """A bucket-unique key for a new file: ``base_key`` (or ``file`` when empty),
+    suffixed -1, -2, … until free. Avoids the ValueError VaultFile.save() raises when
+    a slugified key already exists (different titles can slugify to the same key)."""
+    base_key = base_key or "file"
     key = base_key
     counter = 1
     while VaultFile.objects.filter(bucket=target_bucket, key=key).exists():
         key = f"{base_key}-{counter}"
         counter += 1
     return key
+
+
+def _unique_copy_key(source_file, target_bucket):
+    return _unique_file_key(source_file.key or slugify(source_file.title), target_bucket)
 
 
 class CopyFilesToBucketView(LoginRequiredMixin, View):
@@ -1317,6 +1344,10 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             return JsonResponse({"error": "Filename is required."}, status=400)
         if file_type not in self._ALLOWED:
             return JsonResponse({"error": f"Unsupported type: {file_type}"}, status=400)
+        # Only allow creating a type whose editor app is installed on this deployment
+        # (the UI already hides the others; this guards direct POSTs).
+        if VaultEditorPlugin.for_file_type(file_type) is None:
+            return JsonResponse({"error": "No editor available for this file type."}, status=400)
         if not dir_id:
             return JsonResponse({"error": "directory_id is required."}, status=400)
 
@@ -1327,6 +1358,10 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         vault_file = VaultFile(
             owner=request.user,
             title=title,
+            # Pre-assign a bucket-unique key so a colliding slug (same name, or a
+            # different title that slugifies the same) just gets -1/-2 instead of
+            # VaultFile.save() raising a ValueError → HTML 500 → client "Network error".
+            key=_unique_file_key(slugify(title), directory.bucket),
             file_type=file_type,
             bucket=directory.bucket,
             directory=directory,

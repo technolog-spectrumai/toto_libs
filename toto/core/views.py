@@ -75,6 +75,40 @@ def _connect_qr_url():
     return ""
 
 
+def _tailscale_url():
+    """The clearnet-over-tailnet connect URL (faros bound over Tailscale), or "".
+
+    Kept layering-safe: core never hard-depends on nomad.
+    """
+    from django.apps import apps  # noqa: PLC0415
+
+    if not apps.is_installed("toto.nomad"):
+        return ""
+    try:
+        from toto.nomad.service import tailscale_url  # noqa: PLC0415
+        return tailscale_url() or ""
+    except Exception:
+        return ""
+
+
+def _tailscale_qr_url():
+    """URL of the server-rendered tailnet connect QR, or "" when not published over
+    Tailscale. Kept layering-safe: core never hard-depends on nomad."""
+    from django.apps import apps  # noqa: PLC0415
+
+    if not apps.is_installed("toto.nomad"):
+        return ""
+    try:
+        from django.urls import reverse  # noqa: PLC0415
+
+        from toto.nomad.service import tailscale_url  # noqa: PLC0415
+        if tailscale_url():
+            return reverse("nomad:tailscale_qr")
+    except Exception:
+        pass
+    return ""
+
+
 def welcome_view(request):
     processor = PageProcessor()
 
@@ -85,6 +119,8 @@ def welcome_view(request):
         "federation": platform.federation if platform else None,
         "connect_url": _connect_url(platform),
         "connect_qr_url": _connect_qr_url(),
+        "tailscale_url": _tailscale_url(),
+        "tailscale_qr_url": _tailscale_qr_url(),
     }
 
     return render(request, _get_template("home.html"), processor.decorate(context, request))

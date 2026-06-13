@@ -114,22 +114,23 @@ def connect_url() -> str | None:
 
 _QR_FILE = "connect_qr.png"
 _QR_MARKER = "connect_qr.url"
+_TS_QR_FILE = "tailscale_qr.png"
+_TS_QR_MARKER = "tailscale_qr.url"
 
 
 def _data_dir() -> Path:
     return Path(getattr(settings, "NOMAD_KEY_DIR", "/var/lib/nomad"))
 
 
-def ensure_connect_qr() -> Path | None:
-    """Return the path to a PNG QR of the current connect URL, generating it on
-    first use and whenever the onion has changed. Returns None when no onion."""
-    url = connect_url()
+def _ensure_qr(url: str | None, png_name: str, marker_name: str) -> Path | None:
+    """Return the path to a PNG QR of ``url``, generating it on first use and whenever
+    the URL changes (cached via a sibling marker file). Returns None when no url."""
     if not url:
         return None
 
     directory = _data_dir()
-    png = directory / _QR_FILE
-    marker = directory / _QR_MARKER
+    png = directory / png_name
+    marker = directory / marker_name
 
     if png.exists() and marker.exists() and marker.read_text().strip() == url:
         return png
@@ -151,8 +152,24 @@ def ensure_connect_qr() -> Path | None:
             pass
         raise
     marker.write_text(url)
-    logger.info("nomad: generated connect QR for %s", url)
+    logger.info("nomad: generated QR for %s", url)
     return png
+
+
+def ensure_connect_qr() -> Path | None:
+    """PNG QR of the current connect (.onion) URL, or None when no onion."""
+    return _ensure_qr(connect_url(), _QR_FILE, _QR_MARKER)
+
+
+def tailscale_url() -> str | None:
+    """The clearnet-over-tailnet connect URL (set by deploy.py via FAROS_TAILSCALE_URL),
+    or None when this faros doesn't publish its clearnet listener over Tailscale."""
+    return getattr(settings, "FAROS_TAILSCALE_URL", "") or None
+
+
+def ensure_tailscale_qr() -> Path | None:
+    """PNG QR of the tailnet connect URL, or None when not published over Tailscale."""
+    return _ensure_qr(tailscale_url(), _TS_QR_FILE, _TS_QR_MARKER)
 
 
 # ---------------------------------------------------------------------------

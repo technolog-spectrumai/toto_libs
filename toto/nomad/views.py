@@ -34,6 +34,21 @@ class ConnectQrView(_SuperuserView):
         return FileResponse(open(png, "rb"), content_type="image/png")
 
 
+class TailscaleQrView(_SuperuserView):
+    """Serve the server-rendered PNG QR of the clearnet-over-tailnet connect URL.
+
+    Superuser-only, same as the onion QR — it encodes the faros connect address.
+    Returns 404 unless this faros publishes its clearnet listener over Tailscale
+    (deploy.py sets FAROS_TAILSCALE_URL when nginx.bind: tailscale).
+    """
+
+    def get(self, request):
+        png = service.ensure_tailscale_qr()
+        if png is None:
+            raise Http404("No tailnet address published.")
+        return FileResponse(open(png, "rb"), content_type="image/png")
+
+
 class MigrateOnionView(_SuperuserView):
     """Mint a fresh onion and retire the current one."""
 

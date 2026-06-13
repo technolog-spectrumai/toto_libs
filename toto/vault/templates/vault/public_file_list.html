@@ -100,11 +100,13 @@
         renameError: '',
         renameLoading: false,
 
-        // create new file state
+        // create new file state. createTypes ([[type, ext], …]) is the set of file
+        // types whose editor is installed on this deployment (filled in init()).
         createModal: false,
         createDirId: null,
         createTitle: '',
         createType: 'text',
+        createTypes: [],
         createLoading: false,
         createError: '',
 
@@ -146,6 +148,9 @@
         },
 
         init() {
+          try {
+            this.createTypes = JSON.parse(document.getElementById('vault-create-types').textContent);
+          } catch { this.createTypes = []; }
           const clearSearchAutofill = () => {
             this.search = '';
             if (this.$refs.searchInput) this.$refs.searchInput.value = '';
@@ -569,8 +574,9 @@
 
         openCreateFile(dirItem) {
           this.createDirId = dirItem.id;
-          this.createType = 'text';
-          this.createTitle = 'untitled.txt';
+          const first = this.createTypes[0]?.[0] || 'text';
+          this.createType = first;
+          this.createTitle = 'untitled' + (this._typeExtMap[first] || '');
           this.createError = '';
           this.createModal = true;
         },
@@ -797,6 +803,7 @@
 
     <!-- JSON data island -->
     {{ flat_items|json_script:"vault-items" }}
+    {{ create_file_types|json_script:"vault-create-types" }}
 
     <!-- Tree -->
     <div x-data="vaultTree()">
@@ -1739,7 +1746,7 @@
           <div>
             <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Type" %}</p>
             <div class="flex flex-wrap gap-1.5">
-              <template x-for="[key, label] in [['text','.txt'],['json','.json'],['yaml','.yaml'],['xml','.xml'],['csv','.csv'],['html','.html'],['latex','.tex'],['bib','.bib'],['svg','.svg'],['notebook','.tpy'],['presentation','.pml']]" :key="key">
+              <template x-for="[key, label] in createTypes" :key="key">
                 <button type="button"
                         @click="setCreateType(key)"
                         :class="createType === key
