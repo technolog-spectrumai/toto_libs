@@ -25,6 +25,22 @@
       </p>
     </div>
 
+    <!-- Platform branding — its own card, logo + name alongside -->
+    {% if platform.logo %}
+    <div
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
+      <img src="{{ platform.logo.url }}"
+           alt="{{ platform.site_name }} logo"
+           class="h-12 w-12 shrink-0 rounded-lg object-contain" />
+      <div class="min-w-0 text-left">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-[10px] font-semibold uppercase tracking-widest">{% trans "Platform" %}</p>
+        <p class="text-sm font-semibold truncate">{{ platform.site_name }}</p>
+      </div>
+    </div>
+    {% endif %}
+
     <!-- Main card -->
     <div
       :class="darkMode
@@ -86,27 +102,6 @@
             {% endif %}
           </div>
 
-          {% if platform.logo or federation.logo %}
-          <div class="flex items-end justify-center gap-8">
-            {% if platform.logo %}
-            <div class="flex flex-col items-center gap-1">
-              <img src="{{ platform.logo.url }}"
-                   alt="{{ platform.site_name }} logo"
-                   class="h-16 w-auto rounded-lg opacity-90" />
-              <span class="text-[10px] uppercase tracking-widest opacity-40">{% trans "Platform" %}</span>
-            </div>
-            {% endif %}
-            {% if federation and federation.logo %}
-            <div class="flex flex-col items-center gap-1">
-              <img src="{{ federation.logo.url }}"
-                   alt="{{ federation.name }} logo"
-                   class="h-16 w-auto rounded-lg opacity-90" />
-              <span class="text-[10px] uppercase tracking-widest opacity-40">{% trans "Federation" %}</span>
-            </div>
-            {% endif %}
-          </div>
-          {% endif %}
-
           <!-- QR code — rendered server-side so it works in Tor Browser (which
                blocks JS). Superuser-only: it encodes the hidden .onion address. -->
           {% if user.is_superuser and connect_qr_url %}
@@ -121,6 +116,22 @@
             {% if connect_url %}
             <p class="text-xs opacity-50 break-all text-center">{{ connect_url }}</p>
             {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- Federation branding — its own card, logo + name alongside (below the QR) -->
+          {% if federation and federation.logo %}
+          <div
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
+            <img src="{{ federation.logo.url }}"
+                 alt="{{ federation.name }} logo"
+                 class="h-12 w-12 shrink-0 rounded-lg object-contain" />
+            <div class="min-w-0 text-left">
+              <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="text-[10px] font-semibold uppercase tracking-widest">{% trans "Federation" %}</p>
+              <p class="text-sm font-semibold truncate">{{ federation.name }}</p>
+            </div>
           </div>
           {% endif %}
 
