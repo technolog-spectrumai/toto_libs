@@ -4,7 +4,8 @@ This document describes every cryptographic mechanism behind Enigma chat so it c
 reviewed. There are **three** distinct schemes:
 
 1. **At-rest encryption of relay history** — server-readable (Discord model).
-2. **End-to-end encrypted pins** — server-opaque (Signal-grade), layered on the relay tab.
+2. **End-to-end encrypted pins** + **secure-on-send** (§2b) — server-opaque (Signal-grade),
+   layered on the relay tab under a member-held pin key.
 3. **End-to-end MLS** — the P2P (Signal) tab and the relay pin-key control channel.
 
 Primitives throughout: **AES-256-GCM** (12-byte nonce, 16-byte tag) for symmetric
@@ -99,14 +100,38 @@ only the pin key is E2E here). The server relays opaque MLS ciphertext and never
   copy** on pin, so only the E2E ciphertext persists.
 - Reading: a member decrypts with the locally-held pin key; a non-holder sees the placeholder.
 
-> Honest caveat: the server *did* see the message's plaintext in the ≤24h readable history
-> before it was pinned. E2E pinning protects the **durable** record going forward (the live
-> copy is deleted on pin), not that transient exposure. A "secure-on-send" mode (E2E from
-> compose time, never server-readable) is a possible future addition.
+> The pin caveat ("the server saw the transient copy") is addressed by **secure-on-send**
+> below: composing a message as secure sends it E2E from the start, so the server never sees
+> its plaintext at all.
 
 Implementation: [pinCrypto.ts](../../../edge/packages/rakotis/src/pinCrypto.ts),
 [useChatChannel.ts](../../../edge/packages/rakotis/src/useChatChannel.ts) (pin orchestration),
 pin endpoints in [api_views.py](api_views.py).
+
+### 2b. Secure-on-send (E2E inline messages)
+
+A composer toggle (🔒) marks a message **secure**: it is encrypted on the client under the
+**same per-channel pin key** (§2) and sent E2E — the server **never sees its plaintext**, not
+even transiently. It renders inline in the conversation (not just the pinned panel).
+
+- **Send:** `useChatChannel.sendSecureMessage` → `encryptPin(pin_key, {type,content})` →
+  WS `{type:"secure_message", pin_key_id, iv, ciphertext}`. The server (`consumers.handle_secure_message`)
+  persists a `TelegraphMessage` with `encryption="e2e"` (opaque `ciphertext`/`iv`/`pin_key_id`,
+  **no DEK, no vault password needed**) and broadcasts the opaque payload to the group.
+- **Receive / history:** members decrypt with the local pin key (`renderSecureMessage`); those
+  without it see a **locked placeholder** until the key arrives over MLS (then `unlockPendingSecure`
+  re-decrypts inline). `vault.history` replays e2e rows as raw ciphertext — readable client-side
+  only.
+- **Retention:** secure messages follow the channel's 24h TTL like normal messages (pin one to
+  keep it). The server can still purge them (the `expires_at` timestamp is cleartext metadata).
+- **Property:** secure-on-send is **E2E but NOT forward-secret** — readable by current *and
+  future* members holding the long-lived pin key. Forward-secret ephemeral E2E is the P2P/MLS
+  tab (§3). Choose per message: at-rest (readable by all + server) vs secure (members-with-key
+  only, server-blind).
+
+Implementation: `sendSecureMessage`/`renderSecureMessage`/`unlockPendingSecure` in
+[useChatChannel.ts](../../../edge/packages/rakotis/src/useChatChannel.ts);
+`store_e2e_message` in [vault.py](vault.py); `handle_secure_message` in [consumers.py](consumers.py).
 
 ## 3. End-to-end MLS (P2P tab + pin-key transport)
 
@@ -140,8 +165,9 @@ Implementation: rotor (`toto/rotors/rotor_core`, `rotor_wasm`), client MLS orche
 
 | Artifact | Server can read? |
 |----------|------------------|
-| Relay message in transit | Yes (TLS terminates at the server) |
-| Relay message at rest (`TelegraphMessage`) | Yes, with `TELEGRAPH_VAULT_PASSWORD` (Discord model) |
+| Relay message in transit (normal) | Yes (TLS terminates at the server) |
+| Relay message at rest, `encryption="at_rest"` | Yes, with `TELEGRAPH_VAULT_PASSWORD` (Discord model) |
+| Secure-on-send message, `encryption="e2e"` | **No** — opaque ciphertext, key is member-only |
 | Pinned message (`TelegraphPin`) | **No** — opaque ciphertext, key is member-only |
 | Pin key | **No** — only ever inside MLS ciphertext + on member devices |
 | P2P (Signal) messages | **No** — end-to-end MLS, no server in the path |

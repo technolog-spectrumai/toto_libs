@@ -17,6 +17,7 @@ Key hierarchy (see crypto.md):
 
     TELEGRAPH_VAULT_PASSWORD ─Argon2id▶ UKEK ─unwrap▶ VMK ─unwrap▶ channel DEK ─AES-GCM▶ message
 """
+import base64
 import json
 import logging
 import threading
@@ -166,6 +167,32 @@ def store_message(channel, *, msg_type, payload: dict, sender=None,
     )
 
 
+def store_e2e_message(channel, *, pin_key_id, iv, ciphertext, sender=None,
+                      sender_name="", sender_avatar_url=""):
+    """Persist a "secure-on-send" message: end-to-end encrypted on the client under the
+    member-held pin key. The server stores only opaque bytes — no DEK, no plaintext, and
+    no vault password required (it cannot read this message). Returns the saved row.
+    """
+    from .models import TelegraphMessage
+
+    now = timezone.now()
+    return TelegraphMessage.objects.create(
+        channel=channel,
+        sender=sender,
+        sender_name=sender_name,
+        sender_avatar_url=sender_avatar_url,
+        msg_type="chat_message",
+        encryption="e2e",
+        pin_key_id=pin_key_id,
+        iv=iv,
+        ciphertext=ciphertext,
+        nonce=b"",  # unused for e2e (no DEK envelope)
+        aad=b"",
+        created_at=now,
+        expires_at=now + channel.message_ttl,
+    )
+
+
 def decrypt_message(row) -> dict:
     """Decrypt a ``TelegraphMessage`` row back into its payload dict."""
     session = open_session()
@@ -184,15 +211,34 @@ def history(channel, *, limit=200, now=None):
         channel.messages.filter(expires_at__gt=now).order_by("-created_at")[:limit]
     )
     rows.reverse()  # oldest-first for natural append
-    session = open_session()
+    session = None  # opened lazily, only when an at-rest row needs decrypting
     out = []
     for row in rows:
+        # "secure-on-send" (e2e): the server can't read it — replay the opaque ciphertext
+        # and let the client decrypt with its member-held pin key. No vault password needed.
+        if row.encryption == "e2e":
+            out.append({
+                "type": "secure_message",
+                "id": str(row.id),
+                "user": row.sender_name,
+                "avatar_url": row.sender_avatar_url,
+                "created_at": row.created_at.isoformat(),
+                "pin_key_id": row.pin_key_id,
+                "iv": base64.b64encode(bytes(row.iv or b"")).decode(),
+                "ciphertext": base64.b64encode(bytes(row.ciphertext)).decode(),
+                "history": True,
+            })
+            continue
         try:
+            if session is None:
+                session = open_session()
             payload = json.loads(
                 session.decrypt_blob(
                     channel.dek, row.ciphertext, row.nonce, bytes(row.aad or b"")
                 ).decode("utf-8")
             )
+        except VaultUnavailable:
+            continue  # vault not configured — skip at-rest rows, still serve e2e ones
         except Exception:
             log.warning("telegraph: failed to decrypt history row %s", row.id)
             continue

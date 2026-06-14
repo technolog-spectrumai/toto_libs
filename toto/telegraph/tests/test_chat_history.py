@@ -80,6 +80,57 @@ class VaultHistoryTests(TestCase):
         with self.assertRaises(vault.VaultUnavailable):
             vault.open_session()
 
+    # ── secure-on-send (end-to-end; server stores opaque ciphertext) ──────────
+    def test_e2e_message_stored_opaque(self):
+        row = vault.store_e2e_message(
+            self.channel, pin_key_id="k1", iv=b"x" * 12, ciphertext=b"opaque-e2e-bytes",
+            sender_name="alice",
+        )
+        self.assertEqual(row.encryption, "e2e")
+        self.assertEqual(row.pin_key_id, "k1")
+        self.assertEqual(bytes(row.ciphertext), b"opaque-e2e-bytes")
+        self.assertIsNotNone(row.expires_at)  # follows the channel TTL
+
+    def test_history_replays_e2e_ciphertext_raw(self):
+        import base64
+
+        vault.store_e2e_message(
+            self.channel, pin_key_id="k1", iv=b"i" * 12, ciphertext=b"cipher",
+            sender_name="alice",
+        )
+        hist = vault.history(self.channel)
+        self.assertEqual(len(hist), 1)
+        entry = hist[0]
+        self.assertEqual(entry["type"], "secure_message")
+        self.assertEqual(entry["pin_key_id"], "k1")
+        self.assertEqual(base64.b64decode(entry["ciphertext"]), b"cipher")
+        self.assertEqual(base64.b64decode(entry["iv"]), b"i" * 12)
+        self.assertNotIn("message", entry)  # server never had the plaintext
+
+    def test_e2e_history_works_without_vault_password(self):
+        from toto.gervazy.models import UserStrongbox
+
+        vault.store_e2e_message(
+            self.channel, pin_key_id="k1", iv=b"i" * 12, ciphertext=b"c", sender_name="a"
+        )
+        # Even with no usable vault, e2e history is replayable (server holds no key for it).
+        UserStrongbox.objects.filter(name=vault.SYSTEM_STRONGBOX_NAME).update(
+            name="archived"
+        )
+        vault.clear_cache()
+        hist = vault.history(self.channel)
+        self.assertEqual(len(hist), 1)
+        self.assertEqual(hist[0]["type"], "secure_message")
+
+    def test_e2e_message_purged_after_ttl(self):
+        row = vault.store_e2e_message(
+            self.channel, pin_key_id="k1", iv=b"i" * 12, ciphertext=b"c", sender_name="a"
+        )
+        TelegraphMessage.objects.filter(pk=row.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        self.assertEqual(vault.purge_expired(self.channel), 1)
+
 
 @override_settings(TELEGRAPH_VAULT_PASSWORD=PW)
 class PinApiTests(TestCase):

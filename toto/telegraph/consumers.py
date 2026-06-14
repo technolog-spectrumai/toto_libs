@@ -83,6 +83,10 @@ class ChatConsumer(AsyncWebsocketConsumer):
             await self.handle_voice_message(user, data)
             return
 
+        if data_type == "secure_message":
+            await self.handle_secure_message(user, data)
+            return
+
         await self.send_error(
             "Only chat messages, image messages, Yjs messages, and MLS-encrypted messages are accepted."
         )
@@ -233,6 +237,71 @@ class ChatConsumer(AsyncWebsocketConsumer):
             sender_channel=self.channel_name,
             target_channel=None,
         )
+
+    # ── secure-on-send (end-to-end; server stores opaque ciphertext) ──────────
+    async def handle_secure_message(self, user, data):
+        pin_key_id = (data.get("pin_key_id") or "").strip()
+        iv_b64 = data.get("iv") or ""
+        ct_b64 = data.get("ciphertext") or ""
+        if not pin_key_id or not iv_b64 or not ct_b64:
+            await self.send_error("secure_message requires pin_key_id, iv and ciphertext.")
+            return
+
+        member = await self.get_channel_member(user)
+        sender_name = member.display_name
+        avatar = self.absolute_url(member.avatar_url)
+        stored = await self._store_secure(pin_key_id, iv_b64, ct_b64, sender_name, avatar, user)
+        if not stored:
+            await self.send_error("Could not store secure message.")
+            return
+
+        # Broadcast the opaque ciphertext to the group; only members with the pin key
+        # can decrypt it. The server never sees the plaintext.
+        await self.broadcast(
+            payload={
+                "type": "secure_message",
+                "pin_key_id": pin_key_id,
+                "iv": iv_b64,
+                "ciphertext": ct_b64,
+                "user": sender_name,
+                "avatar_url": avatar,
+                "id": stored["id"],
+                "created_at": stored["created_at"],
+                "sender_channel": self.channel_name,
+                "target_channel": None,
+            },
+            sender_channel=self.channel_name,
+            target_channel=None,
+        )
+
+    @database_sync_to_async
+    def _store_secure(self, pin_key_id, iv_b64, ct_b64, sender_name, sender_avatar_url, user):
+        import base64
+
+        from . import vault
+        from .models import TelegraphChannel
+
+        try:
+            channel = TelegraphChannel.objects.get(slug=self.channel_slug)
+        except TelegraphChannel.DoesNotExist:
+            return None
+        try:
+            iv = base64.b64decode(iv_b64, validate=True)
+            ciphertext = base64.b64decode(ct_b64, validate=True)
+        except Exception:
+            return None
+        if not iv or not ciphertext:
+            return None
+        row = vault.store_e2e_message(
+            channel,
+            pin_key_id=pin_key_id,
+            iv=iv,
+            ciphertext=ciphertext,
+            sender=user if getattr(user, "is_authenticated", False) else None,
+            sender_name=sender_name or "",
+            sender_avatar_url=sender_avatar_url or "",
+        )
+        return {"id": str(row.id), "created_at": row.created_at.isoformat()}
 
     # ── persistent encrypted history (Discord model) ──────────────────────────
     @database_sync_to_async

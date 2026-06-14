@@ -129,10 +129,20 @@ class TelegraphMessage(models.Model):
         ("voice_message", "voice_message"),
     ]
 
+    # at_rest: encrypted under the channel DEK; the server CAN read it (Discord history).
+    # e2e:     "secure-on-send" — encrypted on the client under the member-held pin key;
+    #          the server stores opaque ciphertext + iv + pin_key_id and CANNOT read it.
+    ENCRYPTION_CHOICES = [("at_rest", "at_rest"), ("e2e", "e2e")]
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     channel = models.ForeignKey(
         TelegraphChannel, on_delete=models.CASCADE, related_name="messages"
     )
+    encryption = models.CharField(max_length=16, choices=ENCRYPTION_CHOICES, default="at_rest")
+    # e2e rows only: which member-held key encrypted it + its AES-GCM IV. (at_rest rows
+    # use the DEK envelope below: nonce + aad.)
+    pin_key_id = models.CharField(max_length=64, blank=True, default="")
+    iv = models.BinaryField(null=True, blank=True)
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,

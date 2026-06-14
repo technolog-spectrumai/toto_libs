@@ -23,9 +23,14 @@ pragmatic: **TLS in transit, the server can read messages**, so it can serve his
 anyone. We adopt that and encrypt the stored messages **at rest** with
 [gervazy](../gervazy/README.md) so a stolen DB/backup is useless.
 
-The privacy escape hatch is **pinning**: a pinned message is **end-to-end encrypted** under a
-member-held key the server never sees, so anything kept long-term is outside the server's
-readable archive.
+The privacy escape hatches are both layered on the relay tab, under a member-held key the
+server never sees:
+- **Pinning** — re-encrypts an existing message E2E and keeps it (server-opaque).
+- **Secure-on-send** (composer 🔒 toggle) — a message that goes **end-to-end from compose
+  time**, so the server never sees its plaintext at all. Renders inline; members decrypt it,
+  non-holders see a locked placeholder. E2E but **not** forward-secret (that's the P2P tab).
+
+See [crypto.md](crypto.md) §2b for secure-on-send.
 
 ## Data model ([models.py](models.py))
 
@@ -56,7 +61,8 @@ readable archive.
 | Type | Direction | Description |
 |------|-----------|-------------|
 | `chat_message` / `image_message` / `voice_message` | both | Relay content (plaintext over TLS, persisted) |
-| `chat_history` | server→client | History batch replayed on connect (decrypted server-side) |
+| `secure_message` | both | Secure-on-send: E2E ciphertext under the pin key (server-opaque, persisted) |
+| `chat_history` | server→client | History batch replayed on connect (at-rest decrypted server-side; e2e raw) |
 | `message_pinned` / `message_unpinned` | server→client | Pin events |
 | `mls_*` | both | MLS handshake/app messages — opaque relay (P2P content; relay pin-key distribution) |
 | `room_participants` | server→client | Active participant list |
