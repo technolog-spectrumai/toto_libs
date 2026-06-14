@@ -1,0 +1,151 @@
+"""Tests for the relay "Discord" model: encrypted-at-rest history, TTL/purge, and
+end-to-end (server-opaque) pins."""
+import base64
+import json
+from datetime import timedelta
+
+from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.test import TestCase, override_settings
+from django.utils import timezone
+
+from toto.telegraph import vault
+from toto.telegraph.models import (
+    TelegraphChannel,
+    TelegraphMember,
+    TelegraphMessage,
+    TelegraphPin,
+)
+
+User = get_user_model()
+PW = "test-telegraph-pw"
+
+
+@override_settings(TELEGRAPH_VAULT_PASSWORD=PW)
+class VaultHistoryTests(TestCase):
+    def setUp(self):
+        vault.clear_cache()
+        call_command("telegraph_init_vault", verbosity=0)
+        vault.clear_cache()
+        self.channel = TelegraphChannel.objects.create(
+            name="hist", slug="hist", message_ttl_seconds=86400
+        )
+
+    def test_store_is_encrypted_at_rest_and_decrypts(self):
+        row = vault.store_message(
+            self.channel, msg_type="chat_message",
+            payload={"message": "launch is friday"}, sender_name="alice",
+        )
+        # The stored ciphertext must not contain the plaintext.
+        self.assertNotIn(b"launch is friday", bytes(row.ciphertext))
+        self.assertEqual(vault.decrypt_message(row), {"message": "launch is friday"})
+        self.assertIsNotNone(row.expires_at)
+
+    def test_per_channel_key_isolation(self):
+        other = TelegraphChannel.objects.create(name="o", slug="o")
+        r1 = vault.store_message(self.channel, msg_type="chat_message", payload={"message": "a"})
+        vault.store_message(other, msg_type="chat_message", payload={"message": "b"})
+        self.channel.refresh_from_db(); other.refresh_from_db()
+        self.assertNotEqual(self.channel.dek_id, other.dek_id)  # one DEK per channel
+        self.assertEqual(vault.decrypt_message(r1), {"message": "a"})
+
+    def test_history_oldest_first_with_metadata(self):
+        vault.store_message(self.channel, msg_type="chat_message", payload={"message": "first"}, sender_name="a")
+        vault.store_message(self.channel, msg_type="chat_message", payload={"message": "second"}, sender_name="b")
+        hist = vault.history(self.channel)
+        self.assertEqual([h["message"] for h in hist], ["first", "second"])
+        self.assertEqual(hist[0]["type"], "chat_message")
+        self.assertEqual(hist[0]["user"], "a")
+        self.assertTrue(hist[0]["id"])
+        self.assertTrue(hist[0]["history"])
+
+    def test_expired_excluded_then_purged(self):
+        row = vault.store_message(self.channel, msg_type="chat_message", payload={"message": "old"})
+        TelegraphMessage.objects.filter(pk=row.pk).update(
+            expires_at=timezone.now() - timedelta(seconds=1)
+        )
+        self.assertEqual(vault.history(self.channel), [])      # excluded from replay
+        self.assertEqual(vault.purge_expired(self.channel), 1)  # and deleted
+        self.assertFalse(TelegraphMessage.objects.filter(pk=row.pk).exists())
+
+    def test_unavailable_when_strongbox_missing(self):
+        from toto.gervazy.models import UserStrongbox
+
+        # No telegraph-system strongbox in the lookup → vault unavailable (rename rather
+        # than delete: the VMK/DEK FKs are PROTECT).
+        UserStrongbox.objects.filter(name=vault.SYSTEM_STRONGBOX_NAME).update(
+            name="archived-telegraph-box"
+        )
+        vault.clear_cache()
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.open_session()
+
+
+@override_settings(TELEGRAPH_VAULT_PASSWORD=PW)
+class PinApiTests(TestCase):
+    def setUp(self):
+        from toto.people.models import Person
+
+        vault.clear_cache()
+        call_command("telegraph_init_vault", verbosity=0)
+        vault.clear_cache()
+        self.user = User.objects.create_user(username="pinner", password="pw")
+        self.person = Person.objects.create(user=self.user, display_name="Pinner")
+        self.channel = TelegraphChannel.objects.create(name="pinroom", slug="pinroom")
+        TelegraphMember.objects.create(channel=self.channel, person=self.person, is_active=True)
+        self.client.force_login(self.user)
+        self.iv = base64.b64encode(b"x" * 12).decode()
+        self.ct = base64.b64encode(b"opaque-pin-bytes").decode()
+
+    def _post_pin(self, **extra):
+        body = {"pin_key_id": "k1", "iv": self.iv, "ciphertext": self.ct, **extra}
+        return self.client.post(
+            "/telegraph/api/channels/pinroom/pins/",
+            data=json.dumps(body), content_type="application/json",
+        )
+
+    def test_non_member_forbidden(self):
+        other = User.objects.create_user(username="rando", password="pw")
+        self.client.force_login(other)
+        self.assertEqual(self._post_pin().status_code, 403)
+
+    def test_create_stores_opaque_and_marks_channel(self):
+        res = self._post_pin(original_sender="alice")
+        self.assertEqual(res.status_code, 200)
+        pin_id = res.json()["pin"]["id"]
+        pin = TelegraphPin.objects.get(id=pin_id)
+        # Server stores only opaque bytes — no key, no plaintext.
+        self.assertEqual(bytes(pin.ciphertext), b"opaque-pin-bytes")
+        self.assertEqual(pin.pin_key_id, "k1")
+        self.channel.refresh_from_db()
+        self.assertEqual(self.channel.pin_key_id, "k1")  # active-key marker recorded
+        self.assertFalse(hasattr(pin, "plaintext"))
+
+    def test_pin_deletes_server_readable_copy(self):
+        row = vault.store_message(
+            self.channel, msg_type="chat_message", payload={"message": "keep me"}
+        )
+        res = self._post_pin(message_id=str(row.id))
+        self.assertEqual(res.status_code, 200)
+        # The readable history copy is removed; only the E2E pin persists.
+        self.assertFalse(TelegraphMessage.objects.filter(pk=row.pk).exists())
+
+    def test_list_and_unpin(self):
+        pin_id = self._post_pin().json()["pin"]["id"]
+        listing = self.client.get("/telegraph/api/channels/pinroom/pins/").json()
+        self.assertEqual(listing["pin_key_id"], "k1")
+        self.assertEqual(len(listing["pins"]), 1)
+        self.assertEqual(listing["pins"][0]["iv"], self.iv)
+
+        res = self.client.post(f"/telegraph/api/channels/pinroom/pins/{pin_id}/unpin/")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(TelegraphPin.objects.filter(id=pin_id).exists())
+
+    def test_bad_base64_rejected(self):
+        res = self.client.post(
+            "/telegraph/api/channels/pinroom/pins/",
+            data=json.dumps({"pin_key_id": "k1", "iv": "!!", "ciphertext": "!!"}),
+            content_type="application/json",
+        )
+        # urlsafe/standard b64decode of "!!" raises → 400.
+        self.assertEqual(res.status_code, 400)

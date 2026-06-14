@@ -36,6 +36,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             self.channel_name,
         )
         await self.accept()
+        await self.send_history()
         await self.broadcast_participants()
 
     async def disconnect(self, close_code):
@@ -146,6 +147,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
         data["sender_channel"] = self.channel_name
         data["target_channel"] = None
 
+        stored = await self.persist_message(
+            user, "chat_message", {"message": data.get("message", "")},
+            member.display_name, self.absolute_url(member.avatar_url),
+        )
+        if stored:
+            data["id"] = stored["id"]
+            data["created_at"] = stored["created_at"]
+
         await self.broadcast(
             payload=data,
             sender_channel=self.channel_name,
@@ -175,6 +184,14 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "target_channel": None,
         }
 
+        stored = await self.persist_message(
+            user, "image_message", {"image_data": image_data},
+            member.display_name, self.absolute_url(member.avatar_url),
+        )
+        if stored:
+            payload["id"] = stored["id"]
+            payload["created_at"] = stored["created_at"]
+
         await self.broadcast(
             payload=payload,
             sender_channel=self.channel_name,
@@ -203,11 +220,80 @@ class ChatConsumer(AsyncWebsocketConsumer):
             "target_channel": None,
         }
 
+        stored = await self.persist_message(
+            user, "voice_message", {"audio_data": audio_data},
+            member.display_name, self.absolute_url(member.avatar_url),
+        )
+        if stored:
+            payload["id"] = stored["id"]
+            payload["created_at"] = stored["created_at"]
+
         await self.broadcast(
             payload=payload,
             sender_channel=self.channel_name,
             target_channel=None,
         )
+
+    # ── persistent encrypted history (Discord model) ──────────────────────────
+    @database_sync_to_async
+    def _store_message(self, msg_type, content, sender_name, sender_avatar_url, user):
+        from . import vault
+        from .models import TelegraphChannel
+
+        try:
+            channel = TelegraphChannel.objects.get(slug=self.channel_slug)
+        except TelegraphChannel.DoesNotExist:
+            return None
+        try:
+            row = vault.store_message(
+                channel,
+                msg_type=msg_type,
+                payload=content,
+                sender=user if getattr(user, "is_authenticated", False) else None,
+                sender_name=sender_name or "",
+                sender_avatar_url=sender_avatar_url or "",
+            )
+        except vault.VaultUnavailable:
+            return None  # history disabled — keep the live broadcast working
+        return {"id": str(row.id), "created_at": row.created_at.isoformat()}
+
+    async def persist_message(self, user, msg_type, content, sender_name, sender_avatar_url):
+        """Persist a relay message encrypted at rest; returns {id, created_at} or None."""
+        try:
+            return await self._store_message(
+                msg_type, content, sender_name, sender_avatar_url, user
+            )
+        except Exception:
+            return None  # never let persistence break live delivery
+
+    @database_sync_to_async
+    def _load_history(self):
+        from . import vault
+        from .models import TelegraphChannel
+
+        try:
+            channel = TelegraphChannel.objects.get(slug=self.channel_slug)
+        except TelegraphChannel.DoesNotExist:
+            return []
+        try:
+            vault.purge_expired(channel)          # lazy purge on connect
+            return vault.history(channel)
+        except vault.VaultUnavailable:
+            return []
+
+    async def send_history(self):
+        """Replay readable history to the just-connected socket."""
+        try:
+            messages = await self._load_history()
+        except Exception:
+            messages = []
+        if not messages:
+            return
+        await self.send(text_data=json.dumps({
+            "type": "chat_history",
+            "room_slug": self.channel_slug,
+            "messages": messages,
+        }))
 
     async def broadcast_participants(self):
         await self.broadcast(

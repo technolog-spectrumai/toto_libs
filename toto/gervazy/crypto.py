@@ -426,6 +426,71 @@ class GervazyCryptoSession:
         )
 
     # ------------------------------------------------------------------
+    # Public blob helpers (arbitrary ciphertext under a DEK — no model row)
+    # ------------------------------------------------------------------
+
+    def encrypt_blob(self, wrapped_key, plaintext: bytes, aad: bytes = b"") -> tuple[bytes, bytes]:
+        """Encrypt arbitrary bytes under a WrappedDataKey's DEK.
+
+        Returns ``(ciphertext_with_tag, nonce)``. Unlike :meth:`encrypt_secret` this
+        creates no database row — the caller stores the ciphertext wherever it likes
+        (e.g. a ``TelegraphMessage`` row). ``aad`` should bind the ciphertext to its
+        context so a row cannot be replayed under a different identity.
+        """
+        if not isinstance(plaintext, bytes):
+            raise TypeError("Plaintext must be bytes.")
+
+        dek = self._unwrap_dek(wrapped_key)
+        return aes_gcm_encrypt(dek, plaintext, aad or b"")
+
+    def decrypt_blob(self, wrapped_key, ciphertext, nonce, aad: bytes = b"") -> bytes:
+        """Decrypt bytes produced by :meth:`encrypt_blob` under the same WrappedDataKey.
+
+        Raises ``InvalidTag`` if the ciphertext, nonce, or AAD do not match.
+        """
+        dek = self._unwrap_dek(wrapped_key)
+        return aes_gcm_decrypt(dek, bytes(ciphertext), bytes(nonce), aad or b"")
+
+    def create_data_key(self) -> "WrappedDataKey":
+        """Create and persist a fresh DEK under this strongbox's active VMK.
+
+        Returns the new ``WrappedDataKey`` with its raw DEK warmed into the session
+        cache, so an immediate ``encrypt_blob`` does not re-unwrap. Used when a new
+        namespace (e.g. a telegraph channel) needs its own data key.
+        """
+        from toto.gervazy.models import VaultMasterKey, WrappedDataKey
+
+        vmk = (
+            VaultMasterKey.objects.filter(strongbox=self._strongbox, state="active")
+            .order_by("-version")
+            .first()
+        )
+        if not vmk:
+            raise RuntimeError("No active VMK for this strongbox.")
+
+        raw_vmk = self._unwrap_vmk(vmk)
+        raw_dek = generate_raw_key()
+        encrypted_dek, nonce = aes_gcm_encrypt(raw_vmk, raw_dek)
+
+        last = (
+            WrappedDataKey.objects.filter(strongbox=self._strongbox)
+            .order_by("-version")
+            .first()
+        )
+        version = (last.version + 1) if last else 1
+
+        wrapped_key = WrappedDataKey.objects.create(
+            strongbox=self._strongbox,
+            vmk=vmk,
+            encrypted_dek=encrypted_dek,
+            nonce=nonce,
+            version=version,
+            state="active",
+        )
+        self._dek_cache[wrapped_key.pk] = raw_dek
+        return wrapped_key
+
+    # ------------------------------------------------------------------
     # Strongbox initialization
     # ------------------------------------------------------------------
 

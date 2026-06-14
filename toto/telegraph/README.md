@@ -1,12 +1,40 @@
 # Telegraph — Real-time Chat
 
-Encrypted group chat backed by MLS (Messaging Layer Security). Used by the Enigma desktop app and accessible at `/telegraph/`.
+Chat backend for the Enigma app — Django Channels WebSockets plus a Bearer-token JSON
+API. Enigma exposes chat as **two tabs with different security models**:
 
-## Architecture
+| Tab | Model | Transport | History | Who can read |
+|-----|-------|-----------|---------|--------------|
+| **P2P** | "Signal" | iroh QUIC, end-to-end **MLS** (rotor) | none (ephemeral) | members only (E2E) |
+| **Relay / Forum** | "Discord" | WebSocket over **TLS** | **persistent, readable, per-room TTL (24h default)** | server + members |
 
-- **Django Channels** WebSocket consumer (`consumers.py`) — relays messages between browser/desktop clients
-- **MLS** end-to-end encryption via `rotor-wasm` (browser) / `rotor-core` Rust (Tauri)
-- **JSON API** (`api_views.py`) — Bearer-token authenticated, consumed by Enigma Tauri app
+This app implements the **Relay/Forum (Discord)** side. The P2P (Signal) side lives in the
+edge client (iroh + rotor) and is unchanged.
+
+> **Cryptography for auditing is in [crypto.md](crypto.md)** — the at-rest envelope, the
+> end-to-end pin scheme, and how E2E MLS works.
+
+## Why the relay tab is not end-to-end
+
+We want Discord-style readable history: a member — including one who **just joined** — opens
+a channel and sees prior messages. MLS forward secrecy makes that impossible for stored
+ciphertext (old messages can't be decrypted later, even by members). Discord's answer is
+pragmatic: **TLS in transit, the server can read messages**, so it can serve history to
+anyone. We adopt that and encrypt the stored messages **at rest** with
+[gervazy](../gervazy/README.md) so a stolen DB/backup is useless.
+
+The privacy escape hatch is **pinning**: a pinned message is **end-to-end encrypted** under a
+member-held key the server never sees, so anything kept long-term is outside the server's
+readable archive.
+
+## Data model ([models.py](models.py))
+
+- `TelegraphChannel` — `message_ttl_seconds` (default 86400 = 24h), `dek` FK to the channel's
+  gervazy data key, `pin_key_id` (opaque marker of the active E2E pin key).
+- `TelegraphMessage` — a persisted relay message, **encrypted at rest** under the channel DEK
+  (`ciphertext`/`nonce`/`aad`), with `created_at`/`expires_at`. Purged after TTL.
+- `TelegraphPin` — an **end-to-end** encrypted pin: opaque `ciphertext` + `iv` + `pin_key_id`
+  only. The server holds no key and cannot read it. No TTL.
 
 ## API Endpoints
 
@@ -17,30 +45,48 @@ Encrypted group chat backed by MLS (Messaging Layer Security). Used by the Enigm
 | POST | `/telegraph/api/logout/` | Logout |
 | GET | `/telegraph/api/me/` | Current user profile |
 | GET | `/telegraph/api/channels/` | List all channels |
-| GET | `/telegraph/api/channels/{slug}/` | Channel detail + members |
-| POST | `/telegraph/api/channels/{slug}/join/` | Join a channel |
-| POST | `/telegraph/api/channels/{slug}/leave/` | Leave a channel |
-| POST | `/telegraph/api/channels/leave-all/` | Leave all channels |
-| POST | `/telegraph/api/channels/{slug}/upload/` | Upload image (base64-relayed via WS) |
-| POST | `/telegraph/api/channels/{slug}/upload-audio/` | Upload audio (base64-relayed via WS) |
+| GET | `/telegraph/api/channels/{slug}/` | Channel detail + members (incl. `username`) |
+| POST | `/telegraph/api/channels/{slug}/join/` · `/leave/` · `/leave-all/` | Membership |
+| POST | `/telegraph/api/channels/{slug}/upload/` · `/upload-audio/` | Relay image/voice (persisted) |
+| GET · POST | `/telegraph/api/channels/{slug}/pins/` | List · create an **E2E** pin |
+| POST | `/telegraph/api/channels/{slug}/pins/{id}/unpin/` | Remove a pin |
 
 ## WebSocket Message Types
 
 | Type | Direction | Description |
 |------|-----------|-------------|
-| `chat_message` | both | Plaintext message |
-| `image_message` | both | Base64 image data |
-| `voice_message` | both | Base64 audio data (webm/ogg/mp4/wav) |
-| `mls_app` | both | MLS-encrypted application message (opaque relay) |
-| `mls_key_package` | both | MLS key package for handshake |
-| `mls_welcome` | both | MLS welcome message |
-| `mls_commit` | both | MLS commit message |
-| `room_participants` | server→client | Active participant list update |
+| `chat_message` / `image_message` / `voice_message` | both | Relay content (plaintext over TLS, persisted) |
+| `chat_history` | server→client | History batch replayed on connect (decrypted server-side) |
+| `message_pinned` / `message_unpinned` | server→client | Pin events |
+| `mls_*` | both | MLS handshake/app messages — opaque relay (P2P content; relay pin-key distribution) |
+| `room_participants` | server→client | Active participant list |
 | `system_error` | server→client | Error notification |
+
+## At-rest vault ([vault.py](vault.py))
+
+Channel DEKs live in one **telegraph system strongbox**, unlocked server-side by the
+`TELEGRAPH_VAULT_PASSWORD` setting (mirrors `sso_master`'s `SSO_VAULT_PASSWORD`). Key
+hierarchy and threat model are in [crypto.md](crypto.md).
+
+## Operations
+
+```bash
+# One-time per deployment (creates the system strongbox + first data key):
+TELEGRAPH_VAULT_PASSWORD=<secret> python manage.py telegraph_init_vault
+
+# Purge expired messages (faros has no celery — run from cron, e.g. every 15 min):
+python manage.py telegraph_purge_expired          # --dry-run to preview
+```
+
+- Set `TELEGRAPH_VAULT_PASSWORD` in the server environment (faros + portal). **If unset,
+  chat still works but history is disabled** (messages send live, nothing is persisted).
+- Per-room retention is `TelegraphChannel.message_ttl_seconds` (Django admin / shell; no
+  in-app editor yet). Pins ignore the TTL.
+- **Losing `TELEGRAPH_VAULT_PASSWORD` makes stored history permanently unreadable.** Pins are
+  unaffected (they use the member-held pin key, not this password).
 
 ## Testing
 
 ```bash
-cd portal
-python manage.py test toto.telegraph
+cd portal && ../venv/bin/python manage.py test toto.telegraph toto.gervazy
 ```

@@ -355,6 +355,9 @@ class ImageUploadApiView(CorsApiView):
             "avatar_url": avatar_url,
         }
 
+        _persist_relay_media(channel, "image_message", {"image_data": image_data},
+                             request.user, display_name, avatar_url, payload)
+
         channel_layer = get_channel_layer()
         if channel_layer:
             async_to_sync(channel_layer.group_send)(
@@ -424,6 +427,9 @@ class AudioUploadApiView(CorsApiView):
             "avatar_url": avatar_url,
         }
 
+        _persist_relay_media(channel, "voice_message", {"audio_data": audio_data},
+                             request.user, display_name, avatar_url, payload)
+
         channel_layer = get_channel_layer()
         if channel_layer:
             async_to_sync(channel_layer.group_send)(
@@ -436,4 +442,175 @@ class AudioUploadApiView(CorsApiView):
                 },
             )
 
+        return JsonResponse({"ok": True})
+
+
+def _persist_relay_media(channel, msg_type, content, user, display_name, avatar_url, payload):
+    """Encrypt-at-rest a REST-uploaded relay image/voice message and stamp the broadcast
+    payload with the stored id + created_at (so live + history share one id). Silently
+    skipped if the vault is unavailable."""
+    from toto.telegraph import vault
+
+    try:
+        row = vault.store_message(
+            channel,
+            msg_type=msg_type,
+            payload=content,
+            sender=user if getattr(user, "is_authenticated", False) else None,
+            sender_name=display_name or "",
+            sender_avatar_url=avatar_url or "",
+        )
+    except Exception:
+        return
+    payload["id"] = str(row.id)
+    payload["created_at"] = row.created_at.isoformat()
+
+
+# ── E2E pins (server-opaque) ───────────────────────────────────────────────────
+# Pinned messages are end-to-end encrypted under a member-held pin key. The server
+# stores only opaque ciphertext + an opaque pin_key_id and broadcasts pin events; it
+# never sees the key or the plaintext. See crypto.md.
+
+def _pin_to_dict(pin):
+    return {
+        "id": str(pin.id),
+        "pin_key_id": pin.pin_key_id,
+        "iv": base64.b64encode(bytes(pin.iv)).decode(),
+        "ciphertext": base64.b64encode(bytes(pin.ciphertext)).decode(),
+        "pinned_by": pin.pinned_by.username if pin.pinned_by_id else "",
+        "original_sender": pin.original_sender,
+        "original_timestamp": pin.original_timestamp.isoformat() if pin.original_timestamp else None,
+        "created_at": pin.created_at.isoformat(),
+    }
+
+
+def _broadcast_to_channel(channel, payload):
+    channel_layer = get_channel_layer()
+    if channel_layer:
+        async_to_sync(channel_layer.group_send)(
+            f"telegraph_{channel.slug}",
+            {"type": "chat_message", "payload": payload,
+             "sender_channel": None, "target_channel": None},
+        )
+
+
+def _active_member(request, channel):
+    """Return the requester's active TelegraphMember for the channel, or None."""
+    if not request.user or not request.user.is_authenticated:
+        return None
+    from toto.people.models import Person
+    from toto.telegraph.models import TelegraphMember
+
+    person = Person.objects.filter(user=request.user).first()
+    if not person:
+        return None
+    return TelegraphMember.objects.filter(
+        channel=channel, person=person, is_active=True
+    ).first()
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ChannelPinsApiView(CorsApiView):
+    """GET — list a channel's pin ciphertexts (members only).
+    POST — create an E2E pin: {pin_key_id, iv, ciphertext, message_id?, original_sender?,
+    original_timestamp?}. The server stores opaque bytes, deletes the server-readable
+    history copy of the pinned message (durable artifact becomes E2E-only), and
+    broadcasts a `message_pinned` event."""
+
+    def get(self, request, slug):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            channel = TelegraphChannel.objects.get(slug=slug)
+        except TelegraphChannel.DoesNotExist:
+            return JsonResponse({"error": "Channel not found."}, status=404)
+        if not _active_member(request, channel):
+            return JsonResponse({"error": "Members only."}, status=403)
+        return JsonResponse({
+            "pin_key_id": channel.pin_key_id,
+            "pins": [_pin_to_dict(p) for p in channel.pins.all()],
+        })
+
+    def post(self, request, slug):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            channel = TelegraphChannel.objects.get(slug=slug)
+        except TelegraphChannel.DoesNotExist:
+            return JsonResponse({"error": "Channel not found."}, status=404)
+        if not _active_member(request, channel):
+            return JsonResponse({"error": "Members only."}, status=403)
+
+        try:
+            body = json.loads(request.body or b"{}")
+        except (ValueError, TypeError):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        pin_key_id = (body.get("pin_key_id") or "").strip()
+        iv_b64 = body.get("iv") or ""
+        ct_b64 = body.get("ciphertext") or ""
+        if not pin_key_id or not iv_b64 or not ct_b64:
+            return JsonResponse(
+                {"error": "pin_key_id, iv and ciphertext are required."}, status=400
+            )
+        try:
+            iv = base64.b64decode(iv_b64, validate=True)
+            ciphertext = base64.b64decode(ct_b64, validate=True)
+        except Exception:
+            return JsonResponse({"error": "iv and ciphertext must be base64."}, status=400)
+        if not iv or not ciphertext:
+            return JsonResponse({"error": "iv and ciphertext must be base64."}, status=400)
+
+        from django.utils.dateparse import parse_datetime
+        from toto.telegraph.models import TelegraphMessage, TelegraphPin
+
+        original_ts = body.get("original_timestamp")
+        pin = TelegraphPin.objects.create(
+            channel=channel,
+            pin_key_id=pin_key_id,
+            iv=iv,
+            ciphertext=ciphertext,
+            pinned_by=request.user,
+            original_sender=(body.get("original_sender") or "")[:150],
+            original_timestamp=parse_datetime(original_ts) if original_ts else None,
+        )
+
+        # Record the channel's active pin key id on first pin (race convergence marker).
+        if not channel.pin_key_id:
+            channel.pin_key_id = pin_key_id
+            channel.save(update_fields=["pin_key_id"])
+
+        # Delete the server-readable history copy so only the E2E pin persists.
+        removed_id = body.get("message_id")
+        if removed_id:
+            TelegraphMessage.objects.filter(channel=channel, id=removed_id).delete()
+
+        _broadcast_to_channel(channel, {
+            "type": "message_pinned",
+            "pin": _pin_to_dict(pin),
+            "removed_message_id": removed_id or None,
+        })
+        return JsonResponse({"ok": True, "pin": _pin_to_dict(pin)})
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ChannelPinUnpinApiView(CorsApiView):
+    """POST — unpin (delete) a pin (members only). Broadcasts `message_unpinned`.
+    (POST, not DELETE, because the edge CORS policy allows only GET/POST/OPTIONS.)"""
+
+    def post(self, request, slug, pin_id):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            channel = TelegraphChannel.objects.get(slug=slug)
+        except TelegraphChannel.DoesNotExist:
+            return JsonResponse({"error": "Channel not found."}, status=404)
+        if not _active_member(request, channel):
+            return JsonResponse({"error": "Members only."}, status=403)
+
+        pin = channel.pins.filter(id=pin_id).first()
+        if not pin:
+            return JsonResponse({"error": "Pin not found."}, status=404)
+        pin.delete()
+        _broadcast_to_channel(channel, {"type": "message_unpinned", "pin_id": str(pin_id)})
         return JsonResponse({"ok": True})
