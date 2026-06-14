@@ -580,14 +580,24 @@ class ChannelPinsApiView(CorsApiView):
             channel.pin_key_id = pin_key_id
             channel.save(update_fields=["pin_key_id"])
 
-        # Delete the server-readable history copy so only the E2E pin persists.
+        # Delete the server-readable history copy so only the E2E pin persists. The
+        # client may send a non-UUID id (a message that was never server-persisted, e.g.
+        # when the at-rest vault is unconfigured) — guard so that never 500s.
+        import uuid as _uuid
+
         removed_id = body.get("message_id")
-        if removed_id:
-            TelegraphMessage.objects.filter(channel=channel, id=removed_id).delete()
+        try:
+            delete_id = _uuid.UUID(str(removed_id)) if removed_id else None
+        except (ValueError, TypeError, AttributeError):
+            delete_id = None
+        if delete_id:
+            TelegraphMessage.objects.filter(channel=channel, id=delete_id).delete()
 
         _broadcast_to_channel(channel, {
             "type": "message_pinned",
             "pin": _pin_to_dict(pin),
+            # Echo the client's original id so peers drop their local copy even if the
+            # server had no row to delete.
             "removed_message_id": removed_id or None,
         })
         return JsonResponse({"ok": True, "pin": _pin_to_dict(pin)})

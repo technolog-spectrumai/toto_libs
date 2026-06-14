@@ -192,6 +192,12 @@ class PinApiTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertFalse(TelegraphPin.objects.filter(id=pin_id).exists())
 
+    def test_pin_with_non_uuid_message_id_does_not_500(self):
+        # A message rendered with a client-side (nanoid) id — the server has no such row.
+        res = self._post_pin(message_id="V1StGXR8_Z5jdHi6B-myT")
+        self.assertEqual(res.status_code, 200)
+        self.assertTrue(TelegraphPin.objects.filter(id=res.json()["pin"]["id"]).exists())
+
     def test_bad_base64_rejected(self):
         res = self.client.post(
             "/telegraph/api/channels/pinroom/pins/",
