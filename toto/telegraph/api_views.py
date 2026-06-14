@@ -55,6 +55,39 @@ class HealthApiView(CorsApiView):
         return JsonResponse({"ok": True, "service": "telegraph"})
 
 
+# Feature key (what the edge client shows in its dashboard/nav) → the Django app that
+# backs it. The descriptor reports which are installed on THIS server so a client (e.g.
+# Enigma+) only offers apps the backend can actually serve — portal has them all, faros
+# (the minimal Tor server) lacks e.g. the knowledge graph (ravioli).
+_FEATURE_APPS = {
+    "chat": "toto.telegraph",
+    "vault": "toto.vault",
+    "tasks": "toto.kanban",
+    "locations": "toto.locations",
+    "people": "toto.socialhub",
+    "events": "toto.events",
+    "graph": "toto.ravioli",
+}
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class AppsApiView(CorsApiView):
+    """GET /telegraph/api/apps/ — capability descriptor.
+
+    Returns ``{"apps": {feature: bool}}`` for each known feature, based on whether its
+    backing Django app is installed on this server. No auth required (capability info is
+    not sensitive) and available on every server tier (telegraph ships on portal + faros).
+    """
+
+    def get(self, request):
+        from django.apps import apps as django_apps
+
+        available = {
+            key: django_apps.is_installed(label) for key, label in _FEATURE_APPS.items()
+        }
+        return JsonResponse({"apps": available})
+
+
 def _channel_to_dict(channel, member_count=None):
     return {
         "id": channel.id,

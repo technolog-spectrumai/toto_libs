@@ -381,3 +381,32 @@ class AudioUploadApiViewTests(TestCase):
             {"audio": f},
         )
         self.assertEqual(res.status_code, 200)
+
+
+class AppsDescriptorApiTests(TestCase):
+    """The /telegraph/api/apps/ capability descriptor — lets Enigma+ show only the apps
+    the connected server (portal vs faros) actually installs."""
+
+    def test_reports_all_known_features_as_bools(self):
+        res = self.client.get("/telegraph/api/apps/")
+        self.assertEqual(res.status_code, 200)
+        apps = res.json()["apps"]
+        for key in ["chat", "vault", "tasks", "locations", "people", "events", "graph"]:
+            self.assertIn(key, apps)
+            self.assertIsInstance(apps[key], bool)
+        self.assertTrue(apps["chat"])  # telegraph is installed wherever this endpoint runs
+
+    def test_uninstalled_app_reported_false(self):
+        # Simulate a faros-style server without the knowledge graph (ravioli).
+        from unittest.mock import patch
+        from django.apps import apps as django_apps
+
+        real = django_apps.is_installed
+
+        def fake(label):
+            return False if label == "toto.ravioli" else real(label)
+
+        with patch("django.apps.apps.is_installed", side_effect=fake):
+            apps = self.client.get("/telegraph/api/apps/").json()["apps"]
+        self.assertFalse(apps["graph"])
+        self.assertTrue(apps["vault"])
