@@ -1,7 +1,7 @@
 """Delete expired relay messages (past their per-channel TTL).
 
 Regular ``TelegraphMessage`` rows expire after ``channel.message_ttl_seconds``
-(default 24h). End-to-end ``TelegraphPin`` rows have no TTL and are never touched.
+(default 24h). Both at-rest and end-to-end (secure-on-send) rows share the same TTL.
 
 faros has no celery, so run this from cron:
   */15 * * * *  python manage.py telegraph_purge_expired
@@ -12,7 +12,7 @@ from toto.telegraph import vault
 
 
 class Command(BaseCommand):
-    help = "Delete relay messages past their TTL (pins are never purged)."
+    help = "Delete relay messages past their TTL."
 
     def add_arguments(self, parser):
         parser.add_argument(

@@ -10,8 +10,8 @@ any member, including brand-new joiners (the Discord model). In-transit
 confidentiality is TLS. This is deliberately NOT end-to-end — that trade is what
 makes durable, readable history possible.
 
-End-to-end *pinned* content never passes through here: it is encrypted on the client
-under a member-held pin key and stored opaquely (see ``TelegraphPin``).
+End-to-end *secure-on-send* messages never pass through the at-rest layer: they are
+encrypted on the client under a member-held key and stored as opaque ``e2e`` rows.
 
 Key hierarchy (see crypto.md):
 
@@ -259,7 +259,7 @@ def history(channel, *, limit=200, now=None):
 def purge_expired(channel=None, *, now=None) -> int:
     """Delete expired messages (optionally scoped to one channel). Returns the count.
 
-    Pins are a separate model with no TTL, so they are never touched here.
+    Both at-rest and end-to-end (secure-on-send) rows share the same TTL.
     """
     from .models import TelegraphMessage
 

@@ -12,7 +12,7 @@ This app implements the **Relay/Forum (Discord)** side. The P2P (Signal) side li
 edge client (iroh + rotor) and is unchanged.
 
 > **Cryptography for auditing is in [crypto.md](crypto.md)** — the at-rest envelope, the
-> end-to-end pin scheme, and how E2E MLS works.
+> end-to-end secure-on-send scheme, and how E2E MLS works.
 
 ## Why the relay tab is not end-to-end
 
@@ -23,23 +23,22 @@ pragmatic: **TLS in transit, the server can read messages**, so it can serve his
 anyone. We adopt that and encrypt the stored messages **at rest** with
 [gervazy](../gervazy/README.md) so a stolen DB/backup is useless.
 
-The privacy escape hatches are both layered on the relay tab, under a member-held key the
-server never sees:
-- **Pinning** — re-encrypts an existing message E2E and keeps it (server-opaque).
-- **Secure-on-send** (composer 🔒 toggle) — a message that goes **end-to-end from compose
-  time**, so the server never sees its plaintext at all. Renders inline; members decrypt it,
-  non-holders see a locked placeholder. E2E but **not** forward-secret (that's the P2P tab).
+The privacy escape hatch is **secure-on-send** — a per-room **Secure** switch in the forum
+header. When on, each message goes **end-to-end from compose time** under a member-held key
+the server never sees, so the server never gets its plaintext at all. Secure messages render
+inline; members decrypt them, non-holders see a locked placeholder. E2E but **not**
+forward-secret (that's the P2P tab).
 
-See [crypto.md](crypto.md) §2b for secure-on-send.
+See [crypto.md](crypto.md) §2 for secure-on-send.
 
 ## Data model ([models.py](models.py))
 
 - `TelegraphChannel` — `message_ttl_seconds` (default 86400 = 24h), `dek` FK to the channel's
-  gervazy data key, `pin_key_id` (opaque marker of the active E2E pin key).
-- `TelegraphMessage` — a persisted relay message, **encrypted at rest** under the channel DEK
-  (`ciphertext`/`nonce`/`aad`), with `created_at`/`expires_at`. Purged after TTL.
-- `TelegraphPin` — an **end-to-end** encrypted pin: opaque `ciphertext` + `iv` + `pin_key_id`
-  only. The server holds no key and cannot read it. No TTL.
+  gervazy data key.
+- `TelegraphMessage` — a persisted relay message, with `created_at`/`expires_at`, purged after
+  TTL. `encryption="at_rest"` rows are encrypted under the channel DEK (server-readable);
+  `encryption="e2e"` rows are **secure-on-send** — opaque `ciphertext` + `iv` + `pin_key_id`,
+  encrypted on the client under a member-held key the server can't read.
 
 ## API Endpoints
 
@@ -53,18 +52,15 @@ See [crypto.md](crypto.md) §2b for secure-on-send.
 | GET | `/telegraph/api/channels/{slug}/` | Channel detail + members (incl. `username`) |
 | POST | `/telegraph/api/channels/{slug}/join/` · `/leave/` · `/leave-all/` | Membership |
 | POST | `/telegraph/api/channels/{slug}/upload/` · `/upload-audio/` | Relay image/voice (persisted) |
-| GET · POST | `/telegraph/api/channels/{slug}/pins/` | List · create an **E2E** pin |
-| POST | `/telegraph/api/channels/{slug}/pins/{id}/unpin/` | Remove a pin |
 
 ## WebSocket Message Types
 
 | Type | Direction | Description |
 |------|-----------|-------------|
 | `chat_message` / `image_message` / `voice_message` | both | Relay content (plaintext over TLS, persisted) |
-| `secure_message` | both | Secure-on-send: E2E ciphertext under the pin key (server-opaque, persisted) |
+| `secure_message` | both | Secure-on-send: E2E ciphertext under the member-held key (server-opaque, persisted) |
 | `chat_history` | server→client | History batch replayed on connect (at-rest decrypted server-side; e2e raw) |
-| `message_pinned` / `message_unpinned` | server→client | Pin events |
-| `mls_*` | both | MLS handshake/app messages — opaque relay (P2P content; relay pin-key distribution) |
+| `mls_*` | both | MLS handshake/app messages — opaque relay (P2P content; relay secure-key distribution) |
 | `room_participants` | server→client | Active participant list |
 | `system_error` | server→client | Error notification |
 
@@ -87,9 +83,9 @@ python manage.py telegraph_purge_expired          # --dry-run to preview
 - Set `TELEGRAPH_VAULT_PASSWORD` in the server environment (faros + portal). **If unset,
   chat still works but history is disabled** (messages send live, nothing is persisted).
 - Per-room retention is `TelegraphChannel.message_ttl_seconds` (Django admin / shell; no
-  in-app editor yet). Pins ignore the TTL.
-- **Losing `TELEGRAPH_VAULT_PASSWORD` makes stored history permanently unreadable.** Pins are
-  unaffected (they use the member-held pin key, not this password).
+  in-app editor yet).
+- **Losing `TELEGRAPH_VAULT_PASSWORD` makes at-rest history permanently unreadable.**
+  Secure-on-send messages are unaffected (they use the member-held key, not this password).
 
 ## Testing
 
