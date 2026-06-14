@@ -210,6 +210,21 @@ class ChannelDetailApiViewTests(TestCase):
         self.assertIn("members", data)
         self.assertFalse(data["is_member"])
 
+    def test_members_include_username_for_aster_resolution(self):
+        """Member dicts carry the SSO username (used to resolve a peer's gossip
+        NodeId from aster), with an empty string for people who have no account."""
+        from toto.people.models import Person
+
+        linked = Person.objects.create(user=self.user, display_name="Det User")
+        accountless = Person.objects.create(display_name="No Account")
+        TelegraphMember.objects.create(channel=self.channel, person=linked, is_active=True)
+        TelegraphMember.objects.create(channel=self.channel, person=accountless, is_active=True)
+
+        data = self.client.get(f"/telegraph/api/channels/{self.channel.slug}/").json()
+        by_name = {m["name"]: m for m in data["members"]}
+        self.assertEqual(by_name["Det User"]["username"], "detuser")
+        self.assertEqual(by_name["No Account"]["username"], "")
+
 
 class ChannelJoinLeaveApiTests(TestCase):
     def setUp(self):
