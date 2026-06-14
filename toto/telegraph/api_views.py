@@ -74,9 +74,19 @@ def _absolute_url(request, url):
     return request.build_absolute_uri(url)
 
 
+def _member_username(member):
+    """The member's SSO username (for aster NodeId resolution), or "" if the
+    person has no linked account."""
+    person = getattr(member, "person", None)
+    if person and getattr(person, "user_id", None):
+        return person.user.username
+    return ""
+
+
 def _member_to_dict(request, member):
     return {
         "name": member.display_name,
+        "username": _member_username(member),
         "avatar_url": _absolute_url(request, member.avatar_url),
         "type": member.participant_type,
     }
@@ -193,7 +203,9 @@ class ChannelDetailApiView(CorsApiView):
         except TelegraphChannel.DoesNotExist:
             return JsonResponse({"error": "Channel not found."}, status=404)
 
-        members_qs = channel.telegraph_members.filter(is_active=True).select_related("person")
+        members_qs = channel.telegraph_members.filter(is_active=True).select_related(
+            "person", "person__user"
+        )
         members = [_member_to_dict(request, m) for m in members_qs]
 
         is_member = False

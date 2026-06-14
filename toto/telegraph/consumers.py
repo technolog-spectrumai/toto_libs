@@ -284,10 +284,20 @@ class ChatConsumer(AsyncWebsocketConsumer):
         from toto.telegraph.models import TelegraphChannel
 
         channel = TelegraphChannel.objects.get(slug=self.channel_slug)
-        members_qs = channel.telegraph_members.filter(is_active=True).select_related("person")
+        members_qs = channel.telegraph_members.filter(is_active=True).select_related(
+            "person", "person__user"
+        )
         members = [
             {
                 "name": member.display_name,
+                # SSO username — lets a peer resolve this member's iroh gossip
+                # NodeId from aster to open a P2P room without a ticket. Empty for
+                # people with no linked account.
+                "username": (
+                    member.person.user.username
+                    if member.person and member.person.user_id
+                    else ""
+                ),
                 "avatar_url": self.absolute_url(member.avatar_url),
                 "type": member.participant_type,
             }
