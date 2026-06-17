@@ -66,13 +66,16 @@
         <label class="block text-sm font-semibold opacity-70">{% trans "Typed name (optional)" %}
           <input type="text" name="typed_name" class="mt-1" value="{{ person.display_name }}"></label>
 
-        {# Handwritten signature pad — adapted/duplicated from
-           limbo/contracts/templates/contracts/_signature_pad.html so notarius stays
-           self-contained (the limbo `contracts` app is not installed in portal). #}
+        {% comment %}
+          Handwritten signature pad — adapted/duplicated from
+          limbo/contracts/templates/contracts/_signature_pad.html so notarius stays
+          self-contained (the limbo `contracts` app is not installed in portal).
+        {% endcomment %}
         <div x-data="sigPad()" x-init="init()" class="space-y-2">
           <p class="text-sm font-semibold opacity-70">{% trans "Handwritten signature" %}</p>
           <canvas id="contract_sigpad" width="500" height="160"
-                  class="w-full touch-none rounded-lg border border-accent-2 bg-white"
+                  class="w-full touch-none rounded-lg border"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                   @mousedown="start($event)" @mousemove="move($event)" @mouseup="end()" @mouseleave="end()"
                   @touchstart.prevent="start($event)" @touchmove.prevent="move($event)" @touchend.prevent="end()"></canvas>
           <input type="hidden" name="signature_data" id="contract_sigpad_input">
@@ -97,19 +100,23 @@
 <script>
 function sigPad() {
   const cv = () => document.getElementById("contract_sigpad");
+  // Match the page theme: dark box + white pen in dark mode, white box + dark pen
+  // in light mode. The fill colour is baked into the exported PNG (opaque bg).
+  const isDark = () => localStorage.getItem("darkMode") === "true";
+  const bgColor = () => (isDark() ? "#0f172a" : "#ffffff");
+  const inkColor = () => (isDark() ? "#ffffff" : "#1a1a1a");
   return {
     drawing: false,
-    init() { const c = cv(); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); },
-    ctx() { const x = cv().getContext("2d"); x.strokeStyle = "#1a1a1a"; x.lineWidth = 2; x.lineCap = "round"; return x; },
+    fill() { const c = cv(); const x = c.getContext("2d"); x.fillStyle = bgColor(); x.fillRect(0, 0, c.width, c.height); },
+    init() { this.fill(); },
+    ctx() { const x = cv().getContext("2d"); x.strokeStyle = inkColor(); x.lineWidth = 2; x.lineCap = "round"; return x; },
     pos(e) { const c = cv(); const r = c.getBoundingClientRect(); const s = e.touches ? e.touches[0] : e;
              return { x: (s.clientX - r.left) * (c.width / r.width), y: (s.clientY - r.top) * (c.height / r.height) }; },
     start(e) { this.drawing = true; const x = this.ctx(); const p = this.pos(e); x.beginPath(); x.moveTo(p.x, p.y); },
     move(e) { if (!this.drawing) return; const x = this.ctx(); const p = this.pos(e); x.lineTo(p.x, p.y); x.stroke(); },
     end() { if (!this.drawing) return; this.drawing = false;
             document.getElementById("contract_sigpad_input").value = cv().toDataURL("image/png"); },
-    clear() { const c = cv(); const x = c.getContext("2d"); x.clearRect(0, 0, c.width, c.height);
-              x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
-              document.getElementById("contract_sigpad_input").value = ""; },
+    clear() { this.fill(); document.getElementById("contract_sigpad_input").value = ""; },
   };
 }
 </script>

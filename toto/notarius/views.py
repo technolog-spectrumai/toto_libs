@@ -322,19 +322,37 @@ class ContractSignView(LoginRequiredMixin, View):
 
 
 class ContractConvertPdfView(LoginRequiredMixin, View):
+    """Render the contract to PDF on a Celery worker (sync fallback if none)."""
+
     def post(self, request, file_pk):
         vf = _get_file(request, file_pk, owner_only=True)
-        from toto.notarius import latex
+        from toto.notarius.models import ContractPdfJob
+        from toto.notarius.tasks import render_contract_pdf_task
+
+        job = ContractPdfJob.objects.create(vault_file=vf)
+
+        dispatched = False
         try:
-            pdf_bytes, _log = latex.contract_to_pdf(vf)
-            pdf_vf = latex.save_contract_pdf(vf, pdf_bytes)
-        except FileNotFoundError:
-            messages.error(request, "pdflatex is not installed on this deployment "
-                                    "(PDF export needs the labs / TeX layer).")
-            return redirect("notarius:view", file_pk=vf.pk)
-        except Exception as exc:
-            messages.error(request, f"PDF conversion failed: {exc}")
+            from toto.celery_utils import celery_available
+            if celery_available():
+                render_contract_pdf_task.delay(job.pk)
+                dispatched = True
+        except Exception:
+            pass
+
+        if dispatched:
+            messages.success(request, "Generating the PDF in the background — "
+                                      "it'll appear in the vault shortly.")
             return redirect("notarius:view", file_pk=vf.pk)
 
-        messages.success(request, f'Converted to PDF — saved as "{pdf_vf.title}" in the vault.')
+        # No worker available — run it inline (eager) so it still works.
+        render_contract_pdf_task.apply(args=[job.pk])
+        job.refresh_from_db()
+        if job.status == ContractPdfJob.Status.SUCCESS and job.pdf_vault_file:
+            messages.success(request, f'Converted to PDF — saved as "{job.pdf_vault_file.title}" in the vault.')
+        elif any(s in (job.log or "").lower() for s in ("no such file", "pdflatex", "filenotfound")):
+            messages.error(request, "pdflatex is not installed on this deployment "
+                                    "(PDF export needs the labs / TeX layer).")
+        else:
+            messages.error(request, f"PDF conversion failed: {(job.log or '')[:300]}")
         return redirect("notarius:view", file_pk=vf.pk)
