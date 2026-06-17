@@ -13,18 +13,6 @@
   <!-- Badges row -->
   <div class="flex flex-wrap gap-2 mb-5">
 
-    {% if is_committed_citizen %}
-      <span
-        :class="darkMode ? 'bg-success-dark/20 text-success-dark border-success-dark/30' : 'bg-success-light/20 text-success-light border-success-light/30'"
-        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
-        <i class="fa-solid fa-circle-check"></i>{% trans "Committed Citizen" %}</span>
-    {% else %}
-      <span
-        :class="darkMode ? 'border-accent-1 text-text-main-dark opacity-50' : 'border-accent-2 text-text-main-light opacity-50'"
-        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
-        <i class="fa-regular fa-circle"></i>{% trans "Not yet committed" %}</span>
-    {% endif %}
-
     {% if is_federal_agent %}
       <span
         :class="darkMode ? 'bg-accent-dark/20 text-accent-dark border-accent-dark/30' : 'bg-accent-light/20 text-accent-light border-accent-light/30'"
@@ -32,31 +20,6 @@
         <i class="fa-solid fa-shield-halved"></i>{% trans "Federal Agent" %}</span>
     {% endif %}
   </div>
-
-  <!-- Privileges granted -->
-  {% if is_committed_citizen or is_federal_agent %}
-  <div class="mb-5">
-    <p class="text-xs font-semibold uppercase tracking-wide opacity-50 mb-2">{% trans "Privileges" %}</p>
-    <ul class="space-y-1 text-sm">
-      {% if is_committed_citizen %}
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "Responder eligibility" %}</li>
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "Assembly participation (read)" %}</li>
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "Poll tax exemption" %}</li>
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "Non-enforcement public roles" %}</li>
-      {% endif %}
-      {% if is_federal_agent %}
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>{% trans "Administrata access" %}</li>
-        <li class="flex items-center gap-2 opacity-80">
-          <i class="fa-solid fa-check text-xs" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>{% trans "Magistrate nomination" %}</li>
-      {% endif %}
-    </ul>
-  </div>
-  {% endif %}
 
   <!-- Signed constitutions -->
   {% if signed_constitutions %}

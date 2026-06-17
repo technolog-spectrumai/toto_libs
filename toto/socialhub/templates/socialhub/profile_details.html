@@ -243,17 +243,6 @@
               <span class="truncate">{{ community.name }}</span>
               <i class="fa-solid fa-arrow-right text-xs opacity-50 ml-auto"></i>
             </a>
-
-            {% if unsigned_constitutions and community.pk in unsigned_constitutions %}
-              <a
-                href="{% url 'socialhub:constitution_sign' community.slug %}"
-                :class="darkMode
-                  ? 'bg-accent-dark text-primary-bg-dark'
-                  : 'bg-accent-light text-primary-bg-light'"
-                class="shrink-0 inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold hover:opacity-90"
-                title="Sign the {{ community.name }} constitution">
-                <i class="fa-solid fa-pen-nib"></i>{% trans "Sign Rules" %}</a>
-            {% endif %}
           </div>
         {% empty %}
           <div

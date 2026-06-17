@@ -55,9 +55,7 @@
 
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Reference request sent." %}</h1>
 
-              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">{% trans "You successfully requested a reference for" %}<span class="font-semibold">{{ application.email }}</span>.
-                We’ll notify the selected community member and keep the application moving
-                once their endorsement is received.
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">{% trans "You successfully requested a reference for" %}<span class="font-semibold">{{ application.email }}</span>. {% trans "We'll notify the selected community member and keep the application moving once their endorsement is received." %}
               </p>
             </div>
           </div>
@@ -110,8 +108,7 @@
             <h2 class="text-2xl font-bold">{% trans "What happens next?" %}</h2>
 
             <p class="mt-2 text-sm leading-6 opacity-70">
-              The community member will review the request. Once they respond,
-              the application can continue through the membership process.
+              {% trans "The community member will review the request. Once they respond, the application can continue through the membership process." %}
             </p>
           </div>
 
@@ -135,8 +132,7 @@
               <div>
                 <p class="font-semibold">{% trans "Request completed successfully" %}</p>
 
-                <p class="mt-1 leading-6 opacity-70">{% trans "The reference request for" %}<span class="font-semibold">{{ application.email }}</span>
-                  has been recorded and sent for endorsement.
+                <p class="mt-1 leading-6 opacity-70">{% trans "The reference request for" %}<span class="font-semibold">{{ application.email }}</span> {% trans "has been recorded and sent for endorsement." %}
                 </p>
               </div>
             </div>

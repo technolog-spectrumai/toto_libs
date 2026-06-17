@@ -1,5 +1,6 @@
 from django import forms
 from django.contrib.auth import get_user_model
+from django.utils.translation import gettext_lazy as _
 from trix_editor.widgets import TrixEditorWidget
 
 from toto.people.models import Person
@@ -20,24 +21,29 @@ class MembershipApplicationForm(forms.ModelForm):
     # what they type at the login form once approved.
     username = forms.CharField(
         max_length=150,
+        label=_("Username"),
         widget=forms.TextInput(attrs={
             'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
             'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
             'placeholder': 'Choose a username',
             'autocomplete': 'username',
         }),
-        help_text="You'll use this to log in once your application is approved.",
+        help_text=_("You'll use this to log in once your application is approved."),
     )
 
     def clean_username(self):
         username = self.cleaned_data["username"].strip()
         if User.objects.filter(username__iexact=username).exists():
-            raise forms.ValidationError("This username is already taken.")
+            raise forms.ValidationError(_("This username is already taken."))
         return username
 
     class Meta:
         model = MembershipApplication
         fields = ['email', 'community']
+        labels = {
+            'email': _("Email"),
+            'community': _("Community"),
+        }
         widgets = {
             'email': forms.EmailInput(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
@@ -65,21 +71,23 @@ class CodeVerificationForm(forms.Form):
 class ReferenceRequestForm(forms.ModelForm):
     referrer = forms.ModelChoiceField(
         queryset=Person.objects.none(),
+        label=_("Referrer"),
         widget=forms.Select(attrs={
             'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
             'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
         }),
         required=True,
-        help_text="Select the community member endorsing this application"
+        help_text=_("Select the community member endorsing this application")
     )
 
     password = forms.CharField(
         required=False,
+        label=_("Password"),
         widget=forms.PasswordInput(attrs={
             'placeholder': 'Choose a password (optional)',
             'autocomplete': 'new-password',
         }),
-        help_text="Optional — set a password now so you can log in as soon as your application is approved.",
+        help_text=_("Optional — set a password now so you can log in as soon as your application is approved."),
     )
 
     def __init__(self, *args, application=None, **kwargs):
@@ -92,6 +100,9 @@ class ReferenceRequestForm(forms.ModelForm):
     class Meta:
         model = ReferenceRequest
         fields = ['referrer', 'message']
+        labels = {
+            'message': _("Message"),
+        }
         widgets = {
             'message': forms.Textarea(attrs={
                 'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
