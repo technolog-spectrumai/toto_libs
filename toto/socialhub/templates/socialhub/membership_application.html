@@ -143,6 +143,23 @@
                      [&_input:focus]:ring-accent-light [&_select:focus]:ring-accent-light">
 
               <div>
+                {{ form.username.label_tag }}
+                {{ form.username }}
+
+                {% if form.username.help_text %}
+                  <p class="mt-1 text-xs opacity-65">{{ form.username.help_text }}</p>
+                {% endif %}
+
+                {% if form.username.errors %}
+                  <p
+                    :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="mt-2 text-xs font-medium">
+                    {{ form.username.errors|striptags }}
+                  </p>
+                {% endif %}
+              </div>
+
+              <div>
                 {{ form.email.label_tag }}
                 {{ form.email }}
 

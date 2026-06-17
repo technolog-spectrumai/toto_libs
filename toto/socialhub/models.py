@@ -251,13 +251,12 @@ class ReferenceRequest(models.Model):
         if status_changed_to_accepted:
             application = self.application
 
-            # 1. Activate the user
-            try:
-                user = User.objects.get(username=application.email)
+            # 1. Activate the user — looked up by their application email (the login
+            #    username is chosen separately, so we must not match on username here).
+            user = User.objects.filter(email=application.email).first()
+            if user:
                 user.is_active = True
-                user.save()
-            except User.DoesNotExist:
-                user = None
+                user.save(update_fields=["is_active"])
 
             # 2. Create Person if missing
             if user:

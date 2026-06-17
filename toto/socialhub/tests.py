@@ -131,9 +131,10 @@ class ReferenceRequestPasswordTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
         self.community = Community.objects.create(name="Cedar Guild")
-        # The applicant's user as created at apply time: inactive, no usable password.
+        # The applicant's user as created at apply time: inactive, no usable
+        # password, and a login username distinct from their email.
         self.applicant = User.objects.create(
-            username="applicant@example.com", email="applicant@example.com", is_active=False
+            username="janek", email="applicant@example.com", is_active=False
         )
         self.application = MembershipApplication.objects.create(
             email="applicant@example.com",
@@ -161,16 +162,17 @@ class ReferenceRequestPasswordTests(TestCase):
         self.applicant.refresh_from_db()
         self.assertTrue(self.applicant.check_password("s3cret-pw"))  # password stored…
         self.assertFalse(self.applicant.is_active)                   # …but not active yet
-        self.assertIsNone(authenticate(username="applicant@example.com", password="s3cret-pw"))
+        self.assertIsNone(authenticate(username="janek", password="s3cret-pw"))
 
-        # Accepting the reference activates the account; now they can authenticate.
+        # Accepting the reference activates the account; now they can log in with
+        # their chosen username (not their email).
         ref = ReferenceRequest.objects.get(application=self.application)
         ref.status = "accepted"
         ref.save()
 
         self.applicant.refresh_from_db()
         self.assertTrue(self.applicant.is_active)
-        self.assertIsNotNone(authenticate(username="applicant@example.com", password="s3cret-pw"))
+        self.assertIsNotNone(authenticate(username="janek", password="s3cret-pw"))
 
     def test_password_is_optional(self):
         res = self.client.post(
@@ -180,3 +182,35 @@ class ReferenceRequestPasswordTests(TestCase):
         self.assertTrue(ReferenceRequest.objects.filter(application=self.application).exists())
         self.applicant.refresh_from_db()
         self.assertFalse(self.applicant.check_password("anything"))  # no real password set
+
+
+class MembershipApplicationUsernameTests(TestCase):
+    """The signup form takes a login username distinct from the email; the email
+    stays the key for the application/verification flow."""
+
+    def setUp(self):
+        Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
+        self.community = Community.objects.create(name="Cedar Guild")
+
+    def _url(self):
+        return reverse("socialhub:membership_application")
+
+    def test_signup_creates_user_with_chosen_username(self):
+        res = self.client.post(
+            self._url(),
+            {"username": "janek", "email": "janek@example.com", "community": self.community.id},
+        )
+        self.assertEqual(res.status_code, 302)
+        user = User.objects.get(username="janek")          # username is what they chose…
+        self.assertEqual(user.email, "janek@example.com")  # …email is separate
+        self.assertFalse(user.is_active)                   # inactive until approved
+        self.assertTrue(MembershipApplication.objects.filter(email="janek@example.com").exists())
+
+    def test_duplicate_username_is_rejected(self):
+        User.objects.create_user(username="taken", password="x")
+        res = self.client.post(
+            self._url(),
+            {"username": "taken", "email": "new@example.com", "community": self.community.id},
+        )
+        self.assertEqual(res.status_code, 200)  # re-renders with a form error
+        self.assertFalse(MembershipApplication.objects.filter(email="new@example.com").exists())

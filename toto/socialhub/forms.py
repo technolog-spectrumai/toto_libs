@@ -1,7 +1,10 @@
 from django import forms
+from django.contrib.auth import get_user_model
 from trix_editor.widgets import TrixEditorWidget
 
 from toto.people.models import Person
+
+User = get_user_model()
 from toto.socialhub.models import (
     CommunityNewsPost,
     CommunityNewsTopic,
@@ -12,6 +15,26 @@ from toto.verbena.forms import apply_oya_field_styles
 
 
 class MembershipApplicationForm(forms.ModelForm):
+    # Login username, chosen by the applicant and distinct from their email. The
+    # email remains the stable key for the application/verification flow; this is
+    # what they type at the login form once approved.
+    username = forms.CharField(
+        max_length=150,
+        widget=forms.TextInput(attrs={
+            'class': 'w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300',
+            'x-bind:class': "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'",
+            'placeholder': 'Choose a username',
+            'autocomplete': 'username',
+        }),
+        help_text="You'll use this to log in once your application is approved.",
+    )
+
+    def clean_username(self):
+        username = self.cleaned_data["username"].strip()
+        if User.objects.filter(username__iexact=username).exists():
+            raise forms.ValidationError("This username is already taken.")
+        return username
+
     class Meta:
         model = MembershipApplication
         fields = ['email', 'community']

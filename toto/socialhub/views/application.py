@@ -33,8 +33,14 @@ def membership_application_view(request):
     if request.method == "POST" and form.is_valid():
         email = form.cleaned_data["email"]
         community = form.cleaned_data["community"]
+        username = form.cleaned_data["username"]
 
-        user, _ = User.objects.get_or_create(username=email, defaults={"email": email, "is_active": False})
+        # The login username is chosen by the applicant (validated unique in the
+        # form); the email stays the stable key for the application + verification
+        # steps below. The account stays inactive until a reference is accepted.
+        user, _ = User.objects.get_or_create(
+            username=username, defaults={"email": email, "is_active": False}
+        )
         application, created = MembershipApplication.objects.get_or_create(
             email=email,
             defaults={
@@ -47,29 +53,32 @@ def membership_application_view(request):
         if created:
             application.code = generate_code()
             application.save()
-            logger.info(f"New application created for '{email}' with code '{application.code}'.")
+            logger.info(f"New application created for '{email}' (username '{username}') with code '{application.code}'.")
         else:
             logger.info(f"Existing application reused for '{email}'.")
 
-        return redirect("socialhub:application_success", username=user.username)
+        # The success/verification URLs are keyed by email (their stable identifier).
+        return redirect("socialhub:application_success", username=email)
 
     return render(request, "socialhub/membership_application.html", processor.decorate(context, request))
 
 
 def application_success_view(request, username):
     processor = PageProcessor()
-    context = {"page_title": "Application Submitted", "username": username, "email_sent": False}
+    # The `username` URL slug is the applicant's email — the stable key for the
+    # application + verification flow (the login username is chosen separately).
+    email = username
+    context = {"page_title": "Application Submitted", "username": email, "email_sent": False}
 
     try:
-        user = User.objects.get(username=username)
-        application = MembershipApplication.objects.get(email=user.email)
+        application = MembershipApplication.objects.get(email=email)
         community = application.community
         svc = resolve_email_service(community)
 
         if svc is None:
             # No email service configured: the code can't be mailed. The
             # verification page will show it as a CAPTCHA the applicant retypes.
-            logger.info(f"No email service for '{community.name}'; using visual code for '{username}'.")
+            logger.info(f"No email service for '{community.name}'; using visual code for '{email}'.")
         else:
             subject = "Your Membership Application"
             body = (
@@ -81,18 +90,18 @@ def application_success_view(request, username):
                 f"{application.community.name} Team"
             )
 
-            svc.send_email(subject, body, to=user.email)
+            svc.send_email(subject, body, to=email)
             context["email_sent"] = True
-            logger.info(f"Confirmation email sent to '{user.email}'.")
+            logger.info(f"Confirmation email sent to '{email}'.")
 
     except Exception as e:
         # Email failure is NOT fatal for the page
-        logger.error(f"Failed to send confirmation email for '{username}': {e}")
+        logger.error(f"Failed to send confirmation email for '{email}': {e}")
 
     # ---------------------------------------------------------
     # Render page
     # ---------------------------------------------------------
-    logger.info(f"Application success page viewed for user '{username}'.")
+    logger.info(f"Application success page viewed for '{email}'.")
     return render(request, "socialhub/application_success.html", processor.decorate(context, request))
 
 
@@ -181,7 +190,7 @@ def reference_request_view(request, application_id):
         # the password-reset flow.
         password = form.cleaned_data.get("password")
         if password:
-            applicant = User.objects.filter(username=application.email).first()
+            applicant = User.objects.filter(email=application.email).first()
             if applicant:
                 applicant.set_password(password)
                 applicant.save(update_fields=["password"])
