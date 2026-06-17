@@ -50,6 +50,15 @@ class ReferenceRequestForm(forms.ModelForm):
         help_text="Select the community member endorsing this application"
     )
 
+    password = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(attrs={
+            'placeholder': 'Choose a password (optional)',
+            'autocomplete': 'new-password',
+        }),
+        help_text="Optional — set a password now so you can log in as soon as your application is approved.",
+    )
+
     def __init__(self, *args, application=None, **kwargs):
         super().__init__(*args, **kwargs)
         if application:

@@ -174,6 +174,19 @@ def reference_request_view(request, application_id):
         reference_request.referrer = form.cleaned_data["referrer"]
         reference_request.save()
         logger.info(f"Reference submitted by '{request.user.username}' for application ID '{application_id}'.")
+
+        # Optional: capture the applicant's chosen password now. They stay INACTIVE
+        # until a referrer accepts (see ReferenceRequest.save) — set_password here just
+        # means they can log in directly once approved, instead of having to go through
+        # the password-reset flow.
+        password = form.cleaned_data.get("password")
+        if password:
+            applicant = User.objects.filter(username=application.email).first()
+            if applicant:
+                applicant.set_password(password)
+                applicant.save(update_fields=["password"])
+                logger.info(f"Applicant '{application.email}' set a password during the endorsement request.")
+
         return redirect("socialhub:reference_next", application_id=application.id)
 
     return render(request, "socialhub/reference_request.html", processor.decorate(context, request))

@@ -1,5 +1,6 @@
 import base64
 
+from django.contrib.auth import authenticate, get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -7,8 +8,11 @@ from django.utils import timezone
 from toto.api.models import EmailService
 from toto.core.auth_cooldown import CAPTCHA_RETRY_COOLDOWN_SESSION_KEY
 from toto.core.models import Platform
+from toto.people.models import Person
 from toto.socialhub.captcha import generate_code_captcha, resolve_email_service
-from toto.socialhub.models import Community, MembershipApplication
+from toto.socialhub.models import Community, MembershipApplication, ReferenceRequest
+
+User = get_user_model()
 
 
 class CodeCaptchaTests(TestCase):
@@ -117,3 +121,62 @@ class VerifyCaptchaViewTests(TestCase):
         self.assertEqual(res.status_code, 200)
         self.assertIsNone(res.context.get("cooldown_remaining"))
         self.assertNotIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
+
+
+class ReferenceRequestPasswordTests(TestCase):
+    """Optional password on the endorsement (reference) request: it is stored on
+    the applicant immediately, but the account is only activated once a referrer
+    accepts — so they can log in directly the moment they're approved."""
+
+    def setUp(self):
+        Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
+        self.community = Community.objects.create(name="Cedar Guild")
+        # The applicant's user as created at apply time: inactive, no usable password.
+        self.applicant = User.objects.create(
+            username="applicant@example.com", email="applicant@example.com", is_active=False
+        )
+        self.application = MembershipApplication.objects.create(
+            email="applicant@example.com",
+            community=self.community,
+            code="111222",
+            verified_at=timezone.now(),
+            status="verified",
+            expires_at=timezone.now() + timezone.timedelta(days=7),
+        )
+        # An existing member who can endorse.
+        ref_user = User.objects.create_user(username="member", password="x")
+        self.referrer = Person.objects.create(user=ref_user, display_name="Member")
+        self.referrer.communities.add(self.community)
+
+    def _url(self):
+        return reverse("socialhub:reference_request", args=[self.application.id])
+
+    def test_password_set_now_but_user_activated_only_on_accept(self):
+        res = self.client.post(
+            self._url(),
+            {"referrer": self.referrer.id, "message": "vouch", "password": "s3cret-pw"},
+        )
+        self.assertEqual(res.status_code, 302)
+
+        self.applicant.refresh_from_db()
+        self.assertTrue(self.applicant.check_password("s3cret-pw"))  # password stored…
+        self.assertFalse(self.applicant.is_active)                   # …but not active yet
+        self.assertIsNone(authenticate(username="applicant@example.com", password="s3cret-pw"))
+
+        # Accepting the reference activates the account; now they can authenticate.
+        ref = ReferenceRequest.objects.get(application=self.application)
+        ref.status = "accepted"
+        ref.save()
+
+        self.applicant.refresh_from_db()
+        self.assertTrue(self.applicant.is_active)
+        self.assertIsNotNone(authenticate(username="applicant@example.com", password="s3cret-pw"))
+
+    def test_password_is_optional(self):
+        res = self.client.post(
+            self._url(), {"referrer": self.referrer.id, "message": "vouch"}
+        )
+        self.assertEqual(res.status_code, 302)
+        self.assertTrue(ReferenceRequest.objects.filter(application=self.application).exists())
+        self.applicant.refresh_from_db()
+        self.assertFalse(self.applicant.check_password("anything"))  # no real password set

@@ -182,6 +182,23 @@
                   </p>
                 {% endif %}
               </div>
+
+              <div>
+                {{ form.password.label_tag }}
+                {{ form.password }}
+
+                {% if form.password.help_text %}
+                  <p class="mt-1 text-xs opacity-65">{{ form.password.help_text }}</p>
+                {% endif %}
+
+                {% if form.password.errors %}
+                  <p
+                    :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="mt-2 text-xs font-medium">
+                    {{ form.password.errors|striptags }}
+                  </p>
+                {% endif %}
+              </div>
             </div>
 
             <button
