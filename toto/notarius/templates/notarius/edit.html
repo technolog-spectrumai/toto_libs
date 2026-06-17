@@ -42,11 +42,10 @@
         <input type="text" x-model="c.title" class="mt-1"></label>
       <div class="grid gap-4 sm:grid-cols-2">
         <label class="block text-sm font-semibold opacity-70">{% trans "Type" %}
-          <input type="text" x-model="c.doc_type" list="type-keys" class="mt-1"
-                 placeholder="{% trans 'e.g. nda, employment' %}">
-          <datalist id="type-keys">
-            {% for key, name in template_keys %}<option value="{{ key }}">{{ name }}</option>{% endfor %}
-          </datalist>
+          <select x-model="c.doc_type" class="mt-1">
+            <option value="">{% trans "— default template —" %}</option>
+            {% for key, name in template_keys %}<option value="{{ key }}">{{ name }} ({{ key }})</option>{% endfor %}
+          </select>
           <span class="text-xs font-normal opacity-50">{% trans "Selects the PDF (LaTeX) template." %}</span>
         </label>
         <label class="block text-sm font-semibold opacity-70">{% trans "Status" %}
@@ -101,18 +100,18 @@
     <div class="space-y-3 rounded-2xl border p-5 shadow-sm"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
       <h2 class="text-lg font-bold">{% trans "Content" %}</h2>
-      <div class="grid gap-3 sm:grid-cols-2">
-        <label class="text-xs font-semibold opacity-70">{% trans "Media type" %}<input type="text" x-model="c.content.media_type" class="mt-1"></label>
-        <label class="text-xs font-semibold opacity-70">{% trans "Encoding" %}
-          <select x-model="c.content.encoding" class="mt-1"><option value="text">text</option><option value="base64">base64</option></select></label>
-      </div>
-      <div x-show="c.content.encoding === 'text'">
+      <label class="block text-sm font-semibold opacity-70">{% trans "Media type" %}
+        <select x-model="kind" @change="applyKind()" class="mt-1">
+          <option value="text">{% trans "Text" %}</option>
+          <option value="pdf">PDF</option>
+        </select></label>
+      <div x-show="kind === 'text'">
         <textarea x-model="c.content.data" rows="6" placeholder="{% trans 'Document text…' %}"></textarea>
       </div>
-      <div x-show="c.content.encoding === 'base64'" class="text-sm">
-        <input type="file" @change="loadFile($event)" class="!w-auto">
+      <div x-show="kind === 'pdf'" class="text-sm">
+        <input type="file" accept="application/pdf" @change="loadFile($event)" class="!w-auto">
         <p class="mt-1 text-xs opacity-60" x-show="c.content.data" x-text="'{% trans "Embedded:" %} ' + Math.round(c.content.data.length*0.75/1024) + ' KB'"></p>
-        <p class="text-xs opacity-50">{% trans "Upload a PDF to embed (it can be appended to the signed PDF)." %}</p>
+        <p class="text-xs opacity-50">{% trans "Upload a PDF to embed (appended to the signed PDF)." %}</p>
       </div>
     </div>
 
@@ -122,11 +121,19 @@
 <script>
 function contractEditor() {
   return {
-    c: {}, saving: false, error: "",
+    c: {}, kind: "text", saving: false, error: "",
     init() {
       this.c = JSON.parse(document.getElementById("contract-data").textContent);
       if (!this.c.content) this.c.content = {media_type:"text/plain", encoding:"text", data:""};
       if (!Array.isArray(this.c.parties)) this.c.parties = [];
+      this.kind = this.c.content.encoding === "base64" ? "pdf" : "text";
+    },
+    applyKind() {
+      // One "Media type" control: Text -> text/plain, PDF -> base64 application/pdf.
+      // Switching content type clears the (incompatible) payload.
+      if (this.kind === "pdf") { this.c.content.encoding = "base64"; this.c.content.media_type = "application/pdf"; }
+      else { this.c.content.encoding = "text"; this.c.content.media_type = "text/plain"; }
+      this.c.content.data = "";
     },
     addParty() { this.c.parties.push({id:"", type:"person", role:"signer", legal_name:"", email:""}); },
     toggleRep(p, e) { p.representative = e.target.checked ? {id:"", name:"", title:"", email:""} : null; },
@@ -135,7 +142,7 @@ function contractEditor() {
     loadFile(e) {
       const file = e.target.files[0]; if (!file) return;
       const r = new FileReader();
-      r.onload = () => { this.c.content.data = String(r.result).split(",").pop(); this.c.content.media_type = file.type || "application/octet-stream"; };
+      r.onload = () => { this.c.content.data = String(r.result).split(",").pop(); this.c.content.encoding = "base64"; this.c.content.media_type = file.type || "application/pdf"; };
       r.readAsDataURL(file);
     },
     async save() {

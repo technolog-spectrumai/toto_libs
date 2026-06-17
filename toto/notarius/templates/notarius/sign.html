@@ -31,7 +31,9 @@
       </div>
     {% else %}
       <form method="post"
-            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark [&_input]:bg-sunken-dark [&_select]:bg-sunken-dark [&_input]:text-text-main-dark [&_select]:text-text-main-dark [&_input]:border-accent-1 [&_select]:border-accent-1'
+              : 'border-accent-2 bg-bubble-bg-light [&_input]:bg-sunken-light [&_select]:bg-sunken-light [&_input]:text-text-main-light [&_select]:text-text-main-light [&_input]:border-accent-2 [&_select]:border-accent-2'"
             class="space-y-5 rounded-2xl border p-5 shadow-sm
                    [&_input]:w-full [&_select]:w-full [&_input]:rounded-lg [&_select]:rounded-lg
                    [&_input]:border [&_select]:border [&_input]:px-3 [&_select]:px-3 [&_input]:py-2 [&_select]:py-2 [&_input]:text-sm [&_select]:text-sm">

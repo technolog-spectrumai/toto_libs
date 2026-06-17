@@ -40,10 +40,18 @@ def _get_file(request, file_pk, *, owner_only=False) -> VaultFile:
     return vf
 
 
+# Read/write go through the storage with a FRESH handle each time, rather than the
+# FieldFile's cached handle. Reading then writing the same VaultFile in one request
+# otherwise leaves a stale/closed handle (UnsupportedOperation on write, or "I/O
+# operation on closed file" on a second read).
+
+
 def _read(vf: VaultFile) -> contract_format.Contract:
     try:
-        return contract_format.loads(vf.file.read().decode("utf-8"))
-    except (contract_format.ContractParseError, UnicodeDecodeError):
+        with vf.file.storage.open(vf.file.name, "rb") as fh:
+            raw = fh.read()
+        return contract_format.loads(raw.decode("utf-8"))
+    except (contract_format.ContractParseError, UnicodeDecodeError, FileNotFoundError, ValueError):
         return contract_format.new_contract(title=vf.title)
 
 
@@ -51,8 +59,9 @@ def _write(vf: VaultFile, contract: contract_format.Contract) -> None:
     contract.content_hash = contract.computed_content_hash()
     xml = contract_format.dumps(contract)
     xml_bytes = xml.encode("utf-8")
-    with vf.file.open("w") as f:
-        f.write(xml)
+    vf.file.close()  # drop any cached read handle from this request
+    with vf.file.storage.open(vf.file.name, "w") as fh:
+        fh.write(xml)
     vf.content_hash = hashlib.sha256(xml_bytes).hexdigest()
     vf.file_size_bytes = len(xml_bytes)
     vf.save(update_fields=["content_hash", "file_size_bytes"])
