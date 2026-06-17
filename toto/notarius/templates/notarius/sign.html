@@ -1,0 +1,114 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Sign contract" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-xl space-y-6">
+
+    {% if messages %}{% for m in messages %}
+      <div :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+           class="rounded-lg border px-4 py-3 text-sm">{{ m }}</div>
+    {% endfor %}{% endif %}
+
+    <header>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Sign" %}</p>
+      <h1 class="mt-1 text-2xl font-bold">{{ contract.title|default:vault_file.title }}</h1>
+      <p class="mt-1 text-sm opacity-60">{{ contract.id }} · {{ contract.status }}</p>
+    </header>
+
+    {% if not person %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border p-5 text-sm">
+        {% trans "You need a Person profile linked to your account to sign." %}
+        <a href="{{ view_url }}" class="font-semibold underline">{% trans "Back" %}</a>
+      </div>
+    {% else %}
+      <form method="post"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="space-y-5 rounded-2xl border p-5 shadow-sm
+                   [&_input]:w-full [&_select]:w-full [&_input]:rounded-lg [&_select]:rounded-lg
+                   [&_input]:border [&_select]:border [&_input]:px-3 [&_select]:px-3 [&_input]:py-2 [&_select]:py-2 [&_input]:text-sm [&_select]:text-sm">
+        {% csrf_token %}
+
+        <label class="block text-sm font-semibold opacity-70">{% trans "Signing as" %}
+          <select name="party_id" required class="mt-1">
+            {% for p in signer_parties %}
+              <option value="{{ p.id }}">{{ p.legal_name|default:p.id }} ({{ p.role }})</option>
+            {% endfor %}
+          </select>
+        </label>
+
+        {% if not existing_signing_key and strongboxes %}
+          <label class="block text-sm font-semibold opacity-70">{% trans "Strongbox" %}
+            <select name="strongbox_id" class="mt-1">
+              {% for sb in strongboxes %}<option value="{{ sb.pk }}">{{ sb.name }}</option>{% endfor %}
+            </select>
+          </label>
+        {% elif not existing_signing_key %}
+          <p class="rounded-lg border px-4 py-3 text-sm"
+             :class="darkMode ? 'border-warn-dark' : 'border-warn-light'">
+            {% trans "No strongbox found — create one in Gervazy first to hold your signing key." %}</p>
+        {% endif %}
+
+        <label class="block text-sm font-semibold opacity-70">{% trans "Strongbox password" %}
+          <input type="password" name="strongbox_password" required class="mt-1"
+                 placeholder="{% trans 'Unlocks your signing key' %}"></label>
+
+        <label class="block text-sm font-semibold opacity-70">{% trans "Typed name (optional)" %}
+          <input type="text" name="typed_name" class="mt-1" value="{{ person.display_name }}"></label>
+
+        {# Handwritten signature pad — adapted/duplicated from
+           limbo/contracts/templates/contracts/_signature_pad.html so notarius stays
+           self-contained (the limbo `contracts` app is not installed in portal). #}
+        <div x-data="sigPad()" x-init="init()" class="space-y-2">
+          <p class="text-sm font-semibold opacity-70">{% trans "Handwritten signature" %}</p>
+          <canvas id="contract_sigpad" width="500" height="160"
+                  class="w-full touch-none rounded-lg border border-accent-2 bg-white"
+                  @mousedown="start($event)" @mousemove="move($event)" @mouseup="end()" @mouseleave="end()"
+                  @touchstart.prevent="start($event)" @touchmove.prevent="move($event)" @touchend.prevent="end()"></canvas>
+          <input type="hidden" name="signature_data" id="contract_sigpad_input">
+          <button type="button" @click="clear()" class="text-xs font-semibold opacity-60 hover:opacity-100">
+            <i class="fa-solid fa-eraser"></i> {% trans "Clear" %}</button>
+        </div>
+
+        <div class="flex gap-2">
+          <a href="{{ view_url }}" class="rounded-lg border px-4 py-2 text-sm font-semibold"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">{% trans "Cancel" %}</a>
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold hover:opacity-90">
+            <i class="fa-solid fa-signature"></i>{% trans "Sign contract" %}</button>
+        </div>
+      </form>
+    {% endif %}
+
+  </div>
+</section>
+
+<script>
+function sigPad() {
+  const cv = () => document.getElementById("contract_sigpad");
+  return {
+    drawing: false,
+    init() { const c = cv(); const x = c.getContext("2d"); x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); },
+    ctx() { const x = cv().getContext("2d"); x.strokeStyle = "#1a1a1a"; x.lineWidth = 2; x.lineCap = "round"; return x; },
+    pos(e) { const c = cv(); const r = c.getBoundingClientRect(); const s = e.touches ? e.touches[0] : e;
+             return { x: (s.clientX - r.left) * (c.width / r.width), y: (s.clientY - r.top) * (c.height / r.height) }; },
+    start(e) { this.drawing = true; const x = this.ctx(); const p = this.pos(e); x.beginPath(); x.moveTo(p.x, p.y); },
+    move(e) { if (!this.drawing) return; const x = this.ctx(); const p = this.pos(e); x.lineTo(p.x, p.y); x.stroke(); },
+    end() { if (!this.drawing) return; this.drawing = false;
+            document.getElementById("contract_sigpad_input").value = cv().toDataURL("image/png"); },
+    clear() { const c = cv(); const x = c.getContext("2d"); x.clearRect(0, 0, c.width, c.height);
+              x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+              document.getElementById("contract_sigpad_input").value = ""; },
+  };
+}
+</script>
+{% endblock %}

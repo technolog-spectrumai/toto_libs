@@ -146,6 +146,7 @@ class VaultFile(models.Model):
         ('python', 'Python'),
         ('notebook', 'Notebook'),
         ('neojson', 'NeoJSON'),
+        ('contract', 'Contract'),
     ]
 
     _EXT_MAP = {
@@ -163,6 +164,7 @@ class VaultFile(models.Model):
         ".md": "text", ".txt": "text", ".rst": "text",
         ".py": "python",
         ".tpy": "notebook",
+        ".contract": "contract",
         ".mp3": "audio", ".ogg": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
         ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
         ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",

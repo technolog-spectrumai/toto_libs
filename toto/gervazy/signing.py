@@ -255,3 +255,44 @@ class SigningService:
             f"at:{signed_at.isoformat()}",
         ]
         return "\n".join(lines).encode("utf-8")
+
+    @staticmethod
+    def canonical_contract_file_payload(doc_id, version, content_hash, party_id, signed_at_iso) -> bytes:
+        """
+        Canonical payload for signing a file-based ``.contract`` (toto.notarius).
+
+        Built entirely from values stored in the contract XML so a verifier can
+        reconstruct it from the file alone (no DB row required).
+
+        Format (newline-separated, UTF-8):
+            sign:contract-file
+            doc:<id>
+            version:<version>
+            content-sha256:<contentHash>
+            party:<partyId>
+            at:<signedAt ISO-8601>
+        """
+        lines = [
+            "sign:contract-file",
+            f"doc:{doc_id}",
+            f"version:{version}",
+            f"content-sha256:{content_hash}",
+            f"party:{party_id}",
+            f"at:{signed_at_iso}",
+        ]
+        return "\n".join(lines).encode("utf-8")
+
+    @staticmethod
+    def verify_with_public_key(public_key_pem: str, payload: bytes, signature_b64: str) -> bool:
+        """
+        Verify a signature using a public key carried alongside it (e.g. embedded in
+        a ``.contract`` signature element) — no Person/DB lookup needed.
+        """
+        try:
+            public_key = serialization.load_pem_public_key(public_key_pem.encode("utf-8"))
+            if not isinstance(public_key, Ed25519PublicKey):
+                return False
+            public_key.verify(base64.b64decode(signature_b64), payload)
+            return True
+        except (InvalidSignature, Exception):
+            return False
