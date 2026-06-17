@@ -1,6 +1,12 @@
 """Gervazy crypto tests — the AES-256-GCM blob helpers used for at-rest encryption."""
+import ipaddress
+import tempfile
+from pathlib import Path
+
+from cryptography import x509
 from cryptography.exceptions import InvalidTag
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase
 
 from toto.gervazy.crypto import GervazyCryptoSession
@@ -50,3 +56,42 @@ class BlobHelperTests(TestCase):
         ct, nonce = self.session.encrypt_blob(self.wk, b"persisted", b"a")
         fresh = GervazyCryptoSession(self.session._strongbox, "pw")
         self.assertEqual(fresh.decrypt_blob(self.wk, ct, nonce, b"a"), b"persisted")
+
+
+class GenSslCertCommandTests(TestCase):
+    """The gen_ssl_cert management command — run from the web entrypoint to create
+    the gervazy self-signed cert in-container (for ssl.mode: gervazy)."""
+
+    def test_generates_cert_with_expected_sans(self):
+        with tempfile.TemporaryDirectory() as d:
+            cert = Path(d) / "localhost.crt"
+            key = Path(d) / "localhost.key"
+            call_command(
+                "gen_ssl_cert",
+                cert_path=str(cert),
+                key_path=str(key),
+                common_name="localhost",
+                dns_names="localhost,vps-86826fd4.vps.ovh.net",
+                ip_addresses="127.0.0.1,146.59.92.66",
+            )
+            self.assertTrue(cert.exists())
+            self.assertTrue(key.exists())
+            san = (
+                x509.load_pem_x509_certificate(cert.read_bytes())
+                .extensions.get_extension_for_class(x509.SubjectAlternativeName)
+                .value
+            )
+            self.assertIn("vps-86826fd4.vps.ovh.net", san.get_values_for_type(x509.DNSName))
+            self.assertIn(
+                ipaddress.ip_address("146.59.92.66"),
+                san.get_values_for_type(x509.IPAddress),
+            )
+
+    def test_idempotent_does_not_overwrite(self):
+        with tempfile.TemporaryDirectory() as d:
+            cert = Path(d) / "c.crt"
+            key = Path(d) / "c.key"
+            call_command("gen_ssl_cert", cert_path=str(cert), key_path=str(key))
+            original = cert.read_bytes()
+            call_command("gen_ssl_cert", cert_path=str(cert), key_path=str(key))
+            self.assertEqual(cert.read_bytes(), original)  # unchanged on re-run
