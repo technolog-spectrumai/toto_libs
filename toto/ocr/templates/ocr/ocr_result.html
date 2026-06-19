@@ -39,16 +39,6 @@
         </div>
         <pre class="max-h-96 overflow-auto whitespace-pre-wrap rounded-md p-3 font-mono text-xs leading-relaxed"
           x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'">{{ text|default:"(no text extracted)" }}</pre>
-
-        {% if bento_available %}
-        <div class="mt-4">
-          <a href="{% url 'ocr:export_bento' run.id %}"
-             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
-             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition">
-            <i class="fa-solid fa-diagram-project"></i>{% trans "Export as graph node" %}
-          </a>
-        </div>
-        {% endif %}
       </div>
       {% else %}
       <div class="rounded-lg bg-warn-light/10 px-4 py-3 text-sm text-warn-light">

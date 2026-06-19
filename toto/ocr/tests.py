@@ -95,12 +95,3 @@ class OcrViewTests(TestCase):
         run = self._run()
         self.client.login(username="ocr_other", password="pass")
         self.assertEqual(self.client.get(reverse("ocr:result", args=[run.id])).status_code, 404)
-
-    def test_bento_export_gated_on_graph_stack(self):
-        run = self._run()
-        self.client.login(username="ocr_user", password="pass")
-        resp = self.client.get(reverse("ocr:export_bento", args=[run.id]))
-        if apps.is_installed("toto.bento") and apps.is_installed("toto.ravioli"):
-            self.assertEqual(resp.status_code, 200)
-        else:
-            self.assertEqual(resp.status_code, 404)
