@@ -3,8 +3,28 @@ from __future__ import annotations
 import os
 import tempfile
 
+from django.urls import reverse
+
 from toto.fileservices.plugin import FileServicePlugin
 from toto.fileservices.runner import save_output, stage_input
+
+
+@FileServicePlugin.plugin(key="ocr_tool", title="OCR (text extraction)", order=10)
+class OcrBuilderPlugin(FileServicePlugin):
+    """Visible vault-wand entry for images. Hands the user off to the standalone
+    OCR page, which runs the actual extraction through the 'ocr' executor below
+    (wrapped in the fileservices-run workflow)."""
+
+    accepted_file_types = ["image"]
+    icon = "fa-solid fa-file-lines"
+    description = "Extract text from an image. Opens the OCR page; each run is tracked as a workflow."
+    builder = True
+
+    def builder_url(self, vault_file) -> str:
+        return reverse("ocr:home") + f"?file={vault_file.pk}"
+
+    def execute(self, run):
+        raise NotImplementedError("OCR runs through its page, not inline.")
 
 
 @FileServicePlugin.plugin(key="ocr", title="OCR (text extraction)", order=30)

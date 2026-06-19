@@ -5,8 +5,6 @@ import mimetypes
 import os
 import tempfile
 
-from django.urls import reverse
-
 from toto.fileservices.plugin import FileServicePlugin
 from toto.fileservices.runner import (
     run_subprocess,
@@ -14,26 +12,6 @@ from toto.fileservices.runner import (
     stage_input,
     tokenize_args,
 )
-
-
-@FileServicePlugin.plugin(key="manta", title="Manta (media tools)", order=10)
-class MantaServicePlugin(FileServicePlugin):
-    """Single menu entry for all manta commands (ffmpeg/ffprobe/transcribe/ocr).
-
-    Selecting it hands the user off to the manta command builder, where they
-    pick a command, preview it, and run it.
-    """
-
-    accepted_file_types = ["video", "audio", "image"]
-    icon = "fa-solid fa-film"
-    description = "Build, preview and run media / transcribe / ocr commands on the builder page."
-    builder = True
-
-    def builder_url(self, vault_file) -> str:
-        return reverse("manta:command_builder") + f"?file={vault_file.pk}&service=manta"
-
-    def execute(self, run):
-        raise NotImplementedError("Manta runs through its command builder, not inline.")
 
 
 @FileServicePlugin.plugin(key="ffmpeg", title="FFmpeg", order=11)

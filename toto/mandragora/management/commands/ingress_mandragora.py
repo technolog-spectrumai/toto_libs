@@ -100,10 +100,18 @@ print("files in notebook-demo/:", files.list("notebook-demo"))
             self.stdout.write(self.style.WARNING(f"Notebook already exists: {notebook.title}"))
 
         self._seed_connectors()
-        report_templates = self._seed_report_templates()
-        self._seed_workflows(report_templates)
-        self._seed_runs()
-        self._seed_reports(report_templates)
+        # Demo workflows + their sample run history and reports are illustrative
+        # only — they pollute a minimal bring-up. Seed them solely under full
+        # ingress (FULL_INGRESS=1). Functional workflows live in their own apps.
+        if self.full:
+            report_templates = self._seed_report_templates()
+            self._seed_workflows(report_templates)
+            self._seed_runs()
+            self._seed_reports(report_templates)
+        else:
+            self.stdout.write(self.style.WARNING(
+                "Skipping demo workflows/runs/reports (FULL_INGRESS=0)."
+            ))
 
     # ------------------------------------------------------------------
     #  Connector seeds
