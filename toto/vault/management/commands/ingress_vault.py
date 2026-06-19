@@ -23,11 +23,38 @@ class Command(IngressCommand):
             return
 
         self._ensure_default_structure(user)
+        self._ensure_zip_workflow()
 
         if not self.full:
             return
 
         self._seed_full_demo(user)
+
+    # ── Always-on: the zip workflow (only when the workflow engine is present) ──
+
+    def _ensure_zip_workflow(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            return
+        from toto.workflows.models import Workflow, WorkflowNode
+
+        wf, created = Workflow.objects.get_or_create(
+            slug="vault-zip",
+            defaults={
+                "name": "Zip files",
+                "description": "Bundle selected vault files into a single .zip archive saved back to the vault.",
+            },
+        )
+        if created or not wf.nodes.filter(task_name="vault_zip_files").exists():
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Zip selected files",
+                task_name="vault_zip_files",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("  + workflow: vault-zip"))
 
     # ── Always-on: default bucket + directory tree ────────────────────────────
 

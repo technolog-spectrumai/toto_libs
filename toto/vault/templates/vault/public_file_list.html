@@ -18,6 +18,9 @@
   const _servicesUrlTpl   = "{{ services_url_tpl }}";
   const _runServiceUrlTpl = "{{ run_service_url_tpl }}";
   const _openServiceUrlTpl = "{{ open_service_url_tpl }}";
+  const _createZipUrl = "{% url 'vault:create_zip' %}";
+  const _zipStatusUrl = "{% url 'vault:zip_status' %}";
+  const _zipEnabled   = {{ zip_enabled|yesno:"true,false" }};
 
   document.addEventListener('alpine:init', () => {
     Alpine.data('vaultTree', () => {
@@ -110,6 +113,20 @@
         createLoading: false,
         createError: '',
 
+        // zip directory state
+        zipEnabled: _zipEnabled,
+        zipModal: false,
+        zipSourceId: null,
+        zipSourceName: '',
+        zipBucketPk: null,
+        zipFilename: '',
+        zipTargetId: 'root',   // 'root' = bucket root, or dir pk
+        zipFiles: [],          // [{id, title, selected}]
+        zipLoading: false,
+        zipError: '',
+        zipRunUrl: '',
+        zipStatus: '',
+
         // actions chooser state
         actionsModal: false,
         actionsItem: null,
@@ -134,7 +151,7 @@
             text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
             html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
             latex:'fa-file-lines', bib:'fa-book', notebook:'fa-book',
-            presentation:'fa-person-chalkboard' };
+            presentation:'fa-person-chalkboard', zip:'fa-file-zipper' };
           return map[ft] || 'fa-file';
         },
         fileTypeColor(ft) {
@@ -622,6 +639,86 @@
           this.createLoading = false;
         },
 
+        // ── Zip a directory (workflow-backed) ─────────────────
+        _descendantFiles(dirId) {
+          const inDir = (item) => {
+            let pid = item.pid, seen = new Set();
+            while (pid !== null && pid !== undefined && !seen.has(pid)) {
+              if (pid === dirId) return true;
+              seen.add(pid);
+              const parent = this.dirMap[pid];
+              pid = parent ? parent.pid : null;
+            }
+            return false;
+          };
+          return this.items.filter(i => i.t === 'file' && !i.encrypted && inDir(i));
+        },
+        openZip(item) {
+          this.zipSourceId   = item.id;
+          this.zipSourceName = item.name;
+          this.zipBucketPk   = item.bpk;
+          this.zipFilename   = item.name + '.zip';
+          this.zipTargetId   = String(item.id);
+          this.zipFiles      = this._descendantFiles(item.id)
+            .map(f => ({ id: f.id, title: f.title, selected: true }));
+          this.zipError = ''; this.zipRunUrl = ''; this.zipStatus = '';
+          this.zipModal = true;
+        },
+        get zipDirs() {
+          return this.items.filter(i => i.t === 'dir' && i.bpk === this.zipBucketPk);
+        },
+        setAllZip(val) { this.zipFiles.forEach(f => f.selected = val); },
+        get zipSelectedCount() { return this.zipFiles.filter(f => f.selected).length; },
+        async submitZip() {
+          const selected = this.zipFiles.filter(f => f.selected).map(f => f.id);
+          if (selected.length === 0) { this.zipError = 'Select at least one file.'; return; }
+          if (!this.zipFilename.trim()) { this.zipError = 'Filename is required.'; return; }
+          this.zipLoading = true; this.zipError = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams();
+            body.append('source_directory_id', this.zipSourceId);
+            body.append('target_directory_id', this.zipTargetId === 'root' ? '' : this.zipTargetId);
+            body.append('output_name', this.zipFilename.trim());
+            selected.forEach(id => body.append('file_ids', id));
+            const res = await fetch(_createZipUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body,
+            });
+            const data = await res.json();
+            if (data.status === 'queued') {
+              this.zipRunUrl = data.workflow_run_url || '';
+              this.zipStatus = 'running';
+              this.pollZip(data.workflow_run_id, csrf);
+            } else {
+              this.zipError = data.error || 'Could not start archiving.';
+              this.zipLoading = false;
+            }
+          } catch {
+            this.zipError = 'Network error. Please try again.';
+            this.zipLoading = false;
+          }
+        },
+        pollZip(runId, csrf) {
+          const url = _zipStatusUrl + '?run_id=' + encodeURIComponent(runId);
+          const tick = async () => {
+            try {
+              const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });
+              const data = await res.json();
+              this.zipStatus = data.status;
+              if (data.is_terminal) {
+                if (data.status === 'completed') { window.location.reload(); }
+                else { this.zipError = 'Archiving failed.'; this.zipLoading = false; }
+                return;
+              }
+            } catch { /* keep polling */ }
+            setTimeout(tick, 2000);
+          };
+          setTimeout(tick, 1500);
+        },
+
         // ── Actions chooser ───────────────────────────────────
         openActions(item) {
           this.actionsItem = item;
@@ -960,6 +1057,13 @@
                             class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
                       <i class="fa-solid fa-file-circle-plus text-xs"></i>
                       <span class="hidden sm:inline">{% trans "New" %}</span>
+                    </button>
+                    <button x-show="item.can_create && zipEnabled && (item.n_files > 0 || item.n_dirs > 0)"
+                            @click.stop="openZip(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-file-zipper text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Zip" %}</span>
                     </button>
                     <a x-show="item.upload_url" :href="item.upload_url" @click.stop
                        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -1787,6 +1891,94 @@
             <button @click="createModal = false"
                     :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
                     class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Zip directory modal ──────────────────────────────────── -->
+      <div x-show="zipModal"
+           x-cloak
+           @keydown.escape.window="zipModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="if (!zipLoading) zipModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2 min-w-0">
+            <i class="fa-solid fa-file-zipper opacity-60 shrink-0"></i>
+            <span class="truncate">{% trans "Zip" %} “<span x-text="zipSourceName"></span>”</span>
+          </h2>
+
+          <!-- Filename -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Archive name" %}</label>
+            <input x-model="zipFilename" type="text"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Destination -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Save to" %}</label>
+            <select x-model="zipTargetId"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                    class="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition">
+              <option value="root">{% trans "Bucket root" %}</option>
+              <template x-for="d in zipDirs" :key="d.id">
+                <option :value="String(d.id)" x-text="'— '.repeat(d.depth) + d.name"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- File selection -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-semibold opacity-55 uppercase tracking-wide">
+                {% trans "Files" %} (<span x-text="zipSelectedCount"></span>/<span x-text="zipFiles.length"></span>)
+              </label>
+              <div class="flex gap-2 text-xs">
+                <button type="button" @click="setAllZip(true)" class="opacity-70 hover:opacity-100 underline">{% trans "All" %}</button>
+                <button type="button" @click="setAllZip(false)" class="opacity-70 hover:opacity-100 underline">{% trans "None" %}</button>
+              </div>
+            </div>
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="max-h-56 overflow-auto rounded-xl border divide-y"
+                 style="border-color:var(--color-accent-2)">
+              <template x-for="f in zipFiles" :key="f.id">
+                <label class="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer"
+                       :class="darkMode ? 'hover:bg-primary-bg-dark border-accent-1/30' : 'hover:bg-primary-bg-light border-accent-2/30'">
+                  <input type="checkbox" x-model="f.selected" class="shrink-0">
+                  <span class="truncate" x-text="f.title"></span>
+                </label>
+              </template>
+              <p x-show="zipFiles.length === 0" class="px-3 py-3 text-xs opacity-60">{% trans "No files in this folder." %}</p>
+            </div>
+          </div>
+
+          <!-- Error / progress -->
+          <p x-show="zipError" x-text="zipError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+          <p x-show="zipLoading && !zipError" class="text-xs opacity-70 flex items-center gap-2">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>{% trans "Archiving in the background…" %}</span>
+            <a x-show="zipRunUrl" :href="zipRunUrl" class="underline">{% trans "view run" %}</a>
+          </p>
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-1">
+            <button @click="submitZip" :disabled="zipLoading"
+                    :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!zipLoading"><i class="fa-solid fa-file-zipper mr-1"></i>{% trans "Create zip" %}</span>
+              <span x-show="zipLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="zipModal = false" :disabled="zipLoading"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50">
               {% trans "Cancel" %}
             </button>
           </div>

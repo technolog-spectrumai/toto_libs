@@ -255,6 +255,10 @@ class PublicFileListView(TemplateView):
         # "New file" type pills — only types whose editor is installed on this deployment.
         context["create_file_types"] = available_create_types()
 
+        # Zip is workflow-backed (Celery); only offer it where the engine exists.
+        from django.apps import apps as _apps
+        context["zip_enabled"] = _apps.is_installed("toto.workflows")
+
         return PageProcessor().decorate(context, self.request)
 
 
@@ -1409,3 +1413,86 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "title": vault_file.title,
             "editor_url": editor_url,
         }, status=201)
+
+
+class CreateZipView(LoginRequiredMixin, View):
+    """Trigger a Celery-backed 'vault-zip' workflow that archives the selected
+    files into a new .zip VaultFile. Only available when the workflow engine is
+    installed (the Zip button is hidden otherwise)."""
+
+    def post(self, request):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            return JsonResponse({"error": "Archiving is not available on this deployment."}, status=400)
+
+        source_id = request.POST.get("source_directory_id", "").strip()
+        target_id = request.POST.get("target_directory_id", "").strip()
+        output_name = request.POST.get("output_name", "").strip()
+
+        if not source_id:
+            return JsonResponse({"error": "source_directory_id is required."}, status=400)
+        source = get_object_or_404(VaultDirectory, pk=source_id)
+        if source.bucket.owner_id != request.user.id and not request.user.is_superuser:
+            return JsonResponse({"error": "Permission denied."}, status=403)
+
+        target = None
+        if target_id:
+            target = get_object_or_404(VaultDirectory, pk=target_id, bucket=source.bucket)
+
+        try:
+            ids = [int(x) for x in request.POST.getlist("file_ids")]
+        except (TypeError, ValueError):
+            return JsonResponse({"error": "Invalid file selection."}, status=400)
+        valid_ids = list(
+            VaultFile.objects.filter(pk__in=ids, bucket=source.bucket, is_encrypted=False)
+            .values_list("pk", flat=True)
+        )
+        if not valid_ids:
+            return JsonResponse({"error": "Select at least one file to archive."}, status=400)
+
+        from toto.workflows.api import trigger_workflow
+        run = trigger_workflow("vault-zip", {"data": {
+            "owner_id": request.user.id,
+            "source_directory_id": source.pk,
+            "target_directory_id": target.pk if target else None,
+            "file_ids": valid_ids,
+            "output_name": output_name,
+        }})
+        try:
+            run_url = reverse("workflows:workflow_run_detail", args=[run.id])
+        except Exception:
+            run_url = ""
+        return JsonResponse({
+            "status": "queued",
+            "workflow_run_id": run.id,
+            "workflow_run_url": run_url,
+            "count": len(valid_ids),
+        })
+
+
+class ZipStatusView(LoginRequiredMixin, View):
+    """Poll endpoint for a vault-zip workflow run."""
+
+    def get(self, request):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            return JsonResponse({"error": "unavailable"}, status=400)
+        from toto.workflows.models import WorkflowNodeRun, WorkflowRun
+
+        run = get_object_or_404(WorkflowRun, pk=request.GET.get("run_id"))
+        owner_id = ((run.input_data or {}).get("data") or {}).get("owner_id")
+        if owner_id != request.user.id and not request.user.is_superuser:
+            return JsonResponse({"error": "Not found."}, status=404)
+
+        vfid = None
+        if run.status == WorkflowRun.COMPLETED:
+            for n in WorkflowNodeRun.objects.filter(workflow_run=run).order_by("-id"):
+                d = (n.output_data or {}).get("data") or {}
+                if d.get("vault_file_id"):
+                    vfid = d["vault_file_id"]
+                    break
+        return JsonResponse({
+            "status": run.status,
+            "is_terminal": run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED),
+            "vault_file_id": vfid,
+        })

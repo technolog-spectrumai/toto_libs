@@ -14,6 +14,7 @@ from .views import (
     MoveFileView, RenameFileView, DeleteFileView,
     BucketConnectionUrlView, RemoteBucketImportView,
     CreateEmptyFileView,
+    CreateZipView, ZipStatusView,
 )
 
 app_name = "vault"
@@ -50,4 +51,6 @@ urlpatterns = [
     path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),
     path("buckets/import-remote/", RemoteBucketImportView.as_view(), name="bucket_import_remote"),
     path("file/create/", CreateEmptyFileView.as_view(), name="create_file"),
+    path("directory/zip/", CreateZipView.as_view(), name="create_zip"),
+    path("directory/zip/status/", ZipStatusView.as_view(), name="zip_status"),
 ]

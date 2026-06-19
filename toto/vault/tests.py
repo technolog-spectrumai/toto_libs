@@ -961,3 +961,151 @@ class FlatItemsPlayUrlTests(TestCase):
         vf = self._make_file("video", is_encrypted=True)
         items = self._flat_items_for([vf])
         self.assertEqual(items[0]["play_url"], "")
+
+
+class ZipFileTypeTests(TestCase):
+    def test_detect_type_from_extension(self):
+        self.assertEqual(VaultFile.detect_type("", "archive.zip"), "zip")
+
+    def test_detect_type_from_mime(self):
+        self.assertEqual(VaultFile.detect_type("application/zip", "x"), "zip")
+        self.assertEqual(VaultFile.detect_type("application/x-zip-compressed", "x"), "zip")
+
+    def test_zip_is_a_valid_choice(self):
+        self.assertIn("zip", dict(VaultFile.FILE_TYPES))
+
+
+class ZipArchiveHelperTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        self.alice = User.objects.create_user("zip_alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Z", slug="z-bucket", owner=self.alice)
+        self.docs = VaultDirectory.objects.create(name="Docs", bucket=self.bucket, owner=self.alice)
+        self.sub = VaultDirectory.objects.create(name="Sub", bucket=self.bucket, parent=self.docs, owner=self.alice)
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _file(self, title, key, directory, *, encrypted=False, body=b"data"):
+        return VaultFile.objects.create(
+            owner=self.alice, title=title, key=key,
+            file=SimpleUploadedFile(f"{key}.txt", body),
+            file_type="text", bucket=self.bucket, directory=directory,
+            is_encrypted=encrypted,
+        )
+
+    def test_zip_preserves_relative_structure_and_excludes_encrypted(self):
+        import zipfile
+        from toto.vault.archive import zip_files_to_vault_file
+
+        top = self._file("report.txt", "report", self.docs)
+        nested = self._file("nested.txt", "nested", self.sub)
+        secret = self._file("secret.txt", "secret", self.docs, encrypted=True)
+
+        vf, n = zip_files_to_vault_file(
+            self.alice, self.docs, self.docs,
+            [top.pk, nested.pk, secret.pk], "Docs.zip",
+        )
+        self.assertEqual(vf.file_type, "zip")
+        self.assertEqual(vf.directory_id, self.docs.pk)
+        self.assertEqual(vf.title, "Docs.zip")
+        self.assertEqual(n, 2)  # encrypted file excluded
+
+        with vf.file.open("rb") as fh:
+            names = set(zipfile.ZipFile(fh).namelist())
+        self.assertEqual(names, {"report.txt", "Sub/nested.txt"})
+
+    def test_zip_no_eligible_files_raises(self):
+        from toto.vault.archive import zip_files_to_vault_file
+        secret = self._file("secret.txt", "secret", self.docs, encrypted=True)
+        with self.assertRaises(ValueError):
+            zip_files_to_vault_file(self.alice, self.docs, None, [secret.pk], "x.zip")
+
+    def test_output_name_gets_zip_extension_and_root_target(self):
+        from toto.vault.archive import zip_files_to_vault_file
+        f = self._file("a.txt", "a", self.docs)
+        vf, _ = zip_files_to_vault_file(self.alice, self.docs, None, [f.pk], "myarchive")
+        self.assertTrue(vf.title.endswith(".zip"))
+        self.assertIsNone(vf.directory_id)  # target=None → bucket root
+
+
+class CreateZipViewTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("cz_alice", password="pass")
+        self.bob = User.objects.create_user("cz_bob", password="pass")
+        self.client = Client()
+        self.bucket = Bucket.objects.create(name="Z", slug="cz-bucket", owner=self.alice)
+        self.docs = VaultDirectory.objects.create(name="Docs", bucket=self.bucket, owner=self.alice)
+        self.f = VaultFile.objects.create(
+            owner=self.alice, title="a.txt", key="a",
+            file=SimpleUploadedFile("a.txt", b"x"), file_type="text",
+            bucket=self.bucket, directory=self.docs,
+        )
+
+    def tearDown(self):
+        self._override.disable()
+
+    def test_owner_triggers_workflow(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            self.skipTest("workflows not installed")
+        self.client.login(username="cz_alice", password="pass")
+        with patch("toto.workflows.api.trigger_workflow", return_value=MagicMock(id=999)) as m:
+            resp = self.client.post(reverse("vault:create_zip"), {
+                "source_directory_id": self.docs.pk,
+                "target_directory_id": "",
+                "output_name": "Docs.zip",
+                "file_ids": [self.f.pk],
+            })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(data["status"], "queued")
+        self.assertEqual(data["workflow_run_id"], 999)
+        m.assert_called_once()
+
+    def test_non_owner_denied(self):
+        self.client.login(username="cz_bob", password="pass")
+        with patch("toto.workflows.api.trigger_workflow") as m:
+            resp = self.client.post(reverse("vault:create_zip"), {
+                "source_directory_id": self.docs.pk,
+                "file_ids": [self.f.pk],
+            })
+        self.assertEqual(resp.status_code, 403)
+        m.assert_not_called()
+
+    def test_no_files_selected(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            self.skipTest("workflows not installed")
+        self.client.login(username="cz_alice", password="pass")
+        with patch("toto.workflows.api.trigger_workflow") as m:
+            resp = self.client.post(reverse("vault:create_zip"), {
+                "source_directory_id": self.docs.pk,
+                "file_ids": [],
+            })
+        self.assertEqual(resp.status_code, 400)
+        m.assert_not_called()

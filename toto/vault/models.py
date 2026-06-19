@@ -147,6 +147,7 @@ class VaultFile(models.Model):
         ('notebook', 'Notebook'),
         ('neojson', 'NeoJSON'),
         ('contract', 'Contract'),
+        ('zip', 'Archive'),
     ]
 
     _EXT_MAP = {
@@ -169,6 +170,7 @@ class VaultFile(models.Model):
         ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
         ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",
         ".webp": "image", ".bmp": "image", ".tiff": "image",
+        ".zip": "zip",
     }
 
     @classmethod
@@ -207,6 +209,8 @@ class VaultFile(models.Model):
             return "audio"
         if mime.startswith("video/"):
             return "video"
+        if "zip" in mime:  # application/zip, application/x-zip-compressed
+            return "zip"
         return "text"
 
     owner = models.ForeignKey(User, on_delete=models.CASCADE)
