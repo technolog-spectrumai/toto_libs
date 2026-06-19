@@ -1069,12 +1069,16 @@ class CreateZipViewTests(TestCase):
     def tearDown(self):
         self._override.disable()
 
-    def test_owner_triggers_workflow(self):
+    def _skip_if_no_workflows(self):
         from django.apps import apps
         if not apps.is_installed("toto.workflows"):
             self.skipTest("workflows not installed")
+
+    def test_owner_queues_when_celery_available(self):
+        self._skip_if_no_workflows()
         self.client.login(username="cz_alice", password="pass")
-        with patch("toto.workflows.api.trigger_workflow", return_value=MagicMock(id=999)) as m:
+        with patch("toto.celery_utils.celery_available", return_value=True), \
+             patch("toto.workflows.tasks.start_workflow_run_task") as task:
             resp = self.client.post(reverse("vault:create_zip"), {
                 "source_directory_id": self.docs.pk,
                 "target_directory_id": "",
@@ -1084,31 +1088,46 @@ class CreateZipViewTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         data = resp.json()
         self.assertEqual(data["status"], "queued")
-        self.assertEqual(data["workflow_run_id"], 999)
-        m.assert_called_once()
+        task.delay.assert_called_once_with(data["workflow_run_id"])
+        from toto.workflows.models import WorkflowRun
+        self.assertTrue(WorkflowRun.objects.filter(pk=data["workflow_run_id"]).exists())
+        # async path: nothing zipped inline yet
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bucket, file_type="zip").exists())
+
+    def test_owner_runs_inline_without_celery(self):
+        self._skip_if_no_workflows()
+        self.client.login(username="cz_alice", password="pass")
+        with patch("toto.celery_utils.celery_available", return_value=False):
+            resp = self.client.post(reverse("vault:create_zip"), {
+                "source_directory_id": self.docs.pk,
+                "target_directory_id": "",
+                "output_name": "Docs.zip",
+                "file_ids": [self.f.pk],
+            })
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(resp.json()["status"], "ok")
+        # inline path actually produced the archive
+        zips = VaultFile.objects.filter(bucket=self.bucket, file_type="zip")
+        self.assertEqual(zips.count(), 1)
+        self.assertEqual(zips.first().title, "Docs.zip")
 
     def test_non_owner_denied(self):
         self.client.login(username="cz_bob", password="pass")
-        with patch("toto.workflows.api.trigger_workflow") as m:
-            resp = self.client.post(reverse("vault:create_zip"), {
-                "source_directory_id": self.docs.pk,
-                "file_ids": [self.f.pk],
-            })
+        resp = self.client.post(reverse("vault:create_zip"), {
+            "source_directory_id": self.docs.pk,
+            "file_ids": [self.f.pk],
+        })
         self.assertEqual(resp.status_code, 403)
-        m.assert_not_called()
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bucket, file_type="zip").exists())
 
     def test_no_files_selected(self):
-        from django.apps import apps
-        if not apps.is_installed("toto.workflows"):
-            self.skipTest("workflows not installed")
+        self._skip_if_no_workflows()
         self.client.login(username="cz_alice", password="pass")
-        with patch("toto.workflows.api.trigger_workflow") as m:
-            resp = self.client.post(reverse("vault:create_zip"), {
-                "source_directory_id": self.docs.pk,
-                "file_ids": [],
-            })
+        resp = self.client.post(reverse("vault:create_zip"), {
+            "source_directory_id": self.docs.pk,
+            "file_ids": [],
+        })
         self.assertEqual(resp.status_code, 400)
-        m.assert_not_called()
 
 
 class GatewayMultiUploadTests(TestCase):

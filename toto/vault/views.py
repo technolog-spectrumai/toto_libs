@@ -1459,24 +1459,66 @@ class CreateZipView(LoginRequiredMixin, View):
         if not valid_ids:
             return JsonResponse({"error": "Select at least one file to archive."}, status=400)
 
-        from toto.workflows.api import trigger_workflow
-        run = trigger_workflow("vault-zip", {"data": {
+        payload = {"data": {
             "owner_id": request.user.id,
             "source_directory_id": source.pk,
             "target_directory_id": target.pk if target else None,
             "file_ids": valid_ids,
             "output_name": output_name,
-        }})
+        }}
+        run, queued = self._start_zip_run(payload)
+
         try:
             run_url = reverse("workflows:workflow_run_detail", args=[run.id])
         except Exception:
             run_url = ""
         return JsonResponse({
-            "status": "queued",
+            "status": "queued" if queued else "ok",
             "workflow_run_id": run.id,
             "workflow_run_url": run_url,
             "count": len(valid_ids),
         })
+
+    @staticmethod
+    def _ensure_workflow():
+        """Get-or-create the single-node 'vault-zip' workflow so archiving works
+        even if ingress hasn't (re)seeded it on this deployment."""
+        from toto.workflows.models import Workflow, WorkflowNode
+        wf, created = Workflow.objects.get_or_create(
+            slug="vault-zip",
+            defaults={
+                "name": "Zip files",
+                "description": "Bundle selected vault files into a single .zip archive saved back to the vault.",
+            },
+        )
+        if created or not wf.nodes.filter(task_name="vault_zip_files").exists():
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Zip selected files",
+                task_name="vault_zip_files",
+                position_x=0,
+                position_y=0,
+            )
+        return wf
+
+    def _start_zip_run(self, payload):
+        """Create the WorkflowRun and execute it. Uses Celery when a worker is
+        reachable, otherwise runs inline (so zipping still works on a dev/runserver
+        setup with no worker — mirrors fileservices.dispatch.dispatch_run)."""
+        from toto.celery_utils import celery_available
+        from toto.workflows.models import WorkflowRun
+
+        wf = self._ensure_workflow()
+        run = WorkflowRun.objects.create(workflow=wf, input_data=payload)
+        if celery_available():
+            from toto.workflows.tasks import start_workflow_run_task
+            start_workflow_run_task.delay(run.id)
+            return run, True
+
+        from toto.workflows.services.executor import WorkflowExecutor
+        WorkflowExecutor().start(run)
+        return run, False
 
 
 class ZipStatusView(LoginRequiredMixin, View):
