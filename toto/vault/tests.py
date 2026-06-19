@@ -1109,3 +1109,71 @@ class CreateZipViewTests(TestCase):
             })
         self.assertEqual(resp.status_code, 400)
         m.assert_not_called()
+
+
+class GatewayMultiUploadTests(TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        from toto.vault.models import FileGateway
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("gw_alice", password="pass")
+        self.client = Client()
+        self.bucket = Bucket.objects.create(name="GW", slug="gw-bucket", owner=self.alice)
+        self.dir = VaultDirectory.objects.create(name="Inbox", bucket=self.bucket, owner=self.alice)
+        # max_file_size is in KB.
+        self.gateway = FileGateway.objects.create(directory=self.dir, name="Inbox GW", max_file_size=10 * 1024)
+        self.client.login(username="gw_alice", password="pass")
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _url(self):
+        return reverse("vault:gateway_upload", kwargs={"dir_pk": self.dir.pk})
+
+    def test_multiple_files_uploaded_in_one_request(self):
+        resp = self.client.post(self._url(), {"file": [
+            SimpleUploadedFile("a.txt", b"aaa"),
+            SimpleUploadedFile("b.txt", b"bbb"),
+        ]})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data["results"]), 2)
+        self.assertEqual(data["errors"], [])
+        self.assertEqual(VaultFile.objects.filter(bucket=self.bucket).count(), 2)
+
+    def test_oversized_file_skipped_others_succeed(self):
+        self.gateway.max_file_size = 1  # 1 KB limit
+        self.gateway.save()
+        resp = self.client.post(self._url(), {"file": [
+            SimpleUploadedFile("small.txt", b"x"),
+            SimpleUploadedFile("big.txt", b"x" * 2048),  # 2 KB > 1 KB
+        ]})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual([r["title"] for r in data["results"]], ["small.txt"])
+        self.assertEqual(len(data["errors"]), 1)
+        self.assertIn("big.txt", data["errors"][0])
+        self.assertEqual(VaultFile.objects.filter(bucket=self.bucket).count(), 1)
+
+    def test_all_oversized_returns_400(self):
+        self.gateway.max_file_size = 1
+        self.gateway.save()
+        resp = self.client.post(self._url(), {"file": [SimpleUploadedFile("big.txt", b"x" * 2048)]})
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["results"], [])
+        self.assertEqual(VaultFile.objects.filter(bucket=self.bucket).count(), 0)
+
+    def test_no_file_returns_400(self):
+        resp = self.client.post(self._url(), {})
+        self.assertEqual(resp.status_code, 400)

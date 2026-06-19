@@ -12,7 +12,8 @@
       dragging: false,
       uploading: false,
       error: null,
-      results: null,
+      results: null,          // array of successful uploads
+      uploadErrors: [],       // per-file errors (e.g. over the size limit)
       recentUploads: [],
       manualFileType: '',
 
@@ -23,22 +24,24 @@
 
       async handleDrop(event) {
         this.dragging = false;
-        const file = event.dataTransfer.files[0];
-        if (file) await this.uploadFile(file);
+        const files = [...event.dataTransfer.files];
+        if (files.length) await this.uploadFiles(files);
       },
 
       async handleFileSelect(event) {
-        const file = event.target.files[0];
-        if (file) await this.uploadFile(file);
+        const files = [...event.target.files];
+        if (files.length) await this.uploadFiles(files);
+        event.target.value = '';   // allow re-selecting the same file(s)
       },
 
-      async uploadFile(file) {
+      async uploadFiles(files) {
         this.uploading = true;
         this.error = null;
         this.results = null;
+        this.uploadErrors = [];
 
         const formData = new FormData();
-        formData.append('file', file);
+        files.forEach(f => formData.append('file', f));
         if (this.manualFileType) formData.append('file_type', this.manualFileType);
         const _targetDirId = '{{ target_dir_id|default:"" }}';
         if (_targetDirId) formData.append('target_directory_id', _targetDirId);
@@ -51,22 +54,27 @@
           });
 
           const data = await response.json();
+          const uploaded = data.results || [];
 
-          if (!response.ok) {
-            this.error = data.error || '{% trans "Upload failed" %}';
+          if (!response.ok && uploaded.length === 0) {
+            this.error = data.error
+              || (data.errors && data.errors.join(' ')) || '{% trans "Upload failed" %}';
           } else {
-            this.results = data.result;
+            this.results = uploaded;
+            this.uploadErrors = data.errors || [];
             const now = new Date();
             const ts = now.toISOString().slice(0, 16).replace('T', ' ');
-            this.recentUploads.unshift({
-              title: data.result.title,
-              file_type: data.result.file_type,
-              location: data.result.location || 'Root',
-              uploaded: ts,
-              public: data.result.public,
-              upload_cost: data.result.upload_cost || null,
-            });
-            if (this.recentUploads.length > 10) this.recentUploads.pop();
+            for (const r of uploaded) {
+              this.recentUploads.unshift({
+                title: r.title,
+                file_type: r.file_type,
+                location: r.location || 'Root',
+                uploaded: ts,
+                public: r.public,
+                upload_cost: r.upload_cost || null,
+              });
+            }
+            while (this.recentUploads.length > 10) this.recentUploads.pop();
           }
         } catch (err) {
           this.error = err.message;
@@ -164,10 +172,10 @@
 
         <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
            class="fa-solid fa-cloud-arrow-up text-4xl opacity-60 mb-3"></i>
-        <p class="text-lg font-semibold">{% trans "Drop a file here" %}</p>
-        <p class="text-sm opacity-60 mt-1">{% trans "or click to select" %}</p>
+        <p class="text-lg font-semibold">{% trans "Drop files here" %}</p>
+        <p class="text-sm opacity-60 mt-1">{% trans "or click to select (multiple allowed)" %}</p>
 
-        <input type="file" class="hidden" x-ref="fileInput" @change="handleFileSelect">
+        <input type="file" multiple class="hidden" x-ref="fileInput" @change="handleFileSelect">
       </div>
 
       {% widthratio gateway.max_file_size 1024 1 as max_mb %}
@@ -198,7 +206,7 @@
     </section>
 
     <!-- Upload result -->
-    <section x-show="results" x-transition>
+    <section x-show="results && results.length" x-transition>
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
         class="rounded-xl border p-6 shadow-sm">
@@ -206,39 +214,35 @@
         <h3 class="flex items-center gap-2 text-lg font-bold mb-4"
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
           <i class="fa-solid fa-circle-check text-base"></i>
-          {% trans "Upload successful" %}
+          <span x-text="`${results ? results.length : 0} {% trans 'file(s) uploaded' %}`"></span>
         </h3>
 
-        <!-- Upload cost banner -->
-        <template x-if="results && results.upload_cost">
-          <div :class="darkMode ? 'bg-warn-dark/10 border-warn-dark text-warn-dark' : 'bg-warn-light/10 border-warn-light text-warn-light'"
-               class="flex items-center gap-3 rounded-lg border px-4 py-3 mb-4">
-            <i class="fa-solid fa-coins shrink-0"></i>
-            <div>
-              <div class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "Upload billed" %}</div>
-              <div class="text-lg font-bold font-mono" x-text="results.upload_cost"></div>
+        <!-- Per-file results -->
+        <div :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'" class="divide-y">
+          <template x-for="(r, idx) in results" :key="idx">
+            <div class="flex items-center gap-3 py-2 text-sm">
+              <span class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                    x-text="r.file_type"></span>
+              <span class="font-medium truncate flex-1 min-w-0" x-text="r.title"></span>
+              <span class="hidden sm:flex items-center gap-1 text-xs opacity-50 shrink-0">
+                <i class="fa-solid fa-folder text-xs"></i><span x-text="r.location"></span>
+              </span>
+              <span class="font-mono text-xs opacity-60 shrink-0" x-text="r.size"></span>
             </div>
+          </template>
+        </div>
+
+        <!-- Per-file errors (e.g. over the size limit) -->
+        <template x-if="uploadErrors.length">
+          <div :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+               class="mt-4 rounded-lg border p-3 text-sm">
+            <p class="font-semibold mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Some files were skipped:" %}</p>
+            <ul class="list-disc list-inside space-y-0.5">
+              <template x-for="(e, i) in uploadErrors" :key="i"><li x-text="e"></li></template>
+            </ul>
           </div>
         </template>
-
-        <div class="grid gap-2 sm:grid-cols-2 text-sm">
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "File" %}</div>
-            <div class="font-semibold break-all" x-text="results && results.title"></div>
-          </div>
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Type" %}</div>
-            <div class="font-semibold font-mono" x-text="results && results.file_type"></div>
-          </div>
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Location" %}</div>
-            <div class="font-semibold" x-text="results && results.location"></div>
-          </div>
-          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
-            <div class="text-xs uppercase tracking-wide opacity-50 mb-0.5">{% trans "Size" %}</div>
-            <div class="font-semibold font-mono" x-text="results && results.size"></div>
-          </div>
-        </div>
 
         <div class="mt-4 pt-4 border-t border-current/10 flex gap-3">
           <a :href="`{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}`"
@@ -248,11 +252,11 @@
             {% trans "View files in" %} {{ gateway.bucket.name }}
           </a>
           <button
-            @click="results = null"
+            @click="results = null; uploadErrors = []"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
             <i class="fa-solid fa-plus"></i>
-            {% trans "Upload another" %}
+            {% trans "Upload more" %}
           </button>
         </div>
       </div>

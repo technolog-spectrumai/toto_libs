@@ -374,24 +374,9 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         ):
             return JsonResponse({"error": "You are not allowed to use this gateway"}, status=403)
 
-        if "file" not in request.FILES:
+        uploaded_files = request.FILES.getlist("file")
+        if not uploaded_files:
             return JsonResponse({"error": "No file uploaded"}, status=400)
-
-        uploaded_file = request.FILES["file"]
-
-        # ── Quota check ──────────────────────────────────────────────────────
-        if request.user.is_authenticated:
-            from toto.quota import QuotaExceeded, check_quota
-            try:
-                check_quota("vault", "storage.request", 1,
-                            "auth.User", str(request.user.pk))
-            except QuotaExceeded as _exc:
-                return JsonResponse({"error": str(_exc), "quota_exceeded": True}, status=429)
-
-        if uploaded_file.size > gateway.max_file_size * 1024:
-            return JsonResponse({
-                "error": f"File too large ({uploaded_file.size / (1024*1024):.1f} MB). Max is {gateway.max_file_size / 1024:.1f} MB."
-            }, status=400)
 
         target_directory_id = request.POST.get("target_directory_id", "").strip()
         if target_directory_id:
@@ -402,36 +387,9 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             directory = gateway.directory
 
-        mime, _ = mimetypes.guess_type(uploaded_file.name)
-        auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
         valid_types = {code for code, _ in VaultFile.FILE_TYPES}
         manual_type = request.POST.get("file_type", "").strip()
-        file_type = manual_type if manual_type in valid_types else auto_file_type
-
-        vault_file = VaultFile(
-            owner=request.user,
-            title=uploaded_file.name,
-            file=uploaded_file,
-            file_type=file_type,
-            bucket=gateway.bucket,
-            directory=directory,
-            is_public=gateway.make_public,
-        )
-        vault_file.save()
-        vault_file.content_hash = vault_file.create_hash()
-        vault_file.save()
-
-        # ── Record usage ─────────────────────────────────────────────────────
-        if request.user.is_authenticated:
-            from toto.quota import record_usage as _ru
-            _uid = str(request.user.pk)
-            _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk)}
-            _ru("vault", "storage.request", 1, "auth.User", _uid,
-                idempotency_key=f"vault.upload.request:{vault_file.pk}", **_src)
-            _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
-            if _size_mb > 0:
-                _ru("vault", "storage.transfer_mb", _size_mb, "auth.User", _uid,
-                    idempotency_key=f"vault.upload.transfer:{vault_file.pk}", **_src)
+        max_bytes = gateway.max_file_size * 1024
 
         if directory:
             all_dirs = list(VaultDirectory.objects.filter(bucket=gateway.bucket))
@@ -449,8 +407,55 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             location = "Root"
 
-        return JsonResponse({
-            "result": {
+        from toto.quota import QuotaExceeded, check_quota, record_usage as _ru
+
+        results, errors = [], []
+        for uploaded_file in uploaded_files:
+            # ── Per-file size limit ──────────────────────────────────────────
+            if uploaded_file.size > max_bytes:
+                errors.append(
+                    f"{uploaded_file.name}: too large "
+                    f"({uploaded_file.size / (1024*1024):.1f} MB; max {gateway.max_file_size / 1024:.1f} MB)."
+                )
+                continue
+
+            # ── Per-file quota check ─────────────────────────────────────────
+            if request.user.is_authenticated:
+                try:
+                    check_quota("vault", "storage.request", 1, "auth.User", str(request.user.pk))
+                except QuotaExceeded as _exc:
+                    errors.append(f"{uploaded_file.name}: {_exc}")
+                    continue
+
+            mime, _ = mimetypes.guess_type(uploaded_file.name)
+            auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
+            file_type = manual_type if manual_type in valid_types else auto_file_type
+
+            vault_file = VaultFile(
+                owner=request.user,
+                title=uploaded_file.name,
+                file=uploaded_file,
+                file_type=file_type,
+                bucket=gateway.bucket,
+                directory=directory,
+                is_public=gateway.make_public,
+            )
+            vault_file.save()
+            vault_file.content_hash = vault_file.create_hash()
+            vault_file.save()
+
+            # ── Record usage ─────────────────────────────────────────────────
+            if request.user.is_authenticated:
+                _uid = str(request.user.pk)
+                _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk)}
+                _ru("vault", "storage.request", 1, "auth.User", _uid,
+                    idempotency_key=f"vault.upload.request:{vault_file.pk}", **_src)
+                _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
+                if _size_mb > 0:
+                    _ru("vault", "storage.transfer_mb", _size_mb, "auth.User", _uid,
+                        idempotency_key=f"vault.upload.transfer:{vault_file.pk}", **_src)
+
+            results.append({
                 "title": vault_file.title,
                 "key": vault_file.key,
                 "bucket": gateway.bucket.slug,
@@ -459,8 +464,12 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 "public": vault_file.is_public,
                 "public_url": vault_file.get_public_url(),
                 "size": f"{uploaded_file.size / (1024*1024):.2f} MB",
-            },
-        })
+            })
+
+        # All files failed (e.g. every one over the limit) → surface as an error.
+        if not results:
+            return JsonResponse({"results": [], "errors": errors}, status=400)
+        return JsonResponse({"results": results, "errors": errors})
 
 
 # ============================================================
