@@ -427,22 +427,32 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                     errors.append(f"{uploaded_file.name}: {_exc}")
                     continue
 
-            mime, _ = mimetypes.guess_type(uploaded_file.name)
-            auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
-            file_type = manual_type if manual_type in valid_types else auto_file_type
+            try:
+                mime, _ = mimetypes.guess_type(uploaded_file.name)
+                auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
+                file_type = manual_type if manual_type in valid_types else auto_file_type
 
-            vault_file = VaultFile(
-                owner=request.user,
-                title=uploaded_file.name,
-                file=uploaded_file,
-                file_type=file_type,
-                bucket=gateway.bucket,
-                directory=directory,
-                is_public=gateway.make_public,
-            )
-            vault_file.save()
-            vault_file.content_hash = vault_file.create_hash()
-            vault_file.save()
+                vault_file = VaultFile(
+                    owner=request.user,
+                    title=uploaded_file.name,
+                    # Assign a bucket-unique key up front so a colliding filename
+                    # (re-upload, or two batch files slugging to the same key) gets
+                    # suffixed -1/-2 instead of raising ValueError in save() — which
+                    # would otherwise 500 the whole request with an HTML page and
+                    # break the client's JSON parsing.
+                    key=_unique_file_key(slugify(os.path.splitext(uploaded_file.name)[0]), gateway.bucket),
+                    file=uploaded_file,
+                    file_type=file_type,
+                    bucket=gateway.bucket,
+                    directory=directory,
+                    is_public=gateway.make_public,
+                )
+                vault_file.save()
+                vault_file.content_hash = vault_file.create_hash()
+                vault_file.save()
+            except Exception as _exc:  # noqa: BLE001 — one bad file mustn't 500 the batch
+                errors.append(f"{uploaded_file.name}: {_exc}")
+                continue
 
             # ── Record usage ─────────────────────────────────────────────────
             if request.user.is_authenticated:

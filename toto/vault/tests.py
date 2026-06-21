@@ -1196,3 +1196,28 @@ class GatewayMultiUploadTests(TestCase):
     def test_no_file_returns_400(self):
         resp = self.client.post(self._url(), {})
         self.assertEqual(resp.status_code, 400)
+
+    def test_duplicate_filenames_get_unique_keys(self):
+        # Two files with the same name in one batch must both succeed with
+        # distinct keys — not 500 with an HTML page (which broke client JSON parse).
+        resp = self.client.post(self._url(), {"file": [
+            SimpleUploadedFile("dup.txt", b"one"),
+            SimpleUploadedFile("dup.txt", b"two"),
+        ]})
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertEqual(len(data["results"]), 2)
+        self.assertEqual(data["errors"], [])
+        keys = set(VaultFile.objects.filter(bucket=self.bucket).values_list("key", flat=True))
+        self.assertEqual(len(keys), 2)  # e.g. {"dup", "dup-1"}
+
+    def test_reupload_existing_name_succeeds(self):
+        VaultFile.objects.create(
+            owner=self.alice, title="doc.txt", key="doc",
+            file=SimpleUploadedFile("doc.txt", b"x"), file_type="text",
+            bucket=self.bucket, directory=self.dir,
+        )
+        resp = self.client.post(self._url(), {"file": SimpleUploadedFile("doc.txt", b"y")})
+        self.assertEqual(resp.status_code, 200)
+        self.assertEqual(len(resp.json()["results"]), 1)
+        self.assertEqual(VaultFile.objects.filter(bucket=self.bucket, title="doc.txt").count(), 2)

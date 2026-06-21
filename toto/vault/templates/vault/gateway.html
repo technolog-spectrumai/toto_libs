@@ -53,12 +53,14 @@
             body: formData,
           });
 
-          const data = await response.json();
+          let data = {};
+          try { data = await response.json(); } catch (_e) { data = {}; }
           const uploaded = data.results || [];
 
           if (!response.ok && uploaded.length === 0) {
             this.error = data.error
-              || (data.errors && data.errors.join(' ')) || '{% trans "Upload failed" %}';
+              || (data.errors && data.errors.join(' '))
+              || `{% trans "Upload failed" %} (HTTP ${response.status}).`;
           } else {
             this.results = uploaded;
             this.uploadErrors = data.errors || [];
