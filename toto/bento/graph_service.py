@@ -212,6 +212,27 @@ def list_nodes(cat_slug=None, q=None, limit=25, offset=0):
     return rows, total
 
 
+def iter_nodes(cat_slug=None, cap=20000, batch=1000):
+    """Yield serialized nodes (optionally one category), paging in ``batch`` sizes.
+
+    Bounded by ``cap`` so building a detection catalog over a huge graph can't
+    exhaust memory; the caller is told (via ``len`` vs ``cap``) if it truncated.
+    Reads only — goes through the same Cypher path as :func:`list_nodes`.
+    """
+    offset = 0
+    yielded = 0
+    while yielded < cap:
+        rows, total = list_nodes(cat_slug=cat_slug, limit=min(batch, cap - yielded), offset=offset)
+        if not rows:
+            break
+        for row in rows:
+            yield row
+            yielded += 1
+        offset += len(rows)
+        if offset >= total:
+            break
+
+
 def update_node(uid, props):
     _require_neomodel()
     current = get_node(uid)
@@ -318,6 +339,99 @@ def _check_allowed(edge_type, source, target):
         raise GraphValidationError(
             f"'{target['category_name']}' is not an allowed target for '{edge_type.name}'."
         )
+
+
+# --------------------------------------------------------------------------
+# non-mutating validation (used by the Ingestor before it ever writes)
+# --------------------------------------------------------------------------
+
+def _schema_errors(schema, props):
+    """Collect (don't raise) all type/required errors for ``props`` vs ``schema``."""
+    errors = []
+    index = _schema_index(schema)
+    props = props or {}
+    for key, value in props.items():
+        if key in index:
+            try:
+                _coerce(index[key].get("type"), value)
+            except GraphValidationError as exc:
+                errors.append(str(exc))
+    for name, field in index.items():
+        if field.get("required") and props.get(name) in (None, ""):
+            errors.append(f"'{name}' is required.")
+    return errors
+
+
+def _endpoint_errors(edge_type, source_cat_slug, target_cat_slug):
+    """Collect endpoint-constraint errors for an edge between two categories."""
+    errors = []
+    allowed_src = list(edge_type.allowed_sources.values_list("slug", flat=True))
+    allowed_tgt = list(edge_type.allowed_targets.values_list("slug", flat=True))
+    if allowed_src and source_cat_slug not in allowed_src:
+        errors.append(
+            f"'{source_cat_slug}' is not an allowed source for '{edge_type.name}'."
+        )
+    if allowed_tgt and target_cat_slug not in allowed_tgt:
+        errors.append(
+            f"'{target_cat_slug}' is not an allowed target for '{edge_type.name}'."
+        )
+    return errors
+
+
+def validate_node(cat_slug, props):
+    """Return a list of human-readable errors for a *proposed* node. No write.
+
+    Empty list ⇒ the node would pass :func:`create_node`. Used by the Ingestor to
+    validate a staged proposal against the live Bento template before applying.
+    """
+    cat = BentoCategory.objects.filter(slug=cat_slug).first()
+    if not cat:
+        return [f"Unknown category '{cat_slug}'."]
+    return _schema_errors(cat.property_schema, props)
+
+
+def validate_edge(et_slug, source_cat_slug, target_cat_slug, props=None):
+    """Return a list of errors for a *proposed* edge (endpoints + props). No write."""
+    et = BentoEdgeType.objects.filter(slug=et_slug).first()
+    if not et:
+        return [f"Unknown edge type '{et_slug}'."]
+    errors = _endpoint_errors(et, source_cat_slug, target_cat_slug)
+    errors += _schema_errors(et.property_schema, props)
+    return errors
+
+
+def edge_types_between(source_cat_slug, target_cat_slug):
+    """Return BentoEdgeTypes whose endpoint constraints allow source→target.
+
+    Powers the Ingestor's deterministic relationship proposal: a candidate pair
+    only yields edges Bento would actually accept.
+    """
+    result = []
+    qs = BentoEdgeType.objects.prefetch_related("allowed_sources", "allowed_targets")
+    for et in qs:
+        if not _endpoint_errors(et, source_cat_slug, target_cat_slug):
+            result.append(et)
+    return result
+
+
+def searchable_property_names(category):
+    """Property names used to identify a node of ``category`` in free text.
+
+    Honors ``BentoCategory.searchable_properties``; falls back to the first of
+    name/title/label that the category actually declares, else 'name'.
+    """
+    configured = [s for s in (category.searchable_properties or []) if s]
+    if configured:
+        return configured
+    declared = {
+        f.get("name")
+        for f in (category.property_schema or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+    for conventional in ("name", "title", "label"):
+        if conventional in declared:
+            return [conventional]
+    return ["name"]
 
 
 def list_edges(node_uid=None, et_slug=None, q=None, limit=25, offset=0):

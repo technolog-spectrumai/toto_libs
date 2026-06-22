@@ -1,0 +1,487 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Graph Ingestor" %}{% endblock %}
+
+{% block content %}
+<style>[x-cloak]{display:none !important}</style>
+<script id="ingestor-categories" type="application/json">{{ categories_json|safe }}</script>
+<script id="ingestor-edge-types" type="application/json">{{ edge_types_json|safe }}</script>
+<script>
+  const INGEST_GENERATE_URL = "{{ generate_url }}";
+  const INGEST_NODE_URL = "{% url 'ingestor:patch_node' 0 'TID' %}";
+  const INGEST_REL_URL  = "{% url 'ingestor:patch_rel' 0 'TID' %}";
+  const CSRF_TOKEN = "{{ csrf_token }}";
+</script>
+
+<div
+  x-data="ingestorFlow()"
+  x-init="init()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    {% include "ravioli/_neo4j_warning.html" %}
+
+    <!-- header + tabs -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-wand-magic-sparkles mr-2 text-2xl"></i>{% trans "Graph Ingestor" %}</h1>
+        <p class="mt-1 text-sm opacity-60">
+          {% trans "Paste text → generate a proposed graph update → review the diff → apply the approved patch." %}</p>
+      </div>
+      {% include "ravioli/_tabs.html" with active_tab="ingest" %}
+    </div>
+
+    <!-- ── Paste / generate ── -->
+    <section
+      x-show="phase === 'idle' || phase === 'generating'"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-4 shadow-sm space-y-3"
+    >
+      <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Source text" %}</label>
+      <textarea x-model="text" rows="8"
+        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+        class="w-full rounded-lg border px-3 py-2 text-sm font-mono"
+        placeholder="{% trans 'Paste arbitrary text here…' %}"></textarea>
+      <div class="flex items-center gap-3">
+        <button @click="generate()" :disabled="phase === 'generating' || !text.trim()"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
+          <i class="fa-solid" :class="phase === 'generating' ? 'fa-spinner fa-spin' : 'fa-diagram-project'"></i>
+          <span x-text="phase === 'generating' ? '{% trans "Generating…" %}' : '{% trans "Generate Proposal" %}'"></span>
+        </button>
+        <p x-show="error" x-text="error" class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></p>
+      </div>
+    </section>
+
+    <!-- ── Review ── -->
+    <section x-show="phase !== 'idle' && phase !== 'generating'" x-cloak class="space-y-4">
+
+      <!-- summary bar -->
+      <div class="flex flex-wrap items-center gap-2 text-xs">
+        <span class="rounded-full px-3 py-1" :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+          <i class="fa-solid fa-circle-plus mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          <span x-text="summary.new_nodes || 0"></span> {% trans "new" %}</span>
+        <span class="rounded-full px-3 py-1" :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+          <i class="fa-solid fa-circle-nodes mr-1 opacity-60"></i>
+          <span x-text="summary.existing_nodes || 0"></span> {% trans "existing" %}</span>
+        <span class="rounded-full px-3 py-1" :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+          <i class="fa-solid fa-arrow-right-long mr-1 opacity-60"></i>
+          <span x-text="summary.relationships || 0"></span> {% trans "relationships" %}</span>
+        <span x-show="summary.duplicates" class="rounded-full px-3 py-1"
+          :class="darkMode ? 'bg-caution-dark/20 text-caution-dark' : 'bg-caution-light/20 text-caution-light'">
+          <i class="fa-solid fa-clone mr-1"></i><span x-text="summary.duplicates"></span> {% trans "duplicates" %}</span>
+        <span x-show="summary.errors" class="rounded-full px-3 py-1"
+          :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i><span x-text="summary.errors"></span> {% trans "errors" %}</span>
+        <span x-show="summary.spacy_available === false" class="rounded-full px-3 py-1 opacity-70"
+          :class="darkMode ? 'bg-warn-dark/20' : 'bg-warn-light/20'">
+          {% trans "spaCy unavailable — detection limited" %}</span>
+        <span x-show="summary.ner_available === false && summary.spacy_available" class="rounded-full px-3 py-1 opacity-70">
+          {% trans "NER model missing — new-entity suggestions limited" %}</span>
+        <span x-show="summary.catalog && summary.catalog.truncated" class="rounded-full px-3 py-1 opacity-70">
+          {% trans "catalog truncated" %}</span>
+      </div>
+
+      <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]">
+
+        <!-- graph -->
+        <div class="rounded-lg border shadow-sm overflow-hidden"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+          <div id="ingest-cy" class="h-[520px] w-full"></div>
+          <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-[11px] opacity-70 border-t"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "new / approved" %}</span>
+            <span><i class="fa-solid fa-circle mr-1 text-blue-400"></i>{% trans "proposed (pending)" %}</span>
+            <span><i class="fa-solid fa-circle mr-1 opacity-50"></i>{% trans "existing" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>{% trans "validation error" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>{% trans "rejected" %}</span>
+          </div>
+        </div>
+
+        <!-- detail panel -->
+        <aside class="rounded-lg border p-4 shadow-sm space-y-3 self-start"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+
+          <template x-if="!selected">
+            <p class="text-sm opacity-60">{% trans "Click a node or relationship to edit it." %}</p>
+          </template>
+
+          <!-- node detail -->
+          <template x-if="selected && selected.type === 'node'">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+                  <span x-text="selected.data.kind === 'existing' || selected.data.merge_into_uid ? '{% trans "Existing node" %}' : '{% trans "Proposed node" %}'"></span></h3>
+                <span class="text-[11px] opacity-50">conf <span x-text="(selected.data.confidence ?? 0).toFixed(2)"></span></span>
+              </div>
+
+              <div x-show="selected.data.validation && selected.data.validation.status === 'error'"
+                class="rounded-md px-2 py-1 text-xs" :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'">
+                <template x-for="e in (selected.data.validation.errors || [])" :key="e"><div x-text="e"></div></template>
+              </div>
+
+              <label class="block text-xs font-semibold opacity-60">{% trans "Category" %}</label>
+              <select x-model="selected.data.category_slug" @change="saveNode()"
+                :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                class="w-full rounded-lg border px-2 py-1.5 text-sm">
+                <option :value="null">— {% trans "choose" %} —</option>
+                <template x-for="c in categories" :key="c.slug">
+                  <option :value="c.slug" x-text="c.name"></option>
+                </template>
+              </select>
+
+              <!-- editable properties (driven by category schema), reference nodes are read-only -->
+              <template x-if="selected.data.kind !== 'existing' && !selected.data.merge_into_uid">
+                <div class="space-y-2">
+                  <label class="block text-xs font-semibold opacity-60">{% trans "Properties" %}</label>
+                  <template x-for="f in propertySchemaFor(selected.data.category_slug)" :key="f.name">
+                    <div>
+                      <label class="block text-[11px] opacity-60" x-text="f.label || f.name"></label>
+                      <input type="text" x-model="selected.data.properties[f.name]" @change="saveNode()"
+                        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                        class="w-full rounded-lg border px-2 py-1 text-sm" />
+                    </div>
+                  </template>
+                </div>
+              </template>
+
+              <!-- merge candidates -->
+              <template x-if="selected.data.match && (selected.data.match.candidates || []).length">
+                <div class="space-y-1">
+                  <label class="block text-xs font-semibold"
+                    :class="selected.data.duplicate_warning ? (darkMode ? 'text-caution-dark' : 'text-caution-light') : 'opacity-60'">
+                    <i class="fa-solid fa-clone mr-1"></i>{% trans "Possible existing matches" %}</label>
+                  <template x-for="cand in selected.data.match.candidates" :key="cand.uid">
+                    <div class="flex items-center justify-between gap-2 rounded-md px-2 py-1 text-xs"
+                      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                      <span class="truncate"><span x-text="cand.display"></span>
+                        <span class="opacity-50" x-text="'· ' + (cand.score*100).toFixed(0) + '%'"></span></span>
+                      <button @click="mergeInto(cand)" class="shrink-0 underline hover:opacity-80"
+                        x-show="selected.data.merge_into_uid !== cand.uid">{% trans "merge" %}</button>
+                      <span x-show="selected.data.merge_into_uid === cand.uid" class="shrink-0 opacity-60">{% trans "merged" %}</span>
+                    </div>
+                  </template>
+                  <button x-show="selected.data.merge_into_uid" @click="unmerge()" class="text-[11px] underline opacity-70">{% trans "undo merge" %}</button>
+                </div>
+              </template>
+
+              <!-- evidence -->
+              <template x-if="(selected.data.evidence || []).length">
+                <div>
+                  <label class="block text-xs font-semibold opacity-60">{% trans "Evidence" %}</label>
+                  <template x-for="(ev, i) in selected.data.evidence" :key="i">
+                    <p class="text-[11px] italic opacity-70" x-text="'“' + ev.text + '”'"></p>
+                  </template>
+                </div>
+              </template>
+
+              <div class="flex items-center gap-2 pt-1">
+                <button @click="setApproval('node', 'approved')"
+                  :class="selected.data.approval === 'approved' ? (darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light') : (darkMode ? 'border border-accent-1' : 'border border-accent-2')"
+                  class="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold"><i class="fa-solid fa-check mr-1"></i>{% trans "Approve" %}</button>
+                <button @click="setApproval('node', 'rejected')"
+                  :class="selected.data.approval === 'rejected' ? (darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light') : (darkMode ? 'border border-accent-1' : 'border border-accent-2')"
+                  class="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark mr-1"></i>{% trans "Reject" %}</button>
+              </div>
+            </div>
+          </template>
+
+          <!-- relationship detail -->
+          <template x-if="selected && selected.type === 'rel'">
+            <div class="space-y-3">
+              <div class="flex items-center justify-between">
+                <h3 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Proposed relationship" %}</h3>
+                <span class="text-[11px] opacity-50">conf <span x-text="(selected.data.confidence ?? 0).toFixed(2)"></span></span>
+              </div>
+
+              <div x-show="selected.data.validation && selected.data.validation.status === 'error'"
+                class="rounded-md px-2 py-1 text-xs" :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'">
+                <template x-for="e in (selected.data.validation.errors || [])" :key="e"><div x-text="e"></div></template>
+              </div>
+
+              <p class="text-xs opacity-70">
+                <span x-text="nodeLabel(selected.data.from)"></span>
+                <i class="fa-solid fa-arrow-right-long mx-1"></i>
+                <span x-text="nodeLabel(selected.data.to)"></span>
+              </p>
+
+              <label class="block text-xs font-semibold opacity-60">{% trans "Edge type" %}</label>
+              <select x-model="selected.data.edge_type_slug" @change="saveRel()"
+                :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                class="w-full rounded-lg border px-2 py-1.5 text-sm">
+                <template x-for="et in edgeTypes" :key="et.slug">
+                  <option :value="et.slug" x-text="et.name"></option>
+                </template>
+              </select>
+
+              <div class="space-y-2">
+                <label class="block text-xs font-semibold opacity-60">{% trans "Properties" %}</label>
+                <template x-for="f in edgePropertySchemaFor(selected.data.edge_type_slug)" :key="f.name">
+                  <div>
+                    <label class="block text-[11px] opacity-60" x-text="f.label || f.name"></label>
+                    <input type="text" x-model="selected.data.properties[f.name]" @change="saveRel()"
+                      :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                      class="w-full rounded-lg border px-2 py-1 text-sm" />
+                  </div>
+                </template>
+              </div>
+
+              <template x-if="(selected.data.evidence || []).length">
+                <p class="text-[11px] italic opacity-70" x-text="'“' + selected.data.evidence[0].text + '”'"></p>
+              </template>
+
+              <div class="flex items-center gap-2 pt-1">
+                <button @click="setApproval('rel', 'approved')"
+                  :class="selected.data.approval === 'approved' ? (darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light') : (darkMode ? 'border border-accent-1' : 'border border-accent-2')"
+                  class="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold"><i class="fa-solid fa-check mr-1"></i>{% trans "Approve" %}</button>
+                <button @click="setApproval('rel', 'rejected')"
+                  :class="selected.data.approval === 'rejected' ? (darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light') : (darkMode ? 'border border-accent-1' : 'border border-accent-2')"
+                  class="flex-1 rounded-lg px-2 py-1.5 text-xs font-semibold"><i class="fa-solid fa-xmark mr-1"></i>{% trans "Reject" %}</button>
+              </div>
+            </div>
+          </template>
+        </aside>
+      </div>
+
+      <!-- apply bar -->
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <div class="text-sm opacity-70">
+          <span x-text="summary.approved || 0"></span> {% trans "approved" %} ·
+          <span x-text="(summary.total_changes || 0)"></span> {% trans "proposed changes" %}
+          <span x-show="phase === 'done'" class="ml-2 font-semibold"
+            :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-check"></i> {% trans "Applied" %}</span>
+        </div>
+        <div class="flex items-center gap-3">
+          <button @click="reset()" class="text-sm underline opacity-70">{% trans "Start over" %}</button>
+          <button @click="applyPatch()" :disabled="phase === 'applying' || phase === 'done' || !(summary.approved)"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
+            <i class="fa-solid" :class="phase === 'applying' ? 'fa-spinner fa-spin' : 'fa-cloud-arrow-up'"></i>
+            <span x-text="phase === 'applying' ? '{% trans "Applying…" %}' : '{% trans "Apply Approved Patch" %}'"></span>
+          </button>
+        </div>
+      </div>
+      <p x-show="error" x-text="error" class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></p>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<script>
+function ingestorFlow() {
+  return {
+    text: '',
+    phase: 'idle',           // idle | generating | review | applying | done
+    proposalId: null,
+    proposal: { nodes: [], relationships: [] },
+    summary: {},
+    error: null,
+    selected: null,
+    categories: [],
+    edgeTypes: [],
+    cy: null,
+
+    init() {
+      this.categories = JSON.parse(document.getElementById('ingestor-categories').textContent || '[]');
+      this.edgeTypes  = JSON.parse(document.getElementById('ingestor-edge-types').textContent || '[]');
+    },
+
+    // ── lookups ──
+    categoryName(slug) { const c = this.categories.find(c => c.slug === slug); return c ? c.name : (slug || '—'); },
+    propertySchemaFor(slug) { const c = this.categories.find(c => c.slug === slug); return (c && c.property_schema) || []; },
+    edgePropertySchemaFor(slug) { const et = this.edgeTypes.find(e => e.slug === slug); return (et && et.property_schema) || []; },
+    nodeById(tid) { return (this.proposal.nodes || []).find(n => n.temp_id === tid); },
+    nodeLabel(tid) { const n = this.nodeById(tid); return n ? (n.display || n.temp_id) : tid; },
+
+    // ── generate ──
+    async generate() {
+      if (!this.text.trim()) return;
+      this.phase = 'generating'; this.error = null;
+      try {
+        const fd = new FormData(); fd.append('text', this.text);
+        const res = await fetch(INGEST_GENERATE_URL, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN }, body: fd });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
+        this.proposalId = data.proposal_id;
+        this.proposal = data.proposal || { nodes: [], relationships: [] };
+        this.summary = data.summary || {};
+        this.phase = 'review';
+        this.selected = null;
+        this.$nextTick(() => this.renderGraph());
+      } catch (e) { this.phase = 'idle'; this.error = e.message; }
+    },
+
+    // ── status → colour ──
+    nodeStatus(n) {
+      if (n.approval === 'rejected') return 'delete';
+      if ((n.validation || {}).status === 'error') return 'error';
+      if (n.kind === 'existing' || n.merge_into_uid) return 'context';
+      if (n.approval === 'approved') return 'create';
+      return 'new';
+    },
+    relStatus(r) {
+      if (r.approval === 'rejected') return 'delete';
+      if ((r.validation || {}).status === 'error') return 'error';
+      if (r.approval === 'approved') return 'create';
+      return 'new';
+    },
+
+    renderGraph() {
+      const container = document.getElementById('ingest-cy');
+      if (!container || typeof cytoscape === 'undefined') return;
+      if (this.cy) { this.cy.destroy(); this.cy = null; }
+
+      const dark = (localStorage.getItem('darkMode') === 'true');
+      const tw = (window.tailwind && tailwind.config && tailwind.config.theme.extend.colors) || {};
+      const tone = (name, fb) => tw[name + (dark ? '-dark' : '-light')] || fb;
+      const COLOR = {
+        create:  tone('success', '#22c55e'),
+        new:     '#3b82f6',
+        context: tone('text-main', '#9ca3af'),
+        error:   tone('caution', '#f59e0b'),
+        delete:  tone('warn', '#ef4444'),
+      };
+      const colorOf = (s) => COLOR[s] || COLOR.context;
+
+      const nodes = (this.proposal.nodes || []).map(n => ({
+        data: { id: n.temp_id, label: n.display, status: this.nodeStatus(n) },
+      }));
+      const edges = (this.proposal.relationships || []).map(r => ({
+        data: { id: r.temp_id, source: r.from, target: r.to, label: r.rel_type, status: this.relStatus(r) },
+      }));
+
+      this.cy = cytoscape({
+        container,
+        elements: [...nodes, ...edges],
+        style: [
+          { selector: 'node', style: {
+            'background-color': (e) => colorOf(e.data('status')),
+            'background-opacity': (e) => e.data('status') === 'context' ? 0.45 : 0.9,
+            'border-width': 2,
+            'border-color': (e) => colorOf(e.data('status')),
+            'label': 'data(label)', 'color': dark ? '#e5e7eb' : '#111827',
+            'font-size': '11px', 'text-valign': 'center', 'text-halign': 'center',
+            'text-wrap': 'ellipsis', 'text-max-width': '90px',
+          }},
+          { selector: 'node:selected', style: { 'border-width': 4, 'border-color': '#6366f1' }},
+          { selector: 'edge', style: {
+            'width': 1.8, 'line-color': (e) => colorOf(e.data('status')),
+            'line-style': (e) => e.data('status') === 'delete' ? 'dashed' : 'solid',
+            'target-arrow-color': (e) => colorOf(e.data('status')),
+            'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+            'label': 'data(label)', 'font-size': '9px', 'color': dark ? '#9ca3af' : '#6b7280',
+            'text-rotation': 'autorotate',
+          }},
+          { selector: 'edge:selected', style: { 'width': 3.2 }},
+        ],
+        layout: { name: 'cose', animate: false, padding: 30 },
+      });
+
+      this.cy.on('tap', 'node', (evt) => {
+        const n = this.nodeById(evt.target.id());
+        if (n) this.selected = { type: 'node', data: n };
+      });
+      this.cy.on('tap', 'edge', (evt) => {
+        const r = (this.proposal.relationships || []).find(x => x.temp_id === evt.target.id());
+        if (r) this.selected = { type: 'rel', data: r };
+      });
+      setTimeout(() => { try { this.cy.resize(); this.cy.fit(undefined, 30); } catch (_) {} }, 80);
+    },
+
+    _refreshElementStatus() {
+      if (!this.cy || !this.selected) return;
+      const tid = this.selected.data.temp_id;
+      const status = this.selected.type === 'node' ? this.nodeStatus(this.selected.data) : this.relStatus(this.selected.data);
+      const el = this.cy.$id(tid);
+      if (!el || el.empty()) return;
+      el.data('status', status);
+      el.data('label', this.selected.type === 'node' ? this.selected.data.display : this.selected.data.rel_type);
+    },
+
+    // ── edits (persist server-side, re-validate) ──
+    async _patch(url, body) {
+      this.error = null;
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF_TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
+      if (data.summary) this.summary = data.summary;
+      return data;
+    },
+    nodeUrl(tid) { return INGEST_NODE_URL.replace('/0/', '/' + this.proposalId + '/').replace('/TID/', '/' + tid + '/'); },
+    relUrl(tid)  { return INGEST_REL_URL.replace('/0/', '/' + this.proposalId + '/').replace('/TID/', '/' + tid + '/'); },
+
+    async saveNode() {
+      const n = this.selected.data;
+      try {
+        const data = await this._patch(this.nodeUrl(n.temp_id), {
+          category_slug: n.category_slug, properties: n.properties,
+          display: n.display, approval: n.approval, merge_into_uid: n.merge_into_uid,
+        });
+        if (data.node) { Object.assign(n, data.node); }
+        this._refreshElementStatus();
+      } catch (e) { this.error = e.message; }
+    },
+    async saveRel() {
+      const r = this.selected.data;
+      try {
+        const data = await this._patch(this.relUrl(r.temp_id), {
+          edge_type_slug: r.edge_type_slug, properties: r.properties, approval: r.approval,
+        });
+        if (data.relationship) { Object.assign(r, data.relationship); }
+        this._refreshElementStatus();
+      } catch (e) { this.error = e.message; }
+    },
+    setApproval(kind, value) {
+      this.selected.data.approval = value;
+      kind === 'node' ? this.saveNode() : this.saveRel();
+    },
+    mergeInto(cand) {
+      const n = this.selected.data;
+      n.merge_into_uid = cand.uid;
+      this._patch(this.nodeUrl(n.temp_id), {
+        merge_into_uid: cand.uid, merge_category_slug: cand.category_slug, merge_display: cand.display,
+      }).then(data => { if (data.node) Object.assign(n, data.node); this._refreshElementStatus(); })
+        .catch(e => this.error = e.message);
+    },
+    unmerge() {
+      const n = this.selected.data;
+      n.merge_into_uid = null;
+      this.saveNode();
+    },
+
+    // ── apply ──
+    async applyPatch() {
+      if (!this.summary.approved) return;
+      this.phase = 'applying'; this.error = null;
+      try {
+        const url = '{% url "ingestor:apply" 0 %}'.replace('/0/', '/' + this.proposalId + '/');
+        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
+        this.summary = data.summary || this.summary;
+        if ((data.errors || []).length) { this.error = data.errors.join('; '); this.phase = 'review'; }
+        else { this.phase = 'done'; }
+      } catch (e) { this.error = e.message; this.phase = 'review'; }
+    },
+
+    reset() {
+      if (this.cy) { this.cy.destroy(); this.cy = null; }
+      this.phase = 'idle'; this.proposal = { nodes: [], relationships: [] };
+      this.summary = {}; this.selected = null; this.proposalId = null; this.error = null;
+    },
+  };
+}
+</script>
+{% endblock %}

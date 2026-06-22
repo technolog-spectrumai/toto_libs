@@ -80,6 +80,33 @@ def validate_property_schema(schema):
     return errors
 
 
+def validate_searchable_properties(searchable, schema):
+    """Return a list of errors for a ``searchable_properties`` value.
+
+    Each entry must be a string naming a field declared in ``property_schema``.
+    Empty/None is valid (detection falls back to name/title/label).
+    """
+    errors = []
+    if searchable in (None, "", []):
+        return errors
+    if not isinstance(searchable, list):
+        return ["searchable_properties must be a list of property names."]
+    declared = {
+        f.get("name")
+        for f in (schema or [])
+        if isinstance(f, dict) and f.get("name")
+    }
+    for i, name in enumerate(searchable):
+        if not isinstance(name, str) or not name:
+            errors.append(f"searchable_properties[{i}] must be a property name.")
+        elif declared and name not in declared:
+            errors.append(
+                f"searchable_properties[{i}]: '{name}' is not declared in "
+                "property_schema."
+            )
+    return errors
+
+
 def default_label(name):
     """Derive a CamelCase Neo4j label from a display name."""
     parts = re.split(r"[^A-Za-z0-9]+", name or "")
@@ -114,6 +141,21 @@ class BentoCategory(DomainEntity):
         blank=True,
         help_text="List of {name, type, required, label, help} field definitions.",
     )
+    searchable_properties = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Property names (declared in property_schema) whose values "
+        "identify a node in free text — used by the Ingestor to detect "
+        "existing nodes of this category. Empty falls back to "
+        "name/title/label by convention.",
+    )
+    alias_property = models.CharField(
+        max_length=120,
+        blank=True,
+        default="",
+        help_text="Optional property holding alternate surface forms for a node "
+        "(a JSON list or a comma-separated string). Also fed to detection.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -140,6 +182,11 @@ class BentoCategory(DomainEntity):
         schema_errors = validate_property_schema(self.property_schema)
         if schema_errors:
             errors["property_schema"] = schema_errors
+        search_errors = validate_searchable_properties(
+            self.searchable_properties, self.property_schema
+        )
+        if search_errors:
+            errors["searchable_properties"] = search_errors
         if errors:
             raise ValidationError(errors)
 
@@ -175,6 +222,14 @@ class BentoEdgeType(DomainEntity):
     )
     property_schema = models.JSONField(default=list, blank=True)
     directed = models.BooleanField(default=True)
+    trigger_lemmas = models.JSONField(
+        default=list,
+        blank=True,
+        help_text="Optional lemma triggers (e.g. ['support', 'back']). When one "
+        "appears in a sentence between two endpoints whose categories match "
+        "this edge, the Ingestor proposes this relationship and raises its "
+        "confidence.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
