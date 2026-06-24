@@ -53,6 +53,29 @@ def _require_neomodel():
     ensure_configured()
 
 
+def _run_neomodel(op):
+    """Run a neomodel write op, self-healing a stale process-wide driver.
+
+    neomodel keeps a single driver for the whole process. If it was first built
+    while Neo4j was unreachable (e.g. the web server started before Neo4j), that
+    driver keeps raising "connection refused" even after Neo4j is back — unlike
+    :class:`Neo4jClient`, which rebuilds per call. On a connection error we force
+    a one-time driver rebuild and retry, so the graph recovers without a restart.
+    """
+    from toto.ravioli.connection import is_connection_error
+
+    _require_neomodel()
+    try:
+        return op()
+    except Exception as exc:
+        if not is_connection_error(exc):
+            raise
+        from toto.ravioli.neomodel_conn import ensure_configured
+
+        ensure_configured(force=True)
+        return op()
+
+
 @contextmanager
 def _client():
     from toto.ravioli.connection import Neo4jClient
@@ -164,14 +187,16 @@ def _serialize_node(props, labels):
 # --------------------------------------------------------------------------
 
 def create_node(cat_slug, props):
-    _require_neomodel()
     cat = BentoCategory.objects.filter(slug=cat_slug).first()
     if not cat:
         raise NotFound(f"Unknown category '{cat_slug}'.")
     declared, extra = _split_props(cat.property_schema, props)
     klass = registry.node_class_for(cat)
+    # Instantiate once (the uid is fixed at instantiation) so a self-heal retry
+    # re-saves the SAME node/uid instead of creating a second node with a fresh
+    # uuid, should the first attempt have committed before the connection dropped.
     node = klass(extra=extra, **declared)
-    node.save()
+    _run_neomodel(node.save)
     stored = {**declared, "extra": extra, "uid": node.uid}
     return _serialize_node(stored, [cat.neo4j_label])
 
@@ -234,23 +259,26 @@ def iter_nodes(cat_slug=None, cap=20000, batch=1000):
 
 
 def update_node(uid, props):
-    _require_neomodel()
     current = get_node(uid)
     cat = BentoCategory.objects.filter(slug=current["category_slug"]).first()
     if not cat:
         raise NotFound(f"Node '{uid}' has no known category.")
     declared, extra = _split_props(cat.property_schema, props)
     klass = registry.node_class_for(cat)
-    node = klass.nodes.get_or_none(uid=uid)
-    if node is None:
-        raise NotFound(f"Node '{uid}' not found.")
-    for key, value in declared.items():
-        setattr(node, key, value)
-    if extra:
-        merged = dict(node.extra or {})
-        merged.update(extra)
-        node.extra = merged
-    node.save()
+
+    def _op():
+        node = klass.nodes.get_or_none(uid=uid)
+        if node is None:
+            raise NotFound(f"Node '{uid}' not found.")
+        for key, value in declared.items():
+            setattr(node, key, value)
+        if extra:
+            merged = dict(node.extra or {})
+            merged.update(extra)
+            node.extra = merged
+        node.save()
+
+    _run_neomodel(_op)
     return get_node(uid)
 
 

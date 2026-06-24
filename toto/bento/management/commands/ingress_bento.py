@@ -1,6 +1,7 @@
 import random
 import re
 
+from django.conf import settings
 from django.utils.text import slugify
 
 from toto.ingress import IngressCommand
@@ -26,11 +27,36 @@ _FIELD_TYPE = {
 class Command(IngressCommand):
     help = "Seed Bento templates (synced graph types always; demo data with --full)."
 
+    def add_arguments(self, parser):
+        super().add_arguments(parser)
+        # Seed the minimal concept/note/references graph types. Tri-state like
+        # --rich: default None falls back to settings.SEED_GRAPH_TYPES.
+        parser.add_argument(
+            "--seed-graph-types",
+            dest="seed_graph_types",
+            action="store_true",
+            default=None,
+            help="Seed the 'concept'/'note' categories + 'references' edge type "
+                 "(even in non-full mode). Default: settings.SEED_GRAPH_TYPES.",
+        )
+
+    def handle(self, *args, **options):
+        opt = options.get("seed_graph_types", None)
+        self.seed_graph_types = (
+            getattr(settings, "SEED_GRAPH_TYPES", False) if opt is None else opt
+        )
+        super().handle(*args, **options)
+
     def process(self):
         # Always: node categories + edge types mirroring the SQL→Neo4j sync
         # configs, so synced labels/relations map to bento templates and are
         # recognised when the sync writes them.
         self._seed_synced_templates()
+
+        # Minimal graph types (concept/note/references) — gated by the flag but
+        # seeded in every mode (including thin/non-full) to make testing easy.
+        if self.seed_graph_types:
+            self._seed_graph_types()
 
         if not self.full:
             return
@@ -129,6 +155,60 @@ class Command(IngressCommand):
             self.stdout.write(self.style.WARNING(
                 "⏩ Thin ingress (RAVIOLI_RICH_INGRESS=0) — skipping Neo4j graph seeding."
             ))
+
+    # ── minimal graph types: concept / note / references ──────────────────────
+
+    def _seed_graph_types(self):
+        """Seed a 'concept' + 'note' node category and a 'references' edge type
+        (note → concept). SQL templates only (no Neo4j writes), so it's safe and
+        fast in any mode — gated by --seed-graph-types / settings.SEED_GRAPH_TYPES.
+        """
+        self.stdout.write(self.style.WARNING(
+            "🍱 Seeding Bento graph types (concept / note / references)…"
+        ))
+
+        categories = {
+            "concept": {
+                "name": "Concept",
+                "neo4j_label": "Concept",
+                "description": "A concept or idea that notes can reference.",
+                "property_schema": [
+                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "body", "type": "text", "required": False, "label": "Body"},
+                ],
+            },
+            "note": {
+                "name": "Note",
+                "neo4j_label": "Note",
+                "description": "A note that may reference one or more concepts.",
+                "property_schema": [
+                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "body", "type": "text", "required": False, "label": "Body"},
+                ],
+            },
+        }
+
+        cat_objs = {}
+        for slug, data in categories.items():
+            obj, created = BentoCategory.objects.get_or_create(slug=slug, defaults=data)
+            cat_objs[slug] = obj
+            self.stdout.write(
+                self.style.SUCCESS(f"🏷️ Created category template: {obj.name}")
+                if created
+                else self.style.WARNING(f"ℹ️ Category template exists: {obj.name}")
+            )
+
+        et, created = BentoEdgeType.objects.get_or_create(
+            slug="references",
+            defaults={"name": "References", "rel_type": "REFERENCES", "property_schema": []},
+        )
+        et.allowed_sources.set([cat_objs["note"]])
+        et.allowed_targets.set([cat_objs["concept"]])
+        self.stdout.write(
+            self.style.SUCCESS("🔗 Created edge-type template: References (note → concept)")
+            if created
+            else self.style.WARNING("ℹ️ Edge-type template exists: References (note → concept)")
+        )
 
     # ── templates mirroring the SQL→Neo4j sync (toto.sql_neo4j_sync) ──────────
 

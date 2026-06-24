@@ -33,7 +33,7 @@ def _unavailable(request, exc):
 
 
 def graph_view(fn):
-    """Login-required + graceful handling of a disabled/missing graph."""
+    """Login-required + graceful handling of a disabled/missing/unreachable graph."""
 
     @wraps(fn)
     @login_required
@@ -44,6 +44,13 @@ def graph_view(fn):
             return _unavailable(request, exc)
         except gs.NotFound:
             raise Http404()
+        except Exception as exc:
+            # Neo4j is enabled but unreachable (driver down / connection refused):
+            # render the graceful "unavailable" state instead of a raw 500.
+            from toto.ravioli.connection import is_connection_error
+            if is_connection_error(exc):
+                return _unavailable(request, exc)
+            raise
 
     return wrapper
 

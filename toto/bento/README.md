@@ -28,6 +28,15 @@ Bento keys a node's category off its **Neo4j label**, so nodes the SQL→Neo4j s
 writes (`:KanbanTask`, `:Person`, …) are recognised as these categories. `--full`
 additionally seeds the demo `idea/source/question` templates + sample graph.
 
+### Minimal graph types (`SEED_GRAPH_TYPES`)
+
+With `--seed-graph-types` (or `settings.SEED_GRAPH_TYPES` / the `SEED_GRAPH_TYPES=1`
+deploy env var), `ingress_bento` also seeds — in **every** mode, including non-`--full`
+— a `concept` and a `note` `BentoCategory` plus a `references` `BentoEdgeType`
+linking `note → concept`. SQL templates only (no Neo4j writes), so it's fast and
+safe in a thin bring-up; gives the graph editor a starter set to exercise. Off by
+default.
+
 > Note: bento addresses nodes by a `uid` property, while the sync writes `uuid` —
 > so synced node *types* are recognised, but per-node editing of synced nodes in
 > bento needs the identifiers aligned (follow-up).

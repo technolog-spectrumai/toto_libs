@@ -47,6 +47,49 @@ class BentoIngressModeTests(TestCase):
         self.assertTrue(BentoCategory.objects.exists())
 
 
+class BentoSeedGraphTypesTests(TestCase):
+    """The SEED_GRAPH_TYPES flag seeds concept/note/references in every mode."""
+
+    def test_off_by_default(self):
+        from toto.bento.models import BentoCategory, BentoEdgeType
+
+        _run("ingress_bento")  # non-full, flag unset
+        self.assertFalse(BentoCategory.objects.filter(slug="concept").exists())
+        self.assertFalse(BentoCategory.objects.filter(slug="note").exists())
+        self.assertFalse(BentoEdgeType.objects.filter(slug="references").exists())
+
+    @override_settings(SEED_GRAPH_TYPES=True)
+    def test_setting_seeds_in_non_full_mode(self):
+        from toto.bento.models import BentoCategory, BentoEdgeType
+
+        _run("ingress_bento")  # non-full — the types still get seeded
+        concept = BentoCategory.objects.get(slug="concept")
+        note = BentoCategory.objects.get(slug="note")
+        et = BentoEdgeType.objects.get(slug="references")
+        self.assertEqual(et.rel_type, "REFERENCES")
+        # "references" links note → concept.
+        self.assertEqual([c.slug for c in et.allowed_sources.all()], ["note"])
+        self.assertEqual([c.slug for c in et.allowed_targets.all()], ["concept"])
+        self.assertIn(concept, et.allowed_targets.all())
+        self.assertIn(note, et.allowed_sources.all())
+
+    def test_cli_flag_overrides_setting(self):
+        from toto.bento.models import BentoCategory
+
+        # Flag forces seeding on even though the setting defaults off.
+        _run("ingress_bento", seed_graph_types=True)
+        self.assertTrue(BentoCategory.objects.filter(slug="concept").exists())
+
+    @override_settings(SEED_GRAPH_TYPES=True)
+    def test_idempotent(self):
+        from toto.bento.models import BentoCategory, BentoEdgeType
+
+        _run("ingress_bento")
+        _run("ingress_bento")
+        self.assertEqual(BentoCategory.objects.filter(slug="concept").count(), 1)
+        self.assertEqual(BentoEdgeType.objects.filter(slug="references").count(), 1)
+
+
 class BentoSyncedTemplatesTests(TestCase):
     """Non-full bento ingress derives categories/edge-types from sql_neo4j_sync."""
 
