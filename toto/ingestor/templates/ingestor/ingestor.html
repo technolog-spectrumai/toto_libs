@@ -11,6 +11,7 @@
 {{ prefill_text|json_script:"ingestor-prefill" }}
 <script>
   const INGEST_GENERATE_URL = "{{ generate_url }}";
+  const INGEST_STRATEGIES_URL = "{% url 'ingestor:strategies' %}";
   const INGEST_NODE_URL = "{% url 'ingestor:patch_node' 0 'TID' %}";
   const INGEST_REL_URL  = "{% url 'ingestor:patch_rel' 0 'TID' %}";
   const CSRF_TOKEN = "{{ csrf_token }}";
@@ -43,6 +44,19 @@
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-lg border p-4 shadow-sm space-y-3"
     >
+      <!-- Strategy selector -->
+      <div class="flex flex-wrap items-center gap-2">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Strategy" %}</label>
+        <select x-model="strategy"
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+          class="rounded-lg border px-2 py-1 text-sm">
+          <template x-for="s in strategies" :key="s.key">
+            <option :value="s.key" x-text="s.label"></option>
+          </template>
+        </select>
+        <span class="text-xs opacity-55" x-text="strategyHint"></span>
+      </div>
+
       <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Source text" %}</label>
       <textarea x-model="text" rows="8"
         :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
@@ -289,10 +303,24 @@ function ingestorFlow() {
     categories: [],
     edgeTypes: [],
     cy: null,
+    strategy: 'deterministic',
+    strategies: [],
+
+    get strategyHint() {
+      const s = this.strategies.find(s => s.key === this.strategy);
+      if (!s) return '';
+      return s.mode === 'autobuild'
+        ? (s.description + ' ⚠ writes to the graph directly — no review.')
+        : s.description;
+    },
 
     init() {
       this.categories = JSON.parse(document.getElementById('ingestor-categories').textContent || '[]');
       this.edgeTypes  = JSON.parse(document.getElementById('ingestor-edge-types').textContent || '[]');
+      fetch(INGEST_STRATEGIES_URL)
+        .then(r => r.json())
+        .then(d => { this.strategies = d.strategies || []; })
+        .catch(() => { this.strategies = []; });
       // Text forwarded from another tab (e.g. OCR): pre-fill and auto-generate.
       const prefillEl = document.getElementById('ingestor-prefill');
       const prefill = prefillEl ? JSON.parse(prefillEl.textContent || '""') : '';
@@ -314,16 +342,21 @@ function ingestorFlow() {
       if (!this.text.trim()) return;
       this.phase = 'generating'; this.error = null;
       try {
-        const fd = new FormData(); fd.append('text', this.text);
+        const fd = new FormData(); fd.append('text', this.text); fd.append('strategy', this.strategy);
         const res = await fetch(INGEST_GENERATE_URL, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN }, body: fd });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
         this.proposalId = data.proposal_id;
         this.proposal = data.proposal || { nodes: [], relationships: [] };
         this.summary = data.summary || {};
-        this.phase = 'review';
         this.selected = null;
-        this.$nextTick(() => this.renderGraph());
+        if (data.status === 'applied') {
+          // autobuild (kg-builder) wrote the graph directly — skip review.
+          this.phase = 'done';
+        } else {
+          this.phase = 'review';
+          this.$nextTick(() => this.renderGraph());
+        }
       } catch (e) { this.phase = 'idle'; this.error = e.message; }
     },
 

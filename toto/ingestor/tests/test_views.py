@@ -50,16 +50,43 @@ class GenerateTests(TestCase):
 
     @override_settings(RAVIOLI_ENABLED=True)
     def test_generate_happy_path(self):
+        from toto.ingestor.services.strategies import IngestStrategy
+
         obj = IngestProposal.objects.create(
             status=IngestProposal.STATUS_READY,
             proposal={"nodes": [], "relationships": []},
             summary={"total_changes": 0},
         )
-        with patch.object(pipeline, "generate", return_value=obj) as gen:
+        # No strategy param → defaults to "deterministic".
+        with patch.object(IngestStrategy.get("deterministic"), "run", return_value=obj) as gen:
             res = self.client.post(reverse("ingestor:generate"), {"text": "Ada works at Acme."})
         self.assertEqual(res.status_code, 200)
         self.assertEqual(res.json()["proposal_id"], obj.id)
         gen.assert_called_once()
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_generate_dispatches_selected_strategy(self):
+        from toto.ingestor.services.strategies import IngestStrategy
+
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={"nodes": [], "relationships": []}, summary={},
+        )
+        with patch.object(IngestStrategy.get("llm"), "run", return_value=obj) as run:
+            res = self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "llm"})
+        self.assertEqual(res.status_code, 200)
+        run.assert_called_once()
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_generate_unknown_strategy_400(self):
+        res = self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "nope"})
+        self.assertEqual(res.status_code, 400)
+
+    def test_list_strategies(self):
+        res = self.client.get(reverse("ingestor:strategies"))
+        self.assertEqual(res.status_code, 200)
+        keys = {s["key"] for s in res.json()["strategies"]}
+        self.assertEqual(keys, {"deterministic", "llm", "kg-builder"})
 
 
 class EditTests(TestCase):

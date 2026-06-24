@@ -26,14 +26,11 @@ def build_proposal_dict(text):
 
 
 def generate(text, user=None):
-    """Build a proposal and persist it as a ready :class:`IngestProposal`."""
-    from ..models import IngestProposal
+    """Back-compat entry point: delegate to the default (deterministic) strategy.
 
-    proposal, summary = build_proposal_dict(text)
-    return IngestProposal.objects.create(
-        status=IngestProposal.STATUS_READY,
-        source_text=text,
-        proposal=proposal,
-        summary=summary,
-        created_by=(user if getattr(user, "is_authenticated", False) else None),
-    )
+    New code should select a strategy explicitly via
+    ``toto.ingestor.services.strategies.IngestStrategy``.
+    """
+    from .strategies import IngestStrategy
+
+    return IngestStrategy.get("deterministic").run(text, user=user)

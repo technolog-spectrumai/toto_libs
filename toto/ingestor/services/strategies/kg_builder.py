@@ -1,0 +1,73 @@
+"""neo4j-graphrag KG-builder strategy (autobuild) — LLM extracts AND writes the
+graph directly, with no review step.
+
+⚠️ Bypasses the Cytoscape review AND Bento template validation. Extraction is
+best-effort constrained by the Bento labels/rel-types passed as the schema, but
+the written nodes/edges may not follow Bento's uid/property conventions. Requires
+embeddings enabled (SimpleKGPipeline embeds chunks).
+"""
+from __future__ import annotations
+
+import logging
+
+from django.conf import settings
+
+from .base import MODE_AUTOBUILD, IngestStrategy, persist_applied
+
+logger = logging.getLogger(__name__)
+
+
+@IngestStrategy.register
+class KGBuilderStrategy(IngestStrategy):
+    key = "kg-builder"
+    label = "Auto-builder (neo4j-graphrag)"
+    description = "LLM extracts and writes nodes/edges to the graph directly — no review."
+    mode = MODE_AUTOBUILD
+
+    def run(self, text, user=None):
+        from asgiref.sync import async_to_sync
+        from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
+        from neo4j_graphrag.llm import OpenAILLM
+
+        from toto.ravioli.connection import Neo4jClient
+        from toto.ravioli.rag import VicunaEmbedder
+
+        api_key = (getattr(settings, "OPENAI_API_KEY", "") or "").strip()
+        if not api_key:
+            raise RuntimeError("OPENAI_API_KEY is not set for the 'kg-builder' strategy.")
+
+        llm = OpenAILLM(
+            model_name=getattr(settings, "INGESTOR_LLM_MODEL", "") or "gpt-4.1-mini",
+            api_key=api_key,
+            model_params={"temperature": 0},
+        )
+        entities, relations = self._bento_schema()
+
+        client = Neo4jClient()
+        try:
+            pipeline = SimpleKGPipeline(
+                llm=llm,
+                driver=client.driver(),
+                embedder=VicunaEmbedder(),
+                entities=entities or None,
+                relations=relations or None,
+                from_pdf=False,
+                perform_entity_resolution=True,
+            )
+            result = async_to_sync(pipeline.run_async)(text=text)
+        finally:
+            client.close()
+
+        summary = {"strategy": self.key, "result": str(result)}
+        return persist_applied(
+            text=text, proposal={}, summary=summary,
+            apply_result={"kg_builder": str(result)}, user=user,
+        )
+
+    def _bento_schema(self):
+        """Constrain extraction to the Bento node labels + relationship types."""
+        from toto.bento.models import BentoCategory, BentoEdgeType
+
+        entities = [c.neo4j_label for c in BentoCategory.objects.all() if c.neo4j_label]
+        relations = [e.rel_type for e in BentoEdgeType.objects.all() if e.rel_type]
+        return entities, relations

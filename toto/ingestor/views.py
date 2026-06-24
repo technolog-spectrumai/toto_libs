@@ -115,6 +115,8 @@ def home(request):
 def generate(request):
     from toto.ravioli.connection import is_enabled
 
+    from .services.strategies import IngestStrategy
+
     if not is_enabled():
         return JsonResponse(
             {"error": "RAVIOLI_ENABLED is False — cannot connect to Neo4j."}, status=503
@@ -122,11 +124,24 @@ def generate(request):
     text = (request.POST.get("text") or "").strip()
     if not text:
         return JsonResponse({"error": "Paste some text first."}, status=400)
+
+    strategy = IngestStrategy.get((request.POST.get("strategy") or "deterministic").strip())
+    if strategy is None:
+        return JsonResponse({"error": "Unknown ingest strategy."}, status=400)
     try:
-        proposal_model = pipeline.generate(text, user=request.user)
+        proposal_model = strategy.run(text, user=request.user)
     except Exception as exc:  # noqa: BLE001
         return JsonResponse({"error": f"Could not build a proposal: {exc}"}, status=500)
     return JsonResponse(_payload(proposal_model))
+
+
+@require_GET
+@superuser_required
+def list_strategies(request):
+    """Available ingest strategies for the UI selector."""
+    from .services.strategies import IngestStrategy
+
+    return JsonResponse({"strategies": IngestStrategy.choices()})
 
 
 @require_GET
