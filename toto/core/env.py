@@ -19,6 +19,8 @@ _DEV_DEFAULTS = {
     # SSO / backup vault — no default; must be set explicitly
     "SSO_VAULT_PASSWORD":    "",
     "BACKUP_VAULT_PASSWORD": "",
+    # Sabbia agent-credential vault — no default; must be set explicitly
+    "SABBIA_VAULT_PASSWORD": "",
 }
 
 # Variables required when DJANGO_ENV=PROD
