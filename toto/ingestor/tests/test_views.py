@@ -177,3 +177,73 @@ class ApplyAllTests(TestCase):
             res = self.client.post(reverse("ingestor:apply", args=[obj.id]))
         self.assertEqual(res.status_code, 200)
         approve.assert_not_called()
+
+
+class SetApprovalTests(TestCase):
+    """Bulk Select-all / Clear-selection endpoint."""
+
+    def setUp(self):
+        User.objects.create_superuser("admin", password="x")
+        self.client.login(username="admin", password="x")
+        self.obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={
+                "nodes": [
+                    {"temp_id": "n1", "approval": "pending", "validation": {"status": "ok"}},
+                    {"temp_id": "n2", "approval": "pending", "validation": {"status": "error"}},
+                ],
+                "relationships": [
+                    {"temp_id": "r1", "approval": "pending", "validation": {"status": "ok"}},
+                ],
+            },
+            summary={},
+        )
+
+    def test_select_all_approves_valid_only(self):
+        url = reverse("ingestor:set_approval", args=[self.obj.id])
+        # revalidate hits Bento/Neo4j — stub it so the pre-set validation stands.
+        with patch("toto.ingestor.views.revalidate"):
+            res = self.client.post(
+                url, data=json.dumps({"approval": "approved"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        body = res.json()
+        nodes = {n["temp_id"]: n for n in body["proposal"]["nodes"]}
+        self.assertEqual(nodes["n1"]["approval"], "approved")
+        self.assertEqual(nodes["n2"]["approval"], "pending")  # error → skipped
+        self.assertEqual(body["proposal"]["relationships"][0]["approval"], "approved")
+        self.assertEqual(body["summary"]["approved"], 2)
+
+    def test_clear_selection_resets_to_pending(self):
+        for n in self.obj.proposal["nodes"]:
+            n["approval"] = "approved"
+        self.obj.save(update_fields=["proposal"])
+        url = reverse("ingestor:set_approval", args=[self.obj.id])
+        with patch("toto.ingestor.views.revalidate"):
+            res = self.client.post(
+                url, data=json.dumps({"approval": "pending"}),
+                content_type="application/json",
+            )
+        self.assertEqual(res.status_code, 200)
+        nodes = {n["temp_id"]: n for n in res.json()["proposal"]["nodes"]}
+        self.assertEqual(nodes["n1"]["approval"], "pending")
+        self.assertEqual(res.json()["summary"]["approved"], 0)
+
+    def test_invalid_approval_value_400(self):
+        url = reverse("ingestor:set_approval", args=[self.obj.id])
+        res = self.client.post(
+            url, data=json.dumps({"approval": "bogus"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 400)
+
+    def test_set_approval_on_applied_proposal_409(self):
+        self.obj.status = IngestProposal.STATUS_APPLIED
+        self.obj.save(update_fields=["status"])
+        url = reverse("ingestor:set_approval", args=[self.obj.id])
+        res = self.client.post(
+            url, data=json.dumps({"approval": "approved"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 409)

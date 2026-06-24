@@ -230,19 +230,55 @@ def patch_rel(request, pk, temp_id):
     return JsonResponse({"relationship": rel, "summary": proposal_model.summary})
 
 
-def _approve_all_valid(proposal_model):
-    """Mark every non-error node/relationship as approved (for 'Apply all').
+@require_POST
+@superuser_required
+def set_approval(request, pk):
+    """Bulk select / clear: set one approval state on every valid element.
 
-    Re-validates against the live Bento templates first, then approves only the
-    elements that aren't in error, and persists (refreshing the summary).
+    Body: ``{"approval": "approved" | "pending" | "rejected"}``. Powers the
+    Select-all / Clear-selection toggle. Elements in validation error are skipped
+    (they can't be applied). Returns the refreshed proposal + summary so the
+    checklist and graph can re-sync.
+    """
+    proposal_model = get_object_or_404(IngestProposal, pk=pk)
+    if proposal_model.status == IngestProposal.STATUS_APPLIED:
+        return JsonResponse({"error": "Proposal already applied."}, status=409)
+    try:
+        data = json.loads(request.body or "{}")
+    except ValueError:
+        return JsonResponse({"error": "Invalid JSON body."}, status=400)
+    approval = data.get("approval")
+    if approval not in ("pending", "approved", "rejected"):
+        return JsonResponse({"error": "Invalid approval value."}, status=400)
+
+    _bulk_set_approval(proposal_model, approval)
+    return JsonResponse(
+        {"proposal": proposal_model.proposal, "summary": proposal_model.summary}
+    )
+
+
+def _bulk_set_approval(proposal_model, approval):
+    """Set ``approval`` on every non-error node/relationship, then persist.
+
+    Re-validates against the live Bento templates first, applies the state only
+    to elements that aren't in error, and refreshes the summary. Shared by the
+    Select-all toggle and the legacy ``approve_all`` apply path.
     """
     proposal = proposal_model.proposal
     revalidate(proposal)
     elements = (proposal.get("nodes") or []) + (proposal.get("relationships") or [])
     for el in elements:
-        if (el.get("validation") or {}).get("status") != "error":
-            el["approval"] = "approved"
+        # Never auto-approve an element that fails validation; clearing or
+        # rejecting is always safe, so those apply to every element.
+        if approval == "approved" and (el.get("validation") or {}).get("status") == "error":
+            continue
+        el["approval"] = approval
     _save_edits(proposal_model)
+
+
+def _approve_all_valid(proposal_model):
+    """Mark every non-error node/relationship as approved (for ``approve_all``)."""
+    _bulk_set_approval(proposal_model, "approved")
 
 
 @require_POST
