@@ -12,6 +12,6 @@ class DeterministicStrategy(IngestStrategy):
     description = "Rule-based entity & relationship detection. No LLM — fast and predictable."
     mode = MODE_REVIEW
 
-    def run(self, text, user=None):
-        proposal, summary = build_proposal_dict(text)
+    def run(self, text, user=None, *, include_existing_nodes=False):
+        proposal, summary = build_proposal_dict(text, include_existing_nodes=include_existing_nodes)
         return persist_review(text=text, proposal=proposal, summary=summary, user=user)

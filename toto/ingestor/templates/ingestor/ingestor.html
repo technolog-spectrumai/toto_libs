@@ -63,6 +63,10 @@
         :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
         class="w-full rounded-lg border px-3 py-2 text-sm font-mono"
         placeholder="{% trans 'Paste arbitrary text here…' %}"></textarea>
+      <label class="flex items-center gap-2 text-xs opacity-75 cursor-pointer">
+        <input type="checkbox" x-model="includeExistingNodes" class="h-4 w-4 shrink-0 cursor-pointer" />
+        {% trans "Include existing nodes when building relationships" %}
+      </label>
       <div class="flex items-center gap-3">
         <button @click="generate()" :disabled="phase === 'generating' || !text.trim()"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -369,6 +373,7 @@ function ingestorFlow() {
     cy: null,
     strategy: 'deterministic',
     strategies: [],
+    includeExistingNodes: false,
 
     get strategyHint() {
       const s = this.strategies.find(s => s.key === this.strategy);
@@ -407,6 +412,7 @@ function ingestorFlow() {
       this.phase = 'generating'; this.error = null;
       try {
         const fd = new FormData(); fd.append('text', this.text); fd.append('strategy', this.strategy);
+        fd.append('include_existing_nodes', this.includeExistingNodes ? '1' : '0');
         const res = await fetch(INGEST_GENERATE_URL, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN }, body: fd });
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));

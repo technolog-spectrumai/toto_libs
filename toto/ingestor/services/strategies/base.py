@@ -64,9 +64,41 @@ class IngestStrategy(ABC):
         ]
 
     @abstractmethod
-    def run(self, text: str, user=None):
-        """Return an :class:`IngestProposal` (see module docstring for modes)."""
+    def run(self, text: str, user=None, *, include_existing_nodes: bool = False):
+        """Return an :class:`IngestProposal` (see module docstring for modes).
+
+        ``include_existing_nodes``: when set, relationship-building may link to
+        existing graph nodes named anywhere in ``text`` (not just within the same
+        sentence). Strategies that can't use it accept and ignore it.
+        """
         raise NotImplementedError
+
+
+def existing_nodes_in_text(text) -> list[dict]:
+    """Existing graph nodes named anywhere in ``text`` — ``[{uid, display, category_slug}]``.
+
+    Reuses the deterministic catalog + detection so the LLM / kg-builder strategies
+    can offer the model existing nodes to link to (by uid). Returns ``[]`` when
+    spaCy or the catalog is unavailable, so callers degrade to no extra context.
+    """
+    from toto.bento.models import BentoCategory
+
+    from .. import catalog as catalog_svc
+    from .. import detection as detection_svc
+
+    try:
+        entries, _ = catalog_svc.build_catalog()
+        known = set(BentoCategory.objects.values_list("slug", flat=True))
+        detection = detection_svc.detect(text, entries, known)
+    except Exception:  # noqa: BLE001 — detection is optional; degrade gracefully
+        return []
+
+    out, seen = [], set()
+    for m in detection.mentions:
+        if getattr(m, "kind", None) == "existing" and m.uid and m.uid not in seen:
+            seen.add(m.uid)
+            out.append({"uid": m.uid, "display": m.text, "category_slug": m.category_slug})
+    return out
 
 
 def _owner(user):

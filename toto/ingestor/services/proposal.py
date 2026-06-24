@@ -28,15 +28,22 @@ def _node_key(mention, category_slug):
     return ("new", category_slug or "", mention.normalized)
 
 
-def assemble(detection):
+def assemble(detection, *, include_existing_nodes=False):
     from .catalog import build_catalog  # avoid import cycle at module load
 
     catalog_entries, catalog_meta = build_catalog()
-    return assemble_from_catalog(detection, catalog_entries), catalog_meta
+    return (
+        assemble_from_catalog(detection, catalog_entries, include_existing_nodes=include_existing_nodes),
+        catalog_meta,
+    )
 
 
-def assemble_from_catalog(detection, catalog_entries):
-    """Build the proposal dict from a detection result + a prebuilt catalog."""
+def assemble_from_catalog(detection, catalog_entries, *, include_existing_nodes=False):
+    """Build the proposal dict from a detection result + a prebuilt catalog.
+
+    ``include_existing_nodes`` lets relationship-building pair entities with
+    existing graph nodes named anywhere in the text (not just same-sentence).
+    """
     cat_objs = {c.slug: c for c in BentoCategory.objects.all()}
     cat_name = {slug: c.name for slug, c in cat_objs.items()}
     display_by_uid = {}
@@ -119,7 +126,8 @@ def assemble_from_catalog(detection, catalog_entries):
         })
 
     rel_candidates = relations.propose(
-        mention_nodes, detection.sentence_forms, detection.sentences
+        mention_nodes, detection.sentence_forms, detection.sentences,
+        include_existing=include_existing_nodes,
     )
     relationships = []
     for i, rc in enumerate(rel_candidates, start=1):

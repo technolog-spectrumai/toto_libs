@@ -83,6 +83,46 @@ class LLMNormalizeTests(SimpleTestCase):
         self.assertEqual(out["relationships"], [])
 
 
+class LLMExistingNodesTests(SimpleTestCase):
+    def test_prompt_lists_existing_nodes(self):
+        p = llm_mod._prompt(
+            "txt", {"organization": "Org"}, {},
+            existing_nodes=[{"uid": "u1", "display": "Acme", "category_slug": "organization"}],
+        )
+        self.assertIn("existing_uid=u1", p)
+        self.assertIn("Acme", p)
+
+    def test_prompt_omits_section_without_existing_nodes(self):
+        p = llm_mod._prompt("txt", {"person": "Person"}, {})
+        self.assertNotIn("existing_uid=", p)
+
+    def test_normalize_maps_existing_uid_to_existing_node(self):
+        raw = {
+            "nodes": [
+                {"temp_id": "n1", "existing_uid": "u1"},
+                {"temp_id": "n2", "category_slug": "person", "display": "Ada", "properties": {"name": "Ada"}},
+            ],
+            "relationships": [{"temp_id": "r1", "edge_type_slug": "works-at", "from": "n2", "to": "n1"}],
+        }
+        existing_by_uid = {"u1": {"uid": "u1", "display": "Acme", "category_slug": "organization"}}
+        edges = {"works-at": {"name": "Works at", "rel_type": "WORKS_AT",
+                              "sources": ["person"], "targets": ["organization"]}}
+        out = llm_mod._normalize(raw, {"person": "Person", "organization": "Org"}, edges, existing_by_uid)
+        by_temp = {n["temp_id"]: n for n in out["nodes"]}
+        self.assertEqual(by_temp["n1"]["kind"], "existing")
+        self.assertEqual(by_temp["n1"]["uid"], "u1")
+        self.assertEqual(by_temp["n1"]["category_slug"], "organization")
+        self.assertEqual(by_temp["n2"]["kind"], "new")
+        self.assertEqual(len(out["relationships"]), 1)  # both endpoints valid
+
+    def test_normalize_unknown_existing_uid_falls_back_to_new(self):
+        raw = {"nodes": [{"temp_id": "n1", "existing_uid": "bogus", "category_slug": "person",
+                          "display": "X", "properties": {"name": "X"}}], "relationships": []}
+        existing_by_uid = {"u1": {"uid": "u1", "display": "A", "category_slug": "person"}}
+        out = llm_mod._normalize(raw, {"person": "Person"}, {}, existing_by_uid)
+        self.assertEqual(out["nodes"][0]["kind"], "new")
+
+
 class DeterministicRunTests(TestCase):
     def test_persists_review_proposal(self):
         with mock.patch(
@@ -138,3 +178,23 @@ class KGBuilderRunTests(TestCase):
     def test_requires_key(self):
         with self.assertRaises(RuntimeError):
             IngestStrategy.get("kg-builder").run("x", user=None)
+
+    @override_settings(OPENAI_API_KEY="sk-x")
+    def test_include_existing_prepends_known_entities_to_text(self):
+        captured = {}
+
+        async def _run_async(**kwargs):
+            captured.update(kwargs)
+            return SimpleNamespace(result="ok")
+
+        fake_pipe = mock.Mock()
+        fake_pipe.run_async = _run_async
+        with mock.patch("neo4j_graphrag.experimental.pipeline.kg_builder.SimpleKGPipeline", return_value=fake_pipe), \
+             mock.patch("neo4j_graphrag.llm.OpenAILLM"), \
+             mock.patch("toto.ravioli.connection.Neo4jClient"), \
+             mock.patch("toto.ravioli.rag.VicunaEmbedder"), \
+             mock.patch("toto.ingestor.services.strategies.kg_builder.existing_nodes_in_text",
+                        return_value=[{"uid": "u1", "display": "Acme", "category_slug": "organization"}]):
+            IngestStrategy.get("kg-builder").run("Ada knows Acme", user=None, include_existing_nodes=True)
+        self.assertIn("Known existing entities", captured["text"])
+        self.assertIn("Acme", captured["text"])

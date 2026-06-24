@@ -78,6 +78,31 @@ class GenerateTests(TestCase):
         run.assert_called_once()
 
     @override_settings(RAVIOLI_ENABLED=True)
+    def test_generate_passes_include_existing_nodes(self):
+        from toto.ingestor.services.strategies import IngestStrategy
+
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={"nodes": [], "relationships": []}, summary={},
+        )
+        with patch.object(IngestStrategy.get("deterministic"), "run", return_value=obj) as run:
+            self.client.post(reverse("ingestor:generate"),
+                             {"text": "x", "strategy": "deterministic", "include_existing_nodes": "1"})
+        self.assertTrue(run.call_args.kwargs.get("include_existing_nodes"))
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_generate_include_existing_nodes_defaults_false(self):
+        from toto.ingestor.services.strategies import IngestStrategy
+
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={"nodes": [], "relationships": []}, summary={},
+        )
+        with patch.object(IngestStrategy.get("deterministic"), "run", return_value=obj) as run:
+            self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "deterministic"})
+        self.assertFalse(run.call_args.kwargs.get("include_existing_nodes"))
+
+    @override_settings(RAVIOLI_ENABLED=True)
     def test_generate_unknown_strategy_400(self):
         res = self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "nope"})
         self.assertEqual(res.status_code, 400)

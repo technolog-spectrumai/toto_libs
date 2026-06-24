@@ -133,8 +133,9 @@ def generate(request):
             {"error": f"The '{strategy.key}' strategy is unavailable — its LLM backend is not configured."},
             status=400,
         )
+    include_existing = request.POST.get("include_existing_nodes") == "1"
     try:
-        proposal_model = strategy.run(text, user=request.user)
+        proposal_model = strategy.run(text, user=request.user, include_existing_nodes=include_existing)
     except Exception as exc:  # noqa: BLE001
         return JsonResponse({"error": f"Could not build a proposal: {exc}"}, status=500)
     return JsonResponse(_payload(proposal_model))

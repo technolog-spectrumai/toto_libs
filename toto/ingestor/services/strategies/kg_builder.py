@@ -12,7 +12,7 @@ import logging
 
 from django.conf import settings
 
-from .base import MODE_AUTOBUILD, IngestStrategy, persist_applied
+from .base import MODE_AUTOBUILD, IngestStrategy, existing_nodes_in_text, persist_applied
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +36,7 @@ class KGBuilderStrategy(IngestStrategy):
             return False
         return bool(embeddings_enabled())
 
-    def run(self, text, user=None):
+    def run(self, text, user=None, *, include_existing_nodes=False):
         from asgiref.sync import async_to_sync
         from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline
         from neo4j_graphrag.llm import OpenAILLM
@@ -47,6 +47,16 @@ class KGBuilderStrategy(IngestStrategy):
         api_key = (getattr(settings, "OPENAI_API_KEY", "") or "").strip()
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set for the 'kg-builder' strategy.")
+
+        # SimpleKGPipeline owns its own extraction prompt, so the only hook for
+        # "include existing nodes" is to feed them as context via the input text
+        # (best-effort; entity resolution then merges matches into existing nodes).
+        run_text = text
+        if include_existing_nodes:
+            existing = existing_nodes_in_text(text)
+            if existing:
+                listing = "; ".join(f"{n['display']} ({n['category_slug']})" for n in existing)
+                run_text = f"Known existing entities (link to these where relevant): {listing}.\n\n{text}"
 
         llm = OpenAILLM(
             model_name=getattr(settings, "INGESTOR_LLM_MODEL", "") or "gpt-4.1-mini",
@@ -66,7 +76,7 @@ class KGBuilderStrategy(IngestStrategy):
                 from_pdf=False,
                 perform_entity_resolution=True,
             )
-            result = async_to_sync(pipeline.run_async)(text=text)
+            result = async_to_sync(pipeline.run_async)(text=run_text)
         finally:
             client.close()
 

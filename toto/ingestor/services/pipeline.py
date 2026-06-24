@@ -8,15 +8,19 @@ from . import proposal as proposal_svc
 from . import validation
 
 
-def build_proposal_dict(text):
+def build_proposal_dict(text, *, include_existing_nodes=False):
     """Run the full deterministic pipeline and return ``(proposal, summary)``.
 
     Pure function (no DB writes) so it's easy to unit-test. ``generate`` persists.
+    ``include_existing_nodes`` lets relationships link to existing graph nodes
+    named anywhere in ``text`` (not just within the same sentence).
     """
     catalog_entries, catalog_meta = catalog_svc.build_catalog()
     known_slugs = set(BentoCategory.objects.values_list("slug", flat=True))
     detection = detection_svc.detect(text, catalog_entries, known_slugs)
-    proposal = proposal_svc.assemble_from_catalog(detection, catalog_entries)
+    proposal = proposal_svc.assemble_from_catalog(
+        detection, catalog_entries, include_existing_nodes=include_existing_nodes
+    )
 
     summary = validation.summarize(proposal)
     summary["catalog"] = catalog_meta

@@ -12,7 +12,7 @@ import logging
 from django.conf import settings
 
 from .. import validation
-from .base import MODE_REVIEW, IngestStrategy, persist_review
+from .base import MODE_REVIEW, IngestStrategy, existing_nodes_in_text, persist_review
 
 logger = logging.getLogger(__name__)
 
@@ -33,32 +33,67 @@ def _bento_schema():
     return categories, edge_types
 
 
-def _prompt(text, categories, edge_types):
+def _prompt(text, categories, edge_types, existing_nodes=None):
     cats = "\n".join(f"  - {slug}: {name}" for slug, name in categories.items())
     edges = "\n".join(
         f"  - {slug}: {e['name']} (from {e['sources'] or 'any'} to {e['targets'] or 'any'})"
         for slug, e in edge_types.items()
     )
+    existing_block = ""
+    if existing_nodes:
+        listing = "\n".join(
+            f"  - existing_uid={n['uid']} ({n['category_slug']}): {n['display']}"
+            for n in existing_nodes
+        )
+        existing_block = (
+            "\n\nThese EXISTING graph nodes are named in the text. To link to one, emit a "
+            "node object with its \"existing_uid\" (omit category_slug/properties) and "
+            "reference its temp_id in relationships — do NOT create a duplicate new node:\n"
+            f"{listing}"
+        )
     return (
         "Extract a knowledge graph from the text below. Use ONLY these node "
-        f"categories (by slug):\n{cats}\n\nand ONLY these relationship types (by slug):\n{edges}\n\n"
+        f"categories (by slug):\n{cats}\n\nand ONLY these relationship types (by slug):\n{edges}"
+        f"{existing_block}\n\n"
         "Return STRICT JSON: {\"nodes\": [{\"temp_id\": \"n1\", \"category_slug\": \"...\", "
         "\"display\": \"...\", \"properties\": {\"name\": \"...\"}}], \"relationships\": "
         "[{\"temp_id\": \"r1\", \"edge_type_slug\": \"...\", \"from\": \"n1\", \"to\": \"n2\", "
-        "\"properties\": {}}]}. temp_ids are n1,n2,… and r1,r2,…; relationship from/to reference "
-        "node temp_ids. Omit anything that doesn't fit the allowed categories/types.\n\n"
+        "\"properties\": {}}]}. Each node is EITHER new (category_slug + properties) OR an "
+        "existing one (\"existing_uid\" only). temp_ids are n1,n2,… and r1,r2,…; relationship "
+        "from/to reference node temp_ids. Omit anything that doesn't fit the allowed "
+        "categories/types.\n\n"
         f"TEXT:\n{text}"
     )
 
 
-def _normalize(raw, categories, edge_types):
-    """Map the LLM JSON to the proposal contract; drop entries with unknown slugs."""
+def _normalize(raw, categories, edge_types, existing_by_uid=None):
+    """Map the LLM JSON to the proposal contract; drop entries with unknown slugs.
+
+    A node carrying a valid ``existing_uid`` (one offered in the prompt) becomes an
+    ``existing`` node linked to that graph uid; otherwise it's a new node.
+    """
+    existing_by_uid = existing_by_uid or {}
     nodes, valid_temp = [], set()
     for i, n in enumerate(raw.get("nodes") or [], start=1):
+        temp_id = n.get("temp_id") or f"n{i}"
+        existing_uid = n.get("existing_uid")
+        if existing_uid and existing_uid in existing_by_uid:
+            info = existing_by_uid[existing_uid]
+            slug = info["category_slug"]
+            valid_temp.add(temp_id)
+            nodes.append({
+                "temp_id": temp_id, "kind": "existing", "category_slug": slug,
+                "category_name": categories.get(slug, slug), "uid": existing_uid,
+                "display": info["display"], "properties": {},
+                "evidence": [],
+                "match": {"method": "exact", "matched_uid": existing_uid, "score": 1.0, "candidates": []},
+                "duplicate_warning": False, "merge_into_uid": None, "ner_label": None,
+                "confidence": 1.0, "approval": "pending", "validation": {},
+            })
+            continue
         slug = n.get("category_slug")
         if slug not in categories:
             continue
-        temp_id = n.get("temp_id") or f"n{i}"
         valid_temp.add(temp_id)
         display = n.get("display") or (n.get("properties") or {}).get("name") or temp_id
         nodes.append({
@@ -96,20 +131,22 @@ class LLMStrategy(IngestStrategy):
         # Targets OpenAI cloud — needs an API key to be usable.
         return bool((getattr(settings, "OPENAI_API_KEY", "") or "").strip())
 
-    def run(self, text, user=None):
-        proposal = self._extract(text)
+    def run(self, text, user=None, *, include_existing_nodes=False):
+        proposal = self._extract(text, include_existing_nodes=include_existing_nodes)
         validation.revalidate(proposal)
         summary = validation.summarize(proposal)
         summary["strategy"] = self.key
         return persist_review(text=text, proposal=proposal, summary=summary, user=user)
 
-    def _extract(self, text) -> dict:
+    def _extract(self, text, include_existing_nodes=False) -> dict:
         api_key = (getattr(settings, "OPENAI_API_KEY", "") or "").strip()
         if not api_key:
             raise RuntimeError("OPENAI_API_KEY is not set for the 'llm' ingest strategy.")
         from openai import OpenAI
 
         categories, edge_types = _bento_schema()
+        existing_nodes = existing_nodes_in_text(text) if include_existing_nodes else []
+        existing_by_uid = {n["uid"]: n for n in existing_nodes}
         model = getattr(settings, "INGESTOR_LLM_MODEL", "") or "gpt-4.1-mini"
         client = OpenAI(api_key=api_key)
         resp = client.chat.completions.create(
@@ -118,8 +155,8 @@ class LLMStrategy(IngestStrategy):
             response_format={"type": "json_object"},
             messages=[
                 {"role": "system", "content": "You extract knowledge graphs as strict JSON."},
-                {"role": "user", "content": _prompt(text, categories, edge_types)},
+                {"role": "user", "content": _prompt(text, categories, edge_types, existing_nodes)},
             ],
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
-        return _normalize(raw, categories, edge_types)
+        return _normalize(raw, categories, edge_types, existing_by_uid)

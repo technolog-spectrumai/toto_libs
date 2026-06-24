@@ -77,6 +77,22 @@ class PipelineIntegrationTests(TestCase):
         self.assertTrue(summary["ner_available"])
         self.assertEqual(summary["catalog"], meta)
 
+    def test_include_existing_nodes_links_across_sentences(self):
+        # Ada (new, sentence 0) and Acme (existing, sentence 1) are in different
+        # sentences. The works-at edge only links them when include_existing_nodes
+        # broadens pairing beyond same-sentence co-occurrence.
+        text = "Ada Lovelace is a mathematician. Many people work at Acme."
+        meta = {"node_count": 1, "entry_count": 1, "truncated": False}
+        with patch.object(pipeline.catalog_svc, "build_catalog", return_value=(self.catalog, meta)):
+            without, _ = pipeline.build_proposal_dict(text)
+            with_existing, _ = pipeline.build_proposal_dict(text, include_existing_nodes=True)
+
+        def works_at(p):
+            return [r for r in p["relationships"] if r["edge_type_slug"] == "works-at"]
+
+        self.assertEqual(works_at(without), [], "no cross-sentence link by default")
+        self.assertTrue(works_at(with_existing), "existing node linked across sentences when enabled")
+
     def test_fuzzy_duplicate_uses_rapidfuzz_path(self):
         # A near-duplicate of the catalog org should be flagged against u-acme.
         catalog = [_entry("Acme Corporation", "u-acme", "organization")]
