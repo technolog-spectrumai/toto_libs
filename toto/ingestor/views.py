@@ -90,11 +90,16 @@ def home(request):
         except Exception:  # noqa: BLE001 — graph may be down; page still renders
             categories, edge_types = ([], [])
 
+    # Text handed off from another tab (e.g. OCR) via Post/Redirect/Get. Popped
+    # so it pre-fills once and auto-generates, then is gone on the next visit.
+    prefill_text = request.session.pop("ingest_text", "")
+
     context = PageProcessor().decorate(
         {
             "categories_json": json.dumps(categories),
             "edge_types_json": json.dumps(edge_types),
             "generate_url": reverse("ingestor:generate"),
+            "prefill_text": prefill_text,  # rendered via json_script (XSS-safe)
         },
         request,
     )

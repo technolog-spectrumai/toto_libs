@@ -6,9 +6,10 @@
 
 {% block content %}
 <style>[x-cloak]{display:none !important}</style>
+{{ directories|json_script:"ocr-directories" }}
 <script>
   const OCR_RUN_URL = "{{ run_url }}";
-  const OCR_INGEST_URL = "{{ ingest_generate_url }}";
+  const OCR_INGEST_ENABLED = {{ ingest_enabled|yesno:"true,false" }};
   const CSRF_TOKEN = "{{ csrf_token }}";
 </script>
 
@@ -66,14 +67,23 @@
           <input type="checkbox" x-model="saveToVault" class="rounded">
           {% trans "Save screenshot to a file-storage bucket" %}
         </label>
-        <div x-show="saveToVault" x-cloak class="pl-6">
-          <select x-model="bucket"
+        <div x-show="saveToVault" x-cloak class="flex flex-wrap items-center gap-2 pl-6">
+          <select x-model="bucket" @change="directory = ''"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
             class="rounded-lg border px-3 py-2 text-sm">
             <option value="">{% trans "— choose a bucket —" %}</option>
             {% for b in buckets %}
             <option value="{{ b.pk }}">{{ b.name }}</option>
             {% endfor %}
+          </select>
+          <!-- Folder within the chosen bucket (optional) -->
+          <select x-show="bucket" x-model="directory"
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+            class="rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Bucket root" %}</option>
+            <template x-for="d in dirsForBucket" :key="d.pk">
+              <option :value="d.pk" x-text="d.label"></option>
+            </template>
           </select>
         </div>
       </div>
@@ -104,14 +114,19 @@
         :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
         class="w-full rounded-lg border px-3 py-2 text-sm font-mono"></textarea>
       <div class="flex items-center gap-3">
-        <button @click="ingest()" :disabled="ingesting || !text.trim() || !OCR_INGEST_URL"
+        <button @click="ingest()" :disabled="!text.trim() || !OCR_INGEST_ENABLED"
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
-          <i class="fa-solid" :class="ingesting ? 'fa-spinner fa-spin' : 'fa-diagram-project'"></i>
-          <span x-text="ingesting ? '{% trans "Sending…" %}' : '{% trans "Ingest text" %}'"></span>
+          <i class="fa-solid fa-diagram-project"></i>
+          <span>{% trans "Ingest text" %}</span>
         </button>
-        <p x-show="ingestError" x-text="ingestError" class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></p>
+        <span x-show="!OCR_INGEST_ENABLED" class="text-xs opacity-60">{% trans "Ingestor unavailable" %}</span>
       </div>
+      <!-- Hand off to the ingestor (Post/Redirect/Get → its review page) -->
+      <form method="post" action="{% url 'ocr:ingest' %}" x-ref="ingestForm" class="hidden">
+        {% csrf_token %}
+        <textarea name="text" x-ref="ingestText"></textarea>
+      </form>
     </section>
 
   </div>
@@ -125,12 +140,16 @@
       language: "eng",
       saveToVault: false,
       bucket: "",
+      directory: "",
+      directories: JSON.parse(document.getElementById("ocr-directories").textContent || "[]"),
       busy: false,
       text: "",
       error: "",
       savedUrl: "",
-      ingesting: false,
-      ingestError: "",
+
+      get dirsForBucket() {
+        return this.directories.filter((d) => String(d.bucket_pk) === String(this.bucket));
+      },
 
       onFile(e) {
         this.file = e.target.files[0] || null;
@@ -152,6 +171,7 @@
           if (this.saveToVault && this.bucket) {
             fd.append("save_to_vault", "on");
             fd.append("bucket", this.bucket);
+            if (this.directory) fd.append("directory", this.directory);
           }
           const res = await fetch(OCR_RUN_URL, {
             method: "POST",
@@ -170,26 +190,12 @@
         }
       },
 
-      async ingest() {
-        if (!this.text.trim() || !OCR_INGEST_URL) return;
-        this.ingesting = true;
-        this.ingestError = "";
-        try {
-          const fd = new FormData();
-          fd.append("text", this.text);
-          const res = await fetch(OCR_INGEST_URL, {
-            method: "POST",
-            headers: { "X-CSRFToken": CSRF_TOKEN },
-            body: fd,
-          });
-          const data = await res.json();
-          if (!res.ok) { this.ingestError = data.error || "Could not ingest."; return; }
-          window.location = data.detail_url;
-        } catch (err) {
-          this.ingestError = "" + err;
-        } finally {
-          this.ingesting = false;
-        }
+      ingest() {
+        if (!this.text.trim() || !OCR_INGEST_ENABLED) return;
+        // Post/Redirect/Get to the ingestor's review page (it pre-fills the
+        // text and auto-generates a proposal). A plain form nav, not fetch.
+        this.$refs.ingestText.value = this.text;
+        this.$refs.ingestForm.submit();
       },
     };
   }

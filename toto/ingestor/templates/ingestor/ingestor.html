@@ -8,6 +8,7 @@
 <style>[x-cloak]{display:none !important}</style>
 <script id="ingestor-categories" type="application/json">{{ categories_json|safe }}</script>
 <script id="ingestor-edge-types" type="application/json">{{ edge_types_json|safe }}</script>
+{{ prefill_text|json_script:"ingestor-prefill" }}
 <script>
   const INGEST_GENERATE_URL = "{{ generate_url }}";
   const INGEST_NODE_URL = "{% url 'ingestor:patch_node' 0 'TID' %}";
@@ -292,6 +293,13 @@ function ingestorFlow() {
     init() {
       this.categories = JSON.parse(document.getElementById('ingestor-categories').textContent || '[]');
       this.edgeTypes  = JSON.parse(document.getElementById('ingestor-edge-types').textContent || '[]');
+      // Text forwarded from another tab (e.g. OCR): pre-fill and auto-generate.
+      const prefillEl = document.getElementById('ingestor-prefill');
+      const prefill = prefillEl ? JSON.parse(prefillEl.textContent || '""') : '';
+      if (prefill && prefill.trim()) {
+        this.text = prefill;
+        this.$nextTick(() => this.generate());
+      }
     },
 
     // ── lookups ──
