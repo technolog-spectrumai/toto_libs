@@ -17,6 +17,7 @@ class Command(IngressCommand):
         self.stdout.write(self.style.WARNING("Seeding Sabbia..."))
 
         if getattr(settings, "SABBIA_OPENAI", False):
+            self._ensure_vault()
             self._seed_openai_steven()
         else:
             self.stdout.write(self.style.WARNING(
@@ -28,6 +29,30 @@ class Command(IngressCommand):
 
         self._link_platform_chatbot()
         self.stdout.write(self.style.SUCCESS("Sabbia seeding complete."))
+
+    def _ensure_vault(self):
+        """Create the sabbia credential strongbox (idempotent) so the OpenAI key
+        can be stored in the same pass — no separate manual `sabbia_init_vault`.
+
+        No-op with a clear warning when SABBIA_VAULT_PASSWORD is unset: Steven is
+        then seeded keyless and the key can be added later once the password is
+        configured.
+        """
+        from django.conf import settings
+        from django.core.management import call_command
+        from django.core.management.base import CommandError
+
+        if not (getattr(settings, "SABBIA_VAULT_PASSWORD", "") or "").strip():
+            self.stdout.write(self.style.WARNING(
+                "  SABBIA_VAULT_PASSWORD not set — skipping vault init "
+                "(the OpenAI key will not be stored)."
+            ))
+            return
+        try:
+            call_command("sabbia_init_vault", verbosity=0)
+            self.stdout.write(self.style.SUCCESS("  Sabbia vault ready."))
+        except CommandError as exc:
+            self.stdout.write(self.style.WARNING(f"  Vault init failed: {exc}"))
 
     def _seed_openai_steven(self):
         from django.conf import settings
