@@ -1,0 +1,70 @@
+{% comment %}
+Live auto-fill of trivially-derived template fields from the Name input.
+
+Mirrors the server-side helpers in bento/models.py (Django slugify /
+default_label / default_rel_type) so a creator sees the slug, Neo4j label and
+rel_type appear as they type the name. Each target is filled only while it is
+"pristine" (empty at page load — i.e. a fresh create form). Opening an existing
+record (edit form: fields already populated) or editing a field by hand stops
+that field's sync, so values are never clobbered. Anything still left blank is
+re-derived server-side on save, so this is purely a convenience preview.
+{% endcomment %}
+<script>
+/* bento-autopopulate */
+(function () {
+  function wire() {
+    var name = document.getElementById('id_name');
+    if (!name) return;
+
+    // Mirror Django slugify: NFKD-transliterate accents to ASCII, lowercase,
+    // keep underscores, collapse whitespace/hyphens to one '-', trim. (Café->cafe)
+    function toSlug(s) {
+      return (s || '').toString()
+        .normalize('NFKD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().trim()
+        .replace(/[^a-z0-9\s_-]/g, '')
+        .replace(/[\s-]+/g, '-')
+        .replace(/^[-_]+|[-_]+$/g, '');
+    }
+    // default_label: CamelCase Neo4j label (LABEL_RE = ^[A-Za-z_][A-Za-z0-9_]*$).
+    function toLabel(s) {
+      var parts = (s || '').split(/[^A-Za-z0-9]+/).filter(Boolean);
+      var label = parts.map(function (p) { return p.charAt(0).toUpperCase() + p.slice(1); }).join('');
+      if (!label || !/^[A-Za-z]/.test(label)) label = 'Node' + label;
+      return label || 'Node';
+    }
+    // default_rel_type: UPPER_SNAKE rel type (REL_TYPE_RE = ^[A-Z_][A-Z0-9_]*$).
+    function toRel(s) {
+      var rel = (s || '').trim().replace(/[^A-Za-z0-9]+/g, '_').replace(/^_+|_+$/g, '').toUpperCase();
+      if (!rel || !/^[A-Z_][A-Z0-9_]*$/.test(rel)) rel = rel ? ('REL_' + rel) : 'REL';
+      return rel;
+    }
+
+    var targets = [
+      { id: 'id_slug', fn: toSlug },
+      { id: 'id_neo4j_label', fn: toLabel },
+      { id: 'id_rel_type', fn: toRel },
+    ];
+    targets.forEach(function (t) {
+      t.el = document.getElementById(t.id);
+      if (!t.el) return;
+      // Pristine only on a fresh create form (target empty at load).
+      t.auto = t.el.value.trim() === '';
+      // The user taking over a field stops the sync for that field.
+      t.el.addEventListener('input', function () { t.auto = false; });
+    });
+
+    name.addEventListener('input', function () {
+      targets.forEach(function (t) {
+        if (t.el && t.auto) t.el.value = t.fn(name.value);
+      });
+    });
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', wire);
+  } else {
+    wire();
+  }
+})();
+</script>

@@ -466,7 +466,8 @@ def search_view(request):
     from django.conf import settings as _settings
 
     from .services.search import (
-        MODE_AUTO,
+        MODE_KEYWORD,
+        MODE_SEMANTIC,
         SearchUnavailableError,
         resolve_mode,
         run_search,
@@ -474,7 +475,13 @@ def search_view(request):
     )
 
     q = request.GET.get("q", "").strip()
-    mode = resolve_mode(request.GET.get("mode", MODE_AUTO))
+    sem_avail = semantic_available()
+    # No default/auto mode — the user picks. Keyword is the safe fallback for an
+    # empty/unknown mode, and a bookmarked ?mode=semantic must not stick when
+    # embeddings are unavailable.
+    mode = resolve_mode(request.GET.get("mode", MODE_KEYWORD))
+    if mode == MODE_SEMANTIC and not sem_avail:
+        mode = MODE_KEYWORD
     exact = request.GET.get("exact") == "1"
     exec_mode = request.GET.get("exec", "celery")  # "celery" | "direct"
     try:
@@ -493,7 +500,7 @@ def search_view(request):
         "effective_mode": mode,
         "fallback_used": False,
         "fallback_reason": None,
-        "semantic_available": semantic_available(),
+        "semantic_available": sem_avail,
     }
     search_meta = dict(_empty_meta)
 
@@ -525,16 +532,19 @@ def search_view(request):
         or bool(getattr(_settings, "DEBUG", False))
     )
 
+    # The user picks the method explicitly — no auto/default mode. Semantic only
+    # appears when an embedding backend is actually available.
     search_method_choices = [
-        ("auto",     "Smart / Auto",  "fa-solid fa-wand-magic-sparkles",
-         "Semantic when available, keyword otherwise."),
         ("keyword",  "Keyword",       "fa-solid fa-text-size",
          "Searches name, description, and text fields."),
         ("fulltext", "Full-text",     "fa-solid fa-layer-group",
          "Lucene full-text index on Chunk nodes."),
-        ("semantic", "Semantic",      "fa-solid fa-brain",
-         "Vector similarity search. Falls back to keyword if embeddings are unavailable."),
     ]
+    if sem_avail:
+        search_method_choices.append(
+            ("semantic", "Semantic", "fa-solid fa-brain",
+             "Vector similarity search over graph embeddings."),
+        )
 
     context = PageProcessor().decorate(
         {
@@ -580,7 +590,7 @@ def search_status_view(request, run_id):
             return JsonResponse({
                 "status": "done",
                 "results": results,
-                "requested_mode": data.get("requested_mode", "auto"),
+                "requested_mode": data.get("requested_mode", "keyword"),
                 "effective_mode": data.get("effective_mode", "keyword"),
                 "fallback_used": bool(data.get("fallback_used", False)),
                 "fallback_reason": data.get("fallback_reason"),

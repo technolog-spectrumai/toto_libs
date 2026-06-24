@@ -33,8 +33,8 @@ class BentoCategoryForm(forms.ModelForm):
         fields = ["name", "slug", "neo4j_label", "description", "property_schema"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Idea"}),
-            "slug": forms.TextInput(attrs={"placeholder": "auto from name if blank"}),
-            "neo4j_label": forms.TextInput(attrs={"placeholder": "auto from name if blank"}),
+            "slug": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
+            "neo4j_label": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
             "description": forms.Textarea(attrs={"rows": 3}),
             "property_schema": forms.Textarea(attrs={"rows": 10}),
         }
@@ -54,8 +54,8 @@ class BentoEdgeTypeForm(forms.ModelForm):
         ]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Supports"}),
-            "slug": forms.TextInput(attrs={"placeholder": "auto from name if blank"}),
-            "rel_type": forms.TextInput(attrs={"placeholder": "auto from name if blank"}),
+            "slug": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
+            "rel_type": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
             "description": forms.Textarea(attrs={"rows": 3}),
             "property_schema": forms.Textarea(attrs={"rows": 8}),
             "allowed_sources": forms.CheckboxSelectMultiple,

@@ -1,4 +1,4 @@
-"""Tests for auto-mode smart search: mode resolution, run_search, view, task, status endpoint."""
+"""Tests for graph search modes: mode resolution, run_search, view, task, status endpoint."""
 from __future__ import annotations
 
 import json
@@ -49,15 +49,15 @@ def _fake_vec_results(n=1):
 
 class ResolveModeTests(SimpleTestCase):
 
-    def test_auto_is_default_for_unknown(self):
-        from toto.ravioli.services.search import resolve_mode, MODE_AUTO
-        self.assertEqual(resolve_mode("nonsense"), MODE_AUTO)
-        self.assertEqual(resolve_mode(""), MODE_AUTO)
-        self.assertEqual(resolve_mode(None), MODE_AUTO)
+    def test_keyword_is_default_for_unknown(self):
+        from toto.ravioli.services.search import resolve_mode, MODE_KEYWORD
+        self.assertEqual(resolve_mode("nonsense"), MODE_KEYWORD)
+        self.assertEqual(resolve_mode(""), MODE_KEYWORD)
+        self.assertEqual(resolve_mode(None), MODE_KEYWORD)
 
     def test_canonical_modes_pass_through(self):
         from toto.ravioli.services.search import resolve_mode
-        for m in ("auto", "keyword", "fulltext", "semantic"):
+        for m in ("keyword", "fulltext", "semantic"):
             self.assertEqual(resolve_mode(m), m)
 
     def test_legacy_aliases_accepted(self):
@@ -72,32 +72,13 @@ class ResolveModeTests(SimpleTestCase):
         self.assertEqual(canonical_mode("advanced"), "keyword")
         self.assertEqual(canonical_mode("deep"),     "fulltext")
         self.assertEqual(canonical_mode("semantic"), "semantic")
-        self.assertEqual(canonical_mode("auto"),     "auto")
 
 
 # ---------------------------------------------------------------------------
-# run_search — auto mode, semantic succeeds
+# run_search — semantic mode
 # ---------------------------------------------------------------------------
 
-class RunSearchAutoSemanticTests(SimpleTestCase):
-
-    @override_settings(VICUNA_EMBEDDINGS_ENABLED=True)
-    def test_auto_uses_semantic_when_available(self):
-        from toto.ravioli.services.search import run_search, MODE_SEMANTIC
-
-        with patch(
-            "toto.ravioli.services.search.semantic_available", return_value=True
-        ), patch(
-            "toto.ravioli.vector_search.retrieve_vector_results",
-            return_value=_fake_vec_results(2),
-        ):
-            result = run_search("query", mode="auto", limit=10)
-
-        self.assertEqual(result["effective_mode"], MODE_SEMANTIC)
-        self.assertEqual(result["requested_mode"], "auto")
-        self.assertFalse(result["fallback_used"])
-        self.assertIsNone(result["fallback_reason"])
-        self.assertEqual(len(result["results"]), 2)
+class RunSearchSemanticTests(SimpleTestCase):
 
     @override_settings(VICUNA_EMBEDDINGS_ENABLED=True)
     def test_semantic_mode_explicit_succeeds(self):
@@ -116,13 +97,13 @@ class RunSearchAutoSemanticTests(SimpleTestCase):
 
 
 # ---------------------------------------------------------------------------
-# run_search — auto mode, fallback when vector unavailable
+# run_search — semantic mode, fallback when vector unavailable
 # ---------------------------------------------------------------------------
 
-class RunSearchAutoFallbackTests(SimpleTestCase):
+class RunSearchSemanticFallbackTests(SimpleTestCase):
 
     @override_settings(VICUNA_EMBEDDINGS_ENABLED=False)
-    def test_auto_falls_back_when_embeddings_disabled(self):
+    def test_semantic_falls_back_when_embeddings_disabled(self):
         from toto.ravioli.services.search import run_search, MODE_KEYWORD
         from toto.ravioli.vector_search import VectorSearchUnavailable
 
@@ -135,7 +116,7 @@ class RunSearchAutoFallbackTests(SimpleTestCase):
             "toto.ravioli.services.search.advanced_search",
             return_value=[{"labels": ["N"], "props": {"name": "x"}}],
         ) as mock_adv:
-            result = run_search("hello", mode="auto")
+            result = run_search("hello", mode="semantic")
 
         self.assertEqual(result["effective_mode"], MODE_KEYWORD)
         self.assertTrue(result["fallback_used"])
@@ -161,7 +142,7 @@ class RunSearchAutoFallbackTests(SimpleTestCase):
         self.assertIn("Neo4j down", result["fallback_reason"])
 
     def test_fallback_never_raises_http_500(self):
-        """run_search with auto mode must not propagate VectorSearchUnavailable."""
+        """run_search with semantic mode must not propagate VectorSearchUnavailable."""
         from toto.ravioli.services.search import run_search
         from toto.ravioli.vector_search import VectorSearchUnavailable
 
@@ -174,7 +155,7 @@ class RunSearchAutoFallbackTests(SimpleTestCase):
             "toto.ravioli.services.search.advanced_search", return_value=[],
         ):
             try:
-                result = run_search("q", mode="auto")
+                result = run_search("q", mode="semantic")
             except Exception as exc:
                 self.fail(f"run_search raised unexpectedly: {exc}")
 
@@ -269,11 +250,11 @@ class ResultNormalizationTests(SimpleTestCase):
 
 class PredefinedTaskTests(SimpleTestCase):
 
-    def test_default_mode_is_auto(self):
-        # When mode is absent from input_data, resolve_mode returns "auto"
+    def test_default_mode_is_keyword(self):
+        # When mode is absent from input_data, resolve_mode returns "keyword"
         with patch("toto.ravioli.services.search.run_search", return_value={
             "results": [],
-            "requested_mode": "auto",
+            "requested_mode": "keyword",
             "effective_mode": "keyword",
             "fallback_used": False,
             "fallback_reason": None,
@@ -281,13 +262,13 @@ class PredefinedTaskTests(SimpleTestCase):
         }) as mock_rs:
             from toto.ravioli.predefined_tasks import ravioli_graph_search
             ravioli_graph_search({"data": {"q": "hello"}})
-        # run_search should be called with mode="auto" (the default)
-        self.assertEqual(mock_rs.call_args[1]["mode"], "auto")
+        # run_search should be called with mode="keyword" (the default)
+        self.assertEqual(mock_rs.call_args[1]["mode"], "keyword")
 
     def test_output_includes_metadata(self):
         with patch("toto.ravioli.services.search.run_search", return_value={
             "results": [],
-            "requested_mode": "auto",
+            "requested_mode": "keyword",
             "effective_mode": "keyword",
             "fallback_used": True,
             "fallback_reason": "disabled",
@@ -353,7 +334,7 @@ class SearchStatusMetadataTests(TestCase):
             output_data={
                 "data": {
                     "results": [{"labels": ["N"], "props": {}, "score": None}],
-                    "requested_mode": "auto",
+                    "requested_mode": "semantic",
                     "effective_mode": "semantic",
                     "fallback_used": False,
                     "fallback_reason": None,
@@ -375,7 +356,7 @@ class SearchStatusMetadataTests(TestCase):
             output_data={
                 "data": {
                     "results": [],
-                    "requested_mode": "auto",
+                    "requested_mode": "keyword",
                     "effective_mode": "keyword",
                     "fallback_used": True,
                     "fallback_reason": "embeddings disabled",
@@ -425,9 +406,32 @@ class SearchViewContextTests(SimpleTestCase):
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=False)
     @patch("toto.ravioli.services.search.advanced_search", return_value=[])
-    def test_default_mode_is_auto(self, mock_adv, mock_sem):
+    def test_default_mode_is_keyword(self, mock_adv, mock_sem):
         ctx = self._call_view("q=hello&exec=direct")
-        self.assertEqual(ctx["mode"], "auto")
+        self.assertEqual(ctx["mode"], "keyword")
+
+    @patch("toto.ravioli.services.search.semantic_available", return_value=False)
+    @patch("toto.ravioli.services.search.advanced_search", return_value=[])
+    def test_semantic_choice_hidden_when_unavailable(self, mock_adv, mock_sem):
+        ctx = self._call_view("q=hi&exec=direct")
+        modes = [c[0] for c in ctx["search_method_choices"]]
+        self.assertNotIn("semantic", modes)
+        self.assertNotIn("auto", modes)   # auto mode is gone entirely
+
+    @patch("toto.ravioli.services.search.semantic_available", return_value=True)
+    @patch("toto.ravioli.services.search.advanced_search", return_value=[])
+    def test_semantic_choice_shown_when_available(self, mock_adv, mock_sem):
+        ctx = self._call_view("q=hi&exec=direct")
+        modes = [c[0] for c in ctx["search_method_choices"]]
+        self.assertIn("semantic", modes)
+        self.assertNotIn("auto", modes)
+
+    @patch("toto.ravioli.services.search.semantic_available", return_value=False)
+    @patch("toto.ravioli.services.search.advanced_search", return_value=[])
+    def test_stale_semantic_url_resets_to_keyword(self, mock_adv, mock_sem):
+        # A bookmarked ?mode=semantic must not stick once embeddings are gone.
+        ctx = self._call_view("q=hi&exec=direct&mode=semantic")
+        self.assertEqual(ctx["mode"], "keyword")
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=False)
     @patch("toto.ravioli.services.search.advanced_search", return_value=[])
@@ -459,25 +463,25 @@ class SearchViewContextTests(SimpleTestCase):
         self.assertTrue(ctx["show_exec_controls"])
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=True)
-    def test_auto_semantic_success_reflected_in_context(self, mock_sem):
+    def test_semantic_success_reflected_in_context(self, mock_sem):
         with patch(
             "toto.ravioli.vector_search.retrieve_vector_results",
             return_value=_fake_vec_results(1),
         ):
-            ctx = self._call_view("q=hello&exec=direct&mode=auto")
+            ctx = self._call_view("q=hello&exec=direct&mode=semantic")
         meta = ctx["search_meta"]
         self.assertEqual(meta["effective_mode"], "semantic")
         self.assertFalse(meta["fallback_used"])
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=True)
     @patch("toto.ravioli.services.search.advanced_search", return_value=[])
-    def test_auto_fallback_reflected_in_context(self, mock_adv, mock_sem):
+    def test_semantic_fallback_reflected_in_context(self, mock_adv, mock_sem):
         from toto.ravioli.vector_search import VectorSearchUnavailable
         with patch(
             "toto.ravioli.vector_search.retrieve_vector_results",
             side_effect=VectorSearchUnavailable("index missing"),
         ):
-            ctx = self._call_view("q=hello&exec=direct&mode=auto")
+            ctx = self._call_view("q=hello&exec=direct&mode=semantic")
         meta = ctx["search_meta"]
         self.assertEqual(meta["effective_mode"], "keyword")
         self.assertTrue(meta["fallback_used"])
@@ -485,9 +489,9 @@ class SearchViewContextTests(SimpleTestCase):
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=False)
     @patch("toto.ravioli.services.search.advanced_search", return_value=[])
-    def test_invalid_mode_falls_back_to_auto(self, mock_adv, mock_sem):
+    def test_invalid_mode_falls_back_to_keyword(self, mock_adv, mock_sem):
         ctx = self._call_view("q=hello&exec=direct&mode=GARBAGE")
-        self.assertEqual(ctx["mode"], "auto")
+        self.assertEqual(ctx["mode"], "keyword")
 
     @patch("toto.ravioli.services.search.semantic_available", return_value=False)
     @patch("toto.ravioli.services.search.advanced_search")

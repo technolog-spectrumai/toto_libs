@@ -158,14 +158,14 @@ def ravioli_save_graph_analysis_output(input_data: dict) -> dict:
 def ravioli_graph_search(input_data: dict) -> dict:
     """Run a graph search and return results with mode metadata.
 
-    Supports modes: auto (default), keyword, fulltext, semantic, and legacy
-    aliases basic / advanced / deep.
+    Supports modes: keyword (default), fulltext, semantic, and legacy aliases
+    basic / advanced / deep.
     """
-    from .services.search import MODE_AUTO, SearchUnavailableError, resolve_mode, run_search
+    from .services.search import MODE_KEYWORD, SearchUnavailableError, resolve_mode, run_search
 
     data = input_data.get("data") or {}
     q = str(data.get("q") or "").strip()
-    mode = resolve_mode(data.get("mode", MODE_AUTO))
+    mode = resolve_mode(data.get("mode", MODE_KEYWORD))
     limit = max(1, min(200, int(data.get("limit", 25))))
     exact = bool(data.get("exact", False))
 

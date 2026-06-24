@@ -6,14 +6,13 @@ from ..connection import Neo4jClient, Neo4jConnectionError
 # Mode constants
 # ---------------------------------------------------------------------------
 
-MODE_AUTO = "auto"
 MODE_KEYWORD = "keyword"
 MODE_FULLTEXT = "fulltext"
 MODE_SEMANTIC = "semantic"
 
 # Canonical modes + legacy aliases accepted as valid input
 _KNOWN_MODES = {
-    MODE_AUTO, MODE_KEYWORD, MODE_FULLTEXT, MODE_SEMANTIC,
+    MODE_KEYWORD, MODE_FULLTEXT, MODE_SEMANTIC,
     "basic", "advanced", "deep",
 }
 
@@ -26,9 +25,9 @@ _CANONICAL_DISPLAY = {
 
 
 def resolve_mode(mode_str: str) -> str:
-    """Normalize any mode string to a known mode. Unknown input → MODE_AUTO."""
+    """Normalize any mode string to a known mode. Unknown input → MODE_KEYWORD."""
     m = str(mode_str or "").lower().strip()
-    return m if m in _KNOWN_MODES else MODE_AUTO
+    return m if m in _KNOWN_MODES else MODE_KEYWORD
 
 
 def canonical_mode(mode: str) -> str:
@@ -183,16 +182,16 @@ def semantic_available() -> bool:
         return False
 
 
-def run_search(q: str, mode: str = MODE_AUTO, limit: int = 25, exact: bool = False) -> dict:
+def run_search(q: str, mode: str = MODE_KEYWORD, limit: int = 25, exact: bool = False) -> dict:
     """Execute a search and return results with metadata.
 
     Returns a dict with keys:
         results          list[dict]  — normalized {labels, props, score}
         requested_mode   str         — canonical name of the user-requested mode
         effective_mode   str         — canonical name of the mode actually used
-        fallback_used    bool        — True when auto/semantic fell back to keyword
+        fallback_used    bool        — True when semantic fell back to keyword
         fallback_reason  str|None    — why fallback happened (for staff/debug display)
-        semantic_available bool      — whether Steven embeddings are enabled
+        semantic_available bool      — whether embeddings are enabled
     """
     mode = resolve_mode(mode)
     requested_canonical = canonical_mode(mode)
@@ -204,8 +203,8 @@ def run_search(q: str, mode: str = MODE_AUTO, limit: int = 25, exact: bool = Fal
     fallback_reason: str | None = None
     semantic_done = False  # True iff semantic succeeded
 
-    # --- Try semantic path for auto / semantic modes ---
-    if mode in (MODE_AUTO, MODE_SEMANTIC):
+    # --- Try the semantic (vector) path only when explicitly requested ---
+    if mode == MODE_SEMANTIC:
         try:
             from toto.ravioli.vector_search import (
                 VectorSearchUnavailable,
@@ -227,7 +226,7 @@ def run_search(q: str, mode: str = MODE_AUTO, limit: int = 25, exact: bool = Fal
             raw = basic_search(q, limit=limit)
             effective_mode = MODE_KEYWORD
         else:
-            # covers: keyword, advanced, auto (fallback), semantic (fallback)
+            # covers: keyword, advanced, semantic (fallback)
             raw = advanced_search(q, limit=limit)
             effective_mode = MODE_KEYWORD
         results = [_normalize_result(r) for r in raw]

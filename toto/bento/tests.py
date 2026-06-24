@@ -301,6 +301,20 @@ class ViewPermissionTests(TestCase):
             resp = self.client.get(reverse("bento:node_list"))
         self.assertEqual(resp.status_code, 200)
 
+    def test_category_create_form_ships_autopopulate(self):
+        self.client.login(username="bob", password="pw")
+        resp = self.client.get(reverse("bento:category_create"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "bento-autopopulate")   # the live-fill script
+        self.assertContains(resp, "id_neo4j_label")        # its CamelCase-label target
+
+    def test_edgetype_create_form_ships_autopopulate(self):
+        self.client.login(username="bob", password="pw")
+        resp = self.client.get(reverse("bento:edgetype_create"))
+        self.assertEqual(resp.status_code, 200)
+        self.assertContains(resp, "bento-autopopulate")
+        self.assertContains(resp, "id_rel_type")           # its UPPER_SNAKE target
+
 
 class AddEdgeViewTests(TestCase):
     def setUp(self):

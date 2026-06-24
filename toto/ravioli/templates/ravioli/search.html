@@ -57,7 +57,7 @@
                 <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Smart search" %}
               </h3>
               <p class="mt-0.5 text-xs opacity-55 leading-relaxed">
-                {% trans "Uses semantic graph search when available, otherwise normal graph search." %}
+                {% trans "Search the knowledge graph. Pick a search method under Advanced options." %}
               </p>
             </div>
 
@@ -388,7 +388,7 @@ function graphSearch() {
     currentMode:        INITIAL_MODE,
     execMode:           INITIAL_EXEC,
     showExecControls:   SHOW_EXEC_CONTROLS,
-    advancedOpen:       (INITIAL_EXEC === 'direct' || {{ limit }} !== 25 || {{ exact|yesno:"true,false" }} || INITIAL_MODE !== 'auto'),
+    advancedOpen:       (INITIAL_EXEC === 'direct' || {{ limit }} !== 25 || {{ exact|yesno:"true,false" }} || INITIAL_MODE !== 'keyword'),
     running:            false,
     searched:           INITIAL_SEARCHED,
     results:            INITIAL_RESULTS,
