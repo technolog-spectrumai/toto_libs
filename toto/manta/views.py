@@ -37,30 +37,24 @@ TAB_UI = {
         "blurb": "Turn speech into a text transcript and .srt subtitles with Whisper.",
         "source_heading": "Audio to transcribe", "upload_accept": "audio/*",
     },
-    "ocr": {
-        "label": "OCR", "icon": "fa-image",
-        "blurb": "Extract text from an image with Tesseract.",
-        "source_heading": "Image to read", "upload_accept": "image/*",
-    },
 }
 
 # The focused tabs let you upload a new file (to a bucket of your choice) instead
 # of only picking an existing vault file. The ffmpeg tab keeps its existing flow.
-_UPLOAD_TABS = {"ffprobe", "transcribe", "ocr"}
+_UPLOAD_TABS = {"ffprobe", "transcribe"}
 
 # The single command behind each focused tab.
-_TAB_OP = {"ffprobe": "probe", "transcribe": "transcribe", "ocr": "ocr"}
+_TAB_OP = {"ffprobe": "probe", "transcribe": "transcribe"}
 
 # Source file types each focused tab accepts (ffmpeg derives them from the op).
 _TAB_SOURCE_TYPES = {
     "ffprobe": ["video", "audio", "image"],
     "transcribe": ["audio"],
-    "ocr": ["image"],
 }
 
 # When a file arrives with no tab/op (e.g. from the vault wand), route it to the
 # most useful tab for its type.
-_DEFAULT_TAB_BY_TYPE = {"video": "ffmpeg", "audio": "transcribe", "image": "ocr"}
+_DEFAULT_TAB_BY_TYPE = {"video": "ffmpeg", "audio": "transcribe"}
 
 
 def _render(request, template, context):
@@ -335,7 +329,7 @@ def job_detail(request, pk):
 @login_required
 def job_status(request, pk):
     """Lightweight poll endpoint so the job page can wait for an async command
-    (ffmpeg / ocr / transcribe) and refresh itself when it finishes."""
+    (ffmpeg / transcribe) and refresh itself when it finishes."""
     job = get_object_or_404(FileJob, pk=pk)
     return JsonResponse({
         "status": job.status,

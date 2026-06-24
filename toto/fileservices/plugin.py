@@ -8,7 +8,7 @@ from toto.core.plugin import BasePlugin
 class FileServicePlugin(BasePlugin):
     """
     Base for *file services* — background operations a user can run over a
-    VaultFile (ffmpeg, ffprobe, OCR, transcription, …).
+    VaultFile (ffmpeg, ffprobe, transcription, …).
 
     Each subclass declares which file types it accepts and implements
     ``execute(run)`` which performs the work, writes any output VaultFiles, and

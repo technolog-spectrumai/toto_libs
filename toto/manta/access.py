@@ -22,7 +22,7 @@ from __future__ import annotations
 
 from django.db.models import Q
 
-# Canonical implementation lives in fileservices so transcription/ocr can share it.
+# Canonical implementation lives in fileservices so transcription can share it.
 from toto.fileservices.access import user_can_access_vault_file  # noqa: F401
 
 

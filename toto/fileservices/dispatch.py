@@ -2,7 +2,7 @@
 Shared helpers to create and dispatch a :class:`FileServiceRun`.
 
 Used by ``run_service`` (the vault wand) and by the per-app builder pages
-(transcription, ocr) so they all enqueue work the same way.
+(transcription) so they all enqueue work the same way.
 """
 
 from __future__ import annotations

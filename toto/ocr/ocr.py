@@ -1,7 +1,3 @@
-import pytesseract
-from PIL import Image
-
-
 class OcrHelper:
     """
     Pure OCR helper:
@@ -22,6 +18,9 @@ class OcrHelper:
         """
         Runs pytesseract and returns the raw data dict.
         """
+        import pytesseract
+        from PIL import Image
+
         img = Image.open(image_path)
         return pytesseract.image_to_data(
             img,

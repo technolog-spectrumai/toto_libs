@@ -1,13 +1,13 @@
 """
 Abstract base for manta commands.
 
-Each command (compress, probe, transcribe, ocr, …) is a small class in its own
+Each command (compress, probe, transcribe, …) is a small class in its own
 file inheriting :class:`BaseCommand`. A command declares its input/output file
 slots, its parameter form, and how to produce a preview:
 
 * ``backend in ("ffmpeg", "ffprobe")`` → implement ``build_spec`` (delegates to
   the pure argv builders in ``manta/builders.py``).
-* ``backend == "service"`` (transcribe/ocr) → implement ``describe`` and declare
+* ``backend == "service"`` (transcribe) → implement ``describe`` and declare
   ``service_key``; execution reuses the fileservices FileServiceRun backend.
 
 Subclasses self-register by ``key`` via ``__init_subclass__``.

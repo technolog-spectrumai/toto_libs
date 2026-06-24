@@ -1,6 +1,6 @@
 """
 Manta test suite — command classes, the FileJob model, and the form-based
-builder (ffmpeg/ffprobe + transcribe/ocr commands).
+builder (ffmpeg/ffprobe + transcribe commands).
 """
 
 import os
@@ -22,7 +22,7 @@ from .models import FileJob, MediaJob
 
 class CommandRegistryTests(SimpleTestCase):
     def test_all_commands_registered(self):
-        self.assertEqual(len(OPERATIONS), 18)
+        self.assertEqual(len(OPERATIONS), 17)
         for key in OPERATIONS:
             cmd = get_command(key)
             self.assertTrue(cmd.label)
@@ -57,11 +57,9 @@ class CommandRegistryTests(SimpleTestCase):
         self.assertIn("-i track.mp3", spec.shell_display)
 
     def test_service_commands(self):
-        tr, ocr = get_command("transcribe"), get_command("ocr")
+        tr = get_command("transcribe")
         self.assertEqual((tr.backend, tr.backend_label, tr.service_key), ("service", "whisper", "transcription"))
-        self.assertEqual((ocr.backend, ocr.backend_label, ocr.service_key), ("service", "tesseract", "ocr"))
         self.assertIn("whisper", tr().describe(input_name="a.mp3", params={"language": "en"}))
-        self.assertIn("tesseract", ocr().describe(input_name="i.png"))
 
     def test_preset_metadata(self):
         self.assertEqual(set(COMMAND_FILE_PRESETS), set(OPERATIONS))
@@ -78,11 +76,9 @@ class CommandRegistryTests(SimpleTestCase):
         self.assertEqual(get_command("compress").tab, "ffmpeg")
         self.assertEqual(get_command("probe").tab, "ffprobe")
         self.assertEqual(get_command("transcribe").tab, "transcribe")
-        self.assertEqual(get_command("ocr").tab, "ocr")
         # The focused tabs hold exactly one command; ffmpeg holds the rest.
         self.assertEqual([c.key for c in commands_for_tab("ffprobe")], ["probe"])
         self.assertEqual([c.key for c in commands_for_tab("transcribe")], ["transcribe"])
-        self.assertEqual([c.key for c in commands_for_tab("ocr")], ["ocr"])
         self.assertGreater(len(commands_for_tab("ffmpeg")), 1)
         # Every registered command belongs to a known tab.
         self.assertTrue(all(get_command(k).tab in TAB_ORDER for k in OPERATIONS))
@@ -177,13 +173,12 @@ class BuilderTests(TestCase):
 
     def test_tab_bar_lists_all_families(self):
         resp = self.client.get(self.URL)
-        for label in ("ffmpeg", "ffprobe", "Transcribe", "OCR"):
+        for label in ("ffmpeg", "ffprobe", "Transcribe"):
             self.assertContains(resp, label)
 
     def test_ffmpeg_dropdown_excludes_service_commands(self):
-        # The command dropdown is ffmpeg-only; probe/transcribe/ocr have own tabs.
+        # The command dropdown is ffmpeg-only; probe/transcribe have own tabs.
         resp = self.client.get(self.URL + f"?file={self.src.pk}&op=compress")
-        self.assertNotContains(resp, "OCR (image → text)")
         self.assertNotContains(resp, "Transcribe (speech → text)")
 
     def test_ffprobe_tab_accepts_any_media(self):
@@ -191,16 +186,6 @@ class BuilderTests(TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertContains(resp, "ffprobe")      # backend chip
         self.assertContains(resp, "song.mp3")     # audio allowed, not just video
-
-    def test_image_routes_to_ocr_tab(self):
-        # A bare file link (e.g. from the vault wand) lands on the right tab.
-        resp = self.client.get(self.URL + f"?file={self.image.pk}")
-        self.assertContains(resp, "tesseract")    # ocr backend chip
-        self.assertContains(resp, "scan.png")
-
-    def test_ocr_tab_rejects_non_image(self):
-        resp = self.client.get(self.URL + f"?tab=ocr&file={self.src.pk}")
-        self.assertContains(resp, "needs a image file")
 
     def test_transcribe_language_is_dropdown(self):
         resp = self.client.get(self.URL + f"?tab=transcribe&file={self.audio.pk}")
@@ -217,9 +202,9 @@ class BuilderTests(TestCase):
 
     def test_upload_panel_lists_user_buckets(self):
         from toto.vault.models import Bucket
-        Bucket.objects.create(name="My OCR Bucket", owner=self.owner, slug="my-ocr")
-        resp = self.client.get(self.URL + "?tab=ocr")
-        self.assertContains(resp, "My OCR Bucket")
+        Bucket.objects.create(name="My Own Bucket", owner=self.owner, slug="my-own")
+        resp = self.client.get(self.URL + "?tab=transcribe")
+        self.assertContains(resp, "My Own Bucket")
         # Buckets the user does not own (curator's, slug "mb") are not offered.
         self.assertNotContains(resp, 'value="mb"')
 
@@ -235,7 +220,7 @@ class BuilderTests(TestCase):
         on = self.client.get(self.URL + "?tab=transcribe")
         self.assertContains(on, "Quick record")
         self.assertContains(on, "/manta/quick-transcribe/")
-        off = self.client.get(self.URL + "?tab=ocr")
+        off = self.client.get(self.URL + "?tab=ffprobe")
         self.assertNotContains(off, "Quick record")
 
     def test_quick_transcribe_creates_text_file(self):
@@ -278,7 +263,7 @@ class BuilderTests(TestCase):
     # -- job page: wait + spinner while running ---------------------------
 
     def test_job_status_endpoint(self):
-        job = FileJob.objects.create(command="ocr", owner=self.owner, status=FileJob.Status.PENDING)
+        job = FileJob.objects.create(command="transcribe", owner=self.owner, status=FileJob.Status.PENDING)
         data = self.client.get(f"/manta/jobs/{job.pk}/status/").json()
         self.assertEqual(data["status"], "pending")
         self.assertFalse(data["is_terminal"])
@@ -288,7 +273,7 @@ class BuilderTests(TestCase):
         self.assertTrue(data["is_terminal"])
 
     def test_job_detail_spinner_while_running(self):
-        job = FileJob.objects.create(command="ocr", owner=self.owner, status=FileJob.Status.PENDING)
+        job = FileJob.objects.create(command="transcribe", owner=self.owner, status=FileJob.Status.PENDING)
         resp = self.client.get(f"/manta/jobs/{job.pk}/")
         self.assertContains(resp, "Processing")
         self.assertContains(resp, "fa-spinner")
@@ -296,7 +281,7 @@ class BuilderTests(TestCase):
         self.assertNotContains(resp, "Result")                       # no result box yet
 
     def test_job_detail_shows_result_when_done(self):
-        job = FileJob.objects.create(command="ocr", owner=self.owner,
+        job = FileJob.objects.create(command="transcribe", owner=self.owner,
                                      status=FileJob.Status.DONE, output={"files": []})
         resp = self.client.get(f"/manta/jobs/{job.pk}/")
         self.assertContains(resp, "Result")

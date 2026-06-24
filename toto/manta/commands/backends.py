@@ -3,9 +3,9 @@ Backend base commands — they own execution.
 
 * ``FfmpegCommand`` / ``FfprobeCommand`` stage inputs, run the argv from
   ``build_spec`` via subprocess, save outputs and serialize the result.
-* ``WhisperCommand`` / ``TesseractCommand`` dispatch the existing fileservices
-  ``FileServiceRun`` (whisper / tesseract) — the long-term home for these is
-  manta, but for now we reuse that backend.
+* ``WhisperCommand`` dispatches the existing fileservices ``FileServiceRun``
+  (whisper) — the long-term home for this is manta, but for now we reuse that
+  backend.
 """
 
 from __future__ import annotations
@@ -154,9 +154,3 @@ class WhisperCommand(ServiceCommand):
     backend_label = "whisper"
     service_key = "transcription"
     tab = "transcribe"
-
-
-class TesseractCommand(ServiceCommand):
-    backend_label = "tesseract"
-    service_key = "ocr"
-    tab = "ocr"

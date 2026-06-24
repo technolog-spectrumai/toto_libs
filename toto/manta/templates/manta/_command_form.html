@@ -2,7 +2,7 @@
 Shared command form: extra-input picker (ffmpeg only), options, live preview and
 the Run button. Expects the standard command_builder context (vf, op, tab, form,
 needs_extra, extra_slot, extra_tree, backend). Used by both the ffmpeg tab and
-the focused ffprobe/transcribe/ocr tabs.
+the focused ffprobe/transcribe tabs.
 {% endcomment %}
 {% load i18n %}
 <form method="post" action="{% url 'manta:command_builder' %}" class="space-y-6"

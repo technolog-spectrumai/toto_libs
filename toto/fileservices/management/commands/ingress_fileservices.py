@@ -9,8 +9,8 @@ class Command(IngressCommand):
 
     def _ensure_run_workflow(self):
         """Seed the single-node workflow that dispatch_run() wraps every
-        FileServiceRun in (slug 'fileservices-run'). Each OCR / transcription /
-        media service run then shows up as a tracked WorkflowRun. Functional
+        FileServiceRun in (slug 'fileservices-run'). Each transcription / media
+        service run then shows up as a tracked WorkflowRun. Functional
         infra — seeded regardless of FULL_INGRESS."""
         from toto.workflows.models import Workflow, WorkflowNode
 
@@ -19,7 +19,7 @@ class Command(IngressCommand):
             defaults={
                 "name": "File Service Run",
                 "description": (
-                    "Runs a single file service (OCR, transcription, ffmpeg/ffprobe) "
+                    "Runs a single file service (transcription, ffmpeg/ffprobe) "
                     "over a vault file and saves the output back to the vault."
                 ),
             },

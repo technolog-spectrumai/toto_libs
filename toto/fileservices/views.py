@@ -15,10 +15,11 @@ from .models import FileServiceRun
 from .plugin import FileServicePlugin
 
 
-# Primary "Open tool" target per file type. Images go to the standalone OCR
-# page; video/audio go to the manta builder when it is installed (BUILD_MANTA).
+# Primary "Open tool" target per file type. Video/audio go to the manta builder
+# when it is installed (BUILD_MANTA). Images have no file-service tool — the vault
+# file list offers an inline image preview instead.
 # A missing plugin simply yields a 404 from open_primary_service — no crash.
-PRIMARY_SERVICE_BY_TYPE = {"video": "manta", "audio": "manta", "image": "ocr_tool"}
+PRIMARY_SERVICE_BY_TYPE = {"video": "manta", "audio": "manta"}
 
 
 @login_required
