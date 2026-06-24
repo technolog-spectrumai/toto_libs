@@ -292,7 +292,7 @@
         >
           <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-wand-magic-sparkles text-4xl opacity-30"></i>
           <h2 class="mt-4 text-xl font-bold">{% trans "Smart search" %}</h2>
-          <p class="mt-1 text-sm opacity-60">{% trans "Enter a term above. Semantic search is used when available, otherwise normal graph search." %}</p>
+          <p class="mt-1 text-sm opacity-60">{% trans "Enter a term above. Pick a search method (Keyword / Full-text / Semantic) under Advanced options." %}</p>
         </div>
 
         <!-- No results state -->
@@ -305,8 +305,11 @@
           <h2 class="mt-4 text-xl font-bold">{% trans "No results" %}</h2>
           <p class="mt-1 text-sm opacity-60">
             {% trans "Nothing matched" %} &ldquo;{{ q }}&rdquo;.
-            <template x-if="effectiveMode !== 'semantic'">
+            <template x-if="effectiveMode !== 'semantic' && semanticAvailable">
               <span>{% trans "Try Semantic or Full-text search in Advanced options." %}</span>
+            </template>
+            <template x-if="effectiveMode !== 'semantic' && !semanticAvailable">
+              <span>{% trans "Try Full-text search in Advanced options." %}</span>
             </template>
           </p>
         </div>
