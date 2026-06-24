@@ -45,11 +45,22 @@ class IngestStrategy(ABC):
     def all(cls) -> list["IngestStrategy"]:
         return list(cls.registry.values())
 
+    def is_available(self) -> bool:
+        """Whether this strategy's backend (LLM / embeddings) is configured.
+
+        Unavailable strategies are hidden from the UI selector and rejected by
+        the generate endpoint, so a user never picks one that can only fail with
+        a connection error. Default: always available — the deterministic
+        spaCy/rapidfuzz pipeline has no network backend.
+        """
+        return True
+
     @classmethod
-    def choices(cls) -> list[dict]:
+    def choices(cls, *, available_only: bool = False) -> list[dict]:
         return [
             {"key": s.key, "label": s.label, "description": s.description, "mode": s.mode}
             for s in cls.registry.values()
+            if not available_only or s.is_available()
         ]
 
     @abstractmethod

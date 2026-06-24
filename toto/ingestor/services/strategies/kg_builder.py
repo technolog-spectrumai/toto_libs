@@ -24,6 +24,18 @@ class KGBuilderStrategy(IngestStrategy):
     description = "LLM extracts and writes nodes/edges to the graph directly — no review."
     mode = MODE_AUTOBUILD
 
+    def is_available(self) -> bool:
+        # Needs OpenAI (entity extraction) AND the local vicuna/ollama embeddings
+        # backend (SimpleKGPipeline embeds chunks via VicunaEmbedder). Hidden when
+        # either is missing so users don't hit an opaque connection error.
+        if not (getattr(settings, "OPENAI_API_KEY", "") or "").strip():
+            return False
+        try:
+            from toto.vicuna.embeddings import embeddings_enabled
+        except Exception:  # noqa: BLE001 — vicuna app not installed
+            return False
+        return bool(embeddings_enabled())
+
     def run(self, text, user=None):
         from asgiref.sync import async_to_sync
         from neo4j_graphrag.experimental.pipeline.kg_builder import SimpleKGPipeline

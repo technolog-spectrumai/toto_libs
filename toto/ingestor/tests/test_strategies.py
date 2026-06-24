@@ -20,6 +20,47 @@ class RegistryTests(SimpleTestCase):
         self.assertEqual(by_key["kg-builder"]["mode"], "autobuild")
 
 
+class AvailabilityTests(SimpleTestCase):
+    """Strategies are gated on their backend being configured (see is_available)."""
+
+    @override_settings(OPENAI_API_KEY="")
+    def test_deterministic_always_available(self):
+        self.assertTrue(IngestStrategy.get("deterministic").is_available())
+
+    @override_settings(OPENAI_API_KEY="")
+    def test_llm_hidden_without_openai_key(self):
+        self.assertFalse(IngestStrategy.get("llm").is_available())
+
+    @override_settings(OPENAI_API_KEY="sk-x")
+    def test_llm_available_with_openai_key(self):
+        self.assertTrue(IngestStrategy.get("llm").is_available())
+
+    @override_settings(OPENAI_API_KEY="sk-x", VICUNA_EMBEDDINGS_ENABLED=False)
+    def test_kg_builder_hidden_without_vicuna_embeddings(self):
+        self.assertFalse(IngestStrategy.get("kg-builder").is_available())
+
+    @override_settings(OPENAI_API_KEY="", VICUNA_EMBEDDINGS_ENABLED=True)
+    def test_kg_builder_hidden_without_openai_key(self):
+        self.assertFalse(IngestStrategy.get("kg-builder").is_available())
+
+    @override_settings(OPENAI_API_KEY="sk-x", VICUNA_EMBEDDINGS_ENABLED=True)
+    def test_kg_builder_available_with_key_and_embeddings(self):
+        self.assertTrue(IngestStrategy.get("kg-builder").is_available())
+
+    def test_choices_unfiltered_returns_all(self):
+        self.assertEqual(
+            {c["key"] for c in IngestStrategy.choices()},
+            {"deterministic", "llm", "kg-builder"},
+        )
+
+    @override_settings(OPENAI_API_KEY="", VICUNA_EMBEDDINGS_ENABLED=False)
+    def test_choices_available_only_filters_to_backend_present(self):
+        self.assertEqual(
+            {c["key"] for c in IngestStrategy.choices(available_only=True)},
+            {"deterministic"},
+        )
+
+
 class LLMNormalizeTests(SimpleTestCase):
     def test_drops_unknown_slugs_and_builds_contract(self):
         cats = {"person": "Person"}

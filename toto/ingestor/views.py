@@ -128,6 +128,11 @@ def generate(request):
     strategy = IngestStrategy.get((request.POST.get("strategy") or "deterministic").strip())
     if strategy is None:
         return JsonResponse({"error": "Unknown ingest strategy."}, status=400)
+    if not strategy.is_available():
+        return JsonResponse(
+            {"error": f"The '{strategy.key}' strategy is unavailable — its LLM backend is not configured."},
+            status=400,
+        )
     try:
         proposal_model = strategy.run(text, user=request.user)
     except Exception as exc:  # noqa: BLE001
@@ -138,10 +143,15 @@ def generate(request):
 @require_GET
 @superuser_required
 def list_strategies(request):
-    """Available ingest strategies for the UI selector."""
+    """Available ingest strategies for the UI selector.
+
+    Only strategies whose backend is configured (see ``is_available``) are
+    returned, so e.g. the vicuna/ollama-backed 'kg-builder' is hidden when that
+    service isn't present.
+    """
     from .services.strategies import IngestStrategy
 
-    return JsonResponse({"strategies": IngestStrategy.choices()})
+    return JsonResponse({"strategies": IngestStrategy.choices(available_only=True)})
 
 
 @require_GET

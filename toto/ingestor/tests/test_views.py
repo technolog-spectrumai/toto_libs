@@ -64,7 +64,7 @@ class GenerateTests(TestCase):
         self.assertEqual(res.json()["proposal_id"], obj.id)
         gen.assert_called_once()
 
-    @override_settings(RAVIOLI_ENABLED=True)
+    @override_settings(RAVIOLI_ENABLED=True, OPENAI_API_KEY="sk-x")
     def test_generate_dispatches_selected_strategy(self):
         from toto.ingestor.services.strategies import IngestStrategy
 
@@ -82,10 +82,29 @@ class GenerateTests(TestCase):
         res = self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "nope"})
         self.assertEqual(res.status_code, 400)
 
-    def test_list_strategies(self):
+    @override_settings(RAVIOLI_ENABLED=True, OPENAI_API_KEY="")
+    def test_generate_rejects_unavailable_strategy(self):
+        # 'llm' needs an OpenAI key; without one it must be rejected, not run.
+        res = self.client.post(reverse("ingestor:generate"), {"text": "x", "strategy": "llm"})
+        self.assertEqual(res.status_code, 400)
+        self.assertIn("unavailable", res.json()["error"])
+
+    @override_settings(OPENAI_API_KEY="", VICUNA_EMBEDDINGS_ENABLED=False)
+    def test_list_strategies_hides_unconfigured_backends(self):
+        # No OpenAI key, no local embeddings → only the deterministic strategy.
         res = self.client.get(reverse("ingestor:strategies"))
         self.assertEqual(res.status_code, 200)
-        keys = {s["key"] for s in res.json()["strategies"]}
+        self.assertEqual({s["key"] for s in res.json()["strategies"]}, {"deterministic"})
+
+    @override_settings(OPENAI_API_KEY="sk-x", VICUNA_EMBEDDINGS_ENABLED=False)
+    def test_list_strategies_shows_llm_but_not_kg_builder_without_embeddings(self):
+        keys = {s["key"] for s in self.client.get(reverse("ingestor:strategies")).json()["strategies"]}
+        self.assertIn("llm", keys)
+        self.assertNotIn("kg-builder", keys)
+
+    @override_settings(OPENAI_API_KEY="sk-x", VICUNA_EMBEDDINGS_ENABLED=True)
+    def test_list_strategies_shows_kg_builder_when_vicuna_present(self):
+        keys = {s["key"] for s in self.client.get(reverse("ingestor:strategies")).json()["strategies"]}
         self.assertEqual(keys, {"deterministic", "llm", "kg-builder"})
 
 

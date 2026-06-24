@@ -92,6 +92,10 @@ class LLMStrategy(IngestStrategy):
     description = "GPT extracts entities & relationships into a reviewable proposal."
     mode = MODE_REVIEW
 
+    def is_available(self) -> bool:
+        # Targets OpenAI cloud — needs an API key to be usable.
+        return bool((getattr(settings, "OPENAI_API_KEY", "") or "").strip())
+
     def run(self, text, user=None):
         proposal = self._extract(text)
         validation.revalidate(proposal)
