@@ -94,6 +94,32 @@ class Neo4jClient:
         self._driver_uri = uri
         return self._driver
 
+    def driver(self):
+        """Return a live ``neo4j.Driver`` for libraries that need the raw driver
+        (e.g. the neo4j-graphrag retrievers). Tries the configured URIs in order
+        and verifies connectivity; raises Neo4jConnectionError if none connect."""
+        uris = list(self._uris)
+        if self._driver_uri in uris:
+            uris.remove(self._driver_uri)
+            uris.insert(0, self._driver_uri)
+        errors = []
+        for uri in uris:
+            try:
+                drv = self._connect(uri)
+                drv.verify_connectivity()
+                return drv
+            except Exception as exc:
+                if not is_connection_error(exc):
+                    raise
+                errors.append(f"{uri}: {exc}")
+                self.close()
+        raise Neo4jConnectionError(
+            "Could not connect to Neo4j. Tried "
+            + ", ".join(self._uris)
+            + ". Last error: "
+            + (errors[-1] if errors else "unknown")
+        )
+
     # ------------------------------------------------------------------
     # GENERIC CYPHER
     # ------------------------------------------------------------------

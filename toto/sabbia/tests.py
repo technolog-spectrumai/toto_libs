@@ -226,3 +226,52 @@ class OpenAILiveResponseTests(TestCase):
 
         self.assertIsInstance(reply, str)
         self.assertTrue(reply.strip(), "OpenAI returned an empty reply")
+
+
+class GraphRAGRoutingTests(TestCase):
+    """The consumer's RAG routing/fallback logic, exercised directly (no
+    websocket layer / channel backend needed)."""
+
+    def _consumer(self, endpoint_config):
+        from toto.sabbia.consumers import AgentChatConsumer
+
+        c = AgentChatConsumer.__new__(AgentChatConsumer)  # bypass channels __init__
+        c.agent = Agent(
+            name="A", slug="a", endpoint_type=Agent.ENDPOINT_OPENAI,
+            model_name="gpt-4.1-mini", endpoint_config=endpoint_config, is_active=True,
+        )
+        return c
+
+    def test_graphrag_answer_returns_rag_reply(self):
+        c = self._consumer({"rag": {"enabled": True}})
+        with mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("rag answer", "ctx")) as rg:
+            out = c._graphrag_answer("hi", {"top_k": 3, "text2cypher": True})
+        self.assertEqual(out, "rag answer")
+        rg.assert_called_once_with(llm="LLM", query_text="hi", top_k=3, text2cypher=True)
+
+    def test_graphrag_answer_none_when_run_returns_empty(self):
+        c = self._consumer({"rag": {"enabled": True}})
+        with mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("", "")):
+            self.assertIsNone(c._graphrag_answer("hi", {}))
+
+    def test_graphrag_answer_none_when_no_llm(self):
+        c = self._consumer({"rag": {"enabled": True}})
+        with mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value=None), \
+             mock.patch("toto.ravioli.rag.run_graphrag") as rg:
+            self.assertIsNone(c._graphrag_answer("hi", {}))
+        rg.assert_not_called()
+
+    def test_maybe_reply_skipped_when_disabled(self):
+        c = self._consumer({})  # no rag config → fall back to endpoint.chat
+        with mock.patch.object(c, "_graphrag_answer") as ga:
+            out = async_to_sync(c._maybe_graphrag_reply)("hi")
+        self.assertIsNone(out)
+        ga.assert_not_called()
+
+    def test_maybe_reply_fails_soft(self):
+        c = self._consumer({"rag": {"enabled": True}})
+        with mock.patch.object(c, "_graphrag_answer", side_effect=RuntimeError("boom")):
+            out = async_to_sync(c._maybe_graphrag_reply)("hi")
+        self.assertIsNone(out)  # error → fall back to endpoint.chat, chat unaffected

@@ -91,6 +91,10 @@ class Command(IngressCommand):
                 "(configure later via admin)."
             ))
 
+        # GraphRAG: enabled only when the graph layer is actually built, so Steven
+        # is correct in both build profiles. Toggle/knobs live in endpoint_config
+        # (no migration) — see toto.ravioli.rag.
+        rag_enabled = bool(getattr(settings, "RAVIOLI_ENABLED", False))
         _, created = Agent.objects.update_or_create(
             slug="steven",
             defaults={
@@ -101,6 +105,9 @@ class Command(IngressCommand):
                 "model_name": "gpt-4.1-mini",
                 "system_prompt": "You are Steven, a helpful, concise assistant.",
                 "is_active": True,
+                "endpoint_config": {
+                    "rag": {"enabled": rag_enabled, "top_k": 5, "text2cypher": True}
+                },
             },
         )
         self.stdout.write(self.style.SUCCESS(

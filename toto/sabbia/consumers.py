@@ -1,8 +1,11 @@
 import json
+import logging
 
 from asgiref.sync import sync_to_async
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
+
+logger = logging.getLogger(__name__)
 
 MAX_CONTENT_CHARS = 8000
 
@@ -64,13 +67,17 @@ class AgentChatConsumer(AsyncWebsocketConsumer):
         await self._save_message("user", content)
         await self.send(text_data=json.dumps({"type": "typing", "state": True}))
 
-        history = await self._build_history()
-        try:
-            reply = await sync_to_async(self.endpoint.chat, thread_sensitive=False)(history)
-        except Exception as exc:
-            await self.send(text_data=json.dumps({"type": "typing", "state": False}))
-            await self._error(f"Agent error: {exc}")
-            return
+        # GraphRAG path (per-agent, read context from the ravioli graph). Returns
+        # None to fall back to the plain endpoint, so chat never breaks.
+        reply = await self._maybe_graphrag_reply(content)
+        if reply is None:
+            history = await self._build_history()
+            try:
+                reply = await sync_to_async(self.endpoint.chat, thread_sensitive=False)(history)
+            except Exception as exc:
+                await self.send(text_data=json.dumps({"type": "typing", "state": False}))
+                await self._error(f"Agent error: {exc}")
+                return
 
         row = await self._save_message("assistant", reply)
         await self.send(text_data=json.dumps({"type": "typing", "state": False}))
@@ -83,6 +90,36 @@ class AgentChatConsumer(AsyncWebsocketConsumer):
 
     async def _error(self, message):
         await self.send(text_data=json.dumps({"type": "error", "message": message}))
+
+    async def _maybe_graphrag_reply(self, content):
+        """Return a GraphRAG answer when the agent has RAG enabled, else None.
+
+        Fails soft: any error (ravioli absent, graph down, retrieval/LLM error)
+        logs and returns None so the caller falls back to ``endpoint.chat``.
+        """
+        cfg = (self.agent.endpoint_config or {}).get("rag") or {}
+        if not cfg.get("enabled"):
+            return None
+        try:
+            return await sync_to_async(self._graphrag_answer, thread_sensitive=False)(content, cfg)
+        except Exception as exc:  # noqa: BLE001 — never break chat
+            logger.warning("sabbia GraphRAG failed, falling back to endpoint: %s", exc)
+            return None
+
+    def _graphrag_answer(self, content, cfg):
+        from toto.ravioli.rag import run_graphrag
+        from toto.sabbia.graphrag_llm import build_llm
+
+        llm = build_llm(self.agent)
+        if llm is None:
+            return None
+        answer, _context = run_graphrag(
+            llm=llm,
+            query_text=content,
+            top_k=int(cfg.get("top_k", 5)),
+            text2cypher=bool(cfg.get("text2cypher", True)),
+        )
+        return answer or None
 
     @database_sync_to_async
     def _load_agent(self, slug):
