@@ -123,3 +123,57 @@ class EditTests(TestCase):
         url = reverse("ingestor:patch_node", args=[self.obj.id, "nX"])
         res = self.client.post(url, data="{}", content_type="application/json")
         self.assertEqual(res.status_code, 404)
+
+
+class ApplyAllTests(TestCase):
+    def setUp(self):
+        User.objects.create_superuser("admin", password="x")
+        self.client.login(username="admin", password="x")
+
+    def test_approve_all_valid_skips_errors(self):
+        from toto.ingestor.views import _approve_all_valid
+
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={
+                "nodes": [
+                    {"temp_id": "n1", "approval": "pending", "validation": {"status": "ok"}},
+                    {"temp_id": "n2", "approval": "pending", "validation": {"status": "error"}},
+                ],
+                "relationships": [
+                    {"temp_id": "r1", "approval": "pending", "validation": {"status": "ok"}},
+                ],
+            },
+        )
+        # revalidate/_save_edits hit Neo4j/DB — stub them; we test the approve loop.
+        with patch("toto.ingestor.views.revalidate"), patch("toto.ingestor.views._save_edits"):
+            _approve_all_valid(obj)
+        nodes = {n["temp_id"]: n for n in obj.proposal["nodes"]}
+        self.assertEqual(nodes["n1"]["approval"], "approved")
+        self.assertEqual(nodes["n2"]["approval"], "pending")  # error → left unapproved
+        self.assertEqual(obj.proposal["relationships"][0]["approval"], "approved")
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_apply_view_approve_all_then_applies(self):
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={"nodes": [], "relationships": []}, summary={},
+        )
+        with patch("toto.ingestor.views._approve_all_valid") as approve, \
+             patch("toto.ingestor.services.apply.run", return_value=({}, [])) as run:
+            res = self.client.post(reverse("ingestor:apply", args=[obj.id]), {"approve_all": "1"})
+        self.assertEqual(res.status_code, 200)
+        approve.assert_called_once()
+        run.assert_called_once()
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_apply_view_without_approve_all_skips_bulk_approve(self):
+        obj = IngestProposal.objects.create(
+            status=IngestProposal.STATUS_READY,
+            proposal={"nodes": [], "relationships": []}, summary={},
+        )
+        with patch("toto.ingestor.views._approve_all_valid") as approve, \
+             patch("toto.ingestor.services.apply.run", return_value=({}, [])):
+            res = self.client.post(reverse("ingestor:apply", args=[obj.id]))
+        self.assertEqual(res.status_code, 200)
+        approve.assert_not_called()

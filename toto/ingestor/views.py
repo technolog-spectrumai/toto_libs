@@ -230,6 +230,21 @@ def patch_rel(request, pk, temp_id):
     return JsonResponse({"relationship": rel, "summary": proposal_model.summary})
 
 
+def _approve_all_valid(proposal_model):
+    """Mark every non-error node/relationship as approved (for 'Apply all').
+
+    Re-validates against the live Bento templates first, then approves only the
+    elements that aren't in error, and persists (refreshing the summary).
+    """
+    proposal = proposal_model.proposal
+    revalidate(proposal)
+    elements = (proposal.get("nodes") or []) + (proposal.get("relationships") or [])
+    for el in elements:
+        if (el.get("validation") or {}).get("status") != "error":
+            el["approval"] = "approved"
+    _save_edits(proposal_model)
+
+
 @require_POST
 @superuser_required
 def apply(request, pk):
@@ -242,6 +257,8 @@ def apply(request, pk):
     proposal_model = get_object_or_404(IngestProposal, pk=pk)
     if proposal_model.status == IngestProposal.STATUS_APPLIED:
         return JsonResponse({"error": "Proposal already applied."}, status=409)
+    if request.POST.get("approve_all"):
+        _approve_all_valid(proposal_model)
     try:
         _result, errors = apply_svc.run(proposal_model)
     except Exception as exc:  # noqa: BLE001

@@ -273,6 +273,13 @@
         </div>
         <div class="flex items-center gap-3">
           <button @click="reset()" class="text-sm underline opacity-70">{% trans "Start over" %}</button>
+          <button @click="applyPatch(true)"
+            :disabled="phase === 'applying' || phase === 'done' || !(proposal.nodes && proposal.nodes.length)"
+            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85 disabled:opacity-40"
+            title="{% trans 'Approve every valid node & relationship, then apply' %}">
+            <i class="fa-solid fa-circle-check"></i>{% trans "Apply all" %}
+          </button>
           <button @click="applyPatch()" :disabled="phase === 'applying' || phase === 'done' || !(summary.approved)"
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
@@ -503,12 +510,16 @@ function ingestorFlow() {
     },
 
     // ── apply ──
-    async applyPatch() {
-      if (!this.summary.approved) return;
+    async applyPatch(approveAll = false) {
+      if (!approveAll && !this.summary.approved) return;
       this.phase = 'applying'; this.error = null;
       try {
         const url = '{% url "ingestor:apply" 0 %}'.replace('/0/', '/' + this.proposalId + '/');
-        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } });
+        const opts = { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } };
+        if (approveAll) {
+          const fd = new FormData(); fd.append('approve_all', '1'); opts.body = fd;
+        }
+        const res = await fetch(url, opts);
         const data = await res.json();
         if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
         this.summary = data.summary || this.summary;
