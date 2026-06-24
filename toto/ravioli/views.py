@@ -612,6 +612,75 @@ def search_status_view(request, run_id):
 
 
 # ---------------------------------------------------------------------------
+# Ask Steven — GraphRAG over the graph (Celery task wrapped in a workflow)
+# ---------------------------------------------------------------------------
+
+@login_required
+@superuser_required
+def graphrag_describe_view(request):
+    """Render the 'Ask Steven' tab (chat over the graph via GraphRAG)."""
+    from .predefined_tasks import GRAPHRAG_DESCRIBE_PROMPT
+
+    context = PageProcessor().decorate({"describe_prompt": GRAPHRAG_DESCRIBE_PROMPT}, request)
+    return render(request, "ravioli/graphrag.html", context)
+
+
+@require_POST
+@superuser_required
+def start_graphrag_describe_view(request):
+    """Kick off the GraphRAG workflow (Celery) and return the run id to poll."""
+    from django.apps import apps as django_apps
+
+    from .connection import is_enabled
+
+    if not is_enabled():
+        return JsonResponse({"error": "RAVIOLI_ENABLED is False — cannot run GraphRAG."}, status=503)
+    if not django_apps.is_installed("toto.sabbia"):
+        return JsonResponse({"error": "Steven (toto.sabbia) is not installed."}, status=503)
+    if not celery_available():
+        return JsonResponse({"error": "No Celery worker is running."}, status=503)
+    question = (request.POST.get("question") or "").strip()
+    try:
+        run = _trigger_workflow(
+            "ravioli-graphrag-describe",
+            input_data={"data": {"question": question, "top_k": 8, "text2cypher": True}},
+        )
+    except RuntimeError as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+    return JsonResponse({"run_id": run.pk, "wf_run_url": f"/workflows/runs/{run.pk}/"})
+
+
+@require_GET
+@superuser_required
+def graphrag_describe_status_view(request, run_id):
+    """Poll a ravioli-graphrag-describe WorkflowRun for Steven's answer."""
+    from toto.workflows.models import WorkflowRun
+
+    try:
+        run = WorkflowRun.objects.get(pk=run_id)
+    except WorkflowRun.DoesNotExist:
+        return JsonResponse({"status": "expired"}, status=404)
+
+    if run.status == WorkflowRun.COMPLETED:
+        node_run = run.node_runs.order_by("id").last()
+        data = ((node_run.output_data or {}) if node_run else {}).get("data") or {}
+        return JsonResponse({
+            "status": "done",
+            "answer": data.get("answer", ""),
+            "context": data.get("context", ""),
+            "agent": data.get("agent", ""),
+            "question": data.get("question", ""),
+        })
+    if run.status == WorkflowRun.FAILED:
+        node_run = run.node_runs.order_by("id").last()
+        return JsonResponse({"status": "error",
+                             "error": (node_run.error if node_run else None) or "GraphRAG workflow failed."})
+    if run.status == "cancelled":
+        return JsonResponse({"status": "error", "error": "Run was cancelled."})
+    return JsonResponse({"status": "running", "wf_run_url": f"/workflows/runs/{run.pk}/"})
+
+
+# ---------------------------------------------------------------------------
 # Per-object "Export to graph" — preview the 1-hop slice, then apply the diff
 # ---------------------------------------------------------------------------
 

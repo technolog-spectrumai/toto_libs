@@ -93,6 +93,30 @@ class Command(IngressCommand):
         else:
             self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli Graph Search' already exists"))
 
+        # --- Ravioli GraphRAG Describe: single node (Steven answers over the graph) ---
+        wf_gr, created_gr = Workflow.objects.get_or_create(
+            slug="ravioli-graphrag-describe",
+            defaults={
+                "name": "Ravioli GraphRAG Describe",
+                "description": (
+                    "Ask Steven to describe / answer questions about the graph via "
+                    "read-only GraphRAG (vector + Text2Cypher over Neo4j)."
+                ),
+            },
+        )
+        if created_gr:
+            WorkflowNode.objects.create(
+                workflow=wf_gr,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="GraphRAG describe",
+                task_name="ravioli_graphrag_describe",
+                position_x=0,
+                position_y=0,
+            )
+            self.stdout.write(self.style.SUCCESS("🤖 Created workflow: Ravioli GraphRAG Describe"))
+        else:
+            self.stdout.write(self.style.WARNING("ℹ️  Workflow 'Ravioli GraphRAG Describe' already exists"))
+
         # --- Ravioli Run Cypher Query: single node ---
         wf5, created5 = Workflow.objects.get_or_create(
             slug="ravioli-run-cypher-query",

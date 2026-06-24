@@ -191,3 +191,58 @@ def ravioli_graph_search(input_data: dict) -> dict:
             "semantic_available": sr["semantic_available"],
         }
     }
+
+
+GRAPHRAG_DESCRIBE_PROMPT = (
+    "Describe this knowledge graph: the main kinds of entities, how they relate, "
+    "and any notable patterns or clusters. Be concise and ground every claim in the "
+    "retrieved context."
+)
+
+
+@register("ravioli_graphrag_describe")
+def ravioli_graphrag_describe(input_data: dict) -> dict:
+    """Answer a question about the graph with Steven via GraphRAG (Celery task).
+
+    Builds the Sabbia OpenAI agent's LLM and runs the read-only neo4j-graphrag
+    pipeline (vector + Text2Cypher) over the graph. Raises on any failure so the
+    WorkflowRun is marked FAILED with a useful message.
+    """
+    from django.apps import apps as django_apps
+
+    from .connection import is_enabled
+
+    data = input_data.get("data") or {}
+    question = (data.get("question") or "").strip() or GRAPHRAG_DESCRIBE_PROMPT
+    top_k = int(data.get("top_k", 8))
+    text2cypher = bool(data.get("text2cypher", True))
+
+    if not is_enabled():
+        raise RuntimeError("RAVIOLI_ENABLED is False — cannot run GraphRAG.")
+    if not django_apps.is_installed("toto.sabbia"):
+        raise RuntimeError("toto.sabbia is not installed — Steven is unavailable.")
+
+    from toto.sabbia.graphrag_llm import build_llm
+    from toto.sabbia.models import Agent
+
+    agent = (
+        Agent.objects.filter(slug="steven", is_active=True).first()
+        or Agent.objects.filter(is_active=True).order_by("name").first()
+    )
+    if agent is None:
+        raise RuntimeError("No active Sabbia agent (Steven) is configured.")
+    llm = build_llm(agent)
+    if llm is None:
+        raise RuntimeError("Could not build the LLM (missing OpenAI key / connector).")
+
+    from toto.ravioli.rag import run_graphrag
+
+    answer, context = run_graphrag(
+        llm=llm, query_text=question, top_k=top_k, text2cypher=text2cypher
+    )
+    if not answer:
+        raise RuntimeError(
+            "GraphRAG produced no answer — the graph may be empty, embeddings off, "
+            "or the LLM call failed."
+        )
+    return {"data": {"question": question, "answer": answer, "context": context, "agent": agent.name}}
