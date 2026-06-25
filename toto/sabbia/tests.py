@@ -56,6 +56,159 @@ class VaultTests(TestCase):
         self.assertEqual(recovered, "sk-secret-123")
 
 
+def _init_system_vault():
+    vault.clear_cache()
+    owner = User.objects.create(username=vault.SYSTEM_OWNER_USERNAME, is_active=False)
+    GervazyCryptoSession.initialize_strongbox(owner, vault.SYSTEM_STRONGBOX_NAME, VAULT_PW)
+    vault.clear_cache()
+
+
+@override_settings(SABBIA_VAULT_PASSWORD=VAULT_PW)
+class VaultRotationTests(TestCase):
+    def setUp(self):
+        _init_system_vault()
+
+    def tearDown(self):
+        vault.clear_cache()
+
+    def test_reencrypt_preserves_value_under_new_key(self):
+        s1 = vault.store_secret("sk-abc", name="x-1", purpose="p")
+        s2 = vault.reencrypt_secret(s1, name="x-2")
+        self.assertNotEqual(s2.wrapped_key_id, s1.wrapped_key_id)  # fresh data key
+        self.assertEqual(vault.open_session().decrypt_secret(s2), "sk-abc")  # same value
+
+    def test_retire_secret_retires_unused_dek(self):
+        s1 = vault.store_secret("v1", name="r-1")
+        s2 = vault.reencrypt_secret(s1, name="r-2")  # s2 on a dedicated fresh DEK
+        dek2 = s2.wrapped_key
+        vault.retire_secret(s2)
+        s2.refresh_from_db()
+        dek2.refresh_from_db()
+        self.assertEqual(s2.state, "retired")
+        self.assertEqual(dek2.state, "retired")  # no other active secret used it
+
+    def test_retire_keeps_shared_dek(self):
+        s1 = vault.store_secret("v1", name="s-1")
+        s2 = vault.store_secret("v2", name="s-2")
+        self.assertEqual(s1.wrapped_key_id, s2.wrapped_key_id)  # share the active DEK
+        shared = s1.wrapped_key
+        vault.retire_secret(s1)
+        shared.refresh_from_db()
+        self.assertEqual(shared.state, "active")  # s2 still uses it → not retired
+
+    def test_log_secret_event(self):
+        from toto.gervazy.models import CryptoAuditLog
+
+        s = vault.store_secret("v", name="l-1")
+        actor = User.objects.create(username="auditor")
+        vault.log_secret_event(actor, "set_connector_secret", s, reason="set via admin")
+        log = CryptoAuditLog.objects.get(action="set_connector_secret")
+        self.assertEqual(log.object_id, str(s.pk))
+        self.assertTrue(log.success)
+
+
+@override_settings(SABBIA_VAULT_PASSWORD=VAULT_PW)
+class SecretAdminTests(TestCase):
+    def setUp(self):
+        _init_system_vault()
+        self.admin = User.objects.create_superuser("root", "r@example.com", "pw")
+        self.client.force_login(self.admin)
+
+    def tearDown(self):
+        vault.clear_cache()
+
+    def _save_model(self, conn, value):
+        from django.contrib.admin.sites import AdminSite
+        from django.contrib.messages.storage.fallback import FallbackStorage
+        from django.contrib.sessions.backends.db import SessionStore
+        from django.test import RequestFactory
+
+        from toto.sabbia.admin import AgentConnectorAdmin
+
+        ma = AgentConnectorAdmin(AgentConnector, AdminSite())
+        req = RequestFactory().post("/")
+        req.user = self.admin
+        req.session = SessionStore()
+        req.session.create()
+        req._messages = FallbackStorage(req)
+        form = mock.Mock()
+        form.cleaned_data = {"new_secret_value": value}
+        ma.save_model(req, conn, form, change=bool(conn.pk))
+        return req
+
+    def test_set_value_stores_encrypted_and_audits(self):
+        from toto.gervazy.models import CryptoAuditLog
+
+        conn = AgentConnector(name="C", provider=AgentConnector.PROVIDER_OPENAI)
+        self._save_model(conn, "sk-set-1")
+        conn.refresh_from_db()
+        self.assertIsNotNone(conn.api_secret_id)
+        self.assertEqual(conn.decrypt_api_secret(vault_session=vault.open_session()), "sk-set-1")
+        self.assertTrue(CryptoAuditLog.objects.filter(action="set_connector_secret").exists())
+
+    def test_set_value_replaces_and_retires_old(self):
+        old = vault.store_secret("sk-old", name="c-old")
+        conn = AgentConnector.objects.create(
+            name="C", provider=AgentConnector.PROVIDER_OPENAI, api_secret=old
+        )
+        self._save_model(conn, "sk-new")
+        conn.refresh_from_db()
+        self.assertNotEqual(conn.api_secret_id, old.id)
+        self.assertEqual(conn.decrypt_api_secret(vault_session=vault.open_session()), "sk-new")
+        old.refresh_from_db()
+        self.assertEqual(old.state, "retired")
+
+    def test_blank_value_keeps_secret(self):
+        s = vault.store_secret("sk-keep", name="c-keep")
+        conn = AgentConnector.objects.create(
+            name="C", provider=AgentConnector.PROVIDER_OPENAI, api_secret=s
+        )
+        self._save_model(conn, "")
+        conn.refresh_from_db()
+        self.assertEqual(conn.api_secret_id, s.id)  # unchanged
+
+    def test_vault_unavailable_is_surfaced(self):
+        conn = AgentConnector(name="C", provider=AgentConnector.PROVIDER_OPENAI)
+        with mock.patch("toto.sabbia.vault.store_secret", side_effect=vault.VaultUnavailable("nope")):
+            req = self._save_model(conn, "sk-x")
+        conn.refresh_from_db()
+        self.assertIsNone(conn.api_secret_id)  # not changed
+        self.assertTrue(any("Vault unavailable" in m.message for m in req._messages))
+
+    def test_reencrypt_action_rotates_key(self):
+        from django.urls import reverse
+
+        from toto.gervazy.models import CryptoAuditLog
+
+        s = vault.store_secret("sk-rot", name="c-rot")
+        conn = AgentConnector.objects.create(
+            name="C", provider=AgentConnector.PROVIDER_OPENAI, api_secret=s
+        )
+        self.client.post(
+            reverse("admin:sabbia_agentconnector_changelist"),
+            {"action": "reencrypt_api_secret", "_selected_action": [str(conn.pk)]},
+        )
+        conn.refresh_from_db()
+        self.assertNotEqual(conn.api_secret_id, s.id)
+        self.assertNotEqual(conn.api_secret.wrapped_key_id, s.wrapped_key_id)
+        self.assertEqual(conn.decrypt_api_secret(vault_session=vault.open_session()), "sk-rot")
+        s.refresh_from_db()
+        self.assertEqual(s.state, "retired")
+        self.assertTrue(CryptoAuditLog.objects.filter(action="reencrypt_connector_secret").exists())
+
+    def test_change_form_is_write_only(self):
+        from django.urls import reverse
+
+        s = vault.store_secret("sk-PLAINTEXT-XYZ", name="c-wo")
+        conn = AgentConnector.objects.create(
+            name="WO", provider=AgentConnector.PROVIDER_OPENAI, api_secret=s
+        )
+        res = self.client.get(reverse("admin:sabbia_agentconnector_change", args=[conn.pk]))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Set / replace secret value")
+        self.assertNotContains(res, "sk-PLAINTEXT-XYZ")  # plaintext never rendered
+
+
 class VicunaChatViewTests(TestCase):
     """The vicuna proxy view (only present when toto.vicuna is installed)."""
 

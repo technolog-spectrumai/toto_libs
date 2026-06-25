@@ -28,10 +28,14 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("graph summary", "ctx", "")) as rg:
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value={
+                 "answer": "graph summary", "context": "ctx", "cause": "",
+                 "graph": {"nodes": [{"id": "a", "label": "X"}], "edges": []},
+             }) as rg:
             out = ravioli_graphrag_describe({"data": {"question": "describe it", "top_k": 5}})
         self.assertEqual(out["data"]["answer"], "graph summary")
         self.assertEqual(out["data"]["context"], "ctx")
+        self.assertEqual(out["data"]["graph"]["nodes"][0]["id"], "a")  # graph passed through
         self.assertEqual(rg.call_args.kwargs["query_text"], "describe it")
         self.assertEqual(rg.call_args.kwargs["top_k"], 5)
         self.assertEqual(out["data"]["agent"], "Steven")  # openai provider → the openai agent
@@ -44,7 +48,9 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("x", "", "")) as rg:
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value={
+                 "answer": "x", "context": "", "cause": "", "graph": {"nodes": [], "edges": []},
+             }) as rg:
             ravioli_graphrag_describe({"data": {}})
         self.assertEqual(rg.call_args.kwargs["query_text"], GRAPHRAG_DESCRIBE_PROMPT)
 
@@ -56,8 +62,10 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag",
-                        return_value=("", "", "text2cypher: APIConnectionError")):
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value={
+                 "answer": "", "context": "", "cause": "text2cypher: APIConnectionError",
+                 "graph": {"nodes": [], "edges": []},
+             }):
             with self.assertRaisesRegex(RuntimeError, "text2cypher: APIConnectionError"):
                 ravioli_graphrag_describe({"data": {"question": "q"}})
 
@@ -75,7 +83,9 @@ class DescribeTaskTests(TestCase):
         )
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("ans", "ctx", "")):
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value={
+                 "answer": "ans", "context": "ctx", "cause": "", "graph": {"nodes": [], "edges": []},
+             }):
             out = ravioli_graphrag_describe({"data": {"question": "q"}})
         self.assertEqual(out["data"]["agent"], "Ollama Local")  # ollama provider → ollama agent
 
@@ -96,6 +106,13 @@ class DescribeViewTests(TestCase):
         Platform.objects.create(site_name="Test", author="T", publication_year=2024, active=True)
         User.objects.create_superuser("admin", password="x")
         self.client.login(username="admin", password="x")
+
+    @override_settings(RAVIOLI_ENABLED=True)
+    def test_page_renders_with_cytoscape(self):
+        res = self.client.get(reverse("ravioli:graphrag_describe"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Ask AI")          # renamed tab/heading
+        self.assertContains(res, "cytoscape")       # context-graph rendering wired
 
     @override_settings(RAVIOLI_ENABLED=True)
     def test_start_triggers_workflow(self):

@@ -38,6 +38,71 @@ def _index_name() -> str:
     return getattr(settings, "TOTO_NEO4J_VECTOR_INDEX", "toto_chunk_embeddings")
 
 
+def _node_display(props: dict) -> str:
+    for key in ("name", "title", "label"):
+        if props.get(key):
+            return str(props[key])
+    return (str(props.get("uid") or "")[:8]) or "node"
+
+
+def _extract_graph(records) -> dict:
+    """Pull neo4j Nodes/Relationships/Paths out of retriever records into a
+    Cytoscape-ready ``{"nodes": [...], "edges": [...]}`` (deduped by element_id).
+
+    Duck-typed (Node has ``labels``; Relationship has ``type``/``start_node``;
+    Path has ``nodes``/``relationships``) to avoid a hard neo4j import here.
+    """
+    nodes: dict = {}
+    edges: dict = {}
+
+    def add(value):
+        if value is None:
+            return
+        if hasattr(value, "labels") and hasattr(value, "element_id"):  # Node
+            eid = value.element_id
+            if eid not in nodes:
+                props = dict(value)
+                nodes[eid] = {
+                    "id": eid,
+                    "label": _node_display(props),
+                    "category": next(iter(value.labels), "") if value.labels else "",
+                    "properties": props,
+                }
+        elif hasattr(value, "type") and hasattr(value, "start_node") and hasattr(value, "end_node"):  # Rel
+            add(value.start_node)
+            add(value.end_node)
+            eid = getattr(value, "element_id", None) or (
+                f"{value.start_node.element_id}-{value.type}-{value.end_node.element_id}"
+            )
+            if eid not in edges:
+                edges[eid] = {
+                    "id": eid,
+                    "source": value.start_node.element_id,
+                    "target": value.end_node.element_id,
+                    "label": value.type,
+                }
+        elif hasattr(value, "nodes") and hasattr(value, "relationships"):  # Path
+            for n in value.nodes:
+                add(n)
+            for r in value.relationships:
+                add(r)
+        elif isinstance(value, (list, tuple, set)):
+            for item in value:
+                add(item)
+        elif isinstance(value, dict):
+            for item in value.values():
+                add(item)
+
+    for rec in records or []:
+        try:
+            values = rec.values() if hasattr(rec, "values") else list(rec)
+        except Exception:  # noqa: BLE001 — be tolerant of odd record shapes
+            values = []
+        for v in values:
+            add(v)
+    return {"nodes": list(nodes.values()), "edges": list(edges.values())}
+
+
 class VicunaEmbedder(Embedder):
     """Embed via toto.vicuna (the sole embedding owner) so query vectors use the
     same model the ``toto_chunk_embeddings`` index was built with."""
@@ -60,6 +125,7 @@ class CompositeRetriever(Retriever):
         self._vector_cypher = vector_cypher
         self._text2cypher = text2cypher
         self.last_errors: list[str] = []  # per-call sub-retriever failures (for diagnostics)
+        self.last_graph: dict = {"nodes": [], "edges": []}  # per-call retrieved subgraph
 
     def get_search_results(self, query_text: str = "", top_k: int = 5, **kwargs) -> RawSearchResult:
         records = []
@@ -78,6 +144,7 @@ class CompositeRetriever(Retriever):
             except Exception as exc:  # noqa: BLE001 — isolate text2cypher failures
                 logger.warning("GraphRAG text2cypher retrieval failed: %s", exc)
                 self.last_errors.append(f"text2cypher: {exc}")
+        self.last_graph = _extract_graph(records)
         return RawSearchResult(records=records, metadata={"__retriever": "CompositeRetriever"})
 
 
@@ -107,20 +174,25 @@ def build_retriever(driver, *, llm=None, text2cypher=True) -> CompositeRetriever
     return CompositeRetriever(driver, vector_cypher=vector_cypher, text2cypher=t2c)
 
 
-def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True, return_cause=False):
+def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True, detail=False):
     """Answer ``query_text`` grounded in the ravioli graph via neo4j-graphrag.
 
-    Returns ``(answer, context)`` — or ``(answer, context, cause)`` when
-    ``return_cause`` is True, where ``cause`` explains an empty answer (LLM
-    unreachable, sub-retriever errors, no matching data). Returns empty on any
-    failure (RAVIOLI disabled, empty query, exception) so chat callers fall back
-    to the plain endpoint; the explicit "Ask AI" task uses ``return_cause`` to
-    report *why* instead of a generic message.
+    Returns ``(answer, context)`` — or, when ``detail`` is True, a dict
+    ``{"answer", "context", "cause", "graph"}`` where ``cause`` explains an empty
+    answer and ``graph`` is the retrieved subgraph (``{"nodes", "edges"}``, for
+    Cytoscape). Empty on any failure (RAVIOLI disabled, empty query, exception) so
+    chat callers fall back to the plain endpoint; the "Ask AI" task uses ``detail``
+    to surface the cause and render the context as a graph.
     """
     from toto.ravioli.connection import Neo4jClient, is_enabled
 
-    def _ret(answer="", context="", cause=""):
-        return (answer, context, cause) if return_cause else (answer, context)
+    def _ret(answer="", context="", cause="", graph=None):
+        if detail:
+            return {
+                "answer": answer, "context": context, "cause": cause,
+                "graph": graph or {"nodes": [], "edges": []},
+            }
+        return answer, context
 
     if not is_enabled():
         return _ret(cause="RAVIOLI_ENABLED is False — graph is unavailable.")
@@ -141,13 +213,14 @@ def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True, return_cause=Fal
         answer = (getattr(resp, "answer", "") or "").strip()
         ctx_items = getattr(getattr(resp, "retriever_result", None), "items", None) or []
         context = "\n".join(i.content for i in ctx_items if getattr(i, "content", ""))
+        graph = getattr(retriever, "last_graph", None)
         if answer:
-            return _ret(answer, context)
+            return _ret(answer, context, graph=graph)
         cause = "; ".join(getattr(retriever, "last_errors", []) or []) or (
             "retrieval returned no records and the model produced no answer "
             "(the graph may have no data matching the question)."
         )
-        return _ret("", context, cause)
+        return _ret("", context, cause, graph=graph)
     except Exception as exc:  # noqa: BLE001 — never break chat
         logger.warning("GraphRAG run failed: %s", exc)
         return _ret(cause=f"{type(exc).__name__}: {exc}")

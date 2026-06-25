@@ -250,12 +250,16 @@ def ravioli_graphrag_describe(input_data: dict) -> dict:
 
     from toto.ravioli.rag import run_graphrag
 
-    answer, context, cause = run_graphrag(
-        llm=llm, query_text=question, top_k=top_k, text2cypher=text2cypher, return_cause=True
+    result = run_graphrag(
+        llm=llm, query_text=question, top_k=top_k, text2cypher=text2cypher, detail=True
     )
+    answer = result["answer"]
     if not answer:
         raise RuntimeError(
             f"GraphRAG produced no answer (provider={provider}, agent={agent.name}): "
-            f"{cause or 'unknown cause'}"
+            f"{result['cause'] or 'unknown cause'}"
         )
-    return {"data": {"question": question, "answer": answer, "context": context, "agent": agent.name}}
+    return {"data": {
+        "question": question, "answer": answer, "context": result["context"],
+        "graph": result["graph"], "agent": agent.name,
+    }}

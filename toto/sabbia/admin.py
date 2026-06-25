@@ -1,13 +1,17 @@
 from django.contrib import admin
 
+from toto.api.admin import ApiConnectorSecretAdminMixin, make_connector_secret_form
+
 from .models import Agent, AgentConnector, ChatMessage, Conversation, PlatformChatbot
 
 
 @admin.register(AgentConnector)
-class AgentConnectorAdmin(admin.ModelAdmin):
-    list_display = ("name", "provider", "auth_type", "is_active", "updated_at")
+class AgentConnectorAdmin(ApiConnectorSecretAdminMixin, admin.ModelAdmin):
+    form = make_connector_secret_form(AgentConnector)
+    list_display = ("name", "provider", "auth_type", "secret_status", "is_active", "updated_at")
     list_filter = ("provider", "auth_type", "is_active")
     search_fields = ("name", "slug", "base_url")
+    readonly_fields = ("api_secret", "secret_status")
 
 
 @admin.register(Agent)

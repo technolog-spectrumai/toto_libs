@@ -70,9 +70,21 @@
           <i class="fa-solid fa-comment-dots mr-1"></i><span x-text="agent || 'Steven'"></span></h3>
       </div>
       <div class="whitespace-pre-wrap text-sm leading-relaxed" x-text="answer"></div>
+      <!-- retrieved context as a graph -->
+      <div x-show="graph.nodes.length" x-cloak class="space-y-2">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Retrieved context" %}
+          · <span x-text="graph.nodes.length"></span> {% trans "nodes" %}
+          · <span x-text="graph.edges.length"></span> {% trans "edges" %}
+        </span>
+        <div x-ref="cy"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+          class="h-80 w-full rounded-lg border"></div>
+      </div>
+      <!-- raw context (details / fallback when no nodes were returned) -->
       <div x-show="context">
         <button @click="showContext = !showContext" class="text-xs underline opacity-60">
-          <span x-text="showContext ? '{% trans "Hide context" %}' : '{% trans "Show retrieved context" %}'"></span>
+          <span x-text="showContext ? '{% trans "Hide raw context" %}' : '{% trans "Show raw context" %}'"></span>
         </button>
         <pre x-show="showContext" x-cloak
           :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
@@ -89,6 +101,8 @@ function graphragAsk() {
     question: "",
     answer: "",
     context: "",
+    graph: { nodes: [], edges: [] },
+    cy: null,
     agent: "",
     error: "",
     busy: false,
@@ -105,6 +119,8 @@ function graphragAsk() {
     async ask() {
       if (this.busy || !this.question.trim()) return;
       this.busy = true; this.error = ""; this.answer = ""; this.context = "";
+      this.graph = { nodes: [], edges: [] };
+      if (this.cy) { try { this.cy.destroy(); } catch (e) {} this.cy = null; }
       this.statusLabel = "{% trans 'Starting…' %}";
       try {
         const fd = new FormData();
@@ -139,8 +155,10 @@ function graphragAsk() {
           if (data.status === "done") {
             this.answer = data.answer || "{% trans '(no answer)' %}";
             this.context = data.context || "";
+            this.graph = data.graph || { nodes: [], edges: [] };
             this.agent = data.agent || "";
             this.busy = false;
+            this.$nextTick(() => this.renderGraph());
             return;
           }
           if (data.status === "error" || data.status === "expired") {
@@ -155,7 +173,42 @@ function graphragAsk() {
       };
       tick();
     },
+
+    renderGraph() {
+      const container = this.$refs.cy;
+      if (!container || typeof cytoscape === "undefined") return;
+      if (this.cy) { try { this.cy.destroy(); } catch (e) {} this.cy = null; }
+      const g = this.graph || { nodes: [], edges: [] };
+      if (!g.nodes || !g.nodes.length) return;
+      const dark = (localStorage.getItem("darkMode") === "true");
+      const els = [
+        ...g.nodes.map(n => ({ data: { id: n.id, label: n.label || n.id, category: n.category || "" } })),
+        ...(g.edges || []).map(e => ({ data: { id: e.id, source: e.source, target: e.target, label: e.label || "" } })),
+      ];
+      this.cy = cytoscape({
+        container,
+        elements: els,
+        style: [
+          { selector: "node", style: {
+            "background-color": "#6366f1", "border-width": 2, "border-color": "#818cf8",
+            "label": "data(label)", "color": dark ? "#e5e7eb" : "#111827",
+            "font-size": "11px", "text-valign": "center", "text-halign": "center",
+            "text-wrap": "ellipsis", "text-max-width": "100px",
+          }},
+          { selector: "node:selected", style: { "border-width": 4, "border-color": "#22c55e" }},
+          { selector: "edge", style: {
+            "width": 1.8, "line-color": dark ? "#64748b" : "#94a3b8",
+            "target-arrow-color": dark ? "#64748b" : "#94a3b8",
+            "target-arrow-shape": "triangle", "curve-style": "bezier",
+            "label": "data(label)", "font-size": "9px", "color": dark ? "#9ca3af" : "#6b7280",
+            "text-rotation": "autorotate",
+          }},
+        ],
+        layout: { name: "cose", animate: false, padding: 30 },
+      });
+    },
   };
 }
 </script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
 {% endblock %}

@@ -668,6 +668,7 @@ def graphrag_describe_status_view(request, run_id):
             "status": "done",
             "answer": data.get("answer", ""),
             "context": data.get("context", ""),
+            "graph": data.get("graph") or {"nodes": [], "edges": []},
             "agent": data.get("agent", ""),
             "question": data.get("question", ""),
         })

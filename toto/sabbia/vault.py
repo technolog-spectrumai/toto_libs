@@ -100,3 +100,50 @@ def store_secret(plaintext: str, *, name: str, purpose: str = ""):
     if wrapped_key is None:
         wrapped_key = session.create_data_key()
     return session.encrypt_secret(wrapped_key, plaintext, name=name, purpose=purpose)
+
+
+def reencrypt_secret(secret, *, name: str):
+    """Re-wrap an existing secret's value under a freshly created data key.
+
+    Decrypts the current value, mints a NEW DEK, and re-encrypts the SAME value
+    under it — per-secret key rotation. Returns the new EncryptedSecret (``name``
+    must be unique within the strongbox); the caller repoints + retires the old.
+    """
+    session = open_session()
+    plaintext = session.decrypt_secret(secret)
+    new_dek = session.create_data_key()
+    return session.encrypt_secret(new_dek, plaintext, name=name, purpose=secret.purpose)
+
+
+def retire_secret(secret) -> None:
+    """Mark ``secret`` retired; also retire its data key if no active secret uses it."""
+    if secret is None:
+        return
+    if secret.state == "active":
+        secret.state = "retired"
+        secret.save()
+    dek = secret.wrapped_key
+    if dek and dek.state == "active" and not dek.secrets.filter(state="active").exists():
+        dek.state = "retired"
+        dek.save()
+
+
+def log_secret_event(actor, action: str, secret, *, success: bool = True, reason: str = "") -> None:
+    """Append a CryptoAuditLog entry for a secret operation. Never logs plaintext.
+
+    Best-effort: auditing must never break the operation it records.
+    """
+    from toto.gervazy.models import CryptoAuditLog
+
+    try:
+        CryptoAuditLog.objects.create(
+            actor=actor if getattr(actor, "is_authenticated", False) else None,
+            strongbox=system_strongbox(),
+            action=action,
+            object_type="EncryptedSecret",
+            object_id=str(getattr(secret, "pk", "") or ""),
+            success=success,
+            reason=reason,
+        )
+    except Exception:  # noqa: BLE001 — audit failure must not abort the rotation
+        pass

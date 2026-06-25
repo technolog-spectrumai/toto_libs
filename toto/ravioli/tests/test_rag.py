@@ -60,27 +60,31 @@ class RunGraphRAGTests(SimpleTestCase):
             self.assertEqual(rag.run_graphrag(llm="LLM", query_text="q"), ("", ""))
         MockClient.return_value.close.assert_called_once()
 
-    def test_return_cause_reports_exception(self):
+    def test_detail_reports_exception_cause(self):
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.ravioli.connection.Neo4jClient") as MockClient:
             MockClient.return_value.driver.side_effect = RuntimeError("neo4j down")
-            out = rag.run_graphrag(llm="LLM", query_text="q", return_cause=True)
-        self.assertEqual(out[0], "")
-        self.assertIn("neo4j down", out[2])
+            out = rag.run_graphrag(llm="LLM", query_text="q", detail=True)
+        self.assertEqual(out["answer"], "")
+        self.assertIn("neo4j down", out["cause"])
+        self.assertEqual(out["graph"], {"nodes": [], "edges": []})
 
-    def test_return_cause_uses_retriever_errors_on_empty_answer(self):
+    def test_detail_uses_retriever_errors_and_graph_on_empty_answer(self):
         fake_resp = SimpleNamespace(answer="", retriever_result=SimpleNamespace(items=[]))
         gi = mock.Mock()
         gi.search.return_value = fake_resp
-        retriever = SimpleNamespace(last_errors=["vector: boom", "text2cypher: bad cypher"])
+        retriever = SimpleNamespace(
+            last_errors=["vector: boom", "text2cypher: bad cypher"],
+            last_graph={"nodes": [{"id": "1"}], "edges": []},
+        )
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.ravioli.connection.Neo4jClient"), \
              mock.patch("toto.ravioli.rag.build_retriever", return_value=retriever), \
              mock.patch("toto.ravioli.rag.GraphRAG", return_value=gi):
-            out = rag.run_graphrag(llm="LLM", query_text="q", return_cause=True)
-        self.assertEqual(out[0], "")
-        self.assertIn("vector: boom", out[2])
-        self.assertIn("text2cypher: bad cypher", out[2])
+            out = rag.run_graphrag(llm="LLM", query_text="q", detail=True)
+        self.assertEqual(out["answer"], "")
+        self.assertIn("vector: boom", out["cause"])
+        self.assertEqual(out["graph"], {"nodes": [{"id": "1"}], "edges": []})
 
 
 class CompositeRetrieverTests(SimpleTestCase):
@@ -119,6 +123,56 @@ class CompositeRetrieverTests(SimpleTestCase):
         t2c.get_search_results.return_value = RawSearchResult(records=[_rec("t1")], metadata={})
         out = self._composite(None, t2c).get_search_results(query_text="q")
         self.assertEqual([r["text"] for r in out.records], ["t1"])
+
+
+class _FakeNode:
+    """Duck-typed neo4j Node (Mapping of properties + labels + element_id)."""
+    def __init__(self, eid, labels, props):
+        self.element_id = eid
+        self.labels = frozenset(labels)
+        self._p = dict(props)
+    def keys(self):
+        return self._p.keys()
+    def __getitem__(self, k):
+        return self._p[k]
+
+
+class _FakeRel:
+    def __init__(self, eid, rtype, start, end):
+        self.element_id = eid
+        self.type = rtype
+        self.start_node = start
+        self.end_node = end
+
+
+class _FakeRecord:
+    def __init__(self, values):
+        self._v = list(values)
+    def values(self):
+        return self._v
+
+
+class ExtractGraphTests(SimpleTestCase):
+    def test_extracts_nodes_and_relationships_deduped(self):
+        n1 = _FakeNode("a", ["Concept"], {"uid": "u1", "name": "Computer vision"})
+        n2 = _FakeNode("b", ["Concept"], {"uid": "u2", "name": "AI"})
+        rel = _FakeRel("r1", "REFERENCES", n1, n2)
+        # n1 appears twice (dedupe by element_id); rel implies both endpoints
+        g = rag._extract_graph([_FakeRecord([n1]), _FakeRecord([n1]), _FakeRecord([rel])])
+        self.assertEqual({n["id"] for n in g["nodes"]}, {"a", "b"})
+        by_id = {n["id"]: n for n in g["nodes"]}
+        self.assertEqual(by_id["a"]["label"], "Computer vision")
+        self.assertEqual(by_id["a"]["category"], "Concept")
+        self.assertEqual(g["edges"], [{"id": "r1", "source": "a", "target": "b", "label": "REFERENCES"}])
+
+    def test_nodes_only_no_edges(self):
+        n1 = _FakeNode("a", ["Concept"], {"name": "X"})
+        g = rag._extract_graph([_FakeRecord([n1])])
+        self.assertEqual(len(g["nodes"]), 1)
+        self.assertEqual(g["edges"], [])
+
+    def test_empty(self):
+        self.assertEqual(rag._extract_graph([]), {"nodes": [], "edges": []})
 
 
 class BuildRetrieverTests(SimpleTestCase):
