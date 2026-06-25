@@ -60,6 +60,28 @@ class RunGraphRAGTests(SimpleTestCase):
             self.assertEqual(rag.run_graphrag(llm="LLM", query_text="q"), ("", ""))
         MockClient.return_value.close.assert_called_once()
 
+    def test_return_cause_reports_exception(self):
+        with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
+             mock.patch("toto.ravioli.connection.Neo4jClient") as MockClient:
+            MockClient.return_value.driver.side_effect = RuntimeError("neo4j down")
+            out = rag.run_graphrag(llm="LLM", query_text="q", return_cause=True)
+        self.assertEqual(out[0], "")
+        self.assertIn("neo4j down", out[2])
+
+    def test_return_cause_uses_retriever_errors_on_empty_answer(self):
+        fake_resp = SimpleNamespace(answer="", retriever_result=SimpleNamespace(items=[]))
+        gi = mock.Mock()
+        gi.search.return_value = fake_resp
+        retriever = SimpleNamespace(last_errors=["vector: boom", "text2cypher: bad cypher"])
+        with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
+             mock.patch("toto.ravioli.connection.Neo4jClient"), \
+             mock.patch("toto.ravioli.rag.build_retriever", return_value=retriever), \
+             mock.patch("toto.ravioli.rag.GraphRAG", return_value=gi):
+            out = rag.run_graphrag(llm="LLM", query_text="q", return_cause=True)
+        self.assertEqual(out[0], "")
+        self.assertIn("vector: boom", out[2])
+        self.assertIn("text2cypher: bad cypher", out[2])
+
 
 class CompositeRetrieverTests(SimpleTestCase):
     def _composite(self, vc, t2c=None):

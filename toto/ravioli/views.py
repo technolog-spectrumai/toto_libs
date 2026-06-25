@@ -612,13 +612,13 @@ def search_status_view(request, run_id):
 
 
 # ---------------------------------------------------------------------------
-# Ask Steven — GraphRAG over the graph (Celery task wrapped in a workflow)
+# Ask AI — GraphRAG over the graph (Celery task wrapped in a workflow)
 # ---------------------------------------------------------------------------
 
 @login_required
 @superuser_required
 def graphrag_describe_view(request):
-    """Render the 'Ask Steven' tab (chat over the graph via GraphRAG)."""
+    """Render the 'Ask AI' tab (chat over the graph via GraphRAG)."""
     from .predefined_tasks import GRAPHRAG_DESCRIBE_PROMPT
 
     context = PageProcessor().decorate({"describe_prompt": GRAPHRAG_DESCRIBE_PROMPT}, request)

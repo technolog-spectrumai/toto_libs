@@ -28,12 +28,13 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("graph summary", "ctx")) as rg:
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("graph summary", "ctx", "")) as rg:
             out = ravioli_graphrag_describe({"data": {"question": "describe it", "top_k": 5}})
         self.assertEqual(out["data"]["answer"], "graph summary")
         self.assertEqual(out["data"]["context"], "ctx")
         self.assertEqual(rg.call_args.kwargs["query_text"], "describe it")
         self.assertEqual(rg.call_args.kwargs["top_k"], 5)
+        self.assertEqual(out["data"]["agent"], "Steven")  # openai provider → the openai agent
 
     def test_empty_question_uses_default_prompt(self):
         if not _SABBIA:
@@ -43,11 +44,11 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("x", "")) as rg:
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("x", "", "")) as rg:
             ravioli_graphrag_describe({"data": {}})
         self.assertEqual(rg.call_args.kwargs["query_text"], GRAPHRAG_DESCRIBE_PROMPT)
 
-    def test_no_answer_raises(self):
+    def test_no_answer_raises_with_cause(self):
         if not _SABBIA:
             self.skipTest("toto.sabbia not installed")
         from toto.ravioli.predefined_tasks import ravioli_graphrag_describe
@@ -55,9 +56,28 @@ class DescribeTaskTests(TestCase):
         self._steven()
         with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
              mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
-             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("", "")):
-            with self.assertRaises(RuntimeError):
+             mock.patch("toto.ravioli.rag.run_graphrag",
+                        return_value=("", "", "text2cypher: APIConnectionError")):
+            with self.assertRaisesRegex(RuntimeError, "text2cypher: APIConnectionError"):
                 ravioli_graphrag_describe({"data": {"question": "q"}})
+
+    @override_settings(GRAPHRAG_PROVIDER="ollama")
+    def test_provider_switch_selects_matching_agent(self):
+        if not _SABBIA:
+            self.skipTest("toto.sabbia not installed")
+        from toto.sabbia.models import Agent
+        from toto.ravioli.predefined_tasks import ravioli_graphrag_describe
+
+        self._steven()  # openai agent
+        Agent.objects.create(
+            name="Ollama Local", slug="ollama-local", endpoint_type=Agent.ENDPOINT_OLLAMA,
+            model_name="qwen3:1.7b", is_active=True,
+        )
+        with mock.patch("toto.ravioli.connection.is_enabled", return_value=True), \
+             mock.patch("toto.sabbia.graphrag_llm.build_llm", return_value="LLM"), \
+             mock.patch("toto.ravioli.rag.run_graphrag", return_value=("ans", "ctx", "")):
+            out = ravioli_graphrag_describe({"data": {"question": "q"}})
+        self.assertEqual(out["data"]["agent"], "Ollama Local")  # ollama provider → ollama agent
 
     def test_no_agent_raises(self):
         if not _SABBIA:

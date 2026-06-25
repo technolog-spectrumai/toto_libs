@@ -59,20 +59,24 @@ class CompositeRetriever(Retriever):
         super().__init__(driver, neo4j_database)
         self._vector_cypher = vector_cypher
         self._text2cypher = text2cypher
+        self.last_errors: list[str] = []  # per-call sub-retriever failures (for diagnostics)
 
     def get_search_results(self, query_text: str = "", top_k: int = 5, **kwargs) -> RawSearchResult:
         records = []
+        self.last_errors = []
         try:
             vc = self._vector_cypher.get_search_results(query_text=query_text, top_k=top_k)
             records.extend(vc.records)
         except Exception as exc:  # noqa: BLE001 — isolate vector failures
             logger.warning("GraphRAG vector retrieval failed: %s", exc)
+            self.last_errors.append(f"vector: {exc}")
         if self._text2cypher is not None:
             try:
                 t2c = self._text2cypher.get_search_results(query_text=query_text)
                 records.extend(t2c.records)
             except Exception as exc:  # noqa: BLE001 — isolate text2cypher failures
                 logger.warning("GraphRAG text2cypher retrieval failed: %s", exc)
+                self.last_errors.append(f"text2cypher: {exc}")
         return RawSearchResult(records=records, metadata={"__retriever": "CompositeRetriever"})
 
 
@@ -92,17 +96,25 @@ def build_retriever(driver, *, llm=None, text2cypher=True) -> CompositeRetriever
     return CompositeRetriever(driver, vector_cypher=vector_cypher, text2cypher=t2c)
 
 
-def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True) -> tuple[str, str]:
+def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True, return_cause=False):
     """Answer ``query_text`` grounded in the ravioli graph via neo4j-graphrag.
 
-    Returns ``(answer, context)``. Returns ``("", "")`` when RAVIOLI is disabled,
-    the query is empty, or any failure occurs — callers fall back to the plain
-    chat endpoint.
+    Returns ``(answer, context)`` — or ``(answer, context, cause)`` when
+    ``return_cause`` is True, where ``cause`` explains an empty answer (LLM
+    unreachable, sub-retriever errors, no matching data). Returns empty on any
+    failure (RAVIOLI disabled, empty query, exception) so chat callers fall back
+    to the plain endpoint; the explicit "Ask AI" task uses ``return_cause`` to
+    report *why* instead of a generic message.
     """
     from toto.ravioli.connection import Neo4jClient, is_enabled
 
-    if not is_enabled() or not (query_text or "").strip():
-        return "", ""
+    def _ret(answer="", context="", cause=""):
+        return (answer, context, cause) if return_cause else (answer, context)
+
+    if not is_enabled():
+        return _ret(cause="RAVIOLI_ENABLED is False — graph is unavailable.")
+    if not (query_text or "").strip():
+        return _ret(cause="empty query.")
 
     client = None
     try:
@@ -118,10 +130,16 @@ def run_graphrag(*, llm, query_text, top_k=5, text2cypher=True) -> tuple[str, st
         answer = (getattr(resp, "answer", "") or "").strip()
         ctx_items = getattr(getattr(resp, "retriever_result", None), "items", None) or []
         context = "\n".join(i.content for i in ctx_items if getattr(i, "content", ""))
-        return answer, context
+        if answer:
+            return _ret(answer, context)
+        cause = "; ".join(getattr(retriever, "last_errors", []) or []) or (
+            "retrieval returned no records and the model produced no answer "
+            "(the graph may have no data matching the question)."
+        )
+        return _ret("", context, cause)
     except Exception as exc:  # noqa: BLE001 — never break chat
         logger.warning("GraphRAG run failed: %s", exc)
-        return "", ""
+        return _ret(cause=f"{type(exc).__name__}: {exc}")
     finally:
         if client is not None:
             try:

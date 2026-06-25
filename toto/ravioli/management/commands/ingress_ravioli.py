@@ -99,7 +99,7 @@ class Command(IngressCommand):
             defaults={
                 "name": "Ravioli GraphRAG Describe",
                 "description": (
-                    "Ask Steven to describe / answer questions about the graph via "
+                    "Ask AI to describe / answer questions about the graph via "
                     "read-only GraphRAG (vector + Text2Cypher over Neo4j)."
                 ),
             },

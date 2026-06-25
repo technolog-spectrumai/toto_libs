@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{% trans "Ask Steven" %}{% endblock %}
+{% block title %}{% trans "Ask AI" %}{% endblock %}
 
 {% block content %}
 <style>[x-cloak]{display:none !important}</style>
@@ -26,9 +26,9 @@
     <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
       <div>
         <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          <i class="fa-solid fa-robot mr-2 text-2xl"></i>{% trans "Ask Steven" %}</h1>
+          <i class="fa-solid fa-robot mr-2 text-2xl"></i>{% trans "Ask AI" %}</h1>
         <p class="mt-1 text-sm opacity-60">
-          {% trans "Ask Steven about your graph — answers are grounded in the data via GraphRAG, run as a background workflow." %}</p>
+          {% trans "Ask AI about your graph — answers are grounded in the data via GraphRAG, run as a background workflow." %}</p>
       </div>
       {% include "ravioli/_tabs.html" with active_tab="describe" %}
     </div>

@@ -202,11 +202,12 @@ GRAPHRAG_DESCRIBE_PROMPT = (
 
 @register("ravioli_graphrag_describe")
 def ravioli_graphrag_describe(input_data: dict) -> dict:
-    """Answer a question about the graph with Steven via GraphRAG (Celery task).
+    """Answer a question about the graph via GraphRAG (Celery task, "Ask AI").
 
-    Builds the Sabbia OpenAI agent's LLM and runs the read-only neo4j-graphrag
-    pipeline (vector + Text2Cypher) over the graph. Raises on any failure so the
-    WorkflowRun is marked FAILED with a useful message.
+    Builds the selected Sabbia agent's LLM (provider per settings.GRAPHRAG_PROVIDER)
+    and runs the read-only neo4j-graphrag pipeline (vector + Text2Cypher) over the
+    graph. Raises on any failure — with the real cause — so the WorkflowRun is
+    marked FAILED with a useful message.
     """
     from django.apps import apps as django_apps
 
@@ -222,27 +223,39 @@ def ravioli_graphrag_describe(input_data: dict) -> dict:
     if not django_apps.is_installed("toto.sabbia"):
         raise RuntimeError("toto.sabbia is not installed — Steven is unavailable.")
 
+    from django.conf import settings
+
     from toto.sabbia.graphrag_llm import build_llm
     from toto.sabbia.models import Agent
 
+    # Single deploy switch (settings.GRAPHRAG_PROVIDER) selects the provider; pick
+    # the active Sabbia agent whose endpoint_type matches it (openai / ollama),
+    # falling back to any active agent.
+    provider = (getattr(settings, "GRAPHRAG_PROVIDER", "openai") or "openai").strip().lower()
+    endpoint_type = Agent.ENDPOINT_OLLAMA if provider == "ollama" else Agent.ENDPOINT_OPENAI
     agent = (
-        Agent.objects.filter(slug="steven", is_active=True).first()
+        Agent.objects.filter(endpoint_type=endpoint_type, is_active=True).order_by("name").first()
         or Agent.objects.filter(is_active=True).order_by("name").first()
     )
     if agent is None:
-        raise RuntimeError("No active Sabbia agent (Steven) is configured.")
+        raise RuntimeError(
+            f"No active Sabbia agent for GRAPHRAG_PROVIDER='{provider}' "
+            f"(endpoint_type={endpoint_type}) and no active fallback agent."
+        )
     llm = build_llm(agent)
     if llm is None:
-        raise RuntimeError("Could not build the LLM (missing OpenAI key / connector).")
+        raise RuntimeError(
+            f"Could not build the LLM for agent '{agent.name}' (missing API key / connector)."
+        )
 
     from toto.ravioli.rag import run_graphrag
 
-    answer, context = run_graphrag(
-        llm=llm, query_text=question, top_k=top_k, text2cypher=text2cypher
+    answer, context, cause = run_graphrag(
+        llm=llm, query_text=question, top_k=top_k, text2cypher=text2cypher, return_cause=True
     )
     if not answer:
         raise RuntimeError(
-            "GraphRAG produced no answer — the graph may be empty, embeddings off, "
-            "or the LLM call failed."
+            f"GraphRAG produced no answer (provider={provider}, agent={agent.name}): "
+            f"{cause or 'unknown cause'}"
         )
     return {"data": {"question": question, "answer": answer, "context": context, "agent": agent.name}}
