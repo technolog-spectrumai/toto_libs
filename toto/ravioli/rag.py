@@ -64,12 +64,13 @@ class CompositeRetriever(Retriever):
     def get_search_results(self, query_text: str = "", top_k: int = 5, **kwargs) -> RawSearchResult:
         records = []
         self.last_errors = []
-        try:
-            vc = self._vector_cypher.get_search_results(query_text=query_text, top_k=top_k)
-            records.extend(vc.records)
-        except Exception as exc:  # noqa: BLE001 — isolate vector failures
-            logger.warning("GraphRAG vector retrieval failed: %s", exc)
-            self.last_errors.append(f"vector: {exc}")
+        if self._vector_cypher is not None:
+            try:
+                vc = self._vector_cypher.get_search_results(query_text=query_text, top_k=top_k)
+                records.extend(vc.records)
+            except Exception as exc:  # noqa: BLE001 — isolate vector failures
+                logger.warning("GraphRAG vector retrieval failed: %s", exc)
+                self.last_errors.append(f"vector: {exc}")
         if self._text2cypher is not None:
             try:
                 t2c = self._text2cypher.get_search_results(query_text=query_text)
@@ -82,13 +83,23 @@ class CompositeRetriever(Retriever):
 
 def build_retriever(driver, *, llm=None, text2cypher=True) -> CompositeRetriever:
     """Compose the read retriever. ``llm`` (a neo4j-graphrag LLMInterface) is only
-    needed when ``text2cypher`` is on."""
-    vector_cypher = VectorCypherRetriever(
-        driver,
-        index_name=_index_name(),
-        retrieval_query=_RETRIEVAL_QUERY,
-        embedder=VicunaEmbedder(),
-    )
+    needed when ``text2cypher`` is on.
+
+    The vector sub-retriever is **best-effort**: ``VectorCypherRetriever`` validates
+    its index at construction, so when the index is missing/misconfigured (or
+    embeddings are off) we skip it and answer via Text2Cypher alone, rather than
+    letting a missing index abort the whole pipeline.
+    """
+    vector_cypher = None
+    try:
+        vector_cypher = VectorCypherRetriever(
+            driver,
+            index_name=_index_name(),
+            retrieval_query=_RETRIEVAL_QUERY,
+            embedder=VicunaEmbedder(),
+        )
+    except Exception as exc:  # noqa: BLE001 — no vector index / embeddings off → Text2Cypher only
+        logger.warning("GraphRAG vector retriever unavailable (%s) — using Text2Cypher only.", exc)
     t2c = None
     if text2cypher and llm is not None:
         # MVP: used directly, no read-only enforcement (see module docstring).

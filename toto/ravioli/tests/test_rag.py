@@ -112,3 +112,22 @@ class CompositeRetrieverTests(SimpleTestCase):
         vc.get_search_results.return_value = RawSearchResult(records=[_rec("v1")], metadata={})
         out = self._composite(vc, None).get_search_results(query_text="q")
         self.assertEqual([r["text"] for r in out.records], ["v1"])
+
+    def test_none_vector_uses_text2cypher_only(self):
+        # When the vector index is missing, vector_cypher is None — Text2Cypher carries it.
+        t2c = mock.Mock()
+        t2c.get_search_results.return_value = RawSearchResult(records=[_rec("t1")], metadata={})
+        out = self._composite(None, t2c).get_search_results(query_text="q")
+        self.assertEqual([r["text"] for r in out.records], ["t1"])
+
+
+class BuildRetrieverTests(SimpleTestCase):
+    def test_skips_vector_when_index_missing(self):
+        # VectorCypherRetriever validates its index at construction; a missing index
+        # must NOT abort the pipeline — fall back to Text2Cypher only.
+        with mock.patch("toto.ravioli.rag.VectorCypherRetriever",
+                        side_effect=Exception("No index with name toto_chunk_embeddings found")), \
+             mock.patch("toto.ravioli.rag.Text2CypherRetriever", return_value="T2C"):
+            r = rag.build_retriever(mock.MagicMock(), llm="LLM", text2cypher=True)
+        self.assertIsNone(r._vector_cypher)
+        self.assertEqual(r._text2cypher, "T2C")
