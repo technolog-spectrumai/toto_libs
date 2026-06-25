@@ -384,7 +384,7 @@ class AddEdgeViewTests(TestCase):
         self.assertEqual(resp.url, reverse("bento:node_detail", kwargs={"uid": "b"}))
 
     def test_node_detail_splits_relations_to_and_from(self):
-        node = {"uid": "n1", "display": "This", "category_name": "Idea", "category_slug": "idea",
+        node = {"uid": "n1", "id": "n1", "display": "This", "category_name": "Idea", "category_slug": "idea",
                 "color": "#fff", "properties": {"title": "This"}}
         out = {"id": "e1", "source": "n1", "target": "n2", "source_display": "This",
                "target_display": "Node Two", "edge_type_name": "Supports", "color": "#0ea5e9"}
@@ -451,6 +451,16 @@ class TableViewTests(TestCase):
         self.assertEqual(m.call_args.kwargs["q"], "x")
         self.assertEqual(m.call_args.kwargs["limit"], 25)
         self.assertEqual(m.call_args.kwargs["offset"], 0)
+
+    def test_node_list_links_use_id_for_synced_uuid_nodes(self):
+        # Synced nodes have no uid (only uuid → exposed as `id`); links must use it,
+        # otherwise they resolve to /nodes/None/ and 404.
+        rows = [{"uid": None, "id": "u-syn", "display": "Ada", "category_name": "Person",
+                 "category_slug": "person"}]
+        with patch.object(gs, "list_nodes", return_value=(rows, 1)):
+            resp = self.client.get(reverse("bento:node_list"))
+        self.assertContains(resp, "/nodes/u-syn/")
+        self.assertNotContains(resp, "/nodes/None/")
 
     def test_node_list_pagination_offset_and_per_page(self):
         with patch.object(gs, "list_nodes", return_value=([], 0)) as m:

@@ -215,7 +215,10 @@ def get_node(uid):
     _require_graph()
     with _client() as c:
         records = c.run_cypher(
-            "MATCH (n {uid: $uid}) RETURN n AS n, labels(n) AS labels LIMIT 1",
+            # Address by uid OR uuid: bento-created nodes carry `uid`, SQL-synced
+            # nodes only `uuid`. Without this, synced nodes 404 from every link.
+            "MATCH (n) WHERE n.uid = $uid OR n.uuid = $uid "
+            "RETURN n AS n, labels(n) AS labels LIMIT 1",
             {"uid": uid},
         )
     if not records:
@@ -240,7 +243,7 @@ def list_nodes(cat_slug=None, q=None, limit=25, offset=0):
         total = c.run_cypher(f"MATCH (n) WHERE {where} RETURN count(n) AS total", params)[0]["total"]
         records = c.run_cypher(
             f"MATCH (n) WHERE {where} RETURN n AS n, labels(n) AS labels "
-            "ORDER BY n.uid SKIP $offset LIMIT $limit",
+            "ORDER BY coalesce(n.uid, n.uuid) SKIP $offset LIMIT $limit",
             params,
         )
     rows = [_serialize_node(dict(r["n"]), list(r["labels"])) for r in records]
@@ -274,21 +277,43 @@ def update_node(uid, props):
     if not cat:
         raise NotFound(f"Node '{uid}' has no known category.")
     declared, extra = _split_props(cat.property_schema, props)
-    klass = registry.node_class_for(cat)
+    real_uid = current["properties"].get("uid")
 
-    def _op():
-        node = klass.nodes.get_or_none(uid=uid)
-        if node is None:
-            raise NotFound(f"Node '{uid}' not found.")
-        for key, value in declared.items():
-            setattr(node, key, value)
+    if real_uid:
+        klass = registry.node_class_for(cat)
+
+        def _op():
+            node = klass.nodes.get_or_none(uid=real_uid)
+            if node is None:
+                raise NotFound(f"Node '{uid}' not found.")
+            for key, value in declared.items():
+                setattr(node, key, value)
+            if extra:
+                merged = dict(node.extra or {})
+                merged.update(extra)
+                node.extra = merged
+            node.save()
+
+        _run_neomodel(_op)
+    else:
+        # SQL-synced node: only has `uuid`, so it isn't neomodel-addressable by uid.
+        # SET the coerced properties via Cypher (matched by uid OR uuid).
+        schema_index = _schema_index(cat.property_schema)
+        set_props = {
+            key: _to_cypher_value(schema_index.get(key, {}).get("type"), value)
+            for key, value in declared.items()
+        }
         if extra:
-            merged = dict(node.extra or {})
-            merged.update(extra)
-            node.extra = merged
-        node.save()
+            existing = current["properties"].get("extra")
+            existing = existing if isinstance(existing, dict) else {}
+            set_props["extra"] = json.dumps({**existing, **extra})
+        if set_props:
+            with _client() as c:
+                c.run_cypher(
+                    "MATCH (n) WHERE n.uid = $id OR n.uuid = $id SET n += $props",
+                    {"id": uid, "props": set_props},
+                )
 
-    _run_neomodel(_op)
     return get_node(uid)
 
 
@@ -303,7 +328,10 @@ def delete_nodes(uids):
     if not uids:
         return 0
     with _client() as c:
-        c.run_cypher("MATCH (n) WHERE n.uid IN $uids DETACH DELETE n", {"uids": uids})
+        c.run_cypher(
+            "MATCH (n) WHERE n.uid IN $uids OR n.uuid IN $uids DETACH DELETE n",
+            {"uids": uids},
+        )
     return len(uids)
 
 
@@ -355,10 +383,11 @@ def create_edge(et_slug, from_uid, to_uid, props=None):
     payload = _edge_payload(et, props or {})
     with _client() as c:
         records = c.run_cypher(
-            f"MATCH (a {{uid: $from}}), (b {{uid: $to}}) "
+            f"MATCH (a), (b) WHERE (a.uid = $from OR a.uuid = $from) "
+            f"AND (b.uid = $to OR b.uuid = $to) "
             f"CREATE (a)-[r:{et.rel_type} $props]->(b) "
-            "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props",
+            "RETURN elementId(r) AS id, type(r) AS type, coalesce(a.uid, a.uuid) AS start,"
+            "coalesce(b.uid, b.uuid) AS end, properties(r) AS props",
             {"from": from_uid, "to": to_uid, "props": payload},
         )
     if not records:
@@ -482,7 +511,7 @@ def list_edges(node_uid=None, et_slug=None, q=None, limit=25, offset=0):
     q = (q or "").strip()
     where = (
         "any(l IN labels(a) WHERE l IN $labels) AND any(l IN labels(b) WHERE l IN $labels) "
-        "AND ($node = '' OR a.uid = $node OR b.uid = $node) "
+        "AND ($node = '' OR a.uid = $node OR a.uuid = $node OR b.uid = $node OR b.uuid = $node) "
         "AND ($rel = '' OR type(r) = $rel) "
         "AND ($q = '' OR any(k IN keys(r) WHERE toLower(toString(r[k])) CONTAINS toLower($q)))"
     )
@@ -496,8 +525,8 @@ def list_edges(node_uid=None, et_slug=None, q=None, limit=25, offset=0):
         )[0]["total"]
         records = c.run_cypher(
             f"MATCH (a)-[r]->(b) WHERE {where} "
-            "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props, "
+            "RETURN elementId(r) AS id, type(r) AS type, coalesce(a.uid, a.uuid) AS start,"
+            "coalesce(b.uid, b.uuid) AS end, properties(r) AS props, "
             "properties(a) AS aprops, properties(b) AS bprops "
             "ORDER BY id SKIP $offset LIMIT $limit",
             params,
@@ -510,8 +539,8 @@ def get_edge(edge_id):
     with _client() as c:
         records = c.run_cypher(
             "MATCH (a)-[r]->(b) WHERE elementId(r) = $id "
-            "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props, "
+            "RETURN elementId(r) AS id, type(r) AS type, coalesce(a.uid, a.uuid) AS start,"
+            "coalesce(b.uid, b.uuid) AS end, properties(r) AS props, "
             "properties(a) AS aprops, properties(b) AS bprops",
             {"id": edge_id},
         )
@@ -535,8 +564,8 @@ def update_edge(edge_id, props):
         payload = _edge_payload(et, props)
         records = c.run_cypher(
             "MATCH (a)-[r]->(b) WHERE elementId(r) = $id SET r += $props "
-            "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props",
+            "RETURN elementId(r) AS id, type(r) AS type, coalesce(a.uid, a.uuid) AS start,"
+            "coalesce(b.uid, b.uuid) AS end, properties(r) AS props",
             {"id": edge_id, "props": payload},
         )
     return _serialize_edge(records[0])
@@ -564,7 +593,7 @@ def delete_edges(edge_ids):
 def _graph_payload(node_records, edge_records):
     nodes = [
         {
-            "id": n["uid"], "label": n["display"], "category": n["category_slug"],
+            "id": n.get("id") or n["uid"], "label": n["display"], "category": n["category_slug"],
             "properties": n["properties"],
         }
         for n in node_records
@@ -599,16 +628,17 @@ def full_graph(cat_slug=None, et_slug=None, q=None, limit=200):
     """Bounded whole-graph view honoring the same filters as the lists."""
     _require_graph()
     node_rows, _ = list_nodes(cat_slug=cat_slug, q=q, limit=limit, offset=0)
-    uids = [n["uid"] for n in node_rows]
+    uids = [n["id"] for n in node_rows if n.get("id")]
     if not uids:
         return {"nodes": [], "edges": []}
     rel = BentoEdgeType.objects.get(slug=et_slug).rel_type if et_slug else ""
     with _client() as c:
         edge_recs = c.run_cypher(
-            "MATCH (a)-[r]->(b) WHERE a.uid IN $uids AND b.uid IN $uids "
+            "MATCH (a)-[r]->(b) "
+            "WHERE (a.uid IN $uids OR a.uuid IN $uids) AND (b.uid IN $uids OR b.uuid IN $uids) "
             "AND ($rel = '' OR type(r) = $rel) "
-            "RETURN elementId(r) AS id, type(r) AS type, a.uid AS start, "
-            "b.uid AS end, properties(r) AS props",
+            "RETURN elementId(r) AS id, type(r) AS type, coalesce(a.uid, a.uuid) AS start,"
+            "coalesce(b.uid, b.uuid) AS end, properties(r) AS props",
             {"uids": uids, "rel": rel},
         )
     edges = [_serialize_edge(r) for r in edge_recs]

@@ -71,8 +71,8 @@
         </div>
         <form method="post" action="{% url 'bento:edge_create' %}" class="space-y-3">
           {% csrf_token %}
-          <input type="hidden" name="from_uid" value="{{ node.uid }}">
-          <input type="hidden" name="origin" value="{{ node.uid }}">
+          <input type="hidden" name="from_uid" value="{{ node.id }}">
+          <input type="hidden" name="origin" value="{{ node.id }}">
           {% include "bento/_edge_modal_fields.html" with pick_field="to_uid" pick_label=link_to_label %}
         </form>
       </div>
@@ -90,8 +90,8 @@
         </div>
         <form method="post" action="{% url 'bento:edge_create' %}" class="space-y-3">
           {% csrf_token %}
-          <input type="hidden" name="to_uid" value="{{ node.uid }}">
-          <input type="hidden" name="origin" value="{{ node.uid }}">
+          <input type="hidden" name="to_uid" value="{{ node.id }}">
+          <input type="hidden" name="origin" value="{{ node.id }}">
           {% include "bento/_edge_modal_fields.html" with pick_field="from_uid" pick_label=link_from_label %}
         </form>
       </div>
@@ -109,7 +109,7 @@
           try {
             const r = await fetch("{% url 'bento:api_node_list' %}?per_page=500", { headers: { "Accept": "application/json" } });
             const d = await r.json();
-            this.nodes = (d.nodes || []).filter(n => n.uid !== "{{ node.uid }}");
+            this.nodes = (d.nodes || []).filter(n => n.id !== "{{ node.id }}");
           } catch (e) { this.nodes = []; }
         },
         options() {

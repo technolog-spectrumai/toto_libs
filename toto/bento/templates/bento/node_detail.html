@@ -13,11 +13,11 @@
           {{ node.category_name }}
         </span>
         <h2 class="mt-2 text-2xl font-bold">{{ node.display }}</h2>
-        <p class="mt-1 text-xs opacity-60">uid: {{ node.uid }}</p>
+        <p class="mt-1 text-xs opacity-60">id: {{ node.id }}</p>
       </div>
       <div class="flex gap-2">
-        <a href="{% url 'bento:node_update' node.uid %}" class="rounded-lg border border-current/20 px-3 py-2 text-sm hover:opacity-80"><i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
-        <a href="{% url 'bento:node_delete' node.uid %}" class="rounded-lg border border-warn-light px-3 py-2 text-sm text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
+        <a href="{% url 'bento:node_update' node.id %}" class="rounded-lg border border-current/20 px-3 py-2 text-sm hover:opacity-80"><i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+        <a href="{% url 'bento:node_delete' node.id %}" class="rounded-lg border border-warn-light px-3 py-2 text-sm text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>
       </div>
     </div>
 
