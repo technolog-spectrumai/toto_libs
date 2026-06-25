@@ -3,8 +3,11 @@
 import json
 from unittest.mock import MagicMock, patch
 
+from django.contrib.auth import get_user_model
 from django.test import RequestFactory, TestCase
 from django.urls import reverse
+
+User = get_user_model()
 
 
 # ---------------------------------------------------------------------------
@@ -137,6 +140,13 @@ class DeepSearchTests(TestCase):
 
 class SearchViewDirectTests(TestCase):
 
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.create(site_name="T", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_superuser("root", "r@example.com", "pw")
+        self.client.force_login(self.user)
+
     @patch("toto.ravioli.services.search._client")
     def test_empty_query_no_search_fired(self, mock_client):
         response = self.client.get("/ravioli/search/?exec=direct")
@@ -176,30 +186,80 @@ class SearchViewDirectTests(TestCase):
 
 class SearchStatusViewTests(TestCase):
 
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.create(site_name="T", author="T", publication_year=2024, active=True)
+        self.user = User.objects.create_superuser("root", "r@example.com", "pw")
+        self.client.force_login(self.user)
+
+    def _make_run(self, *, status, output=None, error=""):
+        from toto.workflows.models import Workflow, WorkflowNodeRun, WorkflowRun
+
+        wf = Workflow.objects.create(slug="ravioli-graph-search", name="s")
+        run = WorkflowRun.objects.create(workflow=wf, status=status)
+        node = wf.nodes.create(node_type="predefined_task", label="s", task_name="ravioli_graph_search")
+        WorkflowNodeRun.objects.create(
+            workflow_run=run, node=node, status=WorkflowNodeRun.COMPLETED,
+            output_data=output or {}, error=error,
+        )
+        return run
+
     def test_missing_run_id_returns_404(self):
-        response = self.client.get("/ravioli/search/status/nonexistent-id/")
+        response = self.client.get(reverse("ravioli:search_status", args=[999999]))
         self.assertEqual(response.status_code, 404)
 
     def test_done_returns_results(self):
-        from django.core.cache import cache
-        run_id = "test-run-123"
-        results = [{"labels": ["Chunk"], "props": {"text": "hi"}}]
-        cache.set(f"search:{run_id}:status", "done")
-        cache.set(f"search:{run_id}:results", results)
+        from toto.workflows.models import WorkflowRun
 
-        response = self.client.get(f"/ravioli/search/status/{run_id}/")
+        run = self._make_run(status=WorkflowRun.COMPLETED, output={"data": {
+            "results": [{"labels": ["Chunk"], "props": {"text": "hi"}}],
+            "requested_mode": "keyword", "effective_mode": "keyword",
+        }})
+        response = self.client.get(reverse("ravioli:search_status", args=[run.pk]))
         self.assertEqual(response.status_code, 200)
         data = json.loads(response.content)
         self.assertEqual(data["status"], "done")
         self.assertEqual(len(data["results"]), 1)
 
     def test_error_returns_error_message(self):
-        from django.core.cache import cache
-        run_id = "test-run-error"
-        cache.set(f"search:{run_id}:status", "error")
-        cache.set(f"search:{run_id}:error", "Neo4j is down")
+        from toto.workflows.models import WorkflowRun
 
-        response = self.client.get(f"/ravioli/search/status/{run_id}/")
+        run = self._make_run(status=WorkflowRun.FAILED, error="Neo4j is down")
+        response = self.client.get(reverse("ravioli:search_status", args=[run.pk]))
         data = json.loads(response.content)
         self.assertEqual(data["status"], "error")
         self.assertIn("Neo4j", data["error"])
+
+
+# ---------------------------------------------------------------------------
+# Security: ravioli/bento require login (no Cypher/graph access for anon users)
+# ---------------------------------------------------------------------------
+
+class AuthGateTests(TestCase):
+    """Unauthenticated users must be redirected to login for every ravioli/bento
+    endpoint that can run Cypher or touch the graph."""
+
+    def test_ravioli_views_block_anonymous(self):
+        for name, args in [
+            ("ravioli:query_unified", []),
+            ("ravioli:search", []),
+            ("ravioli:query_graph_data", [1]),
+            ("ravioli:query_cached_data", [1]),
+            ("ravioli:search_status", [1]),
+            ("ravioli:graph_analysis", []),
+            ("ravioli:history", []),
+        ]:
+            res = self.client.get(reverse(name, args=args))
+            self.assertEqual(res.status_code, 302, f"{name} must redirect anon")
+            self.assertIn("next=", res.url, f"{name} must redirect to login")
+
+    def test_run_cypher_blocks_anonymous(self):
+        res = self.client.post(reverse("ravioli:run_cypher_query", args=[1]))
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("next=", res.url)
+
+    def test_bento_blocks_anonymous(self):
+        res = self.client.get(reverse("bento:node_list"))
+        self.assertEqual(res.status_code, 302, "bento node_list must redirect anon")
+        self.assertIn("next=", res.url)

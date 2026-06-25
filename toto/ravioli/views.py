@@ -18,6 +18,7 @@ def superuser_required(view_func):
     return user_passes_test(lambda u: u.is_active and u.is_superuser)(view_func)
 
 
+@superuser_required
 def query_unified_view(request):
     from django.db.models import Count, Q
 
@@ -112,6 +113,7 @@ def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun
     return run
 
 
+@superuser_required
 def query_graph_data(request, query_id):
     from django.utils import timezone
 
@@ -169,6 +171,7 @@ def query_graph_data(request, query_id):
 
 
 @require_POST
+@superuser_required
 def run_cypher_query_view(request, query_id):
     selected_query = get_object_or_404(CypherQuery, pk=query_id)
 
@@ -184,6 +187,7 @@ def run_cypher_query_view(request, query_id):
 
 
 @require_GET
+@superuser_required
 def query_cached_data(request, query_id):
     from .models import CypherQueryResult
 
@@ -462,6 +466,7 @@ def graph_analysis_status_view(request, run_id):
     })
 
 
+@login_required
 def search_view(request):
     from django.conf import settings as _settings
 
@@ -570,6 +575,7 @@ def search_view(request):
 
 
 @require_GET
+@login_required
 def search_status_view(request, run_id):
     """Poll a ravioli-graph-search WorkflowRun for status + results."""
     from toto.workflows.models import WorkflowRun

@@ -325,7 +325,8 @@ class SearchStatusMetadataTests(TestCase):
         from toto.ravioli.views import search_status_view
         rf = RequestFactory()
         request = rf.get(f"/ravioli/search/status/{run_id}/")
-        request.user = AnonymousUser()
+        # search_status_view now requires login.
+        request.user = SimpleNamespace(is_authenticated=True, is_active=True, is_staff=True)
         return search_status_view(request, run_id=run_id)
 
     def test_status_done_includes_metadata(self):
@@ -387,7 +388,10 @@ class SearchViewContextTests(SimpleTestCase):
         from toto.ravioli.views import search_view
         rf = RequestFactory()
         request = rf.get(f"/ravioli/search/?{qs}")
-        request.user = user or AnonymousUser()
+        # search_view now requires login; default to an authenticated non-staff user.
+        request.user = user or SimpleNamespace(
+            is_authenticated=True, is_active=True, is_staff=False, is_superuser=False
+        )
         captured = {}
 
         def fake_decorate(ctx, req):
