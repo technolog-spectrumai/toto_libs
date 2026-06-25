@@ -173,7 +173,7 @@ class Command(IngressCommand):
                 "neo4j_label": "Concept",
                 "description": "A concept or idea that notes can reference.",
                 "property_schema": [
-                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "name", "type": "string", "required": True, "label": "Name"},
                     {"name": "body", "type": "text", "required": False, "label": "Body"},
                 ],
             },
@@ -182,7 +182,7 @@ class Command(IngressCommand):
                 "neo4j_label": "Note",
                 "description": "A note that may reference one or more concepts.",
                 "property_schema": [
-                    {"name": "title", "type": "string", "required": True, "label": "Title"},
+                    {"name": "name", "type": "string", "required": True, "label": "Name"},
                     {"name": "body", "type": "text", "required": False, "label": "Body"},
                 ],
             },
@@ -273,6 +273,9 @@ class Command(IngressCommand):
                         neo4j_label=label,
                         property_schema=schema,
                         description=f"Synced from {node.get('model', '')}.",
+                        # SQL-sync infrastructure types are internal by default — kept
+                        # out of the Ingestor's LLM category set (toggle in the UI).
+                        internal=True,
                     )
                     new_cats += 1
                 cat_by_label[label] = cat

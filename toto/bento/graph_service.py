@@ -155,11 +155,19 @@ def _to_cypher_value(ftype, value):
 
 
 def _display_name(props):
-    for key in ("name", "title", "label"):
-        if props.get(key):
-            return str(props[key])
-    uid = props.get("uid") or ""
-    return uid[:8] or "node"
+    """Human-readable node name: the configured display properties joined by ", ".
+
+    Keys come from ``settings.BENTO_DISPLAY_NAME_PROPERTIES`` (default name/title);
+    falls back to a short uid/uuid so synced (uuid-only) nodes still read sensibly.
+    """
+    from django.conf import settings
+
+    keys = getattr(settings, "BENTO_DISPLAY_NAME_PROPERTIES", ["name", "title"])
+    parts = [str(props[k]) for k in keys if props.get(k) not in (None, "")]
+    if parts:
+        return ", ".join(parts)
+    ident = props.get("uid") or props.get("uuid") or ""
+    return ident[:8] or "node"
 
 
 def _serialize_node(props, labels):
@@ -174,6 +182,8 @@ def _serialize_node(props, labels):
     category = _labels_map().get(label)
     return {
         "uid": props.get("uid"),
+        # Stable identifier for display — synced nodes carry only `uuid`, not `uid`.
+        "id": props.get("uid") or props.get("uuid"),
         "label": label,
         "category_slug": category.slug if category else None,
         "category_name": category.name if category else label,

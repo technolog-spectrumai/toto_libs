@@ -30,19 +30,21 @@ def _style(field):
 class BentoCategoryForm(forms.ModelForm):
     class Meta:
         model = BentoCategory
-        fields = ["name", "slug", "neo4j_label", "description", "property_schema"]
+        fields = ["name", "slug", "neo4j_label", "description", "property_schema", "internal"]
         widgets = {
             "name": forms.TextInput(attrs={"placeholder": "Idea"}),
             "slug": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
             "neo4j_label": forms.TextInput(attrs={"placeholder": "auto-filled from name (editable)"}),
             "description": forms.Textarea(attrs={"rows": 3}),
             "property_schema": forms.Textarea(attrs={"rows": 10}),
+            "internal": forms.CheckboxInput(attrs={"class": "size-4 cursor-pointer"}),
         }
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        for field in self.fields.values():
-            _style(field)
+        for name, field in self.fields.items():
+            if name != "internal":  # don't apply text-input styling to the checkbox
+                _style(field)
 
 
 class BentoEdgeTypeForm(forms.ModelForm):

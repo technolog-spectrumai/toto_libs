@@ -65,6 +65,11 @@ class BentoSeedGraphTypesTests(TestCase):
         _run("ingress_bento")  # non-full — the types still get seeded
         concept = BentoCategory.objects.get(slug="concept")
         note = BentoCategory.objects.get(slug="note")
+        # concept/note declare `name` (the identifier) so the ingestor stores it
+        # top-level (not in `extra`); both are LLM-visible (not internal).
+        self.assertEqual([f["name"] for f in concept.property_schema], ["name", "body"])
+        self.assertFalse(concept.internal)
+        self.assertFalse(note.internal)
         et = BentoEdgeType.objects.get(slug="references")
         self.assertEqual(et.rel_type, "REFERENCES")
         # "references" links note → concept.

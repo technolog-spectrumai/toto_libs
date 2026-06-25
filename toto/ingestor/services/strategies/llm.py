@@ -18,10 +18,18 @@ logger = logging.getLogger(__name__)
 
 
 def _bento_schema():
-    """Return (categories, edge_types) metadata for the prompt + slug lookups."""
+    """Return (categories, edge_types, searchable) for the prompt + slug lookups.
+
+    Only NON-internal categories are offered to the LLM. ``searchable`` maps each
+    category slug to the property the ingestor should populate as its identifier
+    (so e.g. a 'kanban-doc-section' node gets its required ``title``, not ``name``).
+    """
+    from toto.bento.graph_service import searchable_property_names
     from toto.bento.models import BentoCategory, BentoEdgeType
 
-    categories = {c.slug: c.name for c in BentoCategory.objects.all()}
+    cats = list(BentoCategory.objects.filter(internal=False))
+    categories = {c.slug: c.name for c in cats}
+    searchable = {c.slug: searchable_property_names(c)[0] for c in cats}
     edge_types = {}
     for et in BentoEdgeType.objects.prefetch_related("allowed_sources", "allowed_targets"):
         edge_types[et.slug] = {
@@ -30,7 +38,7 @@ def _bento_schema():
             "sources": list(et.allowed_sources.values_list("slug", flat=True)),
             "targets": list(et.allowed_targets.values_list("slug", flat=True)),
         }
-    return categories, edge_types
+    return categories, edge_types, searchable
 
 
 def _prompt(text, categories, edge_types, existing_nodes=None):
@@ -66,13 +74,16 @@ def _prompt(text, categories, edge_types, existing_nodes=None):
     )
 
 
-def _normalize(raw, categories, edge_types, existing_by_uid=None):
+def _normalize(raw, categories, edge_types, existing_by_uid=None, searchable=None):
     """Map the LLM JSON to the proposal contract; drop entries with unknown slugs.
 
     A node carrying a valid ``existing_uid`` (one offered in the prompt) becomes an
-    ``existing`` node linked to that graph uid; otherwise it's a new node.
+    ``existing`` node linked to that graph uid; otherwise it's a new node, whose
+    category-identifier property (``searchable``) is filled from the display name so
+    required fields (e.g. ``title``) aren't left empty.
     """
     existing_by_uid = existing_by_uid or {}
+    searchable = searchable or {}
     nodes, valid_temp = [], set()
     for i, n in enumerate(raw.get("nodes") or [], start=1):
         temp_id = n.get("temp_id") or f"n{i}"
@@ -95,11 +106,17 @@ def _normalize(raw, categories, edge_types, existing_by_uid=None):
         if slug not in categories:
             continue
         valid_temp.add(temp_id)
-        display = n.get("display") or (n.get("properties") or {}).get("name") or temp_id
+        props = dict(n.get("properties") or {})
+        display = n.get("display") or props.get("name") or props.get("title") or temp_id
+        # Ensure the category's identifier property is populated, so required
+        # fields aren't left empty (the cause of "'title' is required" errors).
+        ident = searchable.get(slug) or "name"
+        if not props.get(ident):
+            props[ident] = display
         nodes.append({
             "temp_id": temp_id, "kind": "new", "category_slug": slug,
             "category_name": categories[slug], "uid": None, "display": display,
-            "properties": n.get("properties") or {"name": display},
+            "properties": props,
             "evidence": [], "match": None, "duplicate_warning": False,
             "merge_into_uid": None, "ner_label": None, "confidence": 0.6,
             "approval": "pending", "validation": {},
@@ -144,7 +161,7 @@ class LLMStrategy(IngestStrategy):
             raise RuntimeError("OPENAI_API_KEY is not set for the 'llm' ingest strategy.")
         from openai import OpenAI
 
-        categories, edge_types = _bento_schema()
+        categories, edge_types, searchable = _bento_schema()
         existing_nodes = existing_nodes_in_text(text) if include_existing_nodes else []
         existing_by_uid = {n["uid"]: n for n in existing_nodes}
         model = getattr(settings, "INGESTOR_LLM_MODEL", "") or "gpt-4.1-mini"
@@ -159,4 +176,4 @@ class LLMStrategy(IngestStrategy):
             ],
         )
         raw = json.loads(resp.choices[0].message.content or "{}")
-        return _normalize(raw, categories, edge_types, existing_by_uid)
+        return _normalize(raw, categories, edge_types, existing_by_uid, searchable)

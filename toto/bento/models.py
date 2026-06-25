@@ -156,6 +156,11 @@ class BentoCategory(DomainEntity):
         help_text="Optional property holding alternate surface forms for a node "
         "(a JSON list or a comma-separated string). Also fed to detection.",
     )
+    internal = models.BooleanField(
+        default=False,
+        help_text="Hide this category from the Ingestor's LLM category set "
+        "(e.g. SQL-sync infrastructure types). Does not affect manual editing.",
+    )
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

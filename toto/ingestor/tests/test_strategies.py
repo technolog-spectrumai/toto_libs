@@ -123,6 +123,40 @@ class LLMExistingNodesTests(SimpleTestCase):
         self.assertEqual(out["nodes"][0]["kind"], "new")
 
 
+class LLMSearchablePropertyTests(SimpleTestCase):
+    def test_fills_category_identifier_property(self):
+        # 'kanban-doc-section' requires 'title'; the LLM returned only a display →
+        # the identifier property is filled so the required field isn't left empty.
+        raw = {"nodes": [{"temp_id": "n1", "category_slug": "kanban-doc-section",
+                          "display": "Computer vision"}], "relationships": []}
+        out = llm_mod._normalize(
+            raw, {"kanban-doc-section": "Kanban Doc Section"}, {}, None,
+            {"kanban-doc-section": "title"},
+        )
+        node = out["nodes"][0]
+        self.assertEqual(node["kind"], "new")
+        self.assertEqual(node["properties"]["title"], "Computer vision")
+        self.assertNotIn("name", node["properties"])  # no buried 'name'
+
+
+class LLMBentoSchemaTests(TestCase):
+    def test_excludes_internal_and_maps_searchable(self):
+        from toto.bento.models import BentoCategory
+
+        BentoCategory.objects.create(
+            name="Concept", slug="concept", neo4j_label="Concept",
+            property_schema=[{"name": "name", "type": "string", "required": True}],
+        )
+        BentoCategory.objects.create(
+            name="Kanban Doc Section", slug="kanban-doc-section", neo4j_label="KanbanDocSection",
+            internal=True, property_schema=[{"name": "title", "type": "string", "required": True}],
+        )
+        categories, _edges, searchable = llm_mod._bento_schema()
+        self.assertIn("concept", categories)
+        self.assertNotIn("kanban-doc-section", categories)  # internal hidden from the LLM
+        self.assertEqual(searchable["concept"], "name")
+
+
 class DeterministicRunTests(TestCase):
     def test_persists_review_proposal(self):
         with mock.patch(

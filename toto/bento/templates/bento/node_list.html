@@ -71,6 +71,7 @@
              :class="darkMode ? 'border-white/10' : 'border-black/10'">
         <tr>
           <th class="w-10 px-3 py-2"><input type="checkbox" @change="selected = $event.target.checked ? allUids() : []" :checked="selected.length === {{ nodes|length }} && {{ nodes|length }} > 0"></th>
+          <th class="w-48 px-3 py-2">{% trans "ID" %}</th>
           <th class="px-3 py-2">{% trans "Name" %}</th>
           <th class="w-40 px-3 py-2">{% trans "Type" %}</th>
           <th class="w-24 px-3 py-2 text-right">{% trans "Actions" %}</th>
@@ -80,6 +81,7 @@
         {% for node in nodes %}
           <tr class="hover:bg-current/5">
             <td class="px-3 py-2"><input type="checkbox" name="uids" value="{{ node.uid }}" x-model="selected"></td>
+            <td class="truncate px-3 py-2 font-mono text-xs opacity-70" title="{{ node.id }}">{{ node.id }}</td>
             <td class="truncate px-3 py-2"><a href="{% url 'bento:node_detail' node.uid %}" class="font-medium hover:underline">{{ node.display }}</a></td>
             <td class="truncate px-3 py-2 opacity-70">{{ node.category_name }}</td>
             <td class="px-3 py-2 text-right">
@@ -88,7 +90,7 @@
             </td>
           </tr>
         {% empty %}
-          <tr><td colspan="4" class="px-3 py-10 text-center opacity-70">{% trans "No nodes found." %}</td></tr>
+          <tr><td colspan="5" class="px-3 py-10 text-center opacity-70">{% trans "No nodes found." %}</td></tr>
         {% endfor %}
       </tbody>
     </table>
@@ -100,6 +102,7 @@
           <input type="checkbox" name="uids" value="{{ node.uid }}" x-model="selected" class="shrink-0">
           <a href="{% url 'bento:node_detail' node.uid %}" class="min-w-0 grow">
             <span class="block truncate font-medium">{{ node.display }}</span>
+            <span class="block truncate font-mono text-[11px] opacity-50">{{ node.id }}</span>
             <span class="text-xs opacity-65">{{ node.category_name }}</span>
           </a>
           <a href="{% url 'bento:node_update' node.uid %}" class="shrink-0 rounded border border-current/20 px-2 py-1"><i class="fa-solid fa-pen"></i></a>

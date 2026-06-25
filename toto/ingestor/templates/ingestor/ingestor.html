@@ -115,11 +115,12 @@
           <div id="ingest-cy" class="h-[520px] w-full"></div>
           <div class="flex flex-wrap items-center gap-3 px-4 py-2 text-[11px] opacity-70 border-t"
             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>{% trans "new / approved" %}</span>
-            <span><i class="fa-solid fa-circle mr-1 text-blue-400"></i>{% trans "proposed (pending)" %}</span>
-            <span><i class="fa-solid fa-circle mr-1 opacity-50"></i>{% trans "existing" %}</span>
-            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>{% trans "validation error" %}</span>
-            <span><i class="fa-solid fa-circle mr-1" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>{% trans "rejected" %}</span>
+            {# swatches use the exact graph node colors (statusColor) so legend ↔ graph match #}
+            <span><i class="fa-solid fa-circle mr-1" :style="darkMode, 'color:'+statusColor('create')"></i>{% trans "new / approved" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :style="darkMode, 'color:'+statusColor('new')"></i>{% trans "proposed (pending)" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :style="darkMode, 'color:'+statusColor('context')"></i>{% trans "existing" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :style="darkMode, 'color:'+statusColor('error')"></i>{% trans "validation error" %}</span>
+            <span><i class="fa-solid fa-circle mr-1" :style="darkMode, 'color:'+statusColor('delete')"></i>{% trans "rejected" %}</span>
           </div>
         </div>
 

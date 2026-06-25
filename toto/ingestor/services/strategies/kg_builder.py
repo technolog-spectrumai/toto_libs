@@ -90,6 +90,6 @@ class KGBuilderStrategy(IngestStrategy):
         """Constrain extraction to the Bento node labels + relationship types."""
         from toto.bento.models import BentoCategory, BentoEdgeType
 
-        entities = [c.neo4j_label for c in BentoCategory.objects.all() if c.neo4j_label]
+        entities = [c.neo4j_label for c in BentoCategory.objects.filter(internal=False) if c.neo4j_label]
         relations = [e.rel_type for e in BentoEdgeType.objects.all() if e.rel_type]
         return entities, relations

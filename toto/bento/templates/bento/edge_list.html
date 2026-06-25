@@ -79,9 +79,15 @@
         {% for edge in edges %}
           <tr class="hover:bg-current/5">
             <td class="px-3 py-2"><input type="checkbox" name="ids" value="{{ edge.id }}" x-model="selected"></td>
-            <td class="truncate px-3 py-2"><a href="{% url 'bento:node_detail' edge.source %}" class="hover:underline">{{ edge.source_display }}</a></td>
+            <td class="truncate px-3 py-2">
+              <a href="{% url 'bento:node_detail' edge.source %}" class="hover:underline">{{ edge.source_display }}</a>
+              <span class="block truncate font-mono text-[11px] opacity-50">{{ edge.source }}</span>
+            </td>
             <td class="truncate px-3 py-2 font-medium" :class="darkMode ? 'text-link-dark' : 'text-link-light'">{{ edge.edge_type_name }}</td>
-            <td class="truncate px-3 py-2"><a href="{% url 'bento:node_detail' edge.target %}" class="hover:underline">{{ edge.target_display }}</a></td>
+            <td class="truncate px-3 py-2">
+              <a href="{% url 'bento:node_detail' edge.target %}" class="hover:underline">{{ edge.target_display }}</a>
+              <span class="block truncate font-mono text-[11px] opacity-50">{{ edge.target }}</span>
+            </td>
             <td class="px-3 py-2 text-right">
               <a href="{% url 'bento:edge_update' edge.id %}" class="rounded border border-current/20 px-2 py-1 hover:opacity-80"><i class="fa-solid fa-pen"></i></a>
               <a href="{% url 'bento:edge_delete' edge.id %}" class="rounded border border-warn-light px-2 py-1 text-warn-light hover:bg-warn-light/10"><i class="fa-solid fa-trash"></i></a>

@@ -400,6 +400,38 @@ class AddEdgeViewTests(TestCase):
         self.assertContains(resp, "Node Three")  # incoming source shown by name
 
 
+class DisplayNameTests(SimpleTestCase):
+    def test_joins_configured_properties(self):
+        self.assertEqual(gs._display_name({"name": "A", "title": "B"}), "A, B")
+
+    def test_single_present_property(self):
+        self.assertEqual(gs._display_name({"title": "B"}), "B")
+
+    def test_uid_fallback_when_no_name_props(self):
+        self.assertEqual(gs._display_name({"uid": "abcdef1234"}), "abcdef12")
+
+    def test_uuid_fallback_for_synced_nodes(self):
+        self.assertEqual(gs._display_name({"uuid": "zyxw98761234"}), "zyxw9876")
+
+    def test_empty_props(self):
+        self.assertEqual(gs._display_name({}), "node")
+
+    @override_settings(BENTO_DISPLAY_NAME_PROPERTIES=["title"])
+    def test_respects_settings_key_list(self):
+        self.assertEqual(gs._display_name({"name": "A", "title": "B"}), "B")
+
+
+class SerializeNodeIdTests(TestCase):
+    def test_id_prefers_uid(self):
+        node = gs._serialize_node({"uid": "abc", "uuid": "u-123", "name": "X"}, ["Concept"])
+        self.assertEqual(node["id"], "abc")
+
+    def test_id_falls_back_to_uuid(self):
+        node = gs._serialize_node({"uuid": "u-123", "name": "X"}, ["Concept"])
+        self.assertEqual(node["id"], "u-123")
+        self.assertIsNone(node["uid"])
+
+
 class TableViewTests(TestCase):
     def setUp(self):
         from toto.core.models import Platform
@@ -408,11 +440,12 @@ class TableViewTests(TestCase):
         self.client.login(username="tab", password="pw")
 
     def test_node_list_renders_table_and_forwards_filters(self):
-        rows = [{"uid": "u1", "display": "Node A", "category_name": "Idea", "category_slug": "idea"}]
+        rows = [{"uid": "u1", "id": "u1", "display": "Node A", "category_name": "Idea", "category_slug": "idea"}]
         with patch.object(gs, "list_nodes", return_value=(rows, 1)) as m:
             resp = self.client.get(reverse("bento:node_list"), {"category": "idea", "q": "x"})
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "Node A")        # row rendered server-side
+        self.assertContains(resp, "Node A")        # name column (display) rendered
+        self.assertContains(resp, "u1")            # ID column (identifier) rendered
         self.assertContains(resp, "Per page")      # page-size selector
         self.assertEqual(m.call_args.kwargs["cat_slug"], "idea")
         self.assertEqual(m.call_args.kwargs["q"], "x")
@@ -515,6 +548,27 @@ class MigrationCommandTests(TestCase):
 # ---------------------------------------------------------------------------
 # navigation — bento is surfaced as ravioli's "Data" tab at /ravioli/data/
 # ---------------------------------------------------------------------------
+
+class ConceptSchemaMigrationTests(TestCase):
+    def test_forwards_rewrites_old_schema_but_not_custom(self):
+        import importlib
+
+        from django.apps import apps
+
+        mig = importlib.import_module("toto.bento.migrations.0008_concept_note_name_schema")
+        old = [{"name": "title", "type": "string", "required": True, "label": "Title"},
+               {"name": "body", "type": "text", "required": False, "label": "Body"}]
+        custom = [{"name": "headline", "type": "string", "required": True}]
+        BentoCategory.objects.create(name="Concept", slug="concept", neo4j_label="Concept", property_schema=old)
+        BentoCategory.objects.create(name="Note", slug="note", neo4j_label="Note", property_schema=custom)
+
+        mig.forwards(apps, None)
+
+        concept = BentoCategory.objects.get(slug="concept")
+        note = BentoCategory.objects.get(slug="note")
+        self.assertEqual([f["name"] for f in concept.property_schema], ["name", "body"])  # rewritten
+        self.assertEqual([f["name"] for f in note.property_schema], ["headline"])          # custom untouched
+
 
 class NavigationTests(TestCase):
     def setUp(self):
