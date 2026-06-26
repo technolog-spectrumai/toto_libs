@@ -38,7 +38,7 @@ Runs under **gunicorn** (WSGI). No WebSockets, no Neo4j, no Celery workers, no c
 
 **Infrastructure required:** Postgres/PostGIS · Redis (cache only) · Nginx · optional: Redis (Celery broker for background tasks even in base mode — beat schedule for daily allowances and subscription billing still runs)
 
-### Studio (BUILD_STUDIO=1) — `portal_server`
+### Studio (BUILD_STUDIO=1) — `portal_neo`
 
 Adds on top of base. Runs under **uvicorn/daphne** (ASGI). Enables Django Channels (WebSocket layer backed by Redis channel layer), Neo4j graph database (managed exclusively through ravioli), the ZMQ compute kernel server (mandragora), and all real-time/compute apps.
 
@@ -430,7 +430,7 @@ The following apps are only installed and routed when `BUILD_STUDIO=1`. They all
 - `api_views.py` — REST endpoints for room listing and participant management.
 - `middleware.py` — WebSocket authentication middleware.
 
-**`toto.ravioli`** — The sole Neo4j boundary. Enabled only in studio mode because Neo4j is only deployed in `portal_server`.
+**`toto.ravioli`** — The sole Neo4j boundary. Enabled only in studio mode because Neo4j is only deployed in `portal_neo`.
 - `CypherQuery` / `CypherQueryResult` — admin-authored Cypher queries stored in Postgres, executed against Neo4j on demand, results stored as JSON node/edge lists for visualization.
 - `GraphChangeEvent` — the event queue. Every app that syncs to Neo4j writes events here (`upsert_node`, `delete_node`, `resync_links`, `upsert_junction`, etc.) via Django post-save/post-delete signals. A Celery worker drains the queue.
 - `GraphProjectionPlan` — a batch migration plan with a scope dict, diff summary, and apply status. Used when resyncing large slices of the graph.
@@ -637,7 +637,7 @@ services:
 
 ---
 
-### Studio (BUILD_STUDIO=1) — `portal_server`
+### Studio (BUILD_STUDIO=1) — `portal_neo`
 
 The full deployment. Everything from portal plus real-time, graph, and compute capabilities.
 
@@ -691,11 +691,11 @@ Redis                   — Celery broker + Django Channels channel layer
 Neo4j 5 + APOC plugin   — ravioli graph database
 Kernel server           — ZMQ tcp://kernel_server:5555 (mandragora)
 Nginx                   — reverse proxy, WS upgrade
-Prometheus + Grafana    — metrics (optional but included in portal_server.yaml)
-Loki + Promtail         — log aggregation (optional but included in portal_server.yaml)
+Prometheus + Grafana    — metrics (optional but included in portal_neo.yaml)
+Loki + Promtail         — log aggregation (optional but included in portal_neo.yaml)
 ```
 
-**Config file:** `portal/deploy/configs/portal_server.yaml`
+**Config file:** `portal/deploy/configs/portal_neo.yaml`
 ```yaml
 BUILD_STUDIO: "1"
 services:

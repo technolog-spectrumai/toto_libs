@@ -29,7 +29,7 @@ A community on toto operates like a mini-state: it has members, money, rules, a 
 
 The single most important architectural divide is `BUILD_STUDIO`.
 
-| | Base (`portal_mini`) | Studio (`portal_server`) |
+| | Base (`portal_mini`) | Studio (`portal_neo`) |
 |---|---|---|
 | **Server** | gunicorn (WSGI) | uvicorn/daphne (ASGI) |
 | **WebSockets** | ✗ | ✓ (Django Channels + Redis) |
