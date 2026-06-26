@@ -4,7 +4,7 @@ Contract -> LaTeX -> PDF.
 The LaTeX is produced from an admin-editable :class:`ContractTemplate` chosen by the
 contract's ``<documentType>`` (so each contract type can render differently). The
 template is rendered with the Django template engine, then compiled with ``pdflatex``
-(requires a TeX install / ``BUILD_LABS``). When ``<content>`` is a base64 PDF it is
+(requires the TeX toolchain — deploy with ``INSTALL_TEXLIVE=1``). When ``<content>`` is a base64 PDF it is
 materialized as ``content.pdf`` so the template can ``\\includepdf`` the original.
 """
 from __future__ import annotations
