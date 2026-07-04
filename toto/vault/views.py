@@ -16,7 +16,7 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.views import View
 from django.views.generic import TemplateView, DetailView, ListView
-from django.urls import reverse
+from django.urls import reverse, NoReverseMatch
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from django.contrib import messages
@@ -63,13 +63,21 @@ class PublicFileListView(TemplateView):
             if f.is_encrypted:
                 return ""
             plugin = VaultPlayPlugin.for_file_type(f.file_type)
-            return plugin.get_play_url(f) if plugin else ""
+            # A plugin whose target URL isn't mounted (its feature flag is off) must
+            # not take down the whole listing — degrade to "no play link" instead.
+            try:
+                return plugin.get_play_url(f) if plugin else ""
+            except NoReverseMatch:
+                return ""
 
         from toto.vault.plugins import VaultEditorPlugin
 
         def _editor_url_for(f):
             plugin = VaultEditorPlugin.for_file_type(f.file_type)
-            return plugin.get_editor_url(f) if plugin else ""
+            try:
+                return plugin.get_editor_url(f) if plugin else ""
+            except NoReverseMatch:
+                return ""
 
         try:
             from toto.fileservices.plugin import FileServicePlugin

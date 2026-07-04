@@ -27,12 +27,10 @@ class YamlEditorPlugin(VaultEditorPlugin):
         return reverse("editor:yaml_display", args=[vault_file.pk])
 
 
-@VaultEditorPlugin.plugin(key="svg", title="SVG Editor", order=50)
-class SvgEditorPlugin(VaultEditorPlugin):
-    file_type = "svg"
-
-    def get_editor_url(self, vault_file) -> str:
-        return reverse("sketch:svg_file_display", args=[vault_file.pk])
+# NOTE: the SVG editor plugin lives in toto.sketch (sketch/plugins/vault_editor_plugins.py),
+# not here — its editor URL (sketch:svg_file_display) is only mounted when BUILD_SKETCH=1,
+# so registering it alongside toto.editor (BUILD_LATEX/BUILD_PYEDITOR) would 500 the vault
+# listing on any SVG file when sketch is off.
 
 
 @VaultEditorPlugin.plugin(key="xml", title="XML Editor", order=46)
