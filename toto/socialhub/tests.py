@@ -1,6 +1,9 @@
 import base64
+import os
+from unittest.mock import patch
 
 from django.contrib.auth import authenticate, get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
@@ -52,6 +55,44 @@ class ResolveEmailServiceTests(TestCase):
         self.community.email_service = own
         self.community.save()
         self.assertEqual(resolve_email_service(self.community), own)
+
+
+class DefaultCommunityIngressTests(TestCase):
+    """Non-full ingress seeds the DEFAULT_COMMUNITY (deploy YAML env) and adds
+    the admin person to it; without the env var nothing is created."""
+
+    def setUp(self):
+        self.admin_user = User.objects.create_user(username="admin", password="x")
+        self.admin_person = Person.objects.create(
+            user=self.admin_user, display_name="Founder"
+        )
+
+    def _run_ingress(self, community=""):
+        env = {"DEFAULT_COMMUNITY": community, "ADMIN_USERNAME": "admin"}
+        with patch.dict(os.environ, env):
+            call_command("ingress_socialhub")  # no --full
+
+    def test_creates_community_and_adds_admin_person(self):
+        self._run_ingress(community="Our-community")
+        community = Community.objects.get(name="Our-community")
+        self.assertIn(self.admin_person, community.members.all())
+
+    def test_no_env_var_creates_nothing(self):
+        self._run_ingress(community="")
+        self.assertEqual(Community.objects.count(), 0)
+
+    def test_idempotent_across_reboots(self):
+        self._run_ingress(community="Our-community")
+        self._run_ingress(community="Our-community")
+        self.assertEqual(Community.objects.filter(name="Our-community").count(), 1)
+        community = Community.objects.get(name="Our-community")
+        self.assertEqual(community.members.count(), 1)
+
+    def test_missing_admin_person_still_creates_community(self):
+        self.admin_person.delete()
+        self._run_ingress(community="Our-community")
+        community = Community.objects.get(name="Our-community")
+        self.assertEqual(community.members.count(), 0)
 
 
 class ApplicationSuccessViewTests(TestCase):

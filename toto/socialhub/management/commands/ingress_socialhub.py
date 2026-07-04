@@ -1,3 +1,4 @@
+import os
 import random
 from django.contrib.auth.models import User
 from django.utils import timezone
@@ -41,6 +42,8 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(f"✔ Created {needed} fake users."))
 
     def process(self):
+
+        self.ensure_default_community()
 
         if not self.full:
             return
@@ -98,6 +101,41 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_b.name}"))
 
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
+
+    # ---------------------------------------------------------
+    # Baseline community (all ingress modes)
+    # ---------------------------------------------------------
+
+    def ensure_default_community(self):
+        """
+        Seed the deployment's real community even without FULL_INGRESS: create
+        the community named by the DEFAULT_COMMUNITY env var (deploy YAML `env:`
+        block) and make the admin person (created by init_data from
+        ADMIN_DISPLAY_NAME, e.g. "Founder") a member of it. No-op when
+        DEFAULT_COMMUNITY is unset.
+        """
+        name = os.environ.get("DEFAULT_COMMUNITY", "").strip()
+        if not name:
+            return
+
+        community, created = Community.objects.get_or_create(name=name)
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✔ Created default community: {name}"))
+        else:
+            self.stdout.write(self.style.WARNING(f"⚠ Default community already exists: {name}"))
+
+        admin_username = os.environ.get("ADMIN_USERNAME", "admin")
+        admin_person = Person.objects.filter(user__username=admin_username).first()
+        if admin_person is None:
+            self.stdout.write(self.style.WARNING(
+                f"⚠ No person profile for '{admin_username}' — nobody added to '{name}'."
+            ))
+            return
+
+        admin_person.communities.add(community)
+        self.stdout.write(self.style.SUCCESS(
+            f"✔ Added '{admin_person.display_name}' to '{name}'."
+        ))
 
     # ---------------------------------------------------------
     # Community creation
