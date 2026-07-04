@@ -54,6 +54,30 @@ class ResolveEmailServiceTests(TestCase):
         self.assertEqual(resolve_email_service(self.community), own)
 
 
+class ApplicationSuccessViewTests(TestCase):
+    def setUp(self):
+        Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
+        self.community = Community.objects.create(name="Hill Collective")
+        self.application = MembershipApplication.objects.create(
+            email="newcomer@example.com",
+            community=self.community,
+            code="246810",
+            expires_at=timezone.now() + timezone.timedelta(days=7),
+        )
+
+    def test_renders_captcha_flow_copy_even_with_email_service(self):
+        # The verification code is never emailed — the page always points the
+        # applicant at the code-image (CAPTCHA) verification step.
+        EmailService.objects.create(
+            name="default-email-service", email_address="a@b.com", host="smtp"
+        )
+        res = self.client.get(
+            reverse("socialhub:application_success", args=[self.application.email])
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "code image")
+
+
 class VerifyCaptchaViewTests(TestCase):
     def setUp(self):
         # PageProcessor (used by the view) requires an active Platform.
@@ -77,13 +101,14 @@ class VerifyCaptchaViewTests(TestCase):
         self.assertIn("captcha_image", res.context)
         self.assertTrue(res.context["captcha_image"].startswith("data:image/png;base64,"))
 
-    def test_no_captcha_when_email_service_available(self):
+    def test_captcha_shown_even_when_email_service_available(self):
+        # The code is never emailed — the CAPTCHA is always the verification path.
         EmailService.objects.create(
             name="default-email-service", email_address="a@b.com", host="smtp"
         )
         res = self.client.get(self._verify_url())
         self.assertEqual(res.status_code, 200)
-        self.assertIsNone(res.context.get("captcha_image"))
+        self.assertTrue(res.context["captcha_image"].startswith("data:image/png;base64,"))
 
     def test_wrong_code_starts_cooldown_in_captcha_mode(self):
         res = self.client.post(self._verify_url(), {"code": "000000"})
@@ -113,14 +138,15 @@ class VerifyCaptchaViewTests(TestCase):
         res = self.client.post(self._verify_url(), {"code": "246810"})
         self.assertEqual(res.status_code, 302)
 
-    def test_no_cooldown_when_email_service_available(self):
+    def test_cooldown_applies_even_when_email_service_available(self):
+        # CAPTCHA mode (and its retry cooldown) no longer depends on email config.
         EmailService.objects.create(
             name="default-email-service", email_address="a@b.com", host="smtp"
         )
         res = self.client.post(self._verify_url(), {"code": "000000"})
         self.assertEqual(res.status_code, 200)
-        self.assertIsNone(res.context.get("cooldown_remaining"))
-        self.assertNotIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
+        self.assertGreater(res.context["cooldown_remaining"], 0)
+        self.assertIn(CAPTCHA_RETRY_COOLDOWN_SESSION_KEY, self.client.session)
 
 
 class ReferenceRequestPasswordTests(TestCase):

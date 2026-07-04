@@ -3,7 +3,6 @@ from toto.core.models import Platform
 from django.shortcuts import render, redirect, get_object_or_404
 from toto.people.models import Person
 from toto.socialhub.models import Community, MembershipApplication, generate_code, ReferenceRequest
-from toto.api.models import EmailService
 from toto.ui import PageProcessor
 from django.utils import timezone
 from django.contrib.auth.models import User
@@ -67,40 +66,12 @@ def application_success_view(request, username):
     processor = PageProcessor()
     # The `username` URL slug is the applicant's email — the stable key for the
     # application + verification flow (the login username is chosen separately).
+    # The verification code is never emailed: the verification page shows it as
+    # a CAPTCHA the applicant retypes, and the reference/endorsement step is
+    # what actually gates membership.
     email = username
-    context = {"page_title": "Application Submitted", "username": email, "email_sent": False}
+    context = {"page_title": "Application Submitted", "username": email}
 
-    try:
-        application = MembershipApplication.objects.get(email=email)
-        community = application.community
-        svc = resolve_email_service(community)
-
-        if svc is None:
-            # No email service configured: the code can't be mailed. The
-            # verification page will show it as a CAPTCHA the applicant retypes.
-            logger.info(f"No email service for '{community.name}'; using visual code for '{email}'.")
-        else:
-            subject = "Your Membership Application"
-            body = (
-                f"Hello,\n\n"
-                f"Thank you for applying to join {application.community.name}.\n"
-                f"Your verification code is: {application.code}\n\n"
-                f"Please enter this code on the verification page.\n\n"
-                f"Best regards,\n"
-                f"{application.community.name} Team"
-            )
-
-            svc.send_email(subject, body, to=email)
-            context["email_sent"] = True
-            logger.info(f"Confirmation email sent to '{email}'.")
-
-    except Exception as e:
-        # Email failure is NOT fatal for the page
-        logger.error(f"Failed to send confirmation email for '{email}': {e}")
-
-    # ---------------------------------------------------------
-    # Render page
-    # ---------------------------------------------------------
     logger.info(f"Application success page viewed for '{email}'.")
     return render(request, "socialhub/application_success.html", processor.decorate(context, request))
 
@@ -110,11 +81,11 @@ def verify_application_view(request, username):
     form = CodeVerificationForm(request.POST or None)
     context = {"form": form, "page_title": "Verify Application", "username": username}
 
-    # When the application's community has no email service, the code was never
-    # mailed — show it as a distorted CAPTCHA the applicant retypes to prove
-    # they are human. The reference/endorsement step still gates membership.
+    # The code is never mailed — it is shown as a distorted CAPTCHA the
+    # applicant retypes to prove they are human. The reference/endorsement
+    # step is what actually gates membership.
     application = MembershipApplication.objects.filter(email=username).first()
-    captcha_mode = application is not None and resolve_email_service(application.community) is None
+    captcha_mode = application is not None
     if captcha_mode:
         try:
             context["captcha_image"] = generate_code_captcha(application.code)
@@ -233,20 +204,22 @@ def reference_accept(request, ref_id):
         user = User.objects.get(email=application.email)
         community = application.community
 
-        svc = community.email_service or EmailService.objects.get(name="default-email-service")
+        svc = resolve_email_service(community)
+        if svc is None:
+            logger.info(f"No email service for '{community.name}'; skipping approval email.")
+        else:
+            subject = f"Your Membership in {community.name} Has Been Approved"
+            body = (
+                f"Hello,\n\n"
+                f"Good news! Your reference has been accepted and your membership "
+                f"in {community.name} is now fully approved.\n\n"
+                f"You can now log in using your email address: {user.email}\n\n"
+                f"Welcome aboard!\n"
+                f"{community.name} Team"
+            )
 
-        subject = f"Your Membership in {community.name} Has Been Approved"
-        body = (
-            f"Hello,\n\n"
-            f"Good news! Your reference has been accepted and your membership "
-            f"in {community.name} is now fully approved.\n\n"
-            f"You can now log in using your email address: {user.email}\n\n"
-            f"Welcome aboard!\n"
-            f"{community.name} Team"
-        )
-
-        svc.send_email(subject, body, to=user.email)
-        logger.info(f"Approval email sent to '{user.email}'.")
+            svc.send_email(subject, body, to=user.email)
+            logger.info(f"Approval email sent to '{user.email}'.")
 
     except Exception as e:
         logger.error(f"Failed to send approval email for reference '{ref_id}': {e}")
@@ -276,22 +249,24 @@ def reference_reject(request, ref_id):
         user = User.objects.get(email=application.email)
         community = application.community
 
-        svc = community.email_service or EmailService.objects.get(name="default-email-service")
+        svc = resolve_email_service(community)
+        if svc is None:
+            logger.info(f"No email service for '{community.name}'; skipping rejection email.")
+        else:
+            subject = f"Your Membership Application to {community.name}"
+            body = (
+                f"Hello,\n\n"
+                f"We're sorry to inform you that your reference for joining {community.name} "
+                f"was not approved at this time.\n\n"
+                f"This does not prevent you from applying again in the future.\n"
+                f"If you believe this was a mistake or would like more information, "
+                f"please contact the community leadership.\n\n"
+                f"Best regards,\n"
+                f"{community.name} Team"
+            )
 
-        subject = f"Your Membership Application to {community.name}"
-        body = (
-            f"Hello,\n\n"
-            f"We're sorry to inform you that your reference for joining {community.name} "
-            f"was not approved at this time.\n\n"
-            f"This does not prevent you from applying again in the future.\n"
-            f"If you believe this was a mistake or would like more information, "
-            f"please contact the community leadership.\n\n"
-            f"Best regards,\n"
-            f"{community.name} Team"
-        )
-
-        svc.send_email(subject, body, to=user.email)
-        logger.info(f"Rejection email sent to '{user.email}'.")
+            svc.send_email(subject, body, to=user.email)
+            logger.info(f"Rejection email sent to '{user.email}'.")
 
     except Exception as e:
         logger.error(f"Failed to send rejection email for reference '{ref_id}': {e}")

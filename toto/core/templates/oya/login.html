@@ -196,7 +196,14 @@
               </div>
 
               <div>
-                {{ form.password.label_tag }}
+                <div class="flex items-center justify-between">
+                  {{ form.password.label_tag }}
+                  {% if password_reset_available %}
+                    <a href="{% url 'sso:password_reset' %}"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                       class="mb-2 text-xs font-medium hover:underline">{% trans "Forgot password?" %}</a>
+                  {% endif %}
+                </div>
                 {{ form.password }}
 
                 {% if form.password.errors %}

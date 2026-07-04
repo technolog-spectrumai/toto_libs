@@ -15,6 +15,7 @@ from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from toto.core.email_config import email_delivery_configured
 from toto.core.forms import LoginForm
 from toto.ui import PageProcessor
 from toto.core.auth_cooldown import (
@@ -36,6 +37,9 @@ def login_view(request):
         "page_title": "Sign In",
         "next": next_url,
         "login_url": reverse("sso:login"),
+        # Password reset needs a working email backend; without one the
+        # "Forgot password?" link would dead-end, so it is hidden.
+        "password_reset_available": email_delivery_configured(),
     }
 
     if request.user.is_authenticated:
@@ -358,6 +362,11 @@ def my_profile(request):
 
 
 def password_reset_view(request):
+    # Without a delivering email backend the reset email would silently go
+    # nowhere — don't offer the flow at all.
+    if not email_delivery_configured():
+        return redirect(reverse("sso:login"))
+
     processor = PageProcessor()
     form = PasswordResetForm(request.POST or None)
     context = {"form": form, "page_title": "Reset Password"}

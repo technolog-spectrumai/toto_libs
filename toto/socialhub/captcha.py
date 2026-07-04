@@ -1,9 +1,8 @@
 """
 Visual verification-code helpers for the membership application flow.
 
-When a community has no email service configured we cannot mail the
-verification code, so instead we render it as a distorted CAPTCHA-style
-image and ask the applicant to retype it. This only needs to keep bots
+The verification code is never emailed: it is rendered as a distorted
+CAPTCHA-style image the applicant retypes. This only needs to keep bots
 out — the reference/endorsement step is what actually gates membership.
 """
 

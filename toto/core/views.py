@@ -7,6 +7,7 @@ from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 import logging
+from toto.core.email_config import email_delivery_configured
 from toto.core.forms import LoginForm
 from toto.core.auth_cooldown import (
     clear_login_retry_cooldown,
@@ -273,7 +274,13 @@ def _get_next(request):
 def login_view(request):
     processor = PageProcessor()
     form = LoginForm(request.POST or None)
-    context = {"form": form, "page_title": "Login"}
+    context = {
+        "form": form,
+        "page_title": "Login",
+        # Password reset needs a working email backend; without one the
+        # "Forgot password?" link would dead-end, so it is hidden.
+        "password_reset_available": email_delivery_configured(),
+    }
 
     if request.method == "POST":
         remaining = login_retry_cooldown_remaining(request)

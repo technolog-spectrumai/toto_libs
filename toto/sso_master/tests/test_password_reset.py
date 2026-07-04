@@ -196,6 +196,44 @@ class PasswordResetConfirmTests(TestCase):
         self.assertFalse(response.context["validlink"])
 
 
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend")
+class PasswordResetUnavailableTests(TestCase):
+    """Without a delivering email backend the reset flow is hidden entirely."""
+
+    def setUp(self):
+        _platform()
+        self.client = Client()
+
+    def test_reset_view_redirects_to_login(self):
+        response = self.client.get(reverse("sso:password_reset"))
+        self.assertRedirects(response, reverse("sso:login"))
+
+    def test_sso_login_page_hides_forgot_password_link(self):
+        response = self.client.get(reverse("sso:login"))
+        self.assertNotContains(response, reverse("sso:password_reset"))
+
+    def test_core_login_page_hides_forgot_password_link(self):
+        response = self.client.get(reverse("core:login"))
+        self.assertNotContains(response, reverse("sso:password_reset"))
+
+
+@override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
+class PasswordResetAvailableTests(TestCase):
+    """With a delivering email backend the reset link is offered on login pages."""
+
+    def setUp(self):
+        _platform()
+        self.client = Client()
+
+    def test_sso_login_page_shows_forgot_password_link(self):
+        response = self.client.get(reverse("sso:login"))
+        self.assertContains(response, reverse("sso:password_reset"))
+
+    def test_core_login_page_shows_forgot_password_link(self):
+        response = self.client.get(reverse("core:login"))
+        self.assertContains(response, reverse("sso:password_reset"))
+
+
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend")
 class PasswordResetCompleteTests(TestCase):
     def setUp(self):

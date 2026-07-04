@@ -56,15 +56,9 @@
               <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Thank you for applying." %}</h1>
 
               <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
-                {% if email_sent %}
-                  We’ve received your application. A confirmation code should arrive by email soon.
-                  Once verified, you’ll be able to access member features and continue into
-                  {{ platform.site_name }}.
-                {% else %}
-                  We’ve received your application. Continue to verification, where you’ll be
-                  shown a code image to retype and confirm you’re human. Once verified, you’ll
-                  be able to access member features and continue into {{ platform.site_name }}.
-                {% endif %}
+                We’ve received your application. Continue to verification, where you’ll be
+                shown a code image to retype and confirm you’re human. Once verified, you’ll
+                be able to access member features and continue into {{ platform.site_name }}.
               </p>
             </div>
           </div>
@@ -77,9 +71,9 @@
               class="rounded-xl border p-4">
               <i
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                class="fa-solid fa-envelope-circle-check"></i>
-              <p class="mt-2 font-semibold">{% trans "Check email" %}</p>
-              <p class="mt-1 text-xs opacity-65">{% trans "Look for your code." %}</p>
+                class="fa-solid fa-eye"></i>
+              <p class="mt-2 font-semibold">{% trans "Read the code" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "A code image is shown." %}</p>
             </div>
 
             <div
@@ -117,7 +111,7 @@
             <h2 class="text-2xl font-bold">{% trans "Next step" %}</h2>
 
             <p class="mt-2 text-sm leading-6 opacity-70">
-              Use your verification code when it arrives. You can also return to login
+              Continue to verification to retype the code image. You can also return to login
               and come back later.
             </p>
           </div>
@@ -141,13 +135,8 @@
                 </div>
 
                 <div>
-                  {% if email_sent %}
-                    <p class="font-semibold">{% trans "Already have a verification code?" %}</p>
-                    <p class="mt-1 opacity-70">{% trans "Submit it now to complete your membership verification." %}</p>
-                  {% else %}
-                    <p class="font-semibold">{% trans "Ready to verify?" %}</p>
-                    <p class="mt-1 opacity-70">{% trans "Continue to read your code image and complete verification." %}</p>
-                  {% endif %}
+                  <p class="font-semibold">{% trans "Ready to verify?" %}</p>
+                  <p class="mt-1 opacity-70">{% trans "Continue to read your code image and complete verification." %}</p>
                 </div>
 
                 <a
@@ -173,7 +162,7 @@
                 <div>
                   <p class="font-semibold">{% trans "Verification will be available soon." %}</p>
 
-                  <p class="mt-1 opacity-70">{% trans "Once your application is ready, use the code sent to your email." %}</p>
+                  <p class="mt-1 opacity-70">{% trans "Once your application is ready, you'll be shown a code image to verify." %}</p>
                 </div>
               </div>
             {% endif %}
