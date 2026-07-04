@@ -91,12 +91,13 @@ def openid_configuration(request):
         "grant_types_supported": ["authorization_code"],
         "subject_types_supported": ["public"],
         "id_token_signing_alg_values_supported": ["RS256"],
-        "scopes_supported": ["openid", "email", "profile"],
+        "scopes_supported": ["openid", "email", "profile", "roles"],
         "token_endpoint_auth_methods_supported": ["client_secret_basic", "client_secret_post", "none"],
         "claims_supported": [
             "iss", "sub", "aud", "exp", "iat", "auth_time", "nonce",
             "email", "email_verified", "name", "preferred_username",
             "given_name", "family_name", "display_name", "person_slug",
+            "roles", "is_superuser",
         ],
         "code_challenge_methods_supported": ["plain", "S256"],
     })

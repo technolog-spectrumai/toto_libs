@@ -147,6 +147,13 @@ def get_user_claims(user, scopes) -> dict:
             claims["display_name"] = person.display_name
             claims["person_slug"] = person.slug
 
+    # Role claim for relying parties that map local roles (e.g. Grafana's OIDC
+    # role mapping gates its Admin role on `contains(roles[*], 'admin')`). Emitted
+    # only for clients that request the non-standard `roles` scope.
+    if "roles" in scopes:
+        claims["roles"] = ["admin"] if user.is_superuser else ["viewer"]
+        claims["is_superuser"] = bool(user.is_superuser)
+
     return claims
 
 

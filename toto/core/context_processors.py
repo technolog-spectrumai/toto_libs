@@ -13,4 +13,7 @@ def last_visited(request):
 def build_flags(request):
     """Expose build-tier flags so templates can gate optional UI (e.g. the
     'Ask Steven' Knowledge-Graph tab only when the sabbia backend is built)."""
-    return {"BUILD_SABBIA": bool(getattr(settings, "BUILD_SABBIA", False))}
+    return {
+        "BUILD_SABBIA": bool(getattr(settings, "BUILD_SABBIA", False)),
+        "GRAFANA_ENABLED": bool(getattr(settings, "GRAFANA_ENABLED", False)),
+    }

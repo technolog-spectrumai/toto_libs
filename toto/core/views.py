@@ -126,9 +126,15 @@ def welcome_view(request):
     return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
-def _resolve_dashboard_item(item, authenticated):
+def _resolve_dashboard_item(item, user):
     visibility = item.get("visibility", "public")
+    authenticated = user.is_authenticated
     if visibility == "private" and not authenticated:
+        return None
+    # "superuser" cards (e.g. the Grafana "Monitoring" link) are hidden from
+    # everyone but superusers. This is cosmetic — the target enforces its own
+    # access — but keeps ops tools out of ordinary users' dashboards.
+    if visibility == "superuser" and not (authenticated and user.is_superuser):
         return None
     link = item.get("link")
     if link and ":" in link:
@@ -145,10 +151,10 @@ def _resolve_dashboard_item(item, authenticated):
     }
 
 
-def _resolve_all_items(authenticated):
+def _resolve_all_items(user):
     items_by_key = {}
     for item in settings.DASHBOARD_ITEMS:
-        resolved = _resolve_dashboard_item(item, authenticated)
+        resolved = _resolve_dashboard_item(item, user)
         if resolved is not None:
             with translation_override("en"):
                 en_key = str(item["title"])
@@ -159,7 +165,7 @@ def _resolve_all_items(authenticated):
 def dashboard_view(request):
     processor = PageProcessor()
     authenticated = request.user.is_authenticated
-    items_by_key = _resolve_all_items(authenticated)
+    items_by_key = _resolve_all_items(request.user)
 
     if authenticated:
         groups = []
