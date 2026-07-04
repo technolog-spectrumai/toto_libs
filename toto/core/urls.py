@@ -9,6 +9,7 @@ app_name = "core"
 urlpatterns = [
     path("welcome/", views.welcome_view, name="welcome"),
     path("dashboard/", views.dashboard_view, name="dashboard"),
+    path("manual/", views.manual_view, name="manual"),
     path("not-implemented/", views.not_implemented, name="not_implemented"),
     path("maintenance/", views.maintenance_view, name="maintenance"),
     path('', RedirectView.as_view(

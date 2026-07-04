@@ -59,6 +59,13 @@
             : 'border-accent-2 bg-sunken-light text-text-main-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
           <i class="fa-solid fa-key"></i>{% trans "My Keys" %}</a>
+        <a
+          href="{% url 'core:manual' %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+            : 'border-accent-2 bg-sunken-light text-text-main-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-book-open"></i>{% trans "User Manual" %}</a>
         {% endif %}
       </nav>
     </header>

@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 from toto.core.models import Platform
 from django.shortcuts import render, redirect
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 import logging
 from toto.core.forms import LoginForm
 from toto.core.auth_cooldown import (
@@ -195,6 +196,60 @@ def dashboard_view(request):
 
     return render(request, _get_template("dashboard.html"), context)
 
+
+
+def _manual_features(request):
+    """Which manual sections to show — only features actually installed on
+    this server (portal and faros install different app subsets)."""
+    from django.apps import apps  # noqa: PLC0415
+
+    return {
+        "vault": apps.is_installed("toto.vault"),
+        "gervazy": apps.is_installed("toto.gervazy"),
+        "socialhub": apps.is_installed("toto.socialhub"),
+        "events": apps.is_installed("toto.events"),
+        "kanban": apps.is_installed("toto.kanban"),
+        "locations": apps.is_installed("toto.locations"),
+        "polls": apps.is_installed("toto.polls"),
+        "vod": apps.is_installed("toto.vod"),
+        "memo": apps.is_installed("toto.memo"),
+        "notarius": apps.is_installed("toto.notarius"),
+        "editor": apps.is_installed("toto.editor"),
+        "sketch": apps.is_installed("toto.sketch"),
+        "chat": apps.is_installed("toto.telegraph"),
+        "workflows": apps.is_installed("toto.workflows"),
+        "notebooks": apps.is_installed("toto.mandragora"),
+        "graph": apps.is_installed("toto.ravioli"),
+        "ocr": apps.is_installed("toto.ocr"),
+        "latex": apps.is_installed("toto.texlab"),
+        "pyeditor": apps.is_installed("toto.antaresia"),
+        "fileservices": apps.is_installed("toto.fileservices"),
+        "manta": apps.is_installed("toto.manta"),
+        "steven": apps.is_installed("toto.steven"),
+        # Cosmetic gate like the dashboard "Monitoring" card — Grafana enforces
+        # its own superuser-only access via OIDC role mapping.
+        "grafana": bool(getattr(settings, "GRAFANA_ENABLED", False))
+        and request.user.is_authenticated
+        and request.user.is_superuser,
+    }
+
+
+@login_required
+def manual_view(request):
+    from django.utils.translation import get_language  # noqa: PLC0415
+
+    lang = (get_language() or "en").lower()
+    body_template = (
+        "oya/manual/_body_pl.html" if lang.startswith("pl") else "oya/manual/_body_en.html"
+    )
+
+    processor = PageProcessor()
+    context = {
+        "page_title": "User Manual",
+        "features": _manual_features(request),
+        "manual_body_template": body_template,
+    }
+    return render(request, _get_template("manual.html"), processor.decorate(context, request))
 
 
 def not_implemented(request):
