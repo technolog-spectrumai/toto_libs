@@ -22,7 +22,6 @@ class FetchPage:
     status_code: int
     json: Any
     record_count: int
-    truncated: bool = False
 
     def audit_entry(self):
         """request_log entry — everything except the body (archived separately)."""
@@ -30,7 +29,6 @@ class FetchPage:
             "url": self.url,
             "status_code": self.status_code,
             "records": self.record_count,
-            "truncated": self.truncated,
         }
 
 

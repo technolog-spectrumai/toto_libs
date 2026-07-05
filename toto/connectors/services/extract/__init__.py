@@ -9,6 +9,12 @@ def register(extractor_class):
     """Class decorator: register an extractor by its ``kind``."""
     if not issubclass(extractor_class, BaseExtractor) or not extractor_class.kind:
         raise ValueError("Extractors must subclass BaseExtractor and set a kind.")
+    existing = _REGISTRY.get(extractor_class.kind)
+    if existing is not None and existing is not extractor_class:
+        raise ValueError(
+            f"Extractor kind '{extractor_class.kind}' is already registered "
+            f"by {existing.__name__}."
+        )
     _REGISTRY[extractor_class.kind] = extractor_class
     return extractor_class
 

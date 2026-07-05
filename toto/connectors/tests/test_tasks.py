@@ -63,6 +63,27 @@ class ScanSchedulesTests(TestCase):
         self.assertEqual(result["dispatched"], 0)
         delay.assert_not_called()
 
+    def test_untrusted_connector_with_unreviewed_run_is_skipped(self):
+        connector = self._due_connector()
+        ConnectorRun.objects.create(
+            connector=connector, status=ConnectorRun.STATUS_REVIEW
+        )
+        with patch.object(tasks.run_connector_task, "delay") as delay:
+            result = tasks.connectors_scan_schedules.apply(args=()).result
+        self.assertEqual(result, {"dispatched": 0, "skipped": 1})
+        delay.assert_not_called()
+        self.assertEqual(connector.runs.count(), 1)  # no proposal pileup
+
+    def test_trusted_connector_with_review_run_still_dispatches(self):
+        connector = self._due_connector(trusted=True)
+        ConnectorRun.objects.create(
+            connector=connector, status=ConnectorRun.STATUS_REVIEW
+        )
+        with patch.object(tasks.run_connector_task, "delay") as delay:
+            result = tasks.connectors_scan_schedules.apply(args=()).result
+        self.assertEqual(result["dispatched"], 1)
+        delay.assert_called_once()
+
     def test_run_connector_task_records_task_id_and_executes(self):
         connector = make_data_connector()
         run = ConnectorRun.objects.create(connector=connector)
@@ -82,3 +103,34 @@ class ScheduleFieldTests(TestCase):
         self.assertEqual(connector.schedule_next(now), now + timedelta(minutes=15))
         connector.interval_minutes = None
         self.assertIsNone(connector.schedule_next(now))
+
+    def test_disabling_schedule_clears_next_run_at(self):
+        connector = make_data_connector(schedule_enabled=True, interval_minutes=30)
+        connector.schedule_enabled = False
+        connector.save()
+        self.assertIsNone(connector.next_run_at)
+        # re-enabling waits a full interval instead of firing on a stale tick
+        before = timezone.now()
+        connector.schedule_enabled = True
+        connector.save()
+        self.assertGreaterEqual(
+            connector.next_run_at, before + timedelta(minutes=29)
+        )
+
+
+class StaleRunTests(TestCase):
+    def test_fresh_run_blocks_new_runs(self):
+        connector = make_data_connector()
+        ConnectorRun.objects.create(connector=connector, status=ConnectorRun.STATUS_RUNNING)
+        self.assertTrue(connector.has_run_in_flight())
+
+    def test_stale_running_run_stops_blocking(self):
+        connector = make_data_connector()
+        run = ConnectorRun.objects.create(
+            connector=connector, status=ConnectorRun.STATUS_RUNNING
+        )
+        # a worker killed mid-run never flips the status; age it past the cutoff
+        ConnectorRun.objects.filter(pk=run.pk).update(
+            created_at=timezone.now() - connector.STALE_RUN_MAX_AGE - timedelta(minutes=1)
+        )
+        self.assertFalse(connector.has_run_in_flight())

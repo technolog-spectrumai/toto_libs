@@ -13,7 +13,8 @@
       "pagination": {
         "strategy": "none",                // none | page | offset | cursor
         "param": "page", "start": 1,       // page:   param + start (+ size_param/size)
-        // "param": "offset", "size": 100, // offset: param + size (+ size_param)
+        // "param": "offset",              // offset: param (+ size_param/size);
+        //   "size_param": "limit", "size": 100,   //   advances by records returned
         // "param": "cursor",              // cursor: param + next_path (+ initial)
         //   "next_path": "meta.next_cursor", "initial": "*",
         "max_pages": 10
@@ -27,9 +28,12 @@ Auth headers/params are injected inside ``execute_api_request`` from the
 ``FetchPage.url`` is safe to persist in the run's request_log.
 """
 
-from urllib.parse import urlencode
-
-from toto.api.client import ApiRequestError, build_request_url, execute_api_request
+from toto.api.client import (
+    ApiRequestError,
+    _with_query_params,
+    build_request_url,
+    execute_api_request,
+)
 
 from ..mapping import get_path
 from . import register
@@ -42,12 +46,14 @@ _STRATEGIES = ("none", "page", "offset", "cursor")
 
 
 def _display_url(data_connector, endpoint, params):
-    """Compose the pre-auth URL for the audit log (no vault/secret access)."""
+    """Compose the pre-auth URL for the audit log (no vault/secret access).
+
+    Uses the same query-merging helper as ``execute_api_request`` so the
+    logged URL matches the request actually sent (modulo auth params, which
+    are injected later and must never appear here).
+    """
     url = build_request_url(api_connector=data_connector.http_connector, endpoint=endpoint)
-    if params:
-        joiner = "&" if "?" in url else "?"
-        url = f"{url}{joiner}{urlencode(params, doseq=True)}"
-    return url
+    return _with_query_params(url, params or {})
 
 
 @register
@@ -81,10 +87,10 @@ class RestApiExtractor(BaseExtractor):
             )
         if strategy == "cursor" and not isinstance(pagination.get("next_path"), str):
             errors.append("cursor pagination requires a string next_path.")
-        if strategy == "offset":
+        if strategy == "offset" and pagination.get("size_param"):
             size = pagination.get("size")
             if not isinstance(size, int) or size <= 0:
-                errors.append("offset pagination requires a positive integer size.")
+                errors.append("offset pagination with size_param requires a positive integer size.")
         for key, owner in (("max_pages", pagination), ("max_records", config),
                            ("timeout_seconds", config)):
             value = owner.get(key)
@@ -146,13 +152,16 @@ class RestApiExtractor(BaseExtractor):
             if strategy == "page":
                 page_number += 1
             elif strategy == "offset":
-                offset += int(pagination["size"])
+                # Advance by what the server actually returned — a server whose
+                # page size is smaller than the configured `size` would
+                # otherwise leave silent gaps in the extracted records.
+                offset += len(page_records)
             elif strategy == "cursor":
                 cursor = get_path(page.json, pagination["next_path"])
                 if not cursor:
                     break
         else:
-            capped = strategy != "none"  # ran out of max_pages with pages still full
+            capped = True  # ran out of max_pages with pages still full
 
         stats = {"pages": len(pages), "records": len(records), "capped": capped}
         return ExtractResult(records=records, pages=pages, stats=stats)
@@ -199,6 +208,5 @@ class RestApiExtractor(BaseExtractor):
             status_code=int(data.get("status_code") or 0),
             json=body,
             record_count=len(found),
-            truncated=False,
         )
         return page, found

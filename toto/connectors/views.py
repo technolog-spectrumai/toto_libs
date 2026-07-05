@@ -9,6 +9,7 @@ import json
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required, user_passes_test
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -49,10 +50,16 @@ def _run_payload(run):
 @superuser_required
 def home(request):
     connectors = list(
-        DataConnector.objects.select_related("http_connector").all()
+        DataConnector.objects.select_related("http_connector").prefetch_related(
+            Prefetch(
+                "runs",
+                queryset=ConnectorRun.objects.order_by("-created_at", "-id")[:1],
+                to_attr="latest_runs",
+            )
+        )
     )
     for connector in connectors:
-        connector.latest_run = connector.runs.first()
+        connector.latest_run = connector.latest_runs[0] if connector.latest_runs else None
     recent_runs = ConnectorRun.objects.select_related("connector", "proposal")[:25]
     in_flight = any(
         run.status in (ConnectorRun.STATUS_PENDING, ConnectorRun.STATUS_RUNNING)
@@ -118,7 +125,7 @@ def run_detail(request, pk):
 @superuser_required
 def run_review(request, pk):
     """Render the ingestor review surface booted into this run's proposal."""
-    from toto.ingestor.views import _bento_templates, _payload
+    from toto.ingestor.views import bento_templates, proposal_payload
 
     run = get_object_or_404(
         ConnectorRun.objects.select_related("proposal", "connector"), pk=pk
@@ -133,7 +140,7 @@ def run_review(request, pk):
     categories, edge_types = ([], [])
     if is_enabled():
         try:
-            categories, edge_types = _bento_templates()
+            categories, edge_types = bento_templates()
         except Exception:  # noqa: BLE001 — graph may be down; page still renders
             categories, edge_types = ([], [])
 
@@ -143,7 +150,7 @@ def run_review(request, pk):
             "edge_types_json": json.dumps(edge_types),
             "generate_url": reverse("ingestor:generate"),
             "prefill_text": "",
-            "initial_payload": _payload(run.proposal),
+            "initial_payload": proposal_payload(run.proposal),
             "active_tab": "connectors",
         },
         request,

@@ -93,8 +93,11 @@ empty. Specs are validated structurally *and* against the live Bento templates
 `schedule_enabled` + `interval_minutes` per connector. A single global beat
 task (`toto.connectors.tasks.connectors_scan_schedules`, every
 `CONNECTORS_SCAN_MINUTES` min) claims due connectors under a row lock —
-`next_run_at` advances before dispatch, in-flight runs are never stacked.
-The deployed celery worker embeds beat (`celery worker -B`, see deploy.py).
+`next_run_at` advances before dispatch, in-flight runs are never stacked, and
+an untrusted connector with a proposal still awaiting review is skipped (no
+duplicate-proposal pileup). Runs stuck pending/running beyond
+`STALE_RUN_MAX_AGE` (2 h — a killed worker) stop blocking their connector.
+Deployments get a dedicated `celery_beat` container (see deploy.py).
 
 ## Deploy / flags
 

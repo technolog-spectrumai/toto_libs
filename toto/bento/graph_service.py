@@ -534,6 +534,29 @@ def list_edges(node_uid=None, et_slug=None, q=None, limit=25, offset=0):
     return [_serialize_edge(r) for r in records], total
 
 
+def edge_exists(et_slug, from_uid, to_uid):
+    """True when an edge of this type already links from→to.
+
+    A targeted existence probe (LIMIT 1), unlike ``list_edges`` which pages a
+    bounded window — callers deduplicating against the live graph (e.g. the
+    connectors ETL, since ``create_edge`` is a CREATE not a MERGE) need an
+    exact answer on arbitrarily high-degree nodes.
+    """
+    _require_graph()
+    et = BentoEdgeType.objects.filter(slug=et_slug).first()
+    if not et:
+        return False
+    with _client() as c:
+        records = c.run_cypher(
+            f"MATCH (a)-[r:{et.rel_type}]->(b) "
+            "WHERE (a.uid = $from OR a.uuid = $from) "
+            "AND (b.uid = $to OR b.uuid = $to) "
+            "RETURN 1 LIMIT 1",
+            {"from": from_uid, "to": to_uid},
+        )
+    return bool(records)
+
+
 def get_edge(edge_id):
     _require_graph()
     with _client() as c:

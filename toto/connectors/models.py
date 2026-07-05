@@ -25,6 +25,11 @@ from toto.api.models import _reject_secret_like_json
 class DataConnector(models.Model):
     EXTRACTOR_REST_API = "rest_api"
 
+    # A run stuck in pending/running longer than this (worker killed mid-run,
+    # never reached its finally-block save) no longer blocks new runs. Above
+    # CELERY_TASK_TIME_LIMIT (30 min), so a live task can never be shadowed.
+    STALE_RUN_MAX_AGE = timedelta(hours=2)
+
     name = models.CharField(max_length=120, unique=True)
     slug = models.SlugField(max_length=140, unique=True, blank=True)
     description = models.TextField(blank=True)
@@ -87,7 +92,11 @@ class DataConnector(models.Model):
                 slug = f"{base_slug}-{counter}"
                 counter += 1
             self.slug = slug
-        if self.schedule_enabled and self.interval_minutes and self.next_run_at is None:
+        if not self.schedule_enabled:
+            # Clear the tick, else re-enabling later inherits a stale past
+            # timestamp and fires immediately instead of waiting one interval.
+            self.next_run_at = None
+        elif self.interval_minutes and self.next_run_at is None:
             self.next_run_at = self.schedule_next(timezone.now())
         super().save(*args, **kwargs)
 
@@ -120,9 +129,20 @@ class DataConnector(models.Model):
         return now + timedelta(minutes=self.interval_minutes)
 
     def has_run_in_flight(self):
+        """A pending/running run blocks new ones — unless it's stale.
+
+        A worker killed mid-run (OOM, SIGKILL, hard time limit) leaves the row
+        in ``running`` forever; without the age cutoff that would permanently
+        disable the connector (runs are read-only in the admin by design).
+        """
+        cutoff = timezone.now() - self.STALE_RUN_MAX_AGE
         return self.runs.filter(
-            status__in=[ConnectorRun.STATUS_PENDING, ConnectorRun.STATUS_RUNNING]
+            status__in=[ConnectorRun.STATUS_PENDING, ConnectorRun.STATUS_RUNNING],
+            created_at__gte=cutoff,
         ).exists()
+
+    def has_unreviewed_run(self):
+        return self.runs.filter(status=ConnectorRun.STATUS_REVIEW).exists()
 
 
 class ConnectorRun(models.Model):
@@ -180,7 +200,7 @@ class ConnectorRun(models.Model):
         related_name="+",
         help_text="Archived raw API payload (all fetched pages).",
     )
-    # One entry per fetched page: auth-free url, status_code, records, truncated.
+    # One entry per fetched page: auth-free url, status_code, records.
     request_log = models.JSONField(default=list, blank=True)
     stats = models.JSONField(default=dict, blank=True)
     error = models.TextField(blank=True)

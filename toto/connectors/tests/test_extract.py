@@ -60,11 +60,17 @@ class ValidateConfigTests(TestCase):
         )
         self.assertTrue(any("next_path" in e for e in errors))
 
-    def test_offset_needs_size(self):
+    def test_offset_with_size_param_needs_size(self):
+        errors = self.extractor.validate_config(
+            _config(pagination={"strategy": "offset", "param": "o", "size_param": "limit"})
+        )
+        self.assertTrue(any("size" in e for e in errors))
+
+    def test_offset_without_size_param_is_valid(self):
         errors = self.extractor.validate_config(
             _config(pagination={"strategy": "offset", "param": "o"})
         )
-        self.assertTrue(any("size" in e for e in errors))
+        self.assertEqual(errors, [])
 
 
 @patch("toto.connectors.services.extract.rest.execute_api_request")
@@ -99,14 +105,22 @@ class ExtractTests(TestCase):
         sent_pages = [call.kwargs["params"]["page"] for call in api.call_args_list]
         self.assertEqual(sent_pages, [1, 2, 3])
 
-    def test_offset_pagination_advances_by_size(self, api):
-        config = _config(pagination={"strategy": "offset", "param": "offset", "size": 2})
+    def test_offset_pagination_advances_by_records_returned(self, api):
+        # The server ignores/clamps the requested size — offset must follow
+        # what actually came back, or records would be silently skipped.
+        config = _config(pagination={
+            "strategy": "offset", "param": "offset",
+            "size_param": "limit", "size": 100,
+        })
         self._extract(api, config, [
-            _resp({"results": [{"a": 1}, {"a": 2}]}),
+            _resp({"results": [{"a": 1}, {"a": 2}]}),   # server page size: 2
+            _resp({"results": [{"a": 3}]}),
             _resp({"results": []}),
         ])
         offsets = [call.kwargs["params"]["offset"] for call in api.call_args_list]
-        self.assertEqual(offsets, [0, 2])
+        self.assertEqual(offsets, [0, 2, 3])
+        limits = [call.kwargs["params"]["limit"] for call in api.call_args_list]
+        self.assertEqual(limits, [100, 100, 100])
 
     def test_cursor_pagination_follows_next_and_stops(self, api):
         config = _config(pagination={

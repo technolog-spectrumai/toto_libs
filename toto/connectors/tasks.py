@@ -60,6 +60,16 @@ def connectors_scan_schedules(self):
             connector.next_run_at = connector.schedule_next(now)
             connector.save(update_fields=["next_run_at"])
 
+        if not connector.trusted and connector.has_unreviewed_run():
+            # An untrusted connector's output waits for a human; re-fetching
+            # before that review lands would pile up near-identical proposals
+            # whose 'new' nodes duplicate each other if several get applied.
+            skipped += 1
+            logger.info(
+                "connectors: '%s' has a proposal awaiting review — skipping this tick",
+                connector.slug,
+            )
+            continue
         try:
             run = create_run(
                 connector,

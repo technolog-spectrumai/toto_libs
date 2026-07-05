@@ -48,10 +48,17 @@ def _edge_exists(edge_type_slug, from_uid, to_uid):
     """True when the graph already holds this exact edge (existing→existing only)."""
     from toto.bento import graph_service
 
-    rows, _total = graph_service.list_edges(
-        node_uid=from_uid, et_slug=edge_type_slug, limit=1000
-    )
-    return any(r.get("source") == from_uid and r.get("target") == to_uid for r in rows)
+    return graph_service.edge_exists(edge_type_slug, from_uid, to_uid)
+
+
+def _resolve_properties(record, rule):
+    """Resolve a rule's mapped properties on a record, dropping misses."""
+    props = {}
+    for prop, source in (rule.get("properties") or {}).items():
+        value = mapping.resolve_value(record, source)
+        if value is not None:
+            props[prop] = value
+    return props
 
 
 def _evidence(record, index, rule_id):
@@ -65,26 +72,28 @@ def _evidence(record, index, rule_id):
     }
 
 
-def transform(records, spec, *, entries, index=None, categories=None,
+def transform(records, spec, *, entries, categories=None,
               edge_types=None, searchable=None):
     """Return ``(proposal, tstats)``.
 
     ``entries`` is the ingestor catalog (:class:`CatalogEntry` list) built once
-    per run by the caller; ``index`` its ``matching.build_index`` (rebuilt here
-    if omitted). ``categories``/``edge_types``/``searchable`` default to the
-    live Bento templates and are injectable for tests.
+    per run by the caller. ``categories``/``edge_types``/``searchable`` default
+    to the live Bento templates and are injectable for tests.
     """
     if categories is None or edge_types is None or searchable is None:
         categories, edge_types, searchable = _bento_schema()
-    del index  # global index unused: matching is restricted per category below
-
-    entries_by_cat = {}
-    for entry in entries:
-        entries_by_cat.setdefault(entry.category_slug, []).append(entry)
-    index_by_cat = {slug: matching.build_index(es) for slug, es in entries_by_cat.items()}
 
     node_rules = spec.get("nodes") or []
     rel_rules = spec.get("relationships") or []
+
+    # Matching is restricted per category; only index the categories the spec
+    # actually maps (the catalog may span many more).
+    mapped_slugs = {rule.get("category_slug") for rule in node_rules}
+    entries_by_cat = {}
+    for entry in entries:
+        if entry.category_slug in mapped_slugs:
+            entries_by_cat.setdefault(entry.category_slug, []).append(entry)
+    index_by_cat = {slug: matching.build_index(es) for slug, es in entries_by_cat.items()}
 
     nodes = []
     relationships = []
@@ -146,11 +155,7 @@ def transform(records, spec, *, entries, index=None, categories=None,
                 }
                 stats["existing_matched"] += 1
             else:
-                props = {}
-                for prop, source in (rule.get("properties") or {}).items():
-                    value = mapping.resolve_value(record, source)
-                    if value is not None:
-                        props[prop] = value
+                props = _resolve_properties(record, rule)
                 # Fill the category's identifier property so required fields
                 # (e.g. 'title') aren't left empty — same rule as the LLM path.
                 ident = searchable.get(slug) or "name"
@@ -208,11 +213,7 @@ def transform(records, spec, *, entries, index=None, categories=None,
                                 "reason": "edge already in graph"})
                 continue
 
-            props = {}
-            for prop, source in (rule.get("properties") or {}).items():
-                value = mapping.resolve_value(record, source)
-                if value is not None:
-                    props[prop] = value
+            props = _resolve_properties(record, rule)
             relationships.append({
                 "temp_id": f"r{len(relationships) + 1}",
                 "edge_type_slug": slug,

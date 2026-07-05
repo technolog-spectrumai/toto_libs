@@ -29,7 +29,7 @@ def superuser_required(view_func):
 # helpers
 # ---------------------------------------------------------------------------
 
-def _bento_templates():
+def bento_templates():
     """Category + edge-type metadata the detail panel needs for its selects."""
     from toto.bento.models import BentoCategory, BentoEdgeType
 
@@ -55,7 +55,7 @@ def _bento_templates():
     return categories, edge_types
 
 
-def _payload(proposal_model):
+def proposal_payload(proposal_model):
     return {
         "proposal_id": proposal_model.id,
         "status": proposal_model.status,
@@ -79,7 +79,7 @@ def home(request):
     categories, edge_types = ([], [])
     if is_enabled():
         try:
-            categories, edge_types = _bento_templates()
+            categories, edge_types = bento_templates()
         except Exception:  # noqa: BLE001 — graph may be down; page still renders
             categories, edge_types = ([], [])
 
@@ -131,7 +131,7 @@ def generate(request):
         proposal_model = strategy.run(text, user=request.user, include_existing_nodes=include_existing)
     except Exception as exc:  # noqa: BLE001
         return JsonResponse({"error": f"Could not build a proposal: {exc}"}, status=500)
-    return JsonResponse(_payload(proposal_model))
+    return JsonResponse(proposal_payload(proposal_model))
 
 
 @require_GET
@@ -152,7 +152,7 @@ def list_strategies(request):
 @superuser_required
 def proposal_detail(request, pk):
     proposal_model = get_object_or_404(IngestProposal, pk=pk)
-    return JsonResponse(_payload(proposal_model))
+    return JsonResponse(proposal_payload(proposal_model))
 
 
 def _find(proposal, key, temp_id):
@@ -279,6 +279,6 @@ def apply(request, pk):
         _result, errors = apply_svc.run(proposal_model)
     except Exception as exc:  # noqa: BLE001
         return JsonResponse({"error": f"Apply failed: {exc}"}, status=500)
-    payload = _payload(proposal_model)
+    payload = proposal_payload(proposal_model)
     payload["errors"] = errors
     return JsonResponse(payload)

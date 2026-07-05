@@ -5,6 +5,7 @@ per-connector directory, so the exact upstream data behind any graph change
 stays inspectable long after the run.
 """
 
+import hashlib
 import json
 
 from django.contrib.auth import get_user_model
@@ -79,12 +80,10 @@ def archive_payload(run, result):
         file_type="json",
         is_public=False,
     )
+    # Hash the bytes already in memory — VaultFile.create_hash would re-read
+    # the whole payload back out of storage for the same result.
+    vault_file.content_hash = hashlib.sha256(content).hexdigest()
     filename = f"{connector.slug}_run_{run.pk}_{fetched_at.strftime('%Y%m%dT%H%M%S')}.json"
     vault_file.file.save(filename, ContentFile(content), save=False)
     vault_file.save()
-    try:
-        vault_file.content_hash = vault_file.create_hash()
-        vault_file.save(update_fields=["content_hash"])
-    except Exception:  # noqa: BLE001 — hash is best-effort metadata
-        pass
     return vault_file
