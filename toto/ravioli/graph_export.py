@@ -39,6 +39,11 @@ HISTORICAL_REL = "_HISTORICAL"
 # bookkeeping never looks like a content change.
 RESERVED_PROPS = {"uuid", "_checksum", "_historical", "_prev_uuid", "_archived_at"}
 
+# Marker-prop prefixes other curation apps own (formica pheromone/quarantine
+# markers). Excluded from the checksum the same way: a pheromone deposit must
+# never read as a content change and trigger a spurious re-sync.
+RESERVED_PREFIXES = ("_ph", "_formica")
+
 DEFAULT_EXCLUDED_APPS = ["workflows", "fileservices", "vault"]
 
 
@@ -61,7 +66,11 @@ def is_app_excluded(app_label):
 def content_checksum(props):
     """Stable SHA-256 of a node's mapped (content) properties."""
     payload = json.dumps(
-        {k: normalize(v) for k, v in (props or {}).items() if k not in RESERVED_PROPS},
+        {
+            k: normalize(v)
+            for k, v in (props or {}).items()
+            if k not in RESERVED_PROPS and not k.startswith(RESERVED_PREFIXES)
+        },
         sort_keys=True,
         cls=DjangoJSONEncoder,
     )
