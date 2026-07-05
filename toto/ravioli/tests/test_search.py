@@ -22,13 +22,17 @@ def _make_record(props, labels=("Chunk",), score=None):
     node.__getitem__ = lambda self, k: props[k]
     node.keys = lambda: list(props.keys())
 
-    record = MagicMock()
-    record.get = lambda key, default=None: {
+    values = {
         "labels": list(labels),
         "n": node,
         "node": node,
         "score": score,
-    }.get(key, default)
+    }
+    record = MagicMock()
+    record.get = lambda key, default=None: values.get(key, default)
+    # Without this, record["score"] hits MagicMock's default __getitem__ and
+    # float(MagicMock) silently yields 1.0 instead of the configured score.
+    record.__getitem__ = lambda self, key: values[key]
     return record
 
 
