@@ -18,7 +18,7 @@ from toto.ui import PageProcessor
 from .models import IngestProposal
 from .services import apply as apply_svc
 from .services import pipeline
-from .services.validation import revalidate, summarize
+from .services.approval import approve_all_valid, bulk_set_approval, save_edits
 
 
 def superuser_required(view_func):
@@ -65,13 +65,6 @@ def _payload(proposal_model):
         "detail_url": reverse("ingestor:proposal_detail", args=[proposal_model.id]),
         "apply_url": reverse("ingestor:apply", args=[proposal_model.id]),
     }
-
-
-def _save_edits(proposal_model):
-    """Re-validate the whole proposal, refresh the summary, persist."""
-    revalidate(proposal_model.proposal)
-    proposal_model.summary = {**(proposal_model.summary or {}), **summarize(proposal_model.proposal)}
-    proposal_model.save(update_fields=["proposal", "summary", "updated_at"])
 
 
 # ---------------------------------------------------------------------------
@@ -204,7 +197,7 @@ def patch_node(request, pk, temp_id):
             if data.get("merge_display"):
                 node["display"] = data["merge_display"]
 
-    _save_edits(proposal_model)
+    save_edits(proposal_model)
     return JsonResponse({"node": node, "summary": proposal_model.summary})
 
 
@@ -237,7 +230,7 @@ def patch_rel(request, pk, temp_id):
     if "approval" in data and data["approval"] in ("pending", "approved", "rejected"):
         rel["approval"] = data["approval"]
 
-    _save_edits(proposal_model)
+    save_edits(proposal_model)
     return JsonResponse({"relationship": rel, "summary": proposal_model.summary})
 
 
@@ -262,34 +255,10 @@ def set_approval(request, pk):
     if approval not in ("pending", "approved", "rejected"):
         return JsonResponse({"error": "Invalid approval value."}, status=400)
 
-    _bulk_set_approval(proposal_model, approval)
+    bulk_set_approval(proposal_model, approval)
     return JsonResponse(
         {"proposal": proposal_model.proposal, "summary": proposal_model.summary}
     )
-
-
-def _bulk_set_approval(proposal_model, approval):
-    """Set ``approval`` on every non-error node/relationship, then persist.
-
-    Re-validates against the live Bento templates first, applies the state only
-    to elements that aren't in error, and refreshes the summary. Shared by the
-    Select-all toggle and the legacy ``approve_all`` apply path.
-    """
-    proposal = proposal_model.proposal
-    revalidate(proposal)
-    elements = (proposal.get("nodes") or []) + (proposal.get("relationships") or [])
-    for el in elements:
-        # Never auto-approve an element that fails validation; clearing or
-        # rejecting is always safe, so those apply to every element.
-        if approval == "approved" and (el.get("validation") or {}).get("status") == "error":
-            continue
-        el["approval"] = approval
-    _save_edits(proposal_model)
-
-
-def _approve_all_valid(proposal_model):
-    """Mark every non-error node/relationship as approved (for ``approve_all``)."""
-    _bulk_set_approval(proposal_model, "approved")
 
 
 @require_POST
@@ -305,7 +274,7 @@ def apply(request, pk):
     if proposal_model.status == IngestProposal.STATUS_APPLIED:
         return JsonResponse({"error": "Proposal already applied."}, status=409)
     if request.POST.get("approve_all"):
-        _approve_all_valid(proposal_model)
+        approve_all_valid(proposal_model)
     try:
         _result, errors = apply_svc.run(proposal_model)
     except Exception as exc:  # noqa: BLE001

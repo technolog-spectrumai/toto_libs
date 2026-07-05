@@ -175,7 +175,7 @@ class ApplyAllTests(TestCase):
         self.client.login(username="admin", password="x")
 
     def test_approve_all_valid_skips_errors(self):
-        from toto.ingestor.views import _approve_all_valid
+        from toto.ingestor.services.approval import approve_all_valid
 
         obj = IngestProposal.objects.create(
             status=IngestProposal.STATUS_READY,
@@ -189,9 +189,10 @@ class ApplyAllTests(TestCase):
                 ],
             },
         )
-        # revalidate/_save_edits hit Neo4j/DB — stub them; we test the approve loop.
-        with patch("toto.ingestor.views.revalidate"), patch("toto.ingestor.views._save_edits"):
-            _approve_all_valid(obj)
+        # revalidate/save_edits hit Neo4j/DB — stub them; we test the approve loop.
+        with patch("toto.ingestor.services.approval.revalidate"), \
+             patch("toto.ingestor.services.approval.save_edits"):
+            approve_all_valid(obj)
         nodes = {n["temp_id"]: n for n in obj.proposal["nodes"]}
         self.assertEqual(nodes["n1"]["approval"], "approved")
         self.assertEqual(nodes["n2"]["approval"], "pending")  # error → left unapproved
@@ -203,7 +204,7 @@ class ApplyAllTests(TestCase):
             status=IngestProposal.STATUS_READY,
             proposal={"nodes": [], "relationships": []}, summary={},
         )
-        with patch("toto.ingestor.views._approve_all_valid") as approve, \
+        with patch("toto.ingestor.views.approve_all_valid") as approve, \
              patch("toto.ingestor.services.apply.run", return_value=({}, [])) as run:
             res = self.client.post(reverse("ingestor:apply", args=[obj.id]), {"approve_all": "1"})
         self.assertEqual(res.status_code, 200)
@@ -216,7 +217,7 @@ class ApplyAllTests(TestCase):
             status=IngestProposal.STATUS_READY,
             proposal={"nodes": [], "relationships": []}, summary={},
         )
-        with patch("toto.ingestor.views._approve_all_valid") as approve, \
+        with patch("toto.ingestor.views.approve_all_valid") as approve, \
              patch("toto.ingestor.services.apply.run", return_value=({}, [])):
             res = self.client.post(reverse("ingestor:apply", args=[obj.id]))
         self.assertEqual(res.status_code, 200)
@@ -246,7 +247,7 @@ class SetApprovalTests(TestCase):
     def test_select_all_approves_valid_only(self):
         url = reverse("ingestor:set_approval", args=[self.obj.id])
         # revalidate hits Bento/Neo4j — stub it so the pre-set validation stands.
-        with patch("toto.ingestor.views.revalidate"):
+        with patch("toto.ingestor.services.approval.revalidate"):
             res = self.client.post(
                 url, data=json.dumps({"approval": "approved"}),
                 content_type="application/json",
@@ -264,7 +265,7 @@ class SetApprovalTests(TestCase):
             n["approval"] = "approved"
         self.obj.save(update_fields=["proposal"])
         url = reverse("ingestor:set_approval", args=[self.obj.id])
-        with patch("toto.ingestor.views.revalidate"):
+        with patch("toto.ingestor.services.approval.revalidate"):
             res = self.client.post(
                 url, data=json.dumps({"approval": "pending"}),
                 content_type="application/json",
