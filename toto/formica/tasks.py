@@ -41,7 +41,43 @@ def formica_beat_scan(self):
             colony.save(update_fields=["last_run_at"])
         run_colony_cycle.delay(cycle.pk)
         dispatched += 1
-    return {"dispatched": dispatched, "skipped": skipped}
+    pruned = prune_retention()
+    return {"dispatched": dispatched, "skipped": skipped, **pruned}
+
+
+def prune_retention():
+    """Bound table growth: keep the newest N forager reports and old cycles.
+
+    Proposals are the audit trail and are never retention-pruned; a cycle that
+    produced one is kept too (its FK protects the context of the change).
+    """
+    from django.conf import settings
+
+    from .models import Colony, ColonyCycle, ForagerReport
+
+    report_keep = int(getattr(settings, "FORMICA_REPORT_RETENTION", 200))
+    cycle_keep = int(getattr(settings, "FORMICA_CYCLE_RETENTION", 500))
+    reports_deleted = cycles_deleted = 0
+    for colony in Colony.objects.all():
+        keep_ids = list(
+            colony.cycles.order_by("-number").values_list("pk", flat=True)[:report_keep]
+        )
+        deleted, _ = ForagerReport.objects.filter(cycle__colony=colony).exclude(
+            cycle_id__in=keep_ids
+        ).delete()
+        reports_deleted += deleted
+
+        old_ids = list(
+            colony.cycles.order_by("-number").values_list("pk", flat=True)[cycle_keep:]
+        )
+        if old_ids:
+            deleted, _ = (
+                ColonyCycle.objects.filter(pk__in=old_ids, proposals__isnull=True)
+                .exclude(status__in=[ColonyCycle.STATUS_PENDING, ColonyCycle.STATUS_RUNNING])
+                .delete()
+            )
+            cycles_deleted += deleted
+    return {"reports_pruned": reports_deleted, "cycles_pruned": cycles_deleted}
 
 
 def _create_cycle(colony, *, triggered_by):
