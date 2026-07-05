@@ -220,7 +220,7 @@ def proposal_detail(request, pk):
     context = _decorate(request, {
         "colony": proposal.colony,
         "proposal": proposal,
-        "ops_json": json.dumps(proposal.op_list),
+        "ops_list": proposal.op_list,
         "editable": proposal.status
         in (FormicaProposal.STATUS_READY, FormicaProposal.STATUS_FAILED),
         "active_tab": "proposals",
