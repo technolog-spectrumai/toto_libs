@@ -154,6 +154,47 @@ class GraphOps:
             for r in records
         ]
 
+    def hottest_subgraph(self, *, limit=150):
+        """Cytoscape payload of the top-τ edges + their endpoints (map UI)."""
+        records = self.client.run_cypher(
+            f"""
+            MATCH (a)-[r]->(b)
+            WHERE r._ph IS NOT NULL AND NOT type(r) = '_HISTORICAL'
+              AND coalesce(a._historical, false) = false
+              AND coalesce(b._historical, false) = false
+            RETURN elementId(r) AS eid, type(r) AS type, r._ph AS ph,
+                   coalesce(a.uid, a.uuid) AS a_id, labels(a) AS a_labels,
+                   coalesce(a.name, a.title, coalesce(a.uid, a.uuid)) AS a_display,
+                   a._formica_quarantine AS a_quarantine,
+                   coalesce(b.uid, b.uuid) AS b_id, labels(b) AS b_labels,
+                   coalesce(b.name, b.title, coalesce(b.uid, b.uuid)) AS b_display,
+                   b._formica_quarantine AS b_quarantine
+            ORDER BY r._ph DESC
+            LIMIT $limit
+            """,
+            {"limit": int(limit)},
+        )
+        nodes, edges = {}, []
+        for rec in records:
+            for prefix in ("a", "b"):
+                node_id = rec[f"{prefix}_id"]
+                if node_id and node_id not in nodes:
+                    nodes[node_id] = {
+                        "id": node_id,
+                        "label": str(rec[f"{prefix}_display"]),
+                        "category": (list(rec[f"{prefix}_labels"]) or [""])[0],
+                        "quarantined": rec[f"{prefix}_quarantine"] is not None,
+                    }
+            if rec["a_id"] and rec["b_id"]:
+                edges.append({
+                    "id": rec["eid"],
+                    "source": rec["a_id"],
+                    "target": rec["b_id"],
+                    "type": rec["type"],
+                    "ph": round(float(rec["ph"]), 4),
+                })
+        return {"nodes": list(nodes.values()), "edges": edges}
+
     def incident_ph(self, node_ids):
         """Sum of pheromone on each node's incident edges (targeted probe)."""
         if not node_ids:
