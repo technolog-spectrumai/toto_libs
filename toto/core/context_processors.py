@@ -15,5 +15,6 @@ def build_flags(request):
     'Ask Steven' Knowledge-Graph tab only when the sabbia backend is built)."""
     return {
         "BUILD_SABBIA": bool(getattr(settings, "BUILD_SABBIA", False)),
+        "BUILD_CONNECTORS": bool(getattr(settings, "BUILD_CONNECTORS", False)),
         "GRAFANA_ENABLED": bool(getattr(settings, "GRAFANA_ENABLED", False)),
     }

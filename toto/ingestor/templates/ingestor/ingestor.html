@@ -9,6 +9,7 @@
 <script id="ingestor-categories" type="application/json">{{ categories_json|safe }}</script>
 <script id="ingestor-edge-types" type="application/json">{{ edge_types_json|safe }}</script>
 {{ prefill_text|json_script:"ingestor-prefill" }}
+{% if initial_payload %}{{ initial_payload|json_script:"ingestor-initial" }}{% endif %}
 <script>
   const INGEST_GENERATE_URL = "{{ generate_url }}";
   const INGEST_STRATEGIES_URL = "{% url 'ingestor:strategies' %}";
@@ -36,7 +37,7 @@
         <p class="mt-1 text-sm opacity-60">
           {% trans "Paste text → generate a proposed graph update → review the diff → apply the approved patch." %}</p>
       </div>
-      {% include "ravioli/_tabs.html" with active_tab="ingest" %}
+      {% include "ravioli/_tabs.html" with active_tab=active_tab|default:"ingest" %}
     </div>
 
     <!-- ── Paste / generate ── -->
@@ -391,6 +392,20 @@ function ingestorFlow() {
         .then(r => r.json())
         .then(d => { this.strategies = d.strategies || []; })
         .catch(() => { this.strategies = []; });
+      // A proposal handed in by another tab (e.g. a connector run's review
+      // link): boot straight into the review phase — no generate step.
+      const initialEl = document.getElementById('ingestor-initial');
+      if (initialEl) {
+        const data = JSON.parse(initialEl.textContent || '{}');
+        if (data && data.proposal_id) {
+          this.proposalId = data.proposal_id;
+          this.proposal = data.proposal || { nodes: [], relationships: [] };
+          this.summary = data.summary || {};
+          this.phase = data.status === 'applied' ? 'done' : 'review';
+          if (this.phase === 'review') this.$nextTick(() => this.renderGraph());
+          return;
+        }
+      }
       // Text forwarded from another tab (e.g. OCR): pre-fill and auto-generate.
       const prefillEl = document.getElementById('ingestor-prefill');
       const prefill = prefillEl ? JSON.parse(prefillEl.textContent || '""') : '';
