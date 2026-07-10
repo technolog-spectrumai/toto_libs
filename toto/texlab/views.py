@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import hashlib
+
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
+from django.core.files.base import ContentFile
+from django.db.models import Q
 from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
-from django.urls import reverse_lazy
+from django.shortcuts import get_object_or_404, redirect, render
+from django.urls import NoReverseMatch, reverse, reverse_lazy
 from django.utils import timezone
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -15,6 +19,105 @@ from toto.texlab.models import CompileRun
 from toto.texlab.tasks import compile_latex_task
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
+
+# Starter content for a fresh .tex document. The vault's "New file" seed
+# (toto.vault.views.CreateEmptyFileView._INITIAL["latex"]) mirrors this literal.
+BLANK_TEX_DOCUMENT = (
+    "\\documentclass{article}\n"
+    "\n"
+    "\\begin{document}\n"
+    "\n"
+    "\\end{document}\n"
+)
+
+
+class WorkspaceIndexView(View):
+    """LaTeX workspace: list .tex/.sty/.bib vault files the user can open.
+
+    File-based successor of the old ``LatexWorkspace`` model UI — the vault
+    is the single source of truth, mirroring ``toto.memo.PresentationIndexView``.
+    """
+
+    template_name = "texlab/index.html"
+
+    def get(self, request):
+        qs = VaultFile.objects.filter(file_type__in=["latex", "bib"]).select_related(
+            "owner", "bucket", "directory"
+        )
+        if request.user.is_authenticated:
+            qs = qs.filter(Q(is_public=True) | Q(owner=request.user))
+        else:
+            qs = qs.filter(is_public=True)
+        qs = qs.order_by("-uploaded_at", "title")
+
+        def _play_url(f):
+            # Only .tex compiles to a PDF, and only when texplay is mounted.
+            if f.file_type != "latex":
+                return ""
+            try:
+                return reverse("texplay:latex_play", args=[f.pk])
+            except NoReverseMatch:
+                return ""
+
+        documents = [
+            {
+                "title": f.title,
+                "file_type": f.file_type,
+                "owner": f.owner.username,
+                "uploaded": f.uploaded_at,
+                "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
+                "play_url": _play_url(f),
+                # The editor is owner-scoped, so only owners get the link.
+                "edit_url": reverse("texlab:file_display", args=[f.pk]),
+            }
+            for f in qs
+        ]
+
+        context = PageProcessor().decorate({"documents": documents}, request)
+        return render(request, self.template_name, context)
+
+
+class WorkspaceCreateView(LoginRequiredMixin, View):
+    """One-click: create a blank .tex document in the user's personal bucket
+    and drop straight into the editor. Mirrors memo's PresentationCreateView."""
+
+    login_url = reverse_lazy("core:login")
+
+    def post(self, request):
+        from toto.vault.models import Bucket
+
+        bucket, _ = Bucket.objects.get_or_create(
+            owner=request.user,
+            slug=f"personal-{request.user.username}",
+            defaults={
+                "name": f"Personal — {request.user.username}",
+                "storage_backend": "local",
+            },
+        )
+
+        base_key = "untitled-document"
+        key = base_key
+        counter = 1
+        while VaultFile.objects.filter(bucket=bucket, key=key).exists():
+            key = f"{base_key}-{counter}"
+            counter += 1
+
+        tex_bytes = BLANK_TEX_DOCUMENT.encode("utf-8")
+
+        vault_file = VaultFile(
+            owner=request.user,
+            title=f"{key}.tex",
+            key=key,
+            file_type="latex",
+            bucket=bucket,
+            is_public=False,
+        )
+        vault_file.file.save(f"{key}.tex", ContentFile(tex_bytes), save=False)
+        vault_file.content_hash = hashlib.sha256(tex_bytes).hexdigest()
+        vault_file.file_size_bytes = len(tex_bytes)
+        vault_file.save()
+
+        return redirect(reverse("texlab:file_display", args=[vault_file.pk]))
 
 
 class FileDisplayView(LoginRequiredMixin, View):

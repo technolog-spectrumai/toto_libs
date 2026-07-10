@@ -131,7 +131,9 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertIsNotNone(editor)
         vf = self._make_presentation()
         self.assertEqual(play.get_play_url(vf), reverse("memo:present", args=[vf.pk]))
-        self.assertEqual(editor.get_editor_url(vf), reverse("memo:edit", args=[vf.pk]))
+        # The vault Edit button opens the plain-text XML source editor; the
+        # structured slide editor stays reachable from the memo app itself.
+        self.assertEqual(editor.get_editor_url(vf), reverse("memo:source", args=[vf.pk]))
 
     def test_view_public_ok_for_anon(self):
         vf = self._make_presentation(is_public=True)
@@ -224,7 +226,7 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertEqual(data["status"], "ok")
         vf = VaultFile.objects.get(pk=data["file_pk"])
         self.assertEqual(vf.file_type, "presentation")
-        self.assertEqual(data["editor_url"], reverse("memo:edit", args=[vf.pk]))
+        self.assertEqual(data["editor_url"], reverse("memo:source", args=[vf.pk]))
         with vf.file.open("r") as f:
             content = f.read()
         if isinstance(content, bytes):
@@ -257,3 +259,74 @@ class PresentationVaultIntegrationTests(TestCase):
         res = self.client.post(reverse("memo:create"))
         self.assertEqual(res.status_code, 302)  # redirect to login
         self.assertIn("/login", res.url)
+
+    def test_source_view_owner_only(self):
+        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", body="<p>x</p>")])
+        vf = self._make_presentation(p=p)
+
+        # non-owner → 404
+        self.client.force_login(self.bob)
+        self.assertEqual(
+            self.client.get(reverse("memo:source", args=[vf.pk])).status_code, 404
+        )
+
+        # owner → 200 with the raw XML in the page
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:source", args=[vf.pk]))
+        self.assertEqual(res.status_code, 200)
+        body = res.content.decode()
+        # The raw XML is hydrated into Ace via |escapejs, so `<presentation`
+        # appears as the escaped literal.
+        self.assertIn("\\u003Cpresentation", body)
+        self.assertIn(reverse("memo:source_save", args=[vf.pk]), body)
+        # Toolbar links back into the memo app.
+        self.assertIn(reverse("memo:edit", args=[vf.pk]), body)
+        self.assertIn(reverse("memo:present", args=[vf.pk]), body)
+
+    def test_source_save_round_trip(self):
+        vf = self._make_presentation()
+        self.client.force_login(self.alice)
+        xml = pf.dumps(
+            pf.Presentation(title="Raw", slides=[pf.Slide(title="One", body="<p>hi</p>")])
+        )
+        res = self.client.post(
+            reverse("memo:source_save", args=[vf.pk]), data={"content": xml}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["status"], "ok")
+        self.assertTrue(res.json()["valid_presentation"])
+
+        vf.refresh_from_db()
+        with vf.file.open("r") as f:
+            saved = f.read()
+        if isinstance(saved, bytes):
+            saved = saved.decode("utf-8")
+        self.assertEqual(saved, xml)
+        self.assertEqual(pf.loads(saved).title, "Raw")
+
+    def test_source_save_accepts_invalid_xml_but_flags_it(self):
+        # Plain-text editing must not gate on parse state — the save lands,
+        # the response just reports the file no longer parses.
+        vf = self._make_presentation()
+        self.client.force_login(self.alice)
+        res = self.client.post(
+            reverse("memo:source_save", args=[vf.pk]), data={"content": "<broken"}
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["status"], "ok")
+        self.assertFalse(res.json()["valid_presentation"])
+
+        vf.refresh_from_db()
+        with vf.file.open("r") as f:
+            saved = f.read()
+        if isinstance(saved, bytes):
+            saved = saved.decode("utf-8")
+        self.assertEqual(saved, "<broken")
+
+    def test_source_save_denied_for_non_owner(self):
+        vf = self._make_presentation()
+        self.client.force_login(self.bob)
+        res = self.client.post(
+            reverse("memo:source_save", args=[vf.pk]), data={"content": "x"}
+        )
+        self.assertEqual(res.status_code, 404)

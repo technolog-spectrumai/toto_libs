@@ -32,14 +32,22 @@ Slide bodies are CDATA-wrapped so pasted HTML / `<img>` data URIs / inline
 
 - **Vault Play button** → `memo:present` — reveal.js slideshow viewer
   (registered via `plugins/vault_play_plugins.py`).
-- **Vault Edit button** → `memo:edit` — in-browser slide editor with client-side
-  image resize (≤640px) + base64 embedding and SVG inlining
-  (registered via `plugins/vault_editor_plugins.py`).
-- `memo:save` — persists edited slides back to the vault file as XML.
-- `memo:index` — gallery of presentations the user can open.
+- **Vault Edit button** → `memo:source` — plain-text (Ace, XML mode) editor of
+  the raw presentation XML; in the vault a presentation is just an editable
+  text file (registered via `plugins/vault_editor_plugins.py`).
+- `memo:edit` — the structured slide editor with client-side image resize
+  (≤640px) + base64 embedding and SVG inlining. Reached from the memo app
+  itself: the index cards, the player's Edit link, and the source editor's
+  *Slides* button.
+- `memo:save` / `memo:source_save` — persist slides / raw XML back to the
+  vault file.
+- `memo:index` — the presentation workspace: gallery of presentations the
+  user can open, with one-click *New presentation* (`memo:create`). Linked
+  from the dashboard as the **Presentations** card.
 
-New presentations are created from the vault's *New File → presentation* menu
-(`vault.CreateEmptyFileView` seeds a blank document and routes to the editor).
+New presentations are created from the workspace's *New presentation* button
+or the vault's *New File → presentation* menu (`vault.CreateEmptyFileView`
+seeds a blank document and routes to the editor).
 
 ## Detection
 

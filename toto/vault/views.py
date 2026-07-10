@@ -1336,7 +1336,14 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "</body>\n"
             "</html>\n"
         ),
-        "latex": "",
+        # Blank .tex document. Mirrors toto.texlab.views.BLANK_TEX_DOCUMENT.
+        "latex": (
+            "\\documentclass{article}\n"
+            "\n"
+            "\\begin{document}\n"
+            "\n"
+            "\\end{document}\n"
+        ),
         "bib":   "",
         "svg":   '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">\n</svg>\n',
         # Empty NeoJSON graph. Mirrors toto.ravioli.neojson.dumps(neojson.new_graph()).

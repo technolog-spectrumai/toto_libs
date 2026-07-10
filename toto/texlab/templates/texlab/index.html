@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{% trans "Presentations" %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "LaTeX Workspace" %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <section
@@ -14,17 +14,17 @@
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
         <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-3xl font-bold">{% trans "Presentations" %}</h1>
-        <p class="opacity-75">{% trans "Self-contained presentations stored as vault files." %}</p>
+            class="text-3xl font-bold">{% trans "LaTeX Workspace" %}</h1>
+        <p class="opacity-75">{% trans "LaTeX documents stored as plain .tex vault files." %}</p>
       </div>
       <div class="flex items-center gap-4">
         {% if is_authenticated %}
-          <form method="post" action="{% url 'memo:create' %}">
+          <form method="post" action="{% url 'texlab:create' %}">
             {% csrf_token %}
             <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
-              <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+              <i class="fa-solid fa-plus"></i>{% trans "New document" %}</button>
           </form>
         {% endif %}
         <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
@@ -32,29 +32,38 @@
       </div>
     </div>
 
-    {% if presentations %}
+    {% if documents %}
       <div class="grid gap-5 md:grid-cols-2">
-        {% for p in presentations %}
+        {% for d in documents %}
           <article
             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
             class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
             <div class="space-y-2">
-              <a href="{{ p.present_url }}" class="block text-xl font-bold underline hover:opacity-80">
-                {{ p.title }}
-              </a>
+              {% if d.is_owner %}
+                <a href="{{ d.edit_url }}" class="block text-xl font-bold underline hover:opacity-80">
+                  {{ d.title }}
+                </a>
+              {% elif d.play_url %}
+                <a href="{{ d.play_url }}" class="block text-xl font-bold underline hover:opacity-80">
+                  {{ d.title }}
+                </a>
+              {% else %}
+                <span class="block text-xl font-bold">{{ d.title }}</span>
+              {% endif %}
               <div class="flex flex-wrap gap-4 text-xs opacity-65">
-                <span>{{ p.owner }}</span>
-                <span>{{ p.uploaded|date:"M d, Y" }}</span>
+                <span class="uppercase">{{ d.file_type }}</span>
+                <span>{{ d.owner }}</span>
+                <span>{{ d.uploaded|date:"M d, Y" }}</span>
               </div>
             </div>
             <div class="flex gap-3 text-sm">
-              <a href="{{ p.present_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
-              {% if p.is_owner %}
-                <a href="{{ p.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+              {% if d.play_url %}
+                <a href="{{ d.play_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-play"></i> {% trans "View PDF" %}</a>
+              {% endif %}
+              {% if d.is_owner %}
+                <a href="{{ d.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                   <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
-                <a href="{{ p.source_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                  <i class="fa-solid fa-code"></i> {% trans "Source" %}</a>
               {% endif %}
             </div>
           </article>
@@ -65,15 +74,15 @@
         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
         class="border rounded-lg p-8 text-center shadow-md">
         <p class="text-sm opacity-70 mb-4">
-          {% trans "No presentations yet." %}
+          {% trans "No LaTeX documents yet." %}
         </p>
         {% if is_authenticated %}
-          <form method="post" action="{% url 'memo:create' %}" class="inline">
+          <form method="post" action="{% url 'texlab:create' %}" class="inline">
             {% csrf_token %}
             <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
-              <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+              <i class="fa-solid fa-plus"></i>{% trans "New document" %}</button>
           </form>
         {% endif %}
       </div>

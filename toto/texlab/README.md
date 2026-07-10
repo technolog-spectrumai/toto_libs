@@ -1,28 +1,48 @@
 # toto.texlab
 
-*(Studio only — requires BUILD_STUDIO=1)*
+*(Requires BUILD_LATEX=1 — installed together with `toto.texplay`)*
 
-LaTeX compilation service over WebSockets. Workspaces hold `.tex` and supporting files; compile runs invoke a LaTeX engine and return PDF or image output.
+File-based **LaTeX workspace**. Documents are plain `.tex` vault files
+(`file_type="latex"`, plus `.bib` bibliographies) — the vault file is the
+single source of truth, the same model as `.pml` presentations (`toto.memo`)
+and `.tpy` notebooks (`toto.mandragora`). The old `LatexWorkspace`/`LatexFile`
+models were dropped in migration `0002_remove_workspace_models`; only
+`CompileRun` (per-file compile audit) remains in the database.
 
-## Models
+## Entry points
 
-- `LatexWorkspace` — a named LaTeX project. Fields: `name`, `slug`, `bucket` (FK to `vault.Bucket` — file storage for this workspace), `owner` (FK to `people.Person`), `is_public`, `created_at`.
+- `texlab:index` — the LaTeX workspace: lists `.tex`/`.bib` vault files the
+  user can open, with one-click *New document* (`texlab:create`). Linked from
+  the dashboard as the **LaTeX** card.
+- **Vault Edit button** → `texlab:file_display` — Ace editor (latex mode) with
+  Save, compile trigger and compile history
+  (registered via `plugins/vault_editor_plugins.py`).
+- **Vault Play button** → `texplay:latex_play` — compile-and-preview the PDF
+  (registered via `toto.texplay.plugins.vault_play_plugins`).
+- `texlab:compile_latex` / `texlab:compile_status` — start a compile
+  (Celery/workflow-backed when available, synchronous fallback otherwise) and
+  poll its `CompileRun`.
 
-- `LatexFile` — a file within a workspace. Fields: `workspace` FK, `filename`, `vault_file` (FK to `vault.VaultFile`), `is_main` (the entrypoint `.tex` file), `updated_at`.
+New documents are created from the workspace's *New document* button (seeds
+`BLANK_TEX_DOCUMENT`) or the vault's *New File → latex* menu
+(`vault.CreateEmptyFileView` mirrors the same blank skeleton).
 
-- `CompileRun` — a single compilation attempt. Fields: `workspace` FK, `latex_file` (FK to the main file), `status` (`queued / running / success / failed`), `compiler` (`pdflatex / xelatex / lualatex`), `output_pdf` (FK to `vault.VaultFile`, nullable), `log_output` (text), `duration_ms`, `workflow_run` (FK to `workflows.WorkflowRun`, nullable — for scheduled compiles), `created_at`.
+## Detection
 
-## How it works
+`VaultFile._EXT_MAP` maps `.tex`/`.sty`/`.cls`/`.dtx`/`.ins` → `latex` and
+`.bib` → `bib` (extension-first). The files stay plain text and are editable
+as such.
 
-- Compile requests are submitted via WebSocket or HTTP.
-- The Channels consumer queues a `CompileRun`, streams log output back to the client in real time, and stores the output PDF in vault on success.
+## Compilation
 
-## Key coupling
-
-- `vault.VaultFile` / `vault.Bucket` — all files stored via vault.
-- `workflows.WorkflowRun` — compile runs can be triggered by the workflow engine.
+`compile.py` runs `pdflatex -interaction=nonstopmode` in a tempdir over the
+file (plus sibling bucket files), storing the output PDF as a `VaultFile` and
+the log on the `CompileRun`. Requires TeX Live on the host/container
+(`INSTALL_TEXLIVE=1` in deploy configs).
 
 ## Dependencies
 
-- `vault` — LatexFile and CompileRun output stored as VaultFile
-- `workflows` — CompileRun can be triggered as a workflow node
+- `vault` — documents and output PDFs are `VaultFile`s; editor/play plugins
+  wire the buttons.
+- `workflows` — compiles can run as workflow nodes (`CompileRun.workflow_run`).
+- `toto.texplay` — the Play-side compile/preview app.

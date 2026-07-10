@@ -2,6 +2,8 @@ from django.urls import path
 
 from .views import (
     FileDisplayView,
+    WorkspaceCreateView,
+    WorkspaceIndexView,
     bucket_images_json,
     compile_history_json,
     compile_latex,
@@ -12,6 +14,8 @@ from .views import (
 app_name = "texlab"
 
 urlpatterns = [
+    path("",                             WorkspaceIndexView.as_view(),  name="index"),
+    path("new/",                         WorkspaceCreateView.as_view(), name="create"),
     path("file/<int:file_pk>/",          FileDisplayView.as_view(),   name="file_display"),
     path("file/<int:file_pk>/save/",     save_file,                   name="save_file"),
     path("file/<int:file_pk>/compile/",  compile_latex,               name="compile_latex"),

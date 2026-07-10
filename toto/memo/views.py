@@ -98,6 +98,75 @@ class PresentationView(View):
 
 
 # ---------------------------------------------------------------------------
+# Source editor (plain text)
+# ---------------------------------------------------------------------------
+
+class PresentationSourceView(LoginRequiredMixin, View):
+    """Plain-text editor for the raw presentation XML (owner only).
+
+    This is what the vault's Edit button opens — in the vault a presentation
+    is just an editable XML text file. The structured slide editor stays
+    reachable from the memo app (index, player, and a toolbar link here).
+    """
+
+    template_name = "memo/source.html"
+    login_url = reverse_lazy("core:login")
+
+    def get(self, request, file_pk):
+        vault_file = _get_owned_file(request, file_pk)
+        try:
+            content = vault_file.file.read().decode("utf-8")
+        except Exception:
+            content = ""
+
+        context = PageProcessor().decorate(
+            {
+                "vault_file": vault_file,
+                "content": content,
+                "save_url": reverse("memo:source_save", args=[file_pk]),
+                "edit_url": reverse("memo:edit", args=[file_pk]),
+                "present_url": reverse("memo:present", args=[file_pk]),
+            },
+            request,
+        )
+        return render(request, self.template_name, context)
+
+
+@csrf_exempt
+def presentation_source_save(request, file_pk):
+    """Persist raw XML text back to the vault file.
+
+    No validation gate — the file is plain text and the viewer already
+    tolerates corrupt content. Parse state is reported so the editor can
+    warn without blocking the save.
+    """
+    if request.method != "POST":
+        return JsonResponse({"error": "POST required"}, status=400)
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not authenticated."}, status=401)
+
+    vault_file = _get_owned_file(request, file_pk)
+    content = request.POST.get("content", "")
+    content_bytes = content.encode("utf-8")
+
+    try:
+        with vault_file.file.open("w") as f:
+            f.write(content)
+        vault_file.content_hash = hashlib.sha256(content_bytes).hexdigest()
+        vault_file.file_size_bytes = len(content_bytes)
+        vault_file.save(update_fields=["content_hash", "file_size_bytes"])
+    except Exception as exc:
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    try:
+        presentation_format.loads(content)
+        valid = True
+    except presentation_format.PresentationParseError:
+        valid = False
+    return JsonResponse({"status": "ok", "valid_presentation": valid})
+
+
+# ---------------------------------------------------------------------------
 # Editor
 # ---------------------------------------------------------------------------
 
@@ -236,6 +305,7 @@ class PresentationIndexView(View):
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "present_url": reverse("memo:present", args=[f.pk]),
                 "edit_url": reverse("memo:edit", args=[f.pk]),
+                "source_url": reverse("memo:source", args=[f.pk]),
             }
             for f in qs
         ]
