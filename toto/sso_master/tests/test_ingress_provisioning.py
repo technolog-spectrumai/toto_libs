@@ -1,11 +1,12 @@
 from __future__ import annotations
 
+from django.contrib.auth import get_user_model
 from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from toto.core.models import Platform
 
-from ..models import SSORelyingParty
+from ..models import SSORelyingParty, SSOSigningKey
 
 
 def _platform():
@@ -21,6 +22,7 @@ def _platform():
     PLATFORM_DOMAIN="portal.example.com",
     GRAFANA_ENABLED=False,
     GITEA_ENABLED=False,
+    SSO_VAULT_PASSWORD="",  # keep these tests signing-key-free (see class below)
 )
 class IngressProvisioningTests(TestCase):
     def setUp(self):
@@ -74,3 +76,39 @@ class IngressProvisioningTests(TestCase):
             "https://portal.example.com/grafana/login/generic_oauth",
         )
         self.assertTrue(rp.verify_client_secret("s3cret-grafana"))
+
+
+@override_settings(
+    PLATFORM_DOMAIN="portal.example.com",
+    GRAFANA_ENABLED=False,
+    GITEA_ENABLED=False,
+    SSO_VAULT_PASSWORD="test-vault-pass",
+)
+class SigningKeyEnsureTests(TestCase):
+    """The ingress must guarantee an active RS256 signing key: without one every
+    OIDC token exchange 500s (and the burnt single-use code turns the relying
+    party's retry into a cryptic invalid_grant)."""
+
+    def setUp(self):
+        _platform()
+        get_user_model().objects.create_superuser(
+            "boss", "boss@example.com", "x"
+        )
+
+    def test_key_created_when_missing(self):
+        call_command("ingress_sso_master")
+        key = SSOSigningKey.objects.get(is_active=True)
+        self.assertTrue(key.key_id.startswith("sso-auto-"))
+        self.assertIsNotNone(key.encrypted_key)
+
+    def test_second_run_keeps_existing_key(self):
+        call_command("ingress_sso_master")
+        first = SSOSigningKey.objects.get(is_active=True)
+        call_command("ingress_sso_master")
+        self.assertEqual(SSOSigningKey.objects.count(), 1)
+        self.assertEqual(SSOSigningKey.objects.get(is_active=True).pk, first.pk)
+
+    @override_settings(SSO_VAULT_PASSWORD="")
+    def test_skipped_without_vault_password(self):
+        call_command("ingress_sso_master")
+        self.assertFalse(SSOSigningKey.objects.exists())

@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+from unittest import mock
+
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
 
+from ..models import SSOAuthorizationCode, SSORelyingParty
 from ..services import get_user_claims
 
 User = get_user_model()
@@ -96,6 +99,74 @@ class DiscoveryDocumentTests(TestCase):
         self.assertEqual(
             doc["authorization_endpoint"], "http://testserver/sso/authorize/"
         )
+
+class TokenCodeAtomicityTests(TestCase):
+    """A crash mid-exchange (the missing-signing-key incident) must not consume
+    the single-use authorization code: goth/x-oauth2 retries the POST, and a
+    burnt code turns the real error into a cryptic invalid_grant."""
+
+    REDIRECT = "https://portal.example.com/gitea/user/oauth2/portal-sso/callback"
+
+    def setUp(self):
+        _platform()
+        self.user = User.objects.create_user("alice", password="x")
+        self.rp = SSORelyingParty.objects.create(
+            name="Gitea", client_id="gitea",
+            redirect_uris=self.REDIRECT, allowed_scopes="openid roles",
+        )
+        self.rp.set_client_secret("s3")
+        self.rp.save()
+
+    def _mint_code(self):
+        return SSOAuthorizationCode.objects.create(
+            client=self.rp, user=self.user,
+            redirect_uri=self.REDIRECT, scope="openid roles", nonce="",
+        )
+
+    def _exchange(self, code, client=None):
+        return (client or self.client).post(reverse("sso:token"), {
+            "grant_type": "authorization_code",
+            "code": code.code,
+            "redirect_uri": self.REDIRECT,
+            "client_id": "gitea",
+            "client_secret": "s3",
+        })
+
+    def test_crash_rolls_back_code_consumption(self):
+        code = self._mint_code()
+        crashing = Client(raise_request_exception=False)
+        with mock.patch(
+            "toto.sso_master.views.build_id_token",
+            side_effect=RuntimeError("no signing key"),
+        ):
+            resp = self._exchange(code, client=crashing)
+        self.assertEqual(resp.status_code, 500)
+        code.refresh_from_db()
+        self.assertFalse(code.is_used)
+
+        # …so the relying party's retry succeeds once the cause is fixed.
+        with mock.patch(
+            "toto.sso_master.views.build_id_token", return_value="x.y.z"
+        ):
+            resp = self._exchange(code)
+        self.assertEqual(resp.status_code, 200)
+        code.refresh_from_db()
+        self.assertTrue(code.is_used)
+
+    def test_used_code_is_rejected(self):
+        code = self._mint_code()
+        with mock.patch(
+            "toto.sso_master.views.build_id_token", return_value="x.y.z"
+        ):
+            self.assertEqual(self._exchange(code).status_code, 200)
+            resp = self._exchange(code)
+        self.assertEqual(resp.status_code, 400)
+        self.assertEqual(resp.json()["error"], "invalid_grant")
+
+
+class SslRedirectExemptTests(TestCase):
+    def setUp(self):
+        _platform()
 
     @override_settings(SECURE_SSL_REDIRECT=True)
     def test_internal_oidc_paths_exempt_from_ssl_redirect(self):

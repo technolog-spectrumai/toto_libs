@@ -2,9 +2,12 @@ import os
 
 from django.conf import settings
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
+from django.utils import timezone
 
 from toto.ingress import IngressCommand
 
+from ...models import SSOSigningKey
 from ...provisioning import create_relying_party
 from ...services import get_public_base_url
 
@@ -13,6 +16,7 @@ class Command(IngressCommand):
     help = "Seed dev SSO users for the portal and provision built-in relying parties."
 
     def process(self):
+        self._ensure_signing_key()
         User = get_user_model()
         users = [
             {"username": "sso1", "password": os.environ.get("SSO1_PASSWORD", "sso1")},
@@ -29,6 +33,41 @@ class Command(IngressCommand):
 
         self._provision_grafana()
         self._provision_gitea()
+
+    def _ensure_signing_key(self):
+        """ID tokens are RS256-signed with the active SSOSigningKey (private half
+        encrypted in Gervazy). Nothing else creates it, so on a fresh DB (first
+        deploy, RESET=1 wipe) every OIDC token exchange would 500 until someone
+        ran create_sso_signing_key by hand — burning the single-use code, so the
+        relying party's retry surfaced only as a cryptic invalid_grant. Ensure a
+        key here instead; runs at most once per DB lifetime."""
+        if SSOSigningKey.objects.filter(is_active=True).exists():
+            return
+        if not (getattr(settings, "SSO_VAULT_PASSWORD", "") or "").strip():
+            self.stdout.write(self.style.WARNING(
+                "No active SSOSigningKey and SSO_VAULT_PASSWORD is unset — "
+                "skipping key creation; OIDC logins will fail until one exists."
+            ))
+            return
+        owner = (
+            get_user_model().objects
+            .filter(is_superuser=True, is_active=True)
+            .order_by("pk")
+            .first()
+        )
+        if owner is None:
+            self.stdout.write(self.style.WARNING(
+                "No active SSOSigningKey and no superuser to own the vault — "
+                "skipping key creation; OIDC logins will fail until one exists."
+            ))
+            return
+        key_id = f"sso-auto-{timezone.now():%Y%m%d-%H%M%S}"
+        call_command(
+            "create_sso_signing_key",
+            key_id=key_id,
+            vault_owner=owner.username,
+            stdout=self.stdout,
+        )
 
     def _provision_grafana(self):
         """Register Grafana as a trusted OIDC relying party so it can SSO against

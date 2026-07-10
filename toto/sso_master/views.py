@@ -6,6 +6,7 @@ from django.contrib.auth import authenticate, get_user_model, login, logout
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordResetForm, SetPasswordForm
 from django.contrib.auth.tokens import default_token_generator
+from django.db import transaction
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import NoReverseMatch, reverse
@@ -272,15 +273,21 @@ def token(request):
     if not verify_pkce(code_verifier, auth_code.code_challenge, auth_code.code_challenge_method):
         return JsonResponse({"error": "invalid_grant"}, status=400)
 
-    auth_code.mark_used()
-    access_token = SSOAccessToken.objects.create(client=client, user=auth_code.user, scope=auth_code.scope)
-    id_token = build_id_token(
-        request,
-        user=auth_code.user,
-        client=client,
-        scope=auth_code.scope,
-        nonce=auth_code.nonce,
-    )
+    # Atomic: a crash after mark_used() (e.g. build_id_token with no active
+    # signing key) would otherwise burn the single-use code — the relying
+    # party's auth-style retry then gets a misleading invalid_grant while the
+    # real error hides in the first attempt's 500. Roll the consumption back
+    # instead so a retry can succeed once the cause is fixed.
+    with transaction.atomic():
+        auth_code.mark_used()
+        access_token = SSOAccessToken.objects.create(client=client, user=auth_code.user, scope=auth_code.scope)
+        id_token = build_id_token(
+            request,
+            user=auth_code.user,
+            client=client,
+            scope=auth_code.scope,
+            nonce=auth_code.nonce,
+        )
 
     return JsonResponse({
         "access_token": access_token.token,
