@@ -138,6 +138,13 @@ def _resolve_dashboard_item(item, user):
     # access — but keeps ops tools out of ordinary users' dashboards.
     if visibility == "superuser" and not (authenticated and user.is_superuser):
         return None
+    # "staff" cards (e.g. the Gitea "Code" link) show for staff AND superusers —
+    # is_superuser does not imply is_staff in Django. Cosmetic like above; Gitea
+    # enforces the real gate via the required `staff` role claim.
+    if visibility == "staff" and not (
+        authenticated and (user.is_staff or user.is_superuser)
+    ):
+        return None
     link = item.get("link")
     if link and ":" in link:
         try:
@@ -232,6 +239,11 @@ def _manual_features(request):
         "grafana": bool(getattr(settings, "GRAFANA_ENABLED", False))
         and request.user.is_authenticated
         and request.user.is_superuser,
+        # Cosmetic gate like the dashboard "Code" card — Gitea enforces its own
+        # staff-only access via the required `staff` role claim.
+        "gitea": bool(getattr(settings, "GITEA_ENABLED", False))
+        and request.user.is_authenticated
+        and (request.user.is_staff or request.user.is_superuser),
     }
 
 

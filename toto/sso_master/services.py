@@ -32,6 +32,18 @@ def get_issuer(request=None) -> str:
     raise RuntimeError("Cannot resolve SSO issuer without Platform.domain or request.")
 
 
+def get_public_base_url() -> str:
+    """Browser-facing base URL built from settings.PLATFORM_DOMAIN ("" when unset).
+    Used to build OIDC redirect URIs and the browser-facing authorization endpoint
+    advertised by the internal discovery document."""
+    domain = (getattr(settings, "PLATFORM_DOMAIN", "") or "").strip().rstrip("/")
+    if not domain:
+        return ""
+    if domain.startswith("http://") or domain.startswith("https://"):
+        return domain
+    return f"https://{domain}"
+
+
 # ---------------------------------------------------------------------------
 # Signing key helpers
 # ---------------------------------------------------------------------------
@@ -147,11 +159,19 @@ def get_user_claims(user, scopes) -> dict:
             claims["display_name"] = person.display_name
             claims["person_slug"] = person.slug
 
-    # Role claim for relying parties that map local roles (e.g. Grafana's OIDC
-    # role mapping gates its Admin role on `contains(roles[*], 'admin')`). Emitted
-    # only for clients that request the non-standard `roles` scope.
+    # Role claim for relying parties that map local roles. Emitted only for
+    # clients that request the non-standard `roles` scope. Two consumers:
+    #   - Grafana gates its Admin role on `contains(roles[*], 'admin')` with
+    #     strict mapping, so anyone without `admin` is denied entirely.
+    #   - Gitea requires `staff` in roles to log in at all (staff + superusers)
+    #     and maps `admin` → instance admin (see provision_oauth.sh).
     if "roles" in scopes:
-        claims["roles"] = ["admin"] if user.is_superuser else ["viewer"]
+        if user.is_superuser:
+            claims["roles"] = ["admin", "staff"]
+        elif user.is_staff:
+            claims["roles"] = ["staff"]
+        else:
+            claims["roles"] = ["viewer"]
         claims["is_superuser"] = bool(user.is_superuser)
 
     return claims

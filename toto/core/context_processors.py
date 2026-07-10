@@ -17,4 +17,5 @@ def build_flags(request):
         "BUILD_SABBIA": bool(getattr(settings, "BUILD_SABBIA", False)),
         "BUILD_CONNECTORS": bool(getattr(settings, "BUILD_CONNECTORS", False)),
         "GRAFANA_ENABLED": bool(getattr(settings, "GRAFANA_ENABLED", False)),
+        "GITEA_ENABLED": bool(getattr(settings, "GITEA_ENABLED", False)),
     }

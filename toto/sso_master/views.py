@@ -25,7 +25,15 @@ from toto.core.auth_cooldown import (
     start_login_retry_cooldown,
 )
 from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty
-from .services import build_id_token, get_issuer, get_jwks, get_subject_for_user, get_user_claims, verify_pkce
+from .services import (
+    build_id_token,
+    get_issuer,
+    get_jwks,
+    get_public_base_url,
+    get_subject_for_user,
+    get_user_claims,
+    verify_pkce,
+)
 
 
 def login_view(request):
@@ -82,12 +90,10 @@ def logout_view(request):
     return redirect(next_url or reverse("core:dashboard"))
 
 
-@require_GET
-def openid_configuration(request):
-    issuer = get_issuer(request)
-    return JsonResponse({
-        "issuer": issuer,
-        "authorization_endpoint": request.build_absolute_uri(reverse("sso:authorize")),
+def _openid_configuration_payload(request, authorization_endpoint: str) -> dict:
+    return {
+        "issuer": get_issuer(request),
+        "authorization_endpoint": authorization_endpoint,
         "token_endpoint": request.build_absolute_uri(reverse("sso:token")),
         "userinfo_endpoint": request.build_absolute_uri(reverse("sso:userinfo")),
         "jwks_uri": request.build_absolute_uri(reverse("sso:jwks")),
@@ -104,7 +110,32 @@ def openid_configuration(request):
             "roles", "is_superuser",
         ],
         "code_challenge_methods_supported": ["plain", "S256"],
-    })
+    }
+
+
+@require_GET
+def openid_configuration(request):
+    return JsonResponse(_openid_configuration_payload(
+        request, request.build_absolute_uri(reverse("sso:authorize")),
+    ))
+
+
+@require_GET
+def openid_configuration_internal(request):
+    """Discovery variant for relying parties INSIDE the compose network (e.g. the
+    gitea container, which takes every endpoint from the discovery document with
+    no overrides). token/userinfo/jwks are built from this request's (internal)
+    host so the RP calls them server-side over plain HTTP — no public-cert trust
+    needed. Only the authorization endpoint, the one URL a *browser* is redirected
+    to, is forced to the public base from PLATFORM_DOMAIN. issuer comes from
+    get_issuer like everywhere else (including the token endpoint that mints the
+    ID token's `iss`), so issuer validation in the RP passes."""
+    base = get_public_base_url()
+    authorize = (
+        f"{base}{reverse('sso:authorize')}" if base
+        else request.build_absolute_uri(reverse("sso:authorize"))
+    )
+    return JsonResponse(_openid_configuration_payload(request, authorize))
 
 
 @require_GET

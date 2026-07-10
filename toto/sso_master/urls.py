@@ -5,6 +5,13 @@ app_name = "sso"  # keep namespace "sso" for portal backwards compat
 
 urlpatterns = [
     path(".well-known/openid-configuration", views.openid_configuration, name="openid_configuration"),
+    # Compose-internal variant (public authorize endpoint, internal token/userinfo)
+    # — fetched by in-network relying parties like the gitea container.
+    path(
+        ".well-known/openid-configuration-internal",
+        views.openid_configuration_internal,
+        name="openid_configuration_internal",
+    ),
     path("sso/jwks.json", views.jwks, name="jwks"),
     path("sso/authorize/", views.authorize, name="authorize"),
     path("sso/consent/", views.consent, name="consent"),

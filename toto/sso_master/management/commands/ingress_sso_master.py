@@ -6,16 +6,7 @@ from django.contrib.auth import get_user_model
 from toto.ingress import IngressCommand
 
 from ...provisioning import create_relying_party
-
-
-def _platform_base_url() -> str:
-    """Browser-facing base URL for the portal, used to build OIDC redirect URIs."""
-    domain = (getattr(settings, "PLATFORM_DOMAIN", "") or "").strip().rstrip("/")
-    if not domain:
-        return ""
-    if domain.startswith("http://") or domain.startswith("https://"):
-        return domain
-    return f"https://{domain}"
+from ...services import get_public_base_url
 
 
 class Command(IngressCommand):
@@ -37,6 +28,7 @@ class Command(IngressCommand):
             self.stdout.write(self.style.SUCCESS(f"{verb} user: {user.username}"))
 
         self._provision_grafana()
+        self._provision_gitea()
 
     def _provision_grafana(self):
         """Register Grafana as a trusted OIDC relying party so it can SSO against
@@ -53,7 +45,7 @@ class Command(IngressCommand):
             ))
             return
 
-        base = _platform_base_url()
+        base = get_public_base_url()
         if not base:
             self.stdout.write(self.style.WARNING(
                 "PLATFORM_DOMAIN is empty — cannot build Grafana redirect URI; skipping."
@@ -71,4 +63,43 @@ class Command(IngressCommand):
         )
         self.stdout.write(self.style.SUCCESS(
             f"Provisioned Grafana OIDC relying party (redirect {base}/grafana/login/generic_oauth)"
+        ))
+
+    def _provision_gitea(self):
+        """Register Gitea as a trusted OIDC relying party so it can SSO against the
+        portal. Idempotent like the Grafana one above. Staff-only access is enforced
+        on the Gitea side: its OAuth source requires `staff` in the `roles` claim and
+        maps `admin` → instance admin (see portal/deploy/gitea/provision_oauth.sh).
+        The redirect URI embeds the Gitea auth-source name — GITEA_OIDC_SOURCE_NAME
+        must match what that script creates (both default to "portal-sso")."""
+        if not getattr(settings, "GITEA_ENABLED", False):
+            return
+        secret = getattr(settings, "GITEA_OIDC_CLIENT_SECRET", "") or ""
+        if not secret:
+            self.stdout.write(self.style.WARNING(
+                "GITEA_ENABLED but GITEA_OIDC_CLIENT_SECRET is empty — "
+                "skipping Gitea relying-party provisioning."
+            ))
+            return
+
+        base = get_public_base_url()
+        if not base:
+            self.stdout.write(self.style.WARNING(
+                "PLATFORM_DOMAIN is empty — cannot build Gitea redirect URI; skipping."
+            ))
+            return
+
+        source = getattr(settings, "GITEA_OIDC_SOURCE_NAME", "portal-sso")
+        redirect_uri = f"{base}/gitea/user/oauth2/{source}/callback"
+        create_relying_party(
+            name="Gitea",
+            client_id="gitea",
+            trusted=True,  # skip the consent screen for seamless SSO
+            redirect_uris=[redirect_uri],
+            scopes="openid email profile roles",
+            raw_secret=secret,
+            force_recreate=True,
+        )
+        self.stdout.write(self.style.SUCCESS(
+            f"Provisioned Gitea OIDC relying party (redirect {redirect_uri})"
         ))
