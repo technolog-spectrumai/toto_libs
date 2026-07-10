@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -10,6 +11,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import NoReverseMatch, reverse, reverse_lazy
 from django.utils import timezone
+from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
@@ -19,6 +21,11 @@ from toto.texlab.models import CompileRun
 from toto.texlab.tasks import compile_latex_task
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
+from toto.vault.views import (
+    _unique_file_key,
+    new_file_picker_json,
+    resolve_new_file_target,
+)
 
 # Starter content for a fresh .tex document. The vault's "New file" seed
 # (toto.vault.views.CreateEmptyFileView._INITIAL["latex"]) mirrors this literal.
@@ -59,12 +66,19 @@ class WorkspaceIndexView(View):
             except NoReverseMatch:
                 return ""
 
+        def _location(f):
+            loc = f.bucket.name if f.bucket else "—"
+            if f.directory:
+                loc = f"{loc} / {f.directory.full_path()}"
+            return loc
+
         documents = [
             {
                 "title": f.title,
                 "file_type": f.file_type,
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at,
+                "location": _location(f),
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "play_url": _play_url(f),
                 # The editor is owner-scoped, so only owners get the link.
@@ -73,46 +87,50 @@ class WorkspaceIndexView(View):
             for f in qs
         ]
 
-        context = PageProcessor().decorate({"documents": documents}, request)
+        buckets_json, directories_json = new_file_picker_json(request.user)
+        context = PageProcessor().decorate(
+            {
+                "documents": documents,
+                "buckets_json": buckets_json,
+                "directories_json": directories_json,
+            },
+            request,
+        )
         return render(request, self.template_name, context)
 
 
 class WorkspaceCreateView(LoginRequiredMixin, View):
-    """One-click: create a blank .tex document in the user's personal bucket
-    and drop straight into the editor. Mirrors memo's PresentationCreateView."""
+    """Create a blank .tex document in a chosen bucket/directory (or the user's
+    personal bucket root when none is picked) and drop straight into the editor.
+    Mirrors memo's PresentationCreateView."""
 
     login_url = reverse_lazy("core:login")
 
     def post(self, request):
-        from toto.vault.models import Bucket
-
-        bucket, _ = Bucket.objects.get_or_create(
-            owner=request.user,
-            slug=f"personal-{request.user.username}",
-            defaults={
-                "name": f"Personal — {request.user.username}",
-                "storage_backend": "local",
-            },
+        bucket, directory = resolve_new_file_target(
+            request.user,
+            request.POST.get("bucket_id"),
+            request.POST.get("directory_id"),
         )
 
-        base_key = "untitled-document"
-        key = base_key
-        counter = 1
-        while VaultFile.objects.filter(bucket=bucket, key=key).exists():
-            key = f"{base_key}-{counter}"
-            counter += 1
+        raw = (request.POST.get("filename") or "").strip()
+        base = raw[:-4] if raw.lower().endswith(".tex") else raw
+        base = base.strip() or "untitled-document"
+        title = f"{base}.tex"
+        key = _unique_file_key(slugify(base), bucket)
 
         tex_bytes = BLANK_TEX_DOCUMENT.encode("utf-8")
 
         vault_file = VaultFile(
             owner=request.user,
-            title=f"{key}.tex",
+            title=title,
             key=key,
             file_type="latex",
             bucket=bucket,
+            directory=directory,
             is_public=False,
         )
-        vault_file.file.save(f"{key}.tex", ContentFile(tex_bytes), save=False)
+        vault_file.file.save(title, ContentFile(tex_bytes), save=False)
         vault_file.content_hash = hashlib.sha256(tex_bytes).hexdigest()
         vault_file.file_size_bytes = len(tex_bytes)
         vault_file.save()

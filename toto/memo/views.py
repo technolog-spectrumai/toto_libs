@@ -12,20 +12,33 @@ from __future__ import annotations
 
 import hashlib
 import json
+import mimetypes
 
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.base import ContentFile
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
+from django.utils.text import slugify
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from toto.ui import PageProcessor
+from toto.vault.filetree import accessible_files
 from toto.vault.models import VaultFile
+from toto.vault.views import (
+    _unique_file_key,
+    new_file_picker_json,
+    resolve_new_file_target,
+)
 
 from . import presentation_format
+from .media import clean_svg_markup, image_bytes_to_data_uri
+
+# Vault file types that can be embedded into a slide body.
+_MEDIA_TYPES = ["image", "svg"]
 
 
 # ---------------------------------------------------------------------------
@@ -51,6 +64,31 @@ def _read_presentation(vault_file: VaultFile) -> presentation_format.Presentatio
         # Corrupt / non-presentation content — start blank rather than blowing
         # up the editor.  Saving overwrites with valid XML.
         return presentation_format.new_presentation(title=vault_file.title)
+
+
+def _media_list(user) -> list[dict]:
+    """Flat list of the user's embeddable image/SVG vault files for the picker,
+    each with a human-readable ``location`` (``<bucket> / <folder path>``).
+    Access-checked via :func:`accessible_files`; encrypted files are skipped
+    (their bytes are ciphertext and can't be embedded)."""
+    files = (
+        accessible_files(user, file_types=_MEDIA_TYPES)
+        .filter(is_encrypted=False)
+        .order_by("bucket__name", "title")[:500]
+    )
+    items = []
+    for f in files:
+        bname = f.bucket.name if f.bucket else "—"
+        location = f"{bname} / {f.directory.full_path()}" if f.directory_id else bname
+        items.append(
+            {
+                "pk": f.id,
+                "title": f.title or f.key,
+                "file_type": f.file_type,
+                "location": location,
+            }
+        )
+    return items
 
 
 # ---------------------------------------------------------------------------
@@ -188,10 +226,48 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "presentation_json": presentation.to_dict(),
                 "save_url": reverse("memo:save", args=[file_pk]),
                 "present_url": reverse("memo:present", args=[file_pk]),
+                # "Insert from vault" picker: the user's embeddable image/SVG files.
+                "vault_media_json": _media_list(request.user),
+                "embed_url": reverse("memo:media_embed"),
             },
             request,
         )
         return render(request, self.template_name, context)
+
+
+@login_required
+def presentation_media_embed(request):
+    """Return an embeddable snippet payload for a vault image/SVG the user can read.
+
+    ``GET ?file_pk=<pk>`` → ``{"kind": "svg", "markup": …, "alt": …}`` for SVGs, or
+    ``{"kind": "image", "data_uri": …, "alt": …}`` for rasters. Access is gated to
+    files the user may read (:func:`accessible_files`); the caller inlines the
+    result into the slide body, keeping the ``.pml`` self-contained.
+    """
+    try:
+        file_pk = int(request.GET.get("file_pk", ""))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "file_pk is required."}, status=400)
+
+    vf = get_object_or_404(
+        accessible_files(request.user, file_types=_MEDIA_TYPES).filter(is_encrypted=False),
+        pk=file_pk,
+    )
+
+    try:
+        with vf.file.open("rb") as fh:
+            raw = fh.read()
+    except Exception as exc:
+        return JsonResponse({"error": f"Could not read file: {exc}"}, status=500)
+
+    alt = (vf.title or vf.key or "image").rsplit(".", 1)[0]
+    if vf.file_type == "svg":
+        markup = clean_svg_markup(raw.decode("utf-8", errors="replace"))
+        return JsonResponse({"kind": "svg", "markup": markup, "alt": alt})
+
+    mime, _ = mimetypes.guess_type(vf.title or vf.key or "")
+    data_uri = image_bytes_to_data_uri(raw, mime or "")
+    return JsonResponse({"kind": "image", "data_uri": data_uri, "alt": alt})
 
 
 @csrf_exempt
@@ -231,44 +307,39 @@ def presentation_save(request, file_pk):
 # ---------------------------------------------------------------------------
 
 class PresentationCreateView(LoginRequiredMixin, View):
-    """One-click: create a blank presentation in the user's personal bucket
-    and drop straight into the editor."""
+    """Create a blank presentation in a chosen bucket/directory (or the user's
+    personal bucket root when none is picked) and drop straight into the editor."""
 
     login_url = reverse_lazy("core:login")
 
     def post(self, request):
-        from toto.vault.models import Bucket
-
-        bucket, _ = Bucket.objects.get_or_create(
-            owner=request.user,
-            slug=f"personal-{request.user.username}",
-            defaults={
-                "name": f"Personal — {request.user.username}",
-                "storage_backend": "local",
-            },
+        bucket, directory = resolve_new_file_target(
+            request.user,
+            request.POST.get("bucket_id"),
+            request.POST.get("directory_id"),
         )
 
-        base_key = "untitled-presentation"
-        key = base_key
-        counter = 1
-        while VaultFile.objects.filter(bucket=bucket, key=key).exists():
-            key = f"{base_key}-{counter}"
-            counter += 1
+        raw = (request.POST.get("filename") or "").strip()
+        base = raw[:-4] if raw.lower().endswith(".pml") else raw
+        base = base.strip() or "untitled-presentation"
+        title = f"{base}.pml"
+        key = _unique_file_key(slugify(base), bucket)
 
         xml = presentation_format.dumps(
-            presentation_format.new_presentation("Untitled Presentation")
+            presentation_format.new_presentation(base)
         )
         xml_bytes = xml.encode("utf-8")
 
         vault_file = VaultFile(
             owner=request.user,
-            title=f"{key}.pml",
+            title=title,
             key=key,
             file_type="presentation",
             bucket=bucket,
+            directory=directory,
             is_public=False,
         )
-        vault_file.file.save(f"{key}.pml", ContentFile(xml_bytes), save=False)
+        vault_file.file.save(title, ContentFile(xml_bytes), save=False)
         vault_file.content_hash = hashlib.sha256(xml_bytes).hexdigest()
         vault_file.file_size_bytes = len(xml_bytes)
         vault_file.save()
@@ -297,11 +368,18 @@ class PresentationIndexView(View):
             qs = qs.filter(is_public=True)
         qs = qs.order_by("-uploaded_at", "title")
 
+        def _location(f):
+            loc = f.bucket.name if f.bucket else "—"
+            if f.directory:
+                loc = f"{loc} / {f.directory.full_path()}"
+            return loc
+
         presentations = [
             {
                 "title": f.title,
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at,
+                "location": _location(f),
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "present_url": reverse("memo:present", args=[f.pk]),
                 "edit_url": reverse("memo:edit", args=[f.pk]),
@@ -310,7 +388,13 @@ class PresentationIndexView(View):
             for f in qs
         ]
 
+        buckets_json, directories_json = new_file_picker_json(request.user)
         context = PageProcessor().decorate(
-            {"presentations": presentations}, request
+            {
+                "presentations": presentations,
+                "buckets_json": buckets_json,
+                "directories_json": directories_json,
+            },
+            request,
         )
         return render(request, self.template_name, context)

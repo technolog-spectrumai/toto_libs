@@ -128,3 +128,48 @@ class WorkspaceTests(TestCase):
         res = self.client.post(reverse("texlab:create"))
         self.assertEqual(res.status_code, 302)
         self.assertIn("/login", res.url)
+
+    def test_create_into_chosen_bucket_and_directory(self):
+        self.client.force_login(self.alice)
+        res = self.client.post(reverse("texlab:create"), data={
+            "filename": "My Report",
+            "bucket_id": str(self.bucket.pk),
+            "directory_id": str(self.directory.pk),
+        })
+        self.assertEqual(res.status_code, 302)
+        vf = VaultFile.objects.filter(owner=self.alice, file_type="latex").latest("pk")
+        self.assertEqual(res.url, reverse("texlab:file_display", args=[vf.pk]))
+        self.assertEqual(vf.bucket, self.bucket)
+        self.assertEqual(vf.directory, self.directory)
+        # A ".tex" suffix isn't duplicated when the user types it.
+        self.assertEqual(vf.title, "My Report.tex")
+        self.assertEqual(vf.key, "my-report")
+
+    def test_create_rejects_foreign_bucket(self):
+        # Bob cannot create a file inside Alice's bucket.
+        self.client.force_login(self.bob)
+        res = self.client.post(reverse("texlab:create"), data={
+            "filename": "sneaky",
+            "bucket_id": str(self.bucket.pk),
+        })
+        self.assertEqual(res.status_code, 404)
+        self.assertFalse(VaultFile.objects.filter(owner=self.bob).exists())
+
+    def test_index_shows_location_path(self):
+        # The card surfaces where the file lives: "<bucket> / <folder path>".
+        self._make_tex(title="paper.tex")
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("texlab:index"))
+        self.assertContains(res, "Lab / Papers")
+
+    def test_index_renders_create_modal_with_picker(self):
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("texlab:index"))
+        body = res.content.decode()
+        # Modal fields + picker data payload are present for authenticated users.
+        self.assertIn("window._newFileBuckets", body)
+        self.assertIn('name="filename"', body)
+        self.assertIn('name="bucket_id"', body)
+        self.assertIn('name="directory_id"', body)
+        # The user's own bucket is offered in the picker JSON.
+        self.assertIn("Lab", body)

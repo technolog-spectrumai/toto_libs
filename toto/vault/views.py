@@ -830,6 +830,55 @@ def create_empty_vault_file(owner, bucket, directory, title, file_type):
     return vault_file
 
 
+def resolve_new_file_target(user, bucket_id=None, directory_id=None):
+    """Resolve the (bucket, directory) a user-chosen new file should land in.
+
+    - Blank/None ``bucket_id`` -> the user's personal bucket (auto-created), root.
+    - Otherwise the bucket must be owned by ``user`` (Http404 on miss).
+    - Blank/None ``directory_id`` -> bucket root; otherwise the directory must
+      belong to the resolved bucket (Http404 on miss).
+
+    Enforces the same ownership rules as vault.api_views.FileCreateApiView so no
+    app can create a file inside another user's bucket/folder.
+    """
+    if bucket_id in (None, "", 0, "0"):
+        bucket, _ = Bucket.objects.get_or_create(
+            owner=user,
+            slug=f"personal-{user.username}",
+            defaults={
+                "name": f"Personal — {user.username}",
+                "storage_backend": "local",
+            },
+        )
+    else:
+        bucket = get_object_or_404(Bucket, pk=bucket_id, owner=user)
+
+    directory = None
+    if directory_id not in (None, "", 0, "0"):
+        directory = get_object_or_404(VaultDirectory, pk=directory_id, bucket=bucket)
+    return bucket, directory
+
+
+def new_file_picker_json(user):
+    """(buckets_json, directories_json) for a bucket+directory "save-as" picker,
+    scoped to the buckets/folders ``user`` may write to (their own). JSON shapes
+    match the weather export modal: ``{id,name}`` and ``{id,bucket_id,path}``.
+    Returns two empty-list JSON strings for anonymous users."""
+    if not getattr(user, "is_authenticated", False):
+        return "[]", "[]"
+    buckets = Bucket.objects.filter(owner=user).order_by("name")
+    directories = (
+        VaultDirectory.objects.filter(owner=user)
+        .select_related("bucket")
+        .order_by("bucket__name", "name")
+    )
+    buckets_json = json.dumps([{"id": b.id, "name": b.name} for b in buckets])
+    directories_json = json.dumps(
+        [{"id": d.id, "bucket_id": d.bucket_id, "path": d.full_path()} for d in directories]
+    )
+    return buckets_json, directories_json
+
+
 class CopyFilesToBucketView(LoginRequiredMixin, View):
     template_name = "vault/copy_files.html"
 

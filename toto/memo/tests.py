@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import base64
 import json
 import tempfile
 
@@ -260,6 +261,41 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertEqual(res.status_code, 302)  # redirect to login
         self.assertIn("/login", res.url)
 
+    def test_create_into_chosen_bucket_and_directory(self):
+        self.client.force_login(self.alice)
+        res = self.client.post(reverse("memo:create"), data={
+            "filename": "My Talk",
+            "bucket_id": str(self.bucket.pk),
+            "directory_id": str(self.directory.pk),
+        })
+        self.assertEqual(res.status_code, 302)
+        vf = VaultFile.objects.filter(owner=self.alice, file_type="presentation").latest("pk")
+        self.assertEqual(res.url, reverse("memo:edit", args=[vf.pk]))
+        self.assertEqual(vf.bucket, self.bucket)
+        self.assertEqual(vf.directory, self.directory)
+        self.assertEqual(vf.title, "My Talk.pml")
+        self.assertEqual(vf.key, "my-talk")
+        with vf.file.open("r") as f:
+            content = f.read()
+        if isinstance(content, bytes):
+            content = content.decode("utf-8")
+        self.assertEqual(len(pf.loads(content).slides), 1)
+
+    def test_create_rejects_foreign_bucket(self):
+        self.client.force_login(self.bob)
+        res = self.client.post(reverse("memo:create"), data={
+            "filename": "sneaky",
+            "bucket_id": str(self.bucket.pk),
+        })
+        self.assertEqual(res.status_code, 404)
+        self.assertFalse(VaultFile.objects.filter(owner=self.bob).exists())
+
+    def test_index_shows_location_path(self):
+        self._make_presentation(is_public=True)
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:index"))
+        self.assertContains(res, "Lab / Talks")
+
     def test_source_view_owner_only(self):
         p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", body="<p>x</p>")])
         vf = self._make_presentation(p=p)
@@ -330,3 +366,147 @@ class PresentationVaultIntegrationTests(TestCase):
             reverse("memo:source_save", args=[vf.pk]), data={"content": "x"}
         )
         self.assertEqual(res.status_code, 404)
+
+
+# 1×1 transparent PNG — small, real raster that Pillow can decode.
+_TINY_PNG = base64.b64decode(
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+)
+
+
+class PresentationMediaEmbedTests(TestCase):
+    """Insert image/SVG from a vault bucket into a slide (self-contained embed)."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+
+        Platform.objects.create(
+            site_name="Toto", author="Test", publication_year=2026, active=True
+        )
+
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bob = User.objects.create_user("bob", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+        self.directory = VaultDirectory.objects.create(
+            name="Assets", bucket=self.bucket, owner=self.alice
+        )
+        self.deck = VaultFile.objects.create(
+            owner=self.alice,
+            title="talk.pml",
+            file_type="presentation",
+            bucket=self.bucket,
+            directory=self.directory,
+            file=SimpleUploadedFile("talk.pml", pf.dumps(pf.new_presentation()).encode()),
+        )
+
+    def _make_image(self, owner=None, is_public=False, title="pic.png"):
+        owner = owner or self.alice
+        return VaultFile.objects.create(
+            owner=owner,
+            title=title,
+            file_type="image",
+            is_public=is_public,
+            bucket=self.bucket,
+            directory=self.directory,
+            file=SimpleUploadedFile(title, _TINY_PNG, content_type="image/png"),
+        )
+
+    def _make_svg(self, owner=None, is_public=False, title="logo.svg", markup=None):
+        owner = owner or self.alice
+        markup = markup or '<svg xmlns="http://www.w3.org/2000/svg"><rect width="4" height="4"/></svg>'
+        return VaultFile.objects.create(
+            owner=owner,
+            title=title,
+            file_type="svg",
+            is_public=is_public,
+            bucket=self.bucket,
+            directory=self.directory,
+            file=SimpleUploadedFile(title, markup.encode("utf-8"), content_type="image/svg+xml"),
+        )
+
+    # ── Picker payload in the editor page ───────────────────────────
+
+    def test_edit_page_lists_media_with_location(self):
+        self._make_image(title="pic.png")
+        self._make_svg(title="logo.svg")
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:edit", args=[self.deck.pk]))
+        self.assertEqual(res.status_code, 200)
+        body = res.content.decode()
+        # The vault-media picker payload + its "location" path are hydrated.
+        self.assertIn('id="vault-media-data"', body)
+        self.assertIn("pic.png", body)
+        self.assertIn("logo.svg", body)
+        self.assertIn("Lab / Assets", body)
+
+    # ── Embed endpoint ──────────────────────────────────────────────
+
+    def test_embed_image_returns_data_uri(self):
+        img = self._make_image()
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": img.pk})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["kind"], "image")
+        self.assertTrue(data["data_uri"].startswith("data:image/"))
+        self.assertIn(";base64,", data["data_uri"])
+        self.assertEqual(data["alt"], "pic")
+
+    def test_embed_svg_inlines_and_strips_scripts(self):
+        svg = self._make_svg(
+            markup='<?xml version="1.0"?>\n<svg xmlns="http://www.w3.org/2000/svg">'
+            '<script>alert(1)</script><rect width="4" height="4"/></svg>'
+        )
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": svg.pk})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["kind"], "svg")
+        self.assertIn("<svg", data["markup"])
+        self.assertIn("<rect", data["markup"])
+        self.assertNotIn("<script", data["markup"])
+        self.assertNotIn("<?xml", data["markup"])
+
+    def test_embed_allows_public_file_of_other_user(self):
+        img = self._make_image(owner=self.bob, is_public=True, title="shared.png")
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": img.pk})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["kind"], "image")
+
+    def test_embed_denies_private_file_of_other_user(self):
+        # Bob's private image in Bob's OWN bucket — Alice has no access path.
+        # (A file in Alice's bucket would be readable by her as bucket owner.)
+        bob_bucket = Bucket.objects.create(name="Bob", slug="bob", owner=self.bob)
+        img = VaultFile.objects.create(
+            owner=self.bob,
+            title="secret.png",
+            file_type="image",
+            is_public=False,
+            bucket=bob_bucket,
+            file=SimpleUploadedFile("secret.png", _TINY_PNG, content_type="image/png"),
+        )
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": img.pk})
+        self.assertEqual(res.status_code, 404)
+
+    def test_embed_skips_encrypted_file(self):
+        img = self._make_image()
+        VaultFile.objects.filter(pk=img.pk).update(is_encrypted=True)
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": img.pk})
+        self.assertEqual(res.status_code, 404)
+
+    def test_embed_requires_login(self):
+        img = self._make_image()
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": img.pk})
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/login", res.url)
+
+    def test_embed_bad_pk_is_400(self):
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("memo:media_embed"), {"file_pk": "abc"})
+        self.assertEqual(res.status_code, 400)

@@ -6,6 +6,7 @@
 
 {% block content %}
 {{ presentation_json|json_script:"presentation-data" }}
+{{ vault_media_json|json_script:"vault-media-data" }}
 
 <section
   x-data="presentationEditor()"
@@ -92,6 +93,9 @@
             <i class="fa-solid fa-bezier-curve"></i> {% trans "Insert SVG" %}
             <input type="file" accept="image/svg+xml,.svg" class="hidden" @change="insertSvg($event)">
           </label>
+          <button type="button" @click="showVaultPicker = true"
+            class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
+            <i class="fa-solid fa-photo-film"></i> {% trans "From vault" %}</button>
           <span class="text-xs opacity-50">{% trans "Images are resized to ≤640px and embedded; SVGs are inlined." %}</span>
         </div>
 
@@ -120,6 +124,54 @@
 
     </div>
   </div>
+
+  <!-- Insert-from-vault picker -->
+  <div x-show="showVaultPicker" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showVaultPicker = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-photo-film"></i>{% trans "Insert image / SVG from vault" %}</h2>
+        <button type="button" @click="showVaultPicker = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <div class="border-b border-current/10 p-4">
+        <input type="text" x-model="vaultSearch"
+               placeholder="{% trans 'Search by name or location…' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm">
+      </div>
+
+      <div class="overflow-y-auto p-2">
+        <template x-if="filteredVaultMedia.length === 0">
+          <p class="p-6 text-center text-sm opacity-60">
+            {% trans "No image or SVG files in your vault." %}</p>
+        </template>
+        <template x-for="m in filteredVaultMedia" :key="m.pk">
+          <button type="button" @click="insertFromVault(m)" :disabled="vaultBusy"
+                  class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-current/5 disabled:opacity-40">
+            <i class="fa-solid shrink-0 opacity-70"
+               :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
+              <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
+            </span>
+            <span class="shrink-0 text-[10px] uppercase tracking-wide opacity-50" x-text="m.file_type"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-between border-t border-current/10 px-5 py-3 text-xs opacity-60">
+        <span x-show="vaultBusy"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "Embedding…" %}</span>
+        <span x-show="!vaultBusy">{% trans "Picked files are embedded into the presentation." %}</span>
+      </div>
+    </div>
+  </div>
 </section>
 
 <style>
@@ -139,9 +191,24 @@
       status: "",
       saveUrl: "{{ save_url }}",
       presentUrl: "{{ present_url }}",
+      embedUrl: "{{ embed_url }}",
+
+      // Insert-from-vault picker state.
+      vaultMedia: [],
+      showVaultPicker: false,
+      vaultSearch: "",
+      vaultBusy: false,
 
       get activeSlide() {
         return this.slides[this.activeIndex] || null;
+      },
+
+      get filteredVaultMedia() {
+        const q = this.vaultSearch.trim().toLowerCase();
+        if (!q) return this.vaultMedia;
+        return this.vaultMedia.filter(m =>
+          (m.title || "").toLowerCase().includes(q) ||
+          (m.location || "").toLowerCase().includes(q));
       },
 
       init() {
@@ -156,6 +223,13 @@
           this.slides = [{ title: "", body: "" }];
         }
         this.activeIndex = 0;
+
+        try {
+          this.vaultMedia = JSON.parse(
+            document.getElementById("vault-media-data").textContent) || [];
+        } catch (e) {
+          this.vaultMedia = [];
+        }
 
         window.addEventListener("beforeunload", (e) => {
           if (this.dirty) { e.preventDefault(); e.returnValue = ""; }
@@ -233,6 +307,33 @@
           this.insertSnippet(text);
         } catch (e) {
           this.status = "{% trans 'Could not read SVG.' %}";
+        }
+      },
+
+      // Embed an image/SVG that already lives in a vault bucket. The server
+      // returns a data URI (raster) or cleaned inline markup (SVG); we drop the
+      // same snippet the local-file path produces into the slide body.
+      async insertFromVault(item) {
+        if (this.vaultBusy) return;
+        this.vaultBusy = true; this.status = "";
+        try {
+          const res = await fetch(this.embedUrl + "?file_pk=" + encodeURIComponent(item.pk));
+          const data = await res.json();
+          if (!res.ok) {
+            this.status = data.error || "{% trans 'Could not embed file.' %}";
+            return;
+          }
+          if (data.kind === "svg") {
+            this.insertSnippet(data.markup);
+          } else {
+            const alt = (data.alt || "image").replace(/"/g, "");
+            this.insertSnippet(`<img src="${data.data_uri}" alt="${alt}">`);
+          }
+          this.showVaultPicker = false;
+        } catch (e) {
+          this.status = String(e);
+        } finally {
+          this.vaultBusy = false;
         }
       },
 
