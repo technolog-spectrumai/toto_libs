@@ -143,13 +143,29 @@ class CsvFileDisplayView(BaseFileDisplayView):
 
 
 class LatexFileDisplayView(BaseFileDisplayView):
-    # LaTeX source (.tex/.sty/.cls) edited with Ace's latex highlighting. Editing
-    # only — compilation is the separate TeX Compiler workflow (toto.texlab).
+    # LaTeX source (.tex/.sty/.cls) edited with Ace's latex highlighting.
+    # Compilation is the separate TeX Compiler workflow (toto.texlab) — when that
+    # app is installed the toolbar gets a Compile button that dispatches it.
     ace_mode = "latex"
     ws_path = "editor"
     wrap_lines = True
     save_url_name = "editor:latex_save"
     delete_url_name = "editor:latex_delete"
+
+    def get_extra_context(self, vault_file) -> dict:
+        from django.apps import apps as django_apps
+        from django.urls import NoReverseMatch, reverse
+
+        if not django_apps.is_installed("toto.texlab"):
+            return {}
+        try:
+            return {
+                "compile_url": reverse("texlab:compile_latex", args=[vault_file.pk]),
+                # Poll base — the JS swaps the "/0/" run-id segment per compile.
+                "compile_status_url_base": reverse("texlab:compile_status", args=[0]),
+            }
+        except NoReverseMatch:
+            return {}
 
 
 class BibFileDisplayView(BaseFileDisplayView):

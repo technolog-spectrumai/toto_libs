@@ -52,13 +52,22 @@ def run_pdflatex(tex_source: str, vault_file) -> tuple[bytes, str]:
             except Exception:
                 pass
 
-        proc = subprocess.run(
-            ["pdflatex", "-interaction=nonstopmode", "main.tex"],
-            cwd=tmpdir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            timeout=15,
-        )
+        try:
+            proc = subprocess.run(
+                ["pdflatex", "-interaction=nonstopmode", "main.tex"],
+                cwd=tmpdir,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                timeout=15,
+            )
+        except FileNotFoundError:
+            # Surface a clear, actionable log instead of a raw [Errno 2].
+            raise RuntimeError(
+                "pdflatex is not installed on this host — the TeX toolchain is "
+                "missing. Deployments need INSTALL_TEXLIVE=1 (rebuild the image "
+                "so texlive is baked in, then redeploy); locally install it via "
+                "your package manager (e.g. `apt install texlive-latex-base`)."
+            )
         log = proc.stdout.decode(errors="ignore") + "\n" + proc.stderr.decode(errors="ignore")
 
         pdf_path = os.path.join(tmpdir, "main.pdf")

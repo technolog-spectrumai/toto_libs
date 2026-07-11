@@ -88,6 +88,24 @@
           <span class="hidden sm:inline">{% trans "Save" %}</span>
         </button>
 
+        {% if compile_url %}
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Compile (.tex → PDF via the texlab-compile-latex Celery workflow) -->
+        <button id="compile-file" title="{% trans 'Compile to PDF' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i id="compile-icon" class="fa-solid fa-play"></i>
+          <span class="hidden sm:inline" id="compile-label">{% trans "Compile" %}</span>
+        </button>
+        <a id="compile-pdf-link" href="#" target="_blank" class="hidden toolbar-btn border"
+           title="{% trans 'View PDF' %}">
+          <i class="fa-solid fa-file-pdf"></i>
+          <span class="hidden sm:inline">{% trans "PDF" %}</span>
+        </a>
+        <span id="compile-error" class="hidden max-w-[16rem] truncate text-xs text-red-500"></span>
+        {% endif %}
+
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
         <!-- Delete -->
@@ -282,6 +300,59 @@ document.getElementById("delete-confirm").addEventListener("click", async () => 
     alert("Delete failed: " + err); btn.disabled = false; btn.style.opacity = "1";
   }
 });
+
+{% if compile_url %}
+// ── Compile (.tex → PDF via the texlab-compile-latex Celery workflow) ───────
+const COMPILE_URL = "{{ compile_url }}";
+const COMPILE_STATUS_BASE = "{{ compile_status_url_base }}";  // "/0/" swapped per run
+let compiling = false, compilePollTimer = null;
+
+function setCompiling(on) {
+  compiling = on;
+  document.getElementById("compile-icon").className = `fa-solid ${on ? "fa-spinner fa-spin" : "fa-play"}`;
+  document.getElementById("compile-label").textContent = on ? "{% trans 'Compiling…' %}" : "{% trans 'Compile' %}";
+  document.getElementById("compile-file").style.opacity = on ? "0.6" : "1";
+}
+
+function compileDone(pdfUrl, errText) {
+  setCompiling(false);
+  const link = document.getElementById("compile-pdf-link");
+  const err = document.getElementById("compile-error");
+  if (pdfUrl) { link.href = pdfUrl; link.classList.remove("hidden"); err.classList.add("hidden"); }
+  else { link.classList.add("hidden"); err.textContent = (errText || "Compile failed").slice(0, 300); err.classList.remove("hidden"); err.title = errText || ""; }
+}
+
+function pollCompile(runId) {
+  const statusUrl = COMPILE_STATUS_BASE.replace("/0/", "/" + runId + "/");
+  compilePollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(statusUrl, { credentials: "same-origin" });
+      const d = await r.json();
+      if (d.status === "success") { clearInterval(compilePollTimer); compileDone(d.pdf_url, ""); }
+      else if (d.status === "failed") { clearInterval(compilePollTimer); compileDone("", d.log); }
+    } catch (e) { clearInterval(compilePollTimer); compileDone("", String(e)); }
+  }, 1500);
+}
+
+document.getElementById("compile-file").addEventListener("click", async () => {
+  if (compiling) return;
+  setCompiling(true);
+  document.getElementById("compile-error").classList.add("hidden");
+  // Save first so the workflow compiles what's on screen.
+  if (!await saveFile()) { setCompiling(false); return; }
+  try {
+    const res = await fetch(COMPILE_URL, {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status === "queued" && data.run_id) { pollCompile(data.run_id); }
+    else if (data.pdf_url) { compileDone(data.pdf_url, ""); }          // inline (no-worker) success
+    else { compileDone("", data.log || data.error || "Compile failed"); }
+  } catch (e) { compileDone("", String(e)); }
+});
+{% endif %}
 </script>
 {% endblock %}
 

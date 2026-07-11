@@ -184,3 +184,80 @@ class WorkspaceTests(TestCase):
         self.assertIn('name="directory_id"', body)
         # The user's own bucket is offered in the picker JSON.
         self.assertIn("Lab", body)
+
+    # ── Compile (workflow over Celery/Redis) ────────────────────────
+
+    def test_editor_latex_page_has_compile_button(self):
+        vf = self._make_tex()
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("editor:latex_display", args=[vf.pk]))
+        self.assertEqual(res.status_code, 200)
+        body = res.content.decode()
+        self.assertIn('id="compile-file"', body)
+        self.assertIn(reverse("texlab:compile_latex", args=[vf.pk]), body)
+        self.assertIn(reverse("texlab:compile_status", args=[0]), body)
+
+    def test_editor_bib_page_has_no_compile_button(self):
+        vf = self._make_tex(title="refs.bib", file_type="bib")
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("editor:bib_display", args=[vf.pk]))
+        self.assertEqual(res.status_code, 200)
+        self.assertNotIn('id="compile-file"', res.content.decode())
+
+    def test_compile_dispatches_the_dedicated_workflow(self):
+        from unittest.mock import patch
+        from toto.texlab.workflow import COMPILE_WORKFLOW_SLUG
+        from toto.workflows.models import WorkflowRun
+
+        vf = self._make_tex()
+        self.client.force_login(self.alice)
+        with patch("toto.texlab.views.celery_available", return_value=True), \
+             patch("toto.workflows.tasks.start_workflow_run_task.delay") as m_delay:
+            res = self.client.post(reverse("texlab:compile_latex", args=[vf.pk]))
+
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["status"], "queued")
+        # A WorkflowRun on the dedicated workflow carries the compile input…
+        wf_run = WorkflowRun.objects.get(pk=data["workflow_run_id"])
+        self.assertEqual(wf_run.workflow.slug, COMPILE_WORKFLOW_SLUG)
+        self.assertEqual(
+            wf_run.input_data,
+            {"data": {"vault_file_pk": vf.pk, "run_id": data["run_id"]}},
+        )
+        # …the CompileRun is linked to it, and the run went to the Celery broker.
+        from toto.texlab.models import CompileRun
+        run = CompileRun.objects.get(id=data["run_id"])
+        self.assertEqual(run.workflow_run_id, wf_run.pk)
+        m_delay.assert_called_once_with(wf_run.pk)
+
+    def test_compile_without_pdflatex_reports_actionable_error(self):
+        # A host without the TeX toolchain must produce a clear log, not the raw
+        # "[Errno 2] No such file or directory: 'pdflatex'".
+        from unittest.mock import patch
+
+        vf = self._make_tex()
+        self.client.force_login(self.alice)
+        with patch("toto.texlab.views.celery_available", return_value=False), \
+             patch("toto.texlab.compile.subprocess.run", side_effect=FileNotFoundError(2, "No such file or directory", "pdflatex")):
+            res = self.client.post(reverse("texlab:compile_latex", args=[vf.pk]))
+        self.assertEqual(res.status_code, 500)
+        data = res.json()
+        self.assertEqual(data["status"], "failed")
+        self.assertIn("pdflatex is not installed", data["log"])
+        self.assertIn("INSTALL_TEXLIVE=1", data["log"])
+
+    def test_ingress_texlab_seeds_workflow_idempotently(self):
+        from django.core.management import call_command
+        from toto.texlab.workflow import COMPILE_WORKFLOW_SLUG
+        from toto.workflows.models import Workflow
+
+        call_command("ingress_texlab")
+        call_command("ingress_texlab", full=True)  # ingress_all passes full=
+        wfs = Workflow.objects.filter(slug=COMPILE_WORKFLOW_SLUG)
+        self.assertEqual(wfs.count(), 1)
+        self.assertEqual(wfs.first().nodes.count(), 1)
+
+    def test_texlab_in_ingress_allowed_apps(self):
+        from django.conf import settings
+        self.assertIn("toto.texlab", settings.INGRESS_ALLOWED_APPS)
