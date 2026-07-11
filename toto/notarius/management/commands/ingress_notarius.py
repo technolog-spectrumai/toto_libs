@@ -63,7 +63,7 @@ class Command(IngressCommand):
 
         key = "sample-contract"
         if VaultFile.objects.filter(bucket=bucket, key=key).exists():
-            self.stdout.write("Exists: sample .contract")
+            self.stdout.write("Exists: sample contract")
             return
 
         contract = cf.new_contract(
@@ -89,11 +89,11 @@ class Command(IngressCommand):
         xml = cf.dumps(contract).encode("utf-8")
 
         vf = VaultFile(
-            owner=user, title="Sample Contract.contract", key=key,
-            file_type="contract", bucket=bucket, directory=directory,
+            owner=user, title="Sample Contract.xml", key=key,
+            file_type="xml", bucket=bucket, directory=directory,
             is_public=True, notes="Demo signing document seeded by ingress_notarius.",
         )
-        vf.file.save(f"{slugify(key)}.contract", ContentFile(xml), save=False)
+        vf.file.save(f"{slugify(key)}.xml", ContentFile(xml), save=False)
         vf.file_size_bytes = len(xml)
         vf.save()
-        self.stdout.write(self.style.SUCCESS("Created: sample .contract (Documents/Sample Contract.contract)"))
+        self.stdout.write(self.style.SUCCESS("Created: sample contract (Documents/Sample Contract.xml)"))

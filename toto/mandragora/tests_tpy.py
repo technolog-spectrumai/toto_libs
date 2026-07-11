@@ -82,6 +82,13 @@ class TpyFormatTests(TestCase):
         with self.assertRaises(tpy_format.TpyParseError):
             tpy_format.loads("<other></other>")
 
+    def test_is_notebook_detects_root(self):
+        self.assertTrue(tpy_format.is_notebook(tpy_format.dumps(tpy_format.new_notebook("x"))))
+        self.assertTrue(tpy_format.is_notebook(b'<notebook version="1"></notebook>'))
+        self.assertFalse(tpy_format.is_notebook("<signingDocument></signingDocument>"))
+        self.assertFalse(tpy_format.is_notebook("<other/>"))
+        self.assertFalse(tpy_format.is_notebook(""))
+
     def test_from_dict_sanitises(self):
         nb = tpy_format.TpyNotebook.from_dict({
             "title": "X",
@@ -210,28 +217,66 @@ class TpyVaultIntegrationTests(TestCase):
         )
         self.assertEqual(res.status_code, 404)
 
-    # ── create via vault new-file menu ────────────────────────────────────────
-    def test_create_file_notebook_via_vault(self):
+    # ── in-app create (ordinary .xml) ─────────────────────────────────────────
+    def test_create_makes_ordinary_xml_and_opens_editor(self):
         self.client.force_login(self.alice)
-        res = self.client.post(reverse("vault:create_file"), data={
-            "title": "fresh.tpy",
-            "file_type": "notebook",
-            "directory_id": str(self.directory.pk),
+        res = self.client.post(reverse("mandragora:tpy_create"), data={
+            "filename": "My Analysis", "title": "Analysis",
+            "bucket_id": str(self.bucket.pk), "directory_id": str(self.directory.pk),
         })
-        self.assertEqual(res.status_code, 201, res.content)
-        data = res.json()
-        self.assertEqual(data["status"], "ok")
-        vf = VaultFile.objects.get(pk=data["file_pk"])
-        self.assertEqual(vf.file_type, "notebook")
-        self.assertEqual(data["editor_url"], reverse("mandragora:tpy_display", args=[vf.pk]))
-        # The seeded content is a valid blank notebook.
+        self.assertEqual(res.status_code, 302)
+        vf = VaultFile.objects.filter(owner=self.alice, file_type="xml").latest("pk")
+        self.assertEqual(res.url, reverse("mandragora:tpy_display", args=[vf.pk]))
+        self.assertEqual(vf.file_type, "xml")
+        self.assertTrue(vf.title.endswith(".xml"))
+        self.assertEqual(vf.bucket, self.bucket)
+        self.assertEqual(vf.directory, self.directory)
         with vf.file.open("r") as f:
             content = f.read()
         if isinstance(content, bytes):
             content = content.decode("utf-8")
+        self.assertTrue(tpy_format.is_notebook(content))
         nb = tpy_format.loads(content)
+        self.assertEqual(nb.title, "Analysis")
         self.assertEqual(len(nb.cells), 1)
-        self.assertEqual(nb.cells[0].cell_type, "code")
+
+    def test_create_requires_login(self):
+        res = self.client.post(reverse("mandragora:tpy_create"), data={"filename": "x"})
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("/login", res.url)
+
+    # ── index / list ──────────────────────────────────────────────────────────
+    def test_index_lists_notebooks_only_with_path(self):
+        self._make_tpy()  # a real notebook (file_type="notebook")
+        # a plain (non-notebook) xml file must be excluded
+        VaultFile.objects.create(
+            owner=self.alice, title="notes.xml", file_type="xml",
+            bucket=self.bucket, directory=self.directory,
+            file=SimpleUploadedFile("notes.xml", b"<notes><a/></notes>"),
+        )
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("mandragora:tpy_index"))
+        self.assertEqual(res.status_code, 200)
+        body = res.content.decode()
+        self.assertIn("Analysis", body)       # the notebook's title
+        self.assertNotIn("notes.xml", body)   # a plain xml file is excluded
+        self.assertIn("Lab / Notebooks", body)
+
+    # ── open gate ─────────────────────────────────────────────────────────────
+    def test_display_404_on_non_notebook_xml(self):
+        vf = VaultFile.objects.create(
+            owner=self.alice, title="notes.xml", file_type="xml",
+            bucket=self.bucket, file=SimpleUploadedFile("notes.xml", b"<notes/>"),
+        )
+        self.client.force_login(self.alice)
+        self.assertEqual(
+            self.client.get(reverse("mandragora:tpy_display", args=[vf.pk])).status_code, 404)
+
+    def test_notebook_type_retired_from_vault_new_file(self):
+        from toto.vault.views import CREATABLE_TYPES, CreateEmptyFileView
+        self.assertNotIn("notebook", {t for t, _ in CREATABLE_TYPES})
+        self.assertNotIn("notebook", CreateEmptyFileView._ALLOWED)
+        self.assertNotIn("notebook", CreateEmptyFileView._INITIAL)
 
 
 class TpyKernelTests(TestCase):

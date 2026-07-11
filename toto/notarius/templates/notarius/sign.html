@@ -29,6 +29,12 @@
         {% trans "You need a Person profile linked to your account to sign." %}
         <a href="{{ view_url }}" class="font-semibold underline">{% trans "Back" %}</a>
       </div>
+    {% elif not signer_parties %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border p-5 text-sm">
+        {% trans "You are not a listed signatory on this contract — you can only sign as a party whose email matches your account." %}
+        <a href="{{ view_url }}" class="font-semibold underline">{% trans "Back" %}</a>
+      </div>
     {% else %}
       <form method="post"
             :class="darkMode

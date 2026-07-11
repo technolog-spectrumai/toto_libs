@@ -14,13 +14,14 @@ kernel reply, bounded by the kernel's per-cell timeout.
 
 from __future__ import annotations
 
+import hashlib
 import json
 
 from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
-from django.http import JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.http import Http404, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
@@ -38,12 +39,32 @@ def _session_id(file_pk) -> str:
     return f"tpy:{file_pk}"
 
 
+def _read_raw(vault_file: VaultFile) -> str:
+    """Raw UTF-8 text of the vault file via a fresh storage handle (doesn't touch
+    the FieldFile's cached handle, so a later write in the same request is safe)."""
+    with vault_file.file.storage.open(vault_file.file.name, "rb") as fh:
+        return fh.read().decode("utf-8")
+
+
 def _get_owned_file(request, file_pk) -> VaultFile:
-    return get_object_or_404(
+    """Fetch a notebook vault file owned by the user and validate its content.
+
+    Notebooks are ordinary ``.xml`` files now (``file_type="xml"``); the legacy
+    ``notebook`` type is still accepted. Only files whose content is a
+    ``<notebook>`` open here, so a contract or other XML can't reach the editor.
+    """
+    vf = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner"),
         pk=file_pk,
         owner=request.user,
+        file_type__in=["xml", "notebook"],
     )
+    try:
+        if not tpy_format.is_notebook(_read_raw(vf)):
+            raise Http404("Not a notebook.")
+    except (FileNotFoundError, UnicodeDecodeError, ValueError):
+        raise Http404("Not a notebook.")
+    return vf
 
 
 def _read_notebook(vault_file: VaultFile) -> tpy_format.TpyNotebook:
@@ -86,6 +107,97 @@ def _collect_bucket_files(vault_file: VaultFile) -> dict:
             key = candidate
         result[key] = path
     return result
+
+
+# ---------------------------------------------------------------------------
+# Index / create
+# ---------------------------------------------------------------------------
+
+NOTEBOOK_LIST_CAP = 300
+
+
+class TpyIndexView(LoginRequiredMixin, View):
+    """List the current user's notebooks. Notebooks are ordinary ``.xml`` vault
+    files whose root is ``<notebook>``; the editor is owner-only, so the index
+    surfaces the notebooks the user owns and can open."""
+
+    template_name = "mandragora/tpy_index.html"
+    login_url = reverse_lazy("core:login")
+
+    def get(self, request):
+        from toto.vault.views import new_file_picker_json
+
+        notebooks = []
+        files = (
+            VaultFile.objects.select_related("bucket", "directory")
+            .filter(owner=request.user, file_type__in=["xml", "notebook"], is_encrypted=False)
+            .order_by("-uploaded_at")[:NOTEBOOK_LIST_CAP]
+        )
+        for vf in files:
+            try:
+                raw = _read_raw(vf)
+            except Exception:
+                continue
+            if not tpy_format.is_notebook(raw):
+                continue
+            try:
+                nb = tpy_format.loads(raw)
+            except tpy_format.TpyParseError:
+                continue
+            bname = vf.bucket.name if vf.bucket else "—"
+            location = f"{bname} / {vf.directory.full_path()}" if vf.directory_id else bname
+            notebooks.append({
+                "title": nb.title or vf.title,
+                "cell_count": len(nb.cells),
+                "dependency_count": len(nb.dependencies),
+                "location": location,
+                "open_url": reverse("mandragora:tpy_display", args=[vf.pk]),
+            })
+
+        buckets_json, directories_json = new_file_picker_json(request.user)
+        context = PageProcessor().decorate(
+            {
+                "notebooks": notebooks,
+                "buckets_json": buckets_json,
+                "directories_json": directories_json,
+                "create_url": reverse("mandragora:tpy_create"),
+            },
+            request,
+        )
+        return render(request, self.template_name, context)
+
+
+class TpyCreateView(LoginRequiredMixin, View):
+    """Create a blank notebook as an ordinary ``.xml`` vault file in a chosen
+    bucket/directory, then open the editor. Reuses the shared new-file picker."""
+
+    login_url = reverse_lazy("core:login")
+
+    def post(self, request):
+        from django.core.files.base import ContentFile
+        from django.utils.text import slugify
+        from toto.vault.views import _unique_file_key, resolve_new_file_target
+
+        bucket, directory = resolve_new_file_target(
+            request.user, request.POST.get("bucket_id"), request.POST.get("directory_id"),
+        )
+        raw_name = (request.POST.get("filename") or "").strip()
+        base = raw_name[:-4] if raw_name.lower().endswith(".xml") else raw_name
+        base = base.strip() or "notebook"
+        title = (request.POST.get("title") or "").strip() or base
+
+        xml_bytes = tpy_format.dumps(tpy_format.new_notebook(title=title)).encode("utf-8")
+        filename = f"{base}.xml"
+
+        vf = VaultFile(
+            owner=request.user, title=filename, key=_unique_file_key(slugify(base), bucket),
+            file_type="xml", bucket=bucket, directory=directory, is_public=False,
+        )
+        vf.file.save(filename, ContentFile(xml_bytes), save=False)
+        vf.content_hash = hashlib.sha256(xml_bytes).hexdigest()
+        vf.file_size_bytes = len(xml_bytes)
+        vf.save()
+        return redirect("mandragora:tpy_display", file_pk=vf.pk)
 
 
 # ---------------------------------------------------------------------------

@@ -1,0 +1,183 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Contracts" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{% if is_authenticated %}
+<script>
+  window._newFileBuckets = JSON.parse(`{{ buckets_json|escapejs }}`);
+  window._newFileDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
+</script>
+{% endif %}
+<section
+  x-data="{ showCreate: false, fname: '', ctitle: '', bucketId: '', dirId: '',
+            buckets: window._newFileBuckets || [],
+            directories: window._newFileDirectories || [],
+            get filteredDirs() { return this.directories.filter(d => String(d.bucket_id) === String(this.bucketId)); } }"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-5xl mx-auto space-y-8">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-3xl font-bold">{% trans "Contracts" %}</h1>
+        <p class="opacity-75">{% trans "Draft, edit and electronically sign contracts stored as plain XML vault files." %}</p>
+      </div>
+      <div class="flex items-center gap-4">
+        {% if is_authenticated %}
+          <button type="button" @click="showCreate = true"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "New contract" %}</button>
+        {% endif %}
+        <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
+          {% trans "Vault" %}</a>
+      </div>
+    </div>
+
+    {% if contracts %}
+      <div class="grid gap-5 md:grid-cols-2">
+        {% for c in contracts %}
+          <article
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
+            <div class="space-y-2">
+              <div class="flex items-start justify-between gap-3">
+                <a href="{{ c.view_url }}" class="block text-xl font-bold underline hover:opacity-80">
+                  {{ c.title }}
+                </a>
+                <span class="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide
+                  {% if c.status == 'signed' %}bg-green-500/15 text-green-500
+                  {% elif c.status == 'partially-signed' %}bg-amber-500/15 text-amber-500
+                  {% else %}opacity-60 border border-current{% endif %}">{{ c.status }}</span>
+              </div>
+              <div class="flex items-center gap-1.5 text-xs opacity-60">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>{{ c.location }}</span>
+              </div>
+              <div class="flex flex-wrap gap-4 text-xs opacity-65">
+                <span><i class="fa-solid fa-users mr-1"></i>{{ c.party_count }} {% trans "parties" %}</span>
+                <span><i class="fa-solid fa-signature mr-1"></i>{{ c.signature_count }} {% trans "signatures" %}</span>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-3 text-sm">
+              <a href="{{ c.view_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                <i class="fa-solid fa-eye"></i> {% trans "View" %}</a>
+              {% if c.is_owner %}
+                <a href="{{ c.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+              {% endif %}
+              {% if c.can_sign %}
+                <a href="{{ c.sign_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-signature"></i> {% trans "Sign" %}</a>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+        class="border rounded-lg p-8 text-center shadow-md">
+        <p class="text-sm opacity-70 mb-4">
+          {% trans "No contracts yet." %}
+        </p>
+        {% if is_authenticated %}
+          <button type="button" @click="showCreate = true"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "New contract" %}</button>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+
+  {% if is_authenticated %}
+  <!-- New contract modal -->
+  <div x-show="showCreate" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showCreate = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-signature"></i>{% trans "New contract" %}</h2>
+        <button type="button" @click="showCreate = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <form method="post" action="{{ create_url }}" class="space-y-4 p-5">
+        {% csrf_token %}
+
+        <!-- Title -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Title" %}
+            <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
+          <input type="text" name="title" x-model="ctitle"
+                 placeholder="{% trans 'Non-disclosure agreement' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Filename -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Filename" %}</label>
+          <div class="flex items-center gap-2">
+            <input type="text" name="filename" x-model="fname" required
+                   placeholder="{% trans 'nda' %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+            <span class="text-sm opacity-50">.xml</span>
+          </div>
+        </div>
+
+        <!-- Target bucket -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket" %}</label>
+          <select name="bucket_id" x-model="bucketId" @change="dirId = ''"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Personal (default)" %}</option>
+            <template x-for="b in buckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Directory (optional) -->
+        <div x-show="bucketId" x-cloak>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Folder" %}
+            <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
+          <select name="directory_id" x-model="dirId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "— root of bucket —" %}</option>
+            <template x-for="d in filteredDirs" :key="d.id">
+              <option :value="d.id" x-text="d.path"></option>
+            </template>
+          </select>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showCreate = false"
+                  class="rounded px-4 py-2 text-sm font-semibold opacity-70 hover:opacity-100 transition">
+            {% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "Create" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</section>
+{% endblock %}

@@ -223,6 +223,21 @@ def dumps(notebook: TpyNotebook) -> str:
     return '<?xml version="1.0" encoding="utf-8"?>\n' + body + "\n"
 
 
+def is_notebook(xml: "str | bytes") -> bool:
+    """True if ``xml`` is a notebook document (root ``<notebook>``).
+
+    Cheap identity check for "is this ordinary XML vault file a notebook?" — used to
+    filter the notebook index and gate the editor now that notebooks are stored as
+    plain ``.xml`` (``file_type="xml"``) rather than a dedicated ``.tpy`` type.
+    """
+    try:
+        if isinstance(xml, bytes):
+            xml = xml.decode("utf-8")
+        return ET.fromstring(xml).tag == "notebook"
+    except Exception:
+        return False
+
+
 def loads(text: str) -> TpyNotebook:
     text = (text or "").strip()
     if not text:

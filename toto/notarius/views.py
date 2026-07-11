@@ -30,27 +30,21 @@ from toto.vault.models import VaultFile
 # ---------------------------------------------------------------------------
 
 
-def _get_file(request, file_pk, *, owner_only=False) -> VaultFile:
-    vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
-        pk=file_pk, file_type="contract",
-    )
-    if owner_only and (not request.user.is_authenticated or vf.owner_id != request.user.id):
-        raise Http404("Not your file.")
-    return vf
-
-
 # Read/write go through the storage with a FRESH handle each time, rather than the
 # FieldFile's cached handle. Reading then writing the same VaultFile in one request
 # otherwise leaves a stale/closed handle (UnsupportedOperation on write, or "I/O
 # operation on closed file" on a second read).
 
 
+def _read_raw(vf: VaultFile) -> str:
+    """Raw UTF-8 text of the vault file via a fresh storage handle."""
+    with vf.file.storage.open(vf.file.name, "rb") as fh:
+        return fh.read().decode("utf-8")
+
+
 def _read(vf: VaultFile) -> contract_format.Contract:
     try:
-        with vf.file.storage.open(vf.file.name, "rb") as fh:
-            raw = fh.read()
-        return contract_format.loads(raw.decode("utf-8"))
+        return contract_format.loads(_read_raw(vf))
     except (contract_format.ContractParseError, UnicodeDecodeError, FileNotFoundError, ValueError):
         return contract_format.new_contract(title=vf.title)
 
@@ -71,11 +65,178 @@ def _can_edit(request, vf) -> bool:
     return request.user.is_authenticated and vf.owner_id == request.user.id
 
 
+def _can_read(request, vf: VaultFile) -> bool:
+    """Read access: public, or (authenticated) owner / superuser / bucket-owner /
+    directory whitelist — mirrors vault's accessible_files policy."""
+    if vf.is_public:
+        return True
+    u = request.user
+    if not u.is_authenticated:
+        return False
+    if u.is_superuser or vf.owner_id == u.id:
+        return True
+    if vf.bucket and vf.bucket.owner_id == u.id:
+        return True
+    if vf.directory and vf.directory.user_can_access(u):
+        return True
+    return False
+
+
+def _get_file(request, file_pk, *, owner_only=False) -> VaultFile:
+    """Fetch a contract vault file and validate the caller may open it.
+
+    Contracts are ordinary ``.xml`` files now (``file_type="xml"``); the legacy
+    ``contract`` type is still accepted. Only files whose content is a
+    ``<signingDocument>`` open here, so arbitrary XML can't reach the contract views.
+    """
+    vf = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        pk=file_pk, file_type__in=["xml", "contract"],
+    )
+    try:
+        if not contract_format.is_contract(_read_raw(vf)):
+            raise Http404("Not a contract.")
+    except (FileNotFoundError, UnicodeDecodeError, ValueError):
+        raise Http404("Not a contract.")
+    if owner_only:
+        if not request.user.is_authenticated or vf.owner_id != request.user.id:
+            raise Http404("Not your file.")
+    elif not _can_read(request, vf):
+        raise Http404("Not accessible.")
+    return vf
+
+
 def _current_person(request):
     if not request.user.is_authenticated:
         return None
     from toto.people.models import Person
     return Person.objects.filter(user=request.user).first()
+
+
+def _user_emails(request, person=None) -> set[str]:
+    """Lower-cased emails identifying the current user (account + Person)."""
+    emails = set()
+    if request.user.is_authenticated and request.user.email:
+        emails.add(request.user.email.strip().lower())
+    if person is None:
+        person = _current_person(request)
+    if person and getattr(person, "email", ""):
+        emails.add(person.email.strip().lower())
+    return {e for e in emails if e}
+
+
+def _signable_party_ids(request, contract, vf) -> set[str]:
+    """Party ids the current user may sign as: signer/issuer parties whose email
+    matches the user's; or *every* signer/issuer party when the user owns the file
+    or is a superuser."""
+    signer_parties = [p for p in contract.parties if p.role in ("signer", "issuer")]
+    u = request.user
+    if u.is_authenticated and (u.is_superuser or vf.owner_id == u.id):
+        return {p.id for p in signer_parties}
+    emails = _user_emails(request)
+    return {p.id for p in signer_parties if (p.email or "").strip().lower() in emails}
+
+
+# ---------------------------------------------------------------------------
+# Index / create
+# ---------------------------------------------------------------------------
+
+CONTRACT_LIST_CAP = 300
+
+
+class NotariusIndexView(View):
+    """List the contracts the current user can access. Contracts are ordinary
+    ``.xml`` vault files whose root is ``<signingDocument>``."""
+
+    template_name = "notarius/index.html"
+
+    def get(self, request):
+        from toto.vault.filetree import accessible_files
+        from toto.vault.views import new_file_picker_json
+
+        contracts = []
+        if request.user.is_authenticated:
+            # Scan the user's accessible XML files and keep the ones that are
+            # contracts. Capped, so a large vault trades completeness for a bounded
+            # page load (a DB-backed registry would remove the cap later).
+            files = (
+                accessible_files(request.user, file_types=["xml", "contract"])
+                .filter(is_encrypted=False)
+                .order_by("-uploaded_at")[:CONTRACT_LIST_CAP]
+            )
+            for vf in files:
+                try:
+                    raw = _read_raw(vf)
+                except Exception:
+                    continue
+                if not contract_format.is_contract(raw):
+                    continue
+                try:
+                    contract = contract_format.loads(raw)
+                except contract_format.ContractParseError:
+                    continue
+                bname = vf.bucket.name if vf.bucket else "—"
+                location = f"{bname} / {vf.directory.full_path()}" if vf.directory_id else bname
+                contracts.append({
+                    "title": contract.title or vf.title,
+                    "status": contract.status,
+                    "party_count": len(contract.parties),
+                    "signature_count": len(contract.signatures),
+                    "location": location,
+                    "is_owner": vf.owner_id == request.user.id,
+                    "can_sign": bool(_signable_party_ids(request, contract, vf))
+                                and contract.status != "signed",
+                    "view_url": reverse("notarius:view", args=[vf.pk]),
+                    "edit_url": reverse("notarius:edit", args=[vf.pk]),
+                    "sign_url": reverse("notarius:sign", args=[vf.pk]),
+                })
+
+        buckets_json, directories_json = new_file_picker_json(request.user)
+        context = {
+            "contracts": contracts,
+            "buckets_json": buckets_json,
+            "directories_json": directories_json,
+            "create_url": reverse("notarius:create"),
+        }
+        return render(request, self.template_name, PageProcessor().decorate(context, request))
+
+
+class ContractCreateView(LoginRequiredMixin, View):
+    """Create a blank contract as an ordinary ``.xml`` vault file in a chosen
+    bucket/directory, then open the editor. Reuses the shared new-file picker."""
+
+    def post(self, request):
+        from django.core.files.base import ContentFile
+        from django.utils.text import slugify
+        from toto.vault.views import _unique_file_key, resolve_new_file_target
+
+        bucket, directory = resolve_new_file_target(
+            request.user, request.POST.get("bucket_id"), request.POST.get("directory_id"),
+        )
+        raw_name = (request.POST.get("filename") or "").strip()
+        base = raw_name[:-4] if raw_name.lower().endswith(".xml") else raw_name
+        base = base.strip() or "contract"
+        title = (request.POST.get("title") or "").strip() or base
+
+        person = _current_person(request)
+        issuer_name = (person.full_name if person else "") or request.user.get_username()
+        issuer_email = (person.email if person and person.email else request.user.email) or ""
+
+        contract = contract_format.new_contract(
+            title=title, issuer_name=issuer_name, issuer_email=issuer_email,
+        )
+        xml_bytes = contract_format.dumps(contract).encode("utf-8")
+        filename = f"{base}.xml"
+
+        vf = VaultFile(
+            owner=request.user, title=filename, key=_unique_file_key(slugify(base), bucket),
+            file_type="xml", bucket=bucket, directory=directory, is_public=False,
+        )
+        vf.file.save(filename, ContentFile(xml_bytes), save=False)
+        vf.content_hash = hashlib.sha256(xml_bytes).hexdigest()
+        vf.file_size_bytes = len(xml_bytes)
+        vf.save()
+        return redirect("notarius:edit", file_pk=vf.pk)
 
 
 # ---------------------------------------------------------------------------
@@ -197,7 +358,9 @@ class ContractSignView(LoginRequiredMixin, View):
         from toto.gervazy.signing import SigningService
         strongboxes = list(UserStrongbox.objects.filter(owner=request.user)) if person else []
         existing_key = SigningService.get_active_signing_key(person) if person else None
-        signer_parties = [p for p in contract.parties if p.role in ("signer", "issuer")]
+        # Only the parties this user may sign as (email match, or owner/superuser).
+        signable_ids = _signable_party_ids(request, contract, vf)
+        signer_parties = [p for p in contract.parties if p.id in signable_ids]
         return {
             "vault_file": vf,
             "contract": contract,
@@ -239,6 +402,10 @@ class ContractSignView(LoginRequiredMixin, View):
         party = contract.party_by_id(party_id)
         if not party:
             messages.error(request, "Select which party you are signing as.")
+            return render(request, self.template_name,
+                          PageProcessor().decorate(self._ctx(request, vf, contract, person), request))
+        if party_id not in _signable_party_ids(request, contract, vf):
+            messages.error(request, "You can only sign as a party whose email matches your account.")
             return render(request, self.template_name,
                           PageProcessor().decorate(self._ctx(request, vf, contract, person), request))
         if not password:

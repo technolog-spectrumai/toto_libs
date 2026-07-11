@@ -171,6 +171,21 @@ def _text(el, path, default=""):
     return found.text.strip() if (found is not None and found.text) else default
 
 
+def is_contract(xml: str | bytes) -> bool:
+    """True if ``xml`` is a signing document (root ``<signingDocument>``).
+
+    Cheap identity check for "is this ordinary XML vault file a contract?" — used to
+    filter the notarius index and gate the contract views now that contracts are
+    stored as plain ``.xml`` (``file_type="xml"``) rather than a dedicated type.
+    """
+    try:
+        if isinstance(xml, bytes):
+            xml = xml.decode("utf-8")
+        return ET.fromstring(xml).tag == "signingDocument"
+    except Exception:
+        return False
+
+
 def loads(xml: str) -> Contract:
     try:
         root = ET.fromstring(xml)

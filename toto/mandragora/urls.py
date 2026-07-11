@@ -10,7 +10,7 @@ from .views import (
     create_cell, delete_cell, promote_cell_to_lambda,
 )
 from .tpy_views import (
-    TpyDisplayView, tpy_save, tpy_delete, tpy_run_cell,
+    TpyDisplayView, TpyIndexView, TpyCreateView, tpy_save, tpy_delete, tpy_run_cell,
     tpy_start_kernel, tpy_stop_kernel, tpy_kernel_status,
 )
 
@@ -19,6 +19,10 @@ app_name = "mandragora"
 urlpatterns = [
     path("", NotebookListView.as_view(), name="notebook_list"),
     path("new/", notebook_create, name="notebook_create"),
+
+    # File-backed notebooks index + create (ordinary .xml vault files, <notebook> root)
+    path("notebooks/",     TpyIndexView.as_view(),  name="tpy_index"),
+    path("notebooks/new/", TpyCreateView.as_view(), name="tpy_create"),
 
     # .tpy file-backed notebook editor (wired to the vault as the "notebook" editor)
     path("tpy/<int:file_pk>/",                TpyDisplayView.as_view(), name="tpy_display"),

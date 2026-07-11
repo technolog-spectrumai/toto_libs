@@ -33,8 +33,10 @@ from .storage_backends import get_bucket_storage
 CREATABLE_TYPES = [
     ("text", ".txt"), ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
     ("csv", ".csv"), ("html", ".html"), ("latex", ".tex"), ("bib", ".bib"),
-    ("svg", ".svg"), ("notebook", ".tpy"), ("neojson", ".neojson"),
-    ("presentation", ".pml"), ("contract", ".contract"),
+    ("svg", ".svg"), ("neojson", ".neojson"),
+    ("presentation", ".pml"),
+    # Contracts (toto.notarius) and notebooks (toto.mandragora) are ordinary .xml
+    # files now — created/edited via their own apps, not the vault "New file" menu.
 ]
 
 
@@ -1367,7 +1369,7 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "notebook", "neojson", "presentation", "contract"}
+    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "neojson", "presentation"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
@@ -1411,22 +1413,6 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "  }\n"
             "}\n"
         ),
-        # Blank .tpy notebook: one empty code cell, no dependencies.
-        # Mirrors toto.mandragora.tpy_format.dumps(new_notebook()).
-        "notebook": (
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<notebook version="1" title="">\n'
-            "  <dependencies />\n"
-            "  <cells>\n"
-            '    <cell type="code" execution_count="0">\n'
-            "      <source />\n"
-            "      <stdout />\n"
-            "      <stderr />\n"
-            "      <rich_output>[]</rich_output>\n"
-            "    </cell>\n"
-            "  </cells>\n"
-            "</notebook>\n"
-        ),
         # Blank presentation: one empty slide.
         # Mirrors toto.memo.presentation_format.dumps(new_presentation()).
         "presentation": (
@@ -1437,27 +1423,6 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "    <body><![CDATA[]]></body>\n"
             "  </slide>\n"
             "</presentation>\n"
-        ),
-        # Blank signing document: one issuer party, empty content.
-        # Mirrors toto.notarius.contract_format.dumps(new_contract()).
-        "contract": (
-            '<?xml version="1.0" encoding="UTF-8"?>\n'
-            '<signingDocument id="" version="1.0">\n'
-            "  <metadata>\n"
-            "    <title></title>\n"
-            "    <createdAt></createdAt>\n"
-            "    <status>draft</status>\n"
-            "  </metadata>\n"
-            "  <parties>\n"
-            '    <party id="party-1" type="organization" role="issuer">\n'
-            "      <legalName></legalName>\n"
-            "      <email></email>\n"
-            "    </party>\n"
-            "  </parties>\n"
-            '  <content id="content-1" mediaType="text/plain" encoding="text"></content>\n'
-            "  <signatures />\n"
-            "  <auditTrail />\n"
-            "</signingDocument>\n"
         ),
     }
 
