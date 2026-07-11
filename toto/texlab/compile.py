@@ -7,6 +7,27 @@ import tempfile
 from django.core.files.base import ContentFile
 
 
+def _extract_latex_error(log: str) -> str:
+    """The meaningful part of a pdfTeX log.
+
+    pdfTeX prints its version banner first and the real failure much later, so a
+    head-truncated log just shows "This is pdfTeX, Version …". Pull the ``! …``
+    error line(s) plus a little following context (pdfTeX prints the message, then
+    the offending source line and ``l.<n>``). Falls back to the log tail when no
+    explicit error marker is present.
+    """
+    lines = (log or "").splitlines()
+    blocks = [
+        "\n".join(lines[i:i + 6]).rstrip()
+        for i, line in enumerate(lines)
+        if line.startswith("!")
+    ]
+    if blocks:
+        return "\n\n".join(blocks).strip()
+    nonblank = [ln for ln in lines if ln.strip()]
+    return "\n".join(nonblank[-15:]).strip() or "pdflatex produced no output."
+
+
 def run_pdflatex(tex_source: str, vault_file) -> tuple[bytes, str]:
     """
     Compile *tex_source* via pdflatex.  Companion files (latex/text and images)
@@ -52,14 +73,23 @@ def run_pdflatex(tex_source: str, vault_file) -> tuple[bytes, str]:
             except Exception:
                 pass
 
+        pdf_path = os.path.join(tmpdir, "main.pdf")
+        log = ""
         try:
-            proc = subprocess.run(
-                ["pdflatex", "-interaction=nonstopmode", "main.tex"],
-                cwd=tmpdir,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=15,
-            )
+            # Two passes so \ref/\tableofcontents/\cite resolve. 60s covers a
+            # container's slow first run (font-cache build). A fatal error in pass
+            # one leaves no PDF → skip the pointless second pass.
+            for _ in range(2):
+                proc = subprocess.run(
+                    ["pdflatex", "-interaction=nonstopmode", "main.tex"],
+                    cwd=tmpdir,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=60,
+                )
+                log = proc.stdout.decode(errors="ignore") + "\n" + proc.stderr.decode(errors="ignore")
+                if not os.path.exists(pdf_path):
+                    break
         except FileNotFoundError:
             # Surface a clear, actionable log instead of a raw [Errno 2].
             raise RuntimeError(
@@ -68,11 +98,21 @@ def run_pdflatex(tex_source: str, vault_file) -> tuple[bytes, str]:
                 "so texlive is baked in, then redeploy); locally install it via "
                 "your package manager (e.g. `apt install texlive-latex-base`)."
             )
-        log = proc.stdout.decode(errors="ignore") + "\n" + proc.stderr.decode(errors="ignore")
+        except subprocess.TimeoutExpired as exc:
+            partial = (getattr(exc, "output", None) or b"")
+            partial = partial.decode(errors="ignore") if isinstance(partial, bytes) else str(partial)
+            raise RuntimeError(
+                "pdflatex timed out after 60s — a container's very first compile can "
+                "be slow while the font cache builds; retry once. "
+                + _extract_latex_error(partial)
+            )
 
-        pdf_path = os.path.join(tmpdir, "main.pdf")
         if not os.path.exists(pdf_path):
-            raise RuntimeError(log)
+            # Lead with the actual '! ...' error so the (truncated) UI shows the
+            # real problem instead of the pdfTeX startup banner; full log follows.
+            raise RuntimeError(
+                _extract_latex_error(log) + "\n\n--- full pdflatex log ---\n" + log
+            )
 
         with open(pdf_path, "rb") as f:
             return f.read(), log

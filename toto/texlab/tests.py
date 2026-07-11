@@ -261,3 +261,35 @@ class WorkspaceTests(TestCase):
     def test_texlab_in_ingress_allowed_apps(self):
         from django.conf import settings
         self.assertIn("toto.texlab", settings.INGRESS_ALLOWED_APPS)
+
+
+class CompileErrorExtractionTests(TestCase):
+    """The pdfTeX log leads with a version banner; the real failure is deeper, so
+    the surfaced error must lead with the '! …' line, not 'This is pdfTeX …'."""
+
+    def test_pulls_bang_error_lines(self):
+        from toto.texlab.compile import _extract_latex_error
+        log = (
+            "This is pdfTeX, Version 3.141592653-2.6-1.40.24 (TeX Live 2022)\n"
+            "entering extended mode\n"
+            "(./main.tex LaTeX2e <2022-11-01>\n"
+            "! LaTeX Error: File `foobar.sty' not found.\n"
+            "\n"
+            "Type X to quit or <RETURN> to proceed,\n"
+            "l.2 \\usepackage{foobar}\n"
+            "! Emergency stop.\n"
+        )
+        err = _extract_latex_error(log)
+        self.assertIn("! LaTeX Error: File `foobar.sty' not found.", err)
+        self.assertIn("l.2 \\usepackage{foobar}", err)
+        self.assertFalse(err.startswith("This is pdfTeX"))
+
+    def test_falls_back_to_tail_when_no_marker(self):
+        from toto.texlab.compile import _extract_latex_error
+        log = "This is pdfTeX\nnoise\nnoise\nthe meaningful tail line\n"
+        err = _extract_latex_error(log)
+        self.assertIn("the meaningful tail line", err)
+
+    def test_empty_log(self):
+        from toto.texlab.compile import _extract_latex_error
+        self.assertEqual(_extract_latex_error(""), "pdflatex produced no output.")
