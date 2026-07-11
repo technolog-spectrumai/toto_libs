@@ -43,6 +43,10 @@ class Address(DomainEntity):
         blank=True,
         help_text="Free-form JSON metadata for this location.",
     )
+    note = models.TextField(
+        blank=True,
+        help_text="Free-text note about this address.",
+    )
 
     def __str__(self):
         parts = []
@@ -156,6 +160,10 @@ class Route(DomainEntity):
         default=dict,
         blank=True,
         help_text="Free-form JSON metadata for this location.",
+    )
+    notes = models.TextField(
+        blank=True,
+        help_text="Free-text notes about this route.",
     )
 
     def __str__(self):

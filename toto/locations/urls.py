@@ -36,6 +36,7 @@ urlpatterns = [
     path("detail/<str:kind>/<int:pk>/", views.location_detail, name="location_detail"),
     path("metadata/<str:kind>/<int:pk>/save/", views.metadata_save, name="metadata_save"),
     path("metadata/convert/", views.metadata_convert, name="metadata_convert"),
+    path("note/<str:kind>/<int:pk>/save/", views.note_save, name="note_save"),
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]

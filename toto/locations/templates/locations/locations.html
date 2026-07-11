@@ -582,7 +582,7 @@
               </div>
 
               <a
-                href="{% url 'travels:my_travels' %}"
+                href="{% url 'travels:my_visits' %}"
                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
                 class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">{% trans "View all visits" %}</a>
             </div>
@@ -1356,6 +1356,12 @@
     const name = item.name;
     const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
 
+    let note = "";
+    if (item.note) {
+      const text = item.note.length > 160 ? item.note.slice(0, 160) + "…" : item.note;
+      note = `<div style="margin-top: 6px; font-size: 12px; opacity: 0.8; max-width: 220px;">${escapeHtml(text)}</div>`;
+    }
+
     const actions = [];
 
     if (item.review_url) {
@@ -1366,9 +1372,9 @@
       actions.push(`<button type="button" data-location-name="${escapeAttribute(name)}" onclick="zoomToAddressFromPopup(this)" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>`);
     }
 
-    if (!actions.length) return title;
+    if (!actions.length) return `${title}${note}`;
 
-    return `${title}<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${actions.join("")}</div>`;
+    return `${title}${note}<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${actions.join("")}</div>`;
   }
 
   function zoomToAddressFromPopup(button) {

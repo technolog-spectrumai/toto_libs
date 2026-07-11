@@ -47,6 +47,21 @@ def my_travels(request):
     else:
         my_travel_list = travels.none()
 
+    context = {
+        "travels": travels,
+        "my_travels": my_travel_list,
+        "person": person,
+    }
+
+    return render(
+        request,
+        "travels/my_travels.html",
+        PageProcessor().decorate(context, request),
+    )
+
+
+@login_required
+def my_visits(request):
     visits = (
         Visit.objects
         .select_related("participant", "location")
@@ -54,15 +69,13 @@ def my_travels(request):
     )
 
     context = {
-        "travels": travels,
-        "my_travels": my_travel_list,
-        "person": person,
         "visits": visits,
+        "person": current_person(request),
     }
 
     return render(
         request,
-        "travels/my_travels.html",
+        "travels/my_visits.html",
         PageProcessor().decorate(context, request),
     )
 
@@ -414,7 +427,7 @@ def visit_create(request):
             if visit.location:
                 return redirect("travels:visit_review", address_id=visit.location.pk)
 
-            return redirect("travels:my_travels")
+            return redirect("travels:my_visits")
 
     else:
         form = VisitForm(initial=initial)
@@ -463,4 +476,4 @@ def visit_delete(request, pk):
     messages.success(request, "Visit deleted.")
     if address_id:
         return redirect("travels:visit_review", address_id=address_id)
-    return redirect("travels:my_travels")
+    return redirect("travels:my_visits")

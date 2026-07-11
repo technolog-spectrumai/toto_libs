@@ -53,6 +53,12 @@ DETAIL_MODELS = {
     "route": Route,
 }
 
+# Location kinds that carry a free-text note, mapped to their field name.
+NOTE_FIELDS = {
+    "address": "note",
+    "route": "notes",
+}
+
 
 def location_detail_url(kind, pk):
     return reverse("locations:location_detail", args=[kind, pk])
@@ -138,6 +144,7 @@ def address_payload(address):
         "street": address.street,
         "building": address.building,
         "apartment": address.apartment,
+        "note": address.note,
         "geometry": geometry_json(address.geometry),
     }
 
@@ -181,6 +188,7 @@ def route_payload(route):
     return {
         "id": route.pk,
         "name": route.name or f"Route {route.pk}",
+        "notes": route.notes,
         "geometry": geometry_json(route.geometry),
         "route_chain": {
             "id": route.route_chain.pk,
@@ -314,6 +322,7 @@ def locations_all(request):
             "type": "Route",
             "name": route.name or f"Route {route.pk}",
             "detail": f"In {route.route_chain.name}" if route.route_chain else "Route",
+            "note": route.notes,
             "geometry": geometry_json(route.geometry),
             "geometry_json": geometry_json(route.geometry),
             "detail_url": detail_url,
@@ -326,6 +335,7 @@ def locations_all(request):
             "type": "Address",
             "name": str(address),
             "detail": address.locality_name,
+            "note": address.note,
             "geometry": geometry_json(address.geometry),
             "geometry_json": geometry_json(address.geometry),
             "detail_url": detail_url,
@@ -986,6 +996,9 @@ def location_detail(request, kind, pk):
         "geometry_json": json.dumps(geom_json),
         "has_geometry": geom_json is not None,
         "back_url": reverse("locations:locations_all"),
+        "note_field": NOTE_FIELDS.get(kind),
+        "note_value": getattr(obj, NOTE_FIELDS[kind], "") if kind in NOTE_FIELDS else "",
+        "note_save_url": reverse("locations:note_save", args=[kind, pk]) if kind in NOTE_FIELDS else "",
         **_metadata_context(kind, obj),
     }
 
@@ -1026,6 +1039,26 @@ def metadata_save(request, kind, pk):
     obj.metadata = parsed
     obj.save(update_fields=["metadata"])
     return JsonResponse({"status": "ok"})
+
+
+@login_required
+@require_POST
+def note_save(request, kind, pk):
+    """Persist a location object's free-text note (plain form POST + redirect)."""
+    field = NOTE_FIELDS.get(kind)
+    model = DETAIL_MODELS.get(kind)
+    if field is None or model is None:
+        raise Http404(f"No note field for kind '{kind}'.")
+
+    obj = get_object_or_404(model, pk=pk)
+    setattr(obj, field, request.POST.get("note", "").strip())
+    obj.save(update_fields=[field])
+    messages.success(request, "Note saved.")
+
+    return redirect(
+        request.POST.get("next")
+        or reverse("locations:location_detail", args=[kind, pk])
+    )
 
 
 @login_required

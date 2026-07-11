@@ -33,6 +33,20 @@
        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
       <i class="fa-solid fa-route fa-fw"></i> {% trans "Routes" %}
     </a>
+    {% if "toto.travels"|app_installed %}
+    {# Travels + Visits share the "travels" namespace; the active tab is decided by #}
+    {# url_name: any travels URL whose name contains "visit" belongs to the Visits tab. #}
+    <a href="{% url 'travels:my_travels' %}"
+       :class="{% if request.resolver_match.namespace == 'travels' and 'visit' not in request.resolver_match.url_name %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-suitcase-rolling fa-fw"></i> {% trans "Travels" %}
+    </a>
+    <a href="{% url 'travels:my_visits' %}"
+       :class="{% if request.resolver_match.namespace == 'travels' and 'visit' in request.resolver_match.url_name %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-location-dot fa-fw"></i> {% trans "Visits" %}
+    </a>
+    {% endif %}
     {% if "toto.weather"|app_installed %}
     <a href="{% url 'weather:index' %}"
        :class="{% if request.resolver_match.namespace == 'weather' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"

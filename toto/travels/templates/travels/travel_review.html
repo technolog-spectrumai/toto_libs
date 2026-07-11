@@ -215,6 +215,15 @@
               </dd>
             </div>
 
+            {% if route %}
+            <div>
+              <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Route notes" %}</dt>
+              <dd class="mt-1 whitespace-pre-line">
+                {% if route.notes %}{{ route.notes }}{% else %}<span class="opacity-60">—</span>{% endif %}
+              </dd>
+            </div>
+            {% endif %}
+
             <div>
               <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Duration" %}</dt>
               <dd class="mt-1 font-bold">
