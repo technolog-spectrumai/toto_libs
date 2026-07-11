@@ -1,9 +1,11 @@
 from django.urls import path
 
 from .views import (
+    BibFileDisplayView,
     CsvFileDisplayView,
     HtmlFileDisplayView,
     JsonFileDisplayView,
+    LatexFileDisplayView,
     TextFileDisplayView,
     XmlFileDisplayView,
     YamlFileDisplayView,
@@ -32,4 +34,10 @@ urlpatterns = [
     path("csv/<int:file_pk>/",          CsvFileDisplayView.as_view(),   name="csv_display"),
     path("csv/<int:file_pk>/save/",     save_file,                      name="csv_save"),
     path("csv/<int:file_pk>/delete/",   delete_file,                    name="csv_delete"),
+    path("latex/<int:file_pk>/",        LatexFileDisplayView.as_view(), name="latex_display"),
+    path("latex/<int:file_pk>/save/",   save_file,                      name="latex_save"),
+    path("latex/<int:file_pk>/delete/", delete_file,                    name="latex_delete"),
+    path("bib/<int:file_pk>/",          BibFileDisplayView.as_view(),   name="bib_display"),
+    path("bib/<int:file_pk>/save/",     save_file,                      name="bib_save"),
+    path("bib/<int:file_pk>/delete/",   delete_file,                    name="bib_delete"),
 ]

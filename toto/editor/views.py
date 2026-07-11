@@ -140,3 +140,21 @@ class CsvFileDisplayView(BaseFileDisplayView):
     wrap_lines = False
     save_url_name = "editor:csv_save"
     delete_url_name = "editor:csv_delete"
+
+
+class LatexFileDisplayView(BaseFileDisplayView):
+    # LaTeX source (.tex/.sty/.cls) edited with Ace's latex highlighting. Editing
+    # only — compilation is the separate TeX Compiler workflow (toto.texlab).
+    ace_mode = "latex"
+    ws_path = "editor"
+    wrap_lines = True
+    save_url_name = "editor:latex_save"
+    delete_url_name = "editor:latex_delete"
+
+
+class BibFileDisplayView(BaseFileDisplayView):
+    # BibTeX bibliography (.bib) edited with Ace's bibtex highlighting.
+    ace_mode = "bibtex"
+    ws_path = "editor"
+    save_url_name = "editor:bib_save"
+    delete_url_name = "editor:bib_delete"

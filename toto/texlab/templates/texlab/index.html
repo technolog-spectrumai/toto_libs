@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{% trans "LaTeX Workspace" %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% trans "TeX Compiler" %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 {% if is_authenticated %}
@@ -24,8 +24,8 @@
     <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
         <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-            class="text-3xl font-bold">{% trans "LaTeX Workspace" %}</h1>
-        <p class="opacity-75">{% trans "LaTeX documents stored as plain .tex vault files." %}</p>
+            class="text-3xl font-bold">{% trans "TeX Compiler" %}</h1>
+        <p class="opacity-75">{% trans "Compile .tex vault files to PDF. Edit .tex/.bib in the vault editor (LaTeX/BibTeX highlighting)." %}</p>
       </div>
       <div class="flex items-center gap-4">
         {% if is_authenticated %}
@@ -42,16 +42,12 @@
     {% if documents %}
       <div class="grid gap-5 md:grid-cols-2">
         {% for d in documents %}
-          <article
+          <article x-data="compileCard()"
             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
             class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
             <div class="space-y-2">
-              {% if d.is_owner %}
+              {% if d.is_owner and d.edit_url %}
                 <a href="{{ d.edit_url }}" class="block text-xl font-bold underline hover:opacity-80">
-                  {{ d.title }}
-                </a>
-              {% elif d.play_url %}
-                <a href="{{ d.play_url }}" class="block text-xl font-bold underline hover:opacity-80">
                   {{ d.title }}
                 </a>
               {% else %}
@@ -67,14 +63,20 @@
                 <span>{{ d.uploaded|date:"M d, Y" }}</span>
               </div>
             </div>
-            <div class="flex gap-3 text-sm">
-              {% if d.play_url %}
-                <a href="{{ d.play_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                  <i class="fa-solid fa-play"></i> {% trans "View PDF" %}</a>
-              {% endif %}
-              {% if d.is_owner %}
+            <div class="flex flex-wrap items-center gap-3 text-sm">
+              {% if d.is_owner and d.edit_url %}
                 <a href="{{ d.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                   <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+              {% endif %}
+              {% if d.is_owner and d.compile_url %}
+                <button type="button" @click="run('{{ d.compile_url }}')" :disabled="compiling"
+                        class="inline-flex items-center gap-2 underline hover:opacity-80 disabled:opacity-50">
+                  <i class="fa-solid" :class="compiling ? 'fa-spinner fa-spin' : 'fa-play'"></i>
+                  <span x-text="compiling ? '{% trans "Compiling…" %}' : '{% trans "Compile" %}'"></span></button>
+                <a x-show="pdfUrl" x-cloak :href="pdfUrl" target="_blank"
+                   class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-file-pdf"></i> {% trans "View PDF" %}</a>
+                <span x-show="error" x-cloak x-text="error" class="text-xs text-red-500"></span>
               {% endif %}
             </div>
           </article>
@@ -109,7 +111,7 @@
 
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-file-circle-plus"></i>{% trans "New LaTeX document" %}</h2>
+          <i class="fa-solid fa-file-circle-plus"></i>{% trans "New .tex document" %}</h2>
         <button type="button" @click="showCreate = false"
                 class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
       </div>
@@ -171,4 +173,40 @@
   {% endif %}
 
 </section>
+
+<script>
+  // Poll base — replace the "/0/" run-id segment per compile.
+  const TEX_STATUS_URL = "{% url 'texlab:compile_status' 0 %}";
+  function compileCard() {
+    return {
+      compiling: false, pdfUrl: "", error: "",
+      async run(url) {
+        this.compiling = true; this.error = ""; this.pdfUrl = "";
+        try {
+          const res = await fetch(url, { method: "POST" });
+          const data = await res.json();
+          if (data.pdf_url && (data.status === "ok" || data.status === "success")) {
+            this.pdfUrl = data.pdf_url; this.compiling = false; return;
+          }
+          if (data.status === "failed") {
+            this.error = (data.log || "Compile failed").slice(0, 200); this.compiling = false; return;
+          }
+          if (!data.run_id) { this.error = data.error || "Compile failed"; this.compiling = false; return; }
+          this.poll(data.run_id);
+        } catch (e) { this.error = String(e); this.compiling = false; }
+      },
+      poll(runId) {
+        const statusUrl = TEX_STATUS_URL.replace("/0/", "/" + runId + "/");
+        const iv = setInterval(async () => {
+          try {
+            const r = await fetch(statusUrl);
+            const d = await r.json();
+            if (d.status === "success") { this.pdfUrl = d.pdf_url || ""; this.compiling = false; clearInterval(iv); }
+            else if (d.status === "failed") { this.error = (d.log || "Compile failed").slice(0, 200); this.compiling = false; clearInterval(iv); }
+          } catch (e) { this.error = String(e); this.compiling = false; clearInterval(iv); }
+        }, 1500);
+      },
+    };
+  }
+</script>
 {% endblock %}

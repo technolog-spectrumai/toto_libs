@@ -17,7 +17,7 @@ import mimetypes
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.base import ContentFile
-from django.http import HttpResponseForbidden, JsonResponse
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
@@ -45,12 +45,35 @@ _MEDIA_TYPES = ["image", "svg"]
 # Helpers
 # ---------------------------------------------------------------------------
 
+def _read_raw(vault_file: VaultFile) -> str:
+    """Raw UTF-8 text of the vault file via a fresh storage handle."""
+    with vault_file.file.storage.open(vault_file.file.name, "rb") as fh:
+        return fh.read().decode("utf-8")
+
+
+def _is_presentation_file(vault_file: VaultFile) -> bool:
+    try:
+        return presentation_format.is_presentation(_read_raw(vault_file))
+    except (FileNotFoundError, UnicodeDecodeError, ValueError):
+        return False
+
+
 def _get_owned_file(request, file_pk) -> VaultFile:
-    return get_object_or_404(
+    """Fetch a presentation vault file owned by the user and validate its content.
+
+    Presentations are ordinary ``.xml`` files now (``file_type="xml"``); the legacy
+    ``presentation`` type is still accepted. Only files whose content is a
+    ``<presentation>`` open here, so other XML can't reach the slide editor.
+    """
+    vf = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner"),
         pk=file_pk,
         owner=request.user,
+        file_type__in=["xml", "presentation"],
     )
+    if not _is_presentation_file(vf):
+        raise Http404("Not a presentation.")
+    return vf
 
 
 def _read_presentation(vault_file: VaultFile) -> presentation_format.Presentation:
@@ -104,10 +127,13 @@ class PresentationView(View):
         vault_file = get_object_or_404(
             VaultFile.objects.select_related("bucket", "directory", "owner"),
             pk=file_pk,
+            file_type__in=["xml", "presentation"],
         )
 
         if vault_file.is_encrypted:
             return HttpResponseForbidden("Cannot display an encrypted file.")
+        if not _is_presentation_file(vault_file):
+            raise Http404("Not a presentation.")
 
         # Visibility check mirrors toto.vod.views.vault_file_play.
         if not vault_file.is_public:
@@ -320,9 +346,9 @@ class PresentationCreateView(LoginRequiredMixin, View):
         )
 
         raw = (request.POST.get("filename") or "").strip()
-        base = raw[:-4] if raw.lower().endswith(".pml") else raw
+        base = raw[:-4] if raw.lower().endswith(".xml") else raw
         base = base.strip() or "untitled-presentation"
-        title = f"{base}.pml"
+        title = f"{base}.xml"
         key = _unique_file_key(slugify(base), bucket)
 
         xml = presentation_format.dumps(
@@ -334,7 +360,7 @@ class PresentationCreateView(LoginRequiredMixin, View):
             owner=request.user,
             title=title,
             key=key,
-            file_type="presentation",
+            file_type="xml",
             bucket=bucket,
             directory=directory,
             is_public=False,
@@ -356,17 +382,20 @@ class PresentationIndexView(View):
 
     template_name = "memo/index.html"
 
+    # Bound the content-sniff scan (presentations share the generic xml type now).
+    PRESENTATION_LIST_CAP = 300
+
     def get(self, request):
         from django.db.models import Q
 
-        qs = VaultFile.objects.filter(file_type="presentation").select_related(
-            "owner", "bucket", "directory"
-        )
+        qs = VaultFile.objects.filter(
+            file_type__in=["xml", "presentation"], is_encrypted=False
+        ).select_related("owner", "bucket", "directory")
         if request.user.is_authenticated:
             qs = qs.filter(Q(is_public=True) | Q(owner=request.user))
         else:
             qs = qs.filter(is_public=True)
-        qs = qs.order_by("-uploaded_at", "title")
+        qs = qs.order_by("-uploaded_at", "title")[: self.PRESENTATION_LIST_CAP]
 
         def _location(f):
             loc = f.bucket.name if f.bucket else "—"
@@ -374,8 +403,15 @@ class PresentationIndexView(View):
                 loc = f"{loc} / {f.directory.full_path()}"
             return loc
 
-        presentations = [
-            {
+        presentations = []
+        for f in qs:
+            try:
+                raw = _read_raw(f)
+            except Exception:
+                continue
+            if not presentation_format.is_presentation(raw):
+                continue
+            presentations.append({
                 "title": f.title,
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at,
@@ -384,9 +420,7 @@ class PresentationIndexView(View):
                 "present_url": reverse("memo:present", args=[f.pk]),
                 "edit_url": reverse("memo:edit", args=[f.pk]),
                 "source_url": reverse("memo:source", args=[f.pk]),
-            }
-            for f in qs
-        ]
+            })
 
         buckets_json, directories_json = new_file_picker_json(request.user)
         context = PageProcessor().decorate(

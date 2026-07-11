@@ -50,13 +50,32 @@ class WorkspaceTests(TestCase):
 
     # ── Vault wiring ────────────────────────────────────────────────
 
-    def test_editor_plugin_registered_for_latex(self):
-        editor = VaultEditorPlugin.for_file_type("latex")
-        self.assertIsNotNone(editor)
+    def test_latex_and_bib_route_to_generic_editor(self):
+        # Editing .tex/.bib now happens in the generic ACE editor (toto.editor),
+        # not the bespoke texlab editor.
+        latex = VaultEditorPlugin.for_file_type("latex")
+        bib = VaultEditorPlugin.for_file_type("bib")
+        self.assertIsNotNone(latex)
+        self.assertIsNotNone(bib)
         vf = self._make_tex()
-        self.assertEqual(
-            editor.get_editor_url(vf), reverse("texlab:file_display", args=[vf.pk])
+        self.assertEqual(latex.get_editor_url(vf), reverse("editor:latex_display", args=[vf.pk]))
+        vfb = self._make_tex(title="refs.bib", file_type="bib")
+        self.assertEqual(bib.get_editor_url(vfb), reverse("editor:bib_display", args=[vfb.pk]))
+
+    def test_ensure_compile_workflow_is_idempotent(self):
+        from toto.texlab.workflow import (
+            COMPILE_TASK_NAME, COMPILE_WORKFLOW_SLUG, ensure_compile_workflow,
         )
+        from toto.workflows.models import WorkflowNode
+
+        wf1 = ensure_compile_workflow()
+        wf2 = ensure_compile_workflow()
+        self.assertEqual(wf1.pk, wf2.pk)
+        self.assertEqual(wf1.slug, COMPILE_WORKFLOW_SLUG)
+        nodes = WorkflowNode.objects.filter(
+            workflow=wf1, node_type=WorkflowNode.PREDEFINED_TASK, task_name=COMPILE_TASK_NAME,
+        )
+        self.assertEqual(nodes.count(), 1)  # not duplicated on re-seed
 
     def test_vault_blank_tex_mirrors_texlab_literal(self):
         # The vault "New file" seed must stay in sync with the workspace's.
@@ -88,14 +107,6 @@ class WorkspaceTests(TestCase):
         self.assertNotIn("mine.tex", body)
         self.assertIn("shared.tex", body)
 
-    def test_index_links_play_for_tex_only(self):
-        vf_tex = self._make_tex(is_public=True, title="talk.tex")
-        vf_bib = self._make_tex(is_public=True, title="refs.bib", file_type="bib")
-        res = self.client.get(reverse("texlab:index"))
-        body = res.content.decode()
-        self.assertIn(reverse("texplay:latex_play", args=[vf_tex.pk]), body)
-        self.assertNotIn(reverse("texplay:latex_play", args=[vf_bib.pk]), body)
-
     # ── Create ──────────────────────────────────────────────────────
 
     def test_create_new_document_redirects_to_editor(self):
@@ -103,7 +114,7 @@ class WorkspaceTests(TestCase):
         res = self.client.post(reverse("texlab:create"))
         self.assertEqual(res.status_code, 302)
         vf = VaultFile.objects.filter(owner=self.alice, file_type="latex").latest("pk")
-        self.assertEqual(res.url, reverse("texlab:file_display", args=[vf.pk]))
+        self.assertEqual(res.url, reverse("editor:latex_display", args=[vf.pk]))
         # Created in the user's personal bucket with the blank skeleton.
         self.assertEqual(vf.bucket.slug, f"personal-{self.alice.username}")
         self.assertTrue(vf.title.endswith(".tex"))
@@ -138,7 +149,7 @@ class WorkspaceTests(TestCase):
         })
         self.assertEqual(res.status_code, 302)
         vf = VaultFile.objects.filter(owner=self.alice, file_type="latex").latest("pk")
-        self.assertEqual(res.url, reverse("texlab:file_display", args=[vf.pk]))
+        self.assertEqual(res.url, reverse("editor:latex_display", args=[vf.pk]))
         self.assertEqual(vf.bucket, self.bucket)
         self.assertEqual(vf.directory, self.directory)
         # A ".tex" suffix isn't duplicated when the user types it.

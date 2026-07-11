@@ -107,12 +107,12 @@ class Command(IngressCommand):
         )
 
         xml = pf.dumps(presentation)
-        filename = f"{key}.pml"
+        filename = f"{key}.xml"
         vault_file = VaultFile(
             owner=user,
             title=title,
             key=key,
-            file_type="presentation",
+            file_type="xml",
             bucket=bucket,
             directory=directory,
             is_public=True,

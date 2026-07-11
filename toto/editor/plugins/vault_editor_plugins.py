@@ -55,3 +55,22 @@ class HtmlEditorPlugin(VaultEditorPlugin):
 
     def get_editor_url(self, vault_file) -> str:
         return reverse("editor:html_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="latex", title="LaTeX", order=49)
+class LatexEditorPlugin(VaultEditorPlugin):
+    """Edit .tex source in Ace with LaTeX highlighting. Compilation is the
+    separate TeX Compiler (toto.texlab), not this editor."""
+    file_type = "latex"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:latex_display", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="bib", title="BibTeX", order=50)
+class BibEditorPlugin(VaultEditorPlugin):
+    """Edit .bib bibliographies in Ace with BibTeX highlighting."""
+    file_type = "bib"
+
+    def get_editor_url(self, vault_file) -> str:
+        return reverse("editor:bib_display", args=[vault_file.pk])

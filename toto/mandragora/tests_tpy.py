@@ -131,8 +131,10 @@ class TpyVaultIntegrationTests(TestCase):
         return vf
 
     # ── extension / type detection ──────────────────────────────────────────
-    def test_tpy_extension_detected_as_notebook(self):
-        self.assertEqual(VaultFile.detect_type("application/octet-stream", "x.tpy"), "notebook")
+    def test_tpy_extension_retired(self):
+        # The dedicated `.tpy`/notebook vault type is retired — notebooks are
+        # ordinary .xml now, so `.tpy` no longer maps to a special type.
+        self.assertNotEqual(VaultFile.detect_type("application/octet-stream", "x.tpy"), "notebook")
 
     # ── plugin wiring ─────────────────────────────────────────────────────────
     def test_editor_plugin_registered_for_notebook(self):

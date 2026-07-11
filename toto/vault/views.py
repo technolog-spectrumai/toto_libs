@@ -34,9 +34,9 @@ CREATABLE_TYPES = [
     ("text", ".txt"), ("json", ".json"), ("yaml", ".yaml"), ("xml", ".xml"),
     ("csv", ".csv"), ("html", ".html"), ("latex", ".tex"), ("bib", ".bib"),
     ("svg", ".svg"), ("neojson", ".neojson"),
-    ("presentation", ".pml"),
-    # Contracts (toto.notarius) and notebooks (toto.mandragora) are ordinary .xml
-    # files now — created/edited via their own apps, not the vault "New file" menu.
+    # Presentations (toto.memo), contracts (toto.notarius) and notebooks
+    # (toto.mandragora) are ordinary .xml files now — created/edited via their own
+    # apps (which content-sniff the XML root), not the vault "New file" menu.
 ]
 
 
@@ -1369,7 +1369,7 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
-    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "neojson", "presentation"}
+    _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "neojson"}
     _INITIAL = {
         "text":  "",
         "json":  "{}\n",
@@ -1412,17 +1412,6 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             '    "relationship_types": []\n'
             "  }\n"
             "}\n"
-        ),
-        # Blank presentation: one empty slide.
-        # Mirrors toto.memo.presentation_format.dumps(new_presentation()).
-        "presentation": (
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<presentation version="1" title="">\n'
-            "  <slide>\n"
-            "    <title></title>\n"
-            "    <body><![CDATA[]]></body>\n"
-            "  </slide>\n"
-            "</presentation>\n"
         ),
     }
 

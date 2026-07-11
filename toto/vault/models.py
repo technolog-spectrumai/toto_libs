@@ -136,7 +136,6 @@ class VaultFile(models.Model):
         ('json', 'JSON'),
         ('yaml', 'YAML'),
         ('xml', 'XML'),
-        ('presentation', 'Presentation'),
         ('latex', 'LaTeX'),
         ('bib', 'Bibliography'),
         ('csv', 'CSV'),
@@ -144,11 +143,12 @@ class VaultFile(models.Model):
         ('audio', 'Audio'),
         ('video', 'Video'),
         ('python', 'Python'),
-        ('notebook', 'Notebook'),
         ('neojson', 'NeoJSON'),
-        ('contract', 'Contract'),
         ('zip', 'Archive'),
     ]
+    # Retired doc types (presentation/.pml, notebook/.tpy, contract/.contract) are
+    # ordinary 'xml' now, content-sniffed by memo/mandragora/notarius. Existing rows
+    # keep their old file_type string (choices aren't DB-enforced) and still open.
 
     _EXT_MAP = {
         ".tex": "latex", ".sty": "latex", ".cls": "latex", ".dtx": "latex", ".ins": "latex",
@@ -160,12 +160,9 @@ class VaultFile(models.Model):
         ".neojson": "neojson",
         ".yaml": "yaml", ".yml": "yaml",
         ".xml": "xml",
-        ".pml": "presentation",
         ".html": "html", ".htm": "html",
         ".md": "text", ".txt": "text", ".rst": "text",
         ".py": "python",
-        ".tpy": "notebook",
-        ".contract": "contract",
         ".mp3": "audio", ".ogg": "audio", ".wav": "audio", ".flac": "audio", ".aac": "audio",
         ".mp4": "video", ".mov": "video", ".avi": "video", ".mkv": "video", ".webm": "video",
         ".png": "image", ".jpg": "image", ".jpeg": "image", ".gif": "image",

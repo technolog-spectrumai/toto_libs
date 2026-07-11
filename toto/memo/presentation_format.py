@@ -127,6 +127,21 @@ def dumps(presentation: Presentation) -> str:
     return "\n".join(lines) + "\n"
 
 
+def is_presentation(xml: "str | bytes") -> bool:
+    """True if ``xml`` is a presentation document (root ``<presentation>``).
+
+    Cheap identity check for "is this ordinary XML vault file a presentation?" —
+    used to filter the memo index and gate the viewer/editor now that presentations
+    are stored as plain ``.xml`` (``file_type="xml"``) rather than a dedicated type.
+    """
+    try:
+        if isinstance(xml, bytes):
+            xml = xml.decode("utf-8")
+        return ET.fromstring(xml).tag == "presentation"
+    except Exception:
+        return False
+
+
 def loads(text: str) -> Presentation:
     text = (text or "").strip()
     if not text:

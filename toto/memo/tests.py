@@ -67,6 +67,13 @@ class PresentationFormatTests(TestCase):
         with self.assertRaises(pf.PresentationParseError):
             pf.loads("<other></other>")
 
+    def test_is_presentation_detects_root(self):
+        self.assertTrue(pf.is_presentation(pf.dumps(pf.new_presentation("x"))))
+        self.assertTrue(pf.is_presentation(b'<presentation version="1"></presentation>'))
+        self.assertFalse(pf.is_presentation("<notebook></notebook>"))
+        self.assertFalse(pf.is_presentation("<other/>"))
+        self.assertFalse(pf.is_presentation(""))
+
     def test_blank_template_matches_dumps(self):
         # The vault CreateEmptyFileView seeds a literal that must round-trip.
         self.assertEqual(
@@ -82,12 +89,11 @@ class PresentationFormatTests(TestCase):
 
 
 class VaultDetectionTests(TestCase):
-    def test_pml_extension_detected_as_presentation(self):
-        # Extension-first: .pml → presentation regardless of mime.
-        self.assertEqual(VaultFile.detect_type("", "talk.pml"), "presentation")
-        self.assertEqual(
-            VaultFile.detect_type("application/octet-stream", "deck.pml"), "presentation"
-        )
+    def test_pml_extension_retired(self):
+        # The dedicated `.pml`/presentation vault type is retired — presentations
+        # are ordinary .xml now, so `.pml` no longer maps to a special type.
+        self.assertNotEqual(VaultFile.detect_type("", "talk.pml"), "presentation")
+        self.assertEqual(VaultFile.detect_type("application/xml", "deck.xml"), "xml")
 
     def test_generic_xml_stays_xml(self):
         self.assertEqual(VaultFile.detect_type("application/xml", "data.xml"), "xml")
@@ -215,25 +221,19 @@ class PresentationVaultIntegrationTests(TestCase):
         )
         self.assertEqual(res.status_code, 404)
 
-    def test_create_presentation_via_vault(self):
-        self.client.force_login(self.alice)
-        res = self.client.post(reverse("vault:create_file"), data={
-            "title": "fresh.pml",
-            "file_type": "presentation",
-            "directory_id": str(self.directory.pk),
-        })
-        self.assertEqual(res.status_code, 201, res.content)
-        data = res.json()
-        self.assertEqual(data["status"], "ok")
-        vf = VaultFile.objects.get(pk=data["file_pk"])
-        self.assertEqual(vf.file_type, "presentation")
-        self.assertEqual(data["editor_url"], reverse("memo:source", args=[vf.pk]))
-        with vf.file.open("r") as f:
-            content = f.read()
-        if isinstance(content, bytes):
-            content = content.decode("utf-8")
-        p = pf.loads(content)
-        self.assertEqual(len(p.slides), 1)
+    def test_presentation_type_retired_from_vault_new_file(self):
+        from toto.vault.views import CREATABLE_TYPES, CreateEmptyFileView
+        self.assertNotIn("presentation", {t for t, _ in CREATABLE_TYPES})
+        self.assertNotIn("presentation", CreateEmptyFileView._ALLOWED)
+        self.assertNotIn("presentation", CreateEmptyFileView._INITIAL)
+
+    def test_present_404_on_non_presentation_xml(self):
+        vf = VaultFile.objects.create(
+            owner=self.alice, title="notes.xml", file_type="xml",
+            is_public=True, bucket=self.bucket,
+            file=SimpleUploadedFile("notes.xml", b"<notes><a/></notes>"),
+        )
+        self.assertEqual(self.client.get(reverse("memo:present", args=[vf.pk])).status_code, 404)
 
     def test_index_lists_presentations(self):
         self._make_presentation(is_public=True)
@@ -245,11 +245,11 @@ class PresentationVaultIntegrationTests(TestCase):
         self.client.force_login(self.alice)
         res = self.client.post(reverse("memo:create"))
         self.assertEqual(res.status_code, 302)
-        vf = VaultFile.objects.filter(owner=self.alice, file_type="presentation").latest("pk")
+        vf = VaultFile.objects.filter(owner=self.alice, file_type="xml").latest("pk")
         self.assertEqual(res.url, reverse("memo:edit", args=[vf.pk]))
         # Created in the user's personal bucket with a valid blank deck.
         self.assertEqual(vf.bucket.slug, f"personal-{self.alice.username}")
-        self.assertTrue(vf.title.endswith(".pml"))
+        self.assertTrue(vf.title.endswith(".xml"))
         with vf.file.open("r") as f:
             content = f.read()
         if isinstance(content, bytes):
@@ -269,11 +269,11 @@ class PresentationVaultIntegrationTests(TestCase):
             "directory_id": str(self.directory.pk),
         })
         self.assertEqual(res.status_code, 302)
-        vf = VaultFile.objects.filter(owner=self.alice, file_type="presentation").latest("pk")
+        vf = VaultFile.objects.filter(owner=self.alice, file_type="xml").latest("pk")
         self.assertEqual(res.url, reverse("memo:edit", args=[vf.pk]))
         self.assertEqual(vf.bucket, self.bucket)
         self.assertEqual(vf.directory, self.directory)
-        self.assertEqual(vf.title, "My Talk.pml")
+        self.assertEqual(vf.title, "My Talk.xml")
         self.assertEqual(vf.key, "my-talk")
         with vf.file.open("r") as f:
             content = f.read()

@@ -1,11 +1,4 @@
-from django.urls import reverse
-
-from toto.vault.plugins import VaultEditorPlugin
-
-
-@VaultEditorPlugin.plugin(key="latex", title="TeX Editor", order=10)
-class LatexEditorPlugin(VaultEditorPlugin):
-    file_type = "latex"
-
-    def get_editor_url(self, vault_file) -> str:
-        return reverse("texlab:file_display", args=[vault_file.pk])
+# LaTeX editing moved to the generic ACE editor (toto.editor registers the
+# `latex` and `bib` VaultEditorPlugins with syntax highlighting). texlab is now
+# the "TeX Compiler" — it compiles .tex vault files to PDF via a Celery workflow
+# and no longer provides its own editor plugin. Intentionally registers nothing.
