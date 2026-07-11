@@ -1387,11 +1387,15 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
             "</body>\n"
             "</html>\n"
         ),
-        # Blank .tex document. Mirrors toto.texlab.views.BLANK_TEX_DOCUMENT.
+        # Starter .tex document. Mirrors toto.texlab.views.BLANK_TEX_DOCUMENT —
+        # has a line of body so a freshly-created doc compiles to a PDF (an empty
+        # body yields "No pages of output").
         "latex": (
             "\\documentclass{article}\n"
             "\n"
             "\\begin{document}\n"
+            "\n"
+            "Hello, \\LaTeX!\n"
             "\n"
             "\\end{document}\n"
         ),

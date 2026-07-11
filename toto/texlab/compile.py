@@ -108,11 +108,18 @@ def run_pdflatex(tex_source: str, vault_file) -> tuple[bytes, str]:
             )
 
         if not os.path.exists(pdf_path):
-            # Lead with the actual '! ...' error so the (truncated) UI shows the
-            # real problem instead of the pdfTeX startup banner; full log follows.
-            raise RuntimeError(
-                _extract_latex_error(log) + "\n\n--- full pdflatex log ---\n" + log
-            )
+            # An empty document body compiles cleanly but yields zero pages (and
+            # so no PDF). Say that plainly instead of dumping the pdfTeX banner.
+            if "No pages of output" in log and "!" not in log:
+                summary = (
+                    "The document produced no pages — it has no content. Add text "
+                    "between \\begin{document} and \\end{document}, then compile again."
+                )
+            else:
+                # Lead with the actual '! ...' error so the (truncated) UI shows the
+                # real problem instead of the pdfTeX startup banner.
+                summary = _extract_latex_error(log)
+            raise RuntimeError(summary + "\n\n--- full pdflatex log ---\n" + log)
 
         with open(pdf_path, "rb") as f:
             return f.read(), log

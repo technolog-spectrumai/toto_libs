@@ -44,6 +44,8 @@ BLANK_TEX_DOCUMENT = (
     "\n"
     "\\begin{document}\n"
     "\n"
+    "Hello, \\LaTeX!\n"
+    "\n"
     "\\end{document}\n"
 )
 
@@ -89,10 +91,32 @@ class WorkspaceIndexView(View):
             for f in qs
         ]
 
+        # Files that participate in LaTeX compilation (inputs: .tex/.bib/text/image;
+        # output: compiled .pdf) — shown in the workspace "Files" modal with type + size.
+        file_qs = VaultFile.objects.filter(
+            file_type__in=["latex", "bib", "text", "image", "pdf"]
+        ).select_related("bucket", "directory")
+        if request.user.is_authenticated:
+            file_qs = file_qs.filter(Q(is_public=True) | Q(owner=request.user))
+        else:
+            file_qs = file_qs.filter(is_public=True)
+        file_qs = file_qs.order_by("bucket__name", "directory__name", "title")[:500]
+
+        workspace_files = [
+            {
+                "title": f.title or f.key,
+                "file_type": f.file_type,
+                "size": f.file_size_bytes,
+                "location": _location(f),
+            }
+            for f in file_qs
+        ]
+
         buckets_json, directories_json = new_file_picker_json(request.user)
         context = PageProcessor().decorate(
             {
                 "documents": documents,
+                "workspace_files": workspace_files,
                 "buckets_json": buckets_json,
                 "directories_json": directories_json,
             },

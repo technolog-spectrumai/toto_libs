@@ -173,6 +173,22 @@ class WorkspaceTests(TestCase):
         res = self.client.get(reverse("texlab:index"))
         self.assertContains(res, "Lab / Papers")
 
+    def test_workspace_files_modal_lists_files_with_type_and_size(self):
+        self._make_tex(title="report.tex")
+        self._make_tex(title="refs.bib", file_type="bib")
+        VaultFile.objects.create(  # an image companion — only the modal lists images
+            owner=self.alice, title="fig.png", file_type="image",
+            bucket=self.bucket, directory=self.directory,
+            file=SimpleUploadedFile("fig.png", b"\x89PNG\r\n\x1a\n" + b"0" * 60),
+        )
+        self.client.force_login(self.alice)
+        res = self.client.get(reverse("texlab:index"))
+        body = res.content.decode()
+        self.assertIn("Workspace files", body)      # modal heading
+        self.assertIn("fig.png", body)              # image shows only in the modal
+        self.assertIn(">Type<", body)               # Type column
+        self.assertIn(">Size<", body)               # Size column
+
     def test_index_renders_create_modal_with_picker(self):
         self.client.force_login(self.alice)
         res = self.client.get(reverse("texlab:index"))
@@ -293,3 +309,29 @@ class CompileErrorExtractionTests(TestCase):
     def test_empty_log(self):
         from toto.texlab.compile import _extract_latex_error
         self.assertEqual(_extract_latex_error(""), "pdflatex produced no output.")
+
+    def test_empty_document_reports_no_content(self):
+        # An empty body compiles cleanly but yields "No pages of output" → no PDF.
+        # The message must say that plainly, not dump the pdfTeX banner.
+        import tempfile
+        from unittest.mock import MagicMock, patch
+        from django.contrib.auth import get_user_model
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from django.test import override_settings
+        from toto.texlab.compile import compile_tex_to_pdf
+        from toto.vault.models import Bucket, VaultFile
+
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            u = get_user_model().objects.create_user("z", password="pw")
+            b = Bucket.objects.create(name="B", slug="b", owner=u)
+            vf = VaultFile.objects.create(
+                owner=u, title="empty.tex", file_type="latex", bucket=b,
+                file=SimpleUploadedFile("empty.tex", b"\\documentclass{article}\\begin{document}\\end{document}"),
+            )
+            fake = MagicMock()
+            fake.stdout = b"This is pdfTeX, Version 3.14\n(./main.tex) No pages of output.\nTranscript written on main.log.\n"
+            fake.stderr = b""
+            with patch("toto.texlab.compile.subprocess.run", return_value=fake):
+                with self.assertRaises(RuntimeError) as ctx:
+                    compile_tex_to_pdf(vf)
+        self.assertIn("produced no pages", str(ctx.exception))

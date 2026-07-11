@@ -12,7 +12,7 @@
 </script>
 {% endif %}
 <section
-  x-data="{ showCreate: false, fname: '', bucketId: '', dirId: '',
+  x-data="{ showCreate: false, showFiles: false, fname: '', bucketId: '', dirId: '',
             buckets: window._newFileBuckets || [],
             directories: window._newFileDirectories || [],
             get filteredDirs() { return this.directories.filter(d => String(d.bucket_id) === String(this.bucketId)); } }"
@@ -34,6 +34,10 @@
             class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
             <i class="fa-solid fa-plus"></i>{% trans "New document" %}</button>
         {% endif %}
+        <button type="button" @click="showFiles = true"
+          class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold hover:opacity-80"
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <i class="fa-solid fa-folder-tree"></i>{% trans "Files" %}</button>
         <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
           {% trans "Vault" %}</a>
       </div>
@@ -171,6 +175,57 @@
     </div>
   </div>
   {% endif %}
+
+  <!-- Workspace files modal -->
+  <div x-show="showFiles" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showFiles = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[80vh] w-full max-w-2xl flex-col rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-folder-tree"></i>{% trans "Workspace files" %}</h2>
+        <button type="button" @click="showFiles = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <div class="overflow-auto p-2">
+        {% if workspace_files %}
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b border-current/10 text-xs uppercase tracking-wide opacity-50">
+              <th class="px-3 py-2 text-left">{% trans "Name" %}</th>
+              <th class="px-3 py-2 text-left">{% trans "Type" %}</th>
+              <th class="px-3 py-2 text-right">{% trans "Size" %}</th>
+              <th class="px-3 py-2 text-left">{% trans "Location" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for f in workspace_files %}
+            <tr class="border-b border-current/5">
+              <td class="max-w-[16rem] truncate px-3 py-2 font-mono">{{ f.title }}</td>
+              <td class="px-3 py-2">
+                <span class="rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-70">{{ f.file_type }}</span>
+              </td>
+              <td class="whitespace-nowrap px-3 py-2 text-right opacity-70">{{ f.size|filesizeformat }}</td>
+              <td class="max-w-[14rem] truncate px-3 py-2 opacity-60">{{ f.location }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% else %}
+        <p class="p-6 text-center text-sm opacity-60">{% trans "No LaTeX files yet." %}</p>
+        {% endif %}
+      </div>
+
+      <div class="border-t border-current/10 px-5 py-3 text-xs opacity-50">
+        {{ workspace_files|length }} {% trans "file(s)" %} ·
+        {% trans ".tex / .bib / text / images are compile inputs; .pdf are outputs" %}
+      </div>
+    </div>
+  </div>
 
 </section>
 
