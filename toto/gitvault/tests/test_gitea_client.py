@@ -83,6 +83,19 @@ class GiteaClientTests(TestCase):
         self.assertEqual(name, "my-project-1")
         self.assertTrue(post.call_args_list[0].kwargs["json"]["private"])
 
+    @mock.patch("toto.gitvault.gitea_client.requests.get")
+    def test_list_repos(self, get):
+        account = GiteaAccount.objects.create(user=self.user, username="alice")
+        account.set_token("tok")
+        account.save()
+        get.return_value = _resp(200, payload=[
+            {"name": "notes", "full_name": "alice/notes", "owner": {"login": "alice"}},
+            {"name": "shared", "full_name": "team/shared", "owner": {"login": "team"}},
+        ])
+        repos = gitea_client.list_repos(account)
+        self.assertEqual([r["full_name"] for r in repos], ["alice/notes", "team/shared"])
+        self.assertEqual(repos[1]["owner"], "team")
+
     def test_token_encrypted_at_rest(self):
         account = GiteaAccount.objects.create(user=self.user, username="alice")
         account.set_token("super-secret")

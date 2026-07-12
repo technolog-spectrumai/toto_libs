@@ -18,5 +18,6 @@ urlpatterns = [
     path("repo/<int:repo_pk>/push/", views.push, name="push"),
     path("repo/<int:repo_pk>/pull/", views.pull, name="pull"),
     path("runs/<int:run_id>/status/", views.run_status, name="run_status"),
+    path("gitea/repos/", views.gitea_repos, name="gitea_repos"),
     path("file/<int:file_pk>/context/", views.file_context, name="file_context"),
 ]

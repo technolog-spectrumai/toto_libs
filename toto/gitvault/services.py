@@ -153,15 +153,22 @@ def public_clone_url(repo: GitRepo) -> str:
     return f"{gitea_path}/{repo.remote_owner}/{repo.remote_name}.git"
 
 
-def connect_remote(repo: GitRepo, user, name: str = "") -> dict:
+def connect_remote(repo: GitRepo, user, name: str = "", existing: str = "") -> dict:
+    """Wire the repo to a Gitea remote. Either attach to an EXISTING repo
+    (``existing`` = "owner/name", picked from the init dropdown) or CREATE a
+    new one (default). Sets origin; does not push/pull (the user does that)."""
     if not getattr(settings, "GITEA_ENABLED", False):
         raise GitvaultError("Gitea is not enabled on this deployment")
     from . import gitea_client
 
     account = gitea_client.ensure_account(user)
-    remote_name = gitea_client.create_repo(account, name or repo.directory.name)
-    repo.remote_owner = account.username
-    repo.remote_name = remote_name
+    if existing:
+        if "/" not in existing:
+            raise GitvaultError("invalid repository selection")
+        repo.remote_owner, repo.remote_name = existing.split("/", 1)
+    else:
+        repo.remote_owner = account.username
+        repo.remote_name = gitea_client.create_repo(account, name or repo.directory.name)
     repo.save(update_fields=["remote_owner", "remote_name"])
     with sync.repo_lock(repo):
         git_cli.remote_set(repo.worktree, internal_clone_url(repo))

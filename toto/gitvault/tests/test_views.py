@@ -110,6 +110,43 @@ class ViewTests(GitvaultTestCase):
             resp = self.client.post(reverse("gitvault:connect", args=[repo.pk]))
         self.assertEqual(resp.status_code, 400)
 
+    def test_connect_attaches_existing_repo(self):
+        from unittest import mock
+        repo = self.make_repo()
+        with self.settings(GITEA_ENABLED=True), \
+                mock.patch("toto.gitvault.gitea_client.ensure_account") as ea, \
+                mock.patch("toto.gitvault.gitea_client.create_repo") as cr:
+            ea.return_value = mock.Mock(username="alice")
+            resp = self.client.post(
+                reverse("gitvault:connect", args=[repo.pk]),
+                {"existing": "team/shared"},
+            )
+        self.assertEqual(resp.status_code, 200)
+        cr.assert_not_called()  # attach, don't create
+        repo.refresh_from_db()
+        self.assertEqual((repo.remote_owner, repo.remote_name), ("team", "shared"))
+
+    def test_gitea_repos_endpoint(self):
+        from unittest import mock
+        from toto.gitvault.models import GiteaAccount
+        # no account yet → empty list
+        with self.settings(GITEA_ENABLED=True):
+            data = self.client.get(reverse("gitvault:gitea_repos")).json()
+        self.assertEqual(data, {"enabled": True, "repos": []})
+        # with an account → lists via gitea_client
+        acct = GiteaAccount.objects.create(user=self.user, username="alice")
+        acct.set_token("t"); acct.save()
+        with self.settings(GITEA_ENABLED=True), \
+                mock.patch("toto.gitvault.gitea_client.list_repos",
+                           return_value=[{"full_name": "alice/notes", "owner": "alice", "name": "notes"}]):
+            data = self.client.get(reverse("gitvault:gitea_repos")).json()
+        self.assertEqual(data["repos"][0]["full_name"], "alice/notes")
+
+    def test_gitea_repos_disabled(self):
+        with self.settings(GITEA_ENABLED=False):
+            data = self.client.get(reverse("gitvault:gitea_repos")).json()
+        self.assertEqual(data, {"enabled": False, "repos": []})
+
     def test_file_context(self):
         repo = self.make_repo()
         resp = self.client.get(reverse("gitvault:file_context", args=[self.f_deep.pk]))

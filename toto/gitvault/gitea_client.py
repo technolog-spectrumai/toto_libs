@@ -134,3 +134,20 @@ def create_repo(account: GiteaAccount, name: str) -> str:
             continue
         raise GitvaultError(f"gitea repo creation failed: {resp.text[:200]}")
     raise GitvaultError("gitea repo creation failed: could not find a free name")
+
+
+def list_repos(account: GiteaAccount) -> list[dict]:
+    """The repos the user can access (own + collaborations), for the init-time
+    remote picker. Uses the user's own token."""
+    resp = requests.get(
+        f"{_base()}/api/v1/user/repos",
+        headers={"Authorization": f"token {account.get_token()}"},
+        params={"limit": 50},
+        timeout=15,
+    )
+    if resp.status_code != 200:
+        raise GitvaultError(f"gitea repo list failed: {resp.text[:200]}")
+    return [
+        {"owner": r["owner"]["login"], "name": r["name"], "full_name": r["full_name"]}
+        for r in resp.json()
+    ]

@@ -142,7 +142,30 @@ def commit_detail(request, repo_pk: int, sha: str):
 @_json_errors
 def connect(request, repo_pk: int):
     repo = _get_repo(request, repo_pk)
-    return JsonResponse(services.connect_remote(repo, request.user, request.POST.get("name", "")))
+    return JsonResponse(services.connect_remote(
+        repo, request.user,
+        name=request.POST.get("name", ""),
+        existing=request.POST.get("existing", ""),
+    ))
+
+
+@login_required
+@require_GET
+@_json_errors
+def gitea_repos(request):
+    """The user's existing Gitea repos, for the init-time remote picker. No
+    account yet → empty list (they can only 'create new')."""
+    from django.conf import settings
+
+    from . import gitea_client
+    from .models import GiteaAccount
+
+    if not getattr(settings, "GITEA_ENABLED", False):
+        return JsonResponse({"enabled": False, "repos": []})
+    account = GiteaAccount.objects.filter(user=request.user).first()
+    if not account or not account.token_encrypted:
+        return JsonResponse({"enabled": True, "repos": []})
+    return JsonResponse({"enabled": True, "repos": gitea_client.list_repos(account)})
 
 
 def _dispatch_recorded(run) -> None:

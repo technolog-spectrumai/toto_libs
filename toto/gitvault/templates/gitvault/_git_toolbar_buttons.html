@@ -38,14 +38,8 @@ commit sees the buffer's latest state.
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     }
     .toolbar-btn:hover { opacity: 0.7; }
-    .git-menu-item {
-      display: flex; align-items: center; gap: 0.5rem;
-      width: 100%; padding: 0.4rem 0.75rem;
-      font-size: 0.8rem; font-weight: 500; text-align: left; white-space: nowrap;
-      transition: background 0.12s;
-    }
-    .git-menu-item:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
-    .git-menu-item i { width: 1rem; text-align: center; opacity: 0.7; }
+    /* .git-menu-item lives in _git_ui.html (included on every git-UI page,
+       incl. the vault browser) so the dropdown menus are styled there too. */
   </style>
   <div class="h-5 w-px opacity-20 bg-current"></div>
   <div class="relative" x-data="{ gitOpen: false }" @keydown.escape.window="gitOpen = false">

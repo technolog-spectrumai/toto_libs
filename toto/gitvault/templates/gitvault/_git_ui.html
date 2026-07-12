@@ -9,8 +9,87 @@ ctx = {repoPk, repoName, urls} (see gitvault.integration.repo_urls).
 <script src="{% static 'vendor/graphology/graphology.umd.min.js' %}"></script>
 <script src="{% static 'vendor/sigma/sigma.min.js' %}"></script>
 <script src="{% static 'gitvault/git.js' %}"></script>
+<script>window.GITVAULT_REPOS_URL = "{% url 'gitvault:gitea_repos' %}";</script>
+<style>
+  /* Dropdown menu rows — used by the editor git dropdown and the vault-browser
+     per-directory git dropdown (both live wherever this partial is included). */
+  .git-menu-item {
+    display: flex; align-items: center; gap: 0.5rem;
+    width: 100%; padding: 0.4rem 0.75rem;
+    font-size: 0.8rem; font-weight: 500; text-align: left; white-space: nowrap;
+    transition: background 0.12s;
+  }
+  .git-menu-item:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+  .git-menu-item i { width: 1rem; text-align: center; opacity: 0.7; }
+</style>
 
 <div x-data="gitUI('{{ csrf_token }}')" x-cloak>
+
+  <!-- ══════════════ Init modal (choose the Gitea remote) ══════════════ -->
+  <div x-show="modal === 'init'"
+       class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4 backdrop-blur-sm"
+       @keydown.escape.window="close()">
+    <div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark border-accent-1' : 'bg-primary-bg-light text-text-main-light border-accent-2'"
+         class="flex max-h-[85vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl">
+      <div class="flex items-center justify-between gap-3 border-b border-current/10 px-6 py-4">
+        <div class="flex items-center gap-3">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl"
+                :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">
+            <i class="fa-solid fa-code-branch"></i>
+          </span>
+          <h3 class="text-base font-bold leading-tight">{% trans "Initialize repository" %}</h3>
+        </div>
+        <button @click="close()" class="rounded-lg p-2 text-sm opacity-60 hover:opacity-100">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="flex-1 space-y-4 overflow-y-auto px-6 py-4">
+        <template x-if="error"><p class="text-sm font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="error"></p></template>
+
+        <template x-if="giteaEnabled">
+          <div class="space-y-3">
+            <div>
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Remote repository" %}</label>
+              <select x-model="initRemote"
+                      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                      class="w-full rounded-xl border px-3 py-2 text-sm focus:outline-none">
+                <option value="new">{% trans "Create new repository…" %}</option>
+                <template x-for="r in giteaRepos" :key="r.full_name">
+                  <option :value="r.full_name" x-text="r.full_name"></option>
+                </template>
+                <option value="">{% trans "Local only (no remote)" %}</option>
+              </select>
+            </div>
+            <!-- New-repo name (only when creating a new remote) -->
+            <div x-show="initRemote === 'new'">
+              <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "New repository name" %}</label>
+              <input x-model="initName" spellcheck="false"
+                     :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                     class="w-full rounded-xl border px-3 py-2 font-mono text-sm focus:outline-none">
+              <p class="mt-1 text-xs opacity-50">{% trans "Created private under your Gitea account; lowercase, digits, - . _" %}</p>
+            </div>
+          </div>
+        </template>
+
+        <template x-if="!giteaEnabled">
+          <p class="text-sm opacity-70">
+            <i class="fa-solid fa-circle-info mr-1"></i>{% trans "Creates a local git repository for this directory. Gitea is not enabled, so there is no remote." %}
+          </p>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 border-t border-current/10 px-6 py-4">
+        <button @click="close()" class="rounded-xl px-4 py-2 text-sm opacity-70 hover:opacity-100">{% trans "Cancel" %}</button>
+        <button @click="doInit()" :disabled="busy || (giteaEnabled && initRemote === 'new' && !initName.trim())"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+                class="rounded-xl px-4 py-2 text-sm font-bold disabled:opacity-40">
+          <i class="fa-solid mr-1" :class="busy ? 'fa-spinner fa-spin' : 'fa-code-branch'"></i>
+          <span x-text="busy ? '{% trans "Working…" %}' : '{% trans "Create repository" %}'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
 
   <!-- ══════════════ Commit modal ══════════════ -->
   <div x-show="modal === 'commit'"

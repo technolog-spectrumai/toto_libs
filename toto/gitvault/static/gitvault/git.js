@@ -74,16 +74,56 @@ function gitUI(csrfToken) {
     },
 
     // ---- init repo (vault browser) --------------------------------------
-    async initRepo(initUrl) {
-      // Init is a background GitRun (worktree export + initial commit can be
-      // slow on big directories) — poll it, then reload to show the repo.
+    // Init state (the init modal lets the user pick the Gitea remote).
+    initName: "",
+    initRemote: "new",   // "new" | "" (local only) | "owner/name" (existing repo)
+    giteaRepos: [],
+    giteaEnabled: false,
+    _initUrl: "",
+
+    async openInit(initUrl, dirName) {
+      this._reset();
+      this._initUrl = initUrl;
+      this.initName = (dirName || "repo").toLowerCase()
+        .replace(/[^a-z0-9._-]+/g, "-").replace(/^[-.]+|[-.]+$/g, "") || "repo";
+      this.initRemote = "new";
+      this.giteaRepos = [];
+      this.giteaEnabled = false;
+      this.modal = "init";
+      this.busy = true;
+      // Populate the remote dropdown with the user's existing Gitea repos.
+      if (window.GITVAULT_REPOS_URL) {
+        try {
+          const data = await this._get(window.GITVAULT_REPOS_URL);
+          this.giteaEnabled = !!data.enabled;
+          this.giteaRepos = data.repos || [];
+        } catch (e) { /* leave local-only */ }
+      }
+      this.busy = false;
+    },
+    async doInit() {
+      // Init is a background GitRun (worktree export + initial commit); when a
+      // remote is chosen we connect it right after (create-or-attach), so the
+      // repo is push-ready. Then reload to show it.
+      this.busy = true;
+      this.error = "";
       try {
-        const res = await this._post(initUrl, {});
-        this.ctx = { repoPk: res.repo_pk, repoName: "", urls: res.urls };
+        const res = await this._post(this._initUrl, {});
+        this.ctx = { repoPk: res.repo_pk, repoName: this.initName, urls: res.urls };
         const run = await this._waitForRun(res.run_id);
-        if (run.status === "success") { window.location.reload(); return; }
-        alert(run.stderr || "init failed");
-      } catch (err) { alert((err && err.error) || "init failed"); }
+        if (run.status !== "success") {
+          this.error = run.stderr || "init failed";
+          this.busy = false;
+          return;
+        }
+        if (this.giteaEnabled && this.initRemote) {
+          const body = this.initRemote === "new"
+            ? { name: this.initName }
+            : { existing: this.initRemote };
+          await this._post(res.urls.connect, body);
+        }
+        window.location.reload();
+      } catch (err) { this._fail(err); }
     },
     async _waitForRun(runId) {
       const url = this.ctx.urls.run_status_base.replace("/0/", `/${runId}/`);
