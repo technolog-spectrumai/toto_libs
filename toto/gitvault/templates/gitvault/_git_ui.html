@@ -9,7 +9,15 @@ ctx = {repoPk, repoName, urls} (see gitvault.integration.repo_urls).
 <script src="{% static 'vendor/graphology/graphology.umd.min.js' %}"></script>
 <script src="{% static 'vendor/sigma/sigma.min.js' %}"></script>
 <script src="{% static 'gitvault/git.js' %}"></script>
-<script>window.GITVAULT_REPOS_URL = "{% url 'gitvault:gitea_repos' %}";</script>
+<script>
+  window.GITVAULT_REPOS_URL = "{% url 'gitvault:gitea_repos' %}";
+  // Build a GitUI ctx from a directory's `git` dict (used by the vault-browser
+  // per-directory dropdown). A plain global is reliably in scope for Alpine
+  // expressions, unlike a getter on a nested x-data referencing an x-for var.
+  window.gitCtx = function (g) {
+    return { repoPk: g.repo_pk, repoName: g.repo_name, urls: g.urls };
+  };
+</script>
 <style>
   /* Dropdown menu rows — used by the editor git dropdown and the vault-browser
      per-directory git dropdown (both live wherever this partial is included). */
