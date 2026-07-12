@@ -52,8 +52,16 @@ def init_repo(request, dir_pk: int):
     directory = get_object_or_404(VaultDirectory, pk=dir_pk)
     if not directory.user_can_access(request.user):
         raise Http404
-    repo = services.init_repo(directory, request.user)
-    return JsonResponse({"repo_pk": repo.pk, "urls": integration.repo_urls(repo)})
+    # Guard + row synchronously (400s keep their contract); the worktree
+    # materialization runs as a GitRun — the client polls run_status.
+    repo = services.create_repo(directory, request.user)
+    run = create_git_run(request.user, repo, "init")
+    _dispatch_recorded(run)
+    return JsonResponse({
+        "repo_pk": repo.pk,
+        "run_id": run.pk,
+        "urls": integration.repo_urls(repo),
+    })
 
 
 @login_required
@@ -137,12 +145,31 @@ def connect(request, repo_pk: int):
     return JsonResponse(services.connect_remote(repo, request.user, request.POST.get("name", "")))
 
 
+def _dispatch_recorded(run) -> None:
+    """Dispatch; failures always end up recorded on the GitRun so the caller
+    can return {run_id} unconditionally and the standard poll surfaces them.
+    (The inline path records its own failures; this catch covers dispatch
+    itself — e.g. a broker error on .delay() — which would otherwise leave
+    the run PENDING forever.)"""
+    try:
+        dispatch_git_run(run)
+    except Exception as exc:
+        from django.utils import timezone
+
+        from .models import GitRun
+
+        run.status = GitRun.FAILED
+        run.stderr = (run.stderr + "\n" if run.stderr else "") + str(exc)
+        run.finished_at = timezone.now()
+        run.save(update_fields=["status", "stderr", "finished_at"])
+
+
 def _dispatch_op(request, repo_pk: int, op: str):
     repo = _get_repo(request, repo_pk)
     if not repo.remote_connected:
         return JsonResponse({"error": "repository is not connected to Gitea"}, status=400)
     run = create_git_run(request.user, repo, op)
-    dispatch_git_run(run)
+    _dispatch_recorded(run)
     return JsonResponse({"run_id": run.pk})
 
 

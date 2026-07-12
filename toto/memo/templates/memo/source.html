@@ -38,7 +38,7 @@
         </span>
       </div>
 
-      <div class="flex items-center gap-1.5 flex-wrap">
+      <div class="flex items-center gap-1.5 flex-wrap icon-only-toolbar">
         <a href="{{ edit_url }}" title="{% trans 'Open the slide editor' %}"
            class="toolbar-btn-primary border border-current/20">
           <i class="fa-solid fa-pen"></i>
@@ -86,6 +86,8 @@
   font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
 }
 .toolbar-btn-primary:hover { opacity: 0.85; }
+/* Icon-only toolbar — hide text labels, keep icons + title= tooltips. */
+.icon-only-toolbar span.sm\:inline { display: none !important; }
 </style>
 
 {% if gitvault_ctx %}

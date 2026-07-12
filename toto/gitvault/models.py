@@ -108,12 +108,22 @@ class GitRun(models.Model):
         (SUCCESS, "Success"),
         (FAILED, "Failed"),
     ]
-    OP_CHOICES = [("push", "Push"), ("pull", "Pull")]
+    OP_CHOICES = [("init", "Init"), ("push", "Push"), ("pull", "Pull")]
 
     repo = models.ForeignKey(GitRepo, on_delete=models.CASCADE, related_name="runs")
     user = models.ForeignKey(User, on_delete=models.CASCADE)
     op = models.CharField(max_length=10, choices=OP_CHOICES)
     status = models.CharField(max_length=10, choices=STATUS_CHOICES, default=PENDING)
+    # Link into the workflows app when dispatched through it (fileservices
+    # pattern) — the run then shows up in the workflows UI. GitRun remains the
+    # gitvault UI's own status tracker either way.
+    workflow_run = models.ForeignKey(
+        "workflows.WorkflowRun",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="git_runs",
+    )
     stdout = models.TextField(blank=True, default="")
     stderr = models.TextField(blank=True, default="")
     # {created: [...], updated: [...], deleted: [...]} after a pull's import.

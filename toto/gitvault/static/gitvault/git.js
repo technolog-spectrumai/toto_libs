@@ -75,10 +75,23 @@ function gitUI(csrfToken) {
 
     // ---- init repo (vault browser) --------------------------------------
     async initRepo(initUrl) {
+      // Init is a background GitRun (worktree export + initial commit can be
+      // slow on big directories) — poll it, then reload to show the repo.
       try {
-        await this._post(initUrl, {});
-        window.location.reload();
+        const res = await this._post(initUrl, {});
+        this.ctx = { repoPk: res.repo_pk, repoName: "", urls: res.urls };
+        const run = await this._waitForRun(res.run_id);
+        if (run.status === "success") { window.location.reload(); return; }
+        alert(run.stderr || "init failed");
       } catch (err) { alert((err && err.error) || "init failed"); }
+    },
+    async _waitForRun(runId) {
+      const url = this.ctx.urls.run_status_base.replace("/0/", `/${runId}/`);
+      for (;;) {
+        const run = await this._get(url);
+        if (run.status === "success" || run.status === "failed") return run;
+        await new Promise((r) => setTimeout(r, 1500));
+      }
     },
 
     // ---- commit ----------------------------------------------------------

@@ -17,7 +17,9 @@ class GitvaultError(Exception):
     """User-facing error (400-class)."""
 
 
-def init_repo(directory: VaultDirectory, user) -> GitRepo:
+def create_repo(directory: VaultDirectory, user) -> GitRepo:
+    """The fast, synchronous part of init: nesting guard + the GitRepo row.
+    The worktree materialization runs asynchronously via run_init (a GitRun)."""
     conflict = sync.nesting_conflict(directory)
     if conflict:
         raise GitvaultError(
@@ -26,12 +28,40 @@ def init_repo(directory: VaultDirectory, user) -> GitRepo:
         )
     with transaction.atomic():
         repo = GitRepo.objects.create(directory=directory, owner=user)
+    # A brand-new repo must start from a clean slate: after a DB reset the
+    # media volume can still hold a previous same-pk repo's worktree/.git,
+    # whose history would otherwise leak into the new repo's initial commit.
+    import shutil
+    shutil.rmtree(repo.base_dir, ignore_errors=True)
+    return repo
+
+
+def run_init(repo: GitRepo, user) -> dict:
+    """Materialize the worktree + initial commit. Idempotent — `git init` on
+    an existing repo is safe and export/commit converge — so a failed init
+    run can simply be re-dispatched on the same repo row."""
     with sync.repo_lock(repo):
         git_cli.init(repo.worktree, branch=repo.default_branch)
-        sync.export_worktree(repo)
+        result = sync.export_worktree(repo)
         git_cli.add_all(repo.worktree)
+        sha = ""
         if git_cli.status(repo.worktree):
-            git_cli.commit(repo.worktree, "Initial commit", user)
+            sha = git_cli.commit(repo.worktree, "Initial commit", user)
+    return {
+        "stdout": (
+            f"initialized; {len(result['written'])} file(s) exported"
+            + (f"; initial commit {sha[:7]}" if sha else "")
+        ),
+        "stderr": "",
+        "import_summary": None,
+    }
+
+
+def init_repo(directory: VaultDirectory, user) -> GitRepo:
+    """Synchronous composite (create + materialize) — used by tests and any
+    caller that wants a ready repo immediately."""
+    repo = create_repo(directory, user)
+    run_init(repo, user)
     return repo
 
 
@@ -68,11 +98,14 @@ def commit(repo: GitRepo, user, message: str) -> str:
 
 
 def branches(repo: GitRepo) -> dict:
-    with sync.repo_lock(repo):
-        return {
-            "current": git_cli.head_branch(repo.worktree),
-            "branches": git_cli.branch_list(repo.worktree),
-        }
+    # Read-only (symbolic-ref + for-each-ref) — no export, no worktree/index
+    # mutation, so it takes no repo_lock. Locking here only created a race with
+    # the concurrent status call the repo panel fires alongside it (both grab
+    # the same non-blocking lock → one spuriously 409s "busy").
+    return {
+        "current": git_cli.head_branch(repo.worktree),
+        "branches": git_cli.branch_list(repo.worktree),
+    }
 
 
 def branch_create(repo: GitRepo, name: str, checkout: bool, user) -> dict:

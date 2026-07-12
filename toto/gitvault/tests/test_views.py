@@ -17,7 +17,15 @@ class ViewTests(GitvaultTestCase):
     def test_init_and_status(self):
         resp = self.client.post(reverse("gitvault:init", args=[self.root.pk]))
         self.assertEqual(resp.status_code, 200)
-        repo_pk = resp.json()["repo_pk"]
+        payload = resp.json()
+        repo_pk = payload["repo_pk"]
+        # init is a background GitRun now — celery-less tests run it inline,
+        # so the run is already terminal and the repo materialized.
+        run_resp = self.client.get(
+            reverse("gitvault:run_status", args=[payload["run_id"]])
+        ).json()
+        self.assertEqual(run_resp["op"], "init")
+        self.assertEqual(run_resp["status"], "success")
         resp = self.client.get(reverse("gitvault:status", args=[repo_pk]))
         data = resp.json()
         self.assertEqual(data["branch"], "main")

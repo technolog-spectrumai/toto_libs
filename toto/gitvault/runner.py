@@ -16,7 +16,11 @@ def execute_git_run(run_id: int) -> None:
     run.save(update_fields=["status", "started_at"])
 
     try:
-        op = services.run_push if run.op == "push" else services.run_pull
+        op = {
+            "init": services.run_init,
+            "push": services.run_push,
+            "pull": services.run_pull,
+        }[run.op]
         result = op(run.repo, run.user)
         run.stdout = result["stdout"]
         run.stderr = result["stderr"]

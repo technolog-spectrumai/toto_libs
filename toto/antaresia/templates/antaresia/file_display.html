@@ -49,8 +49,9 @@
       <!-- Divider -->
       <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
 
-      <!-- Right: action buttons -->
-      <div class="flex items-center gap-1.5 flex-wrap">
+      <!-- Right: action buttons (icon-only — labels via .icon-only-toolbar CSS,
+           text kept as title= tooltips). -->
+      <div class="flex items-center gap-1.5 flex-wrap icon-only-toolbar">
 
         <!-- Read-only toggle -->
         <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
@@ -310,6 +311,8 @@
   transition: opacity 0.15s;
 }
 .toolbar-btn-primary:hover { opacity: 0.85; }
+/* Icon-only toolbar — hide text labels, keep icons + title= tooltips. */
+.icon-only-toolbar span.sm\:inline { display: none !important; }
 </style>
 
 {% if gitvault_ctx %}

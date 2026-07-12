@@ -1,13 +1,14 @@
 {% load i18n %}
 {% comment %}
-Git toolbar buttons for editor pages. Render inside the toolbar's action-button
-cluster; renders nothing without `gitvault_ctx` (file not in a git repo or app
-off). The host page must also `{% include "gitvault/_git_ui.html" %}` once at
-the end of its content block. Buttons reuse the page's local `.toolbar-btn`
-styling so they blend into each editor's toolbar.
+Git entry for editor toolbars: a single "Git" button that opens a dropdown
+(Commit / Push / Pull / History / Repository). Renders nothing without
+`gitvault_ctx` (file not in a git repo, or app off). The host page must also
+`{% include "gitvault/_git_ui.html" %}` once at the end of its content block.
+Drives window.GitUI (the gitUI() Alpine component).
 
-If the page defines a JS `saveFile()` (all editors do), it is flushed before
-the commit modal opens so the commit sees the buffer's latest state.
+If the page defines a JS `saveFile()` (all editors do) or registers
+window.gitvaultFlushSave, it is flushed before the commit modal opens so the
+commit sees the buffer's latest state.
 {% endcomment %}
 {% if gitvault_ctx %}
   {{ gitvault_ctx|json_script:"gitvault-ctx" }}
@@ -37,23 +38,45 @@ the commit modal opens so the commit sees the buffer's latest state.
       border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
     }
     .toolbar-btn:hover { opacity: 0.7; }
+    .git-menu-item {
+      display: flex; align-items: center; gap: 0.5rem;
+      width: 100%; padding: 0.4rem 0.75rem;
+      font-size: 0.8rem; font-weight: 500; text-align: left; white-space: nowrap;
+      transition: background 0.12s;
+    }
+    .git-menu-item:hover { background: color-mix(in srgb, currentColor 12%, transparent); }
+    .git-menu-item i { width: 1rem; text-align: center; opacity: 0.7; }
   </style>
   <div class="h-5 w-px opacity-20 bg-current"></div>
-  <button onclick="GitUI.openCommit(window.GitUIPendingCtx)"
-          class="toolbar-btn" title="{% trans 'Commit changes' %}">
-    <i class="fa-solid fa-code-commit"></i>
-    <span class="hidden md:inline">{% trans "Commit" %}</span>
-  </button>
-  <button onclick="GitUI.openAndRun(window.GitUIPendingCtx, 'push')"
-          class="toolbar-btn" title="{% trans 'Push to Gitea' %}">
-    <i class="fa-solid fa-cloud-arrow-up"></i>
-  </button>
-  <button onclick="GitUI.openAndRun(window.GitUIPendingCtx, 'pull')"
-          class="toolbar-btn" title="{% trans 'Pull from Gitea' %}">
-    <i class="fa-solid fa-cloud-arrow-down"></i>
-  </button>
-  <button onclick="GitUI.openHistory(window.GitUIPendingCtx)"
-          class="toolbar-btn" title="{% trans 'History' %}">
-    <i class="fa-solid fa-timeline"></i>
-  </button>
+  <div class="relative" x-data="{ gitOpen: false }" @keydown.escape.window="gitOpen = false">
+    <button type="button" @click="gitOpen = !gitOpen"
+            class="toolbar-btn" title="{% trans 'Git' %}">
+      <i class="fa-solid fa-code-branch"></i>
+    </button>
+    <div x-show="gitOpen" x-cloak @click.outside="gitOpen = false"
+         class="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-lg border shadow-xl"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+      <button type="button" class="git-menu-item"
+              @click="gitOpen = false; GitUI.openCommit(window.GitUIPendingCtx)">
+        <i class="fa-solid fa-code-commit"></i>{% trans "Commit…" %}
+      </button>
+      <button type="button" class="git-menu-item"
+              @click="gitOpen = false; GitUI.openAndRun(window.GitUIPendingCtx, 'push')">
+        <i class="fa-solid fa-cloud-arrow-up"></i>{% trans "Push" %}
+      </button>
+      <button type="button" class="git-menu-item"
+              @click="gitOpen = false; GitUI.openAndRun(window.GitUIPendingCtx, 'pull')">
+        <i class="fa-solid fa-cloud-arrow-down"></i>{% trans "Pull" %}
+      </button>
+      <button type="button" class="git-menu-item"
+              @click="gitOpen = false; GitUI.openHistory(window.GitUIPendingCtx)">
+        <i class="fa-solid fa-timeline"></i>{% trans "History" %}
+      </button>
+      <div class="h-px bg-current opacity-10"></div>
+      <button type="button" class="git-menu-item"
+              @click="gitOpen = false; GitUI.openPanel(window.GitUIPendingCtx)">
+        <i class="fa-solid fa-sliders"></i>{% trans "Repository…" %}
+      </button>
+    </div>
+  </div>
 {% endif %}

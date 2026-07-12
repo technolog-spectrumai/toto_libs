@@ -67,8 +67,10 @@
 
       <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
 
-      <!-- Right: action buttons -->
-      <div class="flex items-center gap-1.5 flex-wrap">
+      <!-- Right: action buttons. Icon-only toolbar — labels hidden via the
+           .icon-only-toolbar CSS, each button's title= carries the text as a
+           hover tooltip. -->
+      <div class="flex items-center gap-1.5 flex-wrap icon-only-toolbar">
 
         <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
           <i id="lock-icon" class="fa-solid fa-lock-open"></i>
@@ -173,6 +175,10 @@
   font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
 }
 .toolbar-btn-primary:hover { opacity: 0.85; }
+/* Icon-only toolbar: hide the button/link text labels (the <i> icons and the
+   title= tooltips remain). Targets only the `hidden sm:inline` label spans, so
+   badges/counters (e.g. #deps-count) and the git dropdown menu text stay. */
+.icon-only-toolbar span.sm\:inline { display: none !important; }
 </style>
 
 {% if gitvault_ctx %}
