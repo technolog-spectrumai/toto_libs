@@ -80,6 +80,8 @@
           <span class="hidden sm:inline">{% trans "Run" %}</span>
         </button>
 
+        {% include "gitvault/_git_toolbar_buttons.html" %}
+
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
         <!-- Delete -->
@@ -309,6 +311,10 @@
 }
 .toolbar-btn-primary:hover { opacity: 0.85; }
 </style>
+
+{% if gitvault_ctx %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
 {% endblock %}
 
 {% block end_script %}

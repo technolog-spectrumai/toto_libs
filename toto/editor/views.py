@@ -27,6 +27,20 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
     def get_extra_context(self, vault_file) -> dict:
         return {}
 
+    @staticmethod
+    def gitvault_context(vault_file) -> dict:
+        """Git toolbar context (commit/push/pull/history) when the file lives
+        inside a git-enabled vault directory — {} otherwise. Shared by the
+        other editor surfaces (antaresia/mandragora/memo) too."""
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.gitvault"):
+            return {}
+        from toto.gitvault.integration import context_for_file
+
+        ctx = context_for_file(vault_file)
+        return {"gitvault_ctx": ctx} if ctx else {}
+
     def get(self, request, file_pk):
         from django.urls import reverse
 
@@ -55,6 +69,7 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 "wrap_lines": "true" if self.wrap_lines else "false",
                 "save_url": reverse(self.save_url_name, args=[file_pk]),
                 "delete_url": reverse(self.delete_url_name, args=[file_pk]),
+                **self.gitvault_context(vault_file),
                 **self.get_extra_context(vault_file),
             },
             request,

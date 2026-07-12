@@ -25,6 +25,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.contrib.auth.mixins import LoginRequiredMixin
 
+from toto.editor.views import BaseFileDisplayView
 from toto.ui import PageProcessor
 from toto.vault.filetree import accessible_files
 from toto.vault.models import VaultFile
@@ -190,6 +191,7 @@ class PresentationSourceView(LoginRequiredMixin, View):
                 "save_url": reverse("memo:source_save", args=[file_pk]),
                 "edit_url": reverse("memo:edit", args=[file_pk]),
                 "present_url": reverse("memo:present", args=[file_pk]),
+                **BaseFileDisplayView.gitvault_context(vault_file),
             },
             request,
         )

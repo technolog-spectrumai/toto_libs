@@ -106,6 +106,8 @@
         <span id="compile-error" class="hidden max-w-[16rem] truncate text-xs text-red-500"></span>
         {% endif %}
 
+        {% include "gitvault/_git_toolbar_buttons.html" %}
+
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
         <!-- Delete -->
@@ -172,6 +174,10 @@
 }
 .toolbar-btn-primary:hover { opacity: 0.85; }
 </style>
+
+{% if gitvault_ctx %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
 {% endblock %}
 
 {% block end_script %}

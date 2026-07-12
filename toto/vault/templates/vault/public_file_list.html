@@ -1077,6 +1077,27 @@
                       <i class="fa-solid fa-file-zipper text-xs"></i>
                       <span class="hidden sm:inline">{% trans "Zip" %}</span>
                     </button>
+                    <button x-show="item.git && item.git.init_url && item.can_create"
+                            @click.stop="confirm('{% trans "Turn this directory into a git repository?" %}') && GitUI.initRepo(item.git.init_url)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-code-branch text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Init repo" %}</span>
+                    </button>
+                    <button x-show="item.git && item.git.repo_pk"
+                            @click.stop="GitUI.openPanel({repoPk: item.git.repo_pk, repoName: item.git.repo_name, urls: item.git.urls})"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-code-branch text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Repo" %}</span>
+                    </button>
+                    <button x-show="item.git && item.git.repo_pk"
+                            @click.stop="GitUI.openHistory({repoPk: item.git.repo_pk, repoName: item.git.repo_name, urls: item.git.urls})"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-timeline text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "History" %}</span>
+                    </button>
                     <a x-show="item.upload_url" :href="item.upload_url" @click.stop
                        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
@@ -2154,4 +2175,8 @@
 
   </div>
 </div>
+
+{% if gitvault_enabled %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
 {% endblock %}

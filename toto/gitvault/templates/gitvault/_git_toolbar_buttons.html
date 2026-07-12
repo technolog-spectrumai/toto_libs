@@ -1,0 +1,59 @@
+{% load i18n %}
+{% comment %}
+Git toolbar buttons for editor pages. Render inside the toolbar's action-button
+cluster; renders nothing without `gitvault_ctx` (file not in a git repo or app
+off). The host page must also `{% include "gitvault/_git_ui.html" %}` once at
+the end of its content block. Buttons reuse the page's local `.toolbar-btn`
+styling so they blend into each editor's toolbar.
+
+If the page defines a JS `saveFile()` (all editors do), it is flushed before
+the commit modal opens so the commit sees the buffer's latest state.
+{% endcomment %}
+{% if gitvault_ctx %}
+  {{ gitvault_ctx|json_script:"gitvault-ctx" }}
+  <script>
+    (function () {
+      const raw = JSON.parse(document.getElementById("gitvault-ctx").textContent);
+      window.GitUIPendingCtx = {
+        repoPk: raw.repo_pk, repoName: raw.repo_name, urls: raw.urls,
+      };
+      window.GitUIBeforeCommit = async function () {
+        // Pages may register a custom flush (e.g. mandragora's save());
+        // otherwise the conventional global saveFile() is used when present.
+        const flush = window.gitvaultFlushSave
+          || (typeof saveFile === "function" ? saveFile : null);
+        if (flush) { await flush(); }
+      };
+    })();
+  </script>
+  <style>
+    /* Same rules the editor pages define locally — a harmless duplicate there,
+       the styling source for toolbars that lack .toolbar-btn (tpy/memo). */
+    .toolbar-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0.375rem; min-width: 2rem; height: 2rem; padding: 0 0.5rem;
+      border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600;
+      transition: opacity 0.15s;
+      border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    }
+    .toolbar-btn:hover { opacity: 0.7; }
+  </style>
+  <div class="h-5 w-px opacity-20 bg-current"></div>
+  <button onclick="GitUI.openCommit(window.GitUIPendingCtx)"
+          class="toolbar-btn" title="{% trans 'Commit changes' %}">
+    <i class="fa-solid fa-code-commit"></i>
+    <span class="hidden md:inline">{% trans "Commit" %}</span>
+  </button>
+  <button onclick="GitUI.openAndRun(window.GitUIPendingCtx, 'push')"
+          class="toolbar-btn" title="{% trans 'Push to Gitea' %}">
+    <i class="fa-solid fa-cloud-arrow-up"></i>
+  </button>
+  <button onclick="GitUI.openAndRun(window.GitUIPendingCtx, 'pull')"
+          class="toolbar-btn" title="{% trans 'Pull from Gitea' %}">
+    <i class="fa-solid fa-cloud-arrow-down"></i>
+  </button>
+  <button onclick="GitUI.openHistory(window.GitUIPendingCtx)"
+          class="toolbar-btn" title="{% trans 'History' %}">
+    <i class="fa-solid fa-timeline"></i>
+  </button>
+{% endif %}

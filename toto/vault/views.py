@@ -90,6 +90,40 @@ class PublicFileListView(TemplateView):
         def _has_services(f):
             return any(p.accepts(f) for p in _fs_plugins)
 
+        # gitvault decorations (per-directory git actions), only when installed.
+        # Shapes: repo root → {repo_pk, repo_name, urls}; inside a repo's
+        # subtree → {"in": True}; repo-able → {init_url}; app off → None.
+        def _git_info(d):
+            return None
+
+        from django.apps import apps as django_apps
+        if django_apps.is_installed("toto.gitvault"):
+            from toto.gitvault.integration import repo_urls
+            from toto.gitvault.models import GitRepo
+
+            _repos = {
+                r.directory_id: r
+                for r in GitRepo.objects.filter(
+                    directory_id__in=[d.pk for d in dirs]
+                ).select_related("directory")
+            }
+            _parent_of = {d.pk: d.parent_id for d in dirs}
+
+            def _git_info(d):
+                repo = _repos.get(d.pk)
+                if repo:
+                    return {
+                        "repo_pk": repo.pk,
+                        "repo_name": repo.directory.name,
+                        "urls": repo_urls(repo),
+                    }
+                node = _parent_of.get(d.pk)
+                while node is not None:
+                    if node in _repos:
+                        return {"in": True}
+                    node = _parent_of.get(node)
+                return {"init_url": reverse("gitvault:init", args=[d.pk])}
+
         by_parent = {}
         for d in dirs:
             pid = d.parent_id
@@ -124,6 +158,7 @@ class PublicFileListView(TemplateView):
                     "locked": d.allowed_users.exists(),
                     "upload_url": dir_gateway_map.get(d.pk, ""),
                     "can_create": d.bucket_id in user_bucket_pks if user_bucket_pks else False,
+                    "git": _git_info(d),
                 })
                 visit(d.pk, depth + 1)
                 for f in sorted(files_by_dir.get(d.pk, []), key=lambda x: x.title):
@@ -228,6 +263,11 @@ class PublicFileListView(TemplateView):
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
+
+        # Git actions (gitvault) — the template includes the shared git UI
+        # partial only when the app is installed.
+        from django.apps import apps as django_apps
+        context["gitvault_enabled"] = django_apps.is_installed("toto.gitvault")
 
         # File-service (wand) endpoints — only when the fileservices app is installed.
         try:
