@@ -36,6 +36,8 @@ def run_python(request, file_pk):
         VaultFile.objects.select_related("bucket", "directory"),
         pk=file_pk,
     )
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
     if not celery_available():
         return JsonResponse({"error": "Celery worker is not available. Start the worker and try again."}, status=503)

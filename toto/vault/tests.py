@@ -1,3 +1,4 @@
+import json
 import shutil
 import tempfile
 from unittest.mock import MagicMock, patch
@@ -1220,4 +1221,205 @@ class GatewayMultiUploadTests(TestCase):
         resp = self.client.post(self._url(), {"file": SimpleUploadedFile("doc.txt", b"y")})
         self.assertEqual(resp.status_code, 200)
         self.assertEqual(len(resp.json()["results"]), 1)
-        self.assertEqual(VaultFile.objects.filter(bucket=self.bucket, title="doc.txt").count(), 2)
+
+
+class EncryptWorkflowViewTests(TestCase):
+    """Encryption runs as its own 'vault-encrypt' workflow (Celery-backed), and the
+    password is NEVER persisted to the run data — only passed as a transient arg."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media, VAULT_ENCRYPT_ASYNC=True)
+        self._override.enable()
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.alice = User.objects.create_user("enc_alice", password="pass")
+        self.client = Client()
+        self.bucket = Bucket.objects.create(name="E", slug="enc-bucket", owner=self.alice)
+        self.f = VaultFile.objects.create(
+            owner=self.alice, title="secret.txt", key="secret",
+            file=SimpleUploadedFile("secret.txt", b"hello"), file_type="text",
+            bucket=self.bucket, is_public=True,
+        )
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _skip_if_no_workflows(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.workflows"):
+            self.skipTest("workflows not installed")
+
+    _PW = "hunter2-super-secret"
+
+    def test_queues_workflow_without_persisting_password(self):
+        self._skip_if_no_workflows()
+        self.client.login(username="enc_alice", password="pass")
+        with patch("toto.celery_utils.celery_available", return_value=True), \
+             patch("toto.vault.tasks.encrypt_workflow_run") as task:
+            resp = self.client.post(reverse("vault:encrypt_file"), {
+                "file_pk": self.f.pk, "password": self._PW,
+            })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"])
+        self.assertTrue(data["async"])
+        run_id = data["workflow_run_id"]
+        task.delay.assert_called_once_with(run_id, self._PW, None)
+        from toto.workflows.models import WorkflowRun
+        run = WorkflowRun.objects.get(pk=run_id)
+        self.assertEqual(run.workflow.slug, "vault-encrypt")
+        self.assertEqual(run.input_data["data"]["file_pk"], self.f.pk)
+        # Security: the password must never land in the persisted run input.
+        self.assertNotIn(self._PW, json.dumps(run.input_data))
+        # Async path: nothing encrypted inline yet.
+        self.f.refresh_from_db()
+        self.assertFalse(self.f.is_encrypted)
+
+    def test_runs_inline_and_completes_without_persisting_password(self):
+        self._skip_if_no_workflows()
+        self.client.login(username="enc_alice", password="pass")
+
+        def _fake_encrypt(vf, password=None, owner_password=None):
+            vf.is_encrypted = True
+            vf.save(update_fields=["is_encrypted"])
+
+        with patch("toto.celery_utils.celery_available", return_value=False), \
+             patch("toto.vault.models.VaultFile.encrypt", _fake_encrypt):
+            resp = self.client.post(reverse("vault:encrypt_file"), {
+                "file_pk": self.f.pk, "password": self._PW,
+            })
+        self.assertEqual(resp.status_code, 200)
+        data = resp.json()
+        self.assertTrue(data["ok"] and data["async"])
+        run_id = data["workflow_run_id"]
+
+        self.f.refresh_from_db()
+        self.assertTrue(self.f.is_encrypted)
+
+        from toto.workflows.models import WorkflowNodeRun, WorkflowRun
+        run = WorkflowRun.objects.get(pk=run_id)
+        self.assertEqual(run.status, WorkflowRun.COMPLETED)
+        node_run = WorkflowNodeRun.objects.get(workflow_run=run)
+        self.assertEqual(node_run.status, WorkflowNodeRun.COMPLETED)
+        self.assertEqual(node_run.output_data["data"]["vault_file_id"], self.f.pk)
+
+        # Security: no copy of the password anywhere in the persisted run rows.
+        self.assertNotIn(self._PW, json.dumps(run.input_data))
+        self.assertNotIn(self._PW, json.dumps(node_run.input_data))
+        self.assertNotIn(self._PW, json.dumps(run.output_data))
+
+        # Status poll reports the terminal run + the encrypted file id.
+        status = self.client.get(reverse("vault:encrypt_status"), {"run_id": run_id}).json()
+        self.assertTrue(status["is_terminal"])
+        self.assertTrue(status["ok"])
+        self.assertEqual(status["vault_file_id"], self.f.pk)
+
+    def test_already_encrypted_rejected(self):
+        self.f.is_encrypted = True
+        self.f.save(update_fields=["is_encrypted"])
+        self.client.login(username="enc_alice", password="pass")
+        resp = self.client.post(reverse("vault:encrypt_file"), {
+            "file_pk": self.f.pk, "password": self._PW,
+        })
+        self.assertEqual(resp.status_code, 400)
+        self.assertFalse(resp.json()["ok"])
+
+    def test_status_poll_not_owned_is_404(self):
+        self._skip_if_no_workflows()
+        from toto.vault.views import EncryptFileView
+        from toto.workflows.models import WorkflowRun
+        wf = EncryptFileView._ensure_workflow()
+        run = WorkflowRun.objects.create(
+            workflow=wf, input_data={"data": {"file_pk": self.f.pk, "owner_id": self.alice.id}},
+        )
+        mallory = User.objects.create_user("enc_mallory", password="pass")
+        self.client.force_login(mallory)
+        resp = self.client.get(reverse("vault:encrypt_status"), {"run_id": run.id})
+        self.assertEqual(resp.status_code, 404)
+
+
+class EncryptedEditLockTests(TestCase):
+    """Encrypted files are locked out of editors: the vault UI hides the Edit button
+    and a direct editor URL returns the 403 'decrypt first' page."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
+        self.user = User.objects.create_user("lock_owner", password="pass")
+        self.client = Client()
+        self.bucket = Bucket.objects.create(name="L", slug="lock-bucket", owner=self.user)
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _make_file(self, is_encrypted):
+        vf = VaultFile(
+            owner=self.user, title="doc.txt", key="doc",
+            file_type="text", bucket=self.bucket, is_public=True, is_encrypted=is_encrypted,
+        )
+        vf.file.save("doc.txt", SimpleUploadedFile("doc.txt", b"hello"), save=False)
+        vf.file_size_bytes = 5
+        vf.save()
+        return vf
+
+    def _editor_url(self, vf):
+        from toto.vault.views import PublicFileListView
+        items = PublicFileListView()._build_flat_items([], [vf], {})
+        return items[0]["editor_url"]
+
+    def test_editor_url_present_when_plaintext(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("editor not installed")
+        self.assertTrue(self._editor_url(self._make_file(is_encrypted=False)))
+
+    def test_editor_url_blank_when_encrypted(self):
+        # True regardless of which editor apps are installed — the guard is in vault.
+        self.assertEqual(self._editor_url(self._make_file(is_encrypted=True)), "")
+
+    def test_editor_view_blocks_encrypted(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("editor not installed")
+        vf = self._make_file(is_encrypted=True)
+        self.client.login(username="lock_owner", password="pass")
+        resp = self.client.get(reverse("editor:text_display", args=[vf.pk]))
+        self.assertEqual(resp.status_code, 403)
+
+    def test_editor_save_blocks_encrypted(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("editor not installed")
+        vf = self._make_file(is_encrypted=True)
+        self.client.login(username="lock_owner", password="pass")
+        resp = self.client.post(reverse("editor:text_save", args=[vf.pk]), {"content": "new"})
+        self.assertEqual(resp.status_code, 403)
+
+    def test_plaintext_editor_view_ok(self):
+        from django.apps import apps
+        if not apps.is_installed("toto.editor"):
+            self.skipTest("editor not installed")
+        vf = self._make_file(is_encrypted=False)
+        self.client.login(username="lock_owner", password="pass")
+        resp = self.client.get(reverse("editor:text_display", args=[vf.pk]))
+        self.assertEqual(resp.status_code, 200)

@@ -75,6 +75,11 @@ class PublicFileListView(TemplateView):
         from toto.vault.plugins import VaultEditorPlugin
 
         def _editor_url_for(f):
+            # Encrypted files hold ciphertext — never editable. Blanking the URL hides
+            # the "Open in editor" button in list, grid and the actions chooser at once
+            # (mirrors _play_url_for above).
+            if f.is_encrypted:
+                return ""
             plugin = VaultEditorPlugin.for_file_type(f.file_type)
             try:
                 return plugin.get_editor_url(f) if plugin else ""
@@ -1103,7 +1108,33 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
 
 
 class EncryptFileView(LoginRequiredMixin, View):
+    @staticmethod
+    def _ensure_workflow():
+        """Get-or-create the single-node 'vault-encrypt' workflow so encryption works
+        even if ingress hasn't (re)seeded it on this deployment (mirrors CreateZipView)."""
+        from toto.workflows.models import Workflow, WorkflowNode
+        wf, created = Workflow.objects.get_or_create(
+            slug="vault-encrypt",
+            defaults={
+                "name": "Encrypt file",
+                "description": "Encrypt a vault file at rest. The password is supplied "
+                               "out-of-band and never stored on the run.",
+            },
+        )
+        if created or not wf.nodes.filter(task_name="vault_encrypt_file").exists():
+            WorkflowNode.objects.create(
+                workflow=wf,
+                node_type=WorkflowNode.PREDEFINED_TASK,
+                label="Encrypt file",
+                task_name="vault_encrypt_file",
+                position_x=0,
+                position_y=0,
+            )
+        return wf
+
     def post(self, request):
+        from django.apps import apps
+
         file_pk = request.POST.get("file_pk", "").strip()
         password = request.POST.get("password", "").strip()
         owner_password = request.POST.get("owner_password", "").strip() or None
@@ -1113,17 +1144,45 @@ class EncryptFileView(LoginRequiredMixin, View):
         if vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": "File is already encrypted."}, status=400)
 
-        # Offload to Celery when configured (faros): encryption does an S3 download
-        # → crypto → re-upload that can run for minutes, and a long synchronous
-        # request is dropped by Tor. Return a task id the browser polls instead.
+        # Offload to a 'vault-encrypt' workflow run when the engine is installed
+        # (faros + portal): encryption does an S3 download → crypto → re-upload that
+        # can run for minutes, and a long synchronous request is dropped by Tor. The
+        # password rides only as a transient Celery arg — it is NEVER written to the
+        # run's input_data. The browser polls EncryptStatusView with the run id.
         # Ownership was just verified, so the task may trust file_pk.
-        if getattr(settings, "VAULT_ENCRYPT_ASYNC", False):
+        if getattr(settings, "VAULT_ENCRYPT_ASYNC", False) and apps.is_installed("toto.workflows"):
+            run = None
+            use_celery = False
             try:
-                from .tasks import encrypt_vault_file
-                result = encrypt_vault_file.delay(vault_file.pk, password, owner_password)
-                return JsonResponse({"ok": True, "task_id": result.id, "async": True})
-            except Exception:  # noqa: BLE001 — broker down → fall back to synchronous
-                pass
+                from toto.celery_utils import celery_available
+                from toto.workflows.models import WorkflowRun
+
+                wf = self._ensure_workflow()
+                run = WorkflowRun.objects.create(
+                    workflow=wf,
+                    input_data={"data": {"file_pk": vault_file.pk, "owner_id": request.user.id}},
+                )
+                use_celery = celery_available()
+            except Exception:  # noqa: BLE001 — engine/db issue → fall back to synchronous
+                run = None
+            if run is not None:
+                from .tasks import encrypt_workflow_run
+                try:
+                    run_url = reverse("workflows:workflow_run_detail", args=[run.id])
+                except Exception:
+                    run_url = ""
+                if use_celery:
+                    try:
+                        encrypt_workflow_run.delay(run.id, password, owner_password)
+                    except Exception:  # noqa: BLE001 — broker down after all → run inline
+                        encrypt_workflow_run(run.id, password, owner_password)
+                else:
+                    # No worker (dev/runserver): run inline; it self-handles errors.
+                    encrypt_workflow_run(run.id, password, owner_password)
+                return JsonResponse({
+                    "ok": True, "async": True,
+                    "workflow_run_id": run.id, "workflow_run_url": run_url,
+                })
 
         try:
             vault_file.encrypt(password=password, owner_password=owner_password)
@@ -1138,28 +1197,32 @@ class EncryptFileView(LoginRequiredMixin, View):
 
 
 class EncryptStatusView(LoginRequiredMixin, View):
-    """Poll the state of an async encryption task dispatched by EncryptFileView.
+    """Poll a 'vault-encrypt' workflow run dispatched by EncryptFileView.
 
-    Returns ``{state, done}`` plus the task's ``{ok, raw_url}`` / ``{ok, error}``
-    once finished. Task ids are unguessable UUIDs and the result holds only the
-    file's (already public) raw URL, so no extra ownership binding is needed.
+    Returns ``{status, is_terminal, done}`` plus ``{ok, raw_url, vault_file_id}`` /
+    ``{ok, error}`` once terminal. The run is owner-bound via its input_data, and the
+    result holds only the file's (already public) raw URL.
     """
 
     def get(self, request):
-        task_id = request.GET.get("task_id", "").strip()
-        if not task_id:
-            return JsonResponse({"ok": False, "error": "Missing task_id."}, status=400)
-        from celery.result import AsyncResult
+        run_id = request.GET.get("run_id", "").strip()
+        if not run_id:
+            return JsonResponse({"ok": False, "error": "Missing run_id."}, status=400)
+        from toto.workflows.models import WorkflowRun
 
-        result = AsyncResult(task_id)
-        state = result.state
-        payload = {"state": state, "done": False}
-        if state == "SUCCESS":
-            data = result.result if isinstance(result.result, dict) else {}
-            payload.update(data)
-            payload["done"] = True
-        elif state == "FAILURE":
-            payload.update({"ok": False, "error": "Encryption failed.", "done": True})
+        run = get_object_or_404(WorkflowRun, pk=run_id)
+        owner_id = ((run.input_data or {}).get("data") or {}).get("owner_id")
+        if owner_id != request.user.id and not request.user.is_superuser:
+            return JsonResponse({"ok": False, "error": "Not found."}, status=404)
+
+        out = run.output_data or {}
+        is_terminal = run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED)
+        payload = {"status": run.status, "is_terminal": is_terminal, "done": is_terminal}
+        if run.status == WorkflowRun.COMPLETED:
+            payload.update({"ok": True, "raw_url": out.get("raw_url", ""),
+                            "vault_file_id": out.get("vault_file_id")})
+        elif run.status == WorkflowRun.FAILED:
+            payload.update({"ok": False, "error": out.get("error", "Encryption failed.")})
         return JsonResponse(payload)
 
 

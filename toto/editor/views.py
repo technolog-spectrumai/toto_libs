@@ -49,6 +49,9 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
             pk=file_pk,
             owner=request.user,
         )
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
 
         try:
             content = vault_file.file.read().decode("utf-8")
@@ -83,6 +86,8 @@ def save_file(request, file_pk):
         return JsonResponse({"error": "POST required"}, status=400)
 
     vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
     content = request.POST.get("content", "")
 
     try:

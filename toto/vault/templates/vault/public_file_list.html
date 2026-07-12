@@ -359,10 +359,11 @@
               body,
             });
             let data = await res.json();
-            // Async encryption (faros/Tor): the server queued a Celery job — poll
-            // for it with short requests instead of holding one long connection.
-            if (data.ok && data.task_id) {
-              data = await this.pollCipher(data.task_id, csrf);
+            // Async encryption (faros/Tor): the server started a 'vault-encrypt'
+            // workflow run — poll it with short requests instead of holding one long
+            // connection.
+            if (data.ok && data.workflow_run_id) {
+              data = await this.pollCipher(data.workflow_run_id, csrf);
             }
             if (data.ok) {
               const item = this.items.find(i => i.id === this.cipherFileId);
@@ -371,6 +372,10 @@
                   item.encrypted = true;
                   item.raw_url = data.raw_url || item.url || item.raw_url;
                   item.url = '';
+                  // Encrypted files are not editable/playable — drop those links so
+                  // the Open-in-editor / Play buttons disappear without a reload.
+                  item.editor_url = '';
+                  item.play_url = '';
                 } else {
                   item.encrypted = false;
                   item.url = data.url;
@@ -386,10 +391,10 @@
           this.cipherLoading = false;
         },
 
-        // Poll the encrypt task until the worker finishes. Each request is short,
+        // Poll the encrypt workflow run until it finishes. Each request is short,
         // so it survives Tor where a single multi-minute request would not.
-        async pollCipher(taskId, csrf) {
-          const url = _encryptStatusUrl + '?task_id=' + encodeURIComponent(taskId);
+        async pollCipher(runId, csrf) {
+          const url = _encryptStatusUrl + '?run_id=' + encodeURIComponent(runId);
           for (let i = 0; i < 150; i++) {            // ~5 min ceiling (150 × 2s)
             await new Promise(r => setTimeout(r, 2000));
             const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });

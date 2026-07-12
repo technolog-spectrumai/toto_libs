@@ -198,6 +198,9 @@ class SvgFileView(LoginRequiredMixin, View):
             pk=file_pk,
             owner=request.user,
         )
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
         try:
             content = vault_file.file.read().decode("utf-8")
         except Exception:

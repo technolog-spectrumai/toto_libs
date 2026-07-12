@@ -32,3 +32,20 @@ def vault_zip_files(input_data: dict) -> dict:
         owner, source, target, data.get("file_ids") or [], data.get("output_name") or "",
     )
     return {"data": {"vault_file_id": vault_file.pk, "added": n_added}}
+
+
+@register("vault_encrypt_file")
+def vault_encrypt_file(input_data: dict) -> dict:
+    """Node marker for the ``vault-encrypt`` workflow.
+
+    Encryption needs the user's password, which is deliberately NEVER persisted
+    to ``WorkflowRun.input_data`` (see ``vault/tasks.py``). So the run is driven by
+    the dedicated ``encrypt_workflow_run`` Celery task, which carries the password
+    as a transient broker arg — the generic executor never reaches this node with a
+    password. If it is ever invoked through the vanilla engine, fail loudly rather
+    than silently no-op.
+    """
+    raise RuntimeError(
+        "vault_encrypt_file must be run via the vault encrypt action "
+        "(encrypt_workflow_run), which supplies the password out-of-band."
+    )

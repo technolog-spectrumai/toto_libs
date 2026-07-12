@@ -179,6 +179,9 @@ class PresentationSourceView(LoginRequiredMixin, View):
 
     def get(self, request, file_pk):
         vault_file = _get_owned_file(request, file_pk)
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
         try:
             content = vault_file.file.read().decode("utf-8")
         except Exception:
@@ -212,6 +215,8 @@ def presentation_source_save(request, file_pk):
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
     vault_file = _get_owned_file(request, file_pk)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
     content = request.POST.get("content", "")
     content_bytes = content.encode("utf-8")
 
@@ -244,6 +249,9 @@ class PresentationEditView(LoginRequiredMixin, View):
 
     def get(self, request, file_pk):
         vault_file = _get_owned_file(request, file_pk)
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
         presentation = _read_presentation(vault_file)
 
         context = PageProcessor().decorate(
@@ -307,6 +315,8 @@ def presentation_save(request, file_pk):
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
     vault_file = _get_owned_file(request, file_pk)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
     try:
         payload = json.loads(request.body or b"{}")

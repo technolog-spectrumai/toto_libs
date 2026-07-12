@@ -295,6 +295,9 @@ class ContractEditView(LoginRequiredMixin, View):
 
     def get(self, request, file_pk):
         vf = _get_file(request, file_pk, owner_only=True)
+        if vf.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vf)
         contract = _read(vf)
         from toto.notarius.models import ContractTemplate
         context = {
@@ -320,6 +323,8 @@ def contract_save(request, file_pk):
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
     vf = _get_file(request, file_pk, owner_only=True)
+    if vf.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
     try:
         payload = json.loads(request.body or b"{}")
     except (ValueError, TypeError) as exc:

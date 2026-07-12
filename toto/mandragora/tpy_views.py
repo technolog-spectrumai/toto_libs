@@ -211,6 +211,9 @@ class TpyDisplayView(LoginRequiredMixin, View):
 
     def get(self, request, file_pk):
         vault_file = _get_owned_file(request, file_pk)
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
         notebook = _read_notebook(vault_file)
 
         if vault_file.directory:
@@ -247,6 +250,8 @@ def tpy_save(request, file_pk):
         return JsonResponse({"error": "POST required"}, status=400)
 
     vault_file = _get_owned_file(request, file_pk)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
     try:
         payload = json.loads(request.body or b"{}")
@@ -290,6 +295,8 @@ def tpy_start_kernel(request, file_pk):
         return JsonResponse({"error": "POST required"}, status=400)
 
     vault_file = _get_owned_file(request, file_pk)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
     try:
         payload = json.loads(request.body or b"{}")
@@ -361,7 +368,8 @@ def tpy_run_cell(request, file_pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
-    _get_owned_file(request, file_pk)
+    if _get_owned_file(request, file_pk).is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
     try:
         payload = json.loads(request.body or b"{}")
