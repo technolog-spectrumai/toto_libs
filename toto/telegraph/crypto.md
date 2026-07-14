@@ -139,9 +139,14 @@ the webview) provides group end-to-end encryption with **forward secrecy** and
 The MLS credential is the device's stable chat identity (`mlsIdentity`). Group state is
 persisted locally by rotor.
 
-Implementation: rotor (`toto/rotors/rotor_core`, `rotor_wasm`), client MLS orchestration in
-[useChatChannel.ts](../../../edge/packages/rakotis/src/useChatChannel.ts), opaque relay in
-[consumers.py](consumers.py).
+Implementation: rotor — canonical source lives in the **enigma repo**
+(`cryptorotor/`); telegraph loads a prebuilt static `rotor_wasm` copy committed at
+[static/js/rotor_wasm/](static/js/rotor_wasm/) (built there with
+`cryptorotor/build_wasm.sh`, synced by deploy.py's `rotor_wasm_dir` config prop;
+the in-tree `toto/rotors/` copy is only still used by the edge apps). Client MLS
+orchestration in
+[useChatChannel.ts](../../../edge/packages/rakotis/src/useChatChannel.ts), opaque
+relay in [consumers.py](consumers.py).
 
 ---
 
