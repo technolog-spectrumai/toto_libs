@@ -1,12 +1,27 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "toto"
-version = "0.1.0"
-description = "Community operating system"
+dynamic = ["version"]
+description = "Community operating system - reusable Django app library"
+readme = "README.md"
+license = { file = "LICENSE" }
 requires-python = ">=3.10"
+# Runtime dependencies are intentionally minimal: hosts install the feature
+# stacks (celery, channels, DRF, neo4j, ...) that their enabled BUILD_* flags
+# require, exactly as before the repository split.
 dependencies = [
     "Django>=4.2",
     "PyYAML>=6.0",
 ]
+
+[project.urls]
+Repository = "https://gitlab.com/janhagit-group/toto_libs"
+
+[tool.setuptools.dynamic]
+version = { attr = "toto.__version__" }
 
 [tool.setuptools.packages.find]
 where = ["."]
@@ -19,7 +34,3 @@ include = ["toto*"]
     "graph/*.yaml",
     "config/*.yaml",
 ]
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
