@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
 import json
+from toto.conf import data_dir
 from toto.gervazy.models import EncryptedPrivateKey
 
 
@@ -26,7 +27,7 @@ class Command(BaseCommand):
     def create_fonts(self):
         from toto.core.models import Font
 
-        FONTS_FILE = os.path.join(os.path.dirname(__file__), '../../../../../data/fonts.json')
+        FONTS_FILE = str(data_dir(os.path.join(os.path.dirname(__file__), '../../../../../data')) / 'fonts.json')
 
         if not os.path.isfile(FONTS_FILE):
             self.stderr.write(self.style.ERROR(f"Fonts file not found: {FONTS_FILE}"))
@@ -109,7 +110,7 @@ class Command(BaseCommand):
         self.stdout.write(self.style.SUCCESS("Fonts created."))
 
         self.stdout.write(self.style.NOTICE("Creating fonts and theme..."))
-        THEMES_DIR = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
+        THEMES_DIR = str(data_dir(os.path.join(os.path.dirname(__file__), '../../../../../data')) / 'themes')
         self.create_theme_from_file(os.path.join(THEMES_DIR, "amazing.json"))
         self.stdout.write(self.style.SUCCESS("Fonts and theme created."))
         theme = self.get_theme("Amazing Moon")
@@ -147,7 +148,7 @@ class Command(BaseCommand):
             self.stdout.write(self.style.SUCCESS("Created federation: Toto-Federation"))
 
         logo_path = os.path.abspath(
-            os.path.join(os.path.dirname(__file__), "../../../../../data/img/okti.png")
+            str(data_dir(os.path.join(os.path.dirname(__file__), "../../../../../data")) / "img" / "okti.png")
         )
         if not federation.logo and os.path.exists(logo_path):
             with open(logo_path, "rb") as f:

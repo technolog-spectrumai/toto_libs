@@ -7,6 +7,7 @@ from django.core.management.base import BaseCommand
 from django.conf import settings
 from django.contrib.auth.models import User
 
+from toto.conf import data_dir
 from toto.core.models import Platform, Theme
 
 
@@ -61,7 +62,7 @@ class Command(BaseCommand):
             # toto core default — okti_old.png — when the deployment doesn't set a
             # PLATFORM_LOGO_PATH (resolved relative to this command, not BASE_DIR).
             logo_path = os.path.abspath(
-                os.path.join(os.path.dirname(__file__), "../../../../../data/img/okti_old.png")
+                str(data_dir(os.path.join(os.path.dirname(__file__), "../../../../../data")) / "img" / "okti_old.png")
             )
         if not os.path.exists(logo_path):
             raise CommandError(f"Logo file not found at {logo_path}")

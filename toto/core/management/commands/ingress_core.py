@@ -3,6 +3,7 @@ import json
 
 from django.core.management.base import CommandError
 from django.core.management import call_command
+from toto.conf import data_dir
 from toto.ingress import IngressCommand
 
 
@@ -16,7 +17,7 @@ class Command(IngressCommand):
         # extra demo themes, which stay full-ingress only.
         if not self.full:
             return
-        themes_dir = os.path.join(os.path.dirname(__file__), '../../../../../data/themes')
+        themes_dir = str(data_dir(os.path.join(os.path.dirname(__file__), '../../../../../data')) / 'themes')
 
         if not os.path.isdir(themes_dir):
             raise CommandError(f"Provided path is not a directory: {themes_dir}")
