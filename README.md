@@ -1,19 +1,25 @@
 # toto
 
 **toto** is a modular Django *app library* — a "community operating system"
-packaged as a single installable Python distribution (`pip install -e toto/`).
+packaged as a single installable Python distribution (`pip install -e .`).
 It bundles ~45 apps spanning identity and single-sign-on, encrypted storage, a
 Neo4j knowledge-graph layer, real-time collaboration, media processing, and
 pluggable AI — and lets a host project assemble exactly the subset it needs
 through per-feature build flags.
 
+This repository is the **standalone library** extracted from the original
+monorepo (history preserved back to the "wrap in another dir" refactoring;
+earlier flat-layout history under the old app names was not carried over).
+
 toto is not run directly. It is mounted by a **host project** that provides the
 settings, URLs, and server entrypoint:
 
-- **[portal](../portal/README.md)** — the full management portal / web app. The reference
-  deployment; see its README for **the stack and what gets into what build**.
-- **[faros](../faros/)** — a minimal Tor-only server (no Neo4j, no Celery, no compute).
-- **[edge](../edge/)** — desktop + Android artifacts (Tauri clients: enigma / aurora).
+- **portal** — the full management portal / web app; the reference deployment.
+  Lives in the separate `portal` repository, which also contains **faros**.
+- **faros** — a minimal Tor-only server profile (no Neo4j, no heavy compute),
+  maintained as a build profile inside the `portal` repository.
+- **edge** — desktop + Android artifacts (Tauri clients: enigma / aurora),
+  maintained separately.
 
 > **Note (2026):** toto was previously a "tokenized community economy" platform —
 > a double-entry ledger, financial instruments, an assembly/tribunal governance
@@ -31,7 +37,8 @@ settings, URLs, and server entrypoint:
   differ only in settings, which apps they enable, and their server entrypoint.
 - **Per-feature composition.** A deployment is defined by `BUILD_*` flags, not by
   code branches. The same tree can ship as *WSGI + Postgres + Redis* or *ASGI +
-  Neo4j + Celery + kernel server + AI*. See the [portal README](../portal/README.md#what-gets-into-what-build).
+  Neo4j + Celery + kernel server + AI*. See the portal repository's README
+  ("what gets into what build") for the exact matrix.
 - **`Person` is the identity anchor.** Nearly every app links to `people.Person`
   (one-to-one with `auth.User`, nullable) rather than to `User` directly.
 - **Encryption at rest is centralized.** `gervazy` owns a three-tier AES-256-GCM
@@ -53,8 +60,8 @@ settings, URLs, and server entrypoint:
 
 Legend — **base** = always installed by the portal host; the rest are gated by a
 `BUILD_*` flag (shown). Infra tags: 🔷 Neo4j · 🔌 WebSockets/Channels · ⚙️ Celery ·
-🧩 native binary. See the [portal build matrix](../portal/README.md#what-gets-into-what-build)
-for the exact flag → app → infra mapping.
+🧩 native binary. See the portal repository's build matrix
+("what gets into what build") for the exact flag → app → infra mapping.
 
 ### Foundation & shared bases *(base)*
 | App | Purpose |
@@ -183,7 +190,7 @@ Automation (BUILD_WORKFLOWS)
 - **Aggregate docs:** `build_total_readme.py` concatenates every app's own
   `README.md` (prepended with `short_readme.md`) into `total_readme.md`.
 - **Build / deploy:** owned by the host project. For portal, everything runs
-  through `portal/scripts/deploy.py` — see the [portal README](../portal/README.md).
+  through `portal/scripts/deploy.py` — see the portal repository's README.
 
 ---
 
