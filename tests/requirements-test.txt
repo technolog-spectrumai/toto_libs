@@ -12,11 +12,9 @@ django-jsonform
 django-json-widget
 django-markdownx
 django-trix-editor
-django-cryptography
 Pillow
 PyJWT
 PyPDF2
 cryptography
-qrcode
 PyYAML
 requests
