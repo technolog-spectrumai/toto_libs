@@ -1,4 +1,5 @@
 [build-system]
+# setuptools >= 62.3 is required for '**' patterns in package-data globs.
 requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
@@ -28,9 +29,14 @@ where = ["."]
 include = ["toto*"]
 
 [tool.setuptools.package-data]
+# 'templates/**/*' (not '*.html'): sso_master ships a .txt email template.
 "*" = [
-    "templates/**/*.html",
+    "templates/**/*",
     "static/**/*",
     "graph/*.yaml",
-    "config/*.yaml",
 ]
+
+[tool.setuptools.exclude-package-data]
+# Vendor assets are downloaded at deploy time (download_vendor.py); keep
+# wheels deterministic even when built from a dev checkout that fetched them.
+"toto.core" = ["static/vendor/**"]
