@@ -1,0 +1,22 @@
+# Clean-environment test dependencies for the toto library.
+# Django pinned to the version the hosts run; the third-party packages are the
+# ones the BASE_APPS import at check time (seeded from the portal host's
+# requirements.txt).
+pytest
+Django==4.2.23
+djangorestframework
+django-cors-headers
+django-colorfield
+django-reversion
+django-jsonform
+django-json-widget
+django-markdownx
+django-trix-editor
+django-cryptography
+Pillow
+PyJWT
+PyPDF2
+cryptography
+qrcode
+PyYAML
+requests
