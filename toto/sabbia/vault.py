@@ -32,7 +32,8 @@ def load_vault_password() -> str:
         return password
     # Dev fallback: run/sabbia_*.json bundle written by a reset script.
     try:
-        run_dir = Path(settings.BASE_DIR).parent / "run"
+        from toto.conf import run_dir as _run_dir
+        run_dir = _run_dir()
         for bundle in run_dir.glob("sabbia_*.json"):
             try:
                 vp = json.loads(bundle.read_text()).get("vault_password", "")

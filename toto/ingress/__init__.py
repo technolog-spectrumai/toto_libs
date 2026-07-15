@@ -4,11 +4,13 @@ import os
 from django.conf import settings
 from django.core.management.base import BaseCommand
 
+from toto.conf import data_dir
+
 
 class IngressCommand(BaseCommand):
     help = "Base command that optionally accepts a JSON string"
 
-    DATA_ROOT = os.path.join(settings.BASE_DIR, "../..", "data")
+    DATA_ROOT = str(data_dir(os.path.join(settings.BASE_DIR, "../..", "data")))
 
     @staticmethod
     def read_text(*parts):

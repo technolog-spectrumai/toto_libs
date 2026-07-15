@@ -64,8 +64,8 @@ def _load_vault_password() -> str:
         return password
     # Dev fallback: read from run/sso_*.json bundle written by portal reset.
     import json
-    from pathlib import Path
-    run_dir = Path(settings.BASE_DIR).parent / "run"
+    from toto.conf import run_dir as _run_dir
+    run_dir = _run_dir()
     for bundle_path in run_dir.glob("sso_*.json"):
         try:
             vp = json.loads(bundle_path.read_text()).get("vault_password", "")
