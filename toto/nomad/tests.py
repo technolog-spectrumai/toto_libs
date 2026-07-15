@@ -7,6 +7,8 @@ The Tor control protocol (``tor_control``) is mocked throughout — these tests
 never touch a live tor.
 """
 import tempfile
+import unittest
+from pathlib import Path
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -21,6 +23,12 @@ from toto.nomad.models import NomadSettings, OnionIdentity
 from toto.nomad.plugins.profile_plugins import OnionIdentityPlugin
 
 User = get_user_model()
+
+# Host-repo dependency: a few tests exercise portal/scripts/deploy.py. In the
+# monorepo it sat at parents[3]; the split sibling layout (toto_libs next to
+# the portal checkout) resolves to the same place. Standalone installs of the
+# toto library skip those tests.
+_DEPLOY_PY = Path(__file__).resolve().parents[3] / "portal" / "scripts" / "deploy.py"
 
 
 class NomadTestBase(TestCase):
@@ -136,14 +144,13 @@ class PluginVisibilityTests(NomadTestBase):
         self.assertTrue(plugin.is_visible_for_profile(request=self._request_for(admin)))
 
 
+@unittest.skipUnless(_DEPLOY_PY.exists(), "portal/scripts/deploy.py not present (standalone toto install)")
 class TorHashPasswordTests(TestCase):
     def test_deploy_hash_password_format(self):
         # The pure-python S2K helper must emit the "16:" + 58 hex char form tor expects.
         import importlib.util
-        from pathlib import Path
 
-        deploy_path = Path(__file__).resolve().parents[3] / "portal" / "scripts" / "deploy.py"
-        spec = importlib.util.spec_from_file_location("toto_deploy", deploy_path)
+        spec = importlib.util.spec_from_file_location("toto_deploy", _DEPLOY_PY)
         deploy = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(deploy)
 
@@ -246,13 +253,12 @@ class SetReachabilityViewTests(NomadTestBase):
         setter.assert_not_called()
 
 
+@unittest.skipUnless(_DEPLOY_PY.exists(), "portal/scripts/deploy.py not present (standalone toto install)")
 class NginxTransportHeaderTests(TestCase):
     def _deploy(self):
         import importlib.util
-        from pathlib import Path
 
-        path = Path(__file__).resolve().parents[3] / "portal" / "scripts" / "deploy.py"
-        spec = importlib.util.spec_from_file_location("toto_deploy_nginx", path)
+        spec = importlib.util.spec_from_file_location("toto_deploy_nginx", _DEPLOY_PY)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         return module
