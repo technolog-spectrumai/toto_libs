@@ -182,6 +182,29 @@ Automation (BUILD_WORKFLOWS)
 
 ---
 
+## Host integration API
+
+Small stable modules hosts use instead of hardcoding toto internals:
+
+- **`toto.features`** — `resolve_features(get)` turns BUILD_*/INSTALL_* flags
+  (from `os.environ.get` or a deploy config dict) into effective feature
+  booleans, tiers, and native-binary needs. Single source for the dependency
+  closure previously duplicated between host settings and deploy tooling.
+- **`toto.registry`** — `BASE_APPS`, `FEATURE_APPS`, `FAROS_APPS`,
+  `TASK_MODULES` (Celery autodiscovery), `has_app()` capability check.
+- **`toto.routing`** — `collect_websocket_urlpatterns()` gathers Channels
+  websocket routes from installed toto apps for the host ASGI router.
+- **`toto.schedules`** — `beat_schedule(...)` builds the Celery beat entries
+  for the enabled features.
+- **`toto.conf`** — host-configurable filesystem locations; hosts should set
+  **`TOTO_DATA_DIR`** (seed/branding data: fonts.json, themes/, img/) and
+  **`TOTO_RUN_DIR`** (vault-password bundles) in settings. Legacy monorepo
+  path resolution remains the fallback.
+- **`toto.__version__`** — the package version (single-sourced into wheel
+  metadata).
+
+---
+
 ## Development
 
 - **Package name:** `toto` (`pyproject.toml`), installed editable into the host.
