@@ -31,7 +31,7 @@ echo "==> install wheel + import check"
 "$PIP" install --quiet "$WHEEL"
 # -I (isolated): keep the invoking cwd off sys.path so no source tree shadows
 # the installed wheel.
-"$PY" -I -c 'import toto; assert toto.__version__ == "0.2.0", toto.__version__; print("    import toto OK, version", toto.__version__)'
+"$PY" -I -c 'import toto; assert toto.__version__ == "0.2.1", toto.__version__; print("    import toto OK, version", toto.__version__)'
 
 echo "==> test dependencies"
 "$PIP" install --quiet -r "$REPO_ROOT/tests/requirements-test.txt"
