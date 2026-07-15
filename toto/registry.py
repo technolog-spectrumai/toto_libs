@@ -1,0 +1,91 @@
+"""App lists and capability checks for host projects.
+
+Hosts compose INSTALLED_APPS from these lists (interleaving the Django and
+third-party apps they need); the lists preserve the exact contents and order
+the portal host has always used.
+"""
+
+# toto apps every host installs (portal settings base block, original order).
+BASE_APPS = [
+    "toto.core",
+    "toto.api",
+    "toto.backup",
+    "toto.gervazy",       # encryption and vault management
+    "toto.vault",
+    "toto.people",
+    "toto.locations",
+    "toto.socialhub",
+    "toto.events",
+    "toto.kanban",
+    "toto.memo",          # presentations and slideshows
+    "toto.notarius",      # .contract signable documents
+    "toto.verbena",
+    "toto.quota",
+    "toto.polls",
+    "toto.vod",
+    "toto.transcription",
+    "toto.sso_core",
+    "toto.sso_master",
+]
+
+# Feature key (see toto.features.Features) -> apps the feature installs.
+# Includes the third-party companions a feature block always shipped with.
+FEATURE_APPS = {
+    "workflows": [
+        "jsoneditor",        # JSON widget — imported by toto.workflows.admin
+        "toto.mandragora",   # Jupyter kernel server — runs workflow lambda nodes
+        "toto.workflows",    # DAG workflow engine
+    ],
+    "chat": ["toto.telegraph"],
+    "weather": ["toto.weather"],
+    "travels": ["toto.travels"],
+    "manta": ["toto.manta"],
+    "graph": [
+        "toto.ravioli",         # sole Neo4j boundary
+        "toto.sql_neo4j_sync",  # SQL→Neo4j projection/sync layer
+        "toto.neo_editor",      # dual-mode .neojson vault editor
+        "toto.bento",           # first-class Neo4j graph editor
+        "toto.ingestor",        # text → Bento-validated graph patch
+    ],
+    "ocr": ["toto.ocr"],
+    "connectors": ["toto.connectors"],
+    "formica": ["toto.formica"],
+    "sabbia": ["toto.sabbia"],
+    "steven": ["toto.steven"],
+    "vicuna": ["toto.vicuna"],
+    "editor": ["toto.editor"],
+    "latex": ["toto.texlab"],
+    "pyeditor": ["toto.antaresia"],
+    "sketch": ["toto.sketch"],
+    "fileservices": ["toto.fileservices"],
+    "gitvault": ["toto.gitvault"],
+}
+
+# faros-only apps — portal must never install these.
+FAROS_APPS = [
+    "toto.aster",   # Tor signalling directory / NodeId↔SSO address book
+    "toto.nomad",   # app-managed Tor onion identity
+]
+
+# Celery task modules for explicit autodiscovery (portal celery_app list,
+# minus the long-dangling "toto.bazaar" whose app left the tree).
+TASK_MODULES = [
+    "toto.workflows",
+    "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
+    "toto.texlab",
+    "toto.mandragora",
+    "toto.ravioli",
+    "toto.transcription",
+    "toto.manta",
+    "toto.notarius",
+    "toto.connectors",
+    "toto.formica",
+    "toto.gitvault",
+]
+
+
+def has_app(name: str) -> bool:
+    """Capability check: is the given app (e.g. "toto.telegraph") installed?"""
+    from django.apps import apps
+
+    return apps.is_installed(name)
