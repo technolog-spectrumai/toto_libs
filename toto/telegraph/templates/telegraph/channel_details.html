@@ -10,7 +10,7 @@
 
 {% block start_script %}
 <script type="module">
-import * as Y from "https://esm.run/yjs";
+import * as Y from "{% static 'vendor/yjs/yjs.mjs' %}";
 
 document.addEventListener("DOMContentLoaded", async () => {
   // Load MLS WASM lazily — if unavailable encryption is silently disabled

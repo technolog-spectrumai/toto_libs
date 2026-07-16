@@ -217,7 +217,8 @@ def _manual_features(request):
         "socialhub": apps.is_installed("toto.socialhub"),
         "events": apps.is_installed("toto.events"),
         "kanban": apps.is_installed("toto.kanban"),
-        "locations": apps.is_installed("toto.locations"),
+        "locations": apps.is_installed("toto.locations")
+        and getattr(settings, "LOCATIONS_UI_ENABLED", True),
         "polls": apps.is_installed("toto.polls"),
         "vod": apps.is_installed("toto.vod"),
         "memo": apps.is_installed("toto.memo"),

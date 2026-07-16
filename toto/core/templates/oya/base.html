@@ -10,8 +10,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{% block title %}{{ config.site_name }}{% endblock %}</title>
 
-  <!-- Google Fonts -->
-  <link href="{{ font.cdn_link }}" rel="stylesheet" />
+  <!-- Google Fonts (external; omitted when USE_EXTERNAL_FONTS is off, e.g. the Tor onion) -->
+  {% if font.cdn_link and use_external_fonts %}<link href="{{ font.cdn_link }}" rel="stylesheet" />{% endif %}
 
   <!-- Tailwind & Alpine -->
   <script src="{% static 'oya/tailwind.js' %}"></script>

@@ -39,6 +39,7 @@ class PageProcessor:
             "user": request.user,
             "is_authenticated": request.user.is_authenticated,
             "header_nav_items": self._resolve_nav_items(request),
+            "use_external_fonts": getattr(settings, "USE_EXTERNAL_FONTS", True),
         }
 
         if self.config is None:

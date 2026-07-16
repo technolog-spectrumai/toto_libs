@@ -91,3 +91,21 @@ class PlatformMiddleware:
             pass
 
         return self.get_response(request)
+
+
+class ContentSecurityPolicyMiddleware:
+    """Emit a Content-Security-Policy header when settings.CONTENT_SECURITY_POLICY
+    is set. Opt-in: hosts that leave it unset (e.g. the clearnet platform) get no
+    header and unchanged behavior. The faros onion sets a strict policy that
+    forbids every external origin (map tiles, fonts, CDN scripts) as a hard
+    anti-deanonymization backstop."""
+
+    def __init__(self, get_response):
+        self.get_response = get_response
+        self.policy = getattr(settings, "CONTENT_SECURITY_POLICY", "")
+
+    def __call__(self, request):
+        response = self.get_response(request)
+        if self.policy and "Content-Security-Policy" not in response:
+            response["Content-Security-Policy"] = self.policy
+        return response
