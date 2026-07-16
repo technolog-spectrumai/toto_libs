@@ -5,6 +5,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
 from urllib.request import urlopen
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -15,7 +16,6 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 from toto.people.models import Person
-from toto.kanban.models import Campaign, Mission, Task
 from toto.events.models import ScheduledEvent
 from django.contrib.gis.geos import LineString, MultiLineString
 from .models import (
@@ -408,56 +408,66 @@ def zone_detail(request, pk):
         pk=pk,
     )
 
-    campaigns = (
-        Campaign.objects
-        .filter(zone=zone)
-        .select_related("project", "owner")
-        .prefetch_related("missions")
-        .order_by("project__name", "name")
-    )
+    # The campaign/mission/task sections (and the Address/Route lookups that
+    # traverse the kanban Mission reverse relations) only exist when the host
+    # installs toto.kanban; without it the zone page shows the zone alone.
+    if apps.is_installed("toto.kanban"):
+        from toto.kanban.models import Campaign, Mission, Task
 
-    missions = (
-        Mission.objects
-        .filter(campaign__zone=zone)
-        .select_related(
-            "campaign",
-            "campaign__project",
-            "owner",
-            "location",
-            "route",
+        campaigns = (
+            Campaign.objects
+            .filter(zone=zone)
+            .select_related("project", "owner")
+            .prefetch_related("missions")
+            .order_by("project__name", "name")
         )
-        .prefetch_related("tasks")
-        .order_by("campaign__project__name", "campaign__name", "title")
-    )
 
-    tasks = (
-        Task.objects
-        .filter(mission__campaign__zone=zone)
-        .select_related(
-            "mission",
-            "mission__campaign",
-            "mission__campaign__project",
-            "column",
-            "sprint",
-            "assignee__person",
+        missions = (
+            Mission.objects
+            .filter(campaign__zone=zone)
+            .select_related(
+                "campaign",
+                "campaign__project",
+                "owner",
+                "location",
+                "route",
+            )
+            .prefetch_related("tasks")
+            .order_by("campaign__project__name", "campaign__name", "title")
         )
-        .order_by("mission__campaign__name", "mission__title", "position", "title")
-    )
 
-    addresses = (
-        Address.objects
-        .filter(missions__campaign__zone=zone)
-        .distinct()
-        .order_by("country_name", "locality_name", "street", "building")
-    )
+        tasks = (
+            Task.objects
+            .filter(mission__campaign__zone=zone)
+            .select_related(
+                "mission",
+                "mission__campaign",
+                "mission__campaign__project",
+                "column",
+                "sprint",
+                "assignee__person",
+            )
+            .order_by("mission__campaign__name", "mission__title", "position", "title")
+        )
 
-    routes = (
-        Route.objects
-        .filter(missions__campaign__zone=zone)
-        .select_related("route_chain", "start_address", "end_address")
-        .distinct()
-        .order_by("route_chain__name", "sequence", "name")
-    )
+        addresses = (
+            Address.objects
+            .filter(missions__campaign__zone=zone)
+            .distinct()
+            .order_by("country_name", "locality_name", "street", "building")
+        )
+
+        routes = (
+            Route.objects
+            .filter(missions__campaign__zone=zone)
+            .select_related("route_chain", "start_address", "end_address")
+            .distinct()
+            .order_by("route_chain__name", "sequence", "name")
+        )
+    else:
+        campaigns = missions = tasks = []
+        addresses = Address.objects.none()
+        routes = Route.objects.none()
 
     context = {
         "zone": zone,
