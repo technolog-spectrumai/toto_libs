@@ -2,6 +2,8 @@ import json
 import math
 from datetime import timedelta
 
+from django.apps import apps
+from django.conf import settings
 from django.core.exceptions import PermissionDenied
 from django.db import connection
 from django.http import JsonResponse
@@ -127,14 +129,33 @@ class OverviewView(MonitAccessMixin, TemplateView):
         context = super().get_context_data(**kwargs)
         now = timezone.now()
 
+        # Relevance: only measure and render what this host actually runs.
+        has_nomad = apps.is_installed("toto.nomad")
+        has_aster = apps.is_installed("toto.aster")
+        has_prometheus = apps.is_installed("django_prometheus")
+        celery_configured = bool(getattr(settings, "CELERY_BROKER_URL", ""))
+        redis_configured = (
+            "django_redis" in settings.CACHES.get("default", {}).get("BACKEND", "")
+            or bool(getattr(settings, "MONIT_REDIS_URL", "")))
+        web_scrape_enabled = bool(getattr(settings, "MONIT_WEB_METRICS_URL", ""))
+        context.update({
+            "has_nomad": has_nomad,
+            "has_aster": has_aster,
+            "has_prometheus": has_prometheus,
+            "celery_configured": celery_configured,
+            "redis_configured": redis_configured,
+            "web_scrape_enabled": web_scrape_enabled,
+        })
+
         # live panel — measured in THIS web process/container, this page view
         context["live_system"] = collectors.collect_system(cpu_window=0.2)
         context["live_db"] = collectors.collect_db()
-        context["live_redis"] = collectors.collect_redis()
-        context["live_celery"] = collectors.collect_celery()
-        context["live_tor"] = collectors.collect_tor()
-        context["live_aster"] = collectors.collect_aster()
-        context["live_requests"] = collectors.collect_request_metrics()
+        context["live_redis"] = collectors.collect_redis() if redis_configured else None
+        context["live_celery"] = collectors.collect_celery() if celery_configured else None
+        context["live_tor"] = collectors.collect_tor() if has_nomad else None
+        context["live_aster"] = collectors.collect_aster() if has_aster else None
+        context["live_requests"] = (
+            collectors.collect_request_metrics() if has_prometheus else None)
 
         window_start = now - timedelta(hours=WINDOW_HOURS)
         snapshots = list(Snapshot.objects.filter(created__gte=window_start)
@@ -157,28 +178,33 @@ class OverviewView(MonitAccessMixin, TemplateView):
             context["load_chart_json"] = _chart(
                 labels, [_dataset("Load 1m (host)", _series(snapshots, "sys_load_1m"), BLUE)])
             mb = 1.0 / (1024 * 1024)
-            context["mem_chart_json"] = _chart(
-                labels,
-                [_dataset("Sampler used (MB)", _series(snapshots, "sys_mem_used_bytes", mb, 1), BLUE),
-                 _dataset("Web worker RSS (MB)", _series(snapshots, "web_rss_bytes", mb, 1), MAGENTA)],
-                y_title="MB")
+            mem_datasets = [_dataset("Sampler used (MB)",
+                                     _series(snapshots, "sys_mem_used_bytes", mb, 1), BLUE)]
+            if web_scrape_enabled:
+                mem_datasets.append(_dataset(
+                    "Web worker RSS (MB)", _series(snapshots, "web_rss_bytes", mb, 1), MAGENTA))
+            context["mem_chart_json"] = _chart(labels, mem_datasets, y_title="MB")
             gb = 1.0 / (1024 ** 3)
             context["disk_chart_json"] = _chart(
                 labels,
                 [_dataset("Disk used (GB)", _series(snapshots, "sys_disk_used_bytes", gb, 2), BLUE),
                  _dataset("Capacity (GB)", _series(snapshots, "sys_disk_total_bytes", gb, 2), GRAY, dashed=True)],
                 y_title="GB")
-            context["latency_chart_json"] = _chart(
-                labels,
-                [_dataset("Database (ms)", _series(snapshots, "db_latency_ms"), GREEN),
-                 _dataset("Redis (ms)", _series(snapshots, "redis_latency_ms"), YELLOW, dashed=True),
-                 _dataset("Web /metrics (ms)", _series(snapshots, "web_latency_ms"), MAGENTA)],
-                y_title="ms")
-            context["rate_chart_json"] = _chart(
-                labels,
-                [_dataset("Requests/min", _per_worker_rates(snapshots, "web_requests_total"), MAGENTA),
-                 _dataset("5xx/min", _per_worker_rates(snapshots, "web_responses_5xx"), VIOLET, dashed=True)],
-                y_title="per min")
+            latency_datasets = [_dataset("Database (ms)",
+                                          _series(snapshots, "db_latency_ms"), GREEN)]
+            if redis_configured:
+                latency_datasets.append(_dataset(
+                    "Redis (ms)", _series(snapshots, "redis_latency_ms"), YELLOW, dashed=True))
+            if web_scrape_enabled:
+                latency_datasets.append(_dataset(
+                    "Web /metrics (ms)", _series(snapshots, "web_latency_ms"), MAGENTA))
+            context["latency_chart_json"] = _chart(labels, latency_datasets, y_title="ms")
+            if web_scrape_enabled:
+                context["rate_chart_json"] = _chart(
+                    labels,
+                    [_dataset("Requests/min", _per_worker_rates(snapshots, "web_requests_total"), MAGENTA),
+                     _dataset("5xx/min", _per_worker_rates(snapshots, "web_responses_5xx"), VIOLET, dashed=True)],
+                    y_title="per min")
 
         return PageProcessor().decorate(context, self.request)
 

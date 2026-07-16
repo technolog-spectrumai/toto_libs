@@ -30,6 +30,7 @@ class Features:
     sabbia: bool
     travels: bool
     gitvault: bool
+    monit: bool
     # Derived.
     editor: bool
     vicuna: bool
@@ -86,6 +87,10 @@ def resolve_features(get) -> Features:
     sabbia = steven or flag(get, "BUILD_SABBIA")              # headless chat-agent backend (WebSocket)
     travels = flag(get, "BUILD_TRAVELS")                      # toto.travels — travel & visit log
     gitvault = flag(get, "BUILD_GITVAULT")                    # toto.gitvault — git repos over vault dirs
+    # Lightweight read-only monitoring dashboard (grafana alternative). No
+    # closure: the live panel works everywhere; snapshot HISTORY needs the
+    # celery worker+beat stack, which the profiles enabling this already run.
+    monit = flag(get, "BUILD_MONIT")                          # toto.monit — monitoring dashboard
 
     # Dependency closure — a feature pulls in what it cannot run without.
     # weather, fileservices, manta, latex (texlab/texplay), pyeditor (antaresia)
@@ -135,6 +140,7 @@ def resolve_features(get) -> Features:
         connectors=connectors,
         formica=formica,
         manta=manta,
+        monit=monit,
         steven=steven,
         sabbia=sabbia,
         travels=travels,

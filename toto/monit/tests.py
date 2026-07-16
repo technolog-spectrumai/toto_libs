@@ -3,7 +3,7 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
@@ -60,7 +60,17 @@ class OverviewViewTests(TestCase):
         response = self.client.get(reverse("monit:overview"))
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "monit_cpu")
-        self.assertContains(response, "monit_rate")
+
+    @override_settings(MONIT_WEB_METRICS_URL="http://web:8000/metrics")
+    def test_rate_chart_shown_only_with_web_scrape(self):
+        Snapshot.objects.create(sys_cpu_percent=1.0)
+        self.client.force_login(self.superuser)
+        self.assertContains(self.client.get(reverse("monit:overview")), 'id="monit_rate"')
+
+    def test_rate_chart_hidden_without_web_scrape(self):
+        Snapshot.objects.create(sys_cpu_percent=1.0)
+        self.client.force_login(self.superuser)
+        self.assertNotContains(self.client.get(reverse("monit:overview")), 'id="monit_rate"')
 
 
 class TaskTests(TestCase):
