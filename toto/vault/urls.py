@@ -4,6 +4,7 @@ from .api_views import (
     FileListApiView, FileUploadApiView, FileDetailApiView, FileDownloadApiView,
     FileEncryptApiView, FileDecryptApiView, VaultMetricsApiView,
     BucketTreeApiView, FileContentApiView, FileCreateApiView,
+    DirectoryCreateApiView, DirectoryDeleteApiView,
 )
 from .views import (
     PublicFileListView, VaultFileDownloadView,
@@ -25,6 +26,8 @@ urlpatterns = [
     path("api/files/create/", FileCreateApiView.as_view(), name="api_file_create"),
     path("api/files/upload/", FileUploadApiView.as_view(), name="api_file_upload"),
     path("api/buckets/", BucketTreeApiView.as_view(), name="api_bucket_tree"),
+    path("api/directories/", DirectoryCreateApiView.as_view(), name="api_directory_create"),
+    path("api/directories/<int:pk>/", DirectoryDeleteApiView.as_view(), name="api_directory_delete"),
     path("api/metrics/", VaultMetricsApiView.as_view(), name="api_metrics"),
     path("api/files/<slug:key>/", FileDetailApiView.as_view(), name="api_file_detail"),
     path("api/files/<slug:key>/content/", FileContentApiView.as_view(), name="api_file_content"),

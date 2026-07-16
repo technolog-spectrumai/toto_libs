@@ -1,9 +1,13 @@
 from django.urls import path
 from . import views
+from .api_views import RegisterApiView
 
 app_name = "sso"  # keep namespace "sso" for portal backwards compat
 
 urlpatterns = [
+    # JSON auth API for programmatic clients (Enigma Cloud).
+    path("sso/api/register/", RegisterApiView.as_view(), name="api_register"),
+
     path(".well-known/openid-configuration", views.openid_configuration, name="openid_configuration"),
     # Compose-internal variant (public authorize endpoint, internal token/userinfo)
     # — fetched by in-network relying parties like the gitea container.

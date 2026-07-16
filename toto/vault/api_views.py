@@ -52,6 +52,28 @@ def _get_or_create_default_bucket(user):
     return bucket
 
 
+def _resolve_owned_bucket(user, slug):
+    """The user's bucket with this slug, or None. Bucket.slug is globally unique,
+    so we look it up by slug and verify ownership — a foreign bucket returns None
+    (→ 404) rather than trying (and failing) to create a duplicate slug."""
+    return Bucket.objects.filter(slug=slug, owner=user).first()
+
+
+def _resolve_owned_directory(user, directory_id, bucket):
+    """The user's directory (id, in `bucket`), or None. Tolerates non-numeric and
+    out-of-range ids (int() overflow would otherwise 500 on SQLite)."""
+    try:
+        pk = int(directory_id)
+    except (ValueError, TypeError):
+        return None
+    if pk < 0 or pk > 9223372036854775807:  # signed 64-bit ceiling
+        return None
+    try:
+        return VaultDirectory.objects.get(pk=pk, bucket=bucket, owner=user)
+    except (VaultDirectory.DoesNotExist, ValueError, TypeError, OverflowError):
+        return None
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class FileListApiView(CorsApiView):
     def get(self, request):
@@ -81,22 +103,30 @@ class FileUploadApiView(CorsApiView):
 
         bucket_slug = request.POST.get("bucket_slug", "").strip()
         if bucket_slug:
-            bucket, _ = Bucket.objects.get_or_create(
-                owner=request.user,
-                slug=bucket_slug,
-                defaults={"name": bucket_slug, "storage_backend": "local"},
-            )
+            bucket = _resolve_owned_bucket(request.user, bucket_slug)
+            if bucket is None:
+                return JsonResponse({"error": "Bucket not found."}, status=404)
         else:
             bucket = _get_or_create_default_bucket(request.user)
+
+        directory = None
+        directory_id = request.POST.get("directory_id", "").strip()
+        if directory_id:
+            directory = _resolve_owned_directory(request.user, directory_id, bucket)
+            if directory is None:
+                return JsonResponse({"error": "Directory not found."}, status=404)
 
         content = file.read()
         content_hash = hashlib.sha256(content).hexdigest()
         file.seek(0)
 
+        # Keys address files across the whole owner (the detail/download/delete/move
+        # endpoints look up by key alone), so keep them unique per owner — not just
+        # per bucket — or a cross-bucket collision makes those lookups ambiguous.
         base_key = slugify(title) or slugify(os.path.splitext(file.name)[0]) or "file"
         key = base_key
         counter = 1
-        while VaultFile.objects.filter(bucket=bucket, key=key).exists():
+        while VaultFile.objects.filter(owner=request.user, key=key).exists():
             key = f"{base_key}-{counter}"
             counter += 1
 
@@ -108,6 +138,7 @@ class FileUploadApiView(CorsApiView):
             content_hash=content_hash,
             file_size_bytes=file.size,
             bucket=bucket,
+            directory=directory,
         )
         vf.file.save(file.name, file, save=True)
 
@@ -117,10 +148,11 @@ class FileUploadApiView(CorsApiView):
 @method_decorator(csrf_exempt, name="dispatch")
 class FileDetailApiView(CorsApiView):
     def _get_file(self, user, key):
-        try:
-            return VaultFile.objects.select_related("bucket").get(owner=user, key=key)
-        except VaultFile.DoesNotExist:
-            return None
+        # .first() (not .get()) so a legacy duplicate key never raises
+        # MultipleObjectsReturned → 500; new uploads are deduped per owner.
+        return (
+            VaultFile.objects.select_related("bucket").filter(owner=user, key=key).first()
+        )
 
     def get(self, request, key):
         if not request.user or not request.user.is_authenticated:
@@ -140,25 +172,38 @@ class FileDetailApiView(CorsApiView):
             data = json.loads(request.body)
         except Exception:
             return JsonResponse({"error": "Invalid JSON."}, status=400)
+        update_fields = []
         if "title" in data:
             title = str(data["title"]).strip()
             if not title:
                 return JsonResponse({"error": "Title cannot be empty."}, status=400)
             vf.title = title
-            vf.save(update_fields=["title"])
+            update_fields.append("title")
+        # "directory_id" present with null → move to bucket root; with an int →
+        # move into that directory. Key absent → leave the directory unchanged.
+        if "directory_id" in data:
+            directory_id = data["directory_id"]
+            if directory_id is None:
+                vf.directory = None
+            else:
+                directory = _resolve_owned_directory(request.user, directory_id, vf.bucket)
+                if directory is None:
+                    return JsonResponse({"error": "Directory not found."}, status=404)
+                vf.directory = directory
+            update_fields.append("directory")
+        if update_fields:
+            vf.save(update_fields=update_fields)
         return JsonResponse(_file_to_dict(request, vf))
 
     def delete(self, request, key):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
 
-        try:
-            vf = VaultFile.objects.get(key=key)
-        except VaultFile.DoesNotExist:
+        # Scope to the owner up front: an unscoped get(key=key) would 500 on a key
+        # another user also owns (MultipleObjectsReturned) and leak existence.
+        vf = self._get_file(request.user, key)
+        if not vf:
             return JsonResponse({"error": "File not found."}, status=404)
-
-        if vf.owner != request.user:
-            return JsonResponse({"error": "Forbidden."}, status=403)
 
         vf.delete()
         return JsonResponse({}, status=204)
@@ -345,6 +390,84 @@ class BucketTreeApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
+class DirectoryCreateApiView(CorsApiView):
+    """`POST /vault/api/directories/` — create a folder (Enigma Cloud mkdir).
+
+    JSON: ``{bucket_slug?, name, parent_id?}`` → 201
+    ``{id, name, parent_id, path, bucket_slug}``. ``bucket_slug`` omitted →
+    the user's default personal bucket (same helper as upload).
+    """
+
+    def post(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        name = str(data.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "Name is required."}, status=400)
+
+        bucket_slug = str(data.get("bucket_slug") or "").strip()
+        if bucket_slug:
+            try:
+                bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
+            except Bucket.DoesNotExist:
+                return JsonResponse({"error": "Bucket not found."}, status=404)
+        else:
+            bucket = _get_or_create_default_bucket(request.user)
+
+        parent = None
+        parent_id = data.get("parent_id")
+        if parent_id is not None:
+            parent = _resolve_owned_directory(request.user, parent_id, bucket)
+            if parent is None:
+                return JsonResponse({"error": "Parent directory not found."}, status=404)
+
+        if VaultDirectory.objects.filter(bucket=bucket, parent=parent, name=name).exists():
+            return JsonResponse({"error": "Directory already exists."}, status=409)
+
+        directory = VaultDirectory.objects.create(
+            name=name, bucket=bucket, owner=request.user, parent=parent
+        )
+        return JsonResponse(
+            {
+                "id": directory.id,
+                "name": directory.name,
+                "parent_id": directory.parent_id,
+                "path": directory.full_path(),
+                "bucket_slug": bucket.slug,
+            },
+            status=201,
+        )
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class DirectoryDeleteApiView(CorsApiView):
+    """`DELETE /vault/api/directories/<pk>/` — remove an EMPTY folder (rmdir)."""
+
+    def delete(self, request, pk):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        # <int:pk> matches unbounded digits; a huge value would overflow the SQLite
+        # column and 500. Range-check before hitting the DB.
+        if pk < 0 or pk > 9223372036854775807:
+            return JsonResponse({"error": "Directory not found."}, status=404)
+        try:
+            directory = VaultDirectory.objects.get(pk=pk, owner=request.user)
+        except (VaultDirectory.DoesNotExist, OverflowError):
+            return JsonResponse({"error": "Directory not found."}, status=404)
+
+        if directory.files.exists() or directory.subdirectories.exists():
+            return JsonResponse({"error": "Directory is not empty."}, status=409)
+
+        directory.delete()
+        return JsonResponse({}, status=204)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
 class FileContentApiView(CorsApiView):
     """Read / write the text content of an editable vault file (Ace editor).
 
@@ -356,10 +479,11 @@ class FileContentApiView(CorsApiView):
     """
 
     def _get_file(self, user, key):
-        try:
-            return VaultFile.objects.select_related("bucket").get(owner=user, key=key)
-        except VaultFile.DoesNotExist:
-            return None
+        # .first() (not .get()) so a legacy duplicate key never raises
+        # MultipleObjectsReturned → 500; new uploads are deduped per owner.
+        return (
+            VaultFile.objects.select_related("bucket").filter(owner=user, key=key).first()
+        )
 
     def get(self, request, key):
         if not request.user or not request.user.is_authenticated:

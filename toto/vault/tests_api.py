@@ -99,9 +99,13 @@ class FileDeleteApiTests(TestCase):
         self.assertEqual(res.status_code, 401)
 
     def test_delete_other_users_file(self):
+        # Owner-scoped lookup: another user's file is indistinguishable from a
+        # missing one (404, not a 403 that would confirm the key exists) — and it
+        # avoids an unscoped get() that could 500 on a shared key.
         self.client.force_login(self.user)
         res = self.client.delete(f"/vault/api/files/{self.other_file.key}/")
-        self.assertEqual(res.status_code, 403)
+        self.assertEqual(res.status_code, 404)
+        self.assertTrue(VaultFile.objects.filter(pk=self.other_file.pk).exists())
 
     def test_delete_own_file(self):
         self.client.force_login(self.user)
@@ -241,3 +245,349 @@ class FileContentApiTests(TestCase):
         self.client.logout()
         res = self.client.get(f"/vault/api/files/{key}/content/")
         self.assertEqual(res.status_code, 401)
+
+
+class DirectoryCreateApiTests(TestCase):
+    """POST /vault/api/directories/ — the Enigma Cloud mkdir endpoint."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="mkdiruser", password="pass")
+        self.other = User.objects.create_user(username="mkdirother", password="pass")
+        self.bucket = Bucket.objects.create(
+            owner=self.user, name="Mk", slug="mk", storage_backend="local"
+        )
+
+    def _mkdir(self, payload):
+        return self.client.post(
+            "/vault/api/directories/", json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_mkdir_unauthenticated(self):
+        res = self._mkdir({"bucket_slug": "mk", "name": "docs"})
+        self.assertEqual(res.status_code, 401)
+
+    def test_mkdir_success(self):
+        self.client.force_login(self.user)
+        res = self._mkdir({"bucket_slug": "mk", "name": "docs"})
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertEqual(data["name"], "docs")
+        self.assertIsNone(data["parent_id"])
+        self.assertEqual(data["path"], "docs")
+        self.assertEqual(data["bucket_slug"], "mk")
+        d = VaultDirectory.objects.get(pk=data["id"])
+        self.assertEqual(d.owner, self.user)
+        self.assertEqual(d.bucket, self.bucket)
+
+    def test_mkdir_nested_under_parent(self):
+        self.client.force_login(self.user)
+        parent = VaultDirectory.objects.create(
+            name="docs", bucket=self.bucket, owner=self.user
+        )
+        res = self._mkdir({"bucket_slug": "mk", "name": "sub", "parent_id": parent.id})
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertEqual(data["parent_id"], parent.id)
+        self.assertEqual(data["path"], "docs/sub")
+
+    def test_mkdir_defaults_to_personal_bucket(self):
+        self.client.force_login(self.user)
+        res = self._mkdir({"name": "inbox"})
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["bucket_slug"], f"personal-{self.user.username}")
+
+    def test_mkdir_duplicate_name(self):
+        self.client.force_login(self.user)
+        VaultDirectory.objects.create(name="docs", bucket=self.bucket, owner=self.user)
+        res = self._mkdir({"bucket_slug": "mk", "name": "docs"})
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json()["error"], "Directory already exists.")
+
+    def test_mkdir_same_name_under_different_parent_ok(self):
+        self.client.force_login(self.user)
+        parent = VaultDirectory.objects.create(
+            name="docs", bucket=self.bucket, owner=self.user
+        )
+        res = self._mkdir({"bucket_slug": "mk", "name": "docs", "parent_id": parent.id})
+        self.assertEqual(res.status_code, 201)
+
+    def test_mkdir_bad_parent(self):
+        self.client.force_login(self.user)
+        other_bucket = Bucket.objects.create(
+            owner=self.user, name="Mk2", slug="mk2", storage_backend="local"
+        )
+        foreign_parent = VaultDirectory.objects.create(
+            name="elsewhere", bucket=other_bucket, owner=self.user
+        )
+        res = self._mkdir(
+            {"bucket_slug": "mk", "name": "sub", "parent_id": foreign_parent.id}
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.json()["error"], "Parent directory not found.")
+
+    def test_mkdir_nonexistent_parent(self):
+        self.client.force_login(self.user)
+        res = self._mkdir({"bucket_slug": "mk", "name": "sub", "parent_id": 999999})
+        self.assertEqual(res.status_code, 404)
+
+    def test_mkdir_foreign_bucket(self):
+        Bucket.objects.create(
+            owner=self.other, name="Foreign", slug="foreign", storage_backend="local"
+        )
+        self.client.force_login(self.user)
+        res = self._mkdir({"bucket_slug": "foreign", "name": "docs"})
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.json()["error"], "Bucket not found.")
+
+    def test_mkdir_missing_name(self):
+        self.client.force_login(self.user)
+        for payload in ({}, {"name": ""}, {"name": "   "}, {"bucket_slug": "mk"}):
+            res = self._mkdir(payload)
+            self.assertEqual(res.status_code, 400)
+
+    def test_mkdir_invalid_json(self):
+        self.client.force_login(self.user)
+        res = self.client.post(
+            "/vault/api/directories/", "nope", content_type="application/json"
+        )
+        self.assertEqual(res.status_code, 400)
+
+
+class DirectoryDeleteApiTests(TestCase):
+    """DELETE /vault/api/directories/<pk>/ — the Enigma Cloud rmdir endpoint."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="rmdiruser", password="pass")
+        self.other = User.objects.create_user(username="rmdirother", password="pass")
+        self.bucket = Bucket.objects.create(
+            owner=self.user, name="Rm", slug="rm", storage_backend="local"
+        )
+        self.directory = VaultDirectory.objects.create(
+            name="doomed", bucket=self.bucket, owner=self.user
+        )
+
+    def test_rmdir_unauthenticated(self):
+        res = self.client.delete(f"/vault/api/directories/{self.directory.pk}/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_rmdir_empty(self):
+        self.client.force_login(self.user)
+        res = self.client.delete(f"/vault/api/directories/{self.directory.pk}/")
+        self.assertEqual(res.status_code, 204)
+        self.assertFalse(VaultDirectory.objects.filter(pk=self.directory.pk).exists())
+
+    def test_rmdir_with_file_inside(self):
+        VaultFile.objects.create(
+            owner=self.user, title="Keep", key="keep", file="vault/files/keep.txt",
+            file_type="text", bucket=self.bucket, directory=self.directory,
+        )
+        self.client.force_login(self.user)
+        res = self.client.delete(f"/vault/api/directories/{self.directory.pk}/")
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json()["error"], "Directory is not empty.")
+        self.assertTrue(VaultDirectory.objects.filter(pk=self.directory.pk).exists())
+
+    def test_rmdir_with_subdirectory(self):
+        VaultDirectory.objects.create(
+            name="child", bucket=self.bucket, owner=self.user, parent=self.directory
+        )
+        self.client.force_login(self.user)
+        res = self.client.delete(f"/vault/api/directories/{self.directory.pk}/")
+        self.assertEqual(res.status_code, 409)
+
+    def test_rmdir_foreign_directory(self):
+        self.client.force_login(self.other)
+        res = self.client.delete(f"/vault/api/directories/{self.directory.pk}/")
+        self.assertEqual(res.status_code, 404)
+        self.assertTrue(VaultDirectory.objects.filter(pk=self.directory.pk).exists())
+
+    def test_rmdir_nonexistent(self):
+        self.client.force_login(self.user)
+        res = self.client.delete("/vault/api/directories/999999/")
+        self.assertEqual(res.status_code, 404)
+
+    def test_rmdir_huge_pk_is_404_not_500(self):
+        # <int:pk> matches unbounded digits; an out-of-range pk must 404, not 500.
+        self.client.force_login(self.user)
+        res = self.client.delete("/vault/api/directories/" + "9" * 30 + "/")
+        self.assertEqual(res.status_code, 404)
+
+
+class FileUploadDirectoryApiTests(TestCase):
+    """Upload with the optional directory_id form field."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="dirup", password="pass")
+        self.bucket = Bucket.objects.create(
+            owner=self.user, name="Up", slug="up", storage_backend="local"
+        )
+        self.directory = VaultDirectory.objects.create(
+            name="inbox", bucket=self.bucket, owner=self.user
+        )
+        self.client.force_login(self.user)
+
+    def test_upload_into_directory(self):
+        f = SimpleUploadedFile("note.txt", SMALL_TXT, content_type="text/plain")
+        res = self.client.post(
+            "/vault/api/files/upload/",
+            {"file": f, "title": "In dir", "bucket_slug": "up",
+             "directory_id": self.directory.id},
+        )
+        self.assertEqual(res.status_code, 201)
+        data = res.json()
+        self.assertEqual(data["directory_id"], self.directory.id)
+        vf = VaultFile.objects.get(owner=self.user, key=data["key"])
+        self.assertEqual(vf.directory, self.directory)
+
+    def test_upload_bad_directory_id(self):
+        # The directory exists, but not in the resolved (default personal) bucket.
+        f = SimpleUploadedFile("note.txt", SMALL_TXT, content_type="text/plain")
+        res = self.client.post(
+            "/vault/api/files/upload/",
+            {"file": f, "title": "Lost", "directory_id": self.directory.id},
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.json()["error"], "Directory not found.")
+        self.assertFalse(VaultFile.objects.filter(owner=self.user, title="Lost").exists())
+
+    def test_upload_nonexistent_directory_id(self):
+        f = SimpleUploadedFile("note.txt", SMALL_TXT, content_type="text/plain")
+        res = self.client.post(
+            "/vault/api/files/upload/",
+            {"file": f, "bucket_slug": "up", "directory_id": 999999},
+        )
+        self.assertEqual(res.status_code, 404)
+
+    def test_upload_without_directory_id_lands_in_root(self):
+        f = SimpleUploadedFile("note.txt", SMALL_TXT, content_type="text/plain")
+        res = self.client.post(
+            "/vault/api/files/upload/", {"file": f, "bucket_slug": "up"}
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertIsNone(res.json()["directory_id"])
+
+    def test_upload_malformed_directory_id_is_404_not_500(self):
+        # Non-numeric and out-of-range (would overflow the DB int) must 404 cleanly.
+        for bad in ("abc", "9" * 30):
+            f = SimpleUploadedFile("n.txt", SMALL_TXT, content_type="text/plain")
+            res = self.client.post(
+                "/vault/api/files/upload/",
+                {"file": f, "bucket_slug": "up", "directory_id": bad},
+            )
+            self.assertEqual(res.status_code, 404, bad)
+
+    def test_upload_into_foreign_bucket_slug_is_404_not_500(self):
+        # A bucket slug owned by someone else must 404, not IntegrityError (slug is
+        # globally unique).
+        other = User.objects.create_user(username="stranger", password="pass")
+        Bucket.objects.create(
+            owner=other, name="Theirs", slug="theirs-bkt", storage_backend="local"
+        )
+        f = SimpleUploadedFile("n.txt", SMALL_TXT, content_type="text/plain")
+        res = self.client.post(
+            "/vault/api/files/upload/", {"file": f, "bucket_slug": "theirs-bkt"}
+        )
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.json()["error"], "Bucket not found.")
+
+    def test_same_title_across_buckets_gets_unique_keys(self):
+        # Keys must be unique per owner so the key-addressed detail/delete/download
+        # endpoints never hit two rows (MultipleObjectsReturned → 500).
+        Bucket.objects.create(
+            owner=self.user, name="B2", slug="up2", storage_backend="local"
+        )
+        keys = []
+        for slug in ("up", "up2"):
+            f = SimpleUploadedFile("report.pdf", SMALL_TXT, content_type="text/plain")
+            res = self.client.post(
+                "/vault/api/files/upload/",
+                {"file": f, "title": "Report", "bucket_slug": slug},
+            )
+            self.assertEqual(res.status_code, 201)
+            keys.append(res.json()["key"])
+        self.assertNotEqual(keys[0], keys[1])
+        # Both are addressable without a 500.
+        for k in keys:
+            self.assertEqual(self.client.get(f"/vault/api/files/{k}/").status_code, 200)
+
+
+class FileMoveApiTests(TestCase):
+    """PATCH /vault/api/files/<key>/ with directory_id — move between folders."""
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="mover", password="pass")
+        self.bucket = Bucket.objects.create(
+            owner=self.user, name="Mv", slug="mv", storage_backend="local"
+        )
+        self.directory = VaultDirectory.objects.create(
+            name="dest", bucket=self.bucket, owner=self.user
+        )
+        self.vf = VaultFile.objects.create(
+            owner=self.user, title="Wanderer", key="wanderer",
+            file="vault/files/wanderer.txt", file_type="text", bucket=self.bucket,
+        )
+        self.client.force_login(self.user)
+
+    def _patch(self, payload):
+        return self.client.patch(
+            f"/vault/api/files/{self.vf.key}/", json.dumps(payload),
+            content_type="application/json",
+        )
+
+    def test_move_into_directory(self):
+        res = self._patch({"directory_id": self.directory.id})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.json()["directory_id"], self.directory.id)
+        self.vf.refresh_from_db()
+        self.assertEqual(self.vf.directory, self.directory)
+
+    def test_move_to_root_via_null(self):
+        self.vf.directory = self.directory
+        self.vf.save(update_fields=["directory"])
+        res = self._patch({"directory_id": None})
+        self.assertEqual(res.status_code, 200)
+        self.assertIsNone(res.json()["directory_id"])
+        self.vf.refresh_from_db()
+        self.assertIsNone(self.vf.directory)
+
+    def test_patch_without_directory_key_leaves_directory_alone(self):
+        self.vf.directory = self.directory
+        self.vf.save(update_fields=["directory"])
+        res = self._patch({"title": "Renamed"})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["title"], "Renamed")
+        self.assertEqual(data["directory_id"], self.directory.id)
+
+    def test_move_and_rename_combined(self):
+        res = self._patch({"title": "Both", "directory_id": self.directory.id})
+        self.assertEqual(res.status_code, 200)
+        data = res.json()
+        self.assertEqual(data["title"], "Both")
+        self.assertEqual(data["directory_id"], self.directory.id)
+
+    def test_move_to_directory_in_other_bucket(self):
+        other_bucket = Bucket.objects.create(
+            owner=self.user, name="Mv2", slug="mv2", storage_backend="local"
+        )
+        foreign_dir = VaultDirectory.objects.create(
+            name="afar", bucket=other_bucket, owner=self.user
+        )
+        res = self._patch({"directory_id": foreign_dir.id})
+        self.assertEqual(res.status_code, 404)
+        self.assertEqual(res.json()["error"], "Directory not found.")
+        self.vf.refresh_from_db()
+        self.assertIsNone(self.vf.directory)
+
+    def test_move_to_nonexistent_directory(self):
+        res = self._patch({"directory_id": 999999})
+        self.assertEqual(res.status_code, 404)
+
+    def test_move_malformed_directory_id_is_404_not_500(self):
+        # Non-numeric and out-of-range values must 404, never 500.
+        for bad in ("abc", 10 ** 30):
+            res = self._patch({"directory_id": bad})
+            self.assertEqual(res.status_code, 404, bad)
+        self.vf.refresh_from_db()
+        self.assertIsNone(self.vf.directory)
