@@ -38,11 +38,11 @@ def wheel_zip():
 
 def test_version_is_single_sourced(wheel_zip, wheel_names):
     init = wheel_zip.read("toto/__init__.py").decode()
-    assert '__version__ = "0.2.2"' in init
+    assert '__version__ = "0.2.3"' in init
     metadata_name = next(n for n in wheel_names if n.endswith(".dist-info/METADATA"))
     metadata = wheel_zip.read(metadata_name).decode()
     assert "Name: toto" in metadata
-    assert "Version: 0.2.2" in metadata
+    assert "Version: 0.2.3" in metadata
 
 
 def test_migrations_are_packaged(wheel_names):
