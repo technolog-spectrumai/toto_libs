@@ -14,6 +14,8 @@ def beat_schedule(
     connectors_minutes=1,
     formica=False,
     formica_minutes=5,
+    monit=False,
+    monit_minutes=2,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -44,6 +46,22 @@ def beat_schedule(
         schedule["formica-beat-scan"] = {
             "task": "toto.formica.tasks.formica_beat_scan",
             "schedule": crontab(minute=f"*/{formica_minutes}"),
+        }
+
+    if monit:
+        from celery.schedules import crontab
+
+        # Snapshot sampler for the toto.monit dashboard (faros-only app);
+        # history is pruned hourly to MONIT_RETENTION_HOURS.
+        schedule["monit-sample"] = {
+            "task": "toto.monit.tasks.monit_sample",
+            "schedule": crontab(minute=f"*/{monit_minutes}")
+            if monit_minutes > 1
+            else crontab(),
+        }
+        schedule["monit-prune"] = {
+            "task": "toto.monit.tasks.monit_prune",
+            "schedule": crontab(minute="17"),
         }
 
     return schedule

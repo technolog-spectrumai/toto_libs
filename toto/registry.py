@@ -65,6 +65,7 @@ FEATURE_APPS = {
 FAROS_APPS = [
     "toto.aster",   # Tor signalling directory / NodeId↔SSO address book
     "toto.nomad",   # app-managed Tor onion identity
+    "toto.monit",   # read-only monitoring dashboard (system / services / requests)
 ]
 
 # Celery task modules for explicit autodiscovery (portal celery_app list,

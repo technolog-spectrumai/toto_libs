@@ -38,11 +38,11 @@ def wheel_zip():
 
 def test_version_is_single_sourced(wheel_zip, wheel_names):
     init = wheel_zip.read("toto/__init__.py").decode()
-    assert '__version__ = "0.2.3"' in init
+    assert '__version__ = "0.3.0"' in init
     metadata_name = next(n for n in wheel_names if n.endswith(".dist-info/METADATA"))
     metadata = wheel_zip.read(metadata_name).decode()
     assert "Name: toto" in metadata
-    assert "Version: 0.2.3" in metadata
+    assert "Version: 0.3.0" in metadata
 
 
 def test_migrations_are_packaged(wheel_names):
@@ -51,7 +51,7 @@ def test_migrations_are_packaged(wheel_names):
         for name in wheel_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    assert len(apps_with_migrations) == 42, sorted(apps_with_migrations)
+    assert len(apps_with_migrations) == 43, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert "toto/core/migrations/0001_initial.py" in wheel_names
