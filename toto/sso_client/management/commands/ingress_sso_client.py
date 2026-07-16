@@ -5,7 +5,7 @@ Reads connection details from environment variables:
   SSO_PORTAL_URL      — URL of the portal acting as OIDC provider
   SSO_CLIENT_ID       — client_id registered on the portal
   SSO_CLIENT_SECRET   — client secret (stored in the record for dev; use env var in prod)
-  SSO_APP_NAME        — optional display name (default: "Regis")
+  SSO_APP_NAME        — optional display name (default: "SSO Client")
   SSO_REDIRECT_URIS   — optional comma-separated redirect URIs
 
 In production, import a connection bundle via the admin instead.
@@ -32,7 +32,7 @@ class Command(IngressCommand):
             ))
             return
 
-        app_name = os.environ.get("SSO_APP_NAME", "Regis")
+        app_name = os.environ.get("SSO_APP_NAME", "SSO Client")
         raw_uris = os.environ.get("SSO_REDIRECT_URIS", "")
         redirect_uris = "\n".join(u.strip() for u in raw_uris.split(",") if u.strip())
 
