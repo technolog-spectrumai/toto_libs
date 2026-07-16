@@ -1,8 +1,8 @@
 """
 Shared manifest and connection bundle schemas for toto SSO.
 
-ManifestBundle   — what a consumer declares it needs (regis → portal)
-ConnectionBundle — what a provider issues to a consumer (portal → regis)
+ManifestBundle   — what a consumer declares it needs (consumer → provider)
+ConnectionBundle — what a provider issues to a consumer (provider → consumer)
 
 Both are plain dataclasses + JSON serialization; no Django dependency.
 """

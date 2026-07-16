@@ -4,7 +4,7 @@ Full OpenID Connect (OIDC) provider. Issues ID tokens, access tokens, and JWKS. 
 
 ## Purpose
 
-toto acts as its own identity provider. External apps (e.g. `regis`) and internal services register as OIDC clients. When a user logs into a client app, they are redirected to toto's `/sso/authorize/` endpoint, authenticate, and receive a JWT ID token signed with the active `SSOSigningKey`. The private signing key never leaves gervazy — `services.get_signing_private_key_pem()` unlocks it at token-issue time using `SSO_VAULT_PASSWORD`. The JWKS endpoint (`/sso/jwks/`) lets relying parties verify token signatures.
+toto acts as its own identity provider. External apps and internal services register as OIDC clients. When a user logs into a client app, they are redirected to toto's `/sso/authorize/` endpoint, authenticate, and receive a JWT ID token signed with the active `SSOSigningKey`. The private signing key never leaves gervazy — `services.get_signing_private_key_pem()` unlocks it at token-issue time using `SSO_VAULT_PASSWORD`. The JWKS endpoint (`/sso/jwks/`) lets relying parties verify token signatures.
 
 ## Models
 
@@ -18,7 +18,7 @@ toto acts as its own identity provider. External apps (e.g. `regis`) and interna
 
 - `SSOAccessToken` — an issued access token (stored for introspection). Fields: `client`, `user`, `token` (hashed), `scope`, `expires_at`, `is_revoked`, `issued_at`.
 
-- `SSORelyingParty` — extends `SSOClient`. An explicitly provisioned relying party (e.g. a `regis` deployment). Adds: `display_name`, `description`, `connection_bundle_hash` (SHA-256 of the imported connection bundle).
+- `SSORelyingParty` — extends `SSOClient`. An explicitly provisioned relying party (an external client deployment). Adds: `display_name`, `description`, `connection_bundle_hash` (SHA-256 of the imported connection bundle).
 
 ## Services (`services.py`)
 

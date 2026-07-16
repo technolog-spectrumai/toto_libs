@@ -12,7 +12,7 @@ A community on toto operates like a mini-state: it has members, money, rules, a 
 
 ## System Traits
 
-- **Django monorepo.** Three Django projects: `toto/` (platform), `portal/` (management portal), `regis/` (geophysical/economic simulation).
+- **Django monorepo.** Django projects: `toto/` (platform) and `portal/` (management portal).
 - **Double-entry ledger.** Every balance change posts to an immutable `LedgerEntry`. A hash-chain ties every transaction to the previous one — tamper evidence at the DB level.
 - **Lapis smart contracts.** A YAML-based contract VM in `assets.Contract`. Financial instruments generate Lapis programs; the VM validates state transitions.
 - **Hierarchical encryption.** `gervazy` implements a three-tier AES-256-GCM key hierarchy: password → Argon2id KDF → UKEK → VMK → DEK → encrypted objects (secrets, files, private keys).
@@ -130,8 +130,6 @@ Studio apps (only when `BUILD_STUDIO=1`): `enigma`, `ravioli`, `texlab`, `mandra
 ### Simulation (separate project)
 | App | Purpose |
 |---|---|
-| `regis.geophysics` | Planet generation engine for synthetic geography. |
-| `regis.economy` | Macroeconomic simulation with cohorts, labor, fiscal, market, and infrastructure subsystems. |
 
 ---
 
@@ -1172,7 +1170,7 @@ Shared SSO manifest and connection bundle schemas. No models — pure Python dat
 
 ## What it contains
 
-- `manifest.ManifestBundle` — a dataclass exported by an SSO consumer app (e.g. `regis`). Declares what OIDC client it needs: `client_id`, `client_type`, `redirect_uris`, `scopes`, `trusted`.
+- `manifest.ManifestBundle` — a dataclass exported by an SSO consumer app. Declares what OIDC client it needs: `client_id`, `client_type`, `redirect_uris`, `scopes`, `trusted`.
 - `manifest.ConnectionBundle` — a dataclass issued by the SSO provider (`sso_master`) to a consumer. Contains the full OIDC endpoint URLs, client credentials, and signing key public cert.
 - `manifest.OIDCClientSpec` — nested spec inside `ManifestBundle`.
 
@@ -1204,7 +1202,7 @@ Full OpenID Connect (OIDC) provider. Issues ID tokens, access tokens, and JWKS. 
 
 ## Purpose
 
-toto acts as its own identity provider. External apps (e.g. `regis`) and internal services register as OIDC clients. When a user logs into a client app, they are redirected to toto's `/sso/authorize/` endpoint, authenticate, and receive a JWT ID token signed with the active `SSOSigningKey`. The private signing key never leaves gervazy — `services.get_signing_private_key_pem()` unlocks it at token-issue time using `SSO_VAULT_PASSWORD`. The JWKS endpoint (`/sso/jwks/`) lets relying parties verify token signatures.
+toto acts as its own identity provider. External apps and internal services register as OIDC clients. When a user logs into a client app, they are redirected to toto's `/sso/authorize/` endpoint, authenticate, and receive a JWT ID token signed with the active `SSOSigningKey`. The private signing key never leaves gervazy — `services.get_signing_private_key_pem()` unlocks it at token-issue time using `SSO_VAULT_PASSWORD`. The JWKS endpoint (`/sso/jwks/`) lets relying parties verify token signatures.
 
 ## Models
 
@@ -1218,7 +1216,7 @@ toto acts as its own identity provider. External apps (e.g. `regis`) and interna
 
 - `SSOAccessToken` — an issued access token (stored for introspection). Fields: `client`, `user`, `token` (hashed), `scope`, `expires_at`, `is_revoked`, `issued_at`.
 
-- `SSORelyingParty` — extends `SSOClient`. An explicitly provisioned relying party (e.g. a `regis` deployment). Adds: `display_name`, `description`, `connection_bundle_hash` (SHA-256 of the imported connection bundle).
+- `SSORelyingParty` — extends `SSOClient`. An explicitly provisioned relying party (an external client deployment). Adds: `display_name`, `description`, `connection_bundle_hash` (SHA-256 of the imported connection bundle).
 
 ## Services (`services.py`)
 

@@ -23,7 +23,7 @@ settings, URLs, and server entrypoint:
 
 > **Note (2026):** toto was previously a "tokenized community economy" platform —
 > a double-entry ledger, financial instruments, an assembly/tribunal governance
-> stack, a bazaar marketplace, and a `regis` simulation project. Those apps have
+> stack and a bazaar marketplace. Those apps have
 > been **removed**. Today's toto is focused on identity, community, the knowledge
 > graph, real-time collaboration, and AI. This README reflects the apps that
 > actually exist in `toto/`.

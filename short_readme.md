@@ -12,7 +12,7 @@ A community on toto operates like a mini-state: it has members, money, rules, a 
 
 ## System Traits
 
-- **Django monorepo.** Three Django projects: `toto/` (platform), `portal/` (management portal), `regis/` (geophysical/economic simulation).
+- **Django monorepo.** Django projects: `toto/` (platform) and `portal/` (management portal).
 - **Double-entry ledger.** Every balance change posts to an immutable `LedgerEntry`. A hash-chain ties every transaction to the previous one — tamper evidence at the DB level.
 - **Lapis smart contracts.** A YAML-based contract VM in `assets.Contract`. Financial instruments generate Lapis programs; the VM validates state transitions.
 - **Hierarchical encryption.** `gervazy` implements a three-tier AES-256-GCM key hierarchy: password → Argon2id KDF → UKEK → VMK → DEK → encrypted objects (secrets, files, private keys).
@@ -130,8 +130,6 @@ Studio apps (only when `BUILD_STUDIO=1`): `enigma`, `ravioli`, `texlab`, `mandra
 ### Simulation (separate project)
 | App | Purpose |
 |---|---|
-| `regis.geophysics` | Planet generation engine for synthetic geography. |
-| `regis.economy` | Macroeconomic simulation with cohorts, labor, fiscal, market, and infrastructure subsystems. |
 
 ---
 

@@ -4,7 +4,7 @@ Shared SSO manifest and connection bundle schemas. No models — pure Python dat
 
 ## What it contains
 
-- `manifest.ManifestBundle` — a dataclass exported by an SSO consumer app (e.g. `regis`). Declares what OIDC client it needs: `client_id`, `client_type`, `redirect_uris`, `scopes`, `trusted`.
+- `manifest.ManifestBundle` — a dataclass exported by an SSO consumer app. Declares what OIDC client it needs: `client_id`, `client_type`, `redirect_uris`, `scopes`, `trusted`.
 - `manifest.ConnectionBundle` — a dataclass issued by the SSO provider (`sso_master`) to a consumer. Contains the full OIDC endpoint URLs, client credentials, and signing key public cert.
 - `manifest.OIDCClientSpec` — nested spec inside `ManifestBundle`.
 
