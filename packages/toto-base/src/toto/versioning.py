@@ -176,10 +176,14 @@ def _git(src: Path, *args: str) -> str | None:
 def verify_checkout(src: str | os.PathLike[str], manifest: Manifest, *, strict: bool = True) -> str:
     """Check that a toto_libs checkout is exactly what the manifest asks for.
 
-    With ``strict`` (every deploy that is not an explicit local ``--dev`` build)
-    the checkout must additionally sit on the release tag with a clean tree —
-    that is what catches the everyday case of a sibling checkout being *ahead*
-    of the pin while its VERSION file still reads the last release.
+    Returns the version that will actually be built.
+
+    ``strict=False`` is the local ``--dev`` build: the checkout still has to be
+    a usable suite containing every pinned package, but it may be any version,
+    on any branch, with uncommitted work. ``strict=True`` — every deploy — adds
+    the version match plus "on the release tag, clean tree", which is what
+    catches the everyday case of a sibling checkout drifting ahead of the pin
+    while its VERSION file still reads the last release.
     """
     src = Path(src)
     wanted = manifest.version
@@ -192,16 +196,19 @@ def verify_checkout(src: str | os.PathLike[str], manifest: Manifest, *, strict: 
         )
 
     found = checkout_version(src)
+    for name in manifest.names:
+        package_dir(src, name)
+
+    if not strict:
+        return found
+
     if found != wanted:
         raise TotoVersionError(
             f"toto_libs checkout {src} is at version {found}, this host requires {wanted}",
             f"git -C {src} checkout v{wanted}   (or pass --dev for a local, unpinned build)",
         )
 
-    for name in manifest.names:
-        package_dir(src, name)
-
-    if not strict or not (src / ".git").exists():
+    if not (src / ".git").exists():
         return wanted
 
     tags = _git(src, "tag", "--points-at", "HEAD")
@@ -236,21 +243,36 @@ def parse_wheel(path: str | os.PathLike[str]) -> tuple[str, str]:
     return normalize(match.group("name")), match.group("version")
 
 
-def verify_wheels(wheels: list[Path] | list[str], manifest: Manifest) -> None:
-    """Check that the built wheels are exactly the manifest's packages and version."""
+def verify_wheels(wheels: list[Path] | list[str], manifest: Manifest, *, exact_version: bool = True) -> None:
+    """Check that the built wheels are exactly the manifest's packages and version.
+
+    ``exact_version=False`` accompanies a ``--dev`` build: the set of packages
+    must still be complete and free of leftovers, but their version is whatever
+    the checkout produced. It also requires the wheels to agree with each other,
+    so a half-rebuilt ``dist/`` cannot reach an image.
+    """
     built: dict[str, str] = {}
     for wheel in wheels:
         name, version = parse_wheel(wheel)
         built[name] = version
 
     wanted = manifest.version
-    wrong = {n: v for n, v in built.items() if n in manifest.pins and v != wanted}
-    if wrong:
-        listed = ", ".join(f"{n} {v}" for n, v in sorted(wrong.items()))
-        raise TotoVersionError(
-            f"built the wrong version: {listed} (this host requires {wanted})",
-            f"check out tag v{wanted} in the toto_libs checkout and rebuild",
-        )
+    if exact_version:
+        wrong = {n: v for n, v in built.items() if n in manifest.pins and v != wanted}
+        if wrong:
+            listed = ", ".join(f"{n} {v}" for n, v in sorted(wrong.items()))
+            raise TotoVersionError(
+                f"built the wrong version: {listed} (this host requires {wanted})",
+                f"check out tag v{wanted} in the toto_libs checkout and rebuild",
+            )
+    else:
+        versions = {v for n, v in built.items() if n in manifest.pins}
+        if len(versions) > 1:
+            listed = ", ".join(f"{n} {v}" for n, v in sorted(built.items()))
+            raise TotoVersionError(
+                f"the staged wheels mix versions: {listed}",
+                "clear dist/ and rebuild — every package must come from one checkout",
+            )
 
     missing = sorted(set(manifest.pins) - set(built))
     if missing:

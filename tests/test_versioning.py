@@ -159,11 +159,30 @@ def test_verify_checkout_rejects_a_missing_package(tmp_path):
         verify_checkout(fake_checkout(tmp_path, "1.4", packages=("toto-base",)), manifest)
 
 
-def test_dev_mode_skips_the_tag_check_but_not_the_version(tmp_path):
+def test_dev_mode_builds_whatever_the_checkout_holds(tmp_path):
+    """--dev exists to try unreleased library code in a host, so it must not
+    insist on the pinned version — it reports what it will actually build."""
     manifest = read_manifest(write(tmp_path, "toto-base==1.4\n"))
-    src = fake_checkout(tmp_path, "1.5")
-    with pytest.raises(TotoVersionError):
-        verify_checkout(src, manifest, strict=False)
+    assert verify_checkout(fake_checkout(tmp_path, "1.5"), manifest, strict=False) == "1.5"
+
+
+def test_dev_mode_still_requires_every_pinned_package(tmp_path):
+    manifest = read_manifest(write(tmp_path, "toto-base==1.4\ntoto-graph==1.4\n"))
+    with pytest.raises(TotoVersionError, match="toto-graph"):
+        verify_checkout(fake_checkout(tmp_path, "1.5", packages=("toto-base",)), manifest, strict=False)
+
+
+def test_dev_wheels_may_differ_from_the_pin_but_not_from_each_other(tmp_path):
+    manifest = read_manifest(write(tmp_path, "toto-base==1.4\ntoto-flow==1.4\n"))
+    verify_wheels(
+        ["toto_base-1.5-py3-none-any.whl", "toto_flow-1.5-py3-none-any.whl"],
+        manifest, exact_version=False,
+    )
+    with pytest.raises(TotoVersionError, match="mix versions"):
+        verify_wheels(
+            ["toto_base-1.5-py3-none-any.whl", "toto_flow-1.4-py3-none-any.whl"],
+            manifest, exact_version=False,
+        )
 
 
 # --- runtime coherence ----------------------------------------------------
