@@ -98,10 +98,10 @@ with the same shape at :67-77, :87-93, :101-111, and a header comment stating
 so toto-ops becomes a legitimately shared one-app package, and `FAROS_APPS`
 retires.
 
-### 3.2 Secede to zenobia — `notarius`, `polls`, `travels`, `sketch`, `vod`, `transcription`
+### 3.2 Secede to zenobia — `notarius`, `polls`, `travels`, `sketch`
 
-All six are zenobia-only, all six are unreferenced by any planned host, and no
-library code imports any of them. Owner today: `toto-base` for all six.
+All four are zenobia-only, unreferenced by any planned host, and no library code
+imports any of them. Owner today: `toto-base` for all four.
 
 | App | Why it can go |
 |---|---|
@@ -109,21 +109,17 @@ library code imports any of them. Owner today: `toto-base` for all six.
 | `polls` | Community polls. Zero importers. Aurelian's governance has its own voting stack (`limbo/assembly`). Ships `sql_neo4j_sync/graph/polls.yaml` — see §4.3. |
 | `travels` | Human trip planning. Zero importers. Aurelian's fleet uses `locations` Address/Route directly; no limbo app imports travels. |
 | `sketch` | Vault SVG drawing. Zero importers. Accepted as a zenobia feature rather than a future delta tool. |
-| `vod` | Video on demand. Only `vault/tests.py` references it, `is_installed`-guarded. |
-| `transcription` | Audio→text. One lazy importer, see the hygiene item below. |
 
-No limbo app imports `vod`; the single limbo reference to `transcription`
-(`limbo/tariffs/management/commands/ingress_tariffs.py:369`) is itself
-`is_installed`-guarded. Neither is pinned by a future host.
+`vod` and `transcription` were candidates here and were **kept in the library** —
+see §3.4.
 
-> **Hygiene item, do this before the move.**
+> **Minor hygiene, worth doing anyway.**
 > `packages/toto-works/src/toto/manta/views.py:383` does a function-level
 > `from toto.transcription.services import transcribe_demo_file` with **no**
-> `is_installed` guard. It cannot break startup, but on a host with manta and
-> without transcription that demo view 500s at request time. Wrap it in the same
-> `apps.is_installed("toto.transcription")` pattern used everywhere else. This
-> matters as soon as transcription is zenobia-owned and manta stays in the
-> library.
+> `is_installed` guard. Harmless today — transcription is in `BASE_APPS`, so any
+> host following the registry has it — but a host that installs manta without
+> transcription would 500 in that demo view. Wrap it in the same
+> `apps.is_installed("toto.transcription")` pattern used everywhere else.
 
 ### 3.3 Stay — hard-pinned by library code
 
@@ -147,6 +143,7 @@ These are zenobia-only *today* and would otherwise look movable. They are not.
 | App | Pinned by | Evidence |
 |---|---|---|
 | `memo` | **delta** | `limbo/academy/models.py:9` — `from toto.memo.models import MemoDeck`; every academy Lesson is backed by a MemoDeck, and `limbo/library` tags with `memo.Tag`. |
+| `vod`, `transcription` | **delta** | Video lessons with subtitles are a core e-learning need, so both stay shared even though no limbo app imports them today (the one `transcription` reference, `limbo/tariffs/management/commands/ingress_tariffs.py:369`, is `is_installed`-guarded, and `vod` is referenced only by guarded `vault/tests.py`). This is a deliberate judgement about where delta is going, not a technical block — moving them later is easy, moving them back would not be. |
 | `kanban` | **aurelian** | `limbo/mission_economy`, `detections`, `mobilization`, `response` all reference Task / Project / Practitioner / Campaign (models, migrations, plugins, ingress commands). |
 | `ravioli`, `sql_neo4j_sync`, `bento`, `ingestor`, `neo_editor`, `connectors`, `formica`, `ocr`, `vicuna` | **aurelian** | Aurelian is Neo4j-central: `limbo/robots/graph.py` emits `robot:` / `robot_mission:` graph nodes for the sync, and `limbo/tariffs` + `limbo/metering` reference `ravioli.CypherQuery`. The whole `toto-graph` cluster stays. |
 | `sabbia`, `steven` | plausible for both | AI agents over the graph; aurelian's operations layer is the obvious consumer. Keep until a planned host is ruled out. |
@@ -220,8 +217,8 @@ migration plan drills this deliberately.
 | Item | What happens | Action |
 |---|---|---|
 | `graph/polls.yaml` | Stays in `toto-graph`. `sql_neo4j_sync/loader.py:22-36` calls `get_app_config(app_label)` and `continue`s on `LookupError`, so a config for an uninstalled app is skipped silently. | Nothing breaks. Optionally move the yaml into zenobia's portion later. |
-| Celery autodiscovery | `TASK_MODULES` drops `transcription` and `notarius`, but zenobia still runs their tasks. | zenobia: `autodiscover_tasks([*TASK_MODULES, "toto.transcription", "toto.notarius"])` in `celery_app.py`. |
-| `registry.BASE_APPS` | Shrinks 19 → 15 (loses notarius, polls, vod, transcription). Both hosts hardcode `INSTALLED_APPS`, so nothing consumes it programmatically except zenobia's celery. | Update the constant; it is documentation-of-record. |
+| Celery autodiscovery | `TASK_MODULES` drops `notarius` (transcription stays). | zenobia: `autodiscover_tasks([*TASK_MODULES, "toto.notarius"])` in `celery_app.py`. |
+| `registry.BASE_APPS` | Shrinks 19 → 17 (loses notarius, polls). Both hosts hardcode `INSTALLED_APPS`, so nothing consumes it programmatically except zenobia's celery. | Update the constant; it is documentation-of-record. |
 | `FEATURE_APPS` | Loses the `travels` and `sketch` keys. | Update; zenobia keeps its own `BUILD_TRAVELS`/`BUILD_SKETCH` blocks. |
 | `features.py` flags | Unchanged. `needs_channels` still includes `sketch`, so the host contract is stable even though the app is host-owned. | None. |
 | `FAROS_APPS` | No longer meaningful once faros owns aster+nomad. | Retire the constant. |
@@ -230,7 +227,69 @@ migration plan drills this deliberately.
 
 ---
 
-## 5. Migration plan
+## 5. The split after secession
+
+### 5.1 The library — same 7 packages, 41 apps
+
+Nothing is repackaged: six apps leave, every remaining app keeps its package,
+its import path and its label. Package names are unchanged, so host pins only
+need the version bump.
+
+| Package | Apps after secession | Change |
+|---|---|---|
+| `toto-base` | api, backup, core, editor, events, gervazy, kanban, locations, memo, people, quota, socialhub, sso_client, sso_core, sso_master, transcription, vault, verbena, vod (19) | −4: notarius, polls, sketch, travels |
+| `toto-flow` | mandragora, workflows (2) | — |
+| `toto-works` | antaresia, fileservices, gitvault, manta, texlab, texplay, weather (7) | — |
+| `toto-chat` | forum (1) | — |
+| `toto-ops` | monit (1) | −2: aster, nomad |
+| `toto-ai` | sabbia, steven, vicuna (3) | — |
+| `toto-graph` | bento, connectors, formica, ingestor, neo_editor, ocr, ravioli, sql_neo4j_sync (8) | — |
+
+`toto-ops` becoming a one-app package is fine — `monit` is installed by both
+hosts and by any future one. If it ever feels silly, fold `monit` into
+`toto-base`; that is a separate decision with its own MAJOR bump, not part of
+this move.
+
+### 5.2 The hosts — first host-owned app code
+
+| Host | Pins (unchanged names, version → `3.0`) | Carried portion |
+|---|---|---|
+| **zenobia** | all 7 packages | `zenobia/toto/{notarius,polls,sketch,travels}` |
+| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` | `faros/toto/{aster,nomad}` |
+
+The portion is plain source, not a distribution — no new package names, no new
+pins, nothing for the version gate to check (§4).
+
+### 5.3 The future hosts
+
+Both start the same way: pin the library packages they need, carry their own
+apps as a portion, and only promote something into the library when a *second*
+host needs it.
+
+| Host | Pins | Carried portion (revived from `limbo/`) |
+|---|---|---|
+| **delta** (e-learning) | `toto-base` (memo, vod, transcription, verbena, vault, people…), `toto-flow`, likely `toto-works` (texlab/antaresia for technical courses), `toto-chat` | `delta/toto/{academy,quizzes,library,palimpsest}` |
+| **aurelian** (fleet + economy) | `toto-base` (kanban, locations, events, quota…), `toto-flow`, `toto-graph`, `toto-ai`, `toto-ops` | `aurelian/toto/{assets,claims,instruments,contracts,tariffs,taxes,invoice,bourse,payroll,loans,insurance,leasing,mission_economy,logistics,assembly,magistrate,tribunal,senate,capitol,treasury,robots,detections,mobilization,response,tactical,inventory}` |
+
+Two limbo apps are needed by **both** future hosts and therefore come back as
+**library** apps rather than portions:
+
+- **`competence`** → `toto-base` (academy awards SkillBadges; aurelian's
+  `mobilization` matches responder skills against them).
+- **`subscriptions`** → `toto-base` (gates academy courses, vod collections, and
+  aurelian's recurring revenue alike).
+
+Aurelian's portion is large enough that it may eventually want packaging of its
+own — an `aurelian-economy` distribution, host-owned and host-versioned. Note
+the naming rule from §4.1: a host-owned distribution must **not** be called
+`toto-*`, or `check_runtime_coherence()` will demand it match the suite version.
+Keep it as source until a second host wants the economy stack; at that point the
+right move is promotion into the library (e.g. a `toto-economy` package), not a
+second distribution outside it.
+
+---
+
+## 6. Migration plan
 
 Four waves, each independently verifiable. Waves 1 and 2 are additive — the apps
 exist in both places briefly, which is what makes this safe: nothing is deleted
@@ -260,11 +319,11 @@ from the library until both hosts are proven green on their own copies.
 *Drill:* temporarily remove the portion from `sys.path`; confirm the failure is
 `No installed app with label 'nomad'`.
 
-### Wave 2 — zenobia adopts its six
+### Wave 2 — zenobia adopts its four
 
-Same shape for `notarius`, `polls`, `travels`, `sketch`, `vod`, `transcription`,
-plus the celery autodiscovery extension from §4.3. `APPS_TO_SYNC`,
-`INGRESS_ALLOWED_APPS` and `DASHBOARD_ITEMS` strings are unchanged.
+Same shape for `notarius`, `polls`, `travels`, `sketch`, plus the celery
+autodiscovery extension from §4.3. `APPS_TO_SYNC`, `INGRESS_ALLOWED_APPS` and
+`DASHBOARD_ITEMS` strings are unchanged.
 
 *Gate:* zenobia `clean_env_test.sh` green across all five profiles.
 
@@ -273,11 +332,12 @@ plus the celery autodiscovery extension from §4.3. `APPS_TO_SYNC`,
 **MAJOR**, because `BASE_APPS` shrinks — a host that upgrades without adopting
 its portion loses apps, which is exactly what a major bump is for.
 
-1. `git rm` the eight app directories.
-2. Registry cleanup: `BASE_APPS` −4, `FEATURE_APPS` −travels −sketch,
-   `TASK_MODULES` −transcription −notarius, `FAROS_APPS` retired.
-3. `tests/test_packaging.py`: the migration-app count (currently asserted at 43)
-   and the template floor both drop — recount, don't guess.
+1. `git rm` the six app directories.
+2. Registry cleanup: `BASE_APPS` −2 (notarius, polls), `FEATURE_APPS` −travels
+   −sketch, `TASK_MODULES` −notarius, `FAROS_APPS` retired.
+3. `tests/test_packaging.py`: all six movers ship migrations, so the
+   migration-app assertion goes 43 → 37 (`tests/test_packaging.py:62`); the
+   template floor drops too — recount, don't guess.
 4. `scripts/clean_env_check.sh`: refresh the tier matrix (toto-ops becomes
    `{monit}`).
 5. `scripts/check_package_graph.py` needs **no** change — membership is derived
@@ -290,7 +350,7 @@ its portion loses apps, which is exactly what a major bump is for.
 
 ---
 
-## 6. What this sets up
+## 7. What this sets up
 
 **delta (e-learning).** The revival set is `academy` (the anchor: Course →
 Module → Lesson, each Lesson backed by a `memo.MemoDeck`, exams from
@@ -299,8 +359,9 @@ and `palimpsest` (collaborative multi-author pages). These would form delta's ow
 portion — or a `toto-learn` package if a second host ever wants them.
 `competence` and `subscriptions` return as **shared library** apps: competence is
 also used by aurelian's `mobilization`, and subscriptions gates academy courses,
-vod collections and aurelian's recurring revenue alike. The only current app
-delta pins is **memo**.
+vod collections and aurelian's recurring revenue alike. The current apps delta
+pins are **memo** (lesson decks), plus **vod** and **transcription** — video
+lessons with subtitles — which is why those three stay in `toto-base`.
 
 **aurelian (robot fleet, economy, governance).** `limbo/economy.md` already
 documents the seven-layer revival order — ledger (`assets`) → instruments
