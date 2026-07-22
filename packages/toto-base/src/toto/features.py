@@ -97,7 +97,7 @@ def resolve_features(get) -> Features:
     monit = flag(get, "BUILD_MONIT")                          # toto.monit — monitoring dashboard
 
     # Dependency closure — a feature pulls in what it cannot run without.
-    # weather, fileservices, manta, latex (texlab/texplay), pyeditor (antaresia)
+    # weather, fileservices, manta, latex (texlab), pyeditor (antaresia)
     # and gitvault all have a model FK to workflows.WorkflowRun, so they require
     # the workflows app — else Django's system check fails with fields.E300/E307.
     if weather or fileservices or manta or latex or pyeditor or gitvault:
@@ -126,7 +126,7 @@ def resolve_features(get) -> Features:
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
     ffmpeg = fileservices or manta or explicit_tess or explicit_ffmpeg
-    # texlive (pdflatex) backs latex compilation in texlab/texplay AND notarius
+    # texlive (pdflatex) backs latex compilation in texlab AND notarius
     # contract→PDF export. Defaults to the latex feature; an explicit
     # INSTALL_TEXLIVE wins.
     texlive = flag(get, "INSTALL_TEXLIVE", latex)

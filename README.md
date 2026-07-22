@@ -113,7 +113,6 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | `forum` | Discord-style chat backend: permanent per-channel history over Channels + a JSON API, with full-text message search. Plaintext at rest; TLS is the transport security. | `BUILD_CHAT` · 🔌 |
 | `editor` | Shared collaborative text/JSON editor (ACE + diff-match-patch sync consumer) for vault files. No models. | `BUILD_LATEX`/`BUILD_PYEDITOR` · 🔌 |
 | `texlab` | LaTeX compilation service: workspaces of vault files; `CompileRun`s stream logs and store output PDFs. | `BUILD_LATEX` · 🔌 ⚙️ 🧩 texlive |
-| `texplay` | Compiles a single `.tex` vault file to PDF via an async `TexPlayJob` (workflow node entrypoint). | `BUILD_LATEX` · ⚙️ 🧩 texlive |
 | `antaresia` | Runs Python scripts stored in vault (sandboxed subprocess) with a WebSocket file-sync editor and async `PythonRun`s. | `BUILD_PYEDITOR` · 🔌 ⚙️ |
 | `mandragora` | Jupyter-style compute kernels over WebSockets; cells execute against a ZMQ kernel-server process. Runs workflow lambda nodes. | `BUILD_WORKFLOWS` · 🔌 ⚙️ |
 
@@ -176,7 +175,7 @@ Real-time (Channels / ASGI)
   · mandragora (compute kernels, ZMQ) · sabbia/steven (AI)
 
 Automation (BUILD_WORKFLOWS)
-  workflows DAG → lambda nodes (mandragora kernel) → weather / texplay / fileservices / reports
+  workflows DAG → lambda nodes (mandragora kernel) → weather / fileservices / reports
 ```
 
 ---

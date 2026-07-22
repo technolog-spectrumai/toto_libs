@@ -81,7 +81,7 @@
           <span class="hidden sm:inline">{% trans "Run" %}</span>
         </button>
 
-        {% include "gitvault/_git_toolbar_buttons.html" %}
+        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
 
         <div class="h-5 w-px opacity-20 bg-current"></div>
 

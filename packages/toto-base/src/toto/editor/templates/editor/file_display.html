@@ -108,7 +108,7 @@
         <span id="compile-error" class="hidden max-w-[16rem] truncate text-xs text-red-500"></span>
         {% endif %}
 
-        {% include "gitvault/_git_toolbar_buttons.html" %}
+        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
 
         <div class="h-5 w-px opacity-20 bg-current"></div>
 

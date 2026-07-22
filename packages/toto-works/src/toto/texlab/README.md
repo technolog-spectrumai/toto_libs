@@ -1,6 +1,6 @@
 # toto.texlab
 
-*(Requires BUILD_LATEX=1 — installed together with `toto.texplay`)*
+*(Requires BUILD_LATEX=1)*
 
 File-based **LaTeX workspace**. Documents are plain `.tex` vault files
 (`file_type="latex"`, plus `.bib` bibliographies) — the vault file is the
@@ -17,8 +17,6 @@ models were dropped in migration `0002_remove_workspace_models`; only
 - **Vault Edit button** → `texlab:file_display` — Ace editor (latex mode) with
   Save, compile trigger and compile history
   (registered via `plugins/vault_editor_plugins.py`).
-- **Vault Play button** → `texplay:latex_play` — compile-and-preview the PDF
-  (registered via `toto.texplay.plugins.vault_play_plugins`).
 - `texlab:compile_latex` / `texlab:compile_status` — start a compile
   (Celery/workflow-backed when available, synchronous fallback otherwise) and
   poll its `CompileRun`.
@@ -45,4 +43,3 @@ the log on the `CompileRun`. Requires TeX Live on the host/container
 - `vault` — documents and output PDFs are `VaultFile`s; editor/play plugins
   wire the buttons.
 - `workflows` — compiles can run as workflow nodes (`CompileRun.workflow_run`).
-- `toto.texplay` — the Play-side compile/preview app.
