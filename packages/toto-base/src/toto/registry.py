@@ -51,10 +51,8 @@ FEATURE_APPS = {
     "steven": ["toto.steven"],
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],
-    "latex": ["toto.texlab"],
     "pyeditor": ["toto.antaresia"],
     "fileservices": ["toto.fileservices"],
-    "gitvault": ["toto.gitvault"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
 }
 
@@ -64,14 +62,12 @@ FEATURE_APPS = {
 TASK_MODULES = [
     "toto.workflows",
     "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
-    "toto.texlab",
     "toto.mandragora",
     "toto.ravioli",
     "toto.transcription",
     "toto.manta",
     "toto.connectors",
     "toto.formica",
-    "toto.gitvault",
 ]
 
 

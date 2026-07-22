@@ -6,10 +6,11 @@ optional apps are skipped exactly as before.
 """
 import importlib
 
-# Portal's historical collection order. faros passes its own shorter list.
+# The library's own websocket apps, in the historical collection order. A host
+# that owns further websocket apps (zenobia carries texlab and sketch) passes an
+# explicit list — see zenobia/zenobia/asgi.py and faros/faros/asgi.py.
 DEFAULT_WEBSOCKET_ROUTING_MODULES = [
     "toto.forum.routing",
-    "toto.texlab.routing",
     "toto.antaresia.routing",
     "toto.editor.routing",
     "toto.sabbia.routing",

@@ -17,7 +17,7 @@ there is deliberately no `toto/__init__.py` anywhere):
 |---|---|---|
 | `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and the apps every host installs (`registry.BASE_APPS`): core, api, backup, gervazy, vault, people, locations, socialhub, events, kanban, memo, verbena, quota, vod, transcription, sso_core, sso_master — plus `editor` and `sso_client`, which are host-selected rather than unconditional | — |
 | `toto-flow` | workflows, mandragora | base |
-| `toto-works` | gitvault, fileservices, manta, texlab, texplay, antaresia, weather | base, flow |
+| `toto-works` | fileservices, manta, antaresia, weather | base, flow |
 | `toto-chat` | forum | base |
 | `toto-ops` | monit | base |
 | `toto-ai` | sabbia, steven, vicuna | base |
