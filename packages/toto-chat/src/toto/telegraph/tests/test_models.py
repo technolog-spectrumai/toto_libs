@@ -19,12 +19,10 @@ class TelegraphChannelTests(TestCase):
         names = list(TelegraphChannel.objects.values_list("name", flat=True))
         self.assertEqual(names, ["Alpha", "Zebra"])
 
-    def test_channel_participants_m2m(self):
-        user = User.objects.create_user(username="alice", password="pass")
+    def test_membership_is_the_member_table_only(self):
+        """There is no parallel ``participants`` M2M any more — see permissions.py."""
         channel = TelegraphChannel.objects.create(name="Room1", slug="room1")
-        channel.participants.add(user)
-        self.assertIn(user, channel.participants.all())
-        self.assertIn(channel, user.telegraph_channels.all())
+        self.assertFalse(hasattr(channel, "participants"))
 
 
 class TelegraphMemberTests(TestCase):

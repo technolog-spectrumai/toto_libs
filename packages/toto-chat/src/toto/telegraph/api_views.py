@@ -1,4 +1,3 @@
-import base64
 import json
 from urllib.parse import urlparse
 
@@ -11,6 +10,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import models
+from toto.telegraph import permissions, store
 from toto.telegraph.models import TelegraphChannel
 
 # CorsApiView / MeshGatedApiView and the data-mesh helpers now live in the
@@ -217,7 +217,17 @@ class MeApiView(CorsApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class ChannelListApiView(CorsApiView):
+    """`GET` the channel list · `POST` to create one.
+
+    Both require authentication: messages are permanent now, so the roster and channel
+    names are no longer disclosed anonymously.
+    """
+
     def get(self, request):
+        if not permissions.can_browse(request.user):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+
+        joined = set(permissions.readable_channels(request.user).values_list("pk", flat=True))
         qs = TelegraphChannel.objects.annotate(
             member_count=models.Count(
                 "telegraph_members",
@@ -225,12 +235,50 @@ class ChannelListApiView(CorsApiView):
                 distinct=True,
             )
         ).order_by("name")
-        return JsonResponse({"channels": [_channel_to_dict(c, c.member_count) for c in qs]})
+        channels = []
+        for channel in qs:
+            data = _channel_to_dict(channel, channel.member_count)
+            data["is_member"] = channel.pk in joined
+            channels.append(data)
+        return JsonResponse({"channels": channels})
+
+    def post(self, request):
+        from django.utils.text import slugify
+
+        from toto.people.models import Person
+        from toto.telegraph.models import TelegraphMember
+
+        if not permissions.can_browse(request.user):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        try:
+            body = json.loads(request.body)
+        except (json.JSONDecodeError, ValueError):
+            return JsonResponse({"error": "Invalid JSON."}, status=400)
+
+        name = (body.get("name") or "").strip()
+        if not name:
+            return JsonResponse({"error": "Channel name required."}, status=400)
+        slug = slugify(name)[:50]
+        if not slug:
+            return JsonResponse({"error": "Name cannot be turned into a slug."}, status=400)
+        if TelegraphChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
+            return JsonResponse({"error": "That channel already exists."}, status=409)
+
+        channel = TelegraphChannel.objects.create(
+            name=name, slug=slug, created_by=request.user
+        )
+        person = Person.objects.filter(user=request.user).first()
+        if person:
+            TelegraphMember.objects.create(channel=channel, person=person, is_active=True)
+
+        return JsonResponse(_channel_to_dict(channel, 1 if person else 0), status=201)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class ChannelDetailApiView(CorsApiView):
     def get(self, request, slug):
+        if not permissions.can_browse(request.user):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
             channel = TelegraphChannel.objects.get(slug=slug)
         except TelegraphChannel.DoesNotExist:
@@ -239,22 +287,85 @@ class ChannelDetailApiView(CorsApiView):
         members_qs = channel.telegraph_members.filter(is_active=True).select_related(
             "person", "person__user"
         )
-        members = [_member_to_dict(request, m) for m in members_qs]
-
-        is_member = False
-        if request.user and request.user.is_authenticated:
-            try:
-                from toto.people.models import Person
-                person = Person.objects.filter(user=request.user).first()
-                if person:
-                    is_member = channel.telegraph_members.filter(person=person, is_active=True).exists()
-            except Exception:
-                pass
+        is_member = permissions.is_member(request.user, channel)
 
         data = _channel_to_dict(channel, members_qs.count())
-        data["members"] = members
+        # The roster is members-only; non-members still see that the channel exists so
+        # they can join it.
+        data["members"] = [_member_to_dict(request, m) for m in members_qs] if is_member else []
         data["is_member"] = is_member
         return JsonResponse(data)
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class ChannelMessagesApiView(CorsApiView):
+    """`GET /telegraph/api/channels/<slug>/messages/?before=&limit=`
+
+    Paginated history for the load-older affordance. ``before`` is an ISO-8601
+    ``created_at`` cursor — pass the oldest message you already hold.
+    """
+
+    def get(self, request, slug):
+        from django.utils.dateparse import parse_datetime
+
+        from . import store
+
+        try:
+            channel = TelegraphChannel.objects.get(slug=slug)
+        except TelegraphChannel.DoesNotExist:
+            return JsonResponse({"error": "Channel not found."}, status=404)
+
+        if not permissions.can_read(request.user, channel):
+            return JsonResponse({"error": "Join this channel to read its history."}, status=403)
+
+        before = None
+        raw_before = request.GET.get("before")
+        if raw_before:
+            before = parse_datetime(raw_before)
+            if before is None:
+                return JsonResponse({"error": "Invalid 'before' timestamp."}, status=400)
+
+        messages = store.history(
+            channel,
+            limit=request.GET.get("limit") or store.DEFAULT_HISTORY_LIMIT,
+            before=before,
+            absolute=lambda url: _absolute_url(request, url),
+        )
+        oldest = messages[0]["created_at"] if messages else None
+        return JsonResponse({
+            "messages": messages,
+            "has_more": store.has_more_before(channel, oldest) if oldest else False,
+        })
+
+
+@method_decorator(csrf_exempt, name="dispatch")
+class MessageSearchApiView(CorsApiView):
+    """`GET /telegraph/api/search/?q=&channel=` — scoped to the requester's channels."""
+
+    def get(self, request):
+        from . import store
+        from .search import search_messages, search_mode
+
+        if not permissions.can_browse(request.user):
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+
+        query = (request.GET.get("q") or "").strip()
+        if not query:
+            return JsonResponse({"results": [], "count": 0, **search_mode()})
+
+        qs = search_messages(
+            request.user, query, channel_slug=request.GET.get("channel") or None
+        )
+        rows = list(qs[:100])
+        results = []
+        for row in rows:
+            payload = store.message_to_dict(
+                row, absolute=lambda url: _absolute_url(request, url)
+            )
+            payload["channel_slug"] = row.channel.slug
+            payload["channel_name"] = row.channel.name
+            results.append(payload)
+        return JsonResponse({"results": results, "count": len(results), **search_mode()})
 
 
 @method_decorator(csrf_exempt, name="dispatch")
@@ -281,7 +392,6 @@ class ChannelJoinApiView(CorsApiView):
             member.is_active = True
             member.save(update_fields=["is_active"])
 
-        channel.participants.add(request.user)
         return JsonResponse({"ok": True, "joined": created})
 
 
@@ -299,7 +409,6 @@ class ChannelLeaveApiView(CorsApiView):
         from toto.telegraph.models import TelegraphMember
 
         person = Person.objects.filter(user=request.user).first()
-        channel.participants.remove(request.user)
         if person:
             TelegraphMember.objects.filter(channel=channel, person=person, is_active=True).update(is_active=False)
 
@@ -319,14 +428,10 @@ class ChannelLeaveAllApiView(CorsApiView):
         if not person:
             return JsonResponse({"ok": True, "left": 0})
 
-        active_channels = TelegraphChannel.objects.filter(
+        left = TelegraphChannel.objects.filter(
             telegraph_members__person=person,
             telegraph_members__is_active=True,
-        ).distinct()
-        left = active_channels.count()
-
-        for channel in active_channels:
-            channel.participants.remove(request.user)
+        ).distinct().count()
 
         TelegraphMember.objects.filter(person=person, is_active=True).update(is_active=False)
 
@@ -339,7 +444,23 @@ _MAX_MEDIA_BYTES = 10 * 1024 * 1024  # 10 MB
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ImageUploadApiView(CorsApiView):
+class MediaUploadApiView(CorsApiView):
+    """Shared upload handler for the image and voice endpoints.
+
+    The file is stored on disk via the message's ``FileField`` and the broadcast carries a
+    URL. Media used to be inlined as a base64 ``data:`` URL inside the (encrypted) row — a
+    10 MB upload became a ~13.4 MB blob that was replayed down the socket on every history
+    load. That was survivable under a 24h TTL and is not survivable now that messages are
+    permanent.
+    """
+
+    msg_type = None
+    form_field = None
+    error_label = None
+
+    def _accepts(self, content_type):
+        raise NotImplementedError
+
     def post(self, request, slug):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
@@ -349,119 +470,44 @@ class ImageUploadApiView(CorsApiView):
         except TelegraphChannel.DoesNotExist:
             return JsonResponse({"error": "Channel not found."}, status=404)
 
-        file = request.FILES.get("image")
-        if not file:
-            return JsonResponse({"error": "No image file provided."}, status=400)
-
-        content_type = file.content_type or ""
-        if content_type not in _ALLOWED_IMAGE_TYPES:
-            return JsonResponse({"error": "Unsupported file type. Send a JPEG, PNG, GIF, or WebP."}, status=415)
-
-        if file.size > _MAX_MEDIA_BYTES:
-            return JsonResponse({"error": "Image too large. Maximum size is 10 MB."}, status=413)
-
-        from toto.people.models import Person
-        from toto.telegraph.models import TelegraphMember
-
-        person = Person.objects.filter(user=request.user).first()
-        member = TelegraphMember.objects.filter(
-            channel=channel, person=person, is_active=True
-        ).select_related("person").first() if person else None
-
-        image_bytes = file.read()
-        image_data = f"data:{content_type};base64,{base64.b64encode(image_bytes).decode()}"
-
-        display_name = (
-            member.display_name if member
-            else person.full_name if person
-            else request.user.username
-        )
-        avatar_url = (
-            _absolute_url(request, member.avatar_url) if member
-            else None
-        )
-
-        payload = {
-            "type": "image_message",
-            "image_data": image_data,
-            "user": display_name,
-            "avatar_url": avatar_url,
-        }
-
-        _persist_relay_media(channel, "image_message", {"image_data": image_data},
-                             request.user, display_name, avatar_url, payload)
-
-        channel_layer = get_channel_layer()
-        if channel_layer:
-            async_to_sync(channel_layer.group_send)(
-                f"telegraph_{channel.slug}",
-                {
-                    "type": "chat_message",
-                    "payload": payload,
-                    "sender_channel": None,
-                    "target_channel": None,
-                },
-            )
-
-        return JsonResponse({"ok": True})
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class AudioUploadApiView(CorsApiView):
-    def post(self, request, slug):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-
-        try:
-            channel = TelegraphChannel.objects.get(slug=slug)
-        except TelegraphChannel.DoesNotExist:
-            return JsonResponse({"error": "Channel not found."}, status=404)
-
-        file = request.FILES.get("audio")
-        if not file:
-            return JsonResponse({"error": "No audio file provided."}, status=400)
-
-        content_type = file.content_type or ""
-        if not any(content_type.startswith(p) for p in _ALLOWED_AUDIO_PREFIXES):
+        member = permissions.member_for(request.user, channel)
+        if not member:
             return JsonResponse(
-                {"error": "Unsupported file type. Send audio/webm, audio/ogg, audio/mp4, audio/wav, or audio/mpeg."},
-                status=415,
+                {"error": "Join this channel before posting to it."}, status=403
             )
 
+        file = request.FILES.get(self.form_field)
+        if not file:
+            return JsonResponse({"error": f"No {self.form_field} file provided."}, status=400)
+
+        content_type = file.content_type or ""
+        if not self._accepts(content_type):
+            return JsonResponse({"error": self.error_label}, status=415)
+
         if file.size > _MAX_MEDIA_BYTES:
-            return JsonResponse({"error": "Audio too large. Maximum size is 10 MB."}, status=413)
+            return JsonResponse(
+                {"error": f"File too large. Maximum size is {_MAX_MEDIA_BYTES // (1024 * 1024)} MB."},
+                status=413,
+            )
 
-        from toto.people.models import Person
-        from toto.telegraph.models import TelegraphMember
+        display_name = member.display_name
+        avatar_url = _absolute_url(request, member.avatar_url)
 
-        person = Person.objects.filter(user=request.user).first()
-        member = (
-            TelegraphMember.objects.filter(channel=channel, person=person, is_active=True)
-            .select_related("person")
-            .first()
-            if person
-            else None
+        row = store.store_message(
+            channel,
+            msg_type=self.msg_type,
+            body=(request.POST.get("message") or "").strip(),
+            sender=request.user,
+            sender_name=display_name,
+            sender_avatar_url=avatar_url or "",
+            attachment=file,
+            attachment_name=file.name or "",
+            attachment_mime=content_type,
+            attachment_size=file.size,
         )
-
-        audio_bytes = file.read()
-        audio_data = f"data:{content_type};base64,{base64.b64encode(audio_bytes).decode()}"
-
-        display_name = (
-            member.display_name if member
-            else person.full_name if person
-            else request.user.username
+        payload = store.message_to_dict(
+            row, absolute=lambda url: _absolute_url(request, url)
         )
-        avatar_url = _absolute_url(request, member.avatar_url) if member else None
-
-        payload = {
-            "type": "voice_message",
-            "audio_data": audio_data,
-            "user": display_name,
-            "avatar_url": avatar_url,
-        }
-
-        _persist_relay_media(channel, "voice_message", {"audio_data": audio_data},
-                             request.user, display_name, avatar_url, payload)
 
         channel_layer = get_channel_layer()
         if channel_layer:
@@ -471,30 +517,28 @@ class AudioUploadApiView(CorsApiView):
                     "type": "chat_message",
                     "payload": payload,
                     "sender_channel": None,
-                    "target_channel": None,
+                    "echo": True,
                 },
             )
 
-        return JsonResponse({"ok": True})
+        return JsonResponse({"ok": True, **payload})
 
 
-def _persist_relay_media(channel, msg_type, content, user, display_name, avatar_url, payload):
-    """Encrypt-at-rest a REST-uploaded relay image/voice message and stamp the broadcast
-    payload with the stored id + created_at (so live + history share one id). Silently
-    skipped if the vault is unavailable."""
-    from toto.telegraph import vault
+class ImageUploadApiView(MediaUploadApiView):
+    msg_type = "image_message"
+    form_field = "image"
+    error_label = "Unsupported file type. Send a JPEG, PNG, GIF, or WebP."
 
-    try:
-        row = vault.store_message(
-            channel,
-            msg_type=msg_type,
-            payload=content,
-            sender=user if getattr(user, "is_authenticated", False) else None,
-            sender_name=display_name or "",
-            sender_avatar_url=avatar_url or "",
-        )
-    except Exception:
-        return
-    payload["id"] = str(row.id)
-    payload["created_at"] = row.created_at.isoformat()
+    def _accepts(self, content_type):
+        return content_type in _ALLOWED_IMAGE_TYPES
 
+
+class AudioUploadApiView(MediaUploadApiView):
+    msg_type = "voice_message"
+    form_field = "audio"
+    error_label = (
+        "Unsupported file type. Send audio/webm, audio/ogg, audio/mp4, audio/wav, or audio/mpeg."
+    )
+
+    def _accepts(self, content_type):
+        return any(content_type.startswith(p) for p in _ALLOWED_AUDIO_PREFIXES)

@@ -1,14 +1,15 @@
 from django.contrib import messages
+from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import ListView, DetailView, View
 from django.db import models
 from toto.ui import PageProcessor
+from toto.telegraph import permissions
 from toto.telegraph.models import TelegraphMember, TelegraphChannel
 from toto.people.models import Person
 
 
-
-class ChannelListView(ListView):
+class ChannelListView(LoginRequiredMixin, ListView):
     model = TelegraphChannel
     template_name = "telegraph/channel_list.html"
     context_object_name = "channels"
@@ -17,7 +18,11 @@ class ChannelListView(ListView):
 
     def get_queryset(self):
         qs = super().get_queryset().annotate(
-            member_count=models.Count("telegraph_members", distinct=True)
+            member_count=models.Count(
+                "telegraph_members",
+                filter=models.Q(telegraph_members__is_active=True),
+                distinct=True,
+            )
         )
         query = self.request.GET.get("q")
         if query:
@@ -26,42 +31,48 @@ class ChannelListView(ListView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        joined = set(
+            permissions.readable_channels(self.request.user).values_list("pk", flat=True)
+        )
+        for channel in context["channels"]:
+            channel.is_joined = channel.pk in joined
         return PageProcessor().decorate(context, self.request)
 
 
-class ChannelDetailView(DetailView):
+class ChannelDetailView(LoginRequiredMixin, DetailView):
     model = TelegraphChannel
     template_name = "telegraph/channel_details.html"
     context_object_name = "channel"
     slug_field = "slug"
     slug_url_kwarg = "slug"
 
-    def get_current_person(self):
-        user = self.request.user
-        if not user.is_authenticated:
-            return None
-        return Person.objects.filter(user=user).first()
-
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         channel = self.get_object()
-        current_person = self.get_current_person()
+        current_person = permissions.person_for(self.request.user)
+        current_member = permissions.member_for(self.request.user, channel)
 
         context["all_channels"] = TelegraphChannel.objects.annotate(
-            member_count=models.Count("telegraph_members", distinct=True)
+            member_count=models.Count(
+                "telegraph_members",
+                filter=models.Q(telegraph_members__is_active=True),
+                distinct=True,
+            )
         )
 
-        members_qs = channel.telegraph_members.filter(is_active=True).select_related("person")
-        current_member = members_qs.filter(person=current_person).first() if current_person else None
-
-        context["participants"] = [
-            {
-                "username": m.display_name,
-                "avatar_url": m.avatar_url,
-                "type": m.participant_type,
-            }
-            for m in members_qs
-        ]
+        # The roster is only disclosed to members (permissions.py D6).
+        if current_member:
+            members_qs = channel.telegraph_members.filter(is_active=True).select_related("person")
+            context["participants"] = [
+                {
+                    "username": m.display_name,
+                    "avatar_url": m.avatar_url,
+                    "type": m.participant_type,
+                }
+                for m in members_qs
+            ]
+        else:
+            context["participants"] = []
 
         context["current_chat_user"] = (
             current_member.display_name
@@ -69,8 +80,6 @@ class ChannelDetailView(DetailView):
             else current_person.full_name
             if current_person
             else (self.request.user.get_full_name() or self.request.user.username)
-            if self.request.user.is_authenticated
-            else "Guest"
         )
         context["current_chat_avatar_url"] = (
             current_member.avatar_url
@@ -78,29 +87,21 @@ class ChannelDetailView(DetailView):
             else "/static/img/avatars/default.png"
         )
 
+        # History is delivered over the websocket, never server-rendered.
         context["messages"] = []
         context["current_person"] = current_person
 
-        context["is_joined"] = bool(
-            self.request.user.is_authenticated
-            and channel.participants.filter(pk=self.request.user.pk).exists()
-        )
-        context["has_active_member"] = bool(
-            current_person and members_qs.filter(person=current_person).exists()
-        )
-        context["can_send_messages"] = context["is_joined"] and context["has_active_member"]
-        context["can_join"] = bool(
-            self.request.user.is_authenticated and current_person and not context["can_send_messages"]
-        )
-        context["can_leave"] = context["can_send_messages"]
+        context["can_send_messages"] = current_member is not None
+        context["can_join"] = bool(current_person and not current_member)
+        context["can_leave"] = current_member is not None
 
         if not context["can_send_messages"]:
             if context["can_join"]:
-                context["observer_reason"] = "Join this channel to become a member and send messages."
-            elif not self.request.user.is_authenticated:
-                context["observer_reason"] = "You are observing. Sign in with a person profile to join."
+                context["observer_reason"] = "Join this channel to read and send messages."
             elif not current_person:
-                context["observer_reason"] = "You are observing because your user is not linked to a person profile."
+                context["observer_reason"] = (
+                    "You are observing because your user is not linked to a person profile."
+                )
             else:
                 context["observer_reason"] = "You are observing this channel."
         else:
@@ -109,12 +110,9 @@ class ChannelDetailView(DetailView):
         return PageProcessor().decorate(context, self.request)
 
 
-class ChannelJoinView(View):
+class ChannelJoinView(LoginRequiredMixin, View):
     def post(self, request, slug):
         channel = get_object_or_404(TelegraphChannel, slug=slug)
-        if not request.user.is_authenticated:
-            messages.error(request, "Sign in to join this channel.")
-            return redirect("telegraph:channel_detail", slug=channel.slug)
 
         person = Person.objects.filter(user=request.user).first()
         if not person:
@@ -128,21 +126,16 @@ class ChannelJoinView(View):
             member.is_active = True
             member.save(update_fields=["is_active"])
 
-        channel.participants.add(request.user)
         msg = f"You {'joined' if created else 'rejoined'} {channel.name} as a member."
         messages.success(request, msg)
         return redirect("telegraph:channel_detail", slug=channel.slug)
 
 
-class ChannelLeaveView(View):
+class ChannelLeaveView(LoginRequiredMixin, View):
     def post(self, request, slug):
         channel = get_object_or_404(TelegraphChannel, slug=slug)
-        if not request.user.is_authenticated:
-            messages.error(request, "Sign in to leave this channel.")
-            return redirect("telegraph:channel_detail", slug=channel.slug)
 
         person = Person.objects.filter(user=request.user).first()
-        channel.participants.remove(request.user)
         if person:
             TelegraphMember.objects.filter(channel=channel, person=person, is_active=True).update(is_active=False)
 
@@ -150,3 +143,65 @@ class ChannelLeaveView(View):
         return redirect("telegraph:channel_detail", slug=channel.slug)
 
 
+class ChannelCreateView(LoginRequiredMixin, View):
+    """Create a channel from the channel-list page and join it.
+
+    Until now the only ways to create a channel were the Django admin and a seed
+    command, which made the app unusable without operator access.
+    """
+
+    def post(self, request):
+        from django.utils.text import slugify
+
+        name = (request.POST.get("name") or "").strip()
+        if not name:
+            messages.error(request, "A channel needs a name.")
+            return redirect("telegraph:channel_list")
+
+        slug = slugify(name)[:50]
+        if not slug:
+            messages.error(request, "That name cannot be turned into a URL slug.")
+            return redirect("telegraph:channel_list")
+
+        if TelegraphChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
+            messages.error(request, f"A channel called “{name}” already exists.")
+            return redirect("telegraph:channel_list")
+
+        channel = TelegraphChannel.objects.create(
+            name=name, slug=slug, created_by=request.user
+        )
+        person = Person.objects.filter(user=request.user).first()
+        if person:
+            TelegraphMember.objects.create(channel=channel, person=person, is_active=True)
+
+        messages.success(request, f"Created {channel.name}.")
+        return redirect("telegraph:channel_detail", slug=channel.slug)
+
+
+class MessageSearchView(LoginRequiredMixin, ListView):
+    """Full-text search across the messages the requester is allowed to read."""
+
+    template_name = "telegraph/search.html"
+    context_object_name = "results"
+    paginate_by = 25
+
+    def get_queryset(self):
+        from .search import search_messages
+
+        query = (self.request.GET.get("q") or "").strip()
+        slug = (self.request.GET.get("channel") or "").strip()
+        if not query:
+            from .models import TelegraphMessage
+
+            return TelegraphMessage.objects.none()
+        return search_messages(self.request.user, query, channel_slug=slug or None)
+
+    def get_context_data(self, **kwargs):
+        from .search import search_mode
+
+        context = super().get_context_data(**kwargs)
+        context["query"] = (self.request.GET.get("q") or "").strip()
+        context["channel_slug"] = (self.request.GET.get("channel") or "").strip()
+        context["searchable_channels"] = permissions.readable_channels(self.request.user)
+        context.update(search_mode())
+        return PageProcessor().decorate(context, self.request)

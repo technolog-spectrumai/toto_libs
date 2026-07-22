@@ -1,7 +1,0 @@
-[workspace]
-resolver = "2"
-members = [
-    "rotor_core",
-    "rotor_py",
-    "rotor_wasm",
-]

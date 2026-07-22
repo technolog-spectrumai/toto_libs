@@ -4,23 +4,17 @@ from urllib.parse import urlparse
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 
-
-MLS_TYPES = {
-    "mls_key_package",
-    "mls_welcome",
-    "mls_commit",
-    "mls_app",
-    "mls_reset_request",
-}
-
-YJS_TYPES = {
-    "yjs_update",
-    "yjs_sync_request",
-    "yjs_sync_response",
-}
+from .store import DEFAULT_HISTORY_LIMIT
 
 
 class ChatConsumer(AsyncWebsocketConsumer):
+    """Forum channel socket: live delivery plus a replay of recent history on connect.
+
+    Everything on this socket is plaintext over TLS. There is no MLS relay, no
+    client-side encryption and no CRDT mirror — the database is the single source of
+    truth for the message list.
+    """
+
     async def connect(self):
         self.channel_slug = self.scope["url_route"]["kwargs"]["channel_slug"]
         self.channel_group_name = f"telegraph_{self.channel_slug}"
@@ -40,6 +34,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
         await self.broadcast_participants()
 
     async def disconnect(self, close_code):
+        await self.broadcast_typing(stop=True)
         await self.channel_layer.group_discard(
             self.channel_group_name,
             self.channel_name,
@@ -54,8 +49,7 @@ class ChatConsumer(AsyncWebsocketConsumer):
             return
 
         user = self.scope.get("user")
-        cant_send = await self.user_can_send(user)
-        if not cant_send:
+        if not await self.user_can_send(user):
             await self.send_error(
                 "You are observing this channel. Join as a member before sending messages."
             )
@@ -63,350 +57,207 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
         data_type = data.get("type")
 
-        if data_type in YJS_TYPES:
-            await self.handle_yjs_message(data)
-            return
-
-        if data_type in MLS_TYPES:
-            await self.handle_opaque_mls_message(user, data)
-            return
-
         if data_type == "chat_message" and data.get("message"):
             await self.handle_chat_message(user, data)
             return
 
-        if data_type == "image_message" and data.get("image_data"):
-            await self.handle_image_message(user, data)
+        if data_type == "message_edit":
+            await self.handle_message_edit(user, data)
             return
 
-        if data_type == "voice_message" and data.get("audio_data"):
-            await self.handle_voice_message(user, data)
+        if data_type == "message_delete":
+            await self.handle_message_delete(user, data)
             return
 
-        if data_type == "secure_message":
-            await self.handle_secure_message(user, data)
+        if data_type in ("typing_start", "typing_stop"):
+            await self.broadcast_typing(stop=data_type == "typing_stop")
             return
 
-        await self.send_error(
-            "Only chat messages, image messages, Yjs messages, and MLS-encrypted messages are accepted."
-        )
+        await self.send_error(f"Unsupported message type: {data_type!r}")
 
-    async def handle_yjs_message(self, data):
-        data["sender_channel"] = self.channel_name
-
-        await self.broadcast(
-            payload=data,
-            sender_channel=self.channel_name,
-            target_channel=data.get("target_channel"),
-        )
-
-    async def handle_opaque_mls_message(self, user, data):
-        """
-        Fully opaque MLS relay.
-
-        The server forwards only the cryptographic payload and routing fields.
-        No user identity, avatar, or server-side metadata is injected, so the
-        server cannot correlate ciphertexts to members at the application layer.
-        """
-        payload = {
-            "type": data.get("type"),
-            "sender_channel": self.channel_name,
-            "target_channel": data.get("target_channel"),
-        }
-
-        for field in (
-            "id",                # message dedup key used by the browser's renderedIds set
-            "device_id",
-            "key_package",
-            "package",           # browser sends key-package bytes under this name
-            "welcome",
-            "commit",
-            "ciphertext",
-            "reset_id",          # mls_reset_request dedup key
-            "sender_name",
-            "sender_avatar_url",
-            # handshake routing — needed for key_package/welcome exchange
-            "user",
-            "target",
-            "device_kind",
-            "mls_session_id",
-            "target_device_id",
-            "target_device_kind",
-        ):
-            if field in data:
-                payload[field] = data[field]
-
-        await self.broadcast(
-            payload=payload,
-            sender_channel=self.channel_name,
-            target_channel=payload.get("target_channel"),
-        )
-
+    # ── sending ───────────────────────────────────────────────────────────────
     async def handle_chat_message(self, user, data):
         member = await self.get_channel_member(user)
 
-        data["user"] = member.display_name
-        data["avatar_url"] = self.absolute_url(member.avatar_url)
-        data["participant_type"] = member.participant_type
-        data["sender_channel"] = self.channel_name
-        data["target_channel"] = None
-
         stored = await self.persist_message(
-            user, "chat_message", {"message": data.get("message", "")},
-            member.display_name, self.absolute_url(member.avatar_url),
+            user,
+            body=data.get("message", ""),
+            sender_name=member.display_name,
+            sender_avatar_url=self.absolute_url(member.avatar_url),
+            reply_to_id=data.get("reply_to"),
         )
-        if stored:
-            data["id"] = stored["id"]
-            data["created_at"] = stored["created_at"]
-
-        await self.broadcast(
-            payload=data,
-            sender_channel=self.channel_name,
-            target_channel=None,
-        )
-
-    async def handle_image_message(self, user, data):
-        image_data = data.get("image_data", "")
-
-        if not isinstance(image_data, str) or not image_data.startswith("data:image/"):
-            await self.send_error("Invalid image data.")
-            return
-
-        # 10 MB raw ≈ 13.4 MB base64
-        if len(image_data) > 14 * 1024 * 1024:
-            await self.send_error("Image too large (max 10 MB).")
-            return
-
-        member = await self.get_channel_member(user)
-
-        payload = {
-            "type": "image_message",
-            "image_data": image_data,
-            "user": member.display_name,
-            "avatar_url": self.absolute_url(member.avatar_url),
-            "sender_channel": self.channel_name,
-            "target_channel": None,
-        }
-
-        stored = await self.persist_message(
-            user, "image_message", {"image_data": image_data},
-            member.display_name, self.absolute_url(member.avatar_url),
-        )
-        if stored:
-            payload["id"] = stored["id"]
-            payload["created_at"] = stored["created_at"]
-
-        await self.broadcast(
-            payload=payload,
-            sender_channel=self.channel_name,
-            target_channel=None,
-        )
-
-    async def handle_voice_message(self, user, data):
-        audio_data = data.get("audio_data", "")
-
-        if not isinstance(audio_data, str) or not audio_data.startswith("data:audio/"):
-            await self.send_error("Invalid audio data.")
-            return
-
-        if len(audio_data) > 14 * 1024 * 1024:
-            await self.send_error("Voice message too large (max ~10 MB).")
-            return
-
-        member = await self.get_channel_member(user)
-
-        payload = {
-            "type": "voice_message",
-            "audio_data": audio_data,
-            "user": member.display_name,
-            "avatar_url": self.absolute_url(member.avatar_url),
-            "sender_channel": self.channel_name,
-            "target_channel": None,
-        }
-
-        stored = await self.persist_message(
-            user, "voice_message", {"audio_data": audio_data},
-            member.display_name, self.absolute_url(member.avatar_url),
-        )
-        if stored:
-            payload["id"] = stored["id"]
-            payload["created_at"] = stored["created_at"]
-
-        await self.broadcast(
-            payload=payload,
-            sender_channel=self.channel_name,
-            target_channel=None,
-        )
-
-    # ── secure-on-send (end-to-end; server stores opaque ciphertext) ──────────
-    async def handle_secure_message(self, user, data):
-        pin_key_id = (data.get("pin_key_id") or "").strip()
-        iv_b64 = data.get("iv") or ""
-        ct_b64 = data.get("ciphertext") or ""
-        if not pin_key_id or not iv_b64 or not ct_b64:
-            await self.send_error("secure_message requires pin_key_id, iv and ciphertext.")
-            return
-
-        member = await self.get_channel_member(user)
-        sender_name = member.display_name
-        avatar = self.absolute_url(member.avatar_url)
-        stored = await self._store_secure(pin_key_id, iv_b64, ct_b64, sender_name, avatar, user)
         if not stored:
-            await self.send_error("Could not store secure message.")
+            await self.send_error("Could not store the message.")
             return
 
-        # Broadcast the opaque ciphertext to the group; only members with the pin key
-        # can decrypt it. The server never sees the plaintext.
+        await self.broadcast(payload=stored, sender_channel=self.channel_name)
+
+    async def handle_message_edit(self, user, data):
+        message_id = (data.get("id") or "").strip()
+        body = data.get("message", "")
+        if not message_id or not body.strip():
+            await self.send_error("message_edit requires id and a non-empty message.")
+            return
+
+        payload = await self._edit_message(user, message_id, body)
+        if not payload:
+            await self.send_error("You can only edit your own messages.")
+            return
+        await self.broadcast(payload=payload, sender_channel=None)
+
+    async def handle_message_delete(self, user, data):
+        message_id = (data.get("id") or "").strip()
+        if not message_id:
+            await self.send_error("message_delete requires id.")
+            return
+
+        payload = await self._delete_message(user, message_id)
+        if not payload:
+            await self.send_error("You can only delete your own messages.")
+            return
+        await self.broadcast(payload=payload, sender_channel=None)
+
+    # ── typing ────────────────────────────────────────────────────────────────
+    async def broadcast_typing(self, *, stop):
+        user = self.scope.get("user")
+        if not user or not getattr(user, "is_authenticated", False):
+            return
+        try:
+            member = await self.get_channel_member(user)
+        except Exception:
+            return
+        # Typing is presence, not content — broadcast only, never persisted.
         await self.broadcast(
             payload={
-                "type": "secure_message",
-                "pin_key_id": pin_key_id,
-                "iv": iv_b64,
-                "ciphertext": ct_b64,
-                "user": sender_name,
-                "avatar_url": avatar,
-                "id": stored["id"],
-                "created_at": stored["created_at"],
-                "sender_channel": self.channel_name,
-                "target_channel": None,
+                "type": "typing_stop" if stop else "typing_start",
+                "user": member.display_name,
             },
             sender_channel=self.channel_name,
-            target_channel=None,
+            echo=False,
         )
 
+    # ── persistence ───────────────────────────────────────────────────────────
     @database_sync_to_async
-    def _store_secure(self, pin_key_id, iv_b64, ct_b64, sender_name, sender_avatar_url, user):
-        import base64
-
-        from . import vault
-        from .models import TelegraphChannel
+    def _store_message(self, body, sender_name, sender_avatar_url, user, reply_to_id):
+        from . import store
+        from .models import TelegraphChannel, TelegraphMessage
 
         try:
             channel = TelegraphChannel.objects.get(slug=self.channel_slug)
         except TelegraphChannel.DoesNotExist:
             return None
-        try:
-            iv = base64.b64decode(iv_b64, validate=True)
-            ciphertext = base64.b64decode(ct_b64, validate=True)
-        except Exception:
-            return None
-        if not iv or not ciphertext:
-            return None
-        row = vault.store_e2e_message(
+
+        reply_to = None
+        if reply_to_id:
+            reply_to = TelegraphMessage.objects.filter(
+                id=reply_to_id, channel=channel
+            ).first()
+
+        row = store.store_message(
             channel,
-            pin_key_id=pin_key_id,
-            iv=iv,
-            ciphertext=ciphertext,
+            msg_type="chat_message",
+            body=body,
             sender=user if getattr(user, "is_authenticated", False) else None,
             sender_name=sender_name or "",
             sender_avatar_url=sender_avatar_url or "",
+            reply_to=reply_to,
         )
-        return {"id": str(row.id), "created_at": row.created_at.isoformat()}
+        return store.message_to_dict(row, absolute=self.absolute_url)
 
-    # ── persistent encrypted history (Discord model) ──────────────────────────
+    async def persist_message(self, user, *, body, sender_name, sender_avatar_url,
+                              reply_to_id=None):
+        return await self._store_message(
+            body, sender_name, sender_avatar_url, user, reply_to_id
+        )
+
     @database_sync_to_async
-    def _store_message(self, msg_type, content, sender_name, sender_avatar_url, user):
-        from . import vault
-        from .models import TelegraphChannel
+    def _edit_message(self, user, message_id, body):
+        from django.utils import timezone
 
-        try:
-            channel = TelegraphChannel.objects.get(slug=self.channel_slug)
-        except TelegraphChannel.DoesNotExist:
+        from . import store
+        from .models import TelegraphMessage
+
+        row = TelegraphMessage.objects.filter(
+            id=message_id, channel__slug=self.channel_slug, deleted_at__isnull=True
+        ).first()
+        if not row or not row.sender_id or row.sender_id != user.id:
             return None
-        try:
-            row = vault.store_message(
-                channel,
-                msg_type=msg_type,
-                payload=content,
-                sender=user if getattr(user, "is_authenticated", False) else None,
-                sender_name=sender_name or "",
-                sender_avatar_url=sender_avatar_url or "",
-            )
-        except vault.VaultUnavailable:
-            return None  # history disabled — keep the live broadcast working
-        return {"id": str(row.id), "created_at": row.created_at.isoformat()}
+        row.body = body
+        row.edited_at = timezone.now()
+        row.save(update_fields=["body", "edited_at"])
+        payload = store.message_to_dict(row, absolute=self.absolute_url)
+        payload["type"] = "message_edit"
+        payload["msg_type"] = row.msg_type
+        return payload
 
-    async def persist_message(self, user, msg_type, content, sender_name, sender_avatar_url):
-        """Persist a relay message encrypted at rest; returns {id, created_at} or None."""
-        try:
-            return await self._store_message(
-                msg_type, content, sender_name, sender_avatar_url, user
-            )
-        except Exception:
-            return None  # never let persistence break live delivery
+    @database_sync_to_async
+    def _delete_message(self, user, message_id):
+        from django.utils import timezone
+
+        from .models import TelegraphMessage
+
+        row = TelegraphMessage.objects.filter(
+            id=message_id, channel__slug=self.channel_slug, deleted_at__isnull=True
+        ).first()
+        if not row or not row.sender_id or row.sender_id != user.id:
+            return None
+        row.deleted_at = timezone.now()
+        row.save(update_fields=["deleted_at"])
+        return {"type": "message_delete", "id": str(row.id)}
 
     @database_sync_to_async
     def _load_history(self):
-        from . import vault
+        from . import store
         from .models import TelegraphChannel
 
         try:
             channel = TelegraphChannel.objects.get(slug=self.channel_slug)
         except TelegraphChannel.DoesNotExist:
-            return []
-        try:
-            vault.purge_expired(channel)          # lazy purge on connect
-            return vault.history(channel)
-        except vault.VaultUnavailable:
-            return []
+            return [], False
+
+        messages = store.history(
+            channel, limit=DEFAULT_HISTORY_LIMIT, absolute=self.absolute_url
+        )
+        oldest = messages[0]["created_at"] if messages else None
+        has_more = store.has_more_before(channel, oldest) if oldest else False
+        return messages, has_more
 
     async def send_history(self):
-        """Replay readable history to the just-connected socket."""
+        """Replay the most recent messages to the just-connected socket."""
         try:
-            messages = await self._load_history()
+            messages, has_more = await self._load_history()
         except Exception:
-            messages = []
-        if not messages:
-            return
+            messages, has_more = [], False
         await self.send(text_data=json.dumps({
             "type": "chat_history",
             "room_slug": self.channel_slug,
             "messages": messages,
+            "has_more": has_more,
         }))
 
+    # ── plumbing ──────────────────────────────────────────────────────────────
     async def broadcast_participants(self):
         await self.broadcast(
             payload=await self.channel_participants_payload(),
             sender_channel=self.channel_name,
-            target_channel=None,
         )
 
-    async def broadcast(self, *, payload, sender_channel, target_channel=None):
+    async def broadcast(self, *, payload, sender_channel, echo=True):
         await self.channel_layer.group_send(
             self.channel_group_name,
             {
                 "type": "chat_message",
                 "payload": payload,
                 "sender_channel": sender_channel,
-                "target_channel": target_channel,
+                "echo": echo,
             },
         )
 
     async def chat_message(self, event):
-        target_channel = event.get("target_channel")
-
-        if target_channel and target_channel != self.channel_name:
+        # Typing indicators must not be echoed to their own sender.
+        if not event.get("echo", True) and event.get("sender_channel") == self.channel_name:
             return
-
-        payload = event["payload"]
-
-        # Do not echo local-only transport messages back to the socket that sent them.
-        # MLS application messages cannot be decrypted by their sender.
-        if (
-            payload.get("type")
-            in {
-                "yjs_update",
-                "yjs_sync_request",
-                "mls_key_package",
-                "mls_welcome",
-                "mls_commit",
-                "mls_app",
-            }
-            and event.get("sender_channel") == self.channel_name
-        ):
-            return
-
-        await self.send(text_data=json.dumps(payload))
+        await self.send(text_data=json.dumps(event["payload"]))
 
     async def send_error(self, message):
         await self.send(
@@ -478,13 +329,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def user_can_send(self, user):
-        from toto.telegraph.models import TelegraphChannel
+        from .permissions import can_send
 
-        if not user or not user.is_authenticated:
-            return False
-
-        return TelegraphChannel.objects.filter(
-            slug=self.channel_slug,
-            telegraph_members__is_active=True,
-            telegraph_members__person__user=user,
-        ).exists()
+        return can_send(user, self.channel_slug)

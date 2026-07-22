@@ -2,7 +2,7 @@
 {% load static %}
 {% load i18n %}
 
-{% block title %}{{ channel.name }} · Telegraph{% endblock %}
+{% block title %}{{ channel.name }} · Forum{% endblock %}
 
 {# Full-height app layout: chat fills the viewport, footer dropped, composer always on-screen (mobile) #}
 {% block main_class %}flex grow min-h-0 flex-col{% endblock %}
@@ -10,210 +10,123 @@
 
 {% block start_script %}
 <script type="module">
-import * as Y from "{% static 'vendor/yjs/yjs.mjs' %}";
-
 document.addEventListener("DOMContentLoaded", async () => {
-  // Load MLS WASM lazily — if unavailable encryption is silently disabled
-  let initRotorWasm = null;
-  let WasmRotorSession = null;
-  try {
-    const wasm = await import("{% static 'js/rotor_wasm/rotor_wasm.js' %}");
-    initRotorWasm = wasm.default;
-    WasmRotorSession = wasm.WasmRotorSession;
-  } catch (_) { /* no WASM — MLS disabled */ }
-  const channelSlug  = "{{ channel.slug }}";
-  const userName     = "{{ current_chat_user|escapejs }}";
+  const channelSlug   = "{{ channel.slug }}";
+  const userName      = "{{ current_chat_user|escapejs }}";
   const userAvatarUrl = "{{ current_chat_avatar_url|escapejs }}";
-  const canSend      = {{ can_send_messages|yesno:"true,false" }};
+  const canSend       = {{ can_send_messages|yesno:"true,false" }};
+  const csrfToken     = "{{ csrf_token }}";
 
-  let socket         = null;
-  let mlsSession     = null;
-  let mlsReady       = false;
-  let encryptionEnabled = canSend;
+  let socket = null;
 
-  const mlsInvitedUsers  = new Set();
-  const ydoc             = new Y.Doc();
-  const yMessages        = ydoc.getArray("messages");
-  const renderedIds      = new Set();
+  // Server-assigned message ids, so a message rendered from the history replay is not
+  // rendered again when the live broadcast of it arrives (and vice versa).
+  const renderedIds = new Set();
+  // Cursor for paging backwards through history.
+  let oldestLoaded = null;
+  let historyExhausted = false;
+  let loadingOlder = false;
+  // Composer state: replying to, or editing, an existing message.
+  let replyingTo = null;
+  let editingId  = null;
 
-  const form             = document.querySelector("#message-form");
-  const input            = document.querySelector("#message-input");
-  const sendButton       = document.querySelector("#message-send-button");
-  const container        = document.querySelector("#messages");
-  const appRoot          = document.querySelector("[data-telegraph-channel]");
-  const connectionChips  = document.querySelectorAll(".connection-status-chip");
-  const connectionTexts  = document.querySelectorAll(".connection-status-text");
-  const encryptionToggles = document.querySelectorAll(".encryption-toggle");
-  const encryptionTexts  = document.querySelectorAll(".encryption-status-text");
-  const encryptionIcons  = document.querySelectorAll(".encryption-status-icon");
+  const form            = document.querySelector("#message-form");
+  const input           = document.querySelector("#message-input");
+  const sendButton      = document.querySelector("#message-send-button");
+  const container       = document.querySelector("#messages");
+  const connectionChips = document.querySelectorAll(".connection-status-chip");
+  const connectionTexts = document.querySelectorAll(".connection-status-text");
+  const loadOlderWrap   = document.querySelector("#load-older-wrap");
+  const loadOlderBtn    = document.querySelector("#load-older-button");
+  const typingIndicator = document.querySelector("#typing-indicator");
+  const composerBar     = document.querySelector("#composer-context");
+  const composerLabel   = document.querySelector("#composer-context-label");
+  const composerCancel  = document.querySelector("#composer-context-cancel");
 
   if (!form || !input || !sendButton || !container) return;
-
-  // ── Device / session identity ──────────────────────────────────────────────
-
-  const browserDeviceKey = `telegraph:device:${channelSlug}:${userName}`;
-
-  function getOrCreateBrowserDeviceId() {
-    let value = localStorage.getItem(browserDeviceKey);
-    if (!value) {
-      value = crypto.randomUUID();
-      localStorage.setItem(browserDeviceKey, value);
-    }
-    return value;
-  }
-
-  const browserDeviceId = getOrCreateBrowserDeviceId();
-
-  const mlsSessionIdKey = `telegraph:mls-session-id:${channelSlug}:${userName}:${browserDeviceId}`;
-  let browserMlsSessionId = localStorage.getItem(mlsSessionIdKey);
-
-  function rotateBrowserMlsSessionId() {
-    browserMlsSessionId = crypto.randomUUID();
-    localStorage.setItem(mlsSessionIdKey, browserMlsSessionId);
-    return browserMlsSessionId;
-  }
-
-  if (!browserMlsSessionId) rotateBrowserMlsSessionId();
-
-  const mlsStateKey = `telegraph:mls:${channelSlug}:${userName}:${browserDeviceId}:${browserMlsSessionId}`;
-
-  // ── Utilities ──────────────────────────────────────────────────────────────
-
-  function first16Hex(bytes) {
-    return Array.from(bytes.slice(0, 16))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join(" ");
-  }
-
-  function bytesToBase64(bytes) {
-    let binary = "";
-    new Uint8Array(bytes).forEach((b) => { binary += String.fromCharCode(b); });
-    return window.btoa(binary);
-  }
-
-  function base64ToBytes(value) {
-    const binary = window.atob(value);
-    const bytes  = new Uint8Array(binary.length);
-    for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    return bytes;
-  }
-
-  function callSession(snake, camel, ...args) {
-    const fn = mlsSession?.[snake] || mlsSession?.[camel];
-    if (!fn) throw new Error(`WASM MLS session is missing method ${snake}/${camel}`);
-    return fn.apply(mlsSession, args);
-  }
-
-  // ── MLS state persistence ──────────────────────────────────────────────────
-
-  function saveMlsState() {
-    if (!mlsSession) return;
-    localStorage.setItem(mlsStateKey, bytesToBase64(callSession("export_state", "exportState")));
-  }
-
-  function loadMlsState() {
-    const encoded = localStorage.getItem(mlsStateKey);
-    return encoded ? base64ToBytes(encoded) : null;
-  }
-
-  function clearMlsState() {
-    localStorage.removeItem(mlsStateKey);
-    rotateBrowserMlsSessionId();
-    mlsSession = null;
-    mlsReady   = false;
-  }
 
   // ── UI status helpers ──────────────────────────────────────────────────────
 
   function setConnectionStatus(status) {
-    const labels = { observer: "Observer", connecting: "Connecting", connected: "Connected", disconnected: "Disconnected" };
-    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).connectionStatus = status;
-    connectionTexts.forEach((el) => { el.textContent = labels[status] || "Disconnected"; });
-    connectionChips.forEach((el) => {
-      el.dataset.connected = status === "connected" ? "true" : "false";
-      el.dataset.pending   = status === "connecting" ? "true" : "false";
+    const labels = {
+      connected:    "{% trans 'Connected' %}",
+      connecting:   "{% trans 'Connecting' %}",
+      disconnected: "{% trans 'Disconnected' %}",
+      observer:     "{% trans 'Observer' %}",
+    };
+    connectionTexts.forEach((el) => { el.textContent = labels[status] || status; });
+    connectionChips.forEach((chip) => chip.setAttribute("data-status", status));
+    document.querySelectorAll("[data-forum-channel]").forEach((el) => {
+      if (window.Alpine) window.Alpine.$data(el).connectionStatus = status;
     });
   }
 
-  let keyExchangeTimeout = null;
+  // ── Typing indicator ───────────────────────────────────────────────────────
 
-  function setKeyExchangeStatus(active) {
-    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).mlsKeyExchange = active;
-    if (keyExchangeTimeout) { clearTimeout(keyExchangeTimeout); keyExchangeTimeout = null; }
-    if (active) {
-      // Auto-clear the stuck indicator after 30 s (enough for a normal exchange)
-      keyExchangeTimeout = setTimeout(() => setKeyExchangeStatus(false), 30000);
+  const typingUsers = new Map();  // name → timeout handle
+  let typingSentAt = 0;
+
+  function renderTypingIndicator() {
+    if (!typingIndicator) return;
+    const names = [...typingUsers.keys()];
+    if (!names.length) {
+      typingIndicator.textContent = "";
+      typingIndicator.classList.add("hidden");
+      return;
     }
+    const label = names.length === 1
+      ? `${names[0]} {% trans "is typing…" %}`
+      : names.length === 2
+        ? `${names[0]} {% trans "and" %} ${names[1]} {% trans "are typing…" %}`
+        : "{% trans 'Several people are typing…' %}";
+    typingIndicator.textContent = label;
+    typingIndicator.classList.remove("hidden");
   }
 
-  const processedResetIds = new Set();
-
-  async function resetMlsSession(fromPeer = false, resetId = null) {
-    // Deduplicate by UUID to prevent cycles
-    if (resetId) {
-      if (processedResetIds.has(resetId)) return;
-      processedResetIds.add(resetId);
-      setTimeout(() => processedResetIds.delete(resetId), 30000);
+  function noteTyping(name, stopped) {
+    if (!name || name === userName) return;
+    const existing = typingUsers.get(name);
+    if (existing) clearTimeout(existing);
+    if (stopped) {
+      typingUsers.delete(name);
+    } else {
+      // Self-expiring: a client that disconnects mid-keystroke never leaves a ghost.
+      typingUsers.set(name, setTimeout(() => {
+        typingUsers.delete(name);
+        renderTypingIndicator();
+      }, 6000));
     }
-    // Broadcast to all peers first (unless this IS a peer-triggered reset)
-    if (!fromPeer && socket && socket.readyState === WebSocket.OPEN) {
-      const newResetId = crypto.randomUUID();
-      processedResetIds.add(newResetId);
-      setTimeout(() => processedResetIds.delete(newResetId), 30000);
-      sendSocketPayload({ type: "mls_reset_request", device_id: browserDeviceId, reset_id: newResetId });
-    }
-    // Clear message history and Yjs state
-    container.querySelectorAll("[data-empty-messages], article, div.flex.min-w-0").forEach((el) => el.remove());
-    renderedIds.clear();
-    yMessages.delete(0, yMessages.length);
-    setEncryptionStatus(false);
-    setKeyExchangeStatus(false);
-    mlsInvitedUsers.clear();
-    clearMlsState();
-    try {
-      await initializeMls();
-      setEncryptionStatus(true);
-      setKeyExchangeStatus(true);
-      appendSystemMessage("🔑 Session reset — history cleared.");
-      sendKeyPackage(/*targetUser=*/"", /*silent=*/true);
-    } catch (err) {
-      appendSystemMessage(`Reset failed: ${err?.message || err}`);
-    }
+    renderTypingIndicator();
   }
 
-  // Expose to HTML onclick
-  window._telegraphResetMls = resetMlsSession;
-
-  function setEncryptionStatus(enabled) {
-    encryptionEnabled = enabled && canSend;
-    if (enabled) setKeyExchangeStatus(false);
-    if (window.Alpine && appRoot) window.Alpine.$data(appRoot).encryptionEnabled = encryptionEnabled;
-    encryptionTexts.forEach((el) => { el.textContent = encryptionEnabled ? "Encrypted" : "Unencrypted"; });
-    encryptionIcons.forEach((el) => {
-      el.classList.toggle("fa-lock",      encryptionEnabled);
-      el.classList.toggle("fa-lock-open", !encryptionEnabled);
-    });
-    encryptionToggles.forEach((el) => {
-      el.setAttribute("aria-pressed", encryptionEnabled ? "true" : "false");
-      el.title = encryptionEnabled ? "Encryption on" : "Unencrypted channel";
-    });
+  function announceTyping() {
+    if (!canSend) return;
+    const now = Date.now();
+    if (now - typingSentAt < 3000) return;  // throttle: at most one frame per 3s
+    typingSentAt = now;
+    sendSocketPayload({ type: "typing_start" });
   }
 
   // ── Message rendering ──────────────────────────────────────────────────────
 
-  function appendMessage(data) {
-    const id = data.id || data.message_id;
-    if (id && renderedIds.has(id)) return;
-    if (id) renderedIds.add(id);
+  function formatTimestamp(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString([], {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  }
 
-    container.querySelectorAll("[data-empty-messages]").forEach((el) => el.remove());
-
-    const author   = data.user || "Guest";
-    const isSelf   = author === userName;
+  function buildMessageNode(data) {
+    const author    = data.user || "Guest";
+    const isSelf    = author === userName;
     const avatarUrl = data.avatar_url || (isSelf ? userAvatarUrl : "");
 
     const row = document.createElement("div");
-    row.className = `flex min-w-0 gap-3 ${isSelf ? "justify-end" : "justify-start"}`;
+    row.className = `group flex min-w-0 gap-3 ${isSelf ? "justify-end" : "justify-start"}`;
+    if (data.id) row.dataset.messageId = data.id;
+    if (data.created_at) row.dataset.createdAt = data.created_at;
 
     let avatar;
     if (avatarUrl) {
@@ -232,67 +145,198 @@ document.addEventListener("DOMContentLoaded", async () => {
     bubble.setAttribute(":class", "darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'");
 
     const meta = document.createElement("p");
-    meta.className = `text-xs font-semibold opacity-60 ${isSelf ? "text-right" : ""}`;
-    meta.textContent = author;
+    meta.className = `flex flex-wrap items-center gap-1.5 text-xs font-semibold opacity-60 ${isSelf ? "justify-end" : ""}`;
+    const who = document.createElement("span");
+    who.textContent = author;
+    meta.appendChild(who);
+    const when = document.createElement("span");
+    when.className = "font-normal opacity-70";
+    when.textContent = formatTimestamp(data.created_at);
+    meta.appendChild(when);
+    if (data.edited_at) {
+      const edited = document.createElement("span");
+      edited.className = "font-normal italic opacity-60";
+      edited.textContent = "{% trans '(edited)' %}";
+      meta.appendChild(edited);
+    }
+
+    // Quoted parent, when this message is a reply.
+    let quote = null;
+    if (data.reply_to) {
+      const parent = container.querySelector(`[data-message-id="${data.reply_to}"]`);
+      quote = document.createElement("button");
+      quote.type = "button";
+      quote.className = "mb-1.5 block w-full truncate rounded border-l-2 border-current/30 bg-current/5 px-2 py-1 text-left text-xs opacity-70 transition hover:opacity-100";
+      const parentAuthor = parent?.querySelector("[data-author]")?.textContent || "{% trans 'a message' %}";
+      const parentText   = parent?.querySelector("[data-body]")?.textContent || "";
+      quote.textContent = `↳ ${parentAuthor}: ${parentText}`.slice(0, 120);
+      quote.addEventListener("click", () => {
+        parent?.scrollIntoView({ behavior: "smooth", block: "center" });
+        parent?.classList.add("ring-2", "ring-current/40", "rounded-2xl");
+        setTimeout(() => parent?.classList.remove("ring-2", "ring-current/40", "rounded-2xl"), 1200);
+      });
+    }
+
+    who.setAttribute("data-author", "");
 
     let body;
-    if (data.type === "image_message" && (data.image_data || data.image_url)) {
-      const src = data.image_data || data.image_url;
+    if (data.deleted) {
+      body = document.createElement("p");
+      body.className = "mt-1 text-sm italic opacity-50";
+      body.textContent = "{% trans 'This message was deleted.' %}";
+    } else if (data.type === "image_message" && (data.image_url || data.image_data)) {
+      const src = data.image_url || data.image_data;
       body = document.createElement("a");
       body.href = src;
       body.target = "_blank";
       body.rel = "noopener noreferrer";
       const img = document.createElement("img");
       img.src = src;
-      img.alt = "image";
+      img.alt = data.attachment_name || "image";
       img.className = "mt-1 max-h-64 max-w-full rounded object-contain";
       body.appendChild(img);
-    } else if (data.type === "voice_message" && data.audio_data) {
+    } else if (data.type === "voice_message" && (data.audio_url || data.audio_data)) {
       body = document.createElement("audio");
       body.controls = true;
-      body.src = data.audio_data;
+      body.src = data.audio_url || data.audio_data;
       body.className = "mt-1 max-w-xs";
     } else {
       body = document.createElement("p");
       body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
       body.textContent = data.message || "";
     }
+    body.setAttribute("data-body", "");
 
+    if (quote) bubble.appendChild(quote);
     bubble.appendChild(meta);
     bubble.appendChild(body);
+
+    // Hover actions: reply for everyone, edit/delete for your own live messages.
+    if (canSend && data.id && !data.deleted && data.user !== "System") {
+      const actions = document.createElement("div");
+      actions.className = "mt-1.5 flex gap-2 text-xs opacity-0 transition group-hover:opacity-60 focus-within:opacity-60";
+
+      const replyBtn = document.createElement("button");
+      replyBtn.type = "button";
+      replyBtn.className = "underline hover:opacity-100";
+      replyBtn.textContent = "{% trans 'Reply' %}";
+      replyBtn.addEventListener("click", () => startReply(data.id, author, body.textContent));
+      actions.appendChild(replyBtn);
+
+      if (isSelf && data.type === "chat_message") {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "underline hover:opacity-100";
+        editBtn.textContent = "{% trans 'Edit' %}";
+        editBtn.addEventListener("click", () => startEdit(data.id, body.textContent));
+        actions.appendChild(editBtn);
+      }
+      if (isSelf) {
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "underline hover:opacity-100";
+        delBtn.textContent = "{% trans 'Delete' %}";
+        delBtn.addEventListener("click", () => {
+          if (confirm("{% trans 'Delete this message?' %}")) {
+            sendSocketPayload({ type: "message_delete", id: data.id });
+          }
+        });
+        actions.appendChild(delBtn);
+      }
+      bubble.appendChild(actions);
+    }
 
     if (isSelf) { row.appendChild(bubble); row.appendChild(avatar); }
     else        { row.appendChild(avatar);  row.appendChild(bubble); }
 
-    container.appendChild(row);
-    if (window.Alpine) window.Alpine.initTree(row);
-    container.scrollTop = container.scrollHeight;
+    return row;
+  }
+
+  function appendMessage(data, { prepend = false } = {}) {
+    const id = data.id || data.message_id;
+    if (id && renderedIds.has(id)) return;
+    if (id) renderedIds.add(id);
+
+    container.querySelectorAll("[data-empty-messages]").forEach((el) => el.remove());
+
+    const row = buildMessageNode(data);
+
+    if (prepend) {
+      // Preserve the scroll position while older messages are spliced in above, so
+      // loading history does not yank the viewport.
+      const before = container.scrollHeight - container.scrollTop;
+      container.insertBefore(row, loadOlderWrap ? loadOlderWrap.nextSibling : container.firstChild);
+      if (window.Alpine) window.Alpine.initTree(row);
+      container.scrollTop = container.scrollHeight - before;
+    } else {
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      container.appendChild(row);
+      if (window.Alpine) window.Alpine.initTree(row);
+      // Only auto-scroll if the reader was already at the bottom.
+      if (atBottom) container.scrollTop = container.scrollHeight;
+    }
   }
 
   function appendSystemMessage(message) {
     appendMessage({ id: crypto.randomUUID(), user: "System", message });
   }
 
-  function appendSharedMessage(data) {
-    yMessages.push([{
-      id:        data.id || crypto.randomUUID(),
-      user:      data.user || "Guest",
-      avatar_url: data.avatar_url || "",
-      message:   data.message || "",
-      createdAt: data.createdAt || new Date().toISOString(),
-    }]);
+  function replaceMessage(data) {
+    const existing = container.querySelector(`[data-message-id="${data.id}"]`);
+    if (!existing) return;
+    const replacement = buildMessageNode({ ...data, type: data.msg_type || "chat_message" });
+    existing.replaceWith(replacement);
+    if (window.Alpine) window.Alpine.initTree(replacement);
   }
 
-  function renderSharedMessages() {
-    yMessages.toArray().forEach((msg) => appendMessage(msg));
+  function markDeleted(id) {
+    const existing = container.querySelector(`[data-message-id="${id}"]`);
+    if (!existing) return;
+    const author = existing.querySelector("[data-author]")?.textContent || "";
+    const createdAt = existing.dataset.createdAt;
+    const replacement = buildMessageNode({ id, user: author, created_at: createdAt, deleted: true });
+    existing.replaceWith(replacement);
+    if (window.Alpine) window.Alpine.initTree(replacement);
   }
 
-  yMessages.observe(renderSharedMessages);
+  // ── Composer context (reply / edit) ────────────────────────────────────────
 
-  ydoc.on("update", (update, origin) => {
-    if (origin === "remote" || origin === "initial-load") return;
-    sendSocketPayload({ type: "yjs_update", update: Array.from(update) });
-  });
+  function showComposerContext(label) {
+    if (!composerBar || !composerLabel) return;
+    composerLabel.textContent = label;
+    composerBar.classList.remove("hidden");
+  }
+
+  function clearComposerContext() {
+    replyingTo = null;
+    editingId = null;
+    if (composerBar) composerBar.classList.add("hidden");
+    input.placeholder = canSend
+      ? "{% trans 'Message' %} {{ channel.name|escapejs }}…"
+      : "{% trans 'Join this channel to send messages' %}";
+  }
+
+  function startReply(id, author, preview) {
+    editingId = null;
+    replyingTo = id;
+    showComposerContext(`{% trans "Replying to" %} ${author}: ${(preview || "").slice(0, 60)}`);
+    input.focus();
+  }
+
+  function startEdit(id, currentText) {
+    replyingTo = null;
+    editingId = id;
+    input.value = currentText || "";
+    showComposerContext("{% trans 'Editing message' %}");
+    input.focus();
+  }
+
+  if (composerCancel) {
+    composerCancel.addEventListener("click", () => {
+      if (editingId) input.value = "";
+      clearComposerContext();
+    });
+  }
 
   // ── Socket ─────────────────────────────────────────────────────────────────
 
@@ -302,85 +346,92 @@ document.addEventListener("DOMContentLoaded", async () => {
     return true;
   }
 
-  // ── Encrypted media helper ─────────────────────────────────────────────────
+  // ── History paging ─────────────────────────────────────────────────────────
 
-  function sendMediaPayload(innerPayload) {
-    // Always show locally for the sender immediately.
-    appendMessage({ ...innerPayload, user: userName, avatar_url: userAvatarUrl });
+  function updateLoadOlder() {
+    if (!loadOlderWrap) return;
+    loadOlderWrap.classList.toggle("hidden", historyExhausted || !oldestLoaded);
+  }
 
-    if (encryptionEnabled && mlsReady && mlsSession) {
-      try {
-        const bytes = new TextEncoder().encode(JSON.stringify(innerPayload));
-        const ciphertext = callSession("encrypt_app", "encryptApp", bytes);
-        saveMlsState();
-        sendSocketPayload({
-          type: "mls_app",
-          id: crypto.randomUUID(),
-          user: userName,
-          avatar_url: userAvatarUrl,
-          ciphertext: bytesToBase64(ciphertext),
-          device_id: browserDeviceId,
-          device_kind: "browser",
-          mls_session_id: browserMlsSessionId,
-        });
-      } catch (err) {
-        appendSystemMessage(`Could not encrypt media: ${err?.message || err}`);
+  async function loadOlderMessages() {
+    if (loadingOlder || historyExhausted || !oldestLoaded) return;
+    loadingOlder = true;
+    if (loadOlderBtn) loadOlderBtn.disabled = true;
+    try {
+      const url = `/telegraph/api/channels/${channelSlug}/messages/?before=${encodeURIComponent(oldestLoaded)}`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // Reverse so the oldest ends up highest in the list after successive prepends.
+      [...(data.messages || [])].reverse().forEach((m) => appendMessage(m, { prepend: true }));
+      if (data.messages && data.messages.length) {
+        oldestLoaded = data.messages[0].created_at;
       }
-    } else {
-      sendSocketPayload(innerPayload);
+      historyExhausted = !data.has_more;
+    } catch (err) {
+      appendSystemMessage(`{% trans "Could not load older messages" %}: ${err?.message || err}`);
+    } finally {
+      loadingOlder = false;
+      if (loadOlderBtn) loadOlderBtn.disabled = false;
+      updateLoadOlder();
     }
   }
 
-  // ── Image send ─────────────────────────────────────────────────────────────
+  if (loadOlderBtn) loadOlderBtn.addEventListener("click", loadOlderMessages);
 
-  function uploadAndSendImage(file) {
-    if (!canSend) return;
-    if (!socket || socket.readyState !== WebSocket.OPEN) {
-      appendSystemMessage("Not connected — cannot send image.");
-      return;
-    }
+  // Auto-load when the reader scrolls to the top.
+  container.addEventListener("scroll", () => {
+    if (container.scrollTop <= 4) loadOlderMessages();
+  });
 
-    const maxBytes = 10 * 1024 * 1024;
-    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
-    if (!allowed.includes(file.type)) {
-      appendSystemMessage("Unsupported image type. Use JPEG, PNG, GIF or WebP.");
-      return;
-    }
-    if (file.size > maxBytes) {
-      appendSystemMessage("Image is too large (max 10 MB).");
-      return;
-    }
+  // ── Media upload (multipart REST; the server broadcasts the stored message) ──
 
+  async function uploadMedia(endpoint, field, file, filename) {
     const progressWrap = document.querySelector("#upload-progress-wrap");
     const progressBar  = document.querySelector("#upload-progress-bar");
     const progressText = document.querySelector("#upload-progress-pct");
 
+    const body = new FormData();
+    body.append(field, file, filename);
+
     if (progressWrap) progressWrap.classList.remove("hidden");
-    if (progressBar)  progressBar.style.width = "0%";
-    if (progressText) progressText.textContent = "0%";
+    if (progressBar)  progressBar.style.width = "40%";
+    if (progressText) progressText.textContent = "40%";
 
-    const reader = new FileReader();
-
-    reader.onprogress = (e) => {
-      if (!e.lengthComputable) return;
-      const pct = Math.round((e.loaded / e.total) * 100);
-      if (progressBar)  progressBar.style.width = `${pct}%`;
-      if (progressText) progressText.textContent = `${pct}%`;
-    };
-
-    reader.onload = () => {
+    try {
+      const res = await fetch(`/telegraph/api/channels/${channelSlug}/${endpoint}`, {
+        method: "POST",
+        body,
+        headers: { "X-CSRFToken": csrfToken },
+      });
       if (progressBar)  progressBar.style.width = "100%";
       if (progressText) progressText.textContent = "100%";
-      sendMediaPayload({ type: "image_message", image_data: reader.result });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        appendSystemMessage(err.error || `{% trans "Upload failed" %} (HTTP ${res.status}).`);
+      }
+      // On success the server broadcasts the stored message to the group, including
+      // this socket — so there is nothing to render here.
+    } catch (err) {
+      appendSystemMessage(`{% trans "Upload failed" %}: ${err?.message || err}`);
+    } finally {
       if (progressWrap) progressWrap.classList.add("hidden");
-    };
+    }
+  }
 
-    reader.onerror = () => {
-      appendSystemMessage("Failed to read image file.");
-      if (progressWrap) progressWrap.classList.add("hidden");
-    };
-
-    reader.readAsDataURL(file);
+  function uploadAndSendImage(file) {
+    if (!canSend) return;
+    const maxBytes = 10 * 1024 * 1024;
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      appendSystemMessage("{% trans 'Unsupported image type. Use JPEG, PNG, GIF or WebP.' %}");
+      return;
+    }
+    if (file.size > maxBytes) {
+      appendSystemMessage("{% trans 'Image is too large (max 10 MB).' %}");
+      return;
+    }
+    return uploadMedia("upload/", "image", file, file.name);
   }
 
   // ── Emoji picker ───────────────────────────────────────────────────────────
@@ -531,14 +582,12 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunks.push(e.data); };
 
-    mediaRecorder.onstop = () => {
-      const blob   = new Blob(recordingChunks, { type: mediaRecorder.mimeType || "audio/webm" });
-      const reader = new FileReader();
-      reader.onload = () => {
-        sendMediaPayload({ type: "voice_message", audio_data: reader.result });
-        stopRecordingCleanup();
-      };
-      reader.readAsDataURL(blob);
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      // Uploaded as a real file; the server stores it and broadcasts the message back.
+      const upload = uploadMedia("upload-audio/", "audio", blob, "voice-message.webm");
+      stopRecordingCleanup();
+      await upload;
     };
 
     mediaRecorder.start();
@@ -582,190 +631,122 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   }
 
-  // ── MLS lifecycle ──────────────────────────────────────────────────────────
-
-  async function initializeMls() {
-    await initRotorWasm();
-    // Always start fresh — loading stale group state causes "duplicate signature key"
-    // errors when a user reconnects while the other side still has them as a member.
-    clearMlsState();
-    mlsSession = new WasmRotorSession(channelSlug, userName);
-    callSession("create_group", "createGroup");
-    saveMlsState();
-    mlsReady = true;
-  }
-
-  function sendKeyPackage(targetUser = "", silent = false) {
-    if (!mlsReady || !mlsSession) return;
-    const keyPackage = callSession("key_package", "keyPackage");
-    saveMlsState();
-    console.log("mls_key_package first16", first16Hex(keyPackage));
-    sendSocketPayload({
-      type: "mls_key_package", id: crypto.randomUUID(),
-      user: userName, avatar_url: userAvatarUrl, target: targetUser,
-      package: bytesToBase64(keyPackage),
-      device_id: browserDeviceId, device_kind: "browser",
-      mls_session_id: browserMlsSessionId,
-    });
-    if (!silent) appendSystemMessage("🔑 Setting up encryption…");
-  }
-
-  async function addMlsMember(data) {
-    const kpField = data.package || data.key_package;
-    if (!mlsReady || !mlsSession || !kpField) return;
-    data = { ...data, package: kpField };  // normalise field name
-    if (data.user === userName) return;
-    if (data.target && data.target !== userName) return;
-
-    // Alphabetical tiebreaker: the lexicographically-lower user name is the group admin.
-    // Higher-name users defer by re-sending their key package to the lower-name peer.
-    const theyComeBefore = data.user < userName ||
-      (data.user === userName && (data.device_id || "") < browserDeviceId);
-    if (theyComeBefore) {
-      appendSystemMessage("🔑 MLS group changed — sent a fresh key package.");
-      sendKeyPackage(data.user, true);
-      return;
-    }
-
-    const inviteKey = `${data.user}:${data.device_kind || ""}:${data.device_id || ""}`;
-    if (mlsInvitedUsers.has(inviteKey)) return;
-    mlsInvitedUsers.add(inviteKey);
-
-    const keyPackage = base64ToBytes(data.package);
-    console.log("received mls_key_package first16", first16Hex(keyPackage));
-
-    const result  = callSession("add_member", "addMember", keyPackage);
-    const welcome = new Uint8Array(result[0]);
-    const commit  = new Uint8Array(result[1]);
-    saveMlsState();
-    appendSystemMessage("🔒 End-to-end encryption active.");
-    sendSocketPayload({
-      type: "mls_welcome", id: crypto.randomUUID(),
-      user: userName, avatar_url: userAvatarUrl,
-      device_id: browserDeviceId, device_kind: "browser",
-      mls_session_id: browserMlsSessionId,
-      target: data.user,
-      target_device_id:   data.device_id   || "",
-      target_device_kind: data.device_kind || "",
-      welcome: bytesToBase64(welcome),
-      commit:  bytesToBase64(commit),
-    });
-  }
-
-  async function joinMlsGroup(data) {
-    if (!data.welcome || data.target !== userName || data.user === userName) return;
-    if (!mlsSession) mlsSession = new WasmRotorSession(channelSlug, userName);
-    appendSystemMessage("🔑 Received group invitation — joining encrypted group…");
-    const welcome = base64ToBytes(data.welcome);
-    callSession("join_from_welcome", "joinFromWelcome", welcome);
-    saveMlsState();
-    mlsReady = true;
-    setEncryptionStatus(true);
-    setKeyExchangeStatus(false);
-    appendSystemMessage("🔒 End-to-end encryption active.");
-  }
-
-  async function processMlsApplicationMessage(data) {
-    const senderName = data.user || data.sender_name || data.device_id || "Unknown";
-    if (!mlsReady || !mlsSession || !data.ciphertext || senderName === userName) return;
-    const ciphertext = base64ToBytes(data.ciphertext);
-    let plaintext;
-    try {
-      plaintext = callSession("process_message", "processMessage", ciphertext);
-    } catch (err) {
-      // Silently discard messages from a different group during handshake
-      if (String(err).toLowerCase().includes("group")) return;
-      throw err;
-    }
-    saveMlsState();
-    if (!plaintext) return;
-    const text = new TextDecoder().decode(plaintext);
-    try {
-      const inner = JSON.parse(text);
-      if (inner.type === "image_message" && inner.image_data) {
-        appendMessage({ ...inner, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "" });
-        return;
-      }
-      if (inner.type === "voice_message" && inner.audio_data) {
-        appendMessage({ ...inner, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "" });
-        return;
-      }
-    } catch (_) {}
-    appendSharedMessage({ id: data.id, user: senderName, avatar_url: data.avatar_url || data.sender_avatar_url || "", message: text });
-  }
+  // ── Inbound socket messages ────────────────────────────────────────────────
 
   async function handleSocketMessage(data) {
-    if (data.type === "system_error" || data.type === "system_info") {
-      appendSystemMessage(data.message || "System event.");
-      return;
-    }
-    try {
-      if (data.type === "yjs_update" || data.type === "yjs_sync_response") {
-        Y.applyUpdate(ydoc, new Uint8Array(data.update), "remote");
-      } else if (data.type === "yjs_sync_request") {
-        sendSocketPayload({ type: "yjs_sync_response", target_channel: data.sender_channel, update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
-      } else if (data.type === "mls_reset_request") {
-        if (data.device_id !== browserDeviceId) {
-          await resetMlsSession(true, data.reset_id || null);
+    if (!data || !data.type) return;
+
+    switch (data.type) {
+      case "chat_history":
+        // Replayed oldest-first on connect; the newest page lands at the bottom.
+        (data.messages || []).forEach((m) => appendMessage(m));
+        if (data.messages && data.messages.length) {
+          oldestLoaded = data.messages[0].created_at;
         }
-      } else if (data.type === "mls_key_package") {
-        await addMlsMember(data);
-      } else if (data.type === "mls_welcome") {
-        await joinMlsGroup(data);
-      } else if (data.type === "mls_app" && encryptionEnabled && mlsReady) {
-        await processMlsApplicationMessage(data);
-      } else if (data.type === "mls_app") {
-        appendSharedMessage({ id: data.id, user: data.user, avatar_url: data.avatar_url || "", message: data.ciphertext || "" });
-      } else if (data.type === "image_message" && (data.image_data || data.image_url)) {
+        historyExhausted = !data.has_more;
+        updateLoadOlder();
+        container.scrollTop = container.scrollHeight;
+        return;
+
+      case "chat_message":
+      case "image_message":
+      case "voice_message":
+        noteTyping(data.user, true);
         appendMessage(data);
-      } else if (data.type === "voice_message" && data.audio_data) {
-        appendMessage(data);
-      } else if (data.message) {
-        appendSharedMessage(data);
-      }
-    } catch (err) {
-      console.error("MLS message handling failed", data, err);
-      appendSystemMessage(`MLS failed on ${data.type || "unknown"}: ${err?.message || String(err)}`);
+        return;
+
+      case "message_edit":
+        renderedIds.add(data.id);
+        replaceMessage(data);
+        return;
+
+      case "message_delete":
+        renderedIds.add(data.id);
+        markDeleted(data.id);
+        return;
+
+      case "typing_start":
+        noteTyping(data.user, false);
+        return;
+
+      case "typing_stop":
+        noteTyping(data.user, true);
+        return;
+
+      case "room_participants":
+        renderParticipants(data);
+        return;
+
+      case "system_error":
+        appendSystemMessage(data.message || "{% trans 'Unknown error.' %}");
+        return;
+
+      default:
+        console.debug("forum: ignoring unknown frame", data.type);
     }
+  }
+
+  // ── Presence ───────────────────────────────────────────────────────────────
+
+  function renderParticipants(data) {
+    const online = new Set((data.participants || []).map((p) => p.name));
+    document.querySelectorAll("[data-member-name]").forEach((el) => {
+      const dot = el.querySelector("[data-presence-dot]");
+      if (!dot) return;
+      const isOnline = online.has(el.dataset.memberName);
+      dot.classList.toggle("bg-success-light", isOnline);
+      dot.classList.toggle("bg-current/25", !isOnline);
+      dot.title = isOnline ? "{% trans 'Online' %}" : "{% trans 'Offline' %}";
+    });
+    document.querySelectorAll("[data-online-count]").forEach((el) => {
+      el.textContent = data.participant_count ?? online.size;
+    });
   }
 
   // ── Send ───────────────────────────────────────────────────────────────────
 
-  async function sendCurrentMessage() {
+  function sendCurrentMessage() {
     const message = input.value.trim();
-    if (!message || !canSend || !socket || socket.readyState !== WebSocket.OPEN) return;
+    if (!message || !canSend) return;
 
-    if (!encryptionEnabled) {
-      sendSocketPayload({ type: "chat_message", id: crypto.randomUUID(), user: userName, avatar_url: userAvatarUrl, message, device_id: browserDeviceId, device_kind: "browser" });
+    if (editingId) {
+      sendSocketPayload({ type: "message_edit", id: editingId, message });
       input.value = "";
+      clearComposerContext();
       return;
     }
 
-    if (!mlsReady || !mlsSession) {
-      appendSystemMessage("Encryption is not ready. Disable encryption to send an unencrypted message.");
+    const sent = sendSocketPayload({
+      type: "chat_message",
+      message,
+      reply_to: replyingTo || undefined,
+    });
+    if (!sent) {
+      appendSystemMessage("{% trans 'Not connected — message not sent.' %}");
       return;
     }
-
-    try {
-      const messageId  = crypto.randomUUID();
-      const ciphertext = callSession("encrypt_app", "encryptApp", new TextEncoder().encode(message));
-      saveMlsState();
-      sendSocketPayload({ type: "mls_app", id: messageId, user: userName, avatar_url: userAvatarUrl, ciphertext: bytesToBase64(ciphertext), device_id: browserDeviceId, device_kind: "browser", mls_session_id: browserMlsSessionId });
-      appendSharedMessage({ id: messageId, user: userName, avatar_url: userAvatarUrl, message });
-      input.value = "";
-    } catch (err) {
-      console.error("MLS encryption failed", err);
-      appendSystemMessage(`Could not encrypt: ${err?.message || err}`);
-    }
+    // The server persists the message and broadcasts it back to this socket, so the
+    // stored row (with its real id and timestamp) is what gets rendered.
+    input.value = "";
+    clearComposerContext();
+    sendSocketPayload({ type: "typing_stop" });
+    typingSentAt = 0;
   }
 
   sendButton.addEventListener("click", (e) => { e.preventDefault(); sendCurrentMessage(); });
 
   input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && (replyingTo || editingId)) {
+      if (editingId) input.value = "";
+      clearComposerContext();
+      return;
+    }
     if (e.key !== "Enter" || e.shiftKey) return;
     e.preventDefault();
     sendCurrentMessage();
   });
+
+  input.addEventListener("input", announceTyping);
 
   const imageFileInput = document.querySelector("#image-file-input");
   const imageUploadButton = document.querySelector("#image-upload-button");
@@ -785,29 +766,17 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (canSend) {
     setConnectionStatus("connecting");
-    try {
-      await initializeMls();
-      setEncryptionStatus(true);
-    } catch (err) {
-      console.error("MLS initialization failed", err);
-      setEncryptionStatus(false);
-      appendSystemMessage(`MLS encryption could not start: ${err?.message || err}`);
-    }
 
     socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/telegraph/${channelSlug}/`);
 
-    socket.onopen = () => {
-      setConnectionStatus("connected");
-      sendSocketPayload({ type: "yjs_sync_request" });
-      sendSocketPayload({ type: "yjs_update", update: Array.from(Y.encodeStateAsUpdate(ydoc)) });
-      if (encryptionEnabled && mlsReady) { sendKeyPackage(); setKeyExchangeStatus(true); }
-    };
-    socket.onclose = () => setConnectionStatus("disconnected");
-    socket.onerror = () => setConnectionStatus("disconnected");
+    socket.onopen    = () => setConnectionStatus("connected");
+    socket.onclose   = () => setConnectionStatus("disconnected");
+    socket.onerror   = () => setConnectionStatus("disconnected");
     socket.onmessage = (e) => handleSocketMessage(JSON.parse(e.data));
+
+    window.addEventListener("beforeunload", () => sendSocketPayload({ type: "typing_stop" }));
   } else {
     setConnectionStatus("observer");
-    setEncryptionStatus(false);
   }
 });
 </script>
@@ -815,8 +784,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 {% block content %}
 <main
-  x-data="{ sidebarOpen: false, connectionStatus: 'observer', encryptionEnabled: {{ can_send_messages|yesno:'true,false' }}, mlsKeyExchange: false }"
-  data-telegraph-channel
+  x-data="{ sidebarOpen: false, connectionStatus: 'observer' }"
+  data-forum-channel
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="flex min-h-0 flex-1 flex-col px-2 py-2 transition-colors duration-300 sm:px-6 sm:py-6 lg:px-8">
 
@@ -869,32 +838,32 @@ document.addEventListener("DOMContentLoaded", async () => {
             {{ channel.name }}
           </h1>
           <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
-            <span>{{ participants|length }} member{{ participants|length|pluralize }}</span>
+            <span><span data-online-count>{{ participants|length }}</span> {% trans "online" %}</span>
           </div>
         </div>
 
-        <a href="{% url 'telegraph:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">{% trans "All channels" %}</a>
-
-        {# Encryption chip #}
-        <div
-          class="encryption-toggle hidden shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
-          :class="encryptionEnabled
-            ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
-            : (darkMode ? 'bg-warn-dark text-primary-bg-dark border-warn-dark'       : 'bg-warn-light text-primary-bg-light border-warn-light')">
-          <i class="encryption-status-icon fa-solid {% if can_send_messages %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
-          <span class="encryption-status-text">{% if can_send_messages %}Encrypted{% else %}Unencrypted{% endif %}</span>
-        </div>
-
-        {# Reset session button — shown when stuck in key exchange #}
+        {# Message search #}
         {% if can_send_messages %}
-        <button
-          x-show="mlsKeyExchange"
-          @click="window._telegraphResetMls && window._telegraphResetMls()"
-          class="hidden shrink-0 items-center gap-1.5 rounded border border-yellow-500/40 bg-yellow-500/10 px-2.5 py-1.5 text-xs font-semibold text-yellow-400 transition hover:bg-yellow-500/20 sm:flex"
-          title="Clear MLS state and renegotiate encryption">
-          <i class="fa-solid fa-rotate-right"></i>{% trans "Reset session" %}
-        </button>
+        <form method="get" action="{% url 'telegraph:message_search' %}" class="hidden shrink-0 items-center gap-1.5 sm:flex">
+          <input type="hidden" name="channel" value="{{ channel.slug }}">
+          <label class="sr-only" for="header-search">{% trans "Search messages" %}</label>
+          <input
+            id="header-search"
+            type="search"
+            name="q"
+            placeholder="{% trans 'Search messages…' %}"
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+            class="w-40 rounded border px-2.5 py-1.5 text-xs outline-none transition focus:w-56 focus:ring-2 focus:ring-current/20">
+          <button type="submit"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex h-8 w-8 items-center justify-center rounded border text-xs transition hover:opacity-80"
+            aria-label="{% trans 'Search' %}">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </form>
         {% endif %}
+
+        <a href="{% url 'telegraph:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">{% trans "All channels" %}</a>
 
         {# Connection chip #}
         <div
@@ -907,7 +876,7 @@ document.addEventListener("DOMContentLoaded", async () => {
           <i class="fa-solid fa-gear"
              :class="[connectionStatus === 'connecting' ? 'fa-spin' : '', darkMode ? 'text-accent-dark' : 'text-accent-light']"
              style="animation-duration: 2s"></i>
-          <span class="connection-status-text">{% if can_send_messages %}Connecting{% else %}Observer{% endif %}</span>
+          <span class="connection-status-text">{% if can_send_messages %}{% trans "Connecting" %}{% else %}{% trans "Observer" %}{% endif %}</span>
         </div>
 
         {# Join / Leave #}
@@ -930,18 +899,13 @@ document.addEventListener("DOMContentLoaded", async () => {
         {% endif %}
       </header>
 
-      {# Observer / sign-in banner #}
+      {# Observer / join banner #}
       {% if not can_send_messages %}
         <div
           :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
           class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
           <p class="text-sm opacity-70">{{ observer_reason }}</p>
-          {% if not request.user.is_authenticated %}
-            <a href="{% url 'sso:login' %}?next={{ request.path }}"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
-              <i class="fa-solid fa-right-to-bracket"></i>{% trans "Sign in" %}</a>
-          {% elif can_join %}
+          {% if can_join %}
             <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}">
               {% csrf_token %}
               <button type="submit"
@@ -955,43 +919,19 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       {# Messages — pinned to row 3 so composer always stays visible regardless of whether the observer banner renders #}
       <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:3]">
-        {% for msg in messages %}
-          <article class="flex min-w-0 gap-3 {% if msg.user == current_chat_user %}justify-end{% else %}justify-start{% endif %}">
-            {% if msg.user != current_chat_user %}
-              {% if msg.avatar %}
-                <img src="{{ msg.avatar }}" alt="{{ msg.user }}"
-                  class="h-9 w-9 shrink-0 self-end rounded-lg border border-current/15 object-cover">
-              {% else %}
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold">
-                  {{ msg.user|first|upper }}
-                </div>
-              {% endif %}
-            {% endif %}
-            <div
-              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-              class="min-w-0 max-w-[calc(100%-3.25rem)] overflow-hidden rounded-2xl border p-3 shadow-sm transition-colors duration-300 sm:max-w-[78%] xl:max-w-[42rem]">
-              <p class="text-xs font-semibold opacity-60 {% if msg.user == current_chat_user %}text-right{% endif %}">
-                {{ msg.user }}
-                <span class="ml-1.5 font-normal opacity-70">{{ msg.created }}</span>
-              </p>
-              <p class="mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] {% if msg.user == current_chat_user %}text-right{% endif %}">
-                {{ msg.content }}
-              </p>
-            </div>
-            {% if msg.user == current_chat_user %}
-              {% if msg.avatar %}
-                <img src="{{ msg.avatar }}" alt="{{ msg.user }}"
-                  class="h-9 w-9 shrink-0 self-end rounded-lg border border-current/15 object-cover">
-              {% else %}
-                <div class="flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold">
-                  {{ msg.user|first|upper }}
-                </div>
-              {% endif %}
-            {% endif %}
-          </article>
-        {% empty %}
+        {# History is delivered over the websocket, never server-rendered. #}
+        <div id="load-older-wrap" class="hidden pb-1 text-center">
+          <button type="button" id="load-older-button"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="rounded border px-3 py-1 text-xs opacity-70 transition hover:opacity-100 disabled:opacity-40">
+            {% trans "Load older messages" %}
+          </button>
+        </div>
+        {% if can_send_messages %}
           <div data-empty-messages class="flex h-full items-center justify-center py-12 text-sm opacity-50">{% trans "No messages yet. Be the first to say something." %}</div>
-        {% endfor %}
+        {% else %}
+          <div class="flex h-full items-center justify-center py-12 text-sm opacity-50">{% trans "Join this channel to read its history." %}</div>
+        {% endif %}
       </div>
 
       {# Input #}
@@ -1003,15 +943,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             :class="connectionStatus === 'connected'
               ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
               : (darkMode ? 'border-accent-1' : 'border-accent-2')">
-            <span class="connection-status-text">{% if can_send_messages %}Connecting{% else %}Observer{% endif %}</span>
-          </div>
-          <div
-            class="encryption-toggle inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold"
-            :class="encryptionEnabled
-              ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
-              : (darkMode ? 'bg-warn-dark text-primary-bg-dark border-warn-dark'       : 'bg-warn-light text-primary-bg-light border-warn-light')">
-            <i class="encryption-status-icon fa-solid {% if can_send_messages %}fa-lock{% else %}fa-lock-open{% endif %}"></i>
-            <span class="encryption-status-text">{% if can_send_messages %}Encrypted{% else %}Unencrypted{% endif %}</span>
+            <span class="connection-status-text">{% if can_send_messages %}{% trans "Connecting" %}{% else %}{% trans "Observer" %}{% endif %}</span>
           </div>
           {% if can_join %}
             <form method="post" action="{% url 'telegraph:channel_join' channel.slug %}">
@@ -1031,6 +963,19 @@ document.addEventListener("DOMContentLoaded", async () => {
             </form>
           {% endif %}
         </div>
+
+        {# Reply / edit context #}
+        <div id="composer-context" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 rounded border-l-2 border-current/40 bg-current/5 px-2 py-1 text-xs">
+            <span id="composer-context-label" class="min-w-0 flex-1 truncate opacity-80"></span>
+            <button type="button" id="composer-context-cancel" class="opacity-50 transition hover:opacity-90"
+              aria-label="{% trans 'Cancel' %}">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <p id="typing-indicator" class="hidden px-1 pb-1 text-xs italic opacity-60"></p>
 
         <div id="recording-status-wrap" class="hidden px-1 pb-1">
           <div class="flex items-center gap-2 text-xs">
@@ -1112,7 +1057,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             id="message-input"
             name="content"
             rows="1"
-            placeholder="{% if can_send_messages %}Message {{ channel.name }}…{% else %}Join this channel to send messages{% endif %}"
+            placeholder="{% if can_send_messages %}{% trans "Message" %} {{ channel.name }}…{% else %}{% trans "Join this channel to send messages" %}{% endif %}"
             :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
             class="min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 focus:ring-current/20 sm:w-auto sm:flex-1 sm:text-sm"
             {% if not can_send_messages %}disabled{% endif %}></textarea>
@@ -1144,18 +1089,24 @@ document.addEventListener("DOMContentLoaded", async () => {
 
       <div class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
         {% for user in participants %}
-          <div class="flex items-center gap-3">
-            {% if user.avatar_url %}
-              <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
-                class="h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover">
-            {% else %}
-              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
-                {{ user.username|first|upper }}
-              </div>
-            {% endif %}
+          <div class="flex items-center gap-3" data-member-name="{{ user.username }}">
+            <div class="relative shrink-0">
+              {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
+                  class="h-9 w-9 rounded-lg border border-current/15 object-cover">
+              {% else %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
+                  {{ user.username|first|upper }}
+                </div>
+              {% endif %}
+              {# Presence dot, driven live by the room_participants frame #}
+              <span data-presence-dot
+                class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-current/10 bg-current/25"
+                title="{% trans 'Offline' %}"></span>
+            </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ user.username }}</p>
-              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}AI agent{% else %}Human{% endif %}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
             </div>
             {% if user.type == "ai_agent" %}
               <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">{% trans "AI" %}</span>
@@ -1215,7 +1166,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             {% endif %}
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ user.username }}</p>
-              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}AI agent{% else %}Human{% endif %}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
             </div>
           </div>
         {% empty %}

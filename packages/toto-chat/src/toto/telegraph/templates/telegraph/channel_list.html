@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}Telegraph Channels{% endblock %}
+{% block title %}{% trans "Forum Channels" %}{% endblock %}
 
 {% block content %}
 <main
@@ -14,30 +14,57 @@
     <header class="flex flex-col gap-4 border-b border-current/10 pb-6 md:flex-row md:items-end md:justify-between">
       <div class="space-y-2">
         <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">{% trans "Dashboard" %}</a>
-        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "Telegraph" %}</h1>
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "Forum" %}</h1>
         <p class="max-w-2xl text-sm opacity-70">{% trans "Active channels" %}</p>
       </div>
 
-      <form method="get" class="flex w-full gap-2 md:w-[24rem]">
-        <input
-          type="text"
-          name="q"
-          value="{{ request.GET.q }}"
-          placeholder="{% trans 'Search channels' %}"
-          :class="darkMode
-            ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
-            : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
-          class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
-        <button
-          type="submit"
-          :class="darkMode
-            ? 'bg-accent-dark text-primary-bg-dark'
-            : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center justify-center rounded px-3 py-2 text-sm font-semibold transition hover:opacity-90"
-          aria-label="{% trans 'Search' %}">
-          <i class="fa-solid fa-magnifying-glass"></i>
-        </button>
-      </form>
+      <div class="flex w-full flex-col gap-2 md:w-[26rem]">
+        <form method="get" class="flex w-full gap-2">
+          <input
+            type="text"
+            name="q"
+            value="{{ request.GET.q }}"
+            placeholder="{% trans 'Search channels' %}"
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+              : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+          <button
+            type="submit"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center justify-center rounded px-3 py-2 text-sm font-semibold transition hover:opacity-90"
+            aria-label="{% trans 'Search' %}">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </form>
+
+        {# Create a channel without needing the Django admin #}
+        <form method="post" action="{% url 'telegraph:channel_create' %}" class="flex w-full gap-2">
+          {% csrf_token %}
+          <input
+            type="text"
+            name="name"
+            required
+            maxlength="100"
+            placeholder="{% trans 'New channel name' %}"
+            :class="darkMode
+              ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+              : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+          <button
+            type="submit"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center justify-center gap-1.5 rounded border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-plus"></i>{% trans "Create" %}
+          </button>
+        </form>
+
+        <a href="{% url 'telegraph:message_search' %}" class="self-end text-xs underline opacity-70 hover:opacity-100">
+          <i class="fa-solid fa-magnifying-glass"></i> {% trans "Search messages" %}
+        </a>
+      </div>
     </header>
 
     {% if channels %}

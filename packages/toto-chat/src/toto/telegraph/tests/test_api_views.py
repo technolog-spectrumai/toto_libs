@@ -1,13 +1,23 @@
 import json
+import shutil
+import tempfile
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from toto.telegraph.models import TelegraphChannel, TelegraphMember
+
+# Attachments are written to disk now, so uploads land in a throwaway root rather than the
+# deployed media directory.
+_MEDIA_ROOT = tempfile.mkdtemp(prefix="forum-test-media-")
+
+
+def tearDownModule():
+    shutil.rmtree(_MEDIA_ROOT, ignore_errors=True)
 
 
 class MeshGateApiViewTests(TestCase):
@@ -180,17 +190,47 @@ class ChannelListApiViewTests(TestCase):
         TelegraphChannel.objects.create(name="Alpha", slug="alpha")
         TelegraphChannel.objects.create(name="Beta", slug="beta")
 
-    def test_channel_list_unauthenticated_allowed(self):
+    def test_channel_list_requires_authentication(self):
+        """Messages are permanent now, so channel names are not disclosed anonymously."""
+        res = self.client.get("/telegraph/api/channels/")
+        self.assertEqual(res.status_code, 401)
+
+    def test_channel_list_for_signed_in_user(self):
+        self.client.force_login(self.user)
         res = self.client.get("/telegraph/api/channels/")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertIn("channels", data)
         self.assertEqual(len(data["channels"]), 2)
+        self.assertFalse(data["channels"][0]["is_member"])
 
     def test_channels_sorted_by_name(self):
+        self.client.force_login(self.user)
         res = self.client.get("/telegraph/api/channels/")
         names = [c["name"] for c in res.json()["channels"]]
         self.assertEqual(names, sorted(names))
+
+    def test_create_channel_makes_the_creator_a_member(self):
+        from toto.people.models import Person
+
+        Person.objects.create(user=self.user, display_name="List User")
+        self.client.force_login(self.user)
+        res = self.client.post(
+            "/telegraph/api/channels/", data=json.dumps({"name": "Fresh Room"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["slug"], "fresh-room")
+        detail = self.client.get("/telegraph/api/channels/fresh-room/").json()
+        self.assertTrue(detail["is_member"])
+
+    def test_create_channel_rejects_duplicates(self):
+        self.client.force_login(self.user)
+        res = self.client.post(
+            "/telegraph/api/channels/", data=json.dumps({"name": "Alpha"}),
+            content_type="application/json",
+        )
+        self.assertEqual(res.status_code, 409)
 
 
 class ChannelDetailApiViewTests(TestCase):
@@ -198,16 +238,35 @@ class ChannelDetailApiViewTests(TestCase):
         self.user = User.objects.create_user(username="detuser", password="pass")
         self.channel = TelegraphChannel.objects.create(name="Detail", slug="detail")
 
+    def test_channel_detail_requires_authentication(self):
+        res = self.client.get(f"/telegraph/api/channels/{self.channel.slug}/")
+        self.assertEqual(res.status_code, 401)
+
     def test_channel_not_found(self):
+        self.client.force_login(self.user)
         res = self.client.get("/telegraph/api/channels/nonexistent/")
         self.assertEqual(res.status_code, 404)
 
     def test_channel_found(self):
+        self.client.force_login(self.user)
         res = self.client.get(f"/telegraph/api/channels/{self.channel.slug}/")
         self.assertEqual(res.status_code, 200)
         data = res.json()
         self.assertEqual(data["slug"], "detail")
         self.assertIn("members", data)
+        self.assertFalse(data["is_member"])
+
+    def test_roster_is_withheld_from_non_members(self):
+        """A signed-in non-member sees the channel exists but not who is in it."""
+        from toto.people.models import Person
+
+        other = User.objects.create_user(username="outsider", password="pass")
+        person = Person.objects.create(user=self.user, display_name="Det User")
+        TelegraphMember.objects.create(channel=self.channel, person=person, is_active=True)
+
+        self.client.force_login(other)
+        data = self.client.get(f"/telegraph/api/channels/{self.channel.slug}/").json()
+        self.assertEqual(data["members"], [])
         self.assertFalse(data["is_member"])
 
     def test_members_include_username_for_aster_resolution(self):
@@ -220,6 +279,7 @@ class ChannelDetailApiViewTests(TestCase):
         TelegraphMember.objects.create(channel=self.channel, person=linked, is_active=True)
         TelegraphMember.objects.create(channel=self.channel, person=accountless, is_active=True)
 
+        self.client.force_login(self.user)
         data = self.client.get(f"/telegraph/api/channels/{self.channel.slug}/").json()
         by_name = {m["name"]: m for m in data["members"]}
         self.assertEqual(by_name["Det User"]["username"], "detuser")
@@ -250,7 +310,6 @@ class ChannelJoinLeaveApiTests(TestCase):
     def test_leave_removes_member(self):
         self.client.force_login(self.user)
         TelegraphMember.objects.create(channel=self.channel, person=self.person, is_active=True)
-        self.channel.participants.add(self.user)
         res = self.client.post(f"/telegraph/api/channels/{self.channel.slug}/leave/")
         self.assertEqual(res.status_code, 200)
         self.assertFalse(
@@ -262,7 +321,6 @@ class ChannelJoinLeaveApiTests(TestCase):
         ch2 = TelegraphChannel.objects.create(name="Other", slug="other")
         for ch in (self.channel, ch2):
             TelegraphMember.objects.create(channel=ch, person=self.person, is_active=True)
-            ch.participants.add(self.user)
         res = self.client.post("/telegraph/api/channels/leave-all/")
         self.assertEqual(res.status_code, 200)
         data = res.json()
@@ -271,6 +329,7 @@ class ChannelJoinLeaveApiTests(TestCase):
         self.assertFalse(TelegraphMember.objects.filter(person=self.person, is_active=True).exists())
 
 
+@override_settings(MEDIA_ROOT=_MEDIA_ROOT)
 class ImageUploadApiViewTests(TestCase):
     def setUp(self):
         from toto.people.models import Person
@@ -279,6 +338,20 @@ class ImageUploadApiViewTests(TestCase):
             user=self.user, display_name="Img User", email="img@example.com"
         )
         self.channel = TelegraphChannel.objects.create(name="Images", slug="images")
+        # Uploading is posting, so it now requires an active membership row.
+        TelegraphMember.objects.create(
+            channel=self.channel, person=self.person, is_active=True
+        )
+
+    def test_upload_by_non_member_is_forbidden(self):
+        outsider = User.objects.create_user(username="outsider-image", password="pass")
+        self.client.force_login(outsider)
+        f = SimpleUploadedFile("x.png", SMALL_PNG, content_type="image/png")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload/",
+            {"image": f},
+        )
+        self.assertEqual(res.status_code, 403)
 
     def test_upload_unauthenticated(self):
         f = SimpleUploadedFile("photo.png", SMALL_PNG, content_type="image/png")
@@ -324,6 +397,7 @@ class ImageUploadApiViewTests(TestCase):
 SMALL_WEBM = b"\x1a\x45\xdf\xa3"  # minimal EBML header (enough for content_type test)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA_ROOT)
 class AudioUploadApiViewTests(TestCase):
     def setUp(self):
         from toto.people.models import Person
@@ -332,6 +406,20 @@ class AudioUploadApiViewTests(TestCase):
             user=self.user, display_name="Audio User", email="audio@example.com"
         )
         self.channel = TelegraphChannel.objects.create(name="Audio", slug="audio")
+        # Uploading is posting, so it now requires an active membership row.
+        TelegraphMember.objects.create(
+            channel=self.channel, person=self.person, is_active=True
+        )
+
+    def test_upload_by_non_member_is_forbidden(self):
+        outsider = User.objects.create_user(username="outsider-audio", password="pass")
+        self.client.force_login(outsider)
+        f = SimpleUploadedFile("x.webm", SMALL_WEBM, content_type="audio/webm")
+        res = self.client.post(
+            f"/telegraph/api/channels/{self.channel.slug}/upload-audio/",
+            {"audio": f},
+        )
+        self.assertEqual(res.status_code, 403)
 
     def test_upload_unauthenticated(self):
         f = SimpleUploadedFile("clip.webm", SMALL_WEBM, content_type="audio/webm")

@@ -1,9 +1,20 @@
 import uuid
+from pathlib import PurePosixPath
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+
+
+def message_attachment_upload_to(instance, filename):
+    """Store attachments under ``forum/<channel-slug>/<message-uuid><ext>``.
+
+    The message id is already a UUID, so the path is collision-free without
+    relying on the uploaded filename (kept separately in ``attachment_name``).
+    """
+    suffix = PurePosixPath(filename).suffix.lower()[:16]
+    return f"forum/{instance.channel.slug}/{instance.id}{suffix}"
 
 
 class TelegraphChannel(models.Model):
@@ -15,11 +26,9 @@ class TelegraphChannel(models.Model):
         null=True,
         blank=True,
     )
-    participants = models.ManyToManyField(
-        settings.AUTH_USER_MODEL,
-        related_name="telegraph_channels",
-        blank=True,
-    )
+    # Membership is TelegraphMember and only TelegraphMember. There used to be a parallel
+    # ``participants`` M2M to AUTH_USER_MODEL; the two disagreed, and a user dropped from
+    # one but not the other could still post over a raw websocket. See permissions.py.
     people = models.ManyToManyField(
         "people.Person",
         through="TelegraphMember",
@@ -28,31 +37,11 @@ class TelegraphChannel(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
 
-    # ── Discord-style persistent history (encrypted at rest) ──────────────────
-    # How long a regular message lives before it is purged. Default 24h.
-    message_ttl_seconds = models.PositiveIntegerField(default=86400)
-    # This channel's gervazy data key (one DEK per channel), created lazily on the
-    # first stored message. Only the FK lives here; key material stays inside the
-    # gervazy envelope (VMK → UKEK → TELEGRAPH_VAULT_PASSWORD), never on this row.
-    dek = models.ForeignKey(
-        "gervazy.WrappedDataKey",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="telegraph_channels",
-    )
-
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
-
-    @property
-    def message_ttl(self):
-        from datetime import timedelta
-
-        return timedelta(seconds=self.message_ttl_seconds)
 
 
 class TelegraphMember(models.Model):
@@ -111,13 +100,13 @@ class TelegraphMember(models.Model):
 
 
 class TelegraphMessage(models.Model):
-    """A persisted relay ("Forum"/Discord) message.
+    """A persisted forum message, stored in plaintext.
 
-    ``encryption="at_rest"`` rows are encrypted under the channel's gervazy DEK and the
-    server CAN decrypt them (Discord model) to serve readable history to any member,
-    including brand-new joiners. ``encryption="e2e"`` rows are *secure-on-send*: encrypted
-    on the client under a member-held key the server cannot read (opaque ciphertext/iv/
-    pin_key_id). In-transit confidentiality is TLS.
+    Confidentiality in transit is TLS; the row itself is readable. That is what makes
+    permanent, searchable, paginated history possible — a member who joins today can read
+    everything said before they arrived, and the server can run a text query over it.
+
+    Messages are never expired automatically. Retention is deferred work (forum_todo.md).
     """
 
     MSG_TYPES = [
@@ -126,20 +115,10 @@ class TelegraphMessage(models.Model):
         ("voice_message", "voice_message"),
     ]
 
-    # at_rest: encrypted under the channel DEK; the server CAN read it (Discord history).
-    # e2e:     "secure-on-send" — encrypted on the client under the member-held pin key;
-    #          the server stores opaque ciphertext + iv + pin_key_id and CANNOT read it.
-    ENCRYPTION_CHOICES = [("at_rest", "at_rest"), ("e2e", "e2e")]
-
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     channel = models.ForeignKey(
         TelegraphChannel, on_delete=models.CASCADE, related_name="messages"
     )
-    encryption = models.CharField(max_length=16, choices=ENCRYPTION_CHOICES, default="at_rest")
-    # e2e rows only: which member-held key encrypted it + its AES-GCM IV. (at_rest rows
-    # use the DEK envelope below: nonce + aad.)
-    pin_key_id = models.CharField(max_length=64, blank=True, default="")
-    iv = models.BinaryField(null=True, blank=True)
     sender = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         on_delete=models.SET_NULL,
@@ -152,25 +131,41 @@ class TelegraphMessage(models.Model):
     sender_avatar_url = models.CharField(max_length=500, blank=True)
     msg_type = models.CharField(max_length=32, choices=MSG_TYPES, default="chat_message")
 
-    # AES-256-GCM (gervazy) of the message payload JSON. AAD binds the ciphertext to
-    # ``channel.slug + str(id)`` so a row cannot be replayed under another identity.
-    ciphertext = models.BinaryField()
-    nonce = models.BinaryField()
-    aad = models.BinaryField(default=bytes)
+    # The message text. Blank for a bare image/voice post.
+    body = models.TextField(blank=True)
+
+    # Image/voice payloads live on disk, not in the row — a 10 MB upload used to become a
+    # ~13.4 MB base64 blob replayed down the socket on every history load.
+    attachment = models.FileField(upload_to=message_attachment_upload_to, blank=True, null=True)
+    attachment_name = models.CharField(max_length=255, blank=True)
+    attachment_mime = models.CharField(max_length=100, blank=True)
+    attachment_size = models.PositiveIntegerField(null=True, blank=True)
+
+    reply_to = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="replies",
+    )
 
     created_at = models.DateTimeField(default=timezone.now, db_index=True)
-    expires_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    edited_at = models.DateTimeField(null=True, blank=True)
+    # Soft delete: the row stays so replies keep their anchor and history keeps its shape.
+    deleted_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["created_at"]
-        indexes = [models.Index(fields=["channel", "created_at"])]
+        indexes = [
+            models.Index(fields=["channel", "created_at"]),
+            models.Index(fields=["channel", "-created_at"]),
+        ]
 
     def __str__(self):
         return f"{self.msg_type} in {self.channel.slug} @ {self.created_at:%Y-%m-%d %H:%M}"
 
-    def is_expired(self, now=None):
-        if not self.expires_at:
-            return False
-        return (now or timezone.now()) >= self.expires_at
+    @property
+    def is_deleted(self):
+        return self.deleted_at is not None
 
 
