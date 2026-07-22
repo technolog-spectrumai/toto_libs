@@ -1,7 +1,7 @@
 # toto
 
 **toto** is a modular Django *app library* — a "community operating system"
-packaged as **seven pip distributions sharing the `toto.*` namespace**, released
+packaged as **eight pip distributions sharing the `toto.*` namespace**, released
 lockstep from this one repository (see [BUILDING.md](BUILDING.md)).
 It bundles ~41 apps spanning identity and single-sign-on, encrypted storage, a
 Neo4j knowledge-graph layer, real-time collaboration, media processing, and
@@ -35,7 +35,7 @@ settings, URLs, and server entrypoint:
 
 - **One namespace, many hosts.** Every app lives under the `toto.` namespace.
   Hosts install `toto-base` plus whichever feature packages they need
-  (`toto-flow`, `toto-works`, `toto-chat`, `toto-ops`, `toto-ai`, `toto-graph`),
+  (`toto-flow`, `toto-works`, `toto-media`, `toto-chat`, `toto-ops`, `toto-ai`, `toto-graph`),
   pinned to an exact version; see [BUILDING.md](BUILDING.md). Host projects
   (`zenobia`, `faros`) differ only in settings, which apps they enable, and
   their server entrypoint.
@@ -208,7 +208,7 @@ Small stable modules hosts use instead of hardcoding toto internals:
 
 ## Development
 
-- **Packages:** seven distributions under `packages/`, all at the version in
+- **Packages:** eight distributions under `packages/`, all at the version in
   `VERSION`. Install them all editable with `scripts/install_toto.sh`; build
   wheels with `scripts/build_wheels.py`. Full manual: [BUILDING.md](BUILDING.md).
 - **Upgrading from the pre-split library:** `pip uninstall -y toto` first — the

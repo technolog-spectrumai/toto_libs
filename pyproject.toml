@@ -6,6 +6,7 @@
 #   toto-base   foundation + host API (every host installs it)
 #   toto-flow   workflow engine and compute kernels
 #   toto-works  workflow-backed file/document/data services
+#   toto-media  video, transcription and media processing
 #   toto-chat   encrypted mesh chat
 #   toto-ops    onion identity, device directory, monitoring
 #   toto-ai     agents, embeddings, assistants

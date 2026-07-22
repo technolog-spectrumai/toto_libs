@@ -18,6 +18,7 @@ class Features:
     latex: bool
     pyeditor: bool
     sketch: bool
+    media: bool
     fileservices: bool
     # Graph-group features (graph/ocr default to the neo4j tier).
     graph: bool
@@ -79,7 +80,16 @@ def resolve_features(get) -> Features:
     # deliberately has no entry for them, since the host supplies the
     # INSTALLED_APPS line from its own portion.
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
-    fileservices = flag(get, "BUILD_FILESERVICES")            # toto.fileservices — ffmpeg/ffprobe runs
+    # BUILD_MEDIA — the video/media stack (manta + transcription + vod +
+    # fileservices), all four now in the optional toto-media package. The old
+    # per-app flags are honoured for back-compat, but BUILD_MEDIA is the one to
+    # set. `manta` and `fileservices` remain as derived aliases so the closures
+    # and every host settings read of _F.manta / _F.fileservices are unchanged.
+    media = (flag(get, "BUILD_MEDIA")
+             or flag(get, "BUILD_MANTA")
+             or flag(get, "BUILD_FILESERVICES"))
+    fileservices = media
+    manta = media
 
     # Graph-group features (default to the neo4j tier).
     graph = flag(get, "BUILD_GRAPH", tier_neo4j)              # ravioli + sql_neo4j_sync + neo_editor + bento + ingestor
@@ -88,7 +98,6 @@ def resolve_features(get) -> Features:
     formica = flag(get, "BUILD_FORMICA")                      # toto.formica — colony curating the graph (opt-in)
 
     # Standalone features (no tier; opt-in only).
-    manta = flag(get, "BUILD_MANTA")                          # legacy media/transcribe command builder
     steven = flag(get, "BUILD_STEVEN")                        # floating chat-widget UI (implies sabbia)
     sabbia = steven or flag(get, "BUILD_SABBIA")              # headless chat-agent backend (WebSocket)
     travels = flag(get, "BUILD_TRAVELS")                      # toto.travels — travel & visit log
@@ -140,6 +149,7 @@ def resolve_features(get) -> Features:
         latex=latex,
         pyeditor=pyeditor,
         sketch=sketch,
+        media=media,
         fileservices=fileservices,
         graph=graph,
         ocr=ocr,

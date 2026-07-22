@@ -1,0 +1,35 @@
+[build-system]
+# setuptools >= 62.3 is required for '**' patterns in package-data globs.
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# Video/media apps: transcription, video-on-demand, ffmpeg run services and the
+# manta command builder. Only media-capable hosts (zenobia, delta) install it.
+name = "toto-media"
+version = "1.4"
+description = "toto video, transcription and media processing"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Versions are lockstep across the whole toto suite and are rewritten only by
+# scripts/release.py — never edit them by hand.
+dependencies = [
+    "toto-base==1.4",
+    "toto-flow==1.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# Each package owns exactly the portions present under its own src/toto/.
+# scripts/check_package_graph.py enforces that the partition stays disjoint.
+include = ["toto*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+# 'templates/**/*' (not '*.html'): sso_master ships a .txt email template.
+"*" = [
+    "templates/**/*",
+    "static/**/*",
+    "graph/*.yaml",
+]

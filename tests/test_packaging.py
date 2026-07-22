@@ -102,6 +102,15 @@ def test_host_api_modules_ship_in_base(owner):
     assert owner.get("toto/ingress/__init__.py") == "toto-base"
 
 
+def test_media_apps_ship_in_toto_media(owner):
+    # The video/media apps live in the optional toto-media package, not toto-base
+    # or toto-works — a regression here means a mover drifted back.
+    assert owner.get("toto/vod/migrations/0002_drop_all_vod_tables.py") == "toto-media"
+    assert owner.get("toto/transcription/migrations/0001_initial.py") == "toto-media"
+    assert owner.get("toto/manta/templates/manta/command_builder.html") == "toto-media"
+    assert owner.get("toto/fileservices/models.py") == "toto-media"
+
+
 def test_no_foreign_payload(all_names):
     assert not [n for n in all_names if n.startswith("limbo/")]
     assert not [n for n in all_names if n.startswith("rotors/")]

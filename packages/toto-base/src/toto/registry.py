@@ -20,8 +20,6 @@ BASE_APPS = [
     "toto.memo",          # presentations and slideshows
     "toto.verbena",
     "toto.quota",
-    "toto.vod",
-    "toto.transcription",
     "toto.sso_core",
     "toto.sso_master",
 ]
@@ -36,7 +34,12 @@ FEATURE_APPS = {
     ],
     "chat": ["toto.forum"],
     "weather": ["toto.weather"],
-    "manta": ["toto.manta"],
+    "media": [                  # BUILD_MEDIA — the video/media stack
+        "toto.manta",           # media/transcribe command builder
+        "toto.transcription",   # Whisper audio/video transcription
+        "toto.vod",             # video-on-demand vault play plugin
+        "toto.fileservices",    # ffmpeg/ffprobe run services
+    ],
     "graph": [
         "toto.ravioli",         # sole Neo4j boundary
         "toto.sql_neo4j_sync",  # SQL→Neo4j projection/sync layer
@@ -52,7 +55,6 @@ FEATURE_APPS = {
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],
     "pyeditor": ["toto.antaresia"],
-    "fileservices": ["toto.fileservices"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
 }
 
