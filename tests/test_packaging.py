@@ -59,7 +59,7 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    assert len(apps_with_migrations) == 43, sorted(apps_with_migrations)
+    assert len(apps_with_migrations) == 37, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -67,7 +67,7 @@ def test_migrations_are_packaged(all_names, owner):
 
 def test_templates_are_packaged(all_names, owner):
     templates = [n for n in all_names if "/templates/" in n]
-    assert len(templates) >= 241, len(templates)
+    assert len(templates) >= 208, len(templates)
     # Regression: the old glob (templates/**/*.html) dropped this .txt template.
     assert owner.get("toto/sso_master/templates/sso/password_reset_subject.txt") == "toto-base"
     # The shared base template every app extends.

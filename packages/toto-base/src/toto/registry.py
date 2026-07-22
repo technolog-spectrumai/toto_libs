@@ -18,10 +18,8 @@ BASE_APPS = [
     "toto.events",
     "toto.kanban",
     "toto.memo",          # presentations and slideshows
-    "toto.notarius",      # .contract signable documents
     "toto.verbena",
     "toto.quota",
-    "toto.polls",
     "toto.vod",
     "toto.transcription",
     "toto.sso_core",
@@ -38,7 +36,6 @@ FEATURE_APPS = {
     ],
     "chat": ["toto.forum"],
     "weather": ["toto.weather"],
-    "travels": ["toto.travels"],
     "manta": ["toto.manta"],
     "graph": [
         "toto.ravioli",         # sole Neo4j boundary
@@ -56,17 +53,11 @@ FEATURE_APPS = {
     "editor": ["toto.editor"],
     "latex": ["toto.texlab"],
     "pyeditor": ["toto.antaresia"],
-    "sketch": ["toto.sketch"],
     "fileservices": ["toto.fileservices"],
     "gitvault": ["toto.gitvault"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
 }
 
-# faros-only apps — portal must never install these.
-FAROS_APPS = [
-    "toto.aster",   # Tor signalling directory / NodeId↔SSO address book
-    "toto.nomad",   # app-managed Tor onion identity
-]
 
 # Celery task modules for explicit autodiscovery (portal celery_app list,
 # minus the long-dangling "toto.bazaar" whose app left the tree).
@@ -78,7 +69,6 @@ TASK_MODULES = [
     "toto.ravioli",
     "toto.transcription",
     "toto.manta",
-    "toto.notarius",
     "toto.connectors",
     "toto.formica",
     "toto.gitvault",

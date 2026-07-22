@@ -49,6 +49,15 @@ def main() -> int:
     out.mkdir(parents=True, exist_ok=True)
 
     for pkg in packages:
+        # setuptools reuses packages/<pkg>/build/lib and copies whatever is in
+        # it into the wheel, so a file deleted from src/ keeps shipping until
+        # that tree is cleared. build/ is gitignored, so this only ever bites on
+        # a machine that built before the deletion — which is exactly the case
+        # that must not produce a silently wrong wheel.
+        stale_build = pkg / "build"
+        if stale_build.is_dir():
+            shutil.rmtree(stale_build)
+
         if args.sdist:
             subprocess.run([sys.executable, "-m", "build", "--sdist", "--outdir", str(out), str(pkg)], check=True)
             sdist = max(out.glob(f"{pkg.name.replace('-', '_')}-*.tar.gz"), key=lambda p: p.stat().st_mtime)

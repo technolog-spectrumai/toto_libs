@@ -15,11 +15,11 @@ there is deliberately no `toto/__init__.py` anywhere):
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and every app each host installs unconditionally: core, api, backup, gervazy, vault, people, locations, socialhub, events, kanban, memo, notarius, verbena, quota, polls, vod, transcription, sso_core, sso_master, sso_client, editor, sketch, travels | — |
+| `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and the apps every host installs (`registry.BASE_APPS`): core, api, backup, gervazy, vault, people, locations, socialhub, events, kanban, memo, verbena, quota, vod, transcription, sso_core, sso_master — plus `editor` and `sso_client`, which are host-selected rather than unconditional | — |
 | `toto-flow` | workflows, mandragora | base |
 | `toto-works` | gitvault, fileservices, manta, texlab, texplay, antaresia, weather | base, flow |
 | `toto-chat` | forum | base |
-| `toto-ops` | aster, nomad, monit | base |
+| `toto-ops` | monit | base |
 | `toto-ai` | sabbia, steven, vicuna | base |
 | `toto-graph` | ravioli, sql_neo4j_sync, neo_editor, bento, ingestor, connectors, formica, ocr | base, flow, ai |
 

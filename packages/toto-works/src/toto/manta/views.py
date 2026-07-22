@@ -379,9 +379,17 @@ def quick_transcribe(request):
 
     import tempfile
 
+    from django.apps import apps as django_apps
+
     from toto.fileservices.runner import stage_input
-    from toto.transcription.services import transcribe_demo_file
     from toto.vault.models import VaultFile
+
+    if not django_apps.is_installed("toto.transcription"):
+        return JsonResponse(
+            {"ok": False, "error": "Transcription is not available on this host."},
+            status=400,
+        )
+    from toto.transcription.services import transcribe_demo_file
 
     audio = (VaultFile.objects.select_related("bucket", "directory")
              .filter(pk=request.POST.get("audio_id")).first())
