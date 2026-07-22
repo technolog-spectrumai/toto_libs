@@ -7,11 +7,18 @@ product; it is the wrong default now that **delta** (e-learning) and
 will revive parts of `limbo/`.
 
 This document decides, per app, whether it stays shared or secedes to a host
-repo; explains the mechanism that makes secession cheap; and gives the staged
-migration plan. It is an analysis and a plan — **no code has moved yet**.
+repo; explains the mechanism that makes secession cheap; and records the
+migration.
 
-Written against **v2.0** (post telegraph→forum rework). Every claim below was
-verified in the tree; file:line references are given so you can re-check them.
+**Status: executed in toto v3.0.** Six apps left the library — `aster` and
+`nomad` to faros, `notarius`, `polls`, `travels` and `sketch` to zenobia. Both
+hosts' clean-env gates pass against `v3.0` with the apps loading from their own
+repos. §6 is kept as the record of how it was done, and as the recipe for the
+next secession.
+
+The analysis was written against v2.0 (post telegraph→forum rework); file:line
+references point at that tree, so line numbers for the six moved apps now
+resolve in the host repos rather than here.
 
 ---
 
@@ -227,7 +234,7 @@ migration plan drills this deliberately.
 
 ---
 
-## 5. The split after secession
+## 5. The split (current state at v3.0)
 
 ### 5.1 The library — same 7 packages, 41 apps
 
@@ -250,12 +257,12 @@ hosts and by any future one. If it ever feels silly, fold `monit` into
 `toto-base`; that is a separate decision with its own MAJOR bump, not part of
 this move.
 
-### 5.2 The hosts — first host-owned app code
+### 5.2 The hosts — their own app code
 
 | Host | Pins (unchanged names, version → `3.0`) | Carried portion |
 |---|---|---|
-| **zenobia** | all 7 packages | `zenobia/toto/{notarius,polls,sketch,travels}` |
-| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` | `faros/toto/{aster,nomad}` |
+| **zenobia** | all 7 packages `==3.0` | `zenobia/toto/{notarius,polls,sketch,travels}` |
+| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==3.0` | `faros/toto/{aster,nomad}` |
 
 The portion is plain source, not a distribution — no new package names, no new
 pins, nothing for the version gate to check (§4).
@@ -295,7 +302,7 @@ Four waves, each independently verifiable. Waves 1 and 2 are additive — the ap
 exist in both places briefly, which is what makes this safe: nothing is deleted
 from the library until both hosts are proven green on their own copies.
 
-### Wave 0 — library hygiene (release as v2.x)
+### Wave 0 — library hygiene ✅
 
 1. Guard the unguarded `manta → transcription` import
    (`toto-works/src/toto/manta/views.py:383`).
@@ -305,7 +312,7 @@ from the library until both hosts are proven green on their own copies.
 
 *Gate:* `scripts/clean_env_check.sh` green.
 
-### Wave 1 — faros adopts aster + nomad
+### Wave 1 — faros adopts aster + nomad ✅
 
 1. Copy `packages/toto-ops/src/toto/{aster,nomad}` to `faros/toto/` (plain copy;
    the history stays in toto_libs, which remains the origin of record).
@@ -319,7 +326,7 @@ from the library until both hosts are proven green on their own copies.
 *Drill:* temporarily remove the portion from `sys.path`; confirm the failure is
 `No installed app with label 'nomad'`.
 
-### Wave 2 — zenobia adopts its four
+### Wave 2 — zenobia adopts its four ✅
 
 Same shape for `notarius`, `polls`, `travels`, `sketch`, plus the celery
 autodiscovery extension from §4.3. `APPS_TO_SYNC`, `INGRESS_ALLOWED_APPS` and
@@ -327,7 +334,7 @@ autodiscovery extension from §4.3. `APPS_TO_SYNC`, `INGRESS_ALLOWED_APPS` and
 
 *Gate:* zenobia `clean_env_test.sh` green across all five profiles.
 
-### Wave 3 — the library sheds them (release v3.0)
+### Wave 3 — the library sheds them (released as v3.0) ✅
 
 **MAJOR**, because `BASE_APPS` shrinks — a host that upgrades without adopting
 its portion loses apps, which is exactly what a major bump is for.
@@ -347,6 +354,35 @@ its portion loses apps, which is exactly what a major bump is for.
    the same sitting.
 
 *Gate:* library clean-env check, both host gates, both boot smokes.
+
+### What actually happened
+
+All four waves went as written. Final state: the library is **41 apps** across
+the same 7 packages at `v3.0`; faros carries `faros/toto/{aster,nomad}` and pins
+4 packages; zenobia carries `zenobia/toto/{notarius,polls,travels,sketch}` and
+pins 7. Measured, not estimated: migration-apps 43 → 37, templates 245 → 208,
+payload 1233 → 1099 entries. Both hosts' gates pass wheel-only — portion loads,
+`migrate`, `collectstatic`, boot 302.
+
+Two things worth remembering for the next secession:
+
+- **The placement question answered itself.** The portion goes next to the
+  settings package (`<repo>/<project>/toto/`), because that directory is already
+  on `sys.path` whenever `DJANGO_SETTINGS_MODULE=<project>.settings` resolves —
+  in local `manage.py`, in `deploy.py`, and in the container (`COPY <project>/
+  /app/<project>` + `WORKDIR`). **No sys.path, Dockerfile or entrypoint change
+  was needed in either host.**
+- **setuptools re-shipped deleted apps.** `packages/<pkg>/build/lib/` is reused
+  across builds, so the first wheels built after `git rm` still contained all six
+  apps — 134 files that no longer existed in `src/`. `build/` is gitignored, so a
+  fresh clone or CI would have been fine and the corruption only ever appears on
+  a machine that built before the deletion. `scripts/build_wheels.py` now clears
+  `build/` per package before building, so this cannot recur. If you ever see a
+  wheel containing something you deleted, this is why.
+
+The drill was run too: with `faros/toto/` moved aside, the failure is
+`ModuleNotFoundError: No module named 'toto.aster'` — legible, and pointing at
+exactly the missing thing.
 
 ---
 
