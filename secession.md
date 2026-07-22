@@ -10,9 +10,9 @@ This document decides, per app, whether it stays shared or secedes to a host
 repo; explains the mechanism that makes secession cheap; and records the
 migration.
 
-**Status: executed in toto v3.0.** Six apps left the library — `aster` and
+**Status: executed in toto v1.3.** Six apps left the library — `aster` and
 `nomad` to faros, `notarius`, `polls`, `travels` and `sketch` to zenobia. Both
-hosts' clean-env gates pass against `v3.0` with the apps loading from their own
+hosts' clean-env gates pass against `v1.3` with the apps loading from their own
 repos. §6 is kept as the record of how it was done, and as the recipe for the
 next secession.
 
@@ -234,7 +234,7 @@ migration plan drills this deliberately.
 
 ---
 
-## 5. The split (current state at v3.0)
+## 5. The split (current state at v1.3)
 
 ### 5.1 The library — same 7 packages, 41 apps
 
@@ -259,10 +259,10 @@ this move.
 
 ### 5.2 The hosts — their own app code
 
-| Host | Pins (unchanged names, version → `3.0`) | Carried portion |
+| Host | Pins (unchanged names, version → `1.3`) | Carried portion |
 |---|---|---|
-| **zenobia** | all 7 packages `==3.0` | `zenobia/toto/{notarius,polls,sketch,travels}` |
-| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==3.0` | `faros/toto/{aster,nomad}` |
+| **zenobia** | all 7 packages `==1.3` | `zenobia/toto/{notarius,polls,sketch,travels}` |
+| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==1.3` | `faros/toto/{aster,nomad}` |
 
 The portion is plain source, not a distribution — no new package names, no new
 pins, nothing for the version gate to check (§4).
@@ -334,10 +334,12 @@ autodiscovery extension from §4.3. `APPS_TO_SYNC`, `INGRESS_ALLOWED_APPS` and
 
 *Gate:* zenobia `clean_env_test.sh` green across all five profiles.
 
-### Wave 3 — the library sheds them (released as v3.0) ✅
+### Wave 3 — the library sheds them (released as v1.3) ✅
 
-**MAJOR**, because `BASE_APPS` shrinks — a host that upgrades without adopting
-its portion loses apps, which is exactly what a major bump is for.
+Shipped as **v1.3**. Note the version number does not signal the breakage: a
+host that upgrades *without* adopting its portion loses apps, so the upgrade is
+only safe when the host adopts its portion in the same step. Both hosts did, in
+the same sitting.
 
 1. `git rm` the six app directories.
 2. Registry cleanup: `BASE_APPS` −2 (notarius, polls), `FEATURE_APPS` −travels
@@ -350,7 +352,7 @@ its portion loses apps, which is exactly what a major bump is for.
 5. `scripts/check_package_graph.py` needs **no** change — membership is derived
    from the filesystem and the pyprojects, so it adapts by itself.
 6. `BUILDING.md`: update the package table.
-7. `scripts/release.py 3.0`, tag `v3.0`; both hosts bump their pins to `3.0` in
+7. `scripts/release.py 1.3`, tag `v1.3`; both hosts bump their pins to `1.3` in
    the same sitting.
 
 *Gate:* library clean-env check, both host gates, both boot smokes.
@@ -358,7 +360,7 @@ its portion loses apps, which is exactly what a major bump is for.
 ### What actually happened
 
 All four waves went as written. Final state: the library is **41 apps** across
-the same 7 packages at `v3.0`; faros carries `faros/toto/{aster,nomad}` and pins
+the same 7 packages at `v1.3`; faros carries `faros/toto/{aster,nomad}` and pins
 4 packages; zenobia carries `zenobia/toto/{notarius,polls,travels,sketch}` and
 pins 7. Measured, not estimated: migration-apps 43 → 37, templates 245 → 208,
 payload 1233 → 1099 entries. Both hosts' gates pass wheel-only — portion loads,
