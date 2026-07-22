@@ -1,14 +1,9 @@
 #!/usr/bin/env python3
 """Verify the toto package partition: membership, DAG, hard edges, versions.
 
-Two modes, auto-detected:
-
-* **split** — ``packages/`` exists: membership comes from the filesystem
-  (which ``packages/<dist>/src/toto/<portion>`` a module lives in) and the
-  dependency DAG from each package's ``[project] dependencies``.
-* **flat** — the pre-split tree: membership and deps come from
-  ``PLANNED_PARTITION`` / ``PLANNED_DEPS`` below, so the partition can be
-  validated before a single file moves.
+Membership comes from the filesystem — which ``packages/<dist>/src/toto/<portion>``
+a module lives in — and the dependency DAG from each package's ``[project]
+dependencies``. Neither is duplicated in a mapping file, so neither can drift.
 
 A *hard* edge is one that runs at import time or is enforced by the database:
 module-level imports, ``ForeignKey("app.Model")`` strings, migration
@@ -35,51 +30,6 @@ except ModuleNotFoundError:  # Python 3.10
     import tomli as tomllib  # type: ignore[no-redef]
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-
-# --- the declared partition (flat mode only; deleted once packages/ exists) ---
-
-PLANNED_PARTITION: dict[str, tuple[str, ...]] = {
-    # Everything every host installs unconditionally (registry.BASE_APPS) plus
-    # the shared host API. core/gervazy/people/locations/events form one
-    # irreducible cycle (gervazy.PersonSigningKey -> people.Person FK,
-    # people -> core imports, locations <-> events), so they cannot be layered.
-    "toto-base": (
-        "conf", "features", "registry", "routing", "schedules", "celery_utils",
-        "versioning", "ui", "ingress",
-        "core", "api", "backup", "gervazy", "vault", "people", "locations",
-        "socialhub", "events", "kanban", "memo", "notarius", "verbena",
-        "quota", "polls", "vod", "transcription", "sso_core", "sso_master",
-        "sso_client",
-        # Feature apps whose only hard dependency is base itself. editor is
-        # required by memo (a base app), so it cannot live above base; sketch
-        # and travels are leaves that nothing depends on. A separate package
-        # for them would add a pin without adding any selectable behaviour —
-        # INSTALLED_APPS still gates them per host via BUILD_*.
-        "editor", "sketch", "travels",
-    ),
-    "toto-flow": ("workflows", "mandragora"),
-    "toto-works": (
-        "gitvault", "fileservices", "manta", "texlab", "texplay", "antaresia",
-        "weather",
-    ),
-    "toto-chat": ("telegraph",),
-    "toto-ops": ("aster", "nomad", "monit"),
-    "toto-ai": ("sabbia", "steven", "vicuna"),
-    "toto-graph": (
-        "ravioli", "sql_neo4j_sync", "neo_editor", "bento", "ingestor",
-        "connectors", "formica", "ocr",
-    ),
-}
-
-PLANNED_DEPS: dict[str, tuple[str, ...]] = {
-    "toto-base": (),
-    "toto-flow": ("toto-base",),
-    "toto-works": ("toto-base", "toto-flow"),
-    "toto-chat": ("toto-base",),
-    "toto-ops": ("toto-base",),
-    "toto-ai": ("toto-base",),
-    "toto-graph": ("toto-base", "toto-flow", "toto-ai"),
-}
 
 # Requirements that no static scan can see: apps whose AppConfig.ready() raises
 # ImproperlyConfigured unless another app is installed.
@@ -151,7 +101,7 @@ def discover_split(packages_dir: Path) -> tuple[dict[str, str], dict[str, tuple[
         dist = meta["name"]
         versions[dist] = meta.get("version", "")
         deps[dist] = tuple(
-            re.split(r"[=<>!~ ]", req, 1)[0]
+            re.split(r"[=<>!~ ]", req, maxsplit=1)[0]
             for req in meta.get("dependencies", [])
             if req.startswith("toto-")
         )
@@ -172,35 +122,8 @@ def discover_split(packages_dir: Path) -> tuple[dict[str, str], dict[str, tuple[
     return owner, deps, versions, errors
 
 
-def discover_flat(toto_dir: Path) -> tuple[dict[str, str], dict[str, tuple[str, ...]], list[str]]:
-    owner: dict[str, str] = {}
-    errors: list[str] = []
-    for dist, members in PLANNED_PARTITION.items():
-        for name in members:
-            if name in owner:
-                errors.append(f"'{name}' claimed by both {owner[name]} and {dist}")
-            owner[name] = dist
-
-    present = {
-        e.stem if e.suffix == ".py" else e.name
-        for e in toto_dir.iterdir()
-        if e.name != "__pycache__" and (e.is_dir() or e.suffix == ".py")
-    }
-    present.discard("__init__")
-
-    for name in sorted(present - set(owner)):
-        errors.append(f"toto/{name} is not assigned to any package")
-    for name in sorted(set(owner) - present):
-        # 'versioning' does not exist yet at pre-flight time; that is expected.
-        if name != "versioning":
-            errors.append(f"'{name}' is assigned to {owner[name]} but does not exist")
-    return owner, PLANNED_DEPS, errors
-
-
-def source_roots(mode: str, root: Path) -> list[Path]:
-    if mode == "split":
-        return sorted((root / "packages").glob("*/src/toto"))
-    return [root / "toto"]
+def source_roots(root: Path) -> list[Path]:
+    return sorted((root / "packages").glob("*/src/toto"))
 
 
 def module_of(path: Path, roots: list[Path]) -> str | None:
@@ -401,14 +324,12 @@ def main() -> int:
     versions: dict[str, str] = {}
     packages_dir = root / "packages"
 
-    if packages_dir.is_dir():
-        mode = "split"
-        owner, deps, versions, errors = discover_split(packages_dir)
-        if (root / "toto").is_dir():
-            errors.append("legacy top-level toto/ still exists alongside packages/")
-    else:
-        mode = "flat"
-        owner, deps, errors = discover_flat(root / "toto")
+    if not packages_dir.is_dir():
+        print(f"ERROR: no packages/ directory under {root}")
+        return 1
+    owner, deps, versions, errors = discover_split(packages_dir)
+    if (root / "toto").is_dir():
+        errors.append("legacy top-level toto/ still exists alongside packages/")
 
     # 1. every declared package must be known to the dep graph
     for dist in sorted(set(owner.values())):
@@ -425,7 +346,7 @@ def main() -> int:
         errors.append(f"package dependency cycle: {exc.args[1]}")
 
     # 3. every hard edge must be intra-package or follow a declared dep path
-    roots = source_roots(mode, root)
+    roots = source_roots(root)
     violations: dict[tuple[str, str], list[str]] = {}
     for src, dst, why in collect_hard_edges(roots, owner):
         src_dist, dst_dist = owner.get(src), owner.get(dst)
@@ -436,7 +357,7 @@ def main() -> int:
 
     # 4. version discipline (split mode only)
     version_file = root / "VERSION"
-    if mode == "split" and version_file.is_file():
+    if version_file.is_file():
         declared = version_file.read_text().strip()
         for dist, version in sorted(versions.items()):
             if version != declared:
@@ -451,7 +372,7 @@ def main() -> int:
                     errors.append(f"{meta['name']}: sibling pin {req!r} != VERSION {declared!r}")
 
     if not args.quiet:
-        print(f"mode: {mode}   packages: {len(deps)}   members: {len(owner)}")
+        print(f"packages: {len(deps)}   members: {len(owner)}")
     for (src_dist, dst_dist), reasons in sorted(violations.items()):
         print(f"\nUNDECLARED DEPENDENCY {src_dist} -> {dst_dist} ({len(reasons)} hard edges):")
         for reason in reasons[:12]:
