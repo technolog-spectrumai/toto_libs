@@ -23,15 +23,33 @@ def _clean_env(tmp_path):
 
 
 def test_toto_resolves_from_site_packages(tmp_path):
+    # toto is a PEP 420 namespace shared by several distributions: it has no
+    # __file__, only __path__. A non-None __file__ means a pre-split 'toto'
+    # wheel is installed and shadowing the suite.
     result = subprocess.run(
-        [sys.executable, "-c", "import toto; print(toto.__file__)"],
+        [sys.executable, "-c", "import toto; print(toto.__file__); print(*toto.__path__, sep='\\n')"],
         cwd=tmp_path,
         env=_clean_env(tmp_path),
         capture_output=True,
         text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert "site-packages" in result.stdout, result.stdout
+    first, *paths = result.stdout.splitlines()
+    assert first == "None", f"toto.__file__ is {first} — a legacy 'toto' distribution is installed"
+    assert paths and all("site-packages" in p for p in paths), result.stdout
+
+
+def test_installed_suite_is_coherent(tmp_path):
+    result = subprocess.run(
+        [sys.executable, "-c",
+         "from toto.versioning import check_runtime_coherence, installed_suite;"
+         " check_runtime_coherence(); print(sorted(installed_suite().items()))"],
+        cwd=tmp_path,
+        env=_clean_env(tmp_path),
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stdout + result.stderr
 
 
 def test_django_check_passes_from_wheel(tmp_path):

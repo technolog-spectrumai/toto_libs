@@ -7,7 +7,18 @@ class CoreConfig(AppConfig):
     url_name = "toto.core"
 
     def ready(self):
+        from django.core.exceptions import ImproperlyConfigured
         from django.db.backends.signals import connection_created
+
+        from toto.versioning import TotoVersionError, check_runtime_coherence
+
+        # toto.core is installed by every host, so this is the one place that
+        # sees the whole suite. Refuse to boot a half-upgraded installation
+        # rather than fail later in some unrelated import.
+        try:
+            check_runtime_coherence()
+        except TotoVersionError as exc:
+            raise ImproperlyConfigured(str(exc)) from exc
 
         def _set_sqlite_wal(sender, connection, **kwargs):
             if connection.vendor == "sqlite":
