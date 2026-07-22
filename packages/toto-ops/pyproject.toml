@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 [project]
 # aster and nomad are faros-only apps; monit is the read-only ops dashboard.
 name = "toto-ops"
-version = "1.0"
+version = "2.0"
 description = "toto operations: onion identity, device directory, monitoring"
 readme = "README.md"
 license = { text = "MIT" }
@@ -14,7 +14,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.0",
+    "toto-base==2.0",
 ]
 
 [tool.setuptools.packages.find]

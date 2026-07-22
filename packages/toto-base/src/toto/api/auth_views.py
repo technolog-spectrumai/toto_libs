@@ -46,7 +46,7 @@ class HealthApiView(CorsApiView):
 # Enigma+) only offers apps the backend can actually serve — zenobia has them all, faros
 # (the minimal Tor server) lacks e.g. the knowledge graph (ravioli).
 _FEATURE_APPS = {
-    "chat": "toto.telegraph",
+    "chat": "toto.forum",
     "vault": "toto.vault",
     "tasks": "toto.kanban",
     "locations": "toto.locations",

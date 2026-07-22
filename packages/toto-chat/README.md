@@ -1,6 +1,6 @@
 # toto-chat
 
-toto encrypted mesh chat (telegraph).
+toto forum chat (forum) — persistent, searchable, plaintext-at-rest channels.
 
 Part of the **toto** suite — one repository, 7 lockstep-versioned
 distributions sharing the `toto.*` namespace. See `BUILDING.md` in the

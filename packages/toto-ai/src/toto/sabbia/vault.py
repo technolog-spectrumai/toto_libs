@@ -3,7 +3,7 @@
 Agent API keys (e.g. the OpenAI key for the Steven bot) are stored encrypted in
 Gervazy under a single *sabbia system strongbox*, unlocked server-side by
 ``SABBIA_VAULT_PASSWORD`` — no human in the loop. This mirrors
-``toto.telegraph.vault`` / ``toto.sso_master`` and lets the websocket consumer
+``toto.sso_master``'s signing vault and lets the websocket consumer
 (which runs outside any request) resolve credentials.
 
     SABBIA_VAULT_PASSWORD ─Argon2id▶ UKEK ─unwrap▶ VMK ─unwrap▶ DEK ─AES-GCM▶ secret

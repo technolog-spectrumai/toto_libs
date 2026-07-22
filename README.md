@@ -108,7 +108,7 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 ### Real-time & collaboration
 | App | Purpose | Gate |
 |---|---|---|
-| `telegraph` | Relay/forum ("Discord-style") chat backend: persistent per-room messages over Channels + a Bearer-token JSON API. MLS end-to-end encryption via the rotor WASM. | `BUILD_CHAT` · 🔌 |
+| `forum` | Discord-style chat backend: permanent per-channel history over Channels + a JSON API, with full-text message search. Plaintext at rest; TLS is the transport security. | `BUILD_CHAT` · 🔌 |
 | `sketch` | Collaborative real-time whiteboard (Board / BoardObject) broadcast over Channels. | `BUILD_SKETCH` · 🔌 |
 | `editor` | Shared collaborative text/JSON editor (ACE + diff-match-patch sync consumer) for vault files. No models. | `BUILD_LATEX`/`BUILD_PYEDITOR` · 🔌 |
 | `texlab` | LaTeX compilation service: workspaces of vault files; `CompileRun`s stream logs and store output PDFs. | `BUILD_LATEX` · 🔌 ⚙️ 🧩 texlive |
@@ -177,7 +177,7 @@ Knowledge graph (opt-in, BUILD_GRAPH)
   Django rows ── sql_neo4j_sync (YAML shape) ──→ ravioli ──→ Neo4j
 
 Real-time (Channels / ASGI)
-  telegraph (chat, MLS) · sketch (whiteboard) · editor/texlab/antaresia (code+LaTeX)
+  forum (chat) · sketch (whiteboard) · editor/texlab/antaresia (code+LaTeX)
   · mandragora (compute kernels, ZMQ) · sabbia/steven (AI)
 
 Automation (BUILD_WORKFLOWS)

@@ -8,7 +8,7 @@ import importlib
 
 # Portal's historical collection order. faros passes its own shorter list.
 DEFAULT_WEBSOCKET_ROUTING_MODULES = [
-    "toto.telegraph.routing",
+    "toto.forum.routing",
     "toto.texlab.routing",
     "toto.antaresia.routing",
     "toto.editor.routing",

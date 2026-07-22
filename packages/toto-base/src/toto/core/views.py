@@ -225,7 +225,7 @@ def _manual_features(request):
         "notarius": apps.is_installed("toto.notarius"),
         "editor": apps.is_installed("toto.editor"),
         "sketch": apps.is_installed("toto.sketch"),
-        "chat": apps.is_installed("toto.telegraph"),
+        "chat": apps.is_installed("toto.forum"),
         "workflows": apps.is_installed("toto.workflows"),
         "notebooks": apps.is_installed("toto.mandragora"),
         "graph": apps.is_installed("toto.ravioli"),

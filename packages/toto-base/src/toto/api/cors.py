@@ -1,13 +1,13 @@
 """Framework-level API base views and the data-mesh access gate.
 
-These were historically defined in ``toto.telegraph.api_views``, but they are
+These were historically defined in the chat app's ``api_views``, but they are
 foundational: ``CorsApiView`` / ``MeshGatedApiView`` are subclassed by the
 always-on apps (vault, events, kanban, locations, socialhub) and must not drag
-in telegraph's ``channels`` dependency. They live here in the always-on
+in the chat app's ``channels`` dependency. They live here in the always-on
 ``toto.api`` app so the basic (no-studio) tier can import them.
 
-``toto.telegraph.api_views`` re-exports every name below for backwards
-compatibility.
+Import them from here. The backwards-compatibility re-export that used to live in
+the chat app was removed when its auth/identity views moved into ``toto.api``.
 """
 from urllib.parse import urlparse
 

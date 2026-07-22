@@ -36,7 +36,7 @@ FEATURE_APPS = {
         "toto.mandragora",   # Jupyter kernel server — runs workflow lambda nodes
         "toto.workflows",    # DAG workflow engine
     ],
-    "chat": ["toto.telegraph"],
+    "chat": ["toto.forum"],
     "weather": ["toto.weather"],
     "travels": ["toto.travels"],
     "manta": ["toto.manta"],
@@ -86,7 +86,7 @@ TASK_MODULES = [
 
 
 def has_app(name: str) -> bool:
-    """Capability check: is the given app (e.g. "toto.telegraph") installed?"""
+    """Capability check: is the given app (e.g. "toto.forum") installed?"""
     from django.apps import apps
 
     return apps.is_installed(name)

@@ -3,7 +3,7 @@
 Creates the single *sabbia system strongbox* that holds agent API keys (e.g. the
 OpenAI key for the Steven bot). The strongbox is unlocked server-side by
 ``SABBIA_VAULT_PASSWORD`` (no human in the loop). Run once per deployment, before
-seeding agents; safe to re-run (idempotent). Mirrors ``telegraph_init_vault``.
+seeding agents; safe to re-run (idempotent). Mirrors ``create_sso_signing_key``.
 
 Usage:
   SABBIA_VAULT_PASSWORD=... python manage.py sabbia_init_vault

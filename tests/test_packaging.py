@@ -45,18 +45,12 @@ def test_packages_do_not_overlap(payloads):
     assert not clashes, clashes
 
 
-def test_payload_matches_the_pre_split_baseline(all_names):
-    """The split must not lose (or invent) a single packaged file.
-
-    The baseline is the payload of the last single-distribution wheel. Retire
-    this test the first time the suite legitimately gains or drops a file —
-    until then it is the proof that the repackaging was lossless.
-    """
-    baseline = set((REPO_ROOT / "tests" / "data" / "wheel_payload_baseline.txt").read_text().split())
-    baseline.discard("toto/__init__.py")          # deliberately removed by the split
-    expected = baseline | {f"toto/{m}.py" for m in HOST_API_MODULES}
-    assert sorted(expected - all_names) == [], "payload lost by the split"
-    assert sorted(all_names - expected) == [], "payload gained by the split"
+# test_payload_matches_the_pre_split_baseline was retired here, exactly as its own
+# docstring instructed ("retire this test the first time the suite legitimately gains or
+# drops a file"). The telegraph → forum rework did both: it dropped vault.py, two vault
+# management commands and the rotor WASM bundle, and added store.py, search.py and
+# permissions.py. The checks below are the durable invariants; the frozen file list was
+# only ever proof that the one-off package split was lossless.
 
 
 def test_migrations_are_packaged(all_names, owner):
@@ -82,11 +76,10 @@ def test_templates_are_packaged(all_names, owner):
 
 def test_static_and_wasm_are_packaged(all_names, owner):
     static = [n for n in all_names if "/static/" in n]
-    assert len(static) >= 11, static
-    # The rotor WASM is synced into the checkout by the hosts' deploy.py and
-    # must ride inside whichever package owns telegraph.
-    assert owner.get("toto/telegraph/static/js/rotor_wasm/rotor_wasm_bg.wasm") == "toto-chat"
-    assert owner.get("toto/telegraph/static/js/rotor_wasm/rotor_wasm.js") == "toto-chat"
+    assert len(static) >= 6, static
+    # The rotor WASM assertions that used to live here went away with the forum app's
+    # MLS encryption; toto-chat now ships no static files.
+    assert not [n for n in all_names if n.startswith("toto/forum/static/")]
     assert owner.get("toto/core/static/oya/alpine.js") == "toto-base"
 
 

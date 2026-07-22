@@ -269,6 +269,15 @@ Bento keys a node's category off its **Neo4j label**, so nodes the SQL→Neo4j s
 writes (`:KanbanTask`, `:Person`, …) are recognised as these categories. `--full`
 additionally seeds the demo `idea/source/question` templates + sample graph.
 
+### Minimal graph types (`SEED_GRAPH_TYPES`)
+
+With `--seed-graph-types` (or `settings.SEED_GRAPH_TYPES` / the `SEED_GRAPH_TYPES=1`
+deploy env var), `ingress_bento` also seeds — in **every** mode, including non-`--full`
+— a `concept` and a `note` `BentoCategory` plus a `references` `BentoEdgeType`
+linking `note → concept`. SQL templates only (no Neo4j writes), so it's fast and
+safe in a thin bring-up; gives the graph editor a starter set to exercise. Off by
+default.
+
 > Note: bento addresses nodes by a `uid` property, while the sync writes `uuid` —
 > so synced node *types* are recognised, but per-node editing of synced nodes in
 > bento needs the identifiers aligned (follow-up).
@@ -330,6 +339,142 @@ absent.
 ```
 python manage.py ingress_bento --full
 ```
+
+
+========================================================================
+  APP: toto.connectors
+========================================================================
+
+# toto.connectors — external APIs → Bento-validated graph patches
+
+Configure a **DataConnector** (which API, how to extract records, how records
+map onto Bento categories/edge types) → run it (manually or on a schedule) →
+every run produces an **ingestor proposal** reviewed in the Cytoscape diff UI
+→ apply writes through `bento.graph_service`. Human-auditable end to end.
+
+Surfaced as the **Connectors** tab inside Ravioli (`/connectors/`, superuser-only).
+
+## Constraints honored
+
+- **Neo4j is the source of truth.** A run's output is a *patch* (an
+  `ingestor.IngestProposal`), never graph data.
+- **Ravioli owns Neo4j.** Reads go through the ingestor catalog →
+  `bento.graph_service`; writes only through `ingestor.services.apply`. This
+  app opens **no** Neo4j connection of its own.
+- **No LLMs. Deterministic only.** Declarative dot-path mapping + rapidfuzz
+  dedupe against the live graph.
+- **Secrets never live here.** Auth config/credentials belong to the
+  `api.Connector` (Gervazy `EncryptedSecret` in the shared system strongbox);
+  archived payloads and request logs are composed pre-auth.
+
+## Anatomy of a run (`services/runner.execute_run`)
+
+1. **extract** — `services/extract/rest.RestApiExtractor` fetches pages via
+   `toto.api.client.execute_api_request` (auth injection, SSRF host allowlist,
+   1 MiB/30 s caps; pagination: `none | page | offset | cursor`).
+2. **archive** — all pages (bodies included) land as a JSON `VaultFile` in the
+   `connectors-archive` bucket; an auth-free `request_log` goes on the run.
+3. **transform** — `services/transform.py` maps records through the
+   `mapping_spec`: within-run dedupe by (category, normalized identifier),
+   graph dedupe via the ingestor catalog + rapidfuzz (exact match → an
+   `existing` reference; near match → `duplicate_warning`), Bento-constrained
+   relationships, and a skip of existing→existing edges already in the graph
+   (`create_edge` is a Cypher CREATE — re-runs must not multiply edges).
+4. **persist** — `ingestor persist_review` → proposal `ready`, run `review`.
+5. **trusted auto-apply** (optional) — `ingestor.services.approval.
+   approve_all_valid` (never approves validation errors) + `ingestor.services.
+   apply.run` (idempotent/resumable); run ends `applied` with the full audit
+   trail intact.
+
+Run statuses: `pending → running → review | applied | empty | failed`. A human
+apply through the ingestor UI flips `review → applied` via a post_save signal
+on `IngestProposal`.
+
+## `mapping_spec`
+
+```jsonc
+{
+  "version": 1,
+  "nodes": [{
+    "rule_id": "author",                            // unique [a-z0-9_-]+
+    "category_slug": "person",                      // existing BentoCategory
+    "identifier": {"path": "author.display_name"},  // display + dedupe surface
+    "properties": {                                 // each value EXACTLY ONE of:
+      "name":   {"path": "author.display_name"},    //   dot-path ("ids.0.value" indexes lists)
+      "source": {"const": "openalex"},              //   literal
+      "note":   {"template": "{title} ({publication_year})"}  // "{path}" placeholders
+    },
+    "when": {"path": "author.display_name", "op": "truthy"}   // truthy|eq|ne|contains
+  }],
+  "relationships": [{
+    "rule_id": "wrote",
+    "edge_type_slug": "wrote",              // endpoints checked vs allowed_sources/targets
+    "from_rule": "author", "to_rule": "work",  // both must fire on the same record
+    "properties": {"year": {"path": "publication_year"}}
+  }]
+}
+```
+
+The category's identifier property (`searchable_property_names[0]`) is filled
+from the identifier surface when unmapped, so required fields never come out
+empty. Specs are validated structurally *and* against the live Bento templates
+(`services/mapping.validate_mapping_spec`) on save and via the Validate button.
+
+## `extract_config` (kind `rest_api`)
+
+```jsonc
+{
+  "endpoint": "works",                 // relative to http_connector.base_url
+  "method": "GET",                     // GET | POST
+  "params": {"filter": "is_oa:true"},  // static, non-secret
+  "headers": {},
+  "records_path": "results",           // dot-path to the list; "" = body itself
+  "pagination": {"strategy": "page", "param": "page", "start": 1, "max_pages": 10},
+  "max_records": 1000,
+  "timeout_seconds": 30
+}
+```
+
+## Scheduling
+
+`schedule_enabled` + `interval_minutes` per connector. A single global beat
+task (`toto.connectors.tasks.connectors_scan_schedules`, every
+`CONNECTORS_SCAN_MINUTES` min) claims due connectors under a row lock —
+`next_run_at` advances before dispatch, in-flight runs are never stacked, and
+an untrusted connector with a proposal still awaiting review is skipped (no
+duplicate-proposal pileup). Runs stuck pending/running beyond
+`STALE_RUN_MAX_AGE` (2 h — a killed worker) stop blocking their connector.
+Deployments get a dedicated `celery_beat` container (see deploy.py).
+
+## Deploy / flags
+
+- `BUILD_CONNECTORS=1` (implies `BUILD_GRAPH`) — INSTALLED_APPS, `/connectors/`
+  URLs, the Ravioli tab, the beat entry and ingress registration all follow it.
+- Authenticated connectors need the shared system strongbox:
+  `SABBIA_VAULT_PASSWORD` set (web **and** worker) + `manage.py
+  connectors_init_vault` (ingress does this when the password is present).
+  API keys are entered on the `api.Connector` admin form, never in configs.
+- `manage.py ingress_connectors --full` seeds a no-auth **OpenAlex demo**
+  mapped onto the seeded `note`/`concept` templates.
+
+## Known limitations (v1)
+
+- Property **updates** on existing nodes are out of scope: an exact-matched
+  node becomes a reference with `properties: {}`.
+- No HTTP retry/backoff/rate limiting (matches `toto.api.client`); a flaky
+  upstream fails the run visibly and the next scheduled tick retries.
+- The graph catalog is rebuilt per run and capped at
+  `INGESTOR_CATALOG_MAX_NODES`; truncation is surfaced in run stats.
+
+## Tests
+
+```
+cd portal && BUILD_NEO4J=1 BUILD_CONNECTORS=1 python manage.py test toto.connectors toto.ingestor
+```
+
+No live Neo4j or network required: HTTP is patched at `execute_api_request`,
+graph writes at `graph_service.create_node/create_edge`, catalog at
+`build_catalog` — the same seams the ingestor suite uses.
 
 
 ========================================================================
@@ -406,6 +551,228 @@ Community organizers create `ScheduledEvent` records with a venue address, start
 - `locations` — Event venue is an Address FK
 - `people` — EventInvite invitee and Availability person────────────────────────────────────────────────────────────────────────
 
+
+
+========================================================================
+  APP: toto.formica
+========================================================================
+
+# toto.formica — ant/termite colony for Neo4j graph maintenance
+
+Virtual ants of six castes wander the knowledge graph each cycle, lay and
+follow **pheromone** on edges (usefulness trails), repair template drift,
+quarantine-then-prune dead weight, and — termite-style — propose new
+connections where trails keep co-visiting (stigmergy). A **Queen** reallocates
+ants between castes based on colony health. Driven from the dashboard **Ops**
+tab (`/formica/`, superuser-only, `BUILD_FORMICA` — implies `BUILD_GRAPH`).
+
+Full design: [`formica.md`](../../../formica.md) at the repo root.
+
+## Constraints honored
+
+- **Ravioli stays the sole Neo4j boundary.** `colony/graph_ops.py` is the ONLY
+  formica module importing `Neo4jClient` (batched `UNWIND` metadata writes,
+  bounded sample reads). Structural mutations go through
+  `bento.graph_service` — and only via reviewed proposals.
+- **Tiered autonomy.** Pheromone/marker writes apply directly (reversible
+  metadata). Repairs, prunes and builds become a **`FormicaProposal`**
+  reviewed in the control panel — unless the colony is `trusted`, which
+  auto-applies valid ops while still recording the full audit trail.
+- **Budgets everywhere.** `cycle_write_budget`, `walk_sample_size`,
+  `max_steps_per_ant`, `max_prunes_per_cycle`, `proposal_batch_max` — a cycle
+  can never runaway-scan or runaway-write.
+- **Reproducible.** Every cycle stores an `rng_seed`; walks are deterministic
+  under it.
+
+## The cycle (one epoch, sequential, celery task)
+
+```
+SENSE      bounded stale-first sample → NetworkX walk graph + scent (η)
+EVAPORATE  τ ← τ·(1−rate) on all edges; material decays at half rate
+SCOUT      seed τ on the stale frontier; alarm orphans
+FORAGER    τ^α·η^β ε-greedy walks; batched deposit flush; ForagerReport
+NURSE      bento validate_node + GraphExporter.diff_slice → repair ops
+PRUNER     phase-1 quarantine marker → (grace, still cold) → delete ops
+ARCHITECT  co-visits + _ph_material ≥ threshold + allowed edge type → build ops
+QUEEN      reallocate ant_counts toward the neediest caste (bounded, ≥1)
+```
+
+## Graph-side markers (ephemeral by design)
+
+`_ph` (edge), `_ph_material`, `_ph_alarm`, `_ph_touched`,
+`_formica_quarantine` (node). All underscore-prefixed and excluded from
+ravioli's content checksum (`graph_export.RESERVED_PREFIXES` — the one change
+formica makes outside its app). SQL link projection recreates configured
+relationship types, wiping edge markers — accepted: pheromone re-accrues.
+Nodes marked `_historical` and `_HISTORICAL` relationships are never touched.
+
+## Prune safety
+
+Two-phase: a low-τ node first gets a reversible `_formica_quarantine` marker;
+only after `prune_grace_cycles` of continued cold (re-probed against the live
+graph) does a capped `delete_nodes` op reach the proposal. Hard exclusions:
+`Colony.protected_labels`, `protected_uids`, and every `uuid`-bearing
+(SQL-projected) node — deleting those is futile, reconcile recreates them.
+
+## Ops & flags
+
+- `BUILD_FORMICA=1` (or `manage.py --formica`); beat entry
+  `formica-beat-scan` every `FORMICA_SCAN_MINUTES` (5) dispatches due
+  colonies; the deployed celery stack includes a beat container.
+- `manage.py ingress_formica` seeds "Colonia Prima" + default castes
+  (idempotent).
+- Retention: `FORMICA_REPORT_RETENTION` (200 newest cycles keep reports),
+  `FORMICA_CYCLE_RETENTION` (500) — proposals are audit and never pruned.
+- Control panel: overview (run/pause/trust + KPIs), parameters (form rendered
+  from `PARAM_SPECS` — adding a tunable is one dict entry), cycles
+  (Chart.js series), pheromone map (Cytoscape), proposals (per-op
+  approve/reject → apply).
+
+## Tests
+
+```
+cd portal && BUILD_NEO4J=1 BUILD_FORMICA=1 python manage.py test toto.formica
+```
+
+No live Neo4j needed: the cycle engine is exercised against an in-memory
+`FakeGraphOps` double (same budget semantics), graph writes are patched at
+`graph_service`, and walker/pheromone/params are pure. 120+ tests cover every
+caste, determinism, budgets, two-phase prune, proposal apply/resume, the
+beat/trigger tasks, retention, views and the checksum exclusion.
+
+
+========================================================================
+  APP: toto.forum
+========================================================================
+
+# Forum — Real-time Chat
+
+Discord-style chat: persistent channels, permanent readable history, full-text search, over
+Django Channels WebSockets plus a JSON API.
+
+Transport security is **TLS and nothing else**. Messages are stored as plaintext rows, which
+is what makes durable, paginated, searchable history possible — a member who joins today can
+read everything said before they arrived, and the server can run a text query over it.
+
+> Renamed from **telegraph** and stripped of three cryptographic schemes (gervazy at-rest
+> message encryption, client-side "secure-on-send" E2E, and an MLS relay over a prebuilt
+> rotor WASM bundle) plus a 24-hour message TTL. Those existed to support a Signal-style
+> privacy story; they cost a deployment secret whose loss made history unrecoverable, capped
+> history at one day, and made message bodies impossible to query.
+
+## Data model ([models.py](models.py))
+
+- `ForumChannel` — name, slug, creator, and its members.
+- `ForumMember` — the **only** membership record. A parallel `participants` M2M used to exist
+  alongside it; the two disagreed, and a user dropped from one but not the other could still
+  post over a raw websocket. See [permissions.py](permissions.py).
+- `ForumMessage` — a plaintext message: `body`, optional `attachment` (a real file on disk,
+  not a base64 `data:` URL), `reply_to`, `edited_at`, `deleted_at` (soft delete, so replies
+  keep their anchor). Never expires — retention is deferred work, see
+  [forum_todo.md](forum_todo.md).
+
+**Attachments are not under `MEDIA_ROOT`.** nginx serves `/media/` unauthenticated with a
+30-day cache, which would leave a private channel's images readable forever by anyone who
+ever saw the URL — including a member who has since left. They live under
+`settings.FORUM_ATTACHMENT_ROOT` (default: a `forum_attachments/` sibling of `MEDIA_ROOT`)
+and are handed out only by `MessageAttachmentApiView`, which applies the same membership
+check as the message they belong to.
+
+## Permissions ([permissions.py](permissions.py))
+
+Every entry point routes through one module:
+
+| Who | May |
+|-----|-----|
+| anonymous | nothing — not even the channel list |
+| signed in | browse channels, create one, join one |
+| active member | read history, search, post, edit/delete their own messages |
+
+Rosters, message history, search results and attachments are all scoped to active
+membership. That scoping is not optional: messages are permanent now, so a leak here is
+durable.
+
+Membership is re-checked on live sockets too. A member removed via the REST/HTML leave
+endpoints or the Django admin does not have their tab closed by any of those paths, so
+`signals.py` broadcasts a control frame on every `ForumMember` write and the consumer
+re-checks and disconnects. (Those endpoints deactivate per instance rather than with a
+queryset `.update()`, because only instance saves fire the signal.)
+
+## Search ([search.py](search.py))
+
+Dual-backend, chosen at query time by `connection.vendor`:
+
+- **postgresql** — `SearchVector`/`SearchQuery`/`SearchRank`, computed per query.
+- **anything else** — case-insensitive substring matching.
+
+Deliberately no `SearchVectorField` and no `GinIndex` in the migration: every host runs
+**SpatiaLite in dev and in every clean-env gate, PostGIS in deployment**, and Postgres-only
+DDL in `Meta.indexes` would break `manage.py migrate` on the SQLite side. The UI surfaces
+which engine actually ran. Promoting to a stored, indexed vector is tracked in
+[forum_todo.md](forum_todo.md).
+
+## History ([store.py](store.py))
+
+A freshly-connected socket receives the newest 50 messages. Older pages are fetched on
+demand through
+`GET /forum/api/channels/<slug>/messages/?before=<iso8601>&before_id=<uuid>&limit=`.
+
+The cursor is the **`(created_at, id)` pair** of the oldest message you already hold, not
+the timestamp alone: `created_at` is not a total order, so a timestamp-only cursor drops a
+message whenever two share a timestamp across a page boundary, and the sort itself is
+unstable.
+
+## API Endpoints
+
+| Method | URL | Description |
+|--------|-----|-------------|
+| GET · POST | `/forum/api/channels/` | List channels · create one |
+| GET | `/forum/api/channels/{slug}/` | Channel detail + members (roster is members-only) |
+| GET | `/forum/api/channels/{slug}/messages/` | Paginated history (`?before=&limit=`) |
+| POST | `/forum/api/channels/{slug}/join/` · `/leave/` · `/leave-all/` | Membership |
+| POST | `/forum/api/channels/{slug}/upload/` · `/upload-audio/` | Image / voice attachment |
+| GET | `/forum/api/search/` | Message search (`?q=&channel=`) |
+| GET | `/forum/api/messages/{uuid}/attachment/` | Membership-checked attachment download |
+
+Auth and identity endpoints (`login`, `logout`, `me`, `me/mesh`, `health`, `apps`) are **not
+here** — they were never chat. They live in [toto.api](../../../../toto-base/src/toto/api/)
+and are mounted at `/api/`, with a legacy `/telegraph/api/` alias for a shipped enigma
+desktop binary that cannot be updated in lockstep with the server.
+
+## WebSocket Message Types
+
+`ws/forum/<channel_slug>/`
+
+| Type | Direction | Description |
+|------|-----------|-------------|
+| `chat_message` | both | A message (optionally with `reply_to`) |
+| `image_message` / `voice_message` | server→client | Broadcast of an uploaded attachment |
+| `chat_history` | server→client | The newest page, replayed on connect, plus `has_more` |
+| `message_edit` / `message_delete` | both | Author-only mutation of an existing message |
+| `typing_start` / `typing_stop` | both | Presence only, never persisted, never echoed to the sender |
+| `room_participants` | server→client | Roster plus `online` — who actually has a socket open ([presence.py](presence.py)), which drives the presence dots |
+| `membership_changed` | internal | Control frame from [signals.py](signals.py); makes a consumer re-check membership and disconnect if revoked |
+| `system_error` | server→client | Error notification |
+
+## Operations
+
+Nothing to provision — no vault, no secret, no build artifact. The app needs a Redis channel
+layer (for websockets and for the membership-revocation control frame), a cache (presence),
+and a writable `FORUM_ATTACHMENT_ROOT`.
+
+**Messages are never deleted.** There is no purge job at all; see
+[forum_todo.md](forum_todo.md) for the retention work that replaces the old TTL.
+
+## Testing
+
+```bash
+cd zenobia && .venv_test/bin/python manage.py test \
+  toto.forum.tests.test_api_views toto.forum.tests.test_consumers \
+  toto.forum.tests.test_history toto.forum.tests.test_models toto.forum.tests.test_views
+```
+
+Name the test modules explicitly: `toto` is a PEP 420 namespace package, so
+`manage.py test toto.forum` cannot be discovered by unittest.
 
 
 ========================================================================
@@ -501,6 +868,125 @@ at:<signed_at.isoformat()>
 - `people` (for `PersonSigningKey.person` FK)
 - Otherwise standalone.────────────────────────────────────────────────────────────────────────
 
+
+
+========================================================================
+  APP: toto.ingestor
+========================================================================
+
+# toto.ingestor — text → Bento-validated graph patch
+
+Paste arbitrary text → get a **proposed graph update** (existing-node references,
+proposed new nodes, proposed relationships, with confidence, evidence and
+validation) → review it as a Cytoscape **graph diff** → edit/approve/reject →
+**apply the approved patch** to Neo4j.
+
+Surfaced as the **Ingestor** tab inside Ravioli (`/ingestor/`, superuser-only).
+
+## Constraints honored
+
+- **Neo4j is the source of truth.** The proposal is a *patch*, never graph data.
+- **Bento defines the templates.** New nodes use existing `BentoCategory`s; new
+  relationships use existing `BentoEdgeType`s and their endpoint constraints.
+- **Ravioli owns Neo4j.** Reads go through `bento.graph_service` (→ Ravioli's
+  `Neo4jClient`); writes go through `bento.graph_service.create_node/create_edge`.
+  This app opens **no** Neo4j connection of its own.
+- **No LLMs. Deterministic only.** spaCy `EntityRuler` + statistical NER (fixed
+  weights, deterministic inference) + rapidfuzz string distance + rule-based,
+  template-constrained relationship proposal.
+
+## Pipeline (`services/`)
+
+`pipeline.build_proposal_dict(text)`:
+
+1. **catalog** — read existing nodes (via `graph_service.iter_nodes`) and turn
+   each category's *searchable* properties + aliases into match entries.
+2. **detection** — spaCy: an `EntityRuler` built from the catalog detects
+   *existing* nodes (pattern id = uid, label = category slug); the model's NER
+   suggests *new* entities, mapped to categories via `INGESTOR_SPACY_LABEL_MAP`.
+   Degrades to a blank pipeline (no model) — existing-entity detection + sentence
+   segmentation still work.
+3. **matching** — rapidfuzz (difflib fallback) flags duplicates / merge
+   candidates of new entities against the catalog.
+4. **relations** — for each sentence, ordered entity pairs yield only edges
+   `graph_service.edge_types_between` allows; `BentoEdgeType.trigger_lemmas`
+   gate/boost edges that need a verb cue.
+5. **scoring** — deterministic confidence formulas (`services/scoring.py`).
+6. **validation** — every node/edge checked against the live Bento template via
+   `graph_service.validate_node` / `validate_edge` (also re-run at apply time).
+7. **proposal** — assembled into the editable patch JSON (see below).
+
+`apply.run(proposal_model)` writes approved + valid elements through Bento.
+It is **idempotent/resumable**: created uids and applied relationship ids are
+recorded in `IngestProposal.apply_result`, so a retry after a partial failure
+never duplicates work.
+
+## Proposal JSON (`IngestProposal.proposal`)
+
+```jsonc
+{
+  "nodes": [{
+    "temp_id": "n1", "kind": "new" | "existing",
+    "category_slug": "person", "uid": null, "display": "Ada Lovelace",
+    "properties": {"name": "Ada Lovelace"},
+    "evidence": [{"text": "...", "start": 0, "end": 12, "sentence": 0}],
+    "confidence": 0.55,
+    "match": {"method": "fuzzy", "matched_uid": "...", "score": 0.91, "candidates": [...]},
+    "duplicate_warning": false,
+    "validation": {"status": "ok" | "error", "errors": []},
+    "approval": "pending" | "approved" | "rejected",
+    "merge_into_uid": null
+  }],
+  "relationships": [{
+    "temp_id": "r1", "edge_type_slug": "works-at", "rel_type": "WORKS_AT",
+    "from": "n1", "to": "n2", "properties": {},
+    "evidence": [{"text": "...", "sentence": 0}],
+    "confidence": 0.75, "trigger_matched": true,
+    "validation": {"status": "ok", "errors": []},
+    "approval": "pending"
+  }]
+}
+```
+
+Nodes/relationships reference each other by `temp_id`. Editing (category, props,
+merge, approval, edge type) re-validates the element server-side.
+
+## Bento template fields used
+
+- `BentoCategory.searchable_properties` (list) — properties that identify a node
+  in text; falls back to name/title/label. `alias_property` — node property
+  holding alternate surface forms (list or comma string).
+- `BentoEdgeType.trigger_lemmas` (list) — lemmas that propose/boost this edge.
+
+## Settings knobs (`services/config.py`)
+
+`INGESTOR_SPACY_MODEL` (default `en_core_web_sm`), `INGESTOR_SPACY_LABEL_MAP`,
+`INGESTOR_CATALOG_MAX_NODES` (20000), `INGESTOR_DUP_THRESHOLD` (0.90),
+`INGESTOR_CANDIDATE_THRESHOLD` (0.70), `INGESTOR_FUZZY_MAX_CANDIDATES` (5000).
+
+## Deploy
+
+`spacy` and `rapidfuzz` are in `requirements.studio.txt`. The NER model must also
+be installed for new-entity suggestions:
+
+```
+python -m spacy download en_core_web_sm
+```
+
+Without it the Ingestor still runs (existing-entity detection + relationships),
+but won't suggest uncategorized new entities — the review banner says so.
+
+## Tests
+
+`toto/toto/ingestor/tests/` — run from `portal/`:
+
+```
+BUILD_NEO4J=1 python manage.py test toto.ingestor
+```
+
+They cover Bento validators, matching, scoring, relations, proposal assembly,
+the apply path (Neo4j mocked) and view permissions/flow — no live Neo4j or spaCy
+model required.
 
 
 ========================================================================
@@ -746,14 +1232,22 @@ Slide bodies are CDATA-wrapped so pasted HTML / `<img>` data URIs / inline
 
 - **Vault Play button** → `memo:present` — reveal.js slideshow viewer
   (registered via `plugins/vault_play_plugins.py`).
-- **Vault Edit button** → `memo:edit` — in-browser slide editor with client-side
-  image resize (≤640px) + base64 embedding and SVG inlining
-  (registered via `plugins/vault_editor_plugins.py`).
-- `memo:save` — persists edited slides back to the vault file as XML.
-- `memo:index` — gallery of presentations the user can open.
+- **Vault Edit button** → `memo:source` — plain-text (Ace, XML mode) editor of
+  the raw presentation XML; in the vault a presentation is just an editable
+  text file (registered via `plugins/vault_editor_plugins.py`).
+- `memo:edit` — the structured slide editor with client-side image resize
+  (≤640px) + base64 embedding and SVG inlining. Reached from the memo app
+  itself: the index cards, the player's Edit link, and the source editor's
+  *Slides* button.
+- `memo:save` / `memo:source_save` — persist slides / raw XML back to the
+  vault file.
+- `memo:index` — the presentation workspace: gallery of presentations the
+  user can open, with one-click *New presentation* (`memo:create`). Linked
+  from the dashboard as the **Presentations** card.
 
-New presentations are created from the vault's *New File → presentation* menu
-(`vault.CreateEmptyFileView` seeds a blank document and routes to the editor).
+New presentations are created from the workspace's *New presentation* button
+or the vault's *New File → presentation* menu (`vault.CreateEmptyFileView`
+seeds a blank document and routes to the editor).
 
 ## Detection
 
@@ -782,36 +1276,33 @@ and viewing respects vault visibility.
 
 # toto.ocr
 
-*(Studio only — requires BUILD_STUDIO=1)*
+*(Knowledge-Graph build — requires BUILD_NEO4J=1; needs the Tesseract binary + pytesseract)*
 
-Document OCR pipeline. Images uploaded to a vault bucket are processed through a configurable transform chain to extract text line by line.
+A small, stateless **OCR sub-tab inside the Knowledge Graph** (ravioli tab bar).
+There are **no database models** — the flow is entirely request/response.
 
-## Purpose
+## Flow
 
-An operator creates an `OcrProject` backed by a vault `Bucket`, then uploads document images. Each `OcrImage` is queued for processing through an ordered chain of `ImageTransform` steps (resize, grayscale, threshold…) before the OCR engine extracts `OcrLine` records with bounding boxes and confidence scores. Custom transforms delegate to `workflows.LambdaFunction`. Extracted text feeds downstream into palimpsest pages or memo decks.
+1. **Load screenshot** — the user picks an image in the OCR tab.
+2. **Run OCR** — `ocr:run` feeds the upload to `OcrHelper` (pytesseract) and returns the
+   extracted text as JSON.
+3. **Save to bucket (optional)** — a checkbox unfolds a bucket dropdown; when set, the
+   screenshot is stored as an `image` `vault.VaultFile` in the chosen bucket.
+4. **Ingest text** — the extracted (and editable) text is POSTed to `ingestor:generate`,
+   then the user is taken to the resulting ingestor proposal.
 
-## Models
+## Pieces
 
-- `OcrProject` — a named OCR workspace. Fields: `name`, `slug`, `bucket` (FK to `vault.Bucket`), `owner` (FK to `auth.User`), `allowed_users` (M2M to `auth.User`), `language`, `is_active`, `created_at`.
-
-- `OcrImage` — one image in a project queued for OCR. Fields: `project` FK, `vault_file` (FK to `vault.VaultFile`), `status` (`pending / processing / done / failed`), `page_number`, `processed_at`, `error_message`.
-
-- `OcrLine` — a single text line extracted from an image. Fields: `image` FK, `line_number`, `text`, `confidence` (float 0–1), `bounding_box` (JSON — `{x, y, w, h}` as fractions of image size).
-
-- `ImageTransform` — a processing step applied to images before OCR. Fields: `project` FK, `name`, `order`, `transform_type` (`resize / grayscale / threshold / denoise / deskew / crop`), `lambda_function` (FK to `workflows.LambdaFunction`, nullable — custom transform), `is_active`.
-
-- `ImageTransformParam` — a named parameter for a transform. Fields: `transform` FK, `key`, `value` (string).
-
-## Key coupling
-
-- `vault.VaultFile` / `vault.Bucket` — images are stored in vault.
-- `workflows.LambdaFunction` — custom transform steps delegate to workflow lambdas.
+- `ocr.py` — `OcrHelper`: the pytesseract wrapper (run + line grouping). The only engine.
+- `views.py` — `ocr_home` (renders the tab) and `ocr_run` (Tesseract + optional vault save).
+- `templates/ocr/ocr.html` — Alpine `ocrFlow()` UI; includes `ravioli/_tabs.html`.
 
 ──────────────────────────────────────────────── DEPENDENCIES ──────────
 ## Dependencies
 
-- `vault` — OcrImage.vault_file FK to VaultFile; project backed by vault.Bucket
-- `workflows` — ImageTransform.lambda_function FK to workflows.LambdaFunction────────────────────────────────────────────────────────────────────────
+- `vault` — optional save creates a `VaultFile` in a user-owned `Bucket`.
+- `ingestor` — the "Ingest text" button reuses `ingestor:generate`.
+- System: the `tesseract-ocr` binary + language packs, and the `pytesseract` package.────────────────────────────────────────────────────────────────────────
 
 
 
@@ -966,6 +1457,44 @@ A FK link only produces an edge when the related object is actually an instance 
 
 None — standalone Neo4j boundary. (`sql_neo4j_sync`, `bento`, and `neo_editor` depend on it.)────────────────────────────────────────────────────────────────────────
 
+
+
+========================================================================
+  APP: toto.sabbia
+========================================================================
+
+# sabbia
+
+Headless agentic/chatbot **backend**. Hosts any number of chat agents; each agent
+only chats with a user over websockets. No UI — the floating chat widget lives in
+the separate `toto.steven` app.
+
+## Pieces
+
+- `models.py` — `Agent`, `AgentConnector` (encrypted creds via Gervazy), `Conversation`,
+  `ChatMessage`, `PlatformChatbot` (links a `core.Platform` to the agent its widget shows).
+- `endpoints/` — pluggable chat transports. Each implements `ChatEndpoint.chat(messages) -> str`.
+  Add a type = new class + one line in `endpoints/__init__.py:REGISTRY`.
+  - `openai` — OpenAI Chat Completions; key decrypted from the sabbia vault.
+  - `ollama` — calls the `toto.vicuna` chat endpoint (which proxies to local Ollama).
+- `consumers.py` / `routing.py` — `ws/sabbia/agent/<slug>/`, single-shot replies, logged-in only.
+- `vault.py` + `sabbia_init_vault` — server-side Gervazy system strongbox unlocked by
+  `SABBIA_VAULT_PASSWORD` (mirrors `toto.sso_master`'s signing vault).
+- `ingress_sabbia` — seeds the Steven (OpenAI) agent + optional Ollama agent + PlatformChatbot.
+
+## Deployment flags
+
+- `BUILD_SABBIA` — install this backend (implies `BUILD_STUDIO` for websockets).
+- `SABBIA_OPENAI` — enable the OpenAI endpoint + seed Steven (needs `OPENAI_API_KEY` to seed the key,
+  `SABBIA_VAULT_PASSWORD` at runtime).
+- `SABBIA_OLLAMA` — install `toto.vicuna` + enable the Ollama endpoint + seed an Ollama agent.
+
+## Setup
+
+```
+SABBIA_VAULT_PASSWORD=... python manage.py sabbia_init_vault
+OPENAI_API_KEY=sk-... python manage.py ingress_sabbia
+```
 
 
 ========================================================================
@@ -1246,55 +1775,25 @@ toto acts as its own identity provider. External apps and internal services regi
 
 
 ========================================================================
-  APP: toto.telegraph
+  APP: toto.steven
 ========================================================================
 
-# Telegraph — Real-time Chat
+# steven
 
-Encrypted group chat backed by MLS (Messaging Layer Security). Used by the Enigma desktop app and accessible at `/telegraph/`.
+The chat-widget **UI** app. A thin shell — no models, urls, or views.
 
-## Architecture
+Injects a hovering "Ask AI" chat window site-wide via a `FloatingPlugin`
+(`plugins/floating_plugins.py`), rendered by `oya/base.html`'s
+`{% render_floating_plugins %}`. The widget opens a websocket to the headless
+`toto.sabbia` backend (`ws/sabbia/agent/<slug>/`) and chats with the agent that
+`sabbia.PlatformChatbot` links to the active platform.
 
-- **Django Channels** WebSocket consumer (`consumers.py`) — relays messages between browser/desktop clients
-- **MLS** end-to-end encryption via `rotor-wasm` (browser) / `rotor-core` Rust (Tauri)
-- **JSON API** (`api_views.py`) — Bearer-token authenticated, consumed by Enigma Tauri app
+- Shown only to **logged-in** users (chat requires an authenticated socket).
+- Renders nothing when sabbia isn't installed or no PlatformChatbot is configured.
 
-## API Endpoints
+## Deployment flag
 
-| Method | URL | Description |
-|--------|-----|-------------|
-| GET | `/telegraph/api/health/` | Service health check |
-| POST | `/telegraph/api/login/` | Login → returns session token |
-| POST | `/telegraph/api/logout/` | Logout |
-| GET | `/telegraph/api/me/` | Current user profile |
-| GET | `/telegraph/api/channels/` | List all channels |
-| GET | `/telegraph/api/channels/{slug}/` | Channel detail + members |
-| POST | `/telegraph/api/channels/{slug}/join/` | Join a channel |
-| POST | `/telegraph/api/channels/{slug}/leave/` | Leave a channel |
-| POST | `/telegraph/api/channels/leave-all/` | Leave all channels |
-| POST | `/telegraph/api/channels/{slug}/upload/` | Upload image (base64-relayed via WS) |
-| POST | `/telegraph/api/channels/{slug}/upload-audio/` | Upload audio (base64-relayed via WS) |
-
-## WebSocket Message Types
-
-| Type | Direction | Description |
-|------|-----------|-------------|
-| `chat_message` | both | Plaintext message |
-| `image_message` | both | Base64 image data |
-| `voice_message` | both | Base64 audio data (webm/ogg/mp4/wav) |
-| `mls_app` | both | MLS-encrypted application message (opaque relay) |
-| `mls_key_package` | both | MLS key package for handshake |
-| `mls_welcome` | both | MLS welcome message |
-| `mls_commit` | both | MLS commit message |
-| `room_participants` | server→client | Active participant list update |
-| `system_error` | server→client | Error notification |
-
-## Testing
-
-```bash
-cd portal
-python manage.py test toto.telegraph
-```
+`BUILD_STEVEN` installs this app and implies `BUILD_SABBIA` (the backend).
 
 
 ========================================================================
@@ -1303,33 +1802,53 @@ python manage.py test toto.telegraph
 
 # toto.texlab
 
-*(Studio only — requires BUILD_STUDIO=1)*
+*(Requires BUILD_LATEX=1 — installed together with `toto.texplay`)*
 
-LaTeX compilation service over WebSockets. Workspaces hold `.tex` and supporting files; compile runs invoke a LaTeX engine and return PDF or image output.
+File-based **LaTeX workspace**. Documents are plain `.tex` vault files
+(`file_type="latex"`, plus `.bib` bibliographies) — the vault file is the
+single source of truth, the same model as `.pml` presentations (`toto.memo`)
+and `.tpy` notebooks (`toto.mandragora`). The old `LatexWorkspace`/`LatexFile`
+models were dropped in migration `0002_remove_workspace_models`; only
+`CompileRun` (per-file compile audit) remains in the database.
 
-## Models
+## Entry points
 
-- `LatexWorkspace` — a named LaTeX project. Fields: `name`, `slug`, `bucket` (FK to `vault.Bucket` — file storage for this workspace), `owner` (FK to `people.Person`), `is_public`, `created_at`.
+- `texlab:index` — the LaTeX workspace: lists `.tex`/`.bib` vault files the
+  user can open, with one-click *New document* (`texlab:create`). Linked from
+  the dashboard as the **LaTeX** card.
+- **Vault Edit button** → `texlab:file_display` — Ace editor (latex mode) with
+  Save, compile trigger and compile history
+  (registered via `plugins/vault_editor_plugins.py`).
+- **Vault Play button** → `texplay:latex_play` — compile-and-preview the PDF
+  (registered via `toto.texplay.plugins.vault_play_plugins`).
+- `texlab:compile_latex` / `texlab:compile_status` — start a compile
+  (Celery/workflow-backed when available, synchronous fallback otherwise) and
+  poll its `CompileRun`.
 
-- `LatexFile` — a file within a workspace. Fields: `workspace` FK, `filename`, `vault_file` (FK to `vault.VaultFile`), `is_main` (the entrypoint `.tex` file), `updated_at`.
+New documents are created from the workspace's *New document* button (seeds
+`BLANK_TEX_DOCUMENT`) or the vault's *New File → latex* menu
+(`vault.CreateEmptyFileView` mirrors the same blank skeleton).
 
-- `CompileRun` — a single compilation attempt. Fields: `workspace` FK, `latex_file` (FK to the main file), `status` (`queued / running / success / failed`), `compiler` (`pdflatex / xelatex / lualatex`), `output_pdf` (FK to `vault.VaultFile`, nullable), `log_output` (text), `duration_ms`, `workflow_run` (FK to `workflows.WorkflowRun`, nullable — for scheduled compiles), `created_at`.
+## Detection
 
-## How it works
+`VaultFile._EXT_MAP` maps `.tex`/`.sty`/`.cls`/`.dtx`/`.ins` → `latex` and
+`.bib` → `bib` (extension-first). The files stay plain text and are editable
+as such.
 
-- Compile requests are submitted via WebSocket or HTTP.
-- The Channels consumer queues a `CompileRun`, streams log output back to the client in real time, and stores the output PDF in vault on success.
+## Compilation
 
-## Key coupling
-
-- `vault.VaultFile` / `vault.Bucket` — all files stored via vault.
-- `workflows.WorkflowRun` — compile runs can be triggered by the workflow engine.
+`compile.py` runs `pdflatex -interaction=nonstopmode` in a tempdir over the
+file (plus sibling bucket files), storing the output PDF as a `VaultFile` and
+the log on the `CompileRun`. Requires TeX Live on the host/container
+(`INSTALL_TEXLIVE=1` in deploy configs).
 
 ──────────────────────────────────────────────── DEPENDENCIES ──────────
 ## Dependencies
 
-- `vault` — LatexFile and CompileRun output stored as VaultFile
-- `workflows` — CompileRun can be triggered as a workflow node────────────────────────────────────────────────────────────────────────
+- `vault` — documents and output PDFs are `VaultFile`s; editor/play plugins
+  wire the buttons.
+- `workflows` — compiles can run as workflow nodes (`CompileRun.workflow_run`).
+- `toto.texplay` — the Play-side compile/preview app.────────────────────────────────────────────────────────────────────────
 
 
 
@@ -1516,6 +2035,76 @@ Templates extend `oya/base.html`, use `darkMode` Alpine bindings, Tailwind utili
 - `vault` stores original audio/video and generated transcript artifacts.
 - `transcription` owns transcription collections, sources, jobs, segments, speakers, artifacts, and analytics events.
 - AI summarization or action-item extraction should be added later through `steven` or `workflows` rather than mixed into the core STT flow.
+
+
+========================================================================
+  APP: toto.travels
+========================================================================
+
+# toto.travels
+
+Travel & visit log — route journeys and place-visit reviews, surfaced as **Travels**
+and **Visits** sub-tabs of the Locations app.
+
+## Gating
+
+Opt-in, off by default. Enable with `BUILD_TRAVELS=1` (or `manage.py … --travels`).
+Its only dependencies are `locations` and `people`, both always installed — no tier
+required. When the flag is off the app is not installed, its URLs are not mounted, and
+the Locations tab bar hides the Travels/Visits tabs (`{% if "toto.travels"|app_installed %}`).
+
+## Models
+
+**`Travel`** — a group journey along a route.
+- `participants` — M2M → `people.Person` (related_name `travels`).
+- `route` — FK → `locations.Route`, `SET_NULL`, nullable (related_name `travels`).
+- `info` — free-text notes about the travel.
+- `score` — 1–5, nullable (enforced by the `travel_score_between_1_and_5` check constraint).
+- `reviewed_at`, `starts_at` (required), `ends_at` (required) — datetimes.
+- Properties: `duration`, `duration_display` (e.g. "2d 3h").
+
+**`Visit`** — one person visiting one address.
+- `participant` — FK → `people.Person`, `CASCADE` (related_name `visits`).
+- `location` — FK → `locations.Address`, `SET_NULL`, nullable (related_name `visits`).
+- `visited_at`, `ends_at`, `reviewed_at` — nullable datetimes.
+- `score` — 1–5, nullable (`visit_score_between_1_and_5` check constraint).
+- `review` — optional review text.
+- Properties: `length_of_stay`, `length_of_stay_display`.
+
+## Integration with Locations
+
+The app is a satellite of `locations`; its templates extend `locations/base.html` and it
+registers into the Locations plugin registries via `apps.py::ready()`
+(`toto.core.plugin_autodiscover`):
+
+- `plugins/map_plugins.py` → `LocationMapPlugin`: Travels drawn from `route.geometry`,
+  Visits from `location.geometry`, as overlay features on the Locations map (with notes in popups).
+- `plugins/url_plugins.py` → `LocationUrlPlugin`: deep-link resolvers (`travel_review`,
+  `visit_review`, `travel_create`, `visit_create`, `address_visit_review`).
+- `plugins/context_plugins.py` → `LocationContextPlugin`: injects `map_recent_travels` /
+  `map_recent_visits` into the map's "Travels & Visits" overlay panel.
+- `plugins/sidebar_plugins.py` — no-op stub (travels surface via the map overlay, not the sidebar).
+
+### Address / Route notes
+
+`locations.Address.note` and `locations.Route.notes` are free-text fields edited on the
+Locations detail pages. They are shown read-only on the visit-review (location note) and
+travel-review (route notes) pages and in Address/Route/Visit/Travel map popups.
+
+## URLs (`app_name = "travels"`, mounted at `/travels/`)
+
+- `""` → `my_travels` (Travels tab: travel list; links to Metrics and Add travel)
+- `visits/` → `my_visits` (Visits tab: visit list; Add visit)
+- `metrics/` → `travel_metrics`
+- `travels/<pk>/review/`, `travels/new/`, `travels/<pk>/info/`, `travels/<pk>/delete/`
+- `visits/new/`, `visits/<address_id>/review/`, `visits/<address_id>/review/submit/`, `visits/<pk>/delete/`
+
+## Demo data
+
+`manage.py ingress_travels --full` seeds ~18 travels and ~21 visits across several named
+routes. It looks up existing `people.Person`, `locations.Route`, and `locations.Address`
+rows, so seed `socialhub` and `locations` first (the `INGRESS_ALLOWED_APPS` ordering does
+this automatically under `ingress_all`).
 
 
 ========================================================================

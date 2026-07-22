@@ -5,7 +5,7 @@ from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 
-from toto.telegraph.api_views import CorsApiView
+from toto.api.cors import CorsApiView
 from toto.assets.models import LedgerAccount, AssetHolding, LedgerEntry, from_base_units
 
 

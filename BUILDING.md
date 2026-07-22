@@ -18,7 +18,7 @@ there is deliberately no `toto/__init__.py` anywhere):
 | `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and every app each host installs unconditionally: core, api, backup, gervazy, vault, people, locations, socialhub, events, kanban, memo, notarius, verbena, quota, polls, vod, transcription, sso_core, sso_master, sso_client, editor, sketch, travels | — |
 | `toto-flow` | workflows, mandragora | base |
 | `toto-works` | gitvault, fileservices, manta, texlab, texplay, antaresia, weather | base, flow |
-| `toto-chat` | telegraph (ships the prebuilt rotor WASM) | base |
+| `toto-chat` | forum | base |
 | `toto-ops` | aster, nomad, monit | base |
 | `toto-ai` | sabbia, steven, vicuna | base |
 | `toto-graph` | ravioli, sql_neo4j_sync, neo_editor, bento, ingestor, connectors, formica, ocr | base, flow, ai |
@@ -72,7 +72,6 @@ toto_libs/
   tests/                      packaging, versioning and tier gates (shipped in no wheel)
   scripts/                    release, build, install, partition checker, gates
   limbo/                      parked apps, outside every package
-  rotors/                     Rust source of the telegraph WASM, outside every package
 ```
 
 ---

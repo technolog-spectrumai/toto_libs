@@ -140,7 +140,7 @@ def package_dir(src: str | os.PathLike[str], name: str) -> Path:
 def app_dir(src: str | os.PathLike[str], app: str) -> Path:
     """Find the source directory of a toto app without knowing which package owns it.
 
-    Lets deploy tooling reach e.g. telegraph's static assets without hardcoding
+    Lets deploy tooling reach e.g. the forum app's templates without hardcoding
     that toto-chat happens to own them today.
     """
     matches = sorted(Path(src).glob(f"packages/*/src/toto/{app}"))

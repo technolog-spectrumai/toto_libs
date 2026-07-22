@@ -1,7 +1,7 @@
 """JSON auth API for programmatic SSO clients (e.g. the Enigma Cloud desktop app).
 
-Registration lives here in the SSO master (the identity authority), not in
-telegraph — telegraph only exposes the session *login* for backwards compat. A
+Registration lives here in the SSO master (the identity authority). ``toto.api``
+exposes only the session *login*, which this mirrors. A
 successful registration logs the new user in and returns the Django session key,
 usable as ``Authorization: Bearer <token>`` exactly like the login endpoint.
 """
@@ -22,7 +22,7 @@ class RegisterApiView(CorsApiView):
 
     Gated by ``settings.SSO_OPEN_REGISTRATION`` (library default: False; a
     personal server like faros opts in). On success the user is created AND
-    logged in, returning the session key exactly like telegraph's LoginApiView.
+    logged in, returning the session key exactly like ``toto.api``'s LoginApiView.
     """
 
     def post(self, request):

@@ -67,7 +67,7 @@ class AuthTests(AsterTestBase):
         self.assertEqual(anon.get(reverse("aster:resolve") + "?user=alice").status_code, 401)
 
     def test_bearer_session_token_authenticates(self):
-        # Mirror telegraph's auth: Authorization: Bearer <session_key>.
+        # Mirror toto.api's auth: Authorization: Bearer <session_key>.
         s = SessionStore()
         s["_auth_user_id"] = str(self.alice.pk)
         s.save()

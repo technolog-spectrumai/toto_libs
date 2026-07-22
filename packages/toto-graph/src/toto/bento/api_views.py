@@ -1,7 +1,7 @@
 """JSON / CORS API for Bento, routed entirely through :mod:`graph_service`.
 
 A small local CORS base keeps bento decoupled from studio-only apps (the old
-code imported telegraph's ``CorsApiView``; bento is now a Neo4j-group app and
+code imported the chat app's ``CorsApiView``; bento is now a Neo4j-group app and
 must not depend on the studio group).
 """
 

@@ -65,7 +65,7 @@ def resolve_features(get) -> Features:
     tier_neo4j = flag(get, "BUILD_NEO4J")
 
     # Studio-group features (default to the studio tier).
-    chat = flag(get, "BUILD_CHAT", tier_studio)               # toto.telegraph — live chat (WebSocket)
+    chat = flag(get, "BUILD_CHAT", tier_studio)               # toto.forum — live chat (WebSocket)
     workflows = flag(get, "BUILD_WORKFLOWS", tier_studio)     # toto.workflows + toto.mandragora kernel
     weather = flag(get, "BUILD_WEATHER", tier_studio)         # toto.weather (FKs workflows.WorkflowRun)
 

@@ -14,7 +14,7 @@ the separate `toto.steven` app.
   - `ollama` — calls the `toto.vicuna` chat endpoint (which proxies to local Ollama).
 - `consumers.py` / `routing.py` — `ws/sabbia/agent/<slug>/`, single-shot replies, logged-in only.
 - `vault.py` + `sabbia_init_vault` — server-side Gervazy system strongbox unlocked by
-  `SABBIA_VAULT_PASSWORD` (mirrors `toto.telegraph.vault`).
+  `SABBIA_VAULT_PASSWORD` (mirrors `toto.sso_master`'s signing vault).
 - `ingress_sabbia` — seeds the Steven (OpenAI) agent + optional Ollama agent + PlatformChatbot.
 
 ## Deployment flags

@@ -434,7 +434,7 @@ class GervazyCryptoSession:
 
         Returns ``(ciphertext_with_tag, nonce)``. Unlike :meth:`encrypt_secret` this
         creates no database row — the caller stores the ciphertext wherever it likes
-        (e.g. a ``TelegraphMessage`` row). ``aad`` should bind the ciphertext to its
+        (e.g. a ``VaultFile`` row). ``aad`` should bind the ciphertext to its
         context so a row cannot be replayed under a different identity.
         """
         if not isinstance(plaintext, bytes):
@@ -456,7 +456,7 @@ class GervazyCryptoSession:
 
         Returns the new ``WrappedDataKey`` with its raw DEK warmed into the session
         cache, so an immediate ``encrypt_blob`` does not re-unwrap. Used when a new
-        namespace (e.g. a telegraph channel) needs its own data key.
+        namespace (e.g. a vault folder) needs its own data key.
         """
         from toto.gervazy.models import VaultMasterKey, WrappedDataKey
 

@@ -15,7 +15,7 @@ User = get_user_model()
 
 
 class BlobHelperTests(TestCase):
-    """encrypt_blob/decrypt_blob (used by telegraph to store message history at rest)."""
+    """encrypt_blob/decrypt_blob (the raw-blob envelope, no DB row of its own)."""
 
     def setUp(self):
         self.user = User.objects.create_user(username="vaultowner", password="x")
