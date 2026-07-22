@@ -8,7 +8,6 @@ from .views import (
     MessageSearchView,
 )
 from .api_views import (
-    AppsApiView,
     AudioUploadApiView,
     ChannelDetailApiView,
     ChannelJoinApiView,
@@ -16,17 +15,15 @@ from .api_views import (
     ChannelLeaveApiView,
     ChannelListApiView,
     ChannelMessagesApiView,
-    HealthApiView,
     ImageUploadApiView,
-    LoginApiView,
-    LogoutApiView,
-    MeApiView,
-    MeshMeApiView,
     MessageSearchApiView,
 )
 
 app_name = "telegraph"
 
+# Auth/identity endpoints (health, apps, login, logout, me, me/mesh) are NOT here — they
+# are not chat. They live in toto.api and the host mounts them at /api/, plus a legacy
+# /telegraph/api/ alias for the shipped enigma desktop binary. See toto/api/urls.py.
 urlpatterns = [
     # Template views
     path("", ChannelListView.as_view(), name="channel_list"),
@@ -37,12 +34,6 @@ urlpatterns = [
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
 
     # JSON API
-    path("api/health/", HealthApiView.as_view(), name="api_health"),
-    path("api/apps/", AppsApiView.as_view(), name="api_apps"),
-    path("api/login/", LoginApiView.as_view(), name="api_login"),
-    path("api/logout/", LogoutApiView.as_view(), name="api_logout"),
-    path("api/me/", MeApiView.as_view(), name="api_me"),
-    path("api/me/mesh/", MeshMeApiView.as_view(), name="api_me_mesh"),
     path("api/search/", MessageSearchApiView.as_view(), name="api_message_search"),
     path("api/channels/", ChannelListApiView.as_view(), name="api_channel_list"),
     path("api/channels/leave-all/", ChannelLeaveAllApiView.as_view(), name="api_channel_leave_all"),

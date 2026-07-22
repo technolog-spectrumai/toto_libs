@@ -34,7 +34,7 @@ class RegisterApiViewTests(TestCase):
         self.assertTrue(User.objects.filter(username="newbie").exists())
         # The token must authenticate a cookie-less client, like the login token.
         fresh = Client()
-        me = fresh.get("/telegraph/api/me/", HTTP_AUTHORIZATION=f"Bearer {data['token']}")
+        me = fresh.get("/api/me/", HTTP_AUTHORIZATION=f"Bearer {data['token']}")
         self.assertEqual(me.status_code, 200)
         self.assertEqual(me.json()["username"], "newbie")
 

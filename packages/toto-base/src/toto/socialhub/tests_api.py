@@ -3,7 +3,7 @@ from django.test import TestCase
 
 from toto.people.models import Person
 from toto.socialhub.models import Community
-from toto.telegraph.testutils import login_mesh_member
+from toto.api.testutils import login_mesh_member
 
 User = get_user_model()
 

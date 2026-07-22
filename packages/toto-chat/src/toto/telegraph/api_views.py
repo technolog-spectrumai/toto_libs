@@ -3,89 +3,14 @@ from urllib.parse import urlparse
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
-from django.contrib.auth import authenticate, login, logout, get_user_model
-from django.contrib.sessions.backends.db import SessionStore
-from django.http import HttpResponse, JsonResponse
-from django.views import View
+from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.db import models
+
+from toto.api.cors import CorsApiView
 from toto.telegraph import permissions, store
 from toto.telegraph.models import TelegraphChannel
-
-# CorsApiView / MeshGatedApiView and the data-mesh helpers now live in the
-# always-on toto.api app so the basic (no-studio) tier can subclass them without
-# pulling in channels. Re-exported here for backwards compatibility.
-from toto.api.cors import (  # noqa: E402,F401
-    CORS_ALLOW_HEADERS,
-    CORS_ALLOW_METHODS,
-    DATA_MESH_GROUP,
-    MESH_DOMAINS,
-    CorsApiView,
-    MeshGatedApiView,
-    _cors,
-    _is_allowed_origin,
-    _try_bearer_auth,
-    in_data_mesh,
-    mesh_required,
-    render_access_denied,
-)
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class MeshMeApiView(CorsApiView):
-    """`GET /telegraph/api/me/mesh/` — whether the user can read gated data from the
-    server (else the client must peer-pull)."""
-
-    def get(self, request):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        member = in_data_mesh(request.user)
-        return JsonResponse({
-            "member": member,
-            "group": DATA_MESH_GROUP,
-            "gated": MESH_DOMAINS,
-            "allowed": MESH_DOMAINS if member else [],
-        })
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class HealthApiView(CorsApiView):
-    def get(self, request):
-        return JsonResponse({"ok": True, "service": "telegraph"})
-
-
-# Feature key (what the edge client shows in its dashboard/nav) → the Django app that
-# backs it. The descriptor reports which are installed on THIS server so a client (e.g.
-# Enigma+) only offers apps the backend can actually serve — portal has them all, faros
-# (the minimal Tor server) lacks e.g. the knowledge graph (ravioli).
-_FEATURE_APPS = {
-    "chat": "toto.telegraph",
-    "vault": "toto.vault",
-    "tasks": "toto.kanban",
-    "locations": "toto.locations",
-    "people": "toto.socialhub",
-    "events": "toto.events",
-    "graph": "toto.ravioli",
-}
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class AppsApiView(CorsApiView):
-    """GET /telegraph/api/apps/ — capability descriptor.
-
-    Returns ``{"apps": {feature: bool}}`` for each known feature, based on whether its
-    backing Django app is installed on this server. No auth required (capability info is
-    not sensitive) and available on every server tier (telegraph ships on portal + faros).
-    """
-
-    def get(self, request):
-        from django.apps import apps as django_apps
-
-        available = {
-            key: django_apps.is_installed(label) for key, label in _FEATURE_APPS.items()
-        }
-        return JsonResponse({"apps": available})
 
 
 def _channel_to_dict(channel, member_count=None):
@@ -123,96 +48,6 @@ def _member_to_dict(request, member):
         "avatar_url": _absolute_url(request, member.avatar_url),
         "type": member.participant_type,
     }
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class LoginApiView(CorsApiView):
-    def post(self, request):
-        try:
-            body = json.loads(request.body)
-        except (json.JSONDecodeError, ValueError):
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        username = body.get("username", "").strip()
-        password = body.get("password", "")
-        if not username or not password:
-            return JsonResponse({"error": "Username and password required."}, status=400)
-
-        user = authenticate(request, username=username, password=password)
-        if user is None:
-            return JsonResponse({"error": "Invalid credentials."}, status=401)
-
-        login(request, user)
-        return JsonResponse({"ok": True, "token": request.session.session_key})
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class LogoutApiView(CorsApiView):
-    def post(self, request):
-        logout(request)
-        return JsonResponse({"ok": True})
-
-
-def _supported_languages():
-    """`{code: label}` of languages the platform offers (e.g. en, pl)."""
-    from django.conf import settings
-    return dict(settings.LANGUAGES)
-
-
-@method_decorator(csrf_exempt, name="dispatch")
-class MeApiView(CorsApiView):
-    def get(self, request):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-
-        user = request.user
-        data = {
-            "id": user.id,
-            "username": user.username,
-            "full_name": user.get_full_name() or user.username,
-            "avatar_url": None,
-            "profile_url": None,
-            "language": "en",
-        }
-
-        try:
-            from toto.people.models import Person
-            person = Person.objects.filter(user=user).first()
-            if person:
-                data["full_name"] = person.full_name or data["full_name"]
-                data["avatar_url"] = request.build_absolute_uri(person.avatar.url) if person.avatar else None
-                data["profile_url"] = f"/socialhub/profiles/{person.slug}/"
-                data["language"] = person.preferred_language or "en"
-        except Exception:
-            pass
-
-        return JsonResponse(data)
-
-    def patch(self, request):
-        """Persist a client's language choice onto the user's Person profile."""
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            body = json.loads(request.body)
-        except (json.JSONDecodeError, ValueError):
-            return JsonResponse({"error": "Invalid JSON."}, status=400)
-
-        language = str(body.get("language", "")).strip()
-        if language not in _supported_languages():
-            return JsonResponse({"error": "Unsupported language."}, status=400)
-
-        stored = False
-        try:
-            from toto.people.models import Person
-            person = Person.objects.filter(user=request.user).first()
-            if person:
-                person.preferred_language = language
-                person.save(update_fields=["preferred_language"])
-                stored = True
-        except Exception:
-            pass
-
-        return JsonResponse({"ok": True, "language": language, "stored": stored})
 
 
 @method_decorator(csrf_exempt, name="dispatch")

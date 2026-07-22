@@ -7,7 +7,7 @@ from django.utils import timezone
 from toto.core.models import Platform
 from toto.locations.models import Address, Route
 from toto.people.models import Person
-from toto.telegraph.testutils import login_mesh_member
+from toto.api.testutils import login_mesh_member
 from toto.travels.models import Travel, Visit
 
 

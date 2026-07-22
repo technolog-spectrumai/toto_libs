@@ -4,7 +4,7 @@ from django.contrib.auth import get_user_model
 from django.test import TestCase
 
 from toto.locations.models import Address, Territory, Zone
-from toto.telegraph.testutils import login_mesh_member
+from toto.api.testutils import login_mesh_member
 
 User = get_user_model()
 

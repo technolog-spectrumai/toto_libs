@@ -5,7 +5,7 @@ from django.test import TestCase
 
 from toto.kanban.models import Project, Column, Task, Campaign, Mission, Practitioner, ProjectCommitment
 from toto.people.models import Person
-from toto.telegraph.testutils import add_to_mesh
+from toto.api.testutils import add_to_mesh
 
 User = get_user_model()
 
