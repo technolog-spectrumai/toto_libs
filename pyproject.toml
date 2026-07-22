@@ -1,42 +1,18 @@
-[build-system]
-# setuptools >= 62.3 is required for '**' patterns in package-data globs.
-requires = ["setuptools>=69"]
-build-backend = "setuptools.build_meta"
+# The repository root is deliberately NOT an installable distribution.
+#
+# toto ships as several lockstep-versioned packages under packages/, all filling
+# the PEP 420 `toto.*` namespace:
+#
+#   toto-base   foundation + host API (every host installs it)
+#   toto-flow   workflow engine and compute kernels
+#   toto-works  workflow-backed file/document/data services
+#   toto-chat   encrypted mesh chat
+#   toto-ops    onion identity, device directory, monitoring
+#   toto-ai     agents, embeddings, assistants
+#   toto-graph  Neo4j knowledge graph, ingestion, connectors
+#
+# Install them with scripts/install_toto.sh (editable) or build wheels with
+# scripts/build_wheels.py. See BUILDING.md.
 
-[project]
-name = "toto"
-dynamic = ["version"]
-description = "Community operating system - reusable Django app library"
-readme = "README.md"
-license = { file = "LICENSE" }
-requires-python = ">=3.10"
-# Runtime dependencies are intentionally minimal: hosts install the feature
-# stacks (celery, channels, DRF, neo4j, ...) that their enabled BUILD_* flags
-# require, exactly as before the repository split.
-dependencies = [
-    "Django>=4.2",
-    "PyYAML>=6.0",
-]
-
-[project.urls]
-Repository = "https://gitlab.com/janhagit-group/toto_libs"
-
-[tool.setuptools.dynamic]
-version = { attr = "toto.__version__" }
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["toto*"]
-
-[tool.setuptools.package-data]
-# 'templates/**/*' (not '*.html'): sso_master ships a .txt email template.
-"*" = [
-    "templates/**/*",
-    "static/**/*",
-    "graph/*.yaml",
-]
-
-[tool.setuptools.exclude-package-data]
-# Vendor assets are downloaded at deploy time (download_vendor.py); keep
-# wheels deterministic even when built from a dev checkout that fetched them.
-"toto.core" = ["static/vendor/**"]
+[tool.pytest.ini_options]
+testpaths = ["tests"]
