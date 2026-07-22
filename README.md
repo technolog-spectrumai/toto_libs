@@ -3,7 +3,7 @@
 **toto** is a modular Django *app library* — a "community operating system"
 packaged as **seven pip distributions sharing the `toto.*` namespace**, released
 lockstep from this one repository (see [BUILDING.md](BUILDING.md)).
-It bundles ~45 apps spanning identity and single-sign-on, encrypted storage, a
+It bundles ~41 apps spanning identity and single-sign-on, encrypted storage, a
 Neo4j knowledge-graph layer, real-time collaboration, media processing, and
 pluggable AI — and lets a host project assemble exactly the subset it needs
 through per-feature build flags.
@@ -92,14 +92,16 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | `sso_master` | Full OpenID Connect 1.0 **provider**: authorize/token/userinfo/JWKS, signing key encrypted in gervazy, PKCE, relying-party registration. | base |
 | `sso_client` | OIDC **consumer** config (`OIDCProviderConfig`) imported from an sso_master bundle. Used by non-portal hosts (e.g. edge). | host-specific |
 
+> **Host-owned apps.** `notarius`, `polls`, `travels` and `sketch` (zenobia) and
+> `aster`, `nomad` (faros) are no longer part of this library — each host carries
+> them as a namespace portion in its own repo. See [secession.md](secession.md).
+
 ### Community, work & content *(base)*
 | App | Purpose |
 |---|---|
 | `socialhub` | Community model: `Community` as the primary grouping unit, referral-gated `MembershipApplication`, hierarchy, news, administrata view. |
 | `events` | Scheduled events + personal availability calendar. `EventBase` is the abstract parent of `detections`-style time-anchored records. |
-| `polls` | Lightweight ad-hoc community polling (Poll / Option / Vote). Non-binding. |
 | `kanban` | Project management: Project → Campaign → Mission → Sprint → Task, with practitioner allowances paid on a Celery-beat schedule. ⚙️ |
-| `notarius` | Contract signing: renders admin-editable LaTeX `ContractTemplate`s to signed PDFs via async `ContractPdfJob`. ⚙️ 🧩 texlive |
 | `memo` | File-based `.pml` presentation viewer + browser editor. Presentations live as self-contained vault files; DB models were dropped. |
 | `vod` | Vault play-plugin host for video playback. Model-less (VOD tables dropped). |
 | `locations` | PostGIS (SRID 4326) geographic substrate: Address, Territory, Zone, Route, MapLayer. |
@@ -109,7 +111,6 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | App | Purpose | Gate |
 |---|---|---|
 | `forum` | Discord-style chat backend: permanent per-channel history over Channels + a JSON API, with full-text message search. Plaintext at rest; TLS is the transport security. | `BUILD_CHAT` · 🔌 |
-| `sketch` | Collaborative real-time whiteboard (Board / BoardObject) broadcast over Channels. | `BUILD_SKETCH` · 🔌 |
 | `editor` | Shared collaborative text/JSON editor (ACE + diff-match-patch sync consumer) for vault files. No models. | `BUILD_LATEX`/`BUILD_PYEDITOR` · 🔌 |
 | `texlab` | LaTeX compilation service: workspaces of vault files; `CompileRun`s stream logs and store output PDFs. | `BUILD_LATEX` · 🔌 ⚙️ 🧩 texlive |
 | `texplay` | Compiles a single `.tex` vault file to PDF via an async `TexPlayJob` (workflow node entrypoint). | `BUILD_LATEX` · ⚙️ 🧩 texlive |
@@ -147,12 +148,6 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | `steven` | Thin site-wide floating "Ask AI" widget that opens a WebSocket to sabbia. No models. | `BUILD_STEVEN` (implies sabbia) · 🔌 |
 | `vicuna` | Ollama deployment registry (`OllamaServer`/`OllamaModel`) proxying local Ollama chat/embeddings. | `BUILD_VICUNA` (graph or sabbia-ollama) |
 
-### Tor / P2P *(faros-only — not installed on the portal)*
-| App | Purpose |
-|---|---|
-| `aster` | Tor signalling directory: binds iroh `NodeId`s to owners and stores current relay URLs with TTL. Never stores IPs. |
-| `nomad` | App-managed Tor onion identity: metadata/history of `.onion` addresses (secret key lives in a volume). |
-
 ---
 
 ## Cross-cutting flows
@@ -177,7 +172,7 @@ Knowledge graph (opt-in, BUILD_GRAPH)
   Django rows ── sql_neo4j_sync (YAML shape) ──→ ravioli ──→ Neo4j
 
 Real-time (Channels / ASGI)
-  forum (chat) · sketch (whiteboard) · editor/texlab/antaresia (code+LaTeX)
+  forum (chat) · editor/texlab/antaresia (code+LaTeX)
   · mandragora (compute kernels, ZMQ) · sabbia/steven (AI)
 
 Automation (BUILD_WORKFLOWS)
@@ -194,7 +189,7 @@ Small stable modules hosts use instead of hardcoding toto internals:
   (from `os.environ.get` or a deploy config dict) into effective feature
   booleans, tiers, and native-binary needs. Single source for the dependency
   closure previously duplicated between host settings and deploy tooling.
-- **`toto.registry`** — `BASE_APPS`, `FEATURE_APPS`, `FAROS_APPS`,
+- **`toto.registry`** — `BASE_APPS`, `FEATURE_APPS`,
   `TASK_MODULES` (Celery autodiscovery), `has_app()` capability check.
 - **`toto.routing`** — `collect_websocket_urlpatterns()` gathers Channels
   websocket routes from installed toto apps for the host ASGI router.

@@ -4,10 +4,11 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# aster and nomad are faros-only apps; monit is the read-only ops dashboard.
+# monit is the read-only ops dashboard. (aster and nomad used to live here;
+# they are faros-owned now — see secession.md.)
 name = "toto-ops"
 version = "1.3"
-description = "toto operations: onion identity, device directory, monitoring"
+description = "toto operations: read-only monitoring dashboard"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

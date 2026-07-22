@@ -1,6 +1,6 @@
 # toto-ops
 
-toto operations: onion identity, device directory, monitoring.
+toto operations: read-only monitoring dashboard.
 
 Part of the **toto** suite — one repository, 7 lockstep-versioned
 distributions sharing the `toto.*` namespace. See `BUILDING.md` in the
