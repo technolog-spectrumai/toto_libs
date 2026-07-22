@@ -10,11 +10,13 @@ This document decides, per app, whether it stays shared or secedes to a host
 repo; explains the mechanism that makes secession cheap; and records the
 migration.
 
-**Status: executed in toto v1.3.** Six apps left the library — `aster` and
-`nomad` to faros, `notarius`, `polls`, `travels` and `sketch` to zenobia. Both
-hosts' clean-env gates pass against `v1.3` with the apps loading from their own
-repos. §6 is kept as the record of how it was done, and as the recipe for the
-next secession.
+**Status: executed in two waves.**
+- **v1.3** — `aster`, `nomad` → faros; `notarius`, `polls`, `travels`, `sketch` → zenobia.
+- **v1.4** — `gitvault`, `texlab` → zenobia; `texplay` parked in `limbo/`.
+
+The library is now **38 apps**. Both hosts' clean-env gates pass against `v1.4`
+with their own apps loading from their own repos. §6 is the record of how it was
+done and the recipe for the next secession.
 
 The analysis was written against v2.0 (post telegraph→forum rework); file:line
 references point at that tree, so line numbers for the six moved apps now
@@ -50,7 +52,7 @@ and almost all of it is already guarded.
 
 ---
 
-## 2. Census (v2.0)
+## 2. Census (as analysed at v2.0)
 
 47 Django apps ship in 7 packages. Counting the `INSTALLED_APPS` region of each
 host's settings:
@@ -116,6 +118,8 @@ imports any of them. Owner today: `toto-base` for all four.
 | `polls` | Community polls. Zero importers. Aurelian's governance has its own voting stack (`limbo/assembly`). Ships `sql_neo4j_sync/graph/polls.yaml` — see §4.3. |
 | `travels` | Human trip planning. Zero importers. Aurelian's fleet uses `locations` Address/Route directly; no limbo app imports travels. |
 | `sketch` | Vault SVG drawing. Zero importers. Accepted as a zenobia feature rather than a future delta tool. |
+| `texlab` *(v1.4)* | LaTeX compile service. No library importer: `editor/views.py:165-188` reverses `texlab:compile_latex` only behind `is_installed` + `NoReverseMatch`. Live in production (`BUILD_LATEX` is on in both OVH profiles). |
+| `gitvault` *(v1.4)* | Git repos over vault dirs. Two library callers remain, both `is_installed`-guarded and function-level: `vault/views.py:104-130` and `editor/views.py:30-42` — see the note below. |
 
 `vod` and `transcription` were candidates here and were **kept in the library** —
 see §3.4.
@@ -155,16 +159,31 @@ These are zenobia-only *today* and would otherwise look movable. They are not.
 | `ravioli`, `sql_neo4j_sync`, `bento`, `ingestor`, `neo_editor`, `connectors`, `formica`, `ocr`, `vicuna` | **aurelian** | Aurelian is Neo4j-central: `limbo/robots/graph.py` emits `robot:` / `robot_mission:` graph nodes for the sync, and `limbo/tariffs` + `limbo/metering` reference `ravioli.CypherQuery`. The whole `toto-graph` cluster stays. |
 | `sabbia`, `steven` | plausible for both | AI agents over the graph; aurelian's operations layer is the obvious consumer. Keep until a planned host is ruled out. |
 | `sso_client` | future hosts | Installed by neither host today because both are SSO *masters*. delta and aurelian federating against zenobia would each need it. Keep. |
-| `weather`, `manta`, `texlab`, `antaresia`, `gitvault`, `fileservices` | plausible for delta | LaTeX, notebooks, git-backed files and media pipelines are exactly what a technical e-learning host wants. Revisit once delta's scope is fixed. |
+| `weather`, `manta`, `antaresia`, `fileservices` | plausible for delta | Notebooks and media pipelines are plausible for a technical e-learning host. Revisit once delta's scope is fixed. |
 
-### 3.5 Orphan, left as-is
+**`texlab` and `gitvault` were in that row until v1.4, and were moved anyway.**
+That is a deliberate override of rule #2, so here is the reasoning rather than a
+silently deleted line. Delta does not exist yet and its scope is not fixed; the
+limbo delta set (academy, quizzes, library, palimpsest) imports neither app. If
+delta later wants LaTeX or git-backed files, the promotion rule in §5.3 applies —
+a second host wanting an app is exactly when it returns to the library, and
+re-promoting a cohesive app out of a host portion is a copy, not a rewrite.
+Against that reversible cost, the certain one is every host carrying both apps
+today for a host that may never exist. The same argument would *not* justify
+moving `memo`, `vod` or `transcription`, which delta has a concrete claim on.
 
-**`texplay`** (`toto-works`) is installed by neither host, absent from
-`registry.FEATURE_APPS` and `TASK_MODULES`, and only survives in stale docs that
-claim it ships with `BUILD_LATEX` (`zenobia/README.md:69`, `BUILDING.md:20`,
-`README.md:115`). It is dead weight today. Left in place by decision; when you
-touch it next, either park it in `limbo/` or wire it back under `BUILD_LATEX` —
-and fix those three doc lines either way.
+### 3.5 Orphan — resolved in v1.4
+
+**`texplay`** was installed by no host, absent from `registry.FEATURE_APPS` and
+`TASK_MODULES`, mounted by no URLs, and imported by nothing anywhere. Because it
+never installed, its `VaultPlayPlugin` never registered — so the LaTeX *Play*
+button it provides has not existed in any deployment, while `texlab/README.md`
+advertised it. It was **parked in `limbo/texplay/`** (see `limbo/texplay/PARKED.md`)
+and the stale doc claims were removed.
+
+A dead-code sweep of `gitvault` and `texlab` at the same time found **nothing** —
+every template is included, every URL reversed, every model and field used. They
+moved intact.
 
 ---
 
@@ -229,24 +248,26 @@ migration plan drills this deliberately.
 | `FEATURE_APPS` | Loses the `travels` and `sketch` keys. | Update; zenobia keeps its own `BUILD_TRAVELS`/`BUILD_SKETCH` blocks. |
 | `features.py` flags | Unchanged. `needs_channels` still includes `sketch`, so the host contract is stable even though the app is host-owned. | None. |
 | `FAROS_APPS` | No longer meaningful once faros owns aster+nomad. | Retire the constant. |
-| `routing.py` | Imports routing modules inside `try/except (ImportError, AttributeError)` (`:27-31`). | Nothing breaks. |
+| `routing.py` | The default list now names only the library's own websocket apps; `toto.texlab.routing` moved out with the app (v1.4). | zenobia's `asgi.py` passes `[*DEFAULT_WEBSOCKET_ROUTING_MODULES, "toto.texlab.routing", "toto.sketch.routing"]`. This also fixed a pre-existing gap: **sketch's websocket had never been collected**, because the library default never listed it and zenobia passed no list. |
+| `TASK_MODULES` (v1.4) | Loses `toto.texlab` and `toto.gitvault`. | zenobia: `autodiscover_tasks([*TASK_MODULES, "toto.notarius", "toto.texlab", "toto.gitvault"])`. |
+| gitvault's library callers | `vault/views.py:104-130` and `editor/views.py:30-42` keep `is_installed`-guarded, function-level references to a now zenobia-owned app. | Nothing breaks — same shape as `core → nomad`. But note it: this is the first time the shared core reaches into a host-owned app. Four templates that included gitvault's toolbar partial **unguarded** were wrapped in `{% if gitvault_ctx %}` in the same release. |
 | `core/views.py:214-236` | The capability map is `is_installed`-based for ~25 apps. | Nothing breaks; seceded apps still report correctly. |
 
 ---
 
-## 5. The split (current state at v1.3)
+## 5. The split (current state at v1.4)
 
-### 5.1 The library — same 7 packages, 41 apps
+### 5.1 The library — same 7 packages, 38 apps
 
-Nothing is repackaged: six apps leave, every remaining app keeps its package,
-its import path and its label. Package names are unchanged, so host pins only
+Nothing is repackaged: the apps that leave keep their package layout behind —
+every remaining app keeps its package, its import path and its label. Package names are unchanged, so host pins only
 need the version bump.
 
 | Package | Apps after secession | Change |
 |---|---|---|
 | `toto-base` | api, backup, core, editor, events, gervazy, kanban, locations, memo, people, quota, socialhub, sso_client, sso_core, sso_master, transcription, vault, verbena, vod (19) | −4: notarius, polls, sketch, travels |
 | `toto-flow` | mandragora, workflows (2) | — |
-| `toto-works` | antaresia, fileservices, gitvault, manta, texlab, texplay, weather (7) | — |
+| `toto-works` | antaresia, fileservices, manta, weather (4) | −2 to zenobia: gitvault, texlab; −1 to limbo: texplay |
 | `toto-chat` | forum (1) | — |
 | `toto-ops` | monit (1) | −2: aster, nomad |
 | `toto-ai` | sabbia, steven, vicuna (3) | — |
@@ -259,10 +280,10 @@ this move.
 
 ### 5.2 The hosts — their own app code
 
-| Host | Pins (unchanged names, version → `1.3`) | Carried portion |
+| Host | Pins (unchanged names, version → `1.4`) | Carried portion |
 |---|---|---|
-| **zenobia** | all 7 packages `==1.3` | `zenobia/toto/{notarius,polls,sketch,travels}` |
-| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==1.3` | `faros/toto/{aster,nomad}` |
+| **zenobia** | all 7 packages `==1.4` | `zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}` |
+| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==1.4` | `faros/toto/{aster,nomad}` |
 
 The portion is plain source, not a distribution — no new package names, no new
 pins, nothing for the version gate to check (§4).
@@ -385,6 +406,25 @@ Two things worth remembering for the next secession:
 The drill was run too: with `faros/toto/` moved aside, the failure is
 `ModuleNotFoundError: No module named 'toto.aster'` — legible, and pointing at
 exactly the missing thing.
+
+### Wave 2 (v1.4) — git and tex
+
+`gitvault` and `texlab` → zenobia; `texplay` → `limbo/`. faros was untouched by
+the move (it pins no `toto-works`) but still bumped `1.3 → 1.4`: the lockstep
+rule means every host tracks every release, whether or not the release affects
+its apps. Measured: migration-apps 37 → **34**, templates 208 → **204**, static
+6 → **5**, payload 1099 → **1025** entries.
+
+Two things this wave hit that wave 1 did not:
+
+- **A packaging gate that had never moved broke.** `test_packaging.py` asserted
+  `len(static) >= 6` and the actual was exactly 6 — `gitvault/static/gitvault/git.js`
+  was the sixth file. Refloored to 5. When a wave takes an app that owns a
+  *scarce* payload kind, expect the floor asserting it to be exactly at the
+  boundary.
+- **The first app to leave with library callers still pointing at it** (gitvault;
+  see the loose-ends table). Legal, guarded, precedented — but it means
+  `toto-base` now has guarded references into *both* host repos.
 
 ---
 
