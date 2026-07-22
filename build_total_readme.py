@@ -13,6 +13,7 @@ The system overview (short_readme.md) is prepended at the top.
 """
 
 import sys
+import glob
 import os
 
 try:
@@ -22,7 +23,9 @@ except ImportError:
     sys.exit(1)
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-APPS_ROOT = os.path.join(SCRIPT_DIR, "toto")
+# Apps are spread across the suite's packages; they all live in the same
+# toto.* namespace, so gather them from every package's namespace portion.
+APPS_ROOTS = sorted(glob.glob(os.path.join(SCRIPT_DIR, "packages", "*", "src", "toto")))
 SHORT_README = os.path.join(SCRIPT_DIR, "short_readme.md")
 
 SEPARATOR = "=" * 72
@@ -30,16 +33,17 @@ SEPARATOR = "=" * 72
 DEPENDENCY_MARKER = "## Dependencies"
 
 
-def find_app_readmes(apps_root: str) -> list[tuple[str, str]]:
+def find_app_readmes(apps_roots: list[str]) -> list[tuple[str, str]]:
     """Return sorted list of (app_name, readme_path) for all apps with a README."""
     results = []
-    for entry in sorted(os.scandir(apps_root), key=lambda e: e.name):
-        if not entry.is_dir():
-            continue
-        readme = os.path.join(entry.path, "README.md")
-        if os.path.isfile(readme):
-            results.append((entry.name, readme))
-    return results
+    for apps_root in apps_roots:
+        for entry in os.scandir(apps_root):
+            if not entry.is_dir():
+                continue
+            readme = os.path.join(entry.path, "README.md")
+            if os.path.isfile(readme):
+                results.append((entry.name, readme))
+    return sorted(results)
 
 
 def highlight_dependencies(content: str) -> str:
@@ -67,10 +71,10 @@ def highlight_dependencies(content: str) -> str:
 
 
 def build(output_path: str) -> None:
-    apps = find_app_readmes(APPS_ROOT)
+    apps = find_app_readmes(APPS_ROOTS)
 
     if not apps:
-        print(f"No app READMEs found under {APPS_ROOT}", file=sys.stderr)
+        print(f"No app READMEs found under {APPS_ROOTS}", file=sys.stderr)
         sys.exit(1)
 
     sections: list[str] = []

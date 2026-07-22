@@ -1,7 +1,8 @@
 # toto
 
 **toto** is a modular Django *app library* — a "community operating system"
-packaged as a single installable Python distribution (`pip install -e .`).
+packaged as **seven pip distributions sharing the `toto.*` namespace**, released
+lockstep from this one repository (see [BUILDING.md](BUILDING.md)).
 It bundles ~45 apps spanning identity and single-sign-on, encrypted storage, a
 Neo4j knowledge-graph layer, real-time collaboration, media processing, and
 pluggable AI — and lets a host project assemble exactly the subset it needs
@@ -32,9 +33,12 @@ settings, URLs, and server entrypoint:
 
 ## Architecture principles
 
-- **One package, many hosts.** Every app lives under the `toto.` namespace and is
-  installed from this one distribution. Host projects (`portal`, `faros`, `edge`)
-  differ only in settings, which apps they enable, and their server entrypoint.
+- **One namespace, many hosts.** Every app lives under the `toto.` namespace.
+  Hosts install `toto-base` plus whichever feature packages they need
+  (`toto-flow`, `toto-works`, `toto-chat`, `toto-ops`, `toto-ai`, `toto-graph`),
+  pinned to an exact version; see [BUILDING.md](BUILDING.md). Host projects
+  (`zenobia`, `faros`) differ only in settings, which apps they enable, and
+  their server entrypoint.
 - **Per-feature composition.** A deployment is defined by `BUILD_*` flags, not by
   code branches. The same tree can ship as *WSGI + Postgres + Redis* or *ASGI +
   Neo4j + Celery + kernel server + AI*. See the portal repository's README
@@ -200,20 +204,29 @@ Small stable modules hosts use instead of hardcoding toto internals:
   **`TOTO_DATA_DIR`** (seed/branding data: fonts.json, themes/, img/) and
   **`TOTO_RUN_DIR`** (vault-password bundles) in settings. Legacy monorepo
   path resolution remains the fallback.
-- **`toto.__version__`** — the package version (single-sourced into wheel
-  metadata).
+- **`toto.versioning`** — the version contract: `read_manifest()`,
+  `verify_checkout()`, `verify_wheels()` for host build gates, and
+  `check_runtime_coherence()`, which the core AppConfig runs at boot. The suite
+  version comes from distribution metadata
+  (`importlib.metadata.version("toto-base")`); there is no `toto.__version__`,
+  because `toto` is a namespace shared by several distributions.
 
 ---
 
 ## Development
 
-- **Package name:** `toto` (`pyproject.toml`), installed editable into the host.
-- **Run tests from the host project dir** (e.g. `portal/`), *not* the repo root —
-  running from the root causes a `toto.toto.X` double-import model conflict.
+- **Packages:** seven distributions under `packages/`, all at the version in
+  `VERSION`. Install them all editable with `scripts/install_toto.sh`; build
+  wheels with `scripts/build_wheels.py`. Full manual: [BUILDING.md](BUILDING.md).
+- **Upgrading from the pre-split library:** `pip uninstall -y toto` first — the
+  old single distribution shadows the namespace packages.
+- **Gates:** `scripts/check_package_graph.py` (partition), `scripts/release.py
+  --check` (versions), `scripts/clean_env_check.sh` (full clean-env proof).
 - **Aggregate docs:** `build_total_readme.py` concatenates every app's own
   `README.md` (prepended with `short_readme.md`) into `total_readme.md`.
-- **Build / deploy:** owned by the host project. For portal, everything runs
-  through `portal/scripts/deploy.py` — see the portal repository's README.
+- **Build / deploy:** owned by the host project. Each host stages the wheels it
+  pins through its own `scripts/deploy.py`, which rejects the build if the
+  checkout does not match those pins.
 
 ---
 
