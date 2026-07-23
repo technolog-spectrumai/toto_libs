@@ -60,7 +60,7 @@ and almost all of it is already guarded.
 ## 2. Census (as analysed at v2.0)
 
 *(Snapshot at the v2.0 analysis, before the v1.3–v1.5 waves; see §5 for the
-current 8-package layout.)* 47 Django apps shipped in 7 packages. Counting the
+current 9-package layout.)* 47 Django apps shipped in 7 packages. Counting the
 `INSTALLED_APPS` region of each host's settings at that time:
 
 | Set | Count | Apps |
@@ -288,10 +288,10 @@ this move.
 
 ### 5.2 The hosts — their own app code
 
-| Host | Pins (unchanged names, version → `1.4`) | Carried portion |
+| Host | Pins (unchanged names, version → `1.6`) | Carried portion |
 |---|---|---|
-| **zenobia** | all 7 packages `==1.4` | `zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}` |
-| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==1.4` | `faros/toto/{aster,nomad}` |
+| **zenobia** | all 9 packages `==1.6` | `zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}` |
+| **faros** | `toto-base`, `toto-flow`, `toto-chat`, `toto-ops` `==1.6` | `faros/toto/{aster,nomad}` |
 
 The portion is plain source, not a distribution — no new package names, no new
 pins, nothing for the version gate to check (§4).
@@ -304,8 +304,8 @@ host needs it.
 
 | Host | Pins | Carried portion (revived from `limbo/`) |
 |---|---|---|
-| **delta** (e-learning) | `toto-base` (memo, vod, transcription, verbena, vault, people…), `toto-flow`, likely `toto-works` (texlab/antaresia for technical courses), `toto-chat` | `delta/toto/{academy,quizzes,library,palimpsest}` |
-| **aurelian** (fleet + economy) | `toto-base` (kanban, locations, events, quota…), `toto-flow`, `toto-graph`, `toto-ai`, `toto-ops` | `aurelian/toto/{assets,claims,instruments,contracts,tariffs,taxes,invoice,bourse,payroll,loans,insurance,leasing,mission_economy,logistics,assembly,magistrate,tribunal,senate,capitol,treasury,robots,detections,mobilization,response,tactical,inventory}` |
+| **delta** (e-learning) | `toto-base` (verbena, vault, people…), `toto-works` (memo), `toto-media` (vod, transcription), `toto-flow`, likely `toto-works` (texlab/antaresia for technical courses), `toto-chat` | `delta/toto/{academy,quizzes,library,palimpsest}` |
+| **aurelian** (fleet + economy) | `toto-base` (locations, events, quota…), `toto-works` (kanban), `toto-flow`, `toto-graph`, `toto-ai`, `toto-ops` | `aurelian/toto/{assets,claims,instruments,contracts,tariffs,taxes,invoice,bourse,payroll,loans,insurance,leasing,mission_economy,logistics,assembly,magistrate,tribunal,senate,capitol,treasury,robots,detections,mobilization,response,tactical,inventory}` |
 
 Two limbo apps are needed by **both** future hosts and therefore come back as
 **library** apps rather than portions:

@@ -4,7 +4,8 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Every app here holds a foreign key into workflows.WorkflowRun.
+# The workflow-adjacent tier: antaresia FKs workflows.WorkflowRun (hence the
+# toto-flow dep); kanban and memo are task/content apps shipped alongside it.
 name = "toto-works"
 version = "1.6"
 description = "toto workflow-backed file, document and data services"

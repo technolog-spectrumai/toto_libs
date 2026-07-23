@@ -136,7 +136,7 @@ python scripts/build_wheels.py --sdist          # sdist first, then wheel from i
 The script prints the install line to use on the target machine, e.g.:
 
 ```bash
-pip install --no-index --find-links dist toto-base==1.4 toto-flow==1.4
+pip install --no-index --find-links dist toto-base==<version> toto-flow==<version>
 ```
 
 Install the whole suite editable for development:

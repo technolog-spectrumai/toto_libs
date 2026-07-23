@@ -2,7 +2,7 @@
 
 These were historically defined in the chat app's ``api_views``, but they are
 foundational: ``CorsApiView`` / ``MeshGatedApiView`` are subclassed by the
-always-on apps (vault, events, kanban, locations, socialhub) and must not drag
+always-on apps (vault, events, locations, socialhub) and must not drag
 in the chat app's ``channels`` dependency. They live here in the always-on
 ``toto.api`` app so the basic (no-studio) tier can import them.
 
