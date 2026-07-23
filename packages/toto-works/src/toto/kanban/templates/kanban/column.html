@@ -1,0 +1,60 @@
+{% load static %}
+{% load i18n %}
+{% load static yaml_filters %}
+
+<article
+  :class="darkMode
+    ? 'border-accent-1 bg-bubble-bg-dark'
+    : 'border-accent-2 bg-bubble-bg-light'"
+  class="flex min-h-[28rem] flex-col overflow-hidden rounded-2xl border shadow-sm">
+
+  <!-- Column Header -->
+  <header
+    :class="darkMode
+      ? 'border-accent-1 bg-primary-bg-dark'
+      : 'border-accent-2 bg-primary-bg-light'"
+    class="border-b px-4 py-4">
+
+    <div class="flex items-center justify-between gap-3">
+      <div class="min-w-0">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Column" %}</p>
+
+        <h3 class="mt-1 flex items-center gap-2 truncate text-lg font-bold">
+          <i
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="fa-solid fa-layer-group text-sm"></i>
+          {{ column.name }}
+        </h3>
+      </div>
+
+      {% if column.can_add_task %}
+        <a
+          href="{% url 'kanban:task_create' project.pk %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex shrink-0 items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90"
+          title="{% trans 'Add task' %}">
+          <i class="fa-solid fa-plus text-[11px]"></i>
+          <span class="hidden sm:inline">{% trans "Add" %}</span>
+        </a>
+      {% endif %}
+    </div>
+  </header>
+
+  <!-- Tasks -->
+  <div class="flex-1 space-y-3 p-4">
+    {% for task in column.tasks.all %}
+      {% if not selected_sprint or task.sprint_id == selected_sprint.id %}
+        {% include "kanban/task.html" with column=column task=task %}
+      {% endif %}
+    {% empty %}
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+        <i class="fa-regular fa-folder-open mb-2 block text-xl"></i>{% trans "No tasks yet." %}</div>
+    {% endfor %}
+  </div>
+</article>

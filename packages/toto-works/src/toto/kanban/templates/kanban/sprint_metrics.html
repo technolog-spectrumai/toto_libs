@@ -1,0 +1,537 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Sprint Metrics | {{ project.name }}{% endblock %}
+
+{% block start_script %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'kanban:project_detail' project.pk %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Project board" %}
+        </a>
+
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Kanban Project" %}
+          </p>
+
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-flag-checkered"></i>
+            {% trans "Sprint Metrics" %}
+          </h1>
+
+          <p class="mt-1 text-sm opacity-70">
+            {{ project.name }}
+          </p>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'kanban:project_detail' project.pk %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-table-columns"></i>
+          {% trans "Board" %}
+        </a>
+
+        <a
+          href="{% url 'kanban:backlog' project.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-list-check"></i>
+          {% trans "Backlog" %}
+        </a>
+
+        <a
+          href="{% url 'kanban:eisenhower_matrix' project.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-border-all"></i>
+          {% trans "Matrix" %}
+        </a>
+      </nav>
+    </header>
+
+    <!-- Overview -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-4 shadow-sm sm:p-5">
+
+      <div class="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-gauge-high"></i>
+            {% trans "Sprint health" %}
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            {% trans "Track completion, open work, and weighted progress across project sprints." %}
+          </p>
+        </div>
+
+        <div class="flex flex-col gap-2 sm:items-end">
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+            <i class="fa-solid fa-percent"></i>
+            {{ overall_completion_rate }}% complete
+          </div>
+
+          <form method="get" class="flex flex-wrap items-center gap-2">
+            <label
+              for="sprint"
+              class="text-xs font-semibold uppercase tracking-wide opacity-60">
+              {% trans "Details sprint" %}
+            </label>
+
+            <select
+              id="sprint"
+              name="sprint"
+              onchange="this.form.submit()"
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+                : 'border-accent-2 bg-sunken-light text-text-main-light'"
+              class="rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm transition focus:outline-none focus:ring-2 focus:ring-accent-light">
+
+              {% for sprint in sprints %}
+                <option
+                  value="{{ sprint.id }}"
+                  {% if selected_sprint and sprint.id == selected_sprint.id %}selected{% endif %}>
+                  {{ sprint.name }}
+                </option>
+              {% endfor %}
+            </select>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- KPI Cards -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-flag-checkered"></i>
+          {% trans "Sprints" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ total_sprints }}</p>
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-list-check"></i>
+          {% trans "Total tasks" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ total_tasks }}</p>
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-circle-check"></i>
+          {% trans "Completed" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ completed_tasks }}</p>
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-regular fa-circle"></i>
+          {% trans "Open" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ open_tasks }}</p>
+      </article>
+    </section>
+
+    <!-- Weight KPIs -->
+    <section class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-weight-hanging"></i>
+          {% trans "Total weight" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ total_weight }}</p>
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-check-double"></i>
+          {% trans "Completed weight" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ completed_weight }}</p>
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-chart-line"></i>
+          {% trans "Weighted progress" %}
+        </p>
+        <p class="mt-2 text-3xl font-bold">{{ overall_weight_completion_rate }}%</p>
+      </article>
+    </section>
+
+    <!-- Charts -->
+    <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-chart-simple"></i>
+          {% trans "Completion by sprint" %}
+        </h2>
+
+        {% include "oya/partials/chart.html" with chart_id="sprintCompletionChart" data=sprint_completion_chart_json %}
+      </article>
+
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-bars-progress"></i>
+          {% trans "Open vs completed tasks" %}
+        </h2>
+
+        {% include "oya/partials/chart.html" with chart_id="sprintTaskChart" data=sprint_task_chart_json %}
+      </article>
+    </section>
+
+    <!-- Details -->
+    <section
+      x-data="{ open: false }"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="overflow-hidden rounded-2xl border shadow-sm">
+
+      <button
+        type="button"
+        @click="open = !open"
+        class="flex w-full items-center justify-between gap-4 px-5 py-4 text-left sm:px-6">
+
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-chart-line"></i>
+            {% trans "Details" %}
+          </h2>
+
+          <p class="mt-1 text-sm opacity-70">
+            {% trans "Burndown for the selected sprint, plus velocity, lead time, assignee workload, and campaign progress." %}
+          </p>
+        </div>
+
+        <i
+          class="fa-solid text-sm opacity-70 transition-transform duration-200"
+          :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+      </button>
+
+      <div
+        x-show="open"
+        x-transition
+        class="space-y-6 border-t px-5 py-5 sm:px-6"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+        <!-- Selected Sprint Summary -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 class="flex items-center gap-2 text-base font-bold">
+                <i class="fa-solid fa-magnifying-glass-chart"></i>
+                {% trans "Selected sprint" %}
+              </h3>
+
+              <p class="mt-1 text-sm opacity-70">
+                {% if selected_sprint %}
+                  {{ selected_sprint.name }} · {{ selected_sprint.start_time|date:"M j, Y" }} – {{ selected_sprint.end_time|date:"M j, Y" }}
+                {% else %}
+                  {% trans "No sprint selected." %}
+                {% endif %}
+              </p>
+            </div>
+
+            {% if selected_sprint %}
+              <a
+                href="?sprint={{ selected_sprint.id }}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                  : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+                <i class="fa-solid fa-link"></i>
+                {% trans "Current details" %}
+              </a>
+            {% endif %}
+          </div>
+        </article>
+
+        <!-- Burndown -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-1 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-fire-flame-curved"></i>
+            {% trans "Burndown" %}
+          </h3>
+
+          <p class="mb-4 text-sm opacity-70">
+            {% if selected_sprint %}
+              {% blocktrans with name=selected_sprint.name %}Remaining weight across {{ name }}.{% endblocktrans %}
+            {% else %}
+              {% trans "No sprint available." %}
+            {% endif %}
+          </p>
+
+          {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+        </article>
+
+        <!-- Velocity + Lead Time -->
+        <section class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+
+            <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+              <i class="fa-solid fa-gauge"></i>
+              {% trans "Velocity" %}
+            </h3>
+
+            {% include "oya/partials/chart.html" with chart_id="velocityChart" data=velocity_chart_json %}
+          </article>
+
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+
+            <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+              <i class="fa-solid fa-hourglass-half"></i>
+              {% trans "Lead time" %}
+            </h3>
+
+            {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
+          </article>
+        </section>
+
+        <!-- Assignee Workload -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-users"></i>
+            {% trans "Assignee workload" %}
+          </h3>
+
+          {% include "oya/partials/chart.html" with chart_id="assigneeWorkloadChart" data=assignee_workload_chart_json %}
+        </article>
+
+        <!-- Campaign Progress -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-road"></i>
+            {% trans "Campaign progress" %}
+          </h3>
+
+          <div class="space-y-4">
+            {% for campaign in campaign_progress_data %}
+              <div>
+                <div class="mb-2 flex items-center justify-between gap-3 text-sm">
+                  <span class="font-semibold">
+                    {{ campaign.label }}
+                  </span>
+
+                  <span class="whitespace-nowrap opacity-70">
+                    {{ campaign.done }}/{{ campaign.total }} weight · {{ campaign.pct }}%
+                  </span>
+                </div>
+
+                <div
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="h-2 overflow-hidden rounded-full">
+                  <div
+                    :style="'width: {{ campaign.pct }}%'"
+                    :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                    class="h-full rounded-full">
+                  </div>
+                </div>
+              </div>
+            {% empty %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+                {% trans "No campaign progress available." %}
+              </div>
+            {% endfor %}
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- Sprint Breakdown -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm">
+
+      <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-calendar-days"></i>
+        {% trans "Sprint breakdown" %}
+      </h2>
+
+      <div class="space-y-3">
+        {% for sprint in sprint_items %}
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 {% if selected_sprint and sprint.id == selected_sprint.id %}ring-2 ring-accent-light{% endif %}">
+
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div class="flex flex-wrap items-center gap-2">
+                  <p class="text-lg font-bold">{{ sprint.name }}</p>
+
+                  <a
+                    href="?sprint={{ sprint.id }}"
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                      : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm transition hover:opacity-85">
+                    <i class="fa-solid fa-chart-line"></i>
+                    {% trans "View details" %}
+                  </a>
+
+                  {% if selected_sprint and sprint.id == selected_sprint.id %}
+                    <span
+                      :class="darkMode
+                        ? 'border-accent-1 bg-primary-bg-dark'
+                        : 'border-accent-2 bg-primary-bg-light'"
+                      class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold shadow-sm">
+                      <i class="fa-solid fa-eye"></i>
+                      {% trans "Selected" %}
+                    </span>
+                  {% endif %}
+                </div>
+
+                <p class="mt-1 text-sm opacity-70">
+                  {{ sprint.start|date:"M j, Y" }} – {{ sprint.end|date:"M j, Y" }}
+                </p>
+              </div>
+
+              <div class="text-sm font-semibold">
+                {{ sprint.completed_tasks }}/{{ sprint.total_tasks }} done · {{ sprint.completion_rate }}%
+              </div>
+            </div>
+
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="mt-4 h-2 overflow-hidden rounded-full">
+              <div
+                :style="'width: {{ sprint.completion_rate }}%'"
+                :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                class="h-full rounded-full">
+              </div>
+            </div>
+
+            <div class="mt-4 grid grid-cols-2 gap-3 text-sm sm:grid-cols-4">
+              <div>
+                <p class="opacity-60">{% trans "Open" %}</p>
+                <p class="font-bold">{{ sprint.open_tasks }}</p>
+              </div>
+
+              <div>
+                <p class="opacity-60">{% trans "Total weight" %}</p>
+                <p class="font-bold">{{ sprint.total_weight }}</p>
+              </div>
+
+              <div>
+                <p class="opacity-60">{% trans "Done weight" %}</p>
+                <p class="font-bold">{{ sprint.completed_weight }}</p>
+              </div>
+
+              <div>
+                <p class="opacity-60">{% trans "Weighted progress" %}</p>
+                <p class="font-bold">{{ sprint.weight_completion_rate }}%</p>
+              </div>
+            </div>
+          </article>
+        {% empty %}
+          <div
+            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+            {% trans "No sprints available." %}
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+</section>
+{% endblock %}

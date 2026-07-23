@@ -1,0 +1,393 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Edit Presentation" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{{ presentation_json|json_script:"presentation-data" }}
+{{ vault_media_json|json_script:"vault-media-data" }}
+
+<section
+  x-data="presentationEditor()"
+  x-init="init()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-6 transition-colors duration-300">
+
+  <div class="max-w-7xl mx-auto space-y-5">
+
+    <!-- Header -->
+    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+      <div class="flex-1 min-w-0">
+        <label class="block text-xs opacity-60 mb-1">{% trans "Presentation title" %}</label>
+        <input
+          type="text" x-model="title" @input="dirty = true"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+          class="w-full rounded border px-3 py-2 font-semibold">
+      </div>
+      <div class="flex items-center gap-2 shrink-0">
+        <span class="text-sm opacity-70" x-text="status"></span>
+        <a :href="presentUrl" target="_blank"
+           class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
+        <button @click="save()" :disabled="saving"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span x-text="saving ? '{% trans "Saving…" %}' : '{% trans "Save" %}'"></span>
+        </button>
+      </div>
+    </div>
+
+    <div class="grid gap-5 lg:grid-cols-12">
+
+      <!-- Slide list -->
+      <aside class="lg:col-span-3 space-y-3">
+        <div class="flex items-center justify-between">
+          <h2 class="font-bold">{% trans "Slides" %}</h2>
+          <button @click="addSlide()" class="text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-plus"></i> {% trans "Add" %}</button>
+        </div>
+        <ul class="space-y-2">
+          <template x-for="(slide, idx) in slides" :key="idx">
+            <li
+              @click="activeIndex = idx"
+              :class="idx === activeIndex
+                ? (darkMode ? 'border-accent-dark bg-bubble-bg-dark' : 'border-accent-light bg-bubble-bg-light')
+                : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')"
+              class="cursor-pointer rounded border p-2 flex items-center gap-2">
+              <span class="text-xs opacity-50 w-5 text-right" x-text="idx + 1"></span>
+              <span class="flex-1 truncate text-sm" x-text="slide.title || '{% trans "Untitled slide" %}'"></span>
+              <span class="flex items-center gap-1 shrink-0">
+                <button @click.stop="moveUp(idx)" :disabled="idx === 0"
+                        class="opacity-60 hover:opacity-100 disabled:opacity-20" title="{% trans 'Move up' %}">
+                  <i class="fa-solid fa-arrow-up text-xs"></i></button>
+                <button @click.stop="moveDown(idx)" :disabled="idx === slides.length - 1"
+                        class="opacity-60 hover:opacity-100 disabled:opacity-20" title="{% trans 'Move down' %}">
+                  <i class="fa-solid fa-arrow-down text-xs"></i></button>
+                <button @click.stop="removeSlide(idx)"
+                        class="opacity-60 hover:opacity-100 text-red-500" title="{% trans 'Delete' %}">
+                  <i class="fa-solid fa-trash text-xs"></i></button>
+              </span>
+            </li>
+          </template>
+        </ul>
+      </aside>
+
+      <!-- Editor -->
+      <div class="lg:col-span-5 space-y-3" x-show="activeSlide">
+        <div>
+          <label class="block text-xs opacity-60 mb-1">{% trans "Slide title" %}</label>
+          <input
+            type="text" x-model="activeSlide.title" @input="dirty = true"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="w-full rounded border px-3 py-2">
+        </div>
+
+        <div class="flex flex-wrap items-center gap-2">
+          <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
+            <i class="fa-solid fa-image"></i> {% trans "Insert image" %}
+            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" @change="insertImage($event)">
+          </label>
+          <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
+            <i class="fa-solid fa-bezier-curve"></i> {% trans "Insert SVG" %}
+            <input type="file" accept="image/svg+xml,.svg" class="hidden" @change="insertSvg($event)">
+          </label>
+          <button type="button" @click="showVaultPicker = true"
+            class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
+            <i class="fa-solid fa-photo-film"></i> {% trans "From vault" %}</button>
+          <span class="text-xs opacity-50">{% trans "Images are resized to ≤640px and embedded; SVGs are inlined." %}</span>
+        </div>
+
+        <div>
+          <label class="block text-xs opacity-60 mb-1">{% trans "Slide body (HTML)" %}</label>
+          <textarea
+            x-ref="body" x-model="activeSlide.body" @input="dirty = true"
+            rows="16" spellcheck="false"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="w-full rounded border px-3 py-2 font-mono text-sm"></textarea>
+        </div>
+      </div>
+
+      <!-- Live preview -->
+      <div class="lg:col-span-4 space-y-2" x-show="activeSlide">
+        <h2 class="font-bold">{% trans "Preview" %}</h2>
+        <!-- Mirrors the reveal.js theme used by the viewer: white in light mode,
+             #191919 in dark mode — so the preview matches how it will present. -->
+        <div
+          :class="darkMode ? 'bg-[#191919] text-white border-accent-1' : 'bg-white text-[#222] border-accent-2'"
+          class="rounded border p-4 min-h-[300px] overflow-auto">
+          <h3 class="text-lg font-bold mb-2" x-text="activeSlide ? activeSlide.title : ''"></h3>
+          <div class="memo-preview" x-html="activeSlide ? activeSlide.body : ''"></div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- Insert-from-vault picker -->
+  <div x-show="showVaultPicker" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showVaultPicker = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-photo-film"></i>{% trans "Insert image / SVG from vault" %}</h2>
+        <button type="button" @click="showVaultPicker = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <div class="border-b border-current/10 p-4">
+        <input type="text" x-model="vaultSearch"
+               placeholder="{% trans 'Search by name or location…' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm">
+      </div>
+
+      <div class="overflow-y-auto p-2">
+        <template x-if="filteredVaultMedia.length === 0">
+          <p class="p-6 text-center text-sm opacity-60">
+            {% trans "No image or SVG files in your vault." %}</p>
+        </template>
+        <template x-for="m in filteredVaultMedia" :key="m.pk">
+          <button type="button" @click="insertFromVault(m)" :disabled="vaultBusy"
+                  class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-current/5 disabled:opacity-40">
+            <i class="fa-solid shrink-0 opacity-70"
+               :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
+            <span class="min-w-0 flex-1">
+              <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
+              <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
+            </span>
+            <span class="shrink-0 text-[10px] uppercase tracking-wide opacity-50" x-text="m.file_type"></span>
+          </button>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-between border-t border-current/10 px-5 py-3 text-xs opacity-60">
+        <span x-show="vaultBusy"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "Embedding…" %}</span>
+        <span x-show="!vaultBusy">{% trans "Picked files are embedded into the presentation." %}</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<style>
+  .memo-preview img, .memo-preview svg { max-width: 100%; height: auto; }
+</style>
+{% endblock %}
+
+{% block end_script %}
+<script>
+  function presentationEditor() {
+    return {
+      title: "",
+      slides: [],
+      activeIndex: 0,
+      saving: false,
+      dirty: false,
+      status: "",
+      saveUrl: "{{ save_url }}",
+      presentUrl: "{{ present_url }}",
+      embedUrl: "{{ embed_url }}",
+
+      // Insert-from-vault picker state.
+      vaultMedia: [],
+      showVaultPicker: false,
+      vaultSearch: "",
+      vaultBusy: false,
+
+      get activeSlide() {
+        return this.slides[this.activeIndex] || null;
+      },
+
+      get filteredVaultMedia() {
+        const q = this.vaultSearch.trim().toLowerCase();
+        if (!q) return this.vaultMedia;
+        return this.vaultMedia.filter(m =>
+          (m.title || "").toLowerCase().includes(q) ||
+          (m.location || "").toLowerCase().includes(q));
+      },
+
+      init() {
+        try {
+          const data = JSON.parse(document.getElementById("presentation-data").textContent);
+          this.title = data.title || "";
+          this.slides = (data.slides || []).map(s => ({ title: s.title || "", body: s.body || "" }));
+        } catch (e) {
+          this.slides = [];
+        }
+        if (this.slides.length === 0) {
+          this.slides = [{ title: "", body: "" }];
+        }
+        this.activeIndex = 0;
+
+        try {
+          this.vaultMedia = JSON.parse(
+            document.getElementById("vault-media-data").textContent) || [];
+        } catch (e) {
+          this.vaultMedia = [];
+        }
+
+        window.addEventListener("beforeunload", (e) => {
+          if (this.dirty) { e.preventDefault(); e.returnValue = ""; }
+        });
+      },
+
+      addSlide() {
+        this.slides.push({ title: "", body: "" });
+        this.activeIndex = this.slides.length - 1;
+        this.dirty = true;
+      },
+      removeSlide(idx) {
+        if (this.slides.length === 1) {
+          this.slides = [{ title: "", body: "" }];
+        } else {
+          this.slides.splice(idx, 1);
+        }
+        if (this.activeIndex >= this.slides.length) {
+          this.activeIndex = this.slides.length - 1;
+        }
+        this.dirty = true;
+      },
+      moveUp(idx) {
+        if (idx === 0) return;
+        [this.slides[idx - 1], this.slides[idx]] = [this.slides[idx], this.slides[idx - 1]];
+        if (this.activeIndex === idx) this.activeIndex = idx - 1;
+        else if (this.activeIndex === idx - 1) this.activeIndex = idx;
+        this.dirty = true;
+      },
+      moveDown(idx) {
+        if (idx === this.slides.length - 1) return;
+        [this.slides[idx + 1], this.slides[idx]] = [this.slides[idx], this.slides[idx + 1]];
+        if (this.activeIndex === idx) this.activeIndex = idx + 1;
+        else if (this.activeIndex === idx + 1) this.activeIndex = idx;
+        this.dirty = true;
+      },
+
+      // Insert a snippet into the body textarea at the cursor (or append).
+      insertSnippet(snippet) {
+        const slide = this.activeSlide;
+        if (!slide) return;
+        const ta = this.$refs.body;
+        const body = slide.body || "";
+        if (ta && typeof ta.selectionStart === "number") {
+          const start = ta.selectionStart, end = ta.selectionEnd;
+          const sep = (start > 0 && body[start - 1] !== "\n") ? "\n" : "";
+          slide.body = body.slice(0, start) + sep + snippet + "\n" + body.slice(end);
+        } else {
+          slide.body = body + (body && !body.endsWith("\n") ? "\n" : "") + snippet + "\n";
+        }
+        this.dirty = true;
+      },
+
+      async insertImage(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+          const dataUrl = await this.resizeToDataURL(file, 640);
+          const alt = (file.name || "image").replace(/"/g, "");
+          this.insertSnippet(`<img src="${dataUrl}" alt="${alt}">`);
+        } catch (e) {
+          this.status = "{% trans 'Could not embed image.' %}";
+        }
+      },
+
+      async insertSvg(event) {
+        const file = event.target.files && event.target.files[0];
+        event.target.value = "";
+        if (!file) return;
+        try {
+          let text = await file.text();
+          // Strip XML prolog / doctype so only the <svg> element is inlined.
+          text = text.replace(/<\?xml[\s\S]*?\?>/i, "").replace(/<!DOCTYPE[\s\S]*?>/i, "").trim();
+          this.insertSnippet(text);
+        } catch (e) {
+          this.status = "{% trans 'Could not read SVG.' %}";
+        }
+      },
+
+      // Embed an image/SVG that already lives in a vault bucket. The server
+      // returns a data URI (raster) or cleaned inline markup (SVG); we drop the
+      // same snippet the local-file path produces into the slide body.
+      async insertFromVault(item) {
+        if (this.vaultBusy) return;
+        this.vaultBusy = true; this.status = "";
+        try {
+          const res = await fetch(this.embedUrl + "?file_pk=" + encodeURIComponent(item.pk));
+          const data = await res.json();
+          if (!res.ok) {
+            this.status = data.error || "{% trans 'Could not embed file.' %}";
+            return;
+          }
+          if (data.kind === "svg") {
+            this.insertSnippet(data.markup);
+          } else {
+            const alt = (data.alt || "image").replace(/"/g, "");
+            this.insertSnippet(`<img src="${data.data_uri}" alt="${alt}">`);
+          }
+          this.showVaultPicker = false;
+        } catch (e) {
+          this.status = String(e);
+        } finally {
+          this.vaultBusy = false;
+        }
+      },
+
+      resizeToDataURL(file, maxDim) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onerror = reject;
+          reader.onload = () => {
+            const img = new Image();
+            img.onerror = reject;
+            img.onload = () => {
+              let { width, height } = img;
+              if (width > maxDim || height > maxDim) {
+                const scale = Math.min(maxDim / width, maxDim / height);
+                width = Math.round(width * scale);
+                height = Math.round(height * scale);
+              }
+              const canvas = document.createElement("canvas");
+              canvas.width = width; canvas.height = height;
+              canvas.getContext("2d").drawImage(img, 0, 0, width, height);
+              const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
+              resolve(canvas.toDataURL(mime, 0.85));
+            };
+            img.src = reader.result;
+          };
+          reader.readAsDataURL(file);
+        });
+      },
+
+      async save() {
+        this.saving = true; this.status = "";
+        const payload = {
+          title: this.title,
+          slides: this.slides.map(s => ({ title: s.title, body: s.body })),
+        };
+        try {
+          const res = await fetch(this.saveUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload),
+          });
+          const data = await res.json();
+          if (res.ok && data.status === "ok") {
+            this.status = "{% trans 'Saved' %}";
+            this.dirty = false;
+          } else {
+            this.status = data.error || "{% trans 'Save failed' %}";
+          }
+        } catch (e) {
+          this.status = String(e);
+        }
+        this.saving = false;
+      },
+    };
+  }
+</script>
+{% endblock %}

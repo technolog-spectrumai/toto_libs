@@ -9,15 +9,16 @@ and every layer of the toolchain refuses anything else.
 
 ## 1. Concepts
 
-**One repository, several distributions.** toto ships as eight pip packages
+**One repository, several distributions.** toto ships as nine pip packages
 that all fill the same `toto.*` import namespace (a PEP 420 namespace package —
 there is deliberately no `toto/__init__.py` anywhere):
 
 | Package | Contains | Depends on |
 |---|---|---|
-| `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and the apps every host installs (`registry.BASE_APPS`): core, api, backup, gervazy, vault, people, locations, socialhub, events, kanban, memo, verbena, quota, sso_core, sso_master — plus `editor` and `sso_client`, which are host-selected rather than unconditional | — |
+| `toto-base` | the shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), `ui`, `ingress`, and the apps every host installs (`registry.BASE_APPS`): core, api, backup, gervazy, vault, people, locations, socialhub, events, verbena, quota, sso_core, sso_master — plus `editor` and `sso_client`, which are host-selected rather than unconditional | — |
 | `toto-flow` | workflows, mandragora | base |
-| `toto-works` | antaresia, weather | base, flow |
+| `toto-works` | antaresia, kanban, memo | base, flow |
+| `toto-geo` | weather (observations/forecasts keyed off `locations.Address`) | base, flow |
 | `toto-media` | manta, transcription, vod, fileservices — the video/media stack (`BUILD_MEDIA`) | base, flow |
 | `toto-chat` | forum | base |
 | `toto-ops` | monit | base |

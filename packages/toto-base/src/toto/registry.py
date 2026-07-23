@@ -16,8 +16,6 @@ BASE_APPS = [
     "toto.locations",
     "toto.socialhub",
     "toto.events",
-    "toto.kanban",
-    "toto.memo",          # presentations and slideshows
     "toto.verbena",
     "toto.quota",
     "toto.sso_core",

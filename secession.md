@@ -16,8 +16,10 @@ migration.
 - **v1.5** — new library package `toto-media` (`manta`, `transcription`, `vod`,
   `fileservices`); a *repackaging*, not a host secession — the apps stay in the
   library, and only media-capable hosts (zenobia, delta) pin the package.
+- **v1.6** — new library package `toto-geo` (`weather`); `kanban` and `memo` move
+  from `toto-base` to `toto-works`. Another repackaging, not a secession.
 
-The library is now **38 apps** across **8 packages**. Both hosts' clean-env gates
+The library is now **38 apps** across **9 packages**. Both hosts' clean-env gates
 pass against `v1.5` with their own apps loading from their own repos. §6 is the record of how it was
 done and the recipe for the next secession.
 
@@ -259,9 +261,9 @@ migration plan drills this deliberately.
 
 ---
 
-## 5. The split (current state at v1.5)
+## 5. The split (current state at v1.6)
 
-### 5.1 The library — 8 packages, 38 apps
+### 5.1 The library — 9 packages, 38 apps
 
 Nothing is repackaged: the apps that leave keep their package layout behind —
 every remaining app keeps its package, its import path and its label. Package names are unchanged, so host pins only
@@ -269,9 +271,10 @@ need the version bump.
 
 | Package | Apps after secession | Change |
 |---|---|---|
-| `toto-base` | api, backup, core, editor, events, gervazy, kanban, locations, memo, people, quota, socialhub, sso_client, sso_core, sso_master, vault, verbena (17) | −4 to zenobia (notarius, polls, sketch, travels); −2 to toto-media (transcription, vod) |
+| `toto-base` | api, backup, core, editor, events, gervazy, locations, people, quota, socialhub, sso_client, sso_core, sso_master, vault, verbena (15) | −4 to zenobia (notarius, polls, sketch, travels); −2 to toto-media (transcription, vod); −2 to toto-works (kanban, memo) |
 | `toto-flow` | mandragora, workflows (2) | — |
-| `toto-works` | antaresia, weather (2) | −2 to zenobia (gitvault, texlab); −1 to limbo (texplay); −2 to toto-media (manta, fileservices) |
+| `toto-works` | antaresia, kanban, memo (3) | −1 to toto-geo (weather); +2 from toto-base (kanban, memo) |
+| `toto-geo` *(v1.6, new)* | weather (1) | geo feature apps, deps toto-base + toto-flow |
 | `toto-media` *(v1.5, new)* | manta, transcription, vod, fileservices (4) | the video/media stack, gated by `BUILD_MEDIA`; deps: toto-base, toto-flow |
 | `toto-chat` | forum (1) | — |
 | `toto-ops` | monit (1) | −2: aster, nomad |

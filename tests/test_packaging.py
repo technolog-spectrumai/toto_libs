@@ -102,6 +102,13 @@ def test_host_api_modules_ship_in_base(owner):
     assert owner.get("toto/ingress/__init__.py") == "toto-base"
 
 
+def test_repackaged_apps_ship_in_their_new_homes(owner):
+    # weather -> toto-geo (v1.6); kanban, memo -> toto-works (v1.6).
+    assert owner.get("toto/weather/models.py") == "toto-geo"
+    assert owner.get("toto/kanban/migrations/0001_initial.py") == "toto-works"
+    assert owner.get("toto/memo/models.py") == "toto-works"
+
+
 def test_media_apps_ship_in_toto_media(owner):
     # The video/media apps live in the optional toto-media package, not toto-base
     # or toto-works — a regression here means a mover drifted back.
