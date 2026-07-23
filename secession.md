@@ -57,8 +57,9 @@ and almost all of it is already guarded.
 
 ## 2. Census (as analysed at v2.0)
 
-47 Django apps ship in 7 packages. Counting the `INSTALLED_APPS` region of each
-host's settings:
+*(Snapshot at the v2.0 analysis, before the v1.3–v1.5 waves; see §5 for the
+current 8-package layout.)* 47 Django apps shipped in 7 packages. Counting the
+`INSTALLED_APPS` region of each host's settings at that time:
 
 | Set | Count | Apps |
 |---|---|---|

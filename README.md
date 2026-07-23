@@ -103,9 +103,7 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | `events` | Scheduled events + personal availability calendar. `EventBase` is the abstract parent of `detections`-style time-anchored records. |
 | `kanban` | Project management: Project → Campaign → Mission → Sprint → Task, with practitioner allowances paid on a Celery-beat schedule. ⚙️ |
 | `memo` | File-based `.pml` presentation viewer + browser editor. Presentations live as self-contained vault files; DB models were dropped. |
-| `vod` | Vault play-plugin host for video playback. Model-less (VOD tables dropped). |
 | `locations` | PostGIS (SRID 4326) geographic substrate: Address, Territory, Zone, Route, MapLayer. |
-| `transcription` | Audio/video transcription: local Whisper (openai-whisper / faster-whisper) jobs, timestamped segments, TXT/SRT/VTT/JSON export. ⚙️ 🧩 ffmpeg |
 
 ### Real-time & collaboration
 | App | Purpose | Gate |
@@ -121,11 +119,13 @@ Legend — **base** = always installed by the portal host; the rest are gated by
 | `workflows` | DAG workflow engine (Workflow / Node / Edge / LambdaFunction / ReportTemplate) executing nodes in topological order. Drives texlab, weather, steven. | `BUILD_WORKFLOWS` · ⚙️ |
 | `weather` | Weather observation/forecast storage, populated by workflow nodes calling external APIs. | `BUILD_WEATHER` · ⚙️ |
 
-### Media services
-| App | Purpose | Gate |
-|---|---|---|
-| `fileservices` | Pluggable file-processing runner (`FileServiceRun`) dispatching plugin/workflow tasks over vault files (incl. ffmpeg-based ones). | `BUILD_FILESERVICES` · ⚙️ 🧩 ffmpeg |
-| `manta` | Legacy one-stop command builder wrapping ffmpeg/ffprobe/transcribe with minimal `FileJob`/`MediaJob` persistence. | `BUILD_MANTA` · ⚙️ 🧩 ffmpeg |
+### Media services *(the `toto-media` package, gated by `BUILD_MEDIA`)*
+| App | Purpose |
+|---|---|
+| `fileservices` | Pluggable file-processing runner (`FileServiceRun`) dispatching plugin/workflow tasks over vault files (incl. ffmpeg-based ones). ⚙️ 🧩 ffmpeg |
+| `manta` | Legacy one-stop command builder wrapping ffmpeg/ffprobe/transcribe with minimal `FileJob`/`MediaJob` persistence. ⚙️ 🧩 ffmpeg |
+| `transcription` | Audio/video transcription: local Whisper (openai-whisper / faster-whisper) jobs, timestamped segments, TXT/SRT/VTT/JSON export. ⚙️ 🧩 ffmpeg |
+| `vod` | Vault play-plugin host for video playback. Model-less (VOD tables dropped). |
 
 ### Knowledge graph *(Neo4j)* — `BUILD_GRAPH` / `BUILD_NEO4J`
 | App | Purpose |
