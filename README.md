@@ -139,6 +139,46 @@ hard edge crosses an undeclared boundary (see **Build & packaging**).
   flags resolved in host settings, not by branches; the same tree can ship
   WSGI + Postgres or ASGI + Neo4j + Celery + kernel server + AI.
 
+### Making GIS optional (BUILD_GEO)
+
+`toto.locations` (in `toto-base`) is a GeoDjango app, so by default every host
+must ship the whole GDAL / GEOS / PROJ / spatialite–or–PostGIS stack. `BUILD_GEO`
+(default **on**) makes that optional: a host built with `BUILD_GEO=0` keeps
+`locations` installed but **geometry-less**, runs on a plain sqlite/postgres
+backend, and drops the native GIS toolchain from its image — a much lighter
+host (this is what `faros` uses).
+
+What makes it tractable: the suite has **zero spatial SQL** — no
+distance/within/contains/intersects lookups anywhere, only `isnull` filters and
+raw `.x/.y/.geojson` access — so a non-spatial backend is viable. The switch is
+`features.geo`, surfaced to Django as `settings.HAS_GIS`, and it drives:
+
+- **`locations/models.py`** — imports the plain ORM instead of `contrib.gis.db`
+  and omits every geometry field (`Address.geometry`, `Territory/Zone/Route`,
+  `MapLayerPolygon.geometry`/`center`). `Address` always carries plain
+  `latitude`/`longitude` floats as the canonical coordinate store; on a GIS build
+  `Address.save()` keeps them and `geometry` in sync. The geometry-bearing models
+  survive as **geometry-less stub tables**, so cross-app FKs into them
+  (`socialhub.Community.territory`, `kanban` → `Zone`/`Route`) still resolve.
+- **`core/base_admin.py`** — `TotoGeoAdmin` falls back from `OSMGeoAdmin` to a
+  plain `ModelAdmin`, removing the one GIS import that admin autodiscovery drags
+  in at startup on every host.
+- **Migrations** — a second, hand-maintained graph
+  `locations/migrations_nogis/` (selected via `MIGRATION_MODULES`) creates the
+  same seven tables minus geometry, reusing node names so every cross-app
+  migration dependency (`people`, `events`, `socialhub`, `kanban`, `weather` →
+  `('locations','0001_initial')`) resolves unchanged. The two graphs are kept in
+  lockstep; `tests/test_django_check.py` runs `makemigrations --check` in both
+  modes to catch drift, and proves the GIS-off path boots and migrates with the
+  `contrib.gis` import blocked outright.
+- **Map-dependent apps require GIS.** `resolve_features` raises if
+  `BUILD_WEATHER`/`BUILD_TRAVELS` is set with `BUILD_GEO=0` (they read geometry
+  and render map overlays) — an explicit build-time error rather than a silent
+  re-enable.
+
+GIS-off is **greenfield only**: it targets fresh databases; there is no in-place
+conversion of an existing PostGIS database.
+
 ### The host integration API (`toto.*`, in `toto-base`)
 
 Hosts consume small stable modules instead of hardcoding internals:
@@ -456,6 +496,14 @@ fails loudly with `No installed app with label '<app>'`.
   `toto-works`. Another repackaging. The library is now **38 apps across 9
   packages**, and both current hosts' clean-env gates pass with their own apps
   loading from their own repos.
+- **v1.7 — GIS made optional (`BUILD_GEO`).** Not a repackaging: `toto.locations`
+  gained a geometry-less mode so a host can drop the entire GDAL/GEOS/PROJ/PostGIS
+  stack. `Address` gained canonical lat/lon floats (migration `0005`), a second
+  hand-maintained migration graph `migrations_nogis/` builds the seven tables
+  without geometry columns, `core.base_admin` no longer hard-imports `OSMGeoAdmin`,
+  and `resolve_features` rejects `BUILD_WEATHER`/`BUILD_TRAVELS` under
+  `BUILD_GEO=0`. faros ships a `BUILD_GEO=0` light onion profile; zenobia stays
+  GIS-on. See "Making GIS optional" above.
 
 The current split: **zenobia** pins all nine packages and carries
 `zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}`; **faros** pins

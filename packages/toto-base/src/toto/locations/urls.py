@@ -40,3 +40,22 @@ urlpatterns = [
     path("locations/search/", views.location_search_api, name="location_search_api"),
     path("layers/import/", views.api_import_layer, name="api_import_layer"),
 ]
+
+
+# GIS-off (BUILD_GEO=0): the locations UI/API is entirely geometry-driven and
+# cannot function without geometry columns. Rather than unmount the app (which
+# would make every cross-app {% url 'locations:...' %} link and the dashboard
+# card raise NoReverseMatch), keep all URL names resolvable but make each view
+# return 404 — so a geometry-less host degrades cleanly instead of 500-ing on an
+# AttributeError/FieldError. A host that wants the UI gone entirely simply omits
+# the include (as faros does). No-op on a GIS build.
+from django.conf import settings as _settings  # noqa: E402
+
+if not getattr(_settings, "HAS_GIS", True):
+    from django.http import Http404
+
+    def _gis_disabled(request, *args, **kwargs):
+        raise Http404("The locations map UI requires a GIS build (BUILD_GEO=1).")
+
+    for _pattern in urlpatterns:
+        _pattern.callback = _gis_disabled

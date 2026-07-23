@@ -2,6 +2,7 @@ from django.contrib import admin
 from toto.core.base_admin import TotoGeoAdmin, TotoModelAdmin
 
 from .models import (
+    HAS_GIS,
     Address,
     MapLayer,
     MapLayerPolygon,
@@ -15,7 +16,8 @@ from .models import (
 class RouteInline(admin.TabularInline):
     model = Route
     extra = 0
-    fields = ("sequence", "name", "start_address", "end_address", "geometry")
+    fields = (("sequence", "name", "start_address", "end_address", "geometry")
+              if HAS_GIS else ("sequence", "name", "start_address", "end_address"))
     autocomplete_fields = ("start_address", "end_address")
     ordering = ("sequence", "name")
 
@@ -23,7 +25,8 @@ class RouteInline(admin.TabularInline):
 class MapLayerPolygonInline(admin.TabularInline):
     model = MapLayerPolygon
     extra = 0
-    fields = ("name", "value", "center", "geometry", "properties")
+    fields = (("name", "value", "center", "geometry", "properties")
+              if HAS_GIS else ("name", "value", "properties"))
     ordering = ("name", "id")
 
 
@@ -99,7 +102,8 @@ class MapLayerAdmin(TotoModelAdmin):
 
 @admin.register(MapLayerPolygon)
 class MapLayerPolygonAdmin(TotoGeoAdmin):
-    list_display = ("id", "name", "layer", "value", "center")
+    list_display = (("id", "name", "layer", "value", "center")
+                    if HAS_GIS else ("id", "name", "layer", "value"))
     list_display_links = ("id", "name")
     list_filter = ("layer",)
     search_fields = ("name", "layer__name", "layer__slug")
@@ -118,6 +122,11 @@ class RouteAdmin(TotoGeoAdmin):
 
 @admin.register(Address)
 class AddressAdmin(TotoGeoAdmin):
+    # On a GIS build the map widget is the coordinate editor and lat/lon are
+    # derived from it in Address.save() — hide the redundant number inputs so an
+    # untouched lat/lon field can't fight the map. On a GIS-off build they ARE
+    # the coordinate input, so keep them.
+    exclude = ("latitude", "longitude") if HAS_GIS else ()
     list_display = (
         "street",
         "building",

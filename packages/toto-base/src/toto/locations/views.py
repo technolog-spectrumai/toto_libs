@@ -17,7 +17,6 @@ from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 from toto.people.models import Person
 from toto.events.models import ScheduledEvent
-from django.contrib.gis.geos import LineString, MultiLineString
 from .models import (
     Address,
     MapLayer,
@@ -761,6 +760,10 @@ def address_create(request):
 @require_POST
 @login_required
 def route_save(request):
+    # Route editing is a GIS-only feature (this view is only mounted on a GIS
+    # host); import GEOS lazily so the module loads GDAL-free on a light host.
+    from django.contrib.gis.geos import GEOSGeometry, MultiLineString
+
     name = request.POST.get("name", "").strip()
     route_json = request.POST.get("route_json", "").strip()
 

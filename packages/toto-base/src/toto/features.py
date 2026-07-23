@@ -8,6 +8,10 @@ explicit BUILD_<FEATURE> value overrides its tier; tiers are just defaults.
 from dataclasses import dataclass
 
 
+class FeatureConfigError(ValueError):
+    """A requested BUILD_* combination is contradictory (raised at build/startup)."""
+
+
 @dataclass(frozen=True)
 class Features:
     # Studio-group features (default to the studio tier).
@@ -32,6 +36,9 @@ class Features:
     travels: bool
     gitvault: bool
     monit: bool
+    # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
+    # Address carries plain lat/lon floats — a much lighter host. Default on.
+    geo: bool
     # Derived.
     editor: bool
     vicuna: bool
@@ -107,6 +114,19 @@ def resolve_features(get) -> Features:
     # celery worker+beat stack, which the profiles enabling this already run.
     monit = flag(get, "BUILD_MONIT")                          # toto.monit — monitoring dashboard
 
+    # GIS toggle. On by default (every legacy host has PostGIS). Set BUILD_GEO=0
+    # for a light host: locations stays installed but geometry-less, no GDAL.
+    geo = flag(get, "BUILD_GEO", default=True)                # django.contrib.gis + spatial DB
+
+    # Map-dependent apps cannot run without geometry — fail loud rather than
+    # silently pulling GIS back in (the coordinate reads and map overlays in
+    # weather/travels need it). Explicit per the build contract.
+    if (weather or travels) and not geo:
+        raise FeatureConfigError(
+            "BUILD_WEATHER/BUILD_TRAVELS require BUILD_GEO=1 "
+            "(map features need geometry); set BUILD_GEO=1 or disable them."
+        )
+
     # Dependency closure — a feature pulls in what it cannot run without.
     # weather, fileservices, manta, latex (texlab), pyeditor (antaresia)
     # and gitvault all have a model FK to workflows.WorkflowRun, so they require
@@ -161,6 +181,7 @@ def resolve_features(get) -> Features:
         sabbia=sabbia,
         travels=travels,
         gitvault=gitvault,
+        geo=geo,
         editor=editor,
         vicuna=vicuna,
         sabbia_openai=sabbia_openai,

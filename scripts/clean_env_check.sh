@@ -13,9 +13,12 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-# toto.locations uses GIS fields, so the interpreter must be able to load the
-# system GDAL. A conda python usually cannot (its libstdc++ predates the system
-# libgdal) — override with PYTHON=/usr/bin/python3 in that case.
+# toto.locations uses GIS fields on a default (BUILD_GEO=1) build, so the
+# interpreter must be able to load the system GDAL. A conda python usually
+# cannot (its libstdc++ predates the system libgdal) — override with
+# PYTHON=/usr/bin/python3 in that case. (The BUILD_GEO=0 proofs in
+# tests/test_django_check.py block the contrib.gis import outright, so they
+# validate the GIS-off path even where GDAL is present.)
 PYTHON="${PYTHON:-python3}"
 VENV="$REPO_ROOT/.venv_test"
 PIP="$VENV/bin/pip"

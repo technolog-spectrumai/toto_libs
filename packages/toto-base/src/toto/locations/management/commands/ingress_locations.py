@@ -1,11 +1,20 @@
 from datetime import timedelta
 
-from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
+from django.core.management.base import CommandError
 from django.utils import timezone
+
+# This command seeds geospatial demo data and only runs on a GIS build; import
+# GEOS gracefully so the module still loads GDAL-free (process() guards on
+# HAS_GIS before any of these are used).
+try:
+    from django.contrib.gis.geos import LineString, MultiLineString, MultiPolygon, Point, Polygon
+except Exception:
+    LineString = MultiLineString = MultiPolygon = Point = Polygon = None
 
 from toto.ingress import IngressCommand
 from toto.events.models import EventCategory, ScheduledEvent
 from toto.locations.models import (
+    HAS_GIS,
     Address,
     MapLayer,
     MapLayerPolygon,
@@ -684,6 +693,12 @@ class Command(IngressCommand):
     def process(self):
         if not self.full:
             return
+
+        if not HAS_GIS:
+            raise CommandError(
+                "ingress_locations seeds geospatial demo data and requires "
+                "BUILD_GEO=1 (this host was built without GIS)."
+            )
 
         self.addresses = {}
         self.territories = {}

@@ -1,6 +1,5 @@
 from django import forms
 from .models import Address
-from django.contrib.gis.geos import Point
 
 
 class AddressCreateForm(forms.ModelForm):
@@ -126,7 +125,10 @@ class AddressCreateForm(forms.ModelForm):
         longitude = self.cleaned_data.get("longitude")
 
         if latitude is not None and longitude is not None:
-            address.geometry = Point(longitude, latitude, srid=4326)
+            # Address stores canonical lat/lon; Address.save() derives geometry
+            # from them on a GIS build. Keeps this form GDAL-free.
+            address.latitude = latitude
+            address.longitude = longitude
 
         if commit:
             address.save()

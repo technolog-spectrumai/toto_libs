@@ -1,5 +1,17 @@
-from django.contrib.gis.db import models
+from django.conf import settings
 from toto.core.domain import DomainEntity
+
+# BUILD_GEO switch. When on (the default), locations is a GeoDjango app with
+# real geometry columns backed by PostGIS/spatialite. When off, the models load
+# with the plain ORM (no GDAL/GEOS), geometry fields are omitted, and Address
+# carries plain lat/lon floats instead — see the suite README, "Making GIS
+# optional". Hosts set HAS_GIS from features.geo.
+HAS_GIS = getattr(settings, "HAS_GIS", True)
+
+if HAS_GIS:
+    from django.contrib.gis.db import models
+else:
+    from django.db import models
 
 
 SRID = 4326  # WGS84 (OpenStreetMap)
@@ -37,7 +49,13 @@ class Address(DomainEntity):
         null=True,
         verbose_name="Apartment Number",
     )
-    geometry = models.PointField(srid=SRID, null=True, blank=True)
+    # Canonical point coordinates — backend-agnostic, always present. On a
+    # GIS build these mirror `geometry`; on a GIS-off build they are the only
+    # coordinate store.
+    latitude = models.FloatField(null=True, blank=True)
+    longitude = models.FloatField(null=True, blank=True)
+    if HAS_GIS:
+        geometry = models.PointField(srid=SRID, null=True, blank=True)
     metadata = models.JSONField(
         default=dict,
         blank=True,
@@ -47,6 +65,20 @@ class Address(DomainEntity):
         blank=True,
         help_text="Free-text note about this address.",
     )
+
+    def save(self, *args, **kwargs):
+        # Keep geometry and the lat/lon floats in sync on a GIS build. Geometry
+        # is authoritative when set — the admin map widget, ingress and the map
+        # API edit it directly, and the floats simply follow it. A coordinate
+        # create (the address form sets lat/lon and no geometry) derives the
+        # geometry from them. No-op on a GIS-off build.
+        if HAS_GIS:
+            if self.geometry is not None:
+                self.longitude, self.latitude = self.geometry.x, self.geometry.y
+            elif self.latitude is not None and self.longitude is not None:
+                from django.contrib.gis.geos import Point
+                self.geometry = Point(self.longitude, self.latitude, srid=SRID)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         parts = []
@@ -79,7 +111,8 @@ class Address(DomainEntity):
 
 class Territory(DomainEntity):
     name = models.CharField(max_length=200)
-    geometry = models.PolygonField(srid=SRID)
+    if HAS_GIS:
+        geometry = models.PolygonField(srid=SRID)
     capital = models.ForeignKey(
         Address,
         on_delete=models.SET_NULL,
@@ -99,7 +132,8 @@ class Territory(DomainEntity):
 
 class Zone(DomainEntity):
     name = models.CharField(max_length=200)
-    geometry = models.MultiPolygonField(srid=SRID)
+    if HAS_GIS:
+        geometry = models.MultiPolygonField(srid=SRID)
     territory = models.ForeignKey(
         Territory,
         on_delete=models.CASCADE,
@@ -132,7 +166,8 @@ class RouteChain(DomainEntity):
 
 class Route(DomainEntity):
     name = models.CharField(max_length=200, blank=True)
-    geometry = models.MultiLineStringField(srid=SRID)
+    if HAS_GIS:
+        geometry = models.MultiLineStringField(srid=SRID)
     route_chain = models.ForeignKey(
         RouteChain,
         on_delete=models.SET_NULL,
@@ -232,16 +267,17 @@ class MapLayerPolygon(DomainEntity):
         related_name="polygons",
     )
     name = models.CharField(max_length=200, blank=True)
-    geometry = models.PolygonField(
-        srid=SRID,
-        help_text="Must be one continuous polygon.",
-    )
-    center = models.PointField(
-        srid=SRID,
-        null=True,
-        blank=True,
-        help_text="Stored center point used for layer labels and markers.",
-    )
+    if HAS_GIS:
+        geometry = models.PolygonField(
+            srid=SRID,
+            help_text="Must be one continuous polygon.",
+        )
+        center = models.PointField(
+            srid=SRID,
+            null=True,
+            blank=True,
+            help_text="Stored center point used for layer labels and markers.",
+        )
     value = models.FloatField()
     properties = models.JSONField(
         default=dict,

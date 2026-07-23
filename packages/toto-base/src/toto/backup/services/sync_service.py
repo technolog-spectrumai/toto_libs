@@ -1,5 +1,5 @@
 from django.apps import apps
-from django.core.exceptions import ImproperlyConfigured
+from django.core.exceptions import FieldDoesNotExist, ImproperlyConfigured
 from django.db import transaction
 
 from .backup_engine import BackupEngine
@@ -55,12 +55,21 @@ class SyncService(BackupEngine):
     def _resolve_fields(self, model, fields):
         resolved = {}
         for field_name, value in fields.items():
-            field = model._meta.get_field(field_name)
+            try:
+                field = model._meta.get_field(field_name)
+            except FieldDoesNotExist:
+                # Field absent in this build — e.g. a geometry column synced from
+                # a GIS host onto a GIS-off (BUILD_GEO=0) host. Drop it; the
+                # accompanying lat/lon floats carry the coordinates.
+                continue
             if isinstance(value, dict) and value.get("__ref__"):
                 resolved[field.name] = self._resolve_reference(value)
             elif isinstance(value, dict) and value.get("__geo__"):
-                from django.contrib.gis.geos import GEOSGeometry
-                resolved[field.name] = GEOSGeometry(value["ewkt"]) if value.get("ewkt") else None
+                try:
+                    from django.contrib.gis.geos import GEOSGeometry
+                    resolved[field.name] = GEOSGeometry(value["ewkt"]) if value.get("ewkt") else None
+                except ImportError:
+                    resolved[field.name] = None
             else:
                 resolved[field.name] = value
         return resolved
