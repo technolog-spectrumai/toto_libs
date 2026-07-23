@@ -10,7 +10,7 @@ time rather than committing to one engine in the schema:
 Deliberately *no* ``SearchVectorField`` and *no* ``GinIndex`` in the migration: Postgres-only
 DDL in ``Meta.indexes`` breaks ``manage.py migrate`` against the throwaway SpatiaLite
 database used by dev and by both hosts' ``scripts/clean_env_test.sh``. Promoting to a stored,
-indexed vector behind a vendor-guarded ``RunPython`` is tracked in ``forum_todo.md``.
+indexed vector behind a vendor-guarded ``RunPython`` remains deferred work.
 
 The precedent for branching on the backend this way is ``toto/core/apps.py``; the idiom for
 telling the UI which engine actually ran is ravioli's ``effective_mode``/``fallback_used``

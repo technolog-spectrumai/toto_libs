@@ -14,7 +14,7 @@
 #   toto-graph  Neo4j knowledge graph, ingestion, connectors
 #
 # Install them with scripts/install_toto.sh (editable) or build wheels with
-# scripts/build_wheels.py. See BUILDING.md.
+# scripts/build_wheels.py. See README.md.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

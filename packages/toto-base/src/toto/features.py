@@ -74,7 +74,7 @@ def resolve_features(get) -> Features:
     latex = flag(get, "BUILD_LATEX")                          # toto.texlab
     pyeditor = flag(get, "BUILD_PYEDITOR")                    # toto.antaresia — Python editor
     # latex, sketch, travels and gitvault are host-owned apps (see
-    # secession.md): the flags stay here because they are part of the host
+    # the suite README): the flags stay here because they are part of the host
     # contract — needs_channels depends on sketch, `editor`/`texlive` on latex,
     # and the workflows closure on latex/gitvault — but registry.FEATURE_APPS
     # deliberately has no entry for them, since the host supplies the

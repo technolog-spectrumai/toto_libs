@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 # monit is the read-only ops dashboard. (aster and nomad used to live here;
-# they are faros-owned now — see secession.md.)
+# they are faros-owned now — see the suite README.)
 name = "toto-ops"
 version = "1.6"
 description = "toto operations: read-only monitoring dashboard"

@@ -7,7 +7,7 @@ history possible — including for a member who joins long after a conversation 
 This module replaced ``vault.py``, which encrypted every message under a per-channel
 gervazy DEK held in a system strongbox. That scheme capped history at a 24h TTL, required
 a deployment secret whose loss made history unrecoverable, and made the message body
-impossible to query. See ``forum_todo.md`` for the retention work that replaces the TTL.
+impossible to query. The retention work that replaces the TTL is deferred.
 """
 import logging
 

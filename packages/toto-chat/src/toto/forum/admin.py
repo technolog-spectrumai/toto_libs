@@ -40,7 +40,7 @@ class ForumMemberAdmin(admin.ModelAdmin):
 class ForumMessageAdmin(admin.ModelAdmin):
     """Messages are plaintext and permanent, so they are inspectable here.
 
-    Retention is deferred work — there is no purge job (see forum_todo.md).
+    Retention is deferred work — there is no purge job.
     """
 
     list_display = ("channel", "sender_name", "msg_type", "created_at", "edited_at", "deleted_at")

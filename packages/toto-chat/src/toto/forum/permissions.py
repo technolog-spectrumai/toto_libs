@@ -6,7 +6,7 @@ required only the member row. A user removed from ``participants`` saw a disable
 but could still post over a raw socket. ``participants`` is gone; ``ForumMember`` is the
 only membership record, and every entry point routes through here.
 
-Access model (see forum_todo.md D6):
+Access model:
 
 * anonymous — nothing, not even the channel list
 * signed in — may browse channels and join them

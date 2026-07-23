@@ -127,7 +127,7 @@ class ForumMessage(models.Model):
     permanent, searchable, paginated history possible — a member who joins today can read
     everything said before they arrived, and the server can run a text query over it.
 
-    Messages are never expired automatically. Retention is deferred work (forum_todo.md).
+    Messages are never expired automatically. Retention is deferred work.
     """
 
     MSG_TYPES = [
