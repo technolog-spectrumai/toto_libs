@@ -33,3 +33,12 @@ urlpatterns = [
     path("sso/password-reset/<uidb64>/<token>/", views.password_reset_confirm_view, name="password_reset_confirm"),
     path("sso/password-reset/complete/", views.password_reset_complete_view, name="password_reset_complete"),
 ]
+
+# Social login rides in the same "sso" namespace, but only when the host
+# installs the app (the include would import its models otherwise).
+from django.apps import apps as django_apps  # noqa: E402
+
+if django_apps.is_installed("toto.social_login"):
+    from django.urls import include  # noqa: E402
+
+    urlpatterns += [path("sso/social/", include("toto.social_login.urls"))]
