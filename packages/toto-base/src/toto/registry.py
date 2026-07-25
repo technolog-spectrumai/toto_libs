@@ -23,9 +23,11 @@ CORE_APPS = [
 # The historical auth block (ships in toto-auth since 1.8): the standalone
 # OIDC-provider default. Strategy-aware hosts compose [*CORE_APPS,
 # *toto.auth_config.auth_apps(cfg)] instead to pick provider/consumer/local.
+# social_login is inert unless a provider's OAuth credentials are configured.
 AUTH_APPS = [
     "toto.sso_core",
     "toto.sso_master",
+    "toto.social_login",
 ]
 
 # The historical contract, unchanged: core apps + the provider auth block.
