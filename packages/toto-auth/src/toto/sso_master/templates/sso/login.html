@@ -97,32 +97,7 @@
             <p class="mt-2 text-sm opacity-70">{% trans "Enter your account credentials to continue." %}</p>
           </div>
 
-          {% if error %}
-            <div
-              role="alert"
-              aria-live="assertive"
-              :class="darkMode
-                ? 'border-warn-dark bg-sunken-dark text-warn-dark'
-                : 'border-warn-light bg-sunken-light text-warn-light'"
-              class="rounded-lg border px-4 py-3 text-sm shadow-sm">
-              <div class="flex items-start gap-3">
-                <i :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="fa-solid fa-circle-exclamation mt-0.5"></i>
-                <div>
-                  <p class="font-bold">{% trans "Sign in failed" %}</p>
-                  <p class="mt-1 font-medium">{{ error }}</p>
-                  {% if cooldown_remaining %}
-                    <div data-login-cooldown="{{ cooldown_remaining }}" class="mt-3">
-                      <p class="text-xs font-bold uppercase tracking-wide">{% trans "Try again in" %}<span data-login-countdown>{{ cooldown_remaining }}</span>s
-                      </p>
-                      <div :class="darkMode ? 'bg-warn-dark/20' : 'bg-warn-light/20'" class="mt-2 h-1.5 overflow-hidden rounded-full">
-                        <div data-login-cooldown-bar :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'" style="height: 100%; width: 100%; transition: width 1s linear;"></div>
-                      </div>
-                    </div>
-                  {% endif %}
-                </div>
-              </div>
-            </div>
-          {% elif messages %}
+          {% if not error and messages %}
             {% for message in messages %}
               {% if message.tags == "error" %}
                 <div
@@ -142,58 +117,9 @@
             {% endfor %}
           {% endif %}
 
-          <form method="POST" action="{% url 'sso:login' %}" class="space-y-5">
-            {% csrf_token %}
-            {% if next %}
-              <input type="hidden" name="next" value="{{ next }}">
-            {% endif %}
-
-            <div
-              :class="darkMode
-                ? '[&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark'
-                : '[&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light'"
-              class="space-y-5
-                     [&_label]:mb-2 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
-                     [&_input]:w-full [&_input]:rounded-lg [&_input]:border
-                     [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm
-                     [&_input]:shadow-sm [&_input]:transition
-                     [&_input:focus]:outline-none [&_input:focus]:ring-2
-                     [&_input:focus]:ring-accent-light">
-              <div>
-                {{ form.username.label_tag }}
-                {{ form.username }}
-                {% if form.username.errors %}
-                  <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-2 text-xs font-medium">
-                    {{ form.username.errors|striptags }}
-                  </p>
-                {% endif %}
-              </div>
-              <div>
-                <div class="flex items-center justify-between mb-2">
-                  {{ form.password.label_tag }}
-                  {% if password_reset_available %}
-                    <a href="{% url 'sso:password_reset' %}"
-                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-                       class="text-xs font-medium hover:underline">{% trans "Forgot password?" %}</a>
-                  {% endif %}
-                </div>
-                {{ form.password }}
-                {% if form.password.errors %}
-                  <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-2 text-xs font-medium">
-                    {{ form.password.errors|striptags }}
-                  </p>
-                {% endif %}
-              </div>
-            </div>
-
-            <button
-              type="submit"
-              :class="darkMode
-                ? 'bg-accent-dark text-primary-bg-dark'
-                : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
-              <i class="fa-solid fa-arrow-right-to-bracket"></i>{% trans "Sign In" %}</button>
-          </form>
+          {% trans "Sign In" as submit_label %}
+          {% url 'sso:login' as form_action %}
+          {% include "oya/_login_form.html" with form_action=form_action submit_label=submit_label %}
 
           {% if not sso_client %}
           <div

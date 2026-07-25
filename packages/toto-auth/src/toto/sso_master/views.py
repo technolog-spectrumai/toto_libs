@@ -1,8 +1,7 @@
 import base64
 from urllib.parse import urlencode
 
-from django.contrib import messages
-from django.contrib.auth import authenticate, get_user_model, login, logout
+from django.contrib.auth import get_user_model
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.forms import PasswordResetForm, SetPasswordForm
 from django.contrib.auth.tokens import default_token_generator
@@ -16,15 +15,9 @@ from django.utils.http import urlsafe_base64_decode
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_GET, require_POST
 
+from toto.core.auth_views import password_login_view, password_logout_view
 from toto.core.email_config import email_delivery_configured
-from toto.core.forms import LoginForm
 from toto.ui import PageProcessor
-from toto.core.auth_cooldown import (
-    clear_login_retry_cooldown,
-    login_retry_cooldown_remaining,
-    login_retry_cooldown_seconds,
-    start_login_retry_cooldown,
-)
 from .models import SSOAccessToken, SSOAuthorizationCode, SSORelyingParty
 from .services import (
     build_id_token,
@@ -38,57 +31,13 @@ from .services import (
 
 
 def login_view(request):
-    processor = PageProcessor()
-    next_url = request.GET.get("next") or request.POST.get("next") or ""
-    form = LoginForm(request.POST or None)
-    context = {
-        "form": form,
-        "page_title": "Sign In",
-        "next": next_url,
-        "login_url": reverse("sso:login"),
-        # Password reset needs a working email backend; without one the
-        # "Forgot password?" link would dead-end, so it is hidden.
-        "password_reset_available": email_delivery_configured(),
-    }
-
-    if request.user.is_authenticated:
-        return redirect(next_url or reverse("core:dashboard"))
-
-    if request.method == "POST":
-        remaining = login_retry_cooldown_remaining(request)
-        if remaining > 0:
-            context["error"] = f"Please wait {remaining} seconds before trying again."
-            context["cooldown_remaining"] = remaining
-            messages.error(request, context["error"])
-            return render(request, "sso/login.html", processor.decorate(context, request))
-
-    if request.method == "POST" and form.is_valid():
-        user = authenticate(
-            request,
-            username=form.cleaned_data["username"],
-            password=form.cleaned_data["password"],
-        )
-        if user:
-            clear_login_retry_cooldown(request)
-            login(request, user)
-            return redirect(next_url or reverse("core:dashboard"))
-        context["error"] = "Invalid username or password."
-        context["cooldown_remaining"] = login_retry_cooldown_seconds()
-        messages.error(request, context["error"])
-        start_login_retry_cooldown(request)
-    elif request.method == "POST":
-        context["error"] = "Enter your username and password."
-        context["cooldown_remaining"] = login_retry_cooldown_seconds()
-        messages.error(request, context["error"])
-        start_login_retry_cooldown(request)
-
-    return render(request, "sso/login.html", processor.decorate(context, request))
+    return password_login_view(
+        request, template_name="sso/login.html", page_title="Sign In"
+    )
 
 
 def logout_view(request):
-    next_url = request.GET.get("next") or ""
-    logout(request)
-    return redirect(next_url or reverse("core:dashboard"))
+    return password_logout_view(request)
 
 
 def _openid_configuration_payload(request, authorization_endpoint: str) -> dict:
