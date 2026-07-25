@@ -122,6 +122,9 @@ def test_auth_apps_ship_in_toto_auth(owner):
     assert owner.get("toto/sso_core/manifest.py") == "toto-auth"
     assert owner.get("toto/sso_master/migrations/0001_initial.py") == "toto-auth"
     assert owner.get("toto/sso_client/models.py") == "toto-auth"
+    # The strategy resolver + local-mode url aliases ride with the apps.
+    assert owner.get("toto/auth_config.py") == "toto-auth"
+    assert owner.get("toto/auth_local_urls.py") == "toto-auth"
 
 
 def test_media_apps_ship_in_toto_media(owner):
