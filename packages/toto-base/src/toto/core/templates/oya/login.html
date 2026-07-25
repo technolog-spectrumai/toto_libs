@@ -126,6 +126,26 @@
             </p>
           </div>
 
+          {% if not error and messages %}
+            {% for message in messages %}
+              {% if message.tags == "error" %}
+                <div
+                  role="alert"
+                  aria-live="assertive"
+                  style="border: 2px solid #dc2626; background: #fef2f2; color: #7f1d1d;"
+                  class="rounded-lg px-4 py-3 text-sm shadow-sm">
+                  <div class="flex items-start gap-3">
+                    <i class="fa-solid fa-circle-exclamation mt-0.5 text-warn-light"></i>
+                    <div>
+                      <p class="font-bold">{% trans "Sign in failed" %}</p>
+                      <p class="mt-1 font-medium">{{ message }}</p>
+                    </div>
+                  </div>
+                </div>
+              {% endif %}
+            {% endfor %}
+          {% endif %}
+
           {% trans "Log In" as submit_label %}
           {% url 'core:login' as form_action %}
           {% include "oya/_login_form.html" with form_action=form_action submit_label=submit_label %}

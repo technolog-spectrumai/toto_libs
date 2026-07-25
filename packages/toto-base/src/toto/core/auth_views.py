@@ -48,6 +48,7 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
     }
     if extra_context:
         context.update(extra_context)
+    context.setdefault("social_providers", _social_login_providers(request))
 
     if request.user.is_authenticated:
         return redirect(next_url or reverse("core:dashboard"))
@@ -83,6 +84,18 @@ def password_login_view(request, *, template_name, page_title, extra_context=Non
         start_login_retry_cooldown(request)
 
     return render(request, template_name, processor.decorate(context, request))
+
+
+def _social_login_providers(request):
+    # Soft edge by design: toto-base must not require toto-auth. The social
+    # app declares the concrete providers; without it there are no buttons.
+    from django.apps import apps
+
+    if not apps.is_installed("toto.social_login"):
+        return []
+    from toto.social_login.providers import login_page_providers
+
+    return login_page_providers(request)
 
 
 def password_logout_view(request):

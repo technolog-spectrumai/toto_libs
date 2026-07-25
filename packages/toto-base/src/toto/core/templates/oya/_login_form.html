@@ -95,3 +95,7 @@
     {{ submit_label }}
   </button>
 </form>
+
+{% if social_providers %}
+  {% include "social_login/_login_buttons.html" %}
+{% endif %}
