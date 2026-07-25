@@ -59,7 +59,7 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    assert len(apps_with_migrations) == 34, sorted(apps_with_migrations)
+    assert len(apps_with_migrations) == 35, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -125,6 +125,9 @@ def test_auth_apps_ship_in_toto_auth(owner):
     # The strategy resolver + local-mode url aliases ride with the apps.
     assert owner.get("toto/auth_config.py") == "toto-auth"
     assert owner.get("toto/auth_local_urls.py") == "toto-auth"
+    # Social login (google/facebook) ships with the auth package too.
+    assert owner.get("toto/social_login/migrations/0001_initial.py") == "toto-auth"
+    assert owner.get("toto/social_login/templates/social_login/_login_buttons.html") == "toto-auth"
 
 
 def test_media_apps_ship_in_toto_media(owner):

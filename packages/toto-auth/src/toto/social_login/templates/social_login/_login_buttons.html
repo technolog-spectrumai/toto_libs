@@ -1,0 +1,21 @@
+{% load i18n %}
+{# Rendered by the login pages when social_providers is non-empty            #}
+{# (context from toto.core.auth_views.password_login_view).                  #}
+<div class="space-y-4">
+  <div class="flex items-center gap-3">
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="flex-1 border-t"></div>
+    <span class="text-xs font-semibold uppercase tracking-wide opacity-70">{% trans "or continue with" %}</span>
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="flex-1 border-t"></div>
+  </div>
+
+  {% for provider in social_providers %}
+    <a href="{{ provider.login_url }}"
+       :class="darkMode
+         ? 'border-accent-1 bg-sunken-dark text-text-main-dark'
+         : 'border-accent-2 bg-sunken-light text-text-main-light'"
+       class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-80">
+      <i class="{{ provider.icon }}"></i>
+      {% blocktrans with label=provider.label %}Continue with {{ label }}{% endblocktrans %}
+    </a>
+  {% endfor %}
+</div>
