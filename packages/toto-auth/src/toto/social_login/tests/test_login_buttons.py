@@ -2,8 +2,15 @@
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
+from toto.core.models import Platform
+
 
 class LoginButtonTests(TestCase):
+    def setUp(self):
+        # PageProcessor 404s the login page without an active platform.
+        Platform.objects.create(site_name="Test Site", author="Test",
+                                publication_year=2024, active=True)
+
     def test_no_buttons_without_credentials(self):
         response = self.client.get(reverse("sso:login"))
         self.assertNotContains(response, "Continue with Google")
