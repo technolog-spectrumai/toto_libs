@@ -1,7 +1,7 @@
 # toto
 
 **toto** is a modular Django *app library* — a "community operating system" —
-shipped as **nine lockstep-versioned pip packages that share the single
+shipped as **ten lockstep-versioned pip packages that share the single
 `toto.*` import namespace**, released together from this one repository. It
 bundles ~38 apps spanning identity and single sign-on, encrypted storage, a
 Neo4j knowledge graph, real-time collaboration, media/transcription pipelines,
@@ -64,7 +64,7 @@ AI — decided entirely by the host's build flags.
 
 ### One namespace, many distributions (PEP 420)
 
-toto ships as **nine pip distributions that all fill the same `toto.*` import
+toto ships as **ten pip distributions that all fill the same `toto.*` import
 namespace**. This is a deliberate PEP 420 namespace package: there is **no
 `toto/__init__.py`** anywhere — not in any package source, build tree, or the
 installed `site-packages/toto/`. `import toto.vault` resolves the same whether
@@ -77,7 +77,8 @@ The package boundaries and what each holds:
 
 | Package | Depends on | Holds (see the package README for app detail) |
 |---|---|---|
-| [`toto-base`](packages/toto-base/README.md) | — | The shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), the `ui` and `ingress` infrastructure, and the app cluster every host installs: `core`, `api`, `backup`, `gervazy`, `vault`, `people`, `sso_core`, `sso_master`, `socialhub`, `events`, `locations`, `verbena`, `quota` — plus `editor` and `sso_client`, which ship here but are host-selected rather than unconditional. |
+| [`toto-base`](packages/toto-base/README.md) | — | The shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), the `ui` and `ingress` infrastructure, and the app cluster every host installs: `core`, `api`, `backup`, `gervazy`, `vault`, `people`, `socialhub`, `events`, `locations`, `verbena`, `quota` — plus `editor`, which ships here but is host-selected rather than unconditional. |
+| [`toto-auth`](packages/toto-auth/README.md) | base | `sso_core`, `sso_master` (OIDC provider), `sso_client` (OIDC consumer) and the `toto.auth_config` login-strategy resolver: each host picks provider/consumer/local via settings. |
 | [`toto-flow`](packages/toto-flow/README.md) | base | `workflows` (DAG engine) and `mandragora` (WebSocket compute kernels) — one unit; `workflows.LambdaFunction` has a one-to-one key into `mandragora.ComputeKernel`. |
 | [`toto-works`](packages/toto-works/README.md) | base, flow | `antaresia` (sandboxed vault Python), `kanban` (projects → tasks with scheduled allowances), `memo` (`.pml` presentations). |
 | [`toto-geo`](packages/toto-geo/README.md) | base, flow | `weather` (observations/forecasts keyed off `locations.Address`, populated by workflow nodes). |
@@ -131,7 +132,8 @@ hard edge crosses an undeclared boundary (see **Build & packaging**).
 - **`sso_master` is a full OIDC 1.0 provider** (authorize/token/userinfo/JWKS,
   PKCE, relying-party registration); its RSA signing key is stored encrypted in
   gervazy. `sso_client` is the consumer side, for hosts that federate rather than
-  provide.
+  provide. Both ship in `toto-auth`, and `toto.auth_config` picks the mode per
+  host (provider/consumer/local) from settings.
 - **Real-time is Django Channels.** Chat, collaborative editors, sandboxed
   Python, compute kernels and the AI widgets are WebSocket consumers; enabling
   any of them flips the host to ASGI.
@@ -187,8 +189,15 @@ Hosts consume small stable modules instead of hardcoding internals:
   (from `os.environ.get` or a deploy-config dict) into effective feature
   booleans, tiers and native-binary needs; the single source for the dependency
   closure.
-- **`toto.registry`** — `BASE_APPS`, `FEATURE_APPS`, `TASK_MODULES` (Celery
-  autodiscovery) and `has_app()`.
+- **`toto.registry`** — `CORE_APPS`/`AUTH_APPS`/`BASE_APPS`, `FEATURE_APPS`,
+  `TASK_MODULES` (Celery autodiscovery) and `has_app()`.
+- **`toto.auth_config`** (ships in `toto-auth`) — `resolve_auth(get)` turns
+  `TOTO_AUTH_MODE` (`local`/`provider`/`consumer`) and the auth knobs
+  (`SSO_OPEN_REGISTRATION`, cooldowns, `TOTO_LOGIN_REDIRECT`) into a frozen
+  `AuthConfig`; `auth_apps(cfg)`, `auth_urlpatterns(cfg)`, `login_url(cfg)` and
+  `authentication_backends(cfg)` feed it into `INSTALLED_APPS`, the url tree,
+  `LOGIN_URL` and `AUTHENTICATION_BACKENDS`. Every mode keeps the `sso` url
+  namespace alive, so `LOGIN_URL = "sso:login"` holds everywhere.
 - **`toto.routing`** — `collect_websocket_urlpatterns()` gathers Channels routes
   from installed toto apps for the host ASGI router.
 - **`toto.schedules`** — `beat_schedule(...)` builds Celery-beat entries for the
@@ -205,7 +214,7 @@ Hosts consume small stable modules instead of hardcoding internals:
 
 ### The runtime version-coherence guard
 
-Because the nine distributions release lockstep, mixing versions is a bug.
+Because the ten distributions release lockstep, mixing versions is a bug.
 `toto.core`'s AppConfig calls `check_runtime_coherence()` at boot: it scans the
 installed `toto-*` distributions and raises `ImproperlyConfigured` if their
 versions differ, or if a **pre-split single `toto` distribution** is still
@@ -220,7 +229,7 @@ experiments.
 
 ### Install for development (editable)
 
-Install all nine packages editable, in **one** pip invocation — they pin each
+Install all ten packages editable, in **one** pip invocation — they pin each
 other exactly, so pip can only satisfy the sibling pins when it sees every
 package at once:
 
@@ -505,9 +514,9 @@ fails loudly with `No installed app with label '<app>'`.
   `BUILD_GEO=0`. faros ships a `BUILD_GEO=0` light onion profile; zenobia stays
   GIS-on. See "Making GIS optional" above.
 
-The current split: **zenobia** pins all nine packages and carries
+The current split: **zenobia** pins all ten packages and carries
 `zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}`; **faros** pins
-`toto-base`, `toto-flow`, `toto-chat`, `toto-ops` and carries
+`toto-base`, `toto-auth`, `toto-flow`, `toto-chat`, `toto-ops` and carries
 `faros/toto/{aster,nomad}`.
 
 ### The rule for leaving, and staying

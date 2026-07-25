@@ -1,6 +1,6 @@
 # toto-base
 
-**toto-base** is the foundation wheel of the toto suite: the one distribution every toto host installs. It carries the *shared host API* (the app lists, feature-flag resolution, ASGI/Celery wiring, filesystem config and version-coherence machinery that a host stitches into its Django settings) together with the irreducible cluster of platform apps that cannot be layered apart — platform identity and branding, people, geography, communities, events, the encryption vault, file storage, the platform's own OpenID Connect provider/consumer, usage quotas, backups and the shared content/editor primitives. It is one of 9 lockstep-versioned distributions sharing the `toto.*` PEP 420 namespace; hosts pin every toto package to the same version in `requirements.toto.txt`.
+**toto-base** is the foundation wheel of the toto suite: the one distribution every toto host installs. It carries the *shared host API* (the app lists, feature-flag resolution, ASGI/Celery wiring, filesystem config and version-coherence machinery that a host stitches into its Django settings) together with the irreducible cluster of platform apps that cannot be layered apart — platform identity and branding, people, geography, communities, events, the encryption vault, file storage, usage quotas, backups and the shared content/editor primitives (the OpenID Connect provider/consumer apps ship in the sibling `toto-auth` package). It is one of 10 lockstep-versioned distributions sharing the `toto.*` PEP 420 namespace; hosts pin every toto package to the same version in `requirements.toto.txt`.
 
 ---
 
@@ -14,7 +14,7 @@ toto-base is what turns an empty Django project into a running toto platform. An
 - **Events and availability.** Organizers schedule events with a venue, time window and capacity; members are invited, RSVP, and can publish personal availability windows for scheduling.
 - **An encryption vault and document signing.** Users protect secrets, files and private keys behind their own password using a layered AES-256 key hierarchy — the server cannot read stored secrets without the user present. The same subsystem gives each person an Ed25519 identity for cryptographically signing contracts and documents, with an append-only audit log of every operation.
 - **File storage with in-browser editing.** Users upload files into quota-limited buckets and folders (backed by local disk, S3-compatible object stores, or a remote toto instance) and edit text, JSON, YAML, XML, HTML, CSV, LaTeX and BibTeX files directly in the browser, with live multi-session sync.
-- **Its own single sign-on.** The platform is a full OpenID Connect identity provider: other apps and services log users in against it and receive signed tokens. It can also act as a consumer of an external toto SSO provider.
+- **Single sign-on (via `toto-auth`).** Together with the sibling `toto-auth` package the platform is a full OpenID Connect identity provider — or a consumer of an external toto SSO provider; base carries the shared login implementation both entry points delegate to.
 - **Outbound integrations and email.** Operators register connectors to external services (webhooks, LLM providers, SMTP relays) and email-sending profiles — with all credentials kept in the encryption vault, never in plaintext config.
 - **Signed, verifiable backups.** Backup archives are cryptographically signed on the way out and verified on the way in, with a checksum-tracked record of each stored archive.
 - **Usage quotas and metering.** A generic policy engine records usage events and enforces per-subject limits (track / warn / block) over daily-to-lifetime windows, so any app can meter and cap an activity.
@@ -43,7 +43,7 @@ These live directly under `toto/` and have no models. A host composes its Django
 
 ### The application layer
 
-The apps below install (in `BASE_APPS` order) `core → api → backup → gervazy → vault → people → locations → socialhub → events → verbena → quota → sso_core → sso_master`. As the `pyproject` description notes, `core`, `gervazy`, `people`, `locations` and `events` form one irreducible foreign-key/import cycle — which is precisely why they ship in a single wheel.
+The apps below install (in `CORE_APPS` order) `core → api → backup → gervazy → vault → people → locations → socialhub → events → verbena → quota`; `registry.BASE_APPS` appends the provider auth block (`sso_core`, `sso_master`), which ships in `toto-auth` since 1.8. As the `pyproject` description notes, `core`, `gervazy`, `people`, `locations` and `events` form one irreducible foreign-key/import cycle — which is precisely why they ship in a single wheel.
 
 Many couplings named below point *out* of this package into sibling wheels (`steven`, `contracts`, `mobilization`, `detections`, `kanban`, `assembly`, `tribunal`, `academy`, `inventory`, `response`, `travels`, `library`, `ocr`, `texlab`, `invoice`, `ravioli`, `palimpsest`, `memo`, `workflows`, …). Those siblings extend base's abstract bases and FK into its models; base itself stays unaware of them (it sees only reverse relations), which is what lets it build and boot standalone.
 
@@ -95,15 +95,18 @@ A generic, app-agnostic meter. `QuotaPolicy` defines a limit for an `(app_label,
 
 No concrete models, no routes — just three abstract bases (all extending `DomainEntity`) that every content app inherits via Django multi-table inheritance: `AbstractTag`, `AbstractPage` (titled/slugged rich-text doc), and `AbstractSection` (ordered content block with an optional `people.Person` author). `socialhub`'s news models and content apps in sibling packages (palimpsest, kanban docs, academy scripts, memo, library) subclass these. Depends on `people`.
 
-#### SSO: sso_core, sso_master, sso_client
+#### SSO: moved to toto-auth
 
-- **`sso_core`** — no models; the shared serialization schemas. `ManifestBundle`/`OIDCClientSpec` (what a consumer app declares it needs) and `ConnectionBundle` (what the provider issues back), plain dataclasses with no Django dependency, that drive the "export manifest → provision → import connection bundle" workflow.
-- **`sso_master`** — a full OIDC **provider**. `SSOClient` (registered client), `SSOSubject` (stable per-user-per-client `sub`), `SSOAuthorizationCode` (short-lived code with PKCE fields), `SSOSigningKey` (RSA pair whose private half is an FK to `gervazy.EncryptedPrivateKey`, only one active), `SSOAccessToken`, and `SSORelyingParty` (a provisioned external client, extends `SSOClient`). `services.py` derives the issuer from `core.Platform`, unlocks the signing key from gervazy at token-issue time (`SSO_VAULT_PASSWORD`), builds ID tokens, serves JWKS, and verifies PKCE. Depends on `gervazy`, `sso_core`.
-- **`sso_client`** — the OIDC **consumer** config. `OIDCProviderConfig` is a single-row table storing the provider URL, client credentials, scopes and redirect URIs imported from an `sso_master` connection bundle. Depends on `sso_core`.
+The three SSO apps (`sso_core`, `sso_master`, `sso_client`) and the
+`toto.auth_config` login-strategy resolver ship in the sibling
+[`toto-auth`](../toto-auth/README.md) package since 1.8. Import paths, app
+labels and migrations are unchanged; base keeps the shared login
+implementation (`core/auth_views.py`, used by both `core:login` and
+`sso:login`) so it stays below `toto-auth` in the dependency graph.
 
 ### Dependencies
 
-At the Python-distribution level, toto-base depends only on `Django>=4.2` and `PyYAML>=6.0` — it is the foundation, so it carries **no** sibling `toto-*` pins. The dependency direction runs the other way: the other eight suite packages pin `toto-base`.
+At the Python-distribution level, toto-base depends only on `Django>=4.2` and `PyYAML>=6.0` — it is the foundation, so it carries **no** sibling `toto-*` pins. The dependency direction runs the other way: the other nine suite packages pin `toto-base`.
 
 ---
 

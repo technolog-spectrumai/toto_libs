@@ -10,6 +10,41 @@ A toto host picks one authentication posture:
 - **Consumer** — the host delegates sign-in to another toto platform: the login link forwards to the provider's authorize endpoint and the callback provisions/links the local user.
 - **Local** — plain username/password sessions with no OIDC surface at all.
 
+## The strategy resolver (`toto.auth_config`)
+
+Mirrors `toto.features`: resolve once in host settings from an env-style
+``get`` callable, then feed the frozen `AuthConfig` into the settings the
+host used to hardcode.
+
+| knob | values | default | notes |
+|---|---|---|---|
+| `TOTO_AUTH_MODE` | `local` / `provider` / `consumer` | `provider` | unknown value raises `AuthConfigError` |
+| `SSO_OPEN_REGISTRATION` | `0`/`1` | `False` | the `open_registration=`/`default_open_registration=` kwargs force or re-default it |
+| `LOGIN_RETRY_COOLDOWN_SECONDS` | int | `3` | login throttle (`toto.core.auth_cooldown`) |
+| `CAPTCHA_RETRY_COOLDOWN_SECONDS` | int | `3` | captcha throttle |
+| `TOTO_LOGIN_REDIRECT` | url name | `core:dashboard` | post-login destination |
+
+Host consumption (settings.py):
+
+```python
+from toto.auth_config import resolve_auth, login_url, authentication_backends
+
+_A = resolve_auth(os.environ.get)
+AUTHENTICATION_BACKENDS = authentication_backends(_A)
+LOGIN_URL = reverse_lazy(login_url(_A))
+SSO_OPEN_REGISTRATION = _A.open_registration
+LOGIN_RETRY_COOLDOWN_SECONDS = _A.login_retry_cooldown_seconds
+CAPTCHA_RETRY_COOLDOWN_SECONDS = _A.captcha_retry_cooldown_seconds
+```
+
+and in urls.py: `urlpatterns += auth_urlpatterns(_A)`; in INSTALLED_APPS:
+`*auth_apps(_A)` (equal to `registry.AUTH_APPS` in provider mode). Every mode
+serves the `sso` url namespace — provider via `sso_master.urls`, consumer via
+`sso_client.urls`, local via `toto.auth_local_urls` (aliases onto the shared
+login in `toto.core`) — so `LOGIN_URL = "sso:login"` and the hard
+`{% url 'sso:login' %}`/`{% url 'sso:logout' %}` references in base templates
+resolve in all three modes.
+
 ## The apps
 
 ### sso_core
