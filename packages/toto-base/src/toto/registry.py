@@ -5,8 +5,8 @@ third-party apps they need); the lists preserve the exact contents and order
 the portal host has always used.
 """
 
-# toto apps every host installs (portal settings base block, original order).
-BASE_APPS = [
+# toto-base apps every host installs (portal settings base block, original order).
+CORE_APPS = [
     "toto.core",
     "toto.api",
     "toto.backup",
@@ -18,9 +18,18 @@ BASE_APPS = [
     "toto.events",
     "toto.verbena",
     "toto.quota",
+]
+
+# The historical auth block (ships in toto-auth since 1.8): the standalone
+# OIDC-provider default. Strategy-aware hosts compose [*CORE_APPS,
+# *toto.auth_config.auth_apps(cfg)] instead to pick provider/consumer/local.
+AUTH_APPS = [
     "toto.sso_core",
     "toto.sso_master",
 ]
+
+# The historical contract, unchanged: core apps + the provider auth block.
+BASE_APPS = [*CORE_APPS, *AUTH_APPS]
 
 # Feature key (see toto.features.Features) -> apps the feature installs.
 # Includes the third-party companions a feature block always shipped with.
