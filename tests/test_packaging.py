@@ -77,7 +77,7 @@ def test_templates_are_packaged(all_names, owner):
     templates = [n for n in all_names if "/templates/" in n]
     assert len(templates) >= 204, len(templates)
     # Regression: the old glob (templates/**/*.html) dropped this .txt template.
-    assert owner.get("toto/sso_master/templates/sso/password_reset_subject.txt") == "toto-base"
+    assert owner.get("toto/sso_master/templates/sso/password_reset_subject.txt") == "toto-auth"
     # The shared base template every app extends.
     assert owner.get("toto/core/templates/oya/base.html") == "toto-base"
 
@@ -115,6 +115,13 @@ def test_repackaged_apps_ship_in_their_new_homes(owner):
     assert owner.get("toto/weather/models.py") == "toto-geo"
     assert owner.get("toto/kanban/migrations/0001_initial.py") == "toto-works"
     assert owner.get("toto/memo/models.py") == "toto-works"
+
+
+def test_auth_apps_ship_in_toto_auth(owner):
+    # sso_core, sso_master, sso_client -> toto-auth (v1.8).
+    assert owner.get("toto/sso_core/manifest.py") == "toto-auth"
+    assert owner.get("toto/sso_master/migrations/0001_initial.py") == "toto-auth"
+    assert owner.get("toto/sso_client/models.py") == "toto-auth"
 
 
 def test_media_apps_ship_in_toto_media(owner):

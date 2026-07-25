@@ -77,7 +77,7 @@ TOTO_WHEEL_DIR="$DIST" "$VENV/bin/pytest" -q tests/
 echo "==> tier matrix: each dependency tier must stand on its own"
 # toto-base alone, then each package that only needs base, then the full stack.
 # A hidden import from a lower tier into a higher one fails here and nowhere else.
-TIERS=("toto-base" "toto-base toto-flow" "toto-base toto-chat" "toto-base toto-ops" "toto-base toto-ai")
+TIERS=("toto-base" "toto-base toto-auth" "toto-base toto-flow" "toto-base toto-chat" "toto-base toto-ops" "toto-base toto-ai")
 TIERS+=("toto-base toto-flow toto-works" "toto-base toto-flow toto-media" "toto-base toto-flow toto-geo" "toto-base toto-flow toto-ai toto-graph")
 for tier in "${TIERS[@]}"; do
     TIER_VENV="$REPO_ROOT/.venv_tier"

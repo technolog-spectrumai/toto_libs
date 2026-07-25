@@ -4,6 +4,7 @@
 # the PEP 420 `toto.*` namespace:
 #
 #   toto-base   foundation + host API (every host installs it)
+#   toto-auth   OIDC provider/consumer apps + login strategy (every host installs it)
 #   toto-flow   workflow engine and compute kernels
 #   toto-works  workflow-backed file/document/data services
 #   toto-geo    geo feature apps (weather)
