@@ -26,6 +26,7 @@ class AuthConfigError(ValueError):
 class AuthConfig:
     mode: str                            # one of MODES (TOTO_AUTH_MODE)
     open_registration: bool              # SSO_OPEN_REGISTRATION — self-service signup API
+    social_signup: bool                  # TOTO_SOCIAL_SIGNUP — unmatched social sign-ins may provision
     login_retry_cooldown_seconds: int    # LOGIN_RETRY_COOLDOWN_SECONDS
     captcha_retry_cooldown_seconds: int  # CAPTCHA_RETRY_COOLDOWN_SECONDS
     login_redirect: str                  # TOTO_LOGIN_REDIRECT — url name after login
@@ -55,6 +56,7 @@ def resolve_auth(get, *, open_registration=None, default_open_registration=False
     return AuthConfig(
         mode=mode,
         open_registration=bool(open_registration),
+        social_signup=flag(get, "TOTO_SOCIAL_SIGNUP", False),
         login_retry_cooldown_seconds=_int(get, "LOGIN_RETRY_COOLDOWN_SECONDS", 3),
         captcha_retry_cooldown_seconds=_int(get, "CAPTCHA_RETRY_COOLDOWN_SECONDS", 3),
         login_redirect=get("TOTO_LOGIN_REDIRECT") or "core:dashboard",
@@ -62,12 +64,16 @@ def resolve_auth(get, *, open_registration=None, default_open_registration=False
 
 
 def auth_apps(cfg: AuthConfig) -> list:
-    """The auth apps the host adds to INSTALLED_APPS for its mode."""
+    """The auth apps the host adds to INSTALLED_APPS for its mode.
+
+    toto.social_login rides along in every mode: it is inert until a
+    provider's OAuth credentials are configured.
+    """
     if cfg.mode == MODE_PROVIDER:
-        return ["toto.sso_core", "toto.sso_master"]
+        return ["toto.sso_core", "toto.sso_master", "toto.social_login"]
     if cfg.mode == MODE_CONSUMER:
-        return ["toto.sso_core", "toto.sso_client"]
-    return []
+        return ["toto.sso_core", "toto.sso_client", "toto.social_login"]
+    return ["toto.social_login"]
 
 
 def auth_urlpatterns(cfg: AuthConfig) -> list:
