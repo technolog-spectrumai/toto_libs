@@ -23,6 +23,9 @@ host used to hardcode.
 | `LOGIN_RETRY_COOLDOWN_SECONDS` | int | `3` | login throttle (`toto.core.auth_cooldown`) |
 | `CAPTCHA_RETRY_COOLDOWN_SECONDS` | int | `3` | captcha throttle |
 | `TOTO_LOGIN_REDIRECT` | url name | `core:dashboard` | post-login destination |
+| `TOTO_SOCIAL_SIGNUP` | `0`/`1` | `False` | may an unmatched social sign-in provision a new account |
+| `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET` | strings | unset | enables the Google button when both set |
+| `FACEBOOK_OAUTH_CLIENT_ID` / `FACEBOOK_OAUTH_CLIENT_SECRET` | strings | unset | enables the Facebook button when both set (Facebook's console calls these App ID / App Secret) |
 
 Host consumption (settings.py):
 
@@ -44,6 +47,32 @@ serves the `sso` url namespace — provider via `sso_master.urls`, consumer via
 login in `toto.core`) — so `LOGIN_URL = "sso:login"` and the hard
 `{% url 'sso:login' %}`/`{% url 'sso:logout' %}` references in base templates
 resolve in all three modes.
+
+## Social login (`toto.social_login`)
+
+"Continue with Google / Facebook" on the unified login page, in every auth
+mode. Hand-rolled OAuth 2.0 authorization-code flows (PKCE S256 for Google),
+state in a signed cookie, no third-party auth framework. A provider's button
+appears exactly when its credentials are configured — env vars first, Django
+settings fallback; with no credentials the app is completely inert.
+
+Account resolution at the callback, in order:
+
+1. A `SocialIdentity` (provider + provider-issued subject id) already links a
+   local user → sign in.
+2. The provider-verified email matches an existing user → link a new
+   `SocialIdentity`, sign in (independent of any signup flag).
+3. `TOTO_SOCIAL_SIGNUP` is on → provision `<provider>_<sub>`, link, sign in.
+4. Otherwise → friendly rejection message back on the login page.
+
+Existing accounts never have their stored email overwritten; unverified or
+missing provider emails (Facebook users can deny the email permission) skip
+step 2. Register these exact redirect URIs in the provider consoles:
+`https://<PLATFORM_DOMAIN>/sso/social/google/callback/` and
+`.../facebook/callback/` (dev: `http://localhost:<port>/sso/social/...` —
+built from `PLATFORM_DOMAIN` when set, else the request host). Hosts install
+it by adding `toto.social_login` to `INSTALLED_APPS` (part of
+`registry.AUTH_APPS` / `auth_config.auth_apps` since 1.8).
 
 ## The apps
 
