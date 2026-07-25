@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # monit is the read-only ops dashboard. (aster and nomad used to live here;
 # they are faros-owned now — see the suite README.)
 name = "toto-ops"
-version = "1.7"
+version = "1.8"
 description = "toto operations: read-only monitoring dashboard"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,7 +15,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.7",
+    "toto-base==1.8",
 ]
 
 [tool.setuptools.packages.find]

@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # Geo/location-adjacent feature apps. Currently: weather (observations and
 # forecasts keyed off locations.Address, run by workflow nodes).
 name = "toto-geo"
-version = "1.7"
+version = "1.8"
 description = "toto geo feature apps: weather"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,8 +15,8 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.7",
-    "toto-flow==1.7",
+    "toto-base==1.8",
+    "toto-flow==1.8",
 ]
 
 [tool.setuptools.packages.find]

@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # The workflow-adjacent tier: antaresia FKs workflows.WorkflowRun (hence the
 # toto-flow dep); kanban and memo are task/content apps shipped alongside it.
 name = "toto-works"
-version = "1.7"
+version = "1.8"
 description = "toto workflow-backed file, document and data services"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,8 +15,8 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.7",
-    "toto-flow==1.7",
+    "toto-base==1.8",
+    "toto-flow==1.8",
 ]
 
 [tool.setuptools.packages.find]
