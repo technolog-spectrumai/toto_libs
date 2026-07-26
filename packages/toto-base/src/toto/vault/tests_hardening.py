@@ -97,3 +97,70 @@ class ExternalBucketFlagTests(TestCase):
         self.assertEqual(resp.status_code, 404)
         resp = c.get(reverse("vault:bucket_connection_url", args=[self.local.slug]))
         self.assertEqual(resp.status_code, 200)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-hardening-"))
+class FileEditsFlagTests(TestCase):
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user("editflag", "e@x.com", "pw")
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _upload(self, name="note.txt", content=b"hello"):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile(name, content, content_type="text/plain")},
+        )
+        self.assertEqual(resp.status_code, 201, resp.content)
+        return resp.json()
+
+    @override_settings(VAULT_FILE_EDITS=False)
+    def test_uploads_still_work_but_report_not_editable(self):
+        payload = self._upload()
+        self.assertFalse(payload["is_editable"])
+
+    @override_settings(VAULT_FILE_EDITS=False)
+    def test_content_put_refused(self):
+        key = self._upload()["key"]
+        resp = self.client.put(
+            reverse("vault:api_file_content", args=[key]),
+            '{"content": "changed"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    def test_content_put_works_by_default(self):
+        key = self._upload()["key"]
+        resp = self.client.put(
+            reverse("vault:api_file_content", args=[key]),
+            '{"content": "changed"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 200, resp.content)
+        self.assertTrue(resp.json()["is_editable"])
+
+    @override_settings(VAULT_FILE_EDITS=False)
+    def test_api_create_refused(self):
+        resp = self.client.post(
+            reverse("vault:api_file_create"),
+            '{"bucket_slug": "x", "title": "a", "file_type": "text"}',
+            content_type="application/json",
+        )
+        self.assertEqual(resp.status_code, 403)
+
+    @override_settings(VAULT_FILE_EDITS=False)
+    def test_create_types_menu_empties(self):
+        from toto.vault.views import available_create_types
+        self.assertEqual(available_create_types(), [])
+
+    @override_settings(VAULT_FILE_EDITS=False)
+    def test_create_empty_file_view_refused(self):
+        resp = self.client.post(
+            reverse("vault:create_file"),
+            {"title": "a", "file_type": "text", "directory_id": "1"},
+        )
+        self.assertEqual(resp.status_code, 403)

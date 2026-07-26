@@ -85,6 +85,12 @@ def save_file(request, file_pk):
     if request.method != "POST":
         return JsonResponse({"error": "POST required"}, status=400)
 
+    from toto.vault.models import file_edits_allowed
+    if not file_edits_allowed():
+        # Vault-level truth: even with the editor app installed, a host with
+        # edits off must refuse the write.
+        return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
+
     vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)

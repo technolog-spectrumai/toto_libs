@@ -26,6 +26,14 @@ def external_buckets_allowed() -> bool:
     return getattr(settings, "VAULT_EXTERNAL_BUCKETS", True)
 
 
+def file_edits_allowed() -> bool:
+    """Host contract flag: a host sets ``VAULT_FILE_EDITS = False`` (faros
+    does) to refuse every server-side rewrite of stored file CONTENT — the
+    browser editors, the desktop content API, empty-file creation. Upload,
+    download, delete, encrypt/decrypt and zip stay available."""
+    return getattr(settings, "VAULT_FILE_EDITS", True)
+
+
 class StorageProvider(models.Model):
     """
     A named S3-compatible provider preset (AWS, OVH, MinIO, …).

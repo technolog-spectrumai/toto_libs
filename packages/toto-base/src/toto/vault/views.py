@@ -42,6 +42,9 @@ CREATABLE_TYPES = [
 
 def available_create_types():
     """[(type, ext), …] for creatable types that have a registered editor plugin."""
+    from toto.vault.models import file_edits_allowed
+    if not file_edits_allowed():
+        return []
     from toto.vault.plugins import VaultEditorPlugin  # local: registry filled in ready()
     return [(t, ext) for t, ext in CREATABLE_TYPES if VaultEditorPlugin.for_file_type(t)]
 
@@ -1531,6 +1534,9 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
     }
 
     def post(self, request):
+        from toto.vault.models import file_edits_allowed
+        if not file_edits_allowed():
+            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
         from toto.vault.plugins import VaultEditorPlugin
 
         title      = request.POST.get("title", "").strip()

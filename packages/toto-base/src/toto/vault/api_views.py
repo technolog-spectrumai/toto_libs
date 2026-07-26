@@ -8,7 +8,7 @@ from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 
 from toto.api.cors import CorsApiView
-from toto.vault.models import VaultFile, Bucket, VaultDirectory
+from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allowed
 
 # Text-ish file types editable in the Enigma Ace editor. Mirrors the file types
 # the toto editor app handles, kept deliberately narrow (no binary/media).
@@ -36,7 +36,10 @@ def _file_to_dict(request, vf):
         "download_url": download_url,
         "bucket_slug": vf.bucket.slug if vf.bucket else None,
         "directory_id": vf.directory_id,
-        "is_editable": (vf.file_type in EDITABLE_FILE_TYPES) and not vf.is_encrypted,
+        "is_editable": (
+            (vf.file_type in EDITABLE_FILE_TYPES) and not vf.is_encrypted
+            and file_edits_allowed()
+        ),
     }
 
 
@@ -512,7 +515,7 @@ class FileContentApiView(CorsApiView):
             "key": vf.key,
             "title": vf.title,
             "file_type": vf.file_type,
-            "is_editable": True,
+            "is_editable": file_edits_allowed(),
             "size": vf.file_size_bytes,
             "content": content,
         })
@@ -520,6 +523,8 @@ class FileContentApiView(CorsApiView):
     def put(self, request, key):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
+        if not file_edits_allowed():
+            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
         vf = self._get_file(request.user, key)
         if not vf:
             return JsonResponse({"error": "File not found."}, status=404)
@@ -563,6 +568,8 @@ class FileCreateApiView(CorsApiView):
     def post(self, request):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
+        if not file_edits_allowed():
+            return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
         try:
             data = json.loads(request.body)
         except Exception:
