@@ -1,0 +1,275 @@
+{# English manual body. Keep section structure in sync with _body_pl.html. #}
+{# Sections are gated by the `features` dict (see core.views._manual_features) #}
+{# so only modules installed on this server are documented. #}
+
+<!-- Table of contents -->
+<nav
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-list"></i>Contents</h2>
+  <div class="mt-3 flex flex-wrap gap-2 text-sm">
+    <a href="#getting-started" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Getting started</a>
+    {% if features.socialhub %}<a href="#profile" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Profile &amp; communities</a>{% endif %}
+    {% if features.gervazy %}<a href="#keys" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">My Keys</a>{% endif %}
+    {% if features.vault %}<a href="#storage" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Storage</a>{% endif %}
+    {% if features.events %}<a href="#events" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Events</a>{% endif %}
+    {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Tasks</a>{% endif %}
+    {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Locations</a>{% endif %}
+    {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Polls</a>{% endif %}
+    {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Chat</a>{% endif %}
+    {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
+    {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Knowledge Graph</a>{% endif %}
+    {% if features.manta %}<a href="#manta" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Media toolbox</a>{% endif %}
+    {% if features.steven %}<a href="#steven" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Assistant</a>{% endif %}
+    {% if features.grafana %}<a href="#monitoring" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Monitoring</a>{% endif %}
+  </div>
+</nav>
+
+<!-- Getting started -->
+<section id="getting-started"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-gauge-high"></i>Getting started</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    After signing in you land on the <a href="{% url 'core:dashboard' %}" class="font-semibold underline hover:opacity-80">Dashboard</a> —
+    a grid of cards, one per module installed on this server. Click a card to open the module.
+    The header at the top of every page takes you back to the Dashboard and to your profile.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Modules are grouped into categories; you can collapse or expand the groups.</li>
+    <li>Only modules installed on this server appear — the same rule applies to this manual.</li>
+    <li>Use the theme switch in the header to toggle between light and dark mode.</li>
+  </ul>
+</section>
+
+{% if features.socialhub %}
+<!-- Profile & communities -->
+<section id="profile"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-users"></i>Profile &amp; communities (SocialHub)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Open <span class="font-semibold">My Profile</span> from the header to see your member page:
+    your details, the communities you belong to, and your reference activity.
+    The <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline hover:opacity-80">SocialHub</a>
+    lists all member profiles and communities.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Language</span> — on your own profile, pick your preferred language (Polish or English). The whole interface switches immediately and the choice is remembered.</li>
+    <li><span class="font-semibold">Communities</span> — browse communities and apply for membership. An application may require a verification code and references from existing members.</li>
+    <li><span class="font-semibold">References</span> — when someone names you as a reference, the request appears on your profile; accept or reject it there.</li>
+  </ul>
+</section>
+{% endif %}
+
+{% if features.gervazy %}
+<!-- My Keys -->
+<section id="keys"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-key"></i>My Keys (encryption)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The <a href="{% url 'gervazy:my_keys' %}" class="font-semibold underline hover:opacity-80">My Keys</a> page
+    (linked from your profile) manages the encryption keys that protect your data at rest.
+    Files in the storage can be encrypted and decrypted with these keys — without them the
+    server stores only unreadable ciphertext.
+  </p>
+</section>
+{% endif %}
+
+{% if features.vault %}
+<!-- Storage -->
+<section id="storage"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-vault"></i>Storage (Vault)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The <a href="/vault/" class="font-semibold underline hover:opacity-80">Storage</a> keeps your files
+    in a folder tree. Upload, download, move and delete files, and encrypt them with your keys.
+    Depending on the file type, extra <span class="font-semibold">Play</span> / <span class="font-semibold">Edit</span>
+    buttons appear next to a file:
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    {% if features.vod %}<li><span class="font-semibold">Video</span> — video files play directly in the browser.</li>{% endif %}
+    <li><span class="font-semibold">Images</span> — images open in a preview window.</li>
+    {% if features.memo %}<li><span class="font-semibold">Presentations</span> — <code>.pml</code> presentation files: <span class="font-semibold">Play</span> starts the slideshow, <span class="font-semibold">Edit</span> opens the slide editor.</li>{% endif %}
+    {% if features.notarius %}<li><span class="font-semibold">Contracts</span> — <code>.contract</code> documents can be viewed, edited and signed.</li>{% endif %}
+    {% if features.editor %}<li><span class="font-semibold">Text files</span> — text, JSON, YAML, XML, CSV and HTML files open in the built-in editor.</li>{% endif %}
+    {% if features.sketch %}<li><span class="font-semibold">Sketches</span> — SVG drawings open on a collaborative whiteboard.</li>{% endif %}
+    {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}
+    {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — edit <code>.tex</code> files with a live preview and compile them to PDF.</li>{% endif %}
+    {% if features.pyeditor %}<li><span class="font-semibold">Python</span> — edit and run <code>.py</code> scripts straight from the storage.</li>{% endif %}
+    {% if features.fileservices %}<li><span class="font-semibold">File services</span> — the wand button runs a service over a file (e.g. media conversion or info, text recognition, transcription — depending on server configuration). Results are saved back as new files.</li>{% endif %}
+  </ul>
+</section>
+{% endif %}
+
+{% if features.events %}
+<!-- Events -->
+<section id="events"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-calendar-days"></i>Events</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'events:event_list' %}" class="font-semibold underline hover:opacity-80">Events</a>
+    lists upcoming and past events with their details. Open an event to see when and where it
+    takes place; upcoming events connected to you also show up on your profile.
+  </p>
+</section>
+{% endif %}
+
+{% if features.kanban %}
+<!-- Tasks -->
+<section id="tasks"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-tasks"></i>Tasks</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'kanban:project_list' %}" class="font-semibold underline hover:opacity-80">Tasks</a>
+    is a kanban board. Pick a project to open its board, then move task cards between columns
+    as work progresses.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Create tasks in a column and drag them across the board.</li>
+    <li>Organise longer efforts with campaigns, missions and sprints.</li>
+  </ul>
+</section>
+{% endif %}
+
+{% if features.locations %}
+<!-- Locations -->
+<section id="locations"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-map-location-dot"></i>Locations</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'locations:locations_all' %}" class="font-semibold underline hover:opacity-80">Locations</a>
+    is an interactive map of points, territories, routes and addresses. Browse the map,
+    inspect places, and search for routes between locations.
+  </p>
+</section>
+{% endif %}
+
+{% if features.polls %}
+<!-- Polls -->
+<section id="polls"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-square-poll-vertical"></i>Polls</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'polls:poll_list' %}" class="font-semibold underline hover:opacity-80">Polls</a>
+    hosts interactive polls: open a poll, cast your vote, and watch the results.
+  </p>
+</section>
+{% endif %}
+
+{% if features.chat %}
+<!-- Chat -->
+<section id="chat"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-comments"></i>Chat</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Chat</a>
+    is organised into channels. Join a channel to read and post messages — new messages
+    appear live, without reloading the page.
+  </p>
+</section>
+{% endif %}
+
+{% if features.workflows %}
+<!-- Workflows -->
+<section id="workflows"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-diagram-project"></i>Workflows</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'workflows:workflow_list' %}" class="font-semibold underline hover:opacity-80">Workflows</a>
+    let you build and run automated pipelines: connect processing steps into a graph,
+    run it, and follow each run's progress and results.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li>Every run is recorded — open it to inspect the status and output of each step.</li>
+    <li>Some modules (for example file services) run their jobs as workflows automatically, so you can track them here too.</li>
+  </ul>
+</section>
+{% endif %}
+
+{% if features.graph %}
+<!-- Knowledge Graph -->
+<section id="graph"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-database"></i>Knowledge Graph</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The <a href="{% url 'ravioli:query_unified' %}" class="font-semibold underline hover:opacity-80">Knowledge Graph</a>
+    stores objects and their relationships as a graph you can search, edit and analyse.
+    The page is organised into tabs:
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Query</span> — search the graph or run Cypher queries and explore the results visually.</li>
+    <li><span class="font-semibold">Data</span> — browse and edit the graph: define node categories and edge types, then add and modify nodes and edges.</li>
+    {% if features.workflows %}<li><span class="font-semibold">Analysis</span> — run predefined graph analyses; results are saved to the storage.</li>{% endif %}
+    <li><span class="font-semibold">Knowledge</span> — paste text and let the platform suggest entities and relations; review the proposal on a canvas and apply it to the graph.</li>
+    {% if features.ocr %}<li><span class="font-semibold">OCR</span> — upload a screenshot or photo, extract its text, and feed it into the knowledge pipeline above.</li>{% endif %}
+    <li>Objects elsewhere in the platform (for example events or locations) offer an <span class="font-semibold">Export to graph</span> button that adds them, with their direct connections, to the graph.</li>
+  </ul>
+</section>
+{% endif %}
+
+{% if features.manta %}
+<!-- Media toolbox -->
+<section id="manta"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-clapperboard"></i>Media toolbox (Manta)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Manta is a command builder for media work: compose conversion, inspection, transcription
+    or text-recognition jobs over files from the storage, preview the exact command live,
+    and run it. Outputs are saved back to the storage.
+  </p>
+</section>
+{% endif %}
+
+{% if features.steven %}
+<!-- Assistant -->
+<section id="steven"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-robot"></i>Assistant (Steven)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Steven is the platform's chat assistant. Open it with the floating button in the corner
+    of any page and ask questions in plain language — it answers using the AI backend
+    configured on this server.
+  </p>
+</section>
+{% endif %}
+
+{% if features.grafana %}
+<!-- Monitoring -->
+<section id="monitoring"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-chart-line"></i>Monitoring (administrators)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The <span class="font-semibold">Monitoring</span> card on the Dashboard opens Grafana with
+    the server's metrics and logs. It is available to superusers only and signs you in with
+    your platform account.
+  </p>
+</section>
+{% endif %}

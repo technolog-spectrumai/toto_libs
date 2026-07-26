@@ -1,0 +1,88 @@
+{% extends "events/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block events_title %}{% trans "Event Calendar" %}{% endblock %}
+
+{% block events_head %}
+{# FullCalendar v6 injects its own CSS via the JS bundle — no separate stylesheet. #}
+<script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('eventCalendar');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+      initialView: 'dayGridMonth',
+      themeSystem: 'standard',
+      headerToolbar: {
+        left: 'prev,next today',
+        center: 'title',
+        right: 'dayGridMonth,timeGridWeek,listWeek'
+      },
+      events: {{ calendar_events|safe }},
+      eventColor: '{{ chart_colors.background_light }}',
+      eventTextColor: '{{ chart_colors.text_light }}',
+      height: 'auto',
+      handleWindowResize: true,
+      expandRows: true
+    });
+    calendar.render();
+  });
+</script>
+{% endblock %}
+
+{% block events_content %}
+<div class="grid gap-5 lg:grid-cols-[300px_minmax(0,1fr)]">
+
+  <!-- Sidebar -->
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm space-y-5">
+
+    <!-- Stats -->
+    <div class="grid grid-cols-2 gap-3 text-sm">
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+        <div class="text-xl font-bold">{{ total_events }}</div>
+        <div class="text-xs opacity-65">{% trans "Total" %}</div>
+      </div>
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+        <div class="text-xl font-bold">{{ upcoming_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Upcoming" %}</div>
+      </div>
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3 col-span-2">
+        <div class="text-xl font-bold">{{ past_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Past" %}</div>
+      </div>
+    </div>
+
+    <!-- Upcoming events list -->
+    <div>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Upcoming" %}</p>
+      <div class="space-y-2">
+        {% for event in upcoming_events %}
+          <a
+            href="{% url 'events:event_detail' event.pk %}"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark' : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+            class="block rounded-lg border p-3 text-sm transition">
+            <div class="font-semibold truncate">{{ event.title }}</div>
+            <div class="mt-1 text-xs opacity-60">{{ event.start_time|date:"M j, Y · g:i A" }}</div>
+          </a>
+        {% empty %}
+          <p class="text-sm opacity-50">{% trans "No upcoming events." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+
+  </aside>
+
+  <!-- Calendar main -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm w-full overflow-hidden">
+    <div class="w-full overflow-x-auto">
+      <div id="eventCalendar" class="min-w-[320px]"></div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

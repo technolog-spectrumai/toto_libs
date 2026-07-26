@@ -1,0 +1,211 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}My Keys — Gervazy{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-4xl space-y-8">
+
+  <!-- Header -->
+  <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+    <div class="space-y-1">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Gervazy" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-key"></i>{% trans "My Keys" %}</h1>
+      <p class="text-sm opacity-60">{% trans "Signing keys and strongboxes associated with your account." %}</p>
+    </div>
+    {% if person %}
+    <a href="{% url 'socialhub:profile_details' person.slug %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
+      <i class="fa-solid fa-user-astronaut"></i>{% trans "My Profile" %}</a>
+    {% endif %}
+  </header>
+
+  <!-- Django messages -->
+  {% for message in messages %}
+    <div class="rounded-xl px-4 py-3 text-sm font-semibold
+      {% if message.tags == 'error' %}
+        bg-warn-light/20 text-warn-light border border-warn-light/30
+      {% else %}
+        bg-success-light/20 text-success-light border border-success-light/30
+      {% endif %}">
+      <i class="fa-solid {% if message.tags == 'error' %}fa-circle-exclamation{% else %}fa-circle-check{% endif %} mr-2"></i>
+      {{ message }}
+    </div>
+  {% endfor %}
+
+  <!-- Signing Keys -->
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-signature"></i>{% trans "Signing Keys" %}</h2>
+        <p class="mt-1 text-sm opacity-60">{% trans "Ed25519 keys used to cryptographically sign documents." %}</p>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+        <i class="fa-solid fa-key"></i>
+        {{ signing_keys|length }} key{% if signing_keys|length != 1 %}s{% endif %}
+      </div>
+    </div>
+
+    {% if not person %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% trans "No Person profile linked to your account." %}</div>
+    {% elif signing_keys %}
+      <div class="space-y-3">
+        {% for sk in signing_keys %}
+          <article :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="rounded-xl border p-4 shadow-sm">
+            <div class="flex flex-wrap items-center gap-3">
+              <code class="break-all font-mono text-xs opacity-75">{{ sk.encrypted_private_key.key_id }}</code>
+              {% if sk.is_active %}
+                <span :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
+                      class="rounded-full px-2 py-0.5 text-xs font-semibold">
+                  <i class="fa-solid fa-circle-check mr-1"></i>{% trans "Active" %}</span>
+              {% else %}
+                <span class="rounded-full px-2 py-0.5 text-xs font-semibold opacity-50 border"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'">{% trans "Retired" %}</span>
+              {% endif %}
+              <span class="text-xs opacity-50">{{ sk.encrypted_private_key.key_type }}</span>
+            </div>
+            <div class="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-60">
+              <span>
+                <i class="fa-solid fa-vault mr-1"></i>
+                {{ sk.encrypted_private_key.wrapped_key.strongbox.name }}
+              </span>
+              <span>
+                <i class="fa-regular fa-calendar mr-1"></i>
+                Created {{ sk.created_at|date:"Y-m-d H:i" }}
+              </span>
+              {% if sk.retired_at %}
+                <span>
+                  <i class="fa-regular fa-calendar-xmark mr-1"></i>
+                  Retired {{ sk.retired_at|date:"Y-m-d H:i" }}
+                </span>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+
+      <!-- Provision new / rotate key -->
+      {% if strongboxes %}
+      <div x-data="{ open: false }" class="mt-4">
+        <button @click="open = !open" type="button"
+                :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-sunken-dark' : 'border-accent-2 text-text-main-light hover:bg-sunken-light'"
+                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+          <i class="fa-solid fa-rotate-right"></i>{% trans "Rotate signing key" %}</button>
+        <div x-show="open" x-cloak class="mt-3">
+          {% include "gervazy/_provision_signing_key_form.html" with label="Rotate" %}
+        </div>
+      </div>
+      {% endif %}
+
+    {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60 mb-4">{% trans "No signing keys yet. Provision one below." %}</div>
+      {% if strongboxes %}
+        {% include "gervazy/_provision_signing_key_form.html" with label="Provision signing key" %}
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "Set up a strongbox first." %}</p>
+      {% endif %}
+    {% endif %}
+  </section>
+
+  <!-- Strongboxes -->
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+    <div class="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-vault"></i>{% trans "Strongboxes" %}</h2>
+        <p class="mt-1 text-sm opacity-60">{% trans "Encrypted key stores belonging to your account." %}</p>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+        <i class="fa-solid fa-vault"></i>
+        {{ strongboxes|length }} strongbox{% if strongboxes|length != 1 %}es{% endif %}
+      </div>
+    </div>
+
+    {% if strongboxes %}
+      <div class="space-y-3">
+        {% for sb in strongboxes %}
+          <article x-data="{ initOpen: false }"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="rounded-xl border p-4 shadow-sm">
+
+            <div class="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div class="space-y-1 min-w-0">
+                <p class="font-semibold text-sm">{{ sb.name }}</p>
+                <div class="flex flex-wrap gap-x-4 gap-y-1 text-xs opacity-60">
+                  <span>
+                    <i class="fa-solid fa-database mr-1"></i>
+                    {{ sb.data_keys.count }} data key{% if sb.data_keys.count != 1 %}s{% endif %}
+                  </span>
+                  <span>
+                    <i class="fa-solid fa-shield mr-1"></i>
+                    {{ sb.master_keys.count }} master key{% if sb.master_keys.count != 1 %}s{% endif %}
+                  </span>
+                  <span>
+                    <i class="fa-regular fa-calendar mr-1"></i>
+                    Created {{ sb.created_at|date:"Y-m-d" }}
+                  </span>
+                </div>
+              </div>
+
+              {% if sb.data_keys.count == 0 %}
+                <button @click="initOpen = !initOpen" type="button"
+                        :class="darkMode ? 'bg-warn-dark/20 text-warn-dark border-warn-dark/40' : 'bg-warn-light/20 text-warn-light border-warn-light/40'"
+                        class="shrink-0 inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+                  <i class="fa-solid fa-bolt"></i>{% trans "Initialize" %}</button>
+              {% endif %}
+            </div>
+
+            {% if sb.data_keys.count == 0 %}
+              <div x-show="initOpen" x-cloak class="mt-4 border-t pt-4"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <p class="text-xs opacity-60 mb-3">{% trans "Enter your strongbox password to generate a master key and data key." %}</p>
+                <form method="post" action="{% url 'gervazy:initialize_strongbox' sb.pk %}"
+                      class="flex flex-col gap-3 sm:flex-row sm:items-end">
+                  {% csrf_token %}
+                  <div class="flex-1">
+                    <label class="mb-1 block text-xs font-semibold opacity-70">{% trans "Strongbox password" %}</label>
+                    <input type="password" name="password" required autocomplete="current-password"
+                           :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                           class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2"
+                           placeholder="••••••••">
+                  </div>
+                  <button type="submit"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
+                    <i class="fa-solid fa-bolt"></i>{% trans "Initialize" %}</button>
+                </form>
+              </div>
+            {% endif %}
+
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border border-dashed p-6 text-center text-sm italic opacity-60">{% trans "No strongboxes found. Ask an administrator to set one up for you." %}</div>
+    {% endif %}
+  </section>
+
+</div>
+</section>
+{% endblock %}

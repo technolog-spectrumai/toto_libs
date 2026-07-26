@@ -1,0 +1,161 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Welcome | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  x-data="{ showDetails: false }"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-16 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-lg space-y-6">
+
+    <!-- Header -->
+    <div class="text-center space-y-2">
+      <p
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-xs font-semibold uppercase tracking-widest">
+        {{ platform.site_name }}
+      </p>
+      <h1 class="text-4xl font-extrabold tracking-tight">{% trans "Welcome" %}</h1>
+      <p class="text-sm opacity-60 max-w-sm mx-auto">
+        {% trans "Streamlined, ready, and built to explore." %}
+      </p>
+    </div>
+
+    <!-- Platform branding — its own card, logo + name alongside -->
+    {% if platform.logo %}
+    <div
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
+      <img src="{{ platform.logo.url }}"
+           alt="{{ platform.site_name }} logo"
+           class="h-12 w-12 shrink-0 rounded-lg object-contain" />
+      <div class="min-w-0 text-left">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-[10px] font-semibold uppercase tracking-widest">{% trans "Platform" %}</p>
+        <p class="text-sm font-semibold truncate">{{ platform.site_name }}</p>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Main card -->
+    <div
+      :class="darkMode
+        ? 'bg-bubble-bg-dark border-accent-1'
+        : 'bg-bubble-bg-light border-accent-2'"
+      class="rounded-2xl border shadow-md overflow-hidden">
+
+      <!-- Card body -->
+      <div class="p-6 space-y-5">
+
+        <!-- Enter Dashboard -->
+        <a href="{% url 'core:dashboard' %}"
+           :class="darkMode
+             ? 'bg-accent-dark text-primary-bg-dark'
+             : 'bg-accent-light text-primary-bg-light'"
+           class="flex w-full items-center justify-center gap-2 rounded-xl px-4 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-gauge-high"></i>
+          {% trans "Enter Dashboard" %}
+        </a>
+
+        <!-- Show Details toggle -->
+        <button
+          @click="showDetails = !showDetails"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark hover:bg-bubble-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light hover:bg-bubble-bg-light'"
+          class="flex w-full items-center justify-between rounded-xl border px-4 py-3 text-sm font-semibold transition">
+          <span class="flex items-center gap-2">
+            <i class="fa-solid fa-circle-info"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Server Details" %}
+          </span>
+          <i class="fa-solid fa-chevron-down text-xs transition-transform duration-200"
+             :class="showDetails ? 'rotate-180' : ''"></i>
+        </button>
+
+        <!-- Details panel -->
+        <div x-show="showDetails" x-transition class="space-y-5">
+
+          <!-- Platform info -->
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-xl border divide-y divide-opacity-20"
+            :style="darkMode ? 'border-color: var(--accent-1)' : ''">
+
+            <div class="flex items-center justify-between px-4 py-3 text-sm">
+              <span class="opacity-60 font-medium">{% trans "Platform" %}</span>
+              <span class="font-semibold">{{ platform.site_name }}</span>
+            </div>
+            <div class="flex items-center justify-between px-4 py-3 text-sm">
+              <span class="opacity-60 font-medium">{% trans "Domain" %}</span>
+              <span class="font-semibold">{{ platform.domain }}</span>
+            </div>
+            {% if federation %}
+            <div class="flex items-center justify-between px-4 py-3 text-sm">
+              <span class="opacity-60 font-medium">{% trans "Owner" %}</span>
+              <span class="font-semibold">{{ federation.name }}</span>
+            </div>
+            {% endif %}
+          </div>
+
+          <!-- QR code — rendered server-side so it works in Tor Browser (which
+               blocks JS). Superuser-only: it encodes the hidden .onion address. -->
+          {% if user.is_superuser and connect_qr_url %}
+          <div class="flex flex-col items-center gap-3 pt-1">
+            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="text-xs font-semibold uppercase tracking-widest">{% trans "Scan to connect" %}</p>
+            <div
+              :class="darkMode ? 'border-accent-1 bg-white' : 'border-accent-2 bg-white'"
+              class="rounded-xl border p-3 shadow-sm inline-block">
+              <img src="{{ connect_qr_url }}" alt="{% trans 'Connect QR code' %}" class="block h-40 w-40" />
+            </div>
+            {% if connect_url %}
+            <p class="text-xs opacity-50 break-all text-center">{{ connect_url }}</p>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- Tailscale QR — only when faros publishes its clearnet listener over the
+               tailnet (deploy.py nginx.bind: tailscale). Superuser-only, like the onion QR. -->
+          {% if user.is_superuser and tailscale_qr_url %}
+          <div class="flex flex-col items-center gap-3 pt-1">
+            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="text-xs font-semibold uppercase tracking-widest">{% trans "Scan to connect (Tailscale)" %}</p>
+            <div
+              :class="darkMode ? 'border-accent-1 bg-white' : 'border-accent-2 bg-white'"
+              class="rounded-xl border p-3 shadow-sm inline-block">
+              <img src="{{ tailscale_qr_url }}" alt="{% trans 'Tailscale connect QR code' %}" class="block h-40 w-40" />
+            </div>
+            {% if tailscale_url %}
+            <p class="text-xs opacity-50 break-all text-center">{{ tailscale_url }}</p>
+            {% endif %}
+          </div>
+          {% endif %}
+
+          <!-- Federation branding — its own card, logo + name alongside (below the QR) -->
+          {% if federation and federation.logo %}
+          <div
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
+            <img src="{{ federation.logo.url }}"
+                 alt="{{ federation.name }} logo"
+                 class="h-12 w-12 shrink-0 rounded-lg object-contain" />
+            <div class="min-w-0 text-left">
+              <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="text-[10px] font-semibold uppercase tracking-widest">{% trans "Federation" %}</p>
+              <p class="text-sm font-semibold truncate">{{ federation.name }}</p>
+            </div>
+          </div>
+          {% endif %}
+
+        </div>
+      </div>
+    </div>
+
+  </div>
+</section>
+{% endblock %}

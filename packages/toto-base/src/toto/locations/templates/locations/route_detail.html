@@ -1,0 +1,592 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Route Review" %} - {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block locations_content %}
+<script>
+  window.routePayload = JSON.parse(`{{ route_payload_json|escapejs }}`);
+</script>
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl">
+    <a
+      href="{% url 'locations:locations_all' %}"
+      class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% trans "Locations" %}
+    </a>
+
+    <header class="mt-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div>
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          {% trans "Route review" %}
+        </p>
+
+        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">
+          {{ route.name|default:"Route" }}
+        </h1>
+
+        <p class="mt-2 text-sm opacity-70">
+          {% if route.route_chain %}
+            {% blocktrans with name=route.route_chain.name %}Part of {{ name }}{% endblocktrans %}
+          {% else %}
+            {% trans "Standalone route" %}
+          {% endif %}
+        </p>
+
+        <p class="mt-2 max-w-2xl text-sm opacity-70">
+          {% trans "Route map, travel scores, participant notes, endpoint reviews, and linked events." %}
+        </p>
+      </div>
+
+      {% if travel_create_url %}
+      <a
+        href="{{ travel_create_url }}?route={{ route.pk }}"
+        :class="darkMode
+          ? 'bg-accent-dark text-primary-bg-dark'
+          : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i>
+        {% trans "Add travel" %}
+      </a>
+      {% endif %}
+    </header>
+
+    <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_400px]">
+      <div class="space-y-5">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="overflow-hidden rounded-lg border shadow-sm">
+          <div id="route-review-map" class="h-[560px] w-full"></div>
+        </div>
+
+        <section
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-lg font-bold">{% trans "Travel reviews" %}</h2>
+              <p class="mt-1 text-sm opacity-70">
+                {% trans "Scores, timing, participants, and notes from travels on this route." %}
+              </p>
+            </div>
+
+            <span
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-full border border-current/10 px-3 py-1 text-xs font-semibold">
+              <i class="fa-solid fa-route"></i>
+              {{ review_count }} travels
+            </span>
+          </div>
+
+          <div class="space-y-3">
+            {% for travel in travels %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-4">
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p class="font-bold">
+                      {% if travel.score %}
+                        {% trans "Travel score" %}
+                      {% else %}
+                        {% trans "Unscored travel" %}
+                      {% endif %}
+                    </p>
+
+                    <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-70">
+                      <span class="inline-flex items-center gap-1">
+                        <i class="fa-solid fa-calendar-day"></i>
+                        {{ travel.starts_at|date:"M j, Y H:i" }} – {{ travel.ends_at|date:"M j, Y H:i" }}
+                      </span>
+
+                      {% if travel.reviewed_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-pen"></i>
+                          {% blocktrans with date=travel.reviewed_at|date:"M j, Y H:i" %}Reviewed {{ date }}{% endblocktrans %}
+                        </span>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  {% if travel.score %}
+                    <div
+                      :class="darkMode
+                        ? 'border-accent-1 bg-sunken-dark'
+                        : 'border-accent-2 bg-sunken-light'"
+                      class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-bold">
+                      <i
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="fa-solid fa-star text-xs"></i>
+                      {{ travel.score }}/5
+                    </div>
+                  {% else %}
+                    <span class="rounded-full border border-dashed border-current/15 px-3 py-1 text-xs opacity-60">
+                      {% trans "No score" %}
+                    </span>
+                  {% endif %}
+                </div>
+
+                {% if travel.participants.all %}
+                  <div class="mt-3 flex flex-wrap gap-2 text-xs">
+                    {% for participant in travel.participants.all %}
+                      <a
+                        href="{% url 'socialhub:profile_details' participant.slug %}"
+                        :class="darkMode
+                          ? 'border-accent-1 bg-sunken-dark text-accent-dark'
+                          : 'border-accent-2 bg-sunken-light text-accent-light'"
+                        class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 font-semibold underline-offset-4 hover:underline hover:opacity-80">
+                        <i class="fa-solid fa-user text-[10px]"></i>
+                        {{ participant.display_name }}
+                      </a>
+                    {% endfor %}
+                  </div>
+                {% endif %}
+
+                {% if travel.info %}
+                  <p class="mt-3 text-sm leading-6 opacity-85">
+                    {{ travel.info }}
+                  </p>
+                {% else %}
+                  <p class="mt-3 text-sm italic opacity-60">
+                    {% trans "No travel notes." %}
+                  </p>
+                {% endif %}
+              </article>
+            {% empty %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+                {% trans "No travels recorded for this route yet." %}
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+
+        <section
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <div class="mb-4 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 class="text-lg font-bold">{% trans "Endpoint reviews" %}</h2>
+              <p class="mt-1 text-sm opacity-70">
+                {% trans "Address reviews from the route start and end points." %}
+              </p>
+            </div>
+
+            <span
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-full border border-current/10 px-3 py-1 text-xs font-semibold">
+              <i class="fa-solid fa-comment"></i>
+              {{ reviews|length }} reviews
+            </span>
+          </div>
+
+          <div class="mb-5 flex flex-wrap gap-2">
+            {% for location in review_locations %}
+              <a
+                href="{% url 'locations:address_detail' location.pk %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                  : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+                <i class="fa-solid fa-location-dot"></i>
+                {{ location.locality_name }}
+              </a>
+            {% endfor %}
+          </div>
+
+          <div class="space-y-3">
+            {% for review in reviews %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-4">
+
+                <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p class="font-bold">
+                      {% if review.participant %}
+                        <a
+                          href="{% url 'socialhub:profile_details' review.participant.slug %}"
+                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                          class="underline-offset-4 hover:underline hover:opacity-80">
+                          {{ review.participant.display_name }}
+                        </a>
+                      {% else %}
+                        {% trans "Unknown visitor" %}
+                      {% endif %}
+                    </p>
+
+                    <div class="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs opacity-70">
+                      {% if review.location %}
+                        <a
+                          href="{% url 'locations:address_detail' review.location.pk %}"
+                          class="inline-flex items-center gap-1 underline-offset-4 hover:underline">
+                          <i class="fa-solid fa-map-pin"></i>
+                          {{ review.location.locality_name }}
+                        </a>
+                      {% endif %}
+
+                      {% if review.visited_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-calendar-day"></i>
+                          {% blocktrans with date=review.visited_at|date:"M j, Y H:i" %}Visited {{ date }}{% endblocktrans %}
+                        </span>
+                      {% endif %}
+
+                      {% if review.reviewed_at %}
+                        <span class="inline-flex items-center gap-1">
+                          <i class="fa-solid fa-pen"></i>
+                          {% blocktrans with date=review.reviewed_at|date:"M j, Y H:i" %}Reviewed {{ date }}{% endblocktrans %}
+                        </span>
+                      {% endif %}
+                    </div>
+                  </div>
+
+                  {% if review.score %}
+                    <div
+                      :class="darkMode
+                        ? 'border-accent-1 bg-sunken-dark'
+                        : 'border-accent-2 bg-sunken-light'"
+                      class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-sm font-bold">
+                      <i
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="fa-solid fa-star text-xs"></i>
+                      {{ review.score }}/5
+                    </div>
+                  {% else %}
+                    <span class="rounded-full border border-dashed border-current/15 px-3 py-1 text-xs opacity-60">
+                      {% trans "No score" %}
+                    </span>
+                  {% endif %}
+                </div>
+
+                {% if review.review %}
+                  <p class="mt-3 text-sm leading-6 opacity-85">
+                    {{ review.review }}
+                  </p>
+                {% else %}
+                  <p class="mt-3 text-sm italic opacity-60">
+                    {% trans "No written review." %}
+                  </p>
+                {% endif %}
+              </article>
+            {% empty %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border border-dashed p-6 text-center text-sm opacity-70">
+                {% trans "No endpoint reviews yet." %}
+              </div>
+            {% endfor %}
+          </div>
+        </section>
+      </div>
+
+      <aside class="space-y-5">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-bold">{% trans "Route summary" %}</h2>
+              <p class="mt-1 text-sm opacity-70">
+                {% trans "Endpoints, scores, and recorded activity." %}
+              </p>
+            </div>
+
+            <i
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="fa-solid fa-route mt-1"></i>
+          </div>
+
+          <div class="mt-4 grid grid-cols-2 gap-3">
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "Travels" %}
+              </p>
+              <p class="mt-2 text-2xl font-bold">
+                {{ review_count }}
+              </p>
+            </div>
+
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "Average" %}
+              </p>
+              <p class="mt-2 text-2xl font-bold">
+                {% if average_score %}
+                  {{ average_score }}/5
+                {% else %}
+                  —
+                {% endif %}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-5 space-y-3">
+            {% for item in score_distribution %}
+              <div>
+                <div class="mb-1 flex items-center justify-between text-xs">
+                  <span class="font-semibold">{% blocktrans with score=item.score %}{{ score }} stars{% endblocktrans %}</span>
+                  <span class="opacity-70">{{ item.count }}</span>
+                </div>
+
+                <div
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="h-2 overflow-hidden rounded-full">
+                  <div
+                    :style="'width: {{ item.pct }}%'"
+                    :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                    class="h-full rounded-full">
+                  </div>
+                </div>
+              </div>
+            {% empty %}
+              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">
+                {% trans "No route scores yet." %}
+              </p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <h2 class="text-lg font-bold">{% trans "Route notes" %}</h2>
+          <p class="mt-1 text-sm opacity-70">
+            {% trans "Free-text notes about this route." %}
+          </p>
+
+          <form method="post" action="{% url 'locations:note_save' 'route' route.pk %}"
+                class="mt-4 flex flex-col gap-3">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.path }}">
+            <textarea name="note" rows="4"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-light/40"
+              placeholder="{% trans 'Free-text note…' %}">{{ route.notes }}</textarea>
+            <div class="flex justify-end">
+              <button type="submit"
+                :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+                <i class="fa-solid fa-floppy-disk"></i>{% trans "Save note" %}
+              </button>
+            </div>
+          </form>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <h2 class="text-lg font-bold">{% trans "Endpoints" %}</h2>
+          <p class="mt-1 text-sm opacity-70">
+            {% trans "Start and end addresses connected to this route." %}
+          </p>
+
+          <div class="mt-4 space-y-3 text-sm">
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <span class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "Start" %}
+              </span>
+
+              {% if route.start_address %}
+                <a
+                  href="{% url 'locations:address_detail' route.start_address.pk %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="mt-1 inline-block font-semibold underline-offset-4 hover:underline hover:opacity-80">
+                  {{ route.start_address }}
+                </a>
+              {% else %}
+                <span class="mt-1 block opacity-60">{% trans "Not set" %}</span>
+              {% endif %}
+            </div>
+
+            <div
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-xl border border-current/10 p-4">
+              <span class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "End" %}
+              </span>
+
+              {% if route.end_address %}
+                <a
+                  href="{% url 'locations:address_detail' route.end_address.pk %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="mt-1 inline-block font-semibold underline-offset-4 hover:underline hover:opacity-80">
+                  {{ route.end_address }}
+                </a>
+              {% else %}
+                <span class="mt-1 block opacity-60">{% trans "Not set" %}</span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+
+          <div class="flex items-start justify-between gap-3">
+            <div>
+              <h2 class="text-lg font-bold">{% trans "Events on this route" %}</h2>
+              <p class="mt-1 text-sm opacity-70">
+                {% trans "Sessions, walks, briefings, or programs connected to this route." %}
+              </p>
+            </div>
+
+            <span
+              :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+              class="rounded-full border border-current/10 px-3 py-1 text-xs font-semibold">
+              {{ events|length }}
+            </span>
+          </div>
+
+          <div class="mt-4 space-y-3">
+            {% for event in events %}
+              <article
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-xl border p-3">
+
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <p class="text-sm font-bold">
+                      {{ event.title }}
+                    </p>
+
+                    <p class="mt-1 text-xs opacity-60">
+                      {{ event.start_time|date:"M j, Y H:i" }} – {{ event.end_time|date:"M j, Y H:i" }}
+                    </p>
+                  </div>
+
+                  {% if event.category %}
+                    <span class="rounded-full border border-current/10 px-2 py-1 text-[11px] font-semibold">
+                      {{ event.category.name }}
+                    </span>
+                  {% endif %}
+                </div>
+
+                {% if event.description %}
+                  <p class="mt-2 text-sm opacity-80">
+                    {{ event.description|truncatechars:140 }}
+                  </p>
+                {% endif %}
+
+                {% if event.organizer %}
+                  <p class="mt-2 text-xs opacity-70">
+                    {% trans "Organizer:" %}
+                    <a
+                      href="{% url 'socialhub:profile_details' event.organizer.slug %}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-semibold underline-offset-4 hover:underline">
+                      {{ event.organizer.display_name }}
+                    </a>
+                  </p>
+                {% endif %}
+              </article>
+            {% empty %}
+              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">
+                {% trans "No events linked to this route yet." %}
+              </p>
+            {% endfor %}
+          </div>
+        </div>
+      </aside>
+    </section>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const payload = window.routePayload;
+    const isDark = localStorage.getItem("darkMode") === "true";
+
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    });
+
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+    });
+
+    const map = L.map("route-review-map", { zoomControl: false }).setView([52.0, 19.0], 5);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    (isDark ? darkTiles : lightTiles).addTo(map);
+
+    const bounds = [];
+
+    if (payload?.geometry) {
+      const routeLayer = L.geoJSON(payload.geometry, {
+        style: {
+          weight: 6,
+          opacity: 0.9
+        }
+      }).addTo(map);
+
+      bounds.push(routeLayer.getBounds());
+    }
+
+    [payload?.start_address, payload?.end_address].forEach((address) => {
+      if (!address?.geometry) return;
+
+      const marker = L.geoJSON(address.geometry, {
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, {
+            radius: 8,
+            weight: 2,
+            fillOpacity: 0.85
+          });
+        }
+      }).bindPopup(address.label).addTo(map);
+
+      bounds.push(marker.getBounds());
+    });
+
+    if (bounds.length) {
+      const combined = bounds.reduce((acc, item) => {
+        if (!acc) return item;
+        acc.extend(item);
+        return acc;
+      }, null);
+
+      map.fitBounds(combined, { padding: [36, 36], maxZoom: 14 });
+    }
+  });
+</script>
+{% endblock %}

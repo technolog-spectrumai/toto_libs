@@ -1,0 +1,881 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ bucket.name }} {% trans "Metrics" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+[x-cloak] { display: none !important; }
+@keyframes vault-indeterminate {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+.vault-progress-bar {
+  animation: vault-indeterminate 1.2s ease-in-out infinite;
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: 9999px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{{ files_by_type|json_script:"files-by-type" }}
+{{ files_by_dir|json_script:"files-by-dir" }}
+{{ daily_series|json_script:"daily-series" }}
+{{ copy_files_data|json_script:"copy-files-data" }}
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-1">
+        <a href="{% url 'vault:metrics' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "All Buckets" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Bucket Metrics" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-layer-group"></i>
+            {{ bucket.name }}
+          </h1>
+          <p class="mt-1 text-sm opacity-55">
+            {% trans "Owner" %}: {{ bucket.owner.username }}
+              {% for gw in gateways %}
+              &middot; <i class="fa-solid fa-upload text-xs"></i>
+              <a href="{% url 'vault:gateway_page' gw.directory_id %}"
+                 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                 class="hover:underline">{{ gw.name }}</a>
+            {% endfor %}
+          </p>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-folder-open"></i>
+          {% trans "Browse" %}
+        </a>
+        <a href="{% url 'vault:copy_files' bucket.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-copy"></i>
+          {% trans "Copy files" %}
+        </a>
+        {% for gw in gateways %}
+          <a href="{% url 'vault:gateway_page' gw.directory_id %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+            <i class="fa-solid fa-upload"></i>
+            {{ gw.directory.name }}
+          </a>
+        {% endfor %}
+      </div>
+    </header>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-file" label="Total Files" value=total_files color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-folder-tree" label="Directories" value=total_dirs color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-globe" label="Public" value=public_files color="success" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-lock" label="Encrypted" value=encrypted_files color="warn" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-hard-drive" label="Storage (MB)" value=bucket_total_mb color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_count color="accent" %}
+    </div>
+
+    <!-- Bucket-level quota bar -->
+    {% if bucket_quota_mb %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border p-5 shadow-sm">
+      {% with used=bucket_total_mb quota=bucket_quota_mb pct=bucket_total_mb|floatformat:0 %}
+      <div class="flex items-center justify-between mb-2">
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-55">
+          <i class="fa-solid fa-hard-drive mr-1"></i>{% trans "Quota Usage" %}
+        </span>
+        <span class="font-mono text-sm font-semibold">
+          {% if bucket_total_mb > bucket_quota_mb %}
+            <span class="text-warn-light">{{ bucket_total_mb }} MB</span>
+          {% else %}
+            {{ bucket_total_mb }} MB
+          {% endif %}
+          <span class="opacity-40 font-normal text-xs"> / {{ bucket_quota_mb }} MB</span>
+        </span>
+      </div>
+      {% with raw_pct=bucket_total_mb %}
+      <div class="relative h-3 rounded-full overflow-hidden"
+           :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+        <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+             :class="{% if bucket_total_mb > bucket_quota_mb %}'bg-warn-light'{% else %}darkMode ? 'bg-accent-dark' : 'bg-accent-light'{% endif %}"
+             style="width: {% widthratio bucket_total_mb bucket_quota_mb 100 %}%">
+        </div>
+      </div>
+      <p class="mt-1.5 text-xs opacity-40 text-right">
+        {% widthratio bucket_total_mb bucket_quota_mb 100 %}% {% trans "of quota used" %}
+      </p>
+      {% endwith %}
+      {% endwith %}
+    </div>
+    {% endif %}
+
+    <!-- Charts row -->
+    <div class="grid gap-5 lg:grid-cols-3">
+
+      <!-- File types donut -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-shapes"></i> {% trans "Files by Type" %}
+        </h2>
+        <canvas id="typeChart" height="200"></canvas>
+      </div>
+
+      <!-- Files by directory bar -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-folder-tree"></i> {% trans "Files by Directory" %}
+        </h2>
+        <canvas id="dirChart" height="200"></canvas>
+      </div>
+
+      <!-- Upload activity line -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "Uploads (30 days)" %}
+        </h2>
+        <canvas id="activityChart" height="200"></canvas>
+      </div>
+
+    </div>
+
+    <!-- Directory breakdown -->
+    {% if dir_stats %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-folder-tree mr-1"></i>{% trans "Directory Breakdown" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr
+              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "Path" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Files" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Public" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Encrypted" %}</th>
+              <th class="px-4 py-3 text-center">{% trans "Access" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for d in dir_stats %}
+            <tr
+              :class="darkMode
+                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+              class="transition-colors duration-150">
+
+              <td class="px-4 py-3 font-mono text-sm font-semibold">
+                <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="mr-1">
+                  <i class="fa-solid fa-folder text-xs"></i>
+                </span>
+                {{ d.full_path }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">{{ d.file_count }}</td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  {{ d.public_count }}
+                </span>
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                {% if d.encrypted_count %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    {{ d.encrypted_count }}
+                  </span>
+                {% else %}
+                  <span class="opacity-30">—</span>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-3 text-center text-xs">
+                {% if d.locked %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    <i class="fa-solid fa-lock"></i> {% trans "Restricted" %}
+                  </span>
+                {% else %}
+                  <span class="opacity-40">
+                    <i class="fa-solid fa-lock-open"></i> {% trans "Open" %}
+                  </span>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-3 text-right">
+                <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}&dir={{ d.pk }}"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   class="text-xs hover:underline underline-offset-2 font-semibold">
+                  {% trans "Browse" %} <i class="fa-solid fa-arrow-right text-xs"></i>
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Storage billing per user -->
+    {% if user_quota_rows %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-hard-drive mr-1"></i>{% trans "Storage per User" %}
+        {% if bucket_quota_mb %}
+          <span class="ml-2 font-mono normal-case opacity-70">{% trans "quota" %}: {{ bucket_quota_mb }} MB</span>
+        {% else %}
+          <span class="ml-2 normal-case opacity-40">{% trans "(no quota set)" %}</span>
+        {% endif %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr
+              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "User" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Files" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Storage" %}</th>
+              {% if bucket_quota_mb %}<th class="px-4 py-3 min-w-[200px]">{% trans "Quota usage" %}</th>{% endif %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in user_quota_rows %}
+            <tr
+              :class="darkMode
+                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+              class="transition-colors duration-150">
+
+              <td class="px-4 py-3 font-semibold">
+                <i class="fa-solid fa-circle-user mr-1 opacity-40 text-xs"></i>
+                {{ row.username }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono text-xs opacity-70">
+                {{ row.file_count }}
+              </td>
+
+              <td class="px-4 py-3 text-right font-mono font-semibold">
+                {% if row.over %}
+                  <span :class="darkMode ? 'text-error-dark' : 'text-warn-light'">
+                    {{ row.used_mb }} MB
+                  </span>
+                {% else %}
+                  {{ row.used_mb }} MB
+                {% endif %}
+                {% if row.quota_mb %}
+                  <span class="opacity-40 font-normal text-xs"> / {{ row.quota_mb }} MB</span>
+                {% endif %}
+              </td>
+
+              {% if bucket_quota_mb %}
+              <td class="px-4 py-3">
+                <div class="flex items-center gap-2">
+                  <div class="relative flex-1 h-2.5 rounded-full overflow-hidden"
+                    :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+                    <div
+                      class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                      :class="{% if row.over %}'bg-warn-light'{% else %}darkMode ? 'bg-accent-dark' : 'bg-accent-light'{% endif %}"
+                      style="width: {{ row.pct }}%">
+                    </div>
+                  </div>
+                  <span class="text-xs font-mono opacity-60 shrink-0 w-10 text-right">
+                    {% if row.over %}<span class="text-warn-light">{{ row.pct }}%</span>{% else %}{{ row.pct }}%{% endif %}
+                  </span>
+                </div>
+              </td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Files: checkboxes + inline copy -->
+    <section x-data="bucketCopyMenu()" x-cloak>
+
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-55">
+          <i class="fa-solid fa-file mr-1"></i>{% trans "Files" %}
+        </p>
+        <button
+          @click="openModal()"
+          :disabled="selectedFiles.length === 0"
+          :class="selectedFiles.length > 0
+            ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+            : 'opacity-40 cursor-not-allowed bg-gray-400 text-white'"
+          class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-85">
+          <i class="fa-solid fa-copy"></i>
+          {% trans "Copy" %}
+          <span x-show="selectedFiles.length > 0" x-text="'(' + selectedFiles.length + ')'" class="opacity-80"></span>
+        </button>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+
+        <!-- Toolbar: select-all + search -->
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+             class="flex items-center gap-3 px-4 py-3">
+          <label class="flex items-center gap-2 cursor-pointer text-sm font-semibold select-none">
+            <input type="checkbox"
+                   :checked="allVisibleSelected"
+                   @change="toggleAll"
+                   x-effect="$el.indeterminate = someVisibleSelected && !allVisibleSelected"
+                   class="rounded">
+            {% trans "Select all" %}
+          </label>
+          <div class="flex-1"></div>
+          <span class="hidden sm:block text-xs opacity-50 shrink-0">
+            <span x-text="selectedFiles.length"></span>
+            {% trans "of" %}
+            <span x-text="allFiles.length"></span>
+            {% trans "selected" %}
+          </span>
+          <input type="text"
+                 x-model="search"
+                 placeholder="{% trans 'Filter files…' %}"
+                 :class="darkMode
+                   ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                   : 'bg-primary-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                 class="w-40 rounded-lg border px-3 py-1.5 text-sm focus:outline-none"
+                 autocomplete="off">
+        </div>
+
+        <!-- File rows -->
+        <div class="max-h-80 overflow-y-auto divide-y"
+             :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+          <template x-for="file in filtered" :key="file.id">
+            <label class="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors text-sm"
+                   :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'">
+              <input type="checkbox"
+                     :value="file.id"
+                     x-model="selectedFiles"
+                     class="rounded shrink-0">
+              <span :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                    class="shrink-0 rounded border px-1.5 py-0.5 text-xs font-semibold uppercase"
+                    x-text="file.file_type">
+              </span>
+              <span class="flex-1 min-w-0 font-medium truncate" x-text="file.title"></span>
+              <span class="hidden sm:block shrink-0 font-mono text-xs opacity-40" x-text="file.key"></span>
+            </label>
+          </template>
+
+          <div x-show="allFiles.length === 0"
+               class="px-4 py-8 text-center text-sm opacity-50">
+            <i class="fa-solid fa-folder-open mb-2 text-xl block"></i>
+            {% trans "No files owned by you in this bucket." %}
+          </div>
+          <div x-show="allFiles.length > 0 && filtered.length === 0"
+               class="px-4 py-8 text-center text-sm opacity-50">
+            {% trans "No files match your search." %}
+          </div>
+        </div>
+      </div>
+
+      <!-- Copy modal backdrop -->
+      <div x-show="modalOpen"
+           x-transition:enter="transition ease-out duration-200"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-150"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           class="fixed inset-0 z-40 flex items-center justify-center p-4"
+           :class="darkMode ? 'bg-black/70' : 'bg-black/40'"
+           @click.self="closeModal()"
+           style="display:none">
+
+        <div class="relative z-50 w-full max-w-md rounded-2xl shadow-2xl"
+             :class="darkMode ? 'bg-bubble-bg-dark border border-accent-1' : 'bg-white border border-accent-2'"
+             role="dialog"
+             aria-modal="true"
+             @click.stop>
+
+          <!-- Modal header -->
+          <div class="flex items-center justify-between px-6 pt-5 pb-3">
+            <h2 class="text-lg font-bold flex items-center gap-2">
+              <i class="fa-solid fa-copy opacity-60 text-base"></i>
+              {% trans "Copy selected files" %}
+            </h2>
+            <button @click="closeModal()"
+                    :disabled="isSubmitting"
+                    class="opacity-40 hover:opacity-100 disabled:cursor-not-allowed transition">
+              <i class="fa-solid fa-xmark text-lg"></i>
+            </button>
+          </div>
+
+          <!-- Modal body -->
+          <div class="px-6 pb-6 space-y-4">
+
+            <!-- Info -->
+            <div class="rounded-xl border p-4 text-sm space-y-1.5"
+                 :class="darkMode ? 'border-accent-1/50 bg-primary-bg-dark/50' : 'border-accent-2/50 bg-gray-50'">
+              <p>
+                <i class="fa-solid fa-circle-info mr-1.5 opacity-60"></i>
+                {% trans "Original files will remain unchanged." %}
+              </p>
+              <p class="opacity-60">
+                <i class="fa-solid fa-tag mr-1.5"></i>
+                {% trans "Files with existing keys in the destination bucket will be renamed automatically." %}
+              </p>
+            </div>
+
+            <!-- Selected count -->
+            <p class="text-sm opacity-60">
+              <span x-text="selectedFiles.length"></span>
+              {% trans "file(s) selected for copying." %}
+            </p>
+
+            <!-- Destination bucket -->
+            <div class="space-y-2">
+              <label class="text-sm font-semibold" for="modal-dest-bucket">
+                {% trans "Destination bucket" %}
+              </label>
+              {% if dest_buckets %}
+              <select id="modal-dest-bucket"
+                      x-model="destBucket"
+                      :class="darkMode
+                        ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                        : 'bg-white border-accent-2 text-text-main-light'"
+                      class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none">
+                <option value="">— {% trans "select destination" %} —</option>
+                {% for b in dest_buckets %}
+                <option value="{{ b.pk }}">{{ b.name }}</option>
+                {% endfor %}
+              </select>
+              {% else %}
+              <p class="rounded-xl border border-dashed px-4 py-3 text-sm opacity-50"
+                 :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+                {% trans "No other buckets available. Create another bucket first." %}
+              </p>
+              {% endif %}
+            </div>
+
+            <!-- Progress bar -->
+            <div x-show="isSubmitting" class="space-y-1.5">
+              <p class="text-xs opacity-50">{% trans "Copying files…" %}</p>
+              <div class="relative h-2 rounded-full overflow-hidden"
+                   :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+                <div class="vault-progress-bar"
+                     :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'">
+                </div>
+              </div>
+            </div>
+
+            <!-- Error -->
+            <div x-show="errorMsg"
+                 class="rounded-xl border border-warn-light/40 bg-warn-light/5 px-4 py-3 text-sm text-warn-light flex items-start gap-2">
+              <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+              <span x-text="errorMsg"></span>
+            </div>
+
+            <!-- Success -->
+            <div x-show="successMsg"
+                 class="rounded-xl border border-success-light/40 bg-success-light/5 px-4 py-3 text-sm text-success-light flex items-center gap-2">
+              <i class="fa-solid fa-check shrink-0"></i>
+              <span x-text="successMsg"></span>
+              <span class="opacity-60 ml-1 text-xs">{% trans "Redirecting…" %}</span>
+            </div>
+
+            <!-- Actions -->
+            <div class="flex items-center gap-3 pt-1">
+              <button @click="submitCopy()"
+                      :disabled="!canSubmit"
+                      :class="canSubmit
+                        ? (darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90')
+                        : 'cursor-not-allowed opacity-40 bg-gray-400 text-white'"
+                      class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition">
+                <i class="fa-solid fa-copy"></i>
+                {% trans "Copy selected files" %}
+                <span x-show="selectedFiles.length > 0"
+                      x-text="'(' + selectedFiles.length + ')'"
+                      class="opacity-70"></span>
+              </button>
+              <button @click="closeModal()"
+                      :disabled="isSubmitting"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                      class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:opacity-80 disabled:opacity-40 disabled:cursor-not-allowed">
+                {% trans "Cancel" %}
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- Service usage -->
+    {% if service_stats %}
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-wand-magic-sparkles mr-1"></i>{% trans "Service usage" %}
+      </p>
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+        {% for s in service_stats %}
+        <div :class="darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+             class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+          <i class="{{ s.icon }} opacity-60 w-5 text-center"></i>
+          <span class="font-semibold flex-1 min-w-0 truncate">{{ s.title }}</span>
+          <span class="shrink-0 text-xs opacity-60" title="{% trans 'Total runs' %}">
+            <i class="fa-solid fa-play mr-0.5"></i>{{ s.total }}
+          </span>
+          <span class="shrink-0 text-xs text-green-500" title="{% trans 'Succeeded' %}">
+            <i class="fa-solid fa-circle-check mr-0.5"></i>{{ s.success }}
+          </span>
+          {% if s.failed %}
+          <span class="shrink-0 text-xs text-warn-light" title="{% trans 'Failed' %}">
+            <i class="fa-solid fa-circle-xmark mr-0.5"></i>{{ s.failed }}
+          </span>
+          {% endif %}
+          <span class="shrink-0 text-xs opacity-60" title="{% trans 'Files created' %}">
+            <i class="fa-regular fa-file mr-0.5"></i>{{ s.outputs }}
+          </span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    <!-- Recent files -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock mr-1"></i>{% trans "Recent Uploads" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        {% for file in recent_files %}
+        <div
+          :class="darkMode
+            ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark'
+            : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+          class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+
+          <span
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+            class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase">
+            {{ file.file_type }}
+          </span>
+
+          <span class="font-medium truncate flex-1 min-w-0">{{ file.title }}</span>
+
+          {% if file.directory %}
+            <span class="hidden sm:flex items-center gap-1 text-xs opacity-50 shrink-0">
+              <i class="fa-solid fa-folder text-xs"></i>{{ file.directory.name }}
+            </span>
+          {% else %}
+            <span class="hidden sm:block text-xs opacity-30 shrink-0">{% trans "Root" %}</span>
+          {% endif %}
+
+          <span class="text-xs opacity-50 shrink-0">{{ file.uploaded_at|date:"Y-m-d" }}</span>
+          <span class="text-xs opacity-50 shrink-0">{{ file.owner.username }}</span>
+
+          {% if file.is_encrypted %}
+            <span class="text-success-light text-xs shrink-0"><i class="fa-solid fa-lock"></i></span>
+          {% endif %}
+          {% if file.is_public %}
+            <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-xs shrink-0"><i class="fa-solid fa-globe"></i></span>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="px-4 py-8 text-center text-sm opacity-50">{% trans "No files yet." %}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Bucket Invoices -->
+    <section>
+      <div class="mb-3 flex items-center justify-between gap-3">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-55">
+          <i class="fa-solid fa-file-invoice mr-1"></i>{% trans "Invoices" %}
+          {% if bucket_pending_count %}
+          <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
+                class="ml-1 rounded px-1.5 py-0.5 text-xs font-bold">{{ bucket_pending_count }} {% trans "pending" %}</span>
+          {% endif %}
+        </p>
+        <div class="flex items-center gap-2">
+          {% if bucket_tariff %}
+          <a href="{% url 'vault:generate_invoice' bucket.slug %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-85">
+            <i class="fa-solid fa-file-circle-plus"></i>
+            {% trans "Generate Invoice" %}
+          </a>
+          <a href="{% url 'invoice:invoice_list' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+            {% trans "All Invoices" %}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if bucket_invoices %}
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-xl border shadow-sm">
+        {% for invoice in bucket_invoices %}
+        <div class="flex items-center gap-4 px-4 py-3 {% if not forloop.last %}border-b{% endif %}"
+             :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
+
+          {% if invoice.status == "pending" %}
+          <span :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/10 text-warn-light'"
+                class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold">{% trans "Pending" %}</span>
+          {% elif invoice.status == "paid" %}
+          <span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold bg-success-light/10 text-success-light">{% trans "Paid" %}</span>
+          {% elif invoice.status == "overdue" %}
+          <span class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold bg-warn-light/10 text-warn-light">{% trans "Overdue" %}</span>
+          {% elif invoice.status == "cancelled" %}
+          <span :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
+                class="shrink-0 rounded px-1.5 py-0.5 text-xs font-semibold">{% trans "Cancelled" %}</span>
+          {% endif %}
+
+          <div class="min-w-0 flex-1">
+            <div class="text-sm font-semibold truncate">{{ invoice.title }}</div>
+            <div class="flex flex-wrap gap-x-3 text-xs opacity-50 mt-0.5">
+              <span>{{ invoice.created_at|date:"Y-m-d" }}</span>
+              {% if invoice.issued_to %}
+              <span><i class="fa-solid fa-user mr-0.5"></i>{{ invoice.issued_to.username }}</span>
+              {% endif %}
+              {% if invoice.due_date %}
+              <span>{% trans "Due" %}: {{ invoice.due_date }}</span>
+              {% endif %}
+            </div>
+          </div>
+
+          <div class="shrink-0 font-mono text-sm font-bold">
+            {{ invoice.amount }}
+            <span class="text-xs opacity-55">{{ invoice.currency_label }}</span>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div :class="darkMode ? 'border-accent-1/30 bg-bubble-bg-dark' : 'border-accent-2/30 bg-bubble-bg-light'"
+           class="rounded-xl border border-dashed px-5 py-8 text-center text-sm opacity-50">
+        {% trans "No invoices for this bucket yet." %}
+        {% if bucket_tariff %}
+        <a href="{% url 'vault:generate_invoice' bucket.slug %}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="ml-1 underline hover:opacity-70">{% trans "Generate one." %}</a>
+        {% endif %}
+      </div>
+      {% endif %}
+    </section>
+
+  </div>
+</div>
+
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script>
+(function () {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#e2e8f0' : '#374151';
+
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const byType   = JSON.parse(document.getElementById('files-by-type').textContent);
+  const byDir    = JSON.parse(document.getElementById('files-by-dir').textContent);
+  const daily    = JSON.parse(document.getElementById('daily-series').textContent);
+
+  const TYPE_COLORS = {
+    pdf:   '#ef4444',
+    image: '#3b82f6',
+    svg:   '#8b5cf6',
+    text:  '#6b7280',
+    json:  '#f59e0b',
+    html:  '#10b981',
+    audio: '#ec4899',
+    video: '#0ea5e9',
+  };
+
+  // Donut — file types
+  new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: byType.map(d => d.file_type.toUpperCase()),
+      datasets: [{
+        data: byType.map(d => d.count),
+        backgroundColor: byType.map(d => TYPE_COLORS[d.file_type] || '#94a3b8'),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+      cutout: '60%',
+    }
+  });
+
+  // Horizontal bar — files by directory
+  new Chart(document.getElementById('dirChart'), {
+    type: 'bar',
+    data: {
+      labels: byDir.map(d => d.name),
+      datasets: [{
+        data: byDir.map(d => d.count),
+        backgroundColor: isDark ? 'rgba(99,102,241,0.7)' : 'rgba(79,70,229,0.7)',
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { precision: 0 } },
+        y: { grid: { display: false } },
+      }
+    }
+  });
+
+  // Line — upload activity
+  new Chart(document.getElementById('activityChart'), {
+    type: 'line',
+    data: {
+      labels: daily.map(d => d.date),
+      datasets: [{
+        data: daily.map(d => d.count),
+        borderColor: isDark ? '#818cf8' : '#4f46e5',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.10)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 6, maxRotation: 0 } },
+        y: { grid: { color: gridColor }, ticks: { precision: 0 }, beginAtZero: true },
+      }
+    }
+  });
+})();
+</script>
+<script>
+function bucketCopyMenu() {
+  const el = document.getElementById('copy-files-data');
+  const allFiles = el ? JSON.parse(el.textContent) : [];
+  const copyUrl = "{% url 'vault:copy_files_ajax' bucket.slug %}";
+  return {
+    allFiles,
+    selectedFiles: [],
+    search: '',
+    modalOpen: false,
+    destBucket: '',
+    isSubmitting: false,
+    errorMsg: '',
+    successMsg: '',
+
+    get filtered() {
+      const s = this.search.toLowerCase().trim();
+      if (!s) return this.allFiles;
+      return this.allFiles.filter(f =>
+        f.title.toLowerCase().includes(s) || (f.key || '').toLowerCase().includes(s)
+      );
+    },
+    get allVisibleSelected() {
+      return this.filtered.length > 0 && this.filtered.every(f => this.selectedFiles.includes(f.id));
+    },
+    get someVisibleSelected() {
+      return this.filtered.some(f => this.selectedFiles.includes(f.id));
+    },
+    toggleAll() {
+      if (this.allVisibleSelected) {
+        const ids = new Set(this.filtered.map(f => f.id));
+        this.selectedFiles = this.selectedFiles.filter(id => !ids.has(id));
+      } else {
+        this.filtered.forEach(f => {
+          if (!this.selectedFiles.includes(f.id)) this.selectedFiles.push(f.id);
+        });
+      }
+    },
+    get canSubmit() {
+      return this.selectedFiles.length > 0 && this.destBucket !== '' && !this.isSubmitting;
+    },
+    openModal() {
+      this.errorMsg = '';
+      this.successMsg = '';
+      this.modalOpen = true;
+    },
+    closeModal() {
+      if (this.isSubmitting) return;
+      this.modalOpen = false;
+      this.destBucket = '';
+      this.errorMsg = '';
+    },
+    async submitCopy() {
+      if (!this.canSubmit) return;
+      this.isSubmitting = true;
+      this.errorMsg = '';
+      this.successMsg = '';
+
+      const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+      const body = new FormData();
+      this.selectedFiles.forEach(id => body.append('files', id));
+      body.append('destination_bucket', this.destBucket);
+      body.append('csrfmiddlewaretoken', csrf);
+
+      try {
+        const resp = await fetch(copyUrl, { method: 'POST', body });
+        const data = await resp.json();
+        if (data.ok) {
+          this.successMsg = `Copied ${data.count} file${data.count !== 1 ? 's' : ''} to "${data.dest_name}".`;
+          setTimeout(() => { window.location.href = data.dest_url; }, 1500);
+        } else {
+          this.errorMsg = data.error || 'Copy failed. Please try again.';
+          this.isSubmitting = false;
+        }
+      } catch (_) {
+        this.errorMsg = 'Network error. Please try again.';
+        this.isSubmitting = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

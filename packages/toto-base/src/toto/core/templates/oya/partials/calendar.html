@@ -1,0 +1,34 @@
+{% load static %}
+{% load i18n %}
+
+<!-- FullCalendar v6 injects its own CSS via the JS bundle — no separate stylesheet. -->
+
+<div class="p-4">
+
+  <h3 class="text-xl font-semibold mb-3">{{ title }}</h3>
+
+  <div id="{{ id }}_calendar"></div>
+</div>
+
+<!-- FullCalendar Script -->
+<script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
+
+<script>
+document.addEventListener('DOMContentLoaded', function () {
+    const calendarEl = document.getElementById('{{ id }}_calendar');
+    const data = JSON.parse('{{ data|escapejs }}');
+    const calendar = new FullCalendar.Calendar(calendarEl, {
+        initialView: 'dayGridMonth',
+        themeSystem: 'standard',
+        headerToolbar: {
+            left: 'prev,next today',
+            center: 'title',
+            right: 'dayGridMonth,timeGridWeek,listWeek'
+        },
+        events: data["events"],
+        height: 'auto'
+    });
+
+    calendar.render();
+});
+</script>

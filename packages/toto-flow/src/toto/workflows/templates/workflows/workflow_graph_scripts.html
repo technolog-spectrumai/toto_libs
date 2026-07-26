@@ -1,0 +1,217 @@
+{% load static %}
+{% load i18n %}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+
+<script>
+// Node type base colours — resolved from theme at render time.
+let WF_NODE_TYPE_COLORS = {};
+function _buildNodeTypeColors(colors, theme) {
+  const accent  = colors[`accent-${theme}`]  || '#03A9F4';
+  const success = colors[`success-${theme}`] || '#4CAF50';
+  WF_NODE_TYPE_COLORS = {
+    lambda: { bg: accent  + '22', border: accent  },
+    human:  { bg: '#d9770622',    border: '#d97706' },
+    split:  { bg: '#7c3aed22',    border: '#7c3aed' },
+    join:   { bg: success + '22', border: success  },
+    report: { bg: '#0891b222',    border: '#0891b2' },
+  };
+}
+
+// Run-state colours — resolved from theme tokens at render time.
+let WF_RUN_STATE_COLORS = {};
+function _buildRunStateColors(colors, theme) {
+  const s      = colors[`success-${theme}`] || '#4CAF50';
+  const w      = colors[`warn-${theme}`]    || '#FF5722';
+  const accent = colors[`accent-${theme}`]  || '#03A9F4';
+  const bubble = colors[`bubble-bg-${theme}`] || (theme === 'dark' ? '#1e1e1e' : '#f5f5f5');
+  WF_RUN_STATE_COLORS = {
+    completed:   { bg: s      + '33', border: s      },
+    failed:      { bg: w      + '33', border: w      },
+    waiting:     { bg: '#d9770633',   border: '#d97706' },
+    running:     { bg: accent + '33', border: accent },
+    pending:     { bg: bubble + '88', border: bubble },
+    skipped:     { bg: bubble + '44', border: bubble + '66' },
+    not_started: { bg: 'transparent', border: bubble },
+  };
+  WF_ACTIVATED_EDGE_COLOR = s;
+}
+let WF_ACTIVATED_EDGE_COLOR = '#4CAF50';
+
+function _nodeColors(ele) {
+  const status = ele.data('status');
+  if (status && WF_RUN_STATE_COLORS[status]) return WF_RUN_STATE_COLORS[status];
+  return WF_NODE_TYPE_COLORS[ele.data('node_type')] || { bg: '#6b728022', border: '#6b7280' };
+}
+
+function createWorkflowGraph(containerElement, nodes, edges, colors, darkMode) {
+  const theme = darkMode ? 'dark' : 'light';
+  _buildRunStateColors(colors, theme);
+  const bgColor     = colors[`primary-bg-${theme}`];
+  const textColor   = colors[`text-main-${theme}`];
+  const accentColor = colors[`accent-${theme}`];
+
+  const elements = [];
+
+  nodes.forEach(n => {
+    elements.push({
+      data: {
+        id: String(n.id),
+        label: n.label || `${n.node_type}:${n.id}`,
+        node_type: n.node_type,
+        status: n.status || '',
+      }
+    });
+  });
+
+  edges.forEach(e => {
+    // activated: true = active, false = skipped, null = no run info yet
+    elements.push({
+      data: {
+        id: `e-${e.source}-${e.target}`,
+        source: String(e.source),
+        target: String(e.target),
+        branch_key: e.branch_key || '',
+        is_default: e.is_default,
+        activated: e.activated,   // true | false | null
+      }
+    });
+  });
+
+  const cy = cytoscape({
+    container: containerElement,
+    elements,
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color': ele => _nodeColors(ele).bg,
+          'border-color':     ele => _nodeColors(ele).border,
+          'border-width': 2,
+          'label': 'data(label)',
+          'color': textColor,
+          'font-size': 12,
+          'font-weight': 600,
+          'text-wrap': 'wrap',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'width': 160,
+          'height': 48,
+          'shape': 'round-rectangle',
+          'padding': '10px',
+        }
+      },
+      {
+        selector: 'node[node_type = "split"], node[node_type = "join"]',
+        style: { shape: 'diamond', width: 80, height: 80 }
+      },
+      // Dashed border for not_started nodes
+      {
+        selector: 'node[status = "not_started"]',
+        style: { 'border-style': 'dashed', 'border-width': 1, opacity: 0.5 }
+      },
+      // Completed: bold border
+      {
+        selector: 'node[status = "completed"]',
+        style: { 'border-width': 3 }
+      },
+      // Failed: thick red
+      {
+        selector: 'node[status = "failed"]',
+        style: { 'border-width': 3 }
+      },
+      // Default edge
+      {
+        selector: 'edge',
+        style: {
+          width: 2,
+          'line-color': accentColor,
+          'curve-style': 'bezier',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': accentColor,
+          label: 'data(branch_key)',
+          'font-size': 10,
+          color: textColor,
+          'text-background-color': bgColor,
+          'text-background-opacity': 0.85,
+          'text-background-padding': '2px',
+        }
+      },
+      // Activated edge — uses success token, resolved at render time
+      {
+        selector: 'edge[activated = 1]',
+        style: {
+          'line-color': () => WF_ACTIVATED_EDGE_COLOR,
+          'target-arrow-color': () => WF_ACTIVATED_EDGE_COLOR,
+          width: 3,
+        }
+      },
+      // Skipped edge — faded dashed
+      {
+        selector: 'edge[activated = 0]',
+        style: {
+          'line-color': '#6b728055',
+          'target-arrow-color': '#6b728055',
+          'line-style': 'dashed',
+          width: 1,
+          opacity: 0.4,
+        }
+      },
+      // Design-time default edge (no run info)
+      {
+        selector: 'edge[?is_default][activated = null]',
+        style: { 'line-style': 'dashed' }
+      },
+      {
+        selector: 'node:selected',
+        style: { 'border-width': 4 }
+      },
+    ],
+    layout: {
+      name: 'breadthfirst',
+      directed: true,
+      roots: nodes
+        .filter(n => !edges.some(e => e.target === n.id))
+        .map(n => String(n.id)),
+      spacingFactor: 1.4,
+      padding: 24,
+      fit: true,
+    },
+    wheelSensitivity: 0.2,
+  });
+
+  containerElement.style.backgroundColor = bgColor;
+  cy.resize();
+  cy.fit();
+  cy.center();
+  return cy;
+}
+</script>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const container = document.getElementById('workflow-graph-container');
+  if (!container) return;
+
+  const colors = {{ theme.theme.colors|safe }};
+  const nodes  = {{ graph_nodes_json|safe }};
+  const edges  = {{ graph_edges_json|safe }};
+
+  let cy = null;
+
+  function render() {
+    if (cy) { cy.destroy(); cy = null; }
+    const dark = Alpine.evaluate(document.documentElement, 'darkMode');
+    cy = createWorkflowGraph(container, nodes, edges, colors, dark);
+  }
+
+  render();
+
+  const toggle = document.querySelector('.site-theme-toggle-button');
+  if (toggle) toggle.addEventListener('click', () => setTimeout(render, 50));
+
+  new ResizeObserver(() => { if (cy) { cy.resize(); cy.fit(); } }).observe(container);
+
+  const fitBtn = document.getElementById('workflow-graph-fit');
+  if (fitBtn) fitBtn.addEventListener('click', () => cy && cy.fit());
+});
+</script>

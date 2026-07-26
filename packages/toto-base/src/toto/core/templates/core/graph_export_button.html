@@ -1,0 +1,10 @@
+{% load i18n %}
+{% if show %}
+<a href="{% url 'ravioli:graph_export_preview' app_label model_name object_uuid %}"
+   title="{% blocktrans %}Preview the {{ graph_label }} node and its 1-hop neighbours, then write to the knowledge graph{% endblocktrans %}"
+   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+   class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 {{ css_class }}">
+  <i class="fa-solid fa-diagram-project"></i>
+  {% trans "Export to graph" %}
+</a>
+{% endif %}

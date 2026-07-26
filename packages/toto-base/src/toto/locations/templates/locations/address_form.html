@@ -1,0 +1,195 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Add Address" %} | {{ platform.site_name }}{% endblock %}
+
+{% block locations_content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <a
+      href="{% url 'locations:locations_all' %}"
+      class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% trans "Locations" %}
+    </a>
+
+    <header
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm">
+
+      <p
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Address" %}
+      </p>
+
+      <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-location-dot"></i>
+        {% trans "Add address" %}
+      </h1>
+
+      <p class="mt-2 text-sm opacity-70">
+        {% trans "Save a reusable location that can be used in route search, events, visits, and Kanban missions." %}
+      </p>
+    </header>
+
+    <form
+      method="post"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-5 rounded-2xl border p-5 shadow-sm">
+
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div
+          :class="darkMode
+            ? 'border-warn-dark bg-primary-bg-dark text-warn-dark'
+            : 'border-warn-light bg-primary-bg-light text-warn-light'"
+          class="rounded-xl border p-4 text-sm font-semibold">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      <section class="grid grid-cols-1 gap-5 md:grid-cols-2">
+        <div class="space-y-2">
+          <label for="{{ form.country_name.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "Country" %}
+          </label>
+          {{ form.country_name }}
+          {% if form.country_name.errors %}
+            <div class="text-sm text-warn-light">{{ form.country_name.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          <label for="{{ form.state_or_province_name.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "State / Province" %}
+          </label>
+          {{ form.state_or_province_name }}
+          {% if form.state_or_province_name.errors %}
+            <div class="text-sm text-warn-light">{{ form.state_or_province_name.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          <label for="{{ form.locality_name.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "Locality" %}
+          </label>
+          {{ form.locality_name }}
+          {% if form.locality_name.errors %}
+            <div class="text-sm text-warn-light">{{ form.locality_name.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          <label for="{{ form.street.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "Street / Place" %}
+          </label>
+          {{ form.street }}
+          {% if form.street.errors %}
+            <div class="text-sm text-warn-light">{{ form.street.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          <label for="{{ form.building.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "Building" %}
+          </label>
+          {{ form.building }}
+          {% if form.building.errors %}
+            <div class="text-sm text-warn-light">{{ form.building.errors }}</div>
+          {% endif %}
+        </div>
+
+        <div class="space-y-2">
+          <label for="{{ form.apartment.id_for_label }}" class="block text-sm font-semibold">
+            {% trans "Apartment" %}
+          </label>
+          {{ form.apartment }}
+          {% if form.apartment.errors %}
+            <div class="text-sm text-warn-light">{{ form.apartment.errors }}</div>
+          {% endif %}
+        </div>
+      </section>
+
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="rounded-xl border p-4">
+
+        <div class="mb-4 flex items-start gap-3">
+          <div
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg">
+            <i class="fa-solid fa-map-pin"></i>
+          </div>
+
+          <div>
+            <h2 class="text-sm font-bold">{% trans "Coordinates" %}</h2>
+            <p class="mt-1 text-xs opacity-70">
+              {% trans "Optional, but required for this address to appear on the map and be used directly in route search." %}
+            </p>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 gap-5 md:grid-cols-2">
+          <div class="space-y-2">
+            <label for="{{ form.latitude.id_for_label }}" class="block text-sm font-semibold">
+              {% trans "Latitude" %}
+            </label>
+            {{ form.latitude }}
+            {% if form.latitude.errors %}
+              <div class="text-sm text-warn-light">{{ form.latitude.errors }}</div>
+            {% endif %}
+          </div>
+
+          <div class="space-y-2">
+            <label for="{{ form.longitude.id_for_label }}" class="block text-sm font-semibold">
+              {% trans "Longitude" %}
+            </label>
+            {{ form.longitude }}
+            {% if form.longitude.errors %}
+              <div class="text-sm text-warn-light">{{ form.longitude.errors }}</div>
+            {% endif %}
+          </div>
+        </div>
+      </section>
+
+      <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
+        <a
+          href="{% url 'locations:locations_all' %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+          {% trans "Cancel" %}
+        </a>
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i>
+          {% trans "Save address" %}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

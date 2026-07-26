@@ -1,0 +1,250 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block locations_title %}{{ object_label }}{% endblock %}
+
+{% block locations_start_script %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-yaml.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<style>
+  .detail-btn {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    padding: 0.4rem 0.8rem; border-radius: 0.5rem;
+    font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
+  }
+  .detail-btn:hover { opacity: 0.85; }
+  .detail-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .fmt-seg { padding: 0.3rem 0.7rem; font-size: 0.75rem; font-weight: 700; transition: opacity .15s; }
+</style>
+{% endblock %}
+
+{% block locations_content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex max-w-5xl flex-col gap-5">
+
+    <!-- Header -->
+    <header class="min-w-0">
+      <a href="{{ back_url }}"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="inline-flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide hover:underline">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Back to map" %}
+      </a>
+      <p class="mt-2 text-xs font-semibold uppercase tracking-wide opacity-60">{{ object_type }}</p>
+      <h1 class="mt-1 break-words text-3xl font-bold sm:text-4xl">{{ object_label }}</h1>
+    </header>
+
+    <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+
+      <!-- Fields -->
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-circle-info opacity-60"></i>{% trans "Details" %}
+        </h2>
+        <dl class="grid grid-cols-1 gap-x-4 gap-y-2 sm:grid-cols-2">
+          {% for label, value in fields %}
+            <div class="min-w-0">
+              <dt class="text-xs font-semibold uppercase tracking-wide opacity-55">{{ label }}</dt>
+              <dd class="mt-0.5 break-words text-sm font-semibold">{% if value or value == 0 %}{{ value }}{% else %}<span class="opacity-40">—</span>{% endif %}</dd>
+            </div>
+          {% endfor %}
+        </dl>
+      </section>
+
+      <!-- Geometry preview -->
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        {% if has_geometry %}
+          <div id="detail-map" class="h-full min-h-[260px] w-full"></div>
+        {% else %}
+          <div class="flex h-full min-h-[260px] items-center justify-center p-6 text-sm opacity-50">
+            <span><i class="fa-solid fa-map mr-2"></i>{% trans "No geometry to preview." %}</span>
+          </div>
+        {% endif %}
+      </section>
+    </div>
+
+    {% if note_field %}
+    <!-- ── Note section ─────────────────────────────────────────── -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border p-5 shadow-sm">
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-note-sticky opacity-60"></i>{% trans "Note" %}
+      </h2>
+      <form method="post" action="{{ note_save_url }}" class="flex flex-col gap-3">
+        {% csrf_token %}
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <textarea name="note" rows="4"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-accent-light/40"
+          placeholder="{% trans 'Free-text note…' %}">{{ note_value }}</textarea>
+        <div class="flex justify-end">
+          <button type="submit"
+            :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+            class="detail-btn">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save note" %}
+          </button>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+
+    <!-- ── Metadata section ─────────────────────────────────────── -->
+    <section id="metadata"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="scroll-mt-20 rounded-xl border p-5 shadow-sm">
+
+      <div class="mb-3 flex flex-wrap items-center justify-between gap-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-code opacity-60"></i>{% trans "Metadata" %}
+        </h2>
+
+        <div class="flex items-center gap-2">
+          <!-- JSON / YAML toggle -->
+          <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="inline-flex overflow-hidden rounded-lg border">
+            <button id="fmt-json" type="button" class="fmt-seg">JSON</button>
+            <button id="fmt-yaml" type="button" class="fmt-seg border-l"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">YAML</button>
+          </div>
+
+          <button id="meta-save" type="button"
+            :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+            class="detail-btn">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}
+          </button>
+        </div>
+      </div>
+
+      <div id="meta-status" class="mb-3 hidden rounded-lg border px-3 py-2 text-sm"></div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="overflow-hidden rounded-lg border">
+        <div id="meta-editor" style="height: 380px;"></div>
+      </div>
+
+      <p class="mt-2 text-xs opacity-55">
+        {% trans "Edit as JSON or YAML — switching converts automatically. Stored as a JSON object on this location." %}
+      </p>
+    </section>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block locations_end_script %}
+<script>
+(function () {
+  const darkMode = localStorage.getItem("darkMode") === "true";
+
+  // ── Geometry preview map ───────────────────────────────────────
+  {% if has_geometry %}
+  const geometry = JSON.parse('{{ geometry_json|escapejs }}');
+  const detailMap = L.map("detail-map", { zoomControl: true, scrollWheelZoom: false }).setView([52, 19], 5);
+  const tiles = darkMode
+    ? L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", { maxZoom: 19, attribution: "&copy; OSM &copy; CARTO" })
+    : L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom: 19, attribution: "&copy; OpenStreetMap contributors" });
+  tiles.addTo(detailMap);
+  const accent = darkMode ? "#7c8fd4" : "#2f3d63";
+  const layer = L.geoJSON(geometry, {
+    style: { color: accent, fillColor: accent, fillOpacity: 0.2, weight: 3 },
+    pointToLayer: (f, latlng) => L.circleMarker(latlng, { radius: 8, color: accent, fillColor: accent, fillOpacity: 0.8, weight: 2 }),
+  }).addTo(detailMap);
+  try {
+    const b = layer.getBounds();
+    if (b.isValid()) detailMap.fitBounds(b, { padding: [30, 30], maxZoom: 15 });
+  } catch (e) { /* ignore */ }
+  setTimeout(() => detailMap.invalidateSize(), 120);
+  {% endif %}
+
+  // ── Metadata editor (JSON / YAML, same field, auto-convert) ─────
+  ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+  const editor = ace.edit("meta-editor");
+  editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+  editor.session.setMode("ace/mode/json");
+  editor.setValue(`{{ metadata_json|escapejs }}`, -1);
+  editor.setOptions({ fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2 });
+
+  const CONVERT_URL = "{{ metadata_convert_url }}";
+  const SAVE_URL = "{{ metadata_save_url }}";
+  const CSRF = "{{ csrf_token }}";
+
+  let format = "json";
+
+  const statusEl = document.getElementById("meta-status");
+  function showStatus(message, ok) {
+    statusEl.textContent = message;
+    statusEl.classList.remove("hidden");
+    statusEl.style.borderColor = ok ? "rgba(34,197,94,0.4)" : "rgba(239,68,68,0.4)";
+    statusEl.style.background = ok ? "rgba(34,197,94,0.10)" : "rgba(239,68,68,0.10)";
+  }
+  function clearStatus() { statusEl.classList.add("hidden"); }
+
+  const segJson = document.getElementById("fmt-json");
+  const segYaml = document.getElementById("fmt-yaml");
+  function paintToggle() {
+    const onCls = darkMode ? "bg-accent-dark text-primary-bg-dark" : "bg-accent-light text-primary-bg-light";
+    [segJson, segYaml].forEach(b => b.classList.remove("bg-accent-dark", "bg-accent-light", "text-primary-bg-dark", "text-primary-bg-light"));
+    (format === "json" ? segJson : segYaml).className = "fmt-seg " + (format === "yaml" ? "border-l " : "") + onCls;
+    (format === "json" ? segYaml : segJson).className = "fmt-seg " + (format === "json" ? "" : "border-l ") + "opacity-60";
+  }
+  paintToggle();
+
+  async function convertTo(target) {
+    if (target === format) { return; }                    // already there
+    const body = new FormData();
+    body.append("text", editor.getValue());
+    body.append("from", format);
+    body.append("to", target);
+    try {
+      const res = await fetch(CONVERT_URL, { method: "POST", body, headers: { "X-CSRFToken": CSRF }, credentials: "same-origin" });
+      const data = await res.json();
+      if (data.status !== "ok") { showStatus(data.error || "{% trans 'Conversion failed.' %}", false); return; }
+      format = target;
+      editor.session.setMode(format === "yaml" ? "ace/mode/yaml" : "ace/mode/json");
+      editor.setValue(data.text, -1);
+      paintToggle();
+      clearStatus();
+    } catch (err) {
+      showStatus("{% trans 'Conversion failed:' %} " + err, false);
+    }
+  }
+  segJson.addEventListener("click", () => convertTo("json"));
+  segYaml.addEventListener("click", () => convertTo("yaml"));
+
+  const saveBtn = document.getElementById("meta-save");
+  saveBtn.addEventListener("click", async function () {
+    saveBtn.disabled = true;
+    try {
+      const body = new FormData();
+      body.append("metadata", editor.getValue());
+      body.append("format", format);
+      const res = await fetch(SAVE_URL, { method: "POST", body, headers: { "X-CSRFToken": CSRF }, credentials: "same-origin" });
+      const data = await res.json();
+      if (data.status === "ok") { showStatus("{% trans 'Saved.' %}", true); }
+      else { showStatus(data.error || "{% trans 'Save failed.' %}", false); }
+    } catch (err) {
+      showStatus("{% trans 'Save failed:' %} " + err, false);
+    } finally {
+      saveBtn.disabled = false;
+    }
+  });
+
+  document.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s") { e.preventDefault(); saveBtn.click(); }
+  });
+})();
+</script>
+{% endblock %}

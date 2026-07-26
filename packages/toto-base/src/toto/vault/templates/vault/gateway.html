@@ -1,0 +1,327 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Upload" %} | {{ gateway.name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+<script>
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('gatewayUpload', () => ({
+      dragging: false,
+      uploading: false,
+      error: null,
+      results: null,          // array of successful uploads
+      uploadErrors: [],       // per-file errors (e.g. over the size limit)
+      recentUploads: [],
+      manualFileType: '',
+
+      init() {
+        const el = document.getElementById('recent-uploads');
+        if (el) this.recentUploads = JSON.parse(el.textContent);
+      },
+
+      async handleDrop(event) {
+        this.dragging = false;
+        const files = [...event.dataTransfer.files];
+        if (files.length) await this.uploadFiles(files);
+      },
+
+      async handleFileSelect(event) {
+        const files = [...event.target.files];
+        if (files.length) await this.uploadFiles(files);
+        event.target.value = '';   // allow re-selecting the same file(s)
+      },
+
+      async uploadFiles(files) {
+        this.uploading = true;
+        this.error = null;
+        this.results = null;
+        this.uploadErrors = [];
+
+        const formData = new FormData();
+        files.forEach(f => formData.append('file', f));
+        if (this.manualFileType) formData.append('file_type', this.manualFileType);
+        const _targetDirId = '{{ target_dir_id|default:"" }}';
+        if (_targetDirId) formData.append('target_directory_id', _targetDirId);
+
+        try {
+          const response = await fetch("{% url 'vault:gateway_upload' gateway.directory_id %}", {
+            method: 'POST',
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+            body: formData,
+          });
+
+          let data = {};
+          try { data = await response.json(); } catch (_e) { data = {}; }
+          const uploaded = data.results || [];
+
+          if (!response.ok && uploaded.length === 0) {
+            this.error = data.error
+              || (data.errors && data.errors.join(' '))
+              || `{% trans "Upload failed" %} (HTTP ${response.status}).`;
+          } else {
+            this.results = uploaded;
+            this.uploadErrors = data.errors || [];
+            const now = new Date();
+            const ts = now.toISOString().slice(0, 16).replace('T', ' ');
+            for (const r of uploaded) {
+              this.recentUploads.unshift({
+                title: r.title,
+                file_type: r.file_type,
+                location: r.location || 'Root',
+                uploaded: ts,
+                public: r.public,
+                upload_cost: r.upload_cost || null,
+              });
+            }
+            while (this.recentUploads.length > 10) this.recentUploads.pop();
+          }
+        } catch (err) {
+          this.error = err.message;
+        }
+
+        this.uploading = false;
+      },
+    }));
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+{{ recent_uploads_list|json_script:"recent-uploads" }}
+
+<div
+  x-data="gatewayUpload"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-4xl space-y-8">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'vault:public_list' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Buckets" %}
+      </a>
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-6 text-center shadow-sm">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide mb-1">
+          <i class="fa-solid fa-vault mr-1"></i>{% trans "File Gateway" %}
+        </p>
+        <h1 class="text-3xl font-bold">{{ gateway.name }}</h1>
+        {% if gateway.description %}
+          <p class="mt-2 text-sm opacity-65">{{ gateway.description }}</p>
+        {% endif %}
+      </div>
+    </header>
+
+    <!-- Upload zone -->
+    <section class="space-y-4">
+
+      <!-- Target directory indicator -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm shadow-sm">
+        <i class="fa-solid fa-folder-arrow-up opacity-60"></i>
+        <span class="opacity-65 text-xs font-semibold uppercase tracking-wide shrink-0">
+          {% trans "Upload destination" %}
+        </span>
+        <span class="font-semibold font-mono">
+          {% if target_dir_path %}{{ target_dir_path }}{% else %}{% trans "Root" %} ({{ gateway.bucket.name }}){% endif %}
+        </span>
+      </div>
+
+      <!-- Optional file type override -->
+      <div class="flex items-center gap-3 text-sm">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-55 shrink-0">
+          {% trans "File type" %}
+        </label>
+        <select x-model="manualFileType"
+                :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                class="rounded border px-2 py-1 text-xs">
+          <option value="">{% trans "Auto-detect" %}</option>
+          <option value="pdf">{% trans "PDF" %}</option>
+          <option value="image">{% trans "Image" %}</option>
+          <option value="html">{% trans "HTML" %}</option>
+          <option value="text">{% trans "Text" %}</option>
+          <option value="json">{% trans "JSON" %}</option>
+          <option value="yaml">{% trans "YAML" %}</option>
+          <option value="xml">{% trans "XML" %}</option>
+          <option value="latex">{% trans "LaTeX (.tex)" %}</option>
+          <option value="bib">{% trans "Bibliography (.bib)" %}</option>
+          <option value="csv">{% trans "CSV" %}</option>
+          <option value="svg">{% trans "SVG" %}</option>
+          <option value="audio">{% trans "Audio" %}</option>
+          <option value="video">{% trans "Video" %}</option>
+        </select>
+      </div>
+
+      <!-- Drop zone -->
+      <div
+        class="border-2 border-dashed rounded-xl p-12 text-center cursor-pointer transition"
+        @dragover.prevent="dragging = true"
+        @dragleave="dragging = false"
+        @drop.prevent="handleDrop($event)"
+        @click="$refs.fileInput.click()"
+        :class="dragging
+          ? (darkMode ? 'border-accent-dark bg-bubble-bg-dark' : 'border-accent-light bg-bubble-bg-light')
+          : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="fa-solid fa-cloud-arrow-up text-4xl opacity-60 mb-3"></i>
+        <p class="text-lg font-semibold">{% trans "Drop files here" %}</p>
+        <p class="text-sm opacity-60 mt-1">{% trans "or click to select (multiple allowed)" %}</p>
+
+        <input type="file" multiple class="hidden" x-ref="fileInput" @change="handleFileSelect">
+      </div>
+
+      {% widthratio gateway.max_file_size 1024 1 as max_mb %}
+      <p class="text-xs opacity-55 text-center">{% trans "Max file size" %}: {{ max_mb }} MB</p>
+
+      <!-- Uploading spinner -->
+      <template x-if="uploading">
+        <div class="flex items-center justify-center gap-3 text-sm opacity-70">
+          <svg class="animate-spin h-4 w-4" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+            <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+            <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+          </svg>
+          <span>{% trans "Uploading…" %}</span>
+        </div>
+      </template>
+
+      <!-- Error -->
+      <template x-if="error">
+        <div
+          x-transition
+          :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+          class="flex items-start gap-3 rounded-lg border p-4 text-sm">
+          <i class="fa-solid fa-triangle-exclamation mt-0.5 shrink-0"></i>
+          <span x-text="error"></span>
+        </div>
+      </template>
+
+    </section>
+
+    <!-- Upload result -->
+    <section x-show="results && results.length" x-transition>
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-6 shadow-sm">
+
+        <h3 class="flex items-center gap-2 text-lg font-bold mb-4"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-circle-check text-base"></i>
+          <span x-text="`${results ? results.length : 0} {% trans 'file(s) uploaded' %}`"></span>
+        </h3>
+
+        <!-- Per-file results -->
+        <div :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'" class="divide-y">
+          <template x-for="(r, idx) in results" :key="idx">
+            <div class="flex items-center gap-3 py-2 text-sm">
+              <span class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                    x-text="r.file_type"></span>
+              <span class="font-medium truncate flex-1 min-w-0" x-text="r.title"></span>
+              <span class="hidden sm:flex items-center gap-1 text-xs opacity-50 shrink-0">
+                <i class="fa-solid fa-folder text-xs"></i><span x-text="r.location"></span>
+              </span>
+              <span class="font-mono text-xs opacity-60 shrink-0" x-text="r.size"></span>
+            </div>
+          </template>
+        </div>
+
+        <!-- Per-file errors (e.g. over the size limit) -->
+        <template x-if="uploadErrors.length">
+          <div :class="darkMode ? 'border-warn-dark bg-warn-dark/10 text-warn-dark' : 'border-warn-light bg-warn-light/10 text-warn-light'"
+               class="mt-4 rounded-lg border p-3 text-sm">
+            <p class="font-semibold mb-1"><i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Some files were skipped:" %}</p>
+            <ul class="list-disc list-inside space-y-0.5">
+              <template x-for="(e, i) in uploadErrors" :key="i"><li x-text="e"></li></template>
+            </ul>
+          </div>
+        </template>
+
+        <div class="mt-4 pt-4 border-t border-current/10 flex gap-3">
+          <a :href="`{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}`"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-folder-open"></i>
+            {% trans "View files in" %} {{ gateway.bucket.name }}
+          </a>
+          <button
+            @click="results = null; uploadErrors = []"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-plus"></i>
+            {% trans "Upload more" %}
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Actions (shown when no result yet) -->
+    <section x-show="!results" class="flex flex-wrap gap-3">
+      <a href="{% url 'vault:public_list' %}?bucket={{ gateway.bucket.slug }}"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-folder-open"></i>
+        {% trans "View files in" %} {{ gateway.bucket.name }}
+      </a>
+    </section>
+
+    <!-- Recent uploads -->
+    <section x-show="recentUploads.length > 0">
+      <p :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+         class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock-rotate-left mr-1"></i>{% trans "Recent uploads" %}
+      </p>
+
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <template x-for="(upload, idx) in recentUploads" :key="idx">
+          <div
+            :class="darkMode
+              ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark'
+              : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+            class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+
+            <span class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                  :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                  x-text="upload.file_type"></span>
+
+            <span class="font-medium truncate flex-1 min-w-0" x-text="upload.title"></span>
+
+            <span class="hidden sm:flex items-center gap-1 text-xs opacity-50 shrink-0">
+              <i class="fa-solid fa-folder text-xs"></i>
+              <span x-text="upload.location"></span>
+            </span>
+
+            <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="upload.uploaded"></span>
+
+            <template x-if="upload.upload_cost">
+              <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                    class="text-xs font-semibold font-mono shrink-0">
+                <i class="fa-solid fa-coins mr-0.5"></i>
+                <span x-text="upload.upload_cost"></span>
+              </span>
+            </template>
+
+            <span x-show="upload.public"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-xs shrink-0">
+              <i class="fa-solid fa-globe"></i>
+            </span>
+          </div>
+        </template>
+      </div>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

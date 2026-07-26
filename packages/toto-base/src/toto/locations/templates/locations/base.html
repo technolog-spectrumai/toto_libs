@@ -1,0 +1,62 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% load app_tags %}
+
+{% block title %}{% block locations_title %}Locations{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak]{display:none!important}</style>
+{% block locations_start_script %}{% endblock %}
+{% endblock %}
+
+{% block end_script %}
+{% block locations_end_script %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen transition-colors duration-300">
+
+  <!-- Sticky tab nav -->
+  <nav :class="darkMode ? 'border-accent-1/30 bg-primary-bg-dark/90' : 'border-accent-2/30 bg-primary-bg-light/90'"
+       class="sticky top-0 z-40 flex items-center gap-1 border-b px-4 py-2 backdrop-blur sm:px-6">
+    <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="mr-3 text-xs font-bold uppercase tracking-widest">{% trans "Locations" %}</span>
+    <a href="{% url 'locations:locations_all' %}"
+       :class="darkMode ? 'hover:opacity-100' : 'hover:opacity-100'"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition
+              {% block tab_locations %}opacity-60{% endblock %}">
+      <i class="fa-solid fa-map-location-dot fa-fw"></i> {% trans "Map" %}
+    </a>
+    <a href="{% url 'locations:route_search' %}"
+       :class="{% if request.resolver_match.url_name == 'route_search' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-route fa-fw"></i> {% trans "Routes" %}
+    </a>
+    {% if "toto.travels"|app_installed %}
+    {# Travels + Visits share the "travels" namespace; the active tab is decided by #}
+    {# url_name: any travels URL whose name contains "visit" belongs to the Visits tab. #}
+    <a href="{% url 'travels:my_travels' %}"
+       :class="{% if request.resolver_match.namespace == 'travels' and 'visit' not in request.resolver_match.url_name %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-suitcase-rolling fa-fw"></i> {% trans "Travels" %}
+    </a>
+    <a href="{% url 'travels:my_visits' %}"
+       :class="{% if request.resolver_match.namespace == 'travels' and 'visit' in request.resolver_match.url_name %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-location-dot fa-fw"></i> {% trans "Visits" %}
+    </a>
+    {% endif %}
+    {% if "toto.weather"|app_installed %}
+    <a href="{% url 'weather:index' %}"
+       :class="{% if request.resolver_match.namespace == 'weather' %}darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'{% else %}'opacity-60 hover:opacity-100'{% endif %}"
+       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-semibold transition">
+      <i class="fa-solid fa-cloud-sun fa-fw"></i> {% trans "Weather" %}
+    </a>
+    {% endif %}
+  </nav>
+
+  {% block locations_content %}{% endblock %}
+
+</div>
+{% endblock %}

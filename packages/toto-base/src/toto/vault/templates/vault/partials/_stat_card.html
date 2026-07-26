@@ -1,0 +1,20 @@
+{% load i18n %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border p-4 shadow-sm">
+  <div class="flex items-center gap-3">
+    <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+         class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+      {% if color == "success" %}
+        <i class="{{ icon }} text-sm" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      {% elif color == "warn" %}
+        <i class="{{ icon }} text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      {% else %}
+        <i class="{{ icon }} text-sm" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% endif %}
+    </div>
+    <div>
+      <div class="text-2xl font-bold">{{ value }}</div>
+      <div class="text-xs opacity-60">{{ label }}</div>
+    </div>
+  </div>
+</div>

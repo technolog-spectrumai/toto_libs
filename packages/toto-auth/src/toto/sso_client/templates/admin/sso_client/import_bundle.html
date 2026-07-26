@@ -1,0 +1,27 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}Import Connection Bundle{% endblock %}
+
+{% block content %}
+<h1>{% trans "Import Connection Bundle" %}</h1>
+<p>{% trans "Paste the JSON connection bundle exported from the portal admin. This will rotate the active provider config." %}</p>
+
+{% if error %}
+<p class="errornote">{{ error }}</p>
+{% endif %}
+
+<form method="post">
+  {% csrf_token %}
+  <fieldset class="module aligned">
+    <div class="form-row">
+      <label for="bundle_json">{% trans "Connection Bundle JSON" %}</label>
+      <textarea id="bundle_json" name="bundle_json" rows="16" cols="80" style="font-family: monospace; width: 100%;">{{ bundle_json }}</textarea>
+    </div>
+  </fieldset>
+  <div class="submit-row">
+    <input type="submit" value="Import" class="default">
+    <a href="{% url 'admin:sso_client_oidcproviderconfig_changelist' %}" class="closelink">{% trans "Cancel" %}</a>
+  </div>
+</form>
+{% endblock %}

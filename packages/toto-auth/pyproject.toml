@@ -1,0 +1,34 @@
+[build-system]
+# setuptools >= 62.3 is required for '**' patterns in package-data globs.
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "toto-auth"
+version = "1.8"
+description = "toto authentication: OIDC provider/consumer apps and the login strategy resolver"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Versions are lockstep across the whole toto suite and are rewritten only by
+# scripts/release.py — never edit them by hand.
+dependencies = [
+    "toto-base==1.8",
+    "PyJWT>=2.0",
+    "cryptography>=41",
+    "requests>=2.28",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# Each package owns exactly the portions present under its own src/toto/.
+# scripts/check_package_graph.py enforces that the partition stays disjoint.
+include = ["toto*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+# 'templates/**/*' (not '*.html'): sso_master ships a .txt email template.
+"*" = [
+    "templates/**/*",
+    "static/**/*",
+]

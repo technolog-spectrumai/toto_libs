@@ -1,0 +1,54 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+*.whl
+
+# Virtualenvs
+venv/
+env/
+.venv*/
+.venv_test*/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# Tests / coverage
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Django runtime artifacts (when a host runs against this checkout)
+db.sqlite3*
+media/
+staticfiles/
+logs/
+*.log
+celerybeat-schedule
+dump.rdb
+*.pid
+
+# Generated / synced content
+toto/nakamori/
+toto/template_repos/
+toto/core/static/vendor/
+
+# Rust / WASM build output
+target/
+**/target/
+Cargo.lock
+*.o
+*.so
+*.rlib
+*.rmeta
+*.d
+
+*.wasm

@@ -1,0 +1,62 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div id="content-main">
+
+  <h1>{{ title }}</h1>
+
+  {% if queryset %}
+  <fieldset class="module">
+    <h2>Files to encrypt ({{ queryset|length }})</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>{% trans "Title" %}</th>
+          <th>{% trans "Owner" %}</th>
+          <th>{% trans "Type" %}</th>
+          <th>{% trans "Bucket" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for f in queryset %}
+        <tr>
+          <td>{{ f.title }}</td>
+          <td>{{ f.owner }}</td>
+          <td>{{ f.file_type }}</td>
+          <td>{{ f.bucket|default:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </fieldset>
+  {% endif %}
+
+  <form method="post">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <h2>{% trans "Encryption settings" %}</h2>
+      {% for field in form %}
+        <div class="form-row{% if field.errors %} errors{% endif %}">
+          {% if field.errors %}
+            <ul class="errorlist">
+              {% for error in field.errors %}<li>{{ error }}</li>{% endfor %}
+            </ul>
+          {% endif %}
+          {{ field.label_tag }}
+          {{ field }}
+          {% if field.help_text %}
+            <p class="help">{{ field.help_text }}</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </fieldset>
+
+    <div class="submit-row">
+      <input type="submit" value="Encrypt Files" class="default">
+      <a href=".." class="closelink">{% trans "Cancel" %}</a>
+    </div>
+  </form>
+
+</div>
+{% endblock %}

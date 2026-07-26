@@ -1,0 +1,649 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
+
+{% block start_script %}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script src="{% static 'oya/diff_match_patch.js' %}"></script>
+<link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
+<script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col min-h-screen px-4 pt-6 pb-10 transition-colors duration-300">
+
+  <div class="max-w-7xl w-full mx-auto flex flex-col gap-3 flex-1">
+
+    <!-- ── Breadcrumb ──────────────────────────────────────── -->
+    <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
+      <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="opacity-70">{{ directory_name }}</span>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="font-semibold opacity-100">{{ vault_file.title }}</span>
+    </nav>
+
+    <!-- ── Toolbar ─────────────────────────────────────────── -->
+    <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+
+      <!-- Left: file label -->
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <i class="fa-brands fa-python opacity-50 shrink-0"></i>
+        <span class="font-mono text-sm font-semibold truncate">{{ vault_file.title }}</span>
+        <span class="shrink-0 rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-50">
+          python
+        </span>
+        <span data-active-target-badge
+              class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
+                     bg-accent-light text-primary-bg-light">live</span>
+      </div>
+
+      <!-- Divider -->
+      <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
+
+      <!-- Right: action buttons (icon-only — labels via .icon-only-toolbar CSS,
+           text kept as title= tooltips). -->
+      <div class="flex items-center gap-1.5 flex-wrap icon-only-toolbar">
+
+        <!-- Read-only toggle -->
+        <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
+          <i id="lock-icon" class="fa-solid fa-lock-open"></i>
+        </button>
+
+        <!-- Sync toggle -->
+        <button id="toggle-sync" title="{% trans 'Toggle live sync' %}" class="toolbar-btn border">
+          <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Save -->
+        <button id="save-file" title="{% trans 'Save' %}"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span class="hidden sm:inline">{% trans "Save" %}</span>
+        </button>
+
+        <!-- Run -->
+        <button id="run-file" title="{% trans 'Run script' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-play"></i>
+          <span class="hidden sm:inline">{% trans "Run" %}</span>
+        </button>
+
+        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
+
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Delete -->
+        <button id="delete-file" title="{% trans 'Delete file' %}"
+          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-trash"></i>
+          <span class="hidden sm:inline">{% trans "Delete" %}</span>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ── Editor ──────────────────────────────────────────── -->
+    <div class="flex-1 relative">
+      <div id="editor"
+           class="w-full rounded-xl border"
+           style="height: calc(100vh - 14rem);"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      </div>
+    </div>
+
+    <!-- ── Status bar ──────────────────────────────────────── -->
+    <div id="status-bar" class="hidden rounded-xl border text-sm overflow-hidden"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         style="flex-shrink: 0;">
+
+      <!-- Main row -->
+      <div class="flex items-center gap-3 px-4 py-3">
+        <div class="flex-1 min-w-0">
+
+          <!-- Running -->
+          <div id="status-running" class="hidden items-center gap-2">
+            <i class="fa-solid fa-spinner fa-spin shrink-0"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            <span class="font-semibold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">{% trans "Running" %}</span>
+            <span id="status-running-detail" class="text-xs opacity-60">queued</span>
+          </div>
+
+          <!-- Success -->
+          <div id="status-success" class="hidden items-center gap-2">
+            <i class="fa-solid fa-circle-check shrink-0"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Completed" %}</span>
+            <span id="status-exit-code" class="text-xs opacity-60"></span>
+          </div>
+
+          <!-- Error -->
+          <div id="status-error" class="hidden items-center gap-2">
+            <i class="fa-solid fa-circle-xmark shrink-0"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+            <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Failed" %}</span>
+            <span id="status-exit-code-err" class="text-xs opacity-60"></span>
+          </div>
+
+        </div>
+
+        <!-- Workflow link -->
+        <a id="status-workflow-link" href="#" target="_blank"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/50 text-text-main-dark' : 'border-accent-2 bg-primary-bg-light/50 text-text-main-light'"
+           class="hidden shrink-0 items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-diagram-project opacity-70"></i>{% trans "Workflow run" %}</a>
+
+        <!-- Toggle output -->
+        <button id="toggle-output" class="shrink-0 items-center gap-1.5 rounded-lg border border-current/20 px-2.5 py-1 text-xs font-semibold transition hover:opacity-75 inline-flex">
+          <i class="fa-solid fa-terminal text-[10px]"></i>{% trans "Output" %}
+          <i id="output-chevron" class="fa-solid fa-chevron-down text-[10px] opacity-60 transition-transform"></i>
+        </button>
+      </div>
+
+      <!-- Output panel (stdout + stderr) -->
+      <div id="output-panel" class="hidden border-t border-current/10">
+        <div id="stdout-section" class="hidden">
+          <div class="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest opacity-40">stdout</div>
+          <pre id="stdout-content"
+               class="px-4 pb-3 max-h-64 overflow-auto text-xs whitespace-pre-wrap opacity-80 font-mono"></pre>
+        </div>
+        <div id="stderr-section" class="hidden">
+          <div class="px-4 pt-3 pb-1 text-[10px] font-bold uppercase tracking-widest"
+               :class="darkMode ? 'text-warn-dark opacity-70' : 'text-warn-light opacity-70'">stderr</div>
+          <pre id="stderr-content"
+               class="px-4 pb-3 max-h-64 overflow-auto text-xs whitespace-pre-wrap opacity-75 font-mono"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Run history ──────────────────────────────────────── -->
+    {% if runs %}
+    <div x-data="{ open: false }"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm overflow-hidden" style="flex-shrink: 0;">
+
+      <button @click="open = !open"
+              class="w-full flex items-center justify-between gap-3 px-4 py-3 text-sm transition hover:opacity-80">
+        <div class="flex items-center gap-2">
+          <i class="fa-solid fa-clock-rotate-left text-xs opacity-50"></i>
+          <span class="font-semibold text-sm">{% trans "Run history" %}</span>
+          <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark/60' : 'border-accent-2 bg-primary-bg-light/60'"
+                class="rounded-full border px-2 py-0.5 text-[10px] font-bold">{{ runs|length }}</span>
+        </div>
+        <i class="fa-solid fa-chevron-down text-xs opacity-40 transition-transform"
+           :class="open ? 'rotate-180' : ''"></i>
+      </button>
+
+      <div x-show="open" x-transition x-cloak class="border-t border-current/10">
+        {% for run in runs %}
+        <div x-data="{ out: false }"
+             :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'"
+             class="border-b last:border-0">
+
+          <!-- Summary row — click to toggle output -->
+          <div @click="out = !out"
+               :class="darkMode ? 'hover:bg-primary-bg-dark/30' : 'hover:bg-primary-bg-light/30'"
+               class="flex items-center gap-3 px-4 py-2.5 cursor-pointer select-none transition-colors">
+
+            <span class="h-2 w-2 rounded-full shrink-0
+              {% if run.status == 'success' %}bg-success-light{% elif run.status == 'failed' %}bg-warn-light{% elif run.status == 'running' %}bg-accent-light{% else %}bg-current opacity-30{% endif %}">
+            </span>
+
+            <span class="text-xs font-semibold w-14 shrink-0
+              {% if run.status == 'success' %}opacity-80{% elif run.status == 'failed' %}text-warn-light{% else %}opacity-60{% endif %}">
+              {{ run.status }}
+            </span>
+
+            {% if run.exit_code is not None %}
+            <span class="text-xs opacity-40 shrink-0 font-mono">exit {{ run.exit_code }}</span>
+            {% endif %}
+
+            <span class="text-xs opacity-45 flex-1">{{ run.started_at|date:"Y-m-d H:i" }}</span>
+
+            {% if run.finished_at %}
+            <span class="text-xs opacity-40 shrink-0">{{ run.started_at|timesince:run.finished_at }}</span>
+            {% endif %}
+
+            {% if run.workflow_run_id %}
+            <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}" target="_blank"
+               @click.stop
+               class="text-xs underline underline-offset-2 shrink-0 opacity-45 hover:opacity-80">
+              <i class="fa-solid fa-diagram-project mr-0.5"></i>run
+            </a>
+            {% endif %}
+
+            {% if run.stdout or run.stderr %}
+            <i class="fa-solid fa-chevron-down text-[10px] opacity-35 shrink-0 transition-transform"
+               :class="out ? 'rotate-180' : ''"></i>
+            {% endif %}
+
+          </div>
+
+          <!-- Expandable output -->
+          {% if run.stdout or run.stderr %}
+          <div x-show="out" x-transition x-cloak
+               :class="darkMode ? 'border-accent-1/20 bg-primary-bg-dark/40' : 'border-accent-2/20 bg-primary-bg-light/40'"
+               class="border-t">
+            {% if run.stdout %}
+            <div class="px-4 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-widest opacity-35">stdout</div>
+            <pre class="px-4 pb-3 max-h-48 overflow-auto text-xs whitespace-pre-wrap opacity-75 font-mono">{{ run.stdout }}</pre>
+            {% endif %}
+            {% if run.stderr %}
+            <div class="px-4 pt-2 pb-0.5 text-[10px] font-bold uppercase tracking-widest"
+                 :class="darkMode ? 'text-warn-dark opacity-60' : 'text-warn-light opacity-60'">stderr</div>
+            <pre class="px-4 pb-3 max-h-48 overflow-auto text-xs whitespace-pre-wrap opacity-70 font-mono"
+                 :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ run.stderr }}</pre>
+            {% endif %}
+          </div>
+          {% endif %}
+
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<!-- ── Delete confirmation modal ─────────────────────────────── -->
+<div id="delete-modal"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+  <div class="w-full max-w-sm rounded-2xl border shadow-2xl p-6"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+    <h2 class="text-lg font-bold mb-2 flex items-center gap-2">
+      <i class="fa-solid fa-trash opacity-60"></i>{% trans "Delete file?" %}
+    </h2>
+    <p class="text-sm opacity-70 mb-5">
+      {% trans "This will permanently delete" %} <span class="font-mono font-semibold">{{ vault_file.title }}</span>.
+      {% trans "This cannot be undone." %}
+    </p>
+    <div class="flex justify-end gap-2">
+      <button id="delete-cancel"
+              class="rounded-lg border border-current/20 px-4 py-1.5 text-sm font-semibold transition hover:opacity-75">
+        {% trans "Cancel" %}
+      </button>
+      <button id="delete-confirm"
+              :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+              class="rounded-lg px-4 py-1.5 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-trash mr-1"></i>{% trans "Delete" %}
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2rem;
+  height: 2rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  transition: opacity 0.15s;
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+.toolbar-btn:hover { opacity: 0.7; }
+
+.toolbar-btn-primary {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.25rem 0.625rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+.toolbar-btn-primary:hover { opacity: 0.85; }
+/* Icon-only toolbar — hide text labels, keep icons + title= tooltips. */
+.icon-only-toolbar span.sm\:inline { display: none !important; }
+</style>
+
+{% if gitvault_ctx %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
+{% endblock %}
+
+{% block end_script %}
+<script>
+const PySync = (() => {
+  const dmp = new diff_match_patch();
+  let lastContent = "";
+  let suppress = false;
+
+  function initBaseline(editor) { lastContent = editor.getValue(); }
+
+  function sendFullAndPatch(editor, socket) {
+    const newContent = editor.getValue();
+    const patches = dmp.patch_make(lastContent, newContent);
+    lastContent = newContent;
+    socket.send(JSON.stringify({ type: "full+patch", content: newContent, patch: dmp.patch_toText(patches) }));
+  }
+
+  function onLocalChange(editor, socket, syncEnabled) {
+    if (!syncEnabled || suppress) return;
+    sendFullAndPatch(editor, socket);
+  }
+
+  function applyIncomingContent(editor, data) {
+    suppress = true;
+    if (data.patch) {
+      const [patched] = dmp.patch_apply(dmp.patch_fromText(data.patch), editor.getValue());
+      editor.setValue(patched, -1);
+      lastContent = patched;
+    } else if (data.content) {
+      editor.setValue(data.content, -1);
+      lastContent = data.content;
+    }
+    suppress = false;
+  }
+
+  function onServerMessage(editor, syncEnabled, event) {
+    if (!syncEnabled) return;
+    applyIncomingContent(editor, JSON.parse(event.data));
+  }
+
+  return { initBaseline, onLocalChange, onServerMessage };
+})();
+</script>
+
+<script>
+ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+const editor = ace.edit("editor");
+editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+editor.session.setMode("ace/mode/python");
+editor.setValue(`{{ content|escapejs }}`, -1);
+editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: false, readOnly: false });
+window.AntaresiaEditor = editor;
+
+PySync.initBaseline(editor);
+
+let isReadOnly = false;
+document.getElementById("toggle-readonly").addEventListener("click", function () {
+  isReadOnly = !isReadOnly;
+  editor.setReadOnly(isReadOnly);
+  const icon = document.getElementById("lock-icon");
+  icon.classList.toggle("fa-lock-open", !isReadOnly);
+  icon.classList.toggle("fa-lock",      isReadOnly);
+  editor.container.style.opacity = isReadOnly ? "0.65" : "1";
+  this.title = isReadOnly ? "Read-only (click to unlock)" : "Toggle read-only";
+});
+
+let syncEnabled = true;
+document.getElementById("toggle-sync").addEventListener("click", function () {
+  syncEnabled = !syncEnabled;
+  const icon = document.getElementById("sync-icon");
+  icon.classList.toggle("fa-arrows-rotate", syncEnabled);
+  icon.classList.toggle("fa-ban",           !syncEnabled);
+  this.style.opacity = syncEnabled ? "1" : "0.5";
+  this.title = syncEnabled ? "Toggle live sync" : "Sync off (click to enable)";
+});
+
+const filePk = "{{ vault_file.pk }}";
+const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/antaresia/file/${filePk}/`);
+editor.session.on("change", () => PySync.onLocalChange(editor, socket, syncEnabled));
+socket.onmessage = event => PySync.onServerMessage(editor, syncEnabled, event);
+
+async function saveFile() {
+  const btn = document.getElementById("save-file");
+  const formData = new FormData();
+  formData.append("content", editor.getValue());
+  btn.style.opacity = "0.5";
+  try {
+    const res = await fetch("{% url 'antaresia:save_file' file_pk=vault_file.pk %}", {
+      method: "POST", body: formData,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
+    return true;
+  } catch (err) {
+    alert("Save failed: " + err);
+    return false;
+  } finally {
+    btn.style.opacity = "1";
+  }
+}
+document.getElementById("save-file").addEventListener("click", saveFile);
+</script>
+
+<script>
+// ── Run ─────────────────────────────────────────────────────
+const runBtn          = document.getElementById("run-file");
+const statusBar       = document.getElementById("status-bar");
+const statusRunning   = document.getElementById("status-running");
+const statusRunDetail = document.getElementById("status-running-detail");
+const statusOk        = document.getElementById("status-success");
+const statusErr       = document.getElementById("status-error");
+const statusExitCode  = document.getElementById("status-exit-code");
+const statusExitErr   = document.getElementById("status-exit-code-err");
+const wfLink          = document.getElementById("status-workflow-link");
+const stdoutSection   = document.getElementById("stdout-section");
+const stderrSection   = document.getElementById("stderr-section");
+const stdoutContent   = document.getElementById("stdout-content");
+const stderrContent   = document.getElementById("stderr-content");
+const outputPanel     = document.getElementById("output-panel");
+const outputChevron   = document.getElementById("output-chevron");
+
+const RUN_STATUS_URL  = "{% url 'antaresia:run_status' run_id=0 %}".replace("/0/", "/{id}/");
+const WORKFLOW_API_URL    = "{% url 'workflows:api_run_detail' 99999 %}".replace("/99999/", "/{id}/");
+const WORKFLOW_DETAIL_URL = "{% url 'workflows:workflow_run_detail' 99999 %}".replace("/99999/", "/{id}/");
+
+let outputOpen = false;
+document.getElementById("toggle-output").addEventListener("click", () => {
+  outputOpen = !outputOpen;
+  outputPanel.classList.toggle("hidden", !outputOpen);
+  outputChevron.style.transform = outputOpen ? "rotate(180deg)" : "";
+});
+
+function showStatus(mode) {
+  statusBar.classList.remove("hidden");
+  statusRunning.classList.toggle("hidden", mode !== "running");
+  statusRunning.classList.toggle("flex",   mode === "running");
+  statusOk.classList.toggle("hidden",  mode !== "ok");
+  statusOk.classList.toggle("flex",    mode === "ok");
+  statusErr.classList.toggle("hidden", mode !== "err");
+  statusErr.classList.toggle("flex",   mode === "err");
+}
+
+function showWorkflowLink(detailUrl) {
+  wfLink.href = detailUrl;
+  wfLink.classList.remove("hidden");
+  wfLink.classList.add("inline-flex");
+}
+
+function hideWorkflowLink() {
+  wfLink.classList.add("hidden");
+  wfLink.classList.remove("inline-flex");
+}
+
+function displayOutput(stdout, stderr, exitCode) {
+  if (stdout) {
+    stdoutContent.textContent = stdout;
+    stdoutSection.classList.remove("hidden");
+  } else {
+    stdoutSection.classList.add("hidden");
+  }
+  if (stderr) {
+    stderrContent.textContent = stderr;
+    stderrSection.classList.remove("hidden");
+  } else {
+    stderrSection.classList.add("hidden");
+  }
+  // auto-open output panel when there's something to show
+  if (stdout || stderr) {
+    outputOpen = true;
+    outputPanel.classList.remove("hidden");
+    outputChevron.style.transform = "rotate(180deg)";
+  }
+}
+
+async function pollWorkflowRun(workflowRunId, runId) {
+  const apiUrl    = WORKFLOW_API_URL.replace("{id}", workflowRunId);
+  const detailUrl = WORKFLOW_DETAIL_URL.replace("{id}", workflowRunId);
+  showWorkflowLink(detailUrl);
+
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const res  = await fetch(apiUrl, { credentials: "same-origin" });
+    const data = await res.json();
+
+    if (data.status === "completed") {
+      const sr = await fetch(RUN_STATUS_URL.replace("{id}", runId), { credentials: "same-origin" });
+      const sd = await sr.json();
+      displayOutput(sd.stdout || "", sd.stderr || "", sd.exit_code);
+      if (sd.exit_code === 0) {
+        statusExitCode.textContent = "exit 0";
+        showStatus("ok");
+      } else {
+        statusExitErr.textContent = `exit ${sd.exit_code}`;
+        showStatus("err");
+      }
+      return;
+    }
+    if (data.status === "failed") { window.location.href = detailUrl; return; }
+
+    statusRunDetail.textContent = data.status || "running";
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  stderrContent.textContent = "Script is still running. Check run history.";
+  stderrSection.classList.remove("hidden");
+  showStatus("err");
+}
+
+async function pollRunStatus(runId) {
+  const url = RUN_STATUS_URL.replace("{id}", runId);
+  for (let attempt = 0; attempt < 120; attempt++) {
+    const res  = await fetch(url, { credentials: "same-origin" });
+    const data = await res.json();
+    if (data.status === "success" || data.status === "failed") {
+      displayOutput(data.stdout || "", data.stderr || "", data.exit_code);
+      if (data.exit_code === 0) {
+        statusExitCode.textContent = "exit 0";
+        showStatus("ok");
+      } else {
+        statusExitErr.textContent = `exit ${data.exit_code ?? "?"}`;
+        showStatus("err");
+      }
+      return;
+    }
+    statusRunDetail.textContent = data.status || "running";
+    await new Promise(r => setTimeout(r, 1500));
+  }
+  stderrContent.textContent = "Script is still running. Check run history.";
+  stderrSection.classList.remove("hidden");
+  showStatus("err");
+}
+
+runBtn.addEventListener("click", async () => {
+  statusBar.classList.add("hidden");
+  outputPanel.classList.add("hidden");
+  outputOpen = false;
+  outputChevron.style.transform = "";
+  stdoutSection.classList.add("hidden");
+  stderrSection.classList.add("hidden");
+  hideWorkflowLink();
+  runBtn.disabled = true;
+  runBtn.style.opacity = "0.5";
+  statusRunDetail.textContent = "saving";
+  showStatus("running");
+
+  try {
+    const saved = await saveFile();
+    if (!saved) {
+      stderrContent.textContent = "Save failed. Script was not started.";
+      stderrSection.classList.remove("hidden");
+      showStatus("err");
+      return;
+    }
+
+    statusRunDetail.textContent = "queued";
+    const res  = await fetch("{% url 'antaresia:run_python' file_pk=vault_file.pk %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+
+    if (data.status === "queued" && data.workflow_run_id) {
+      await pollWorkflowRun(data.workflow_run_id, data.run_id);
+    } else if (data.status === "queued" && data.run_id) {
+      await pollRunStatus(data.run_id);
+    } else if (data.status === "ok") {
+      displayOutput(data.stdout || "", data.stderr || "", data.exit_code);
+      statusExitCode.textContent = "exit 0";
+      showStatus("ok");
+    } else {
+      displayOutput(data.stdout || "", data.stderr || data.error || "Unknown error.", data.exit_code);
+      statusExitErr.textContent = data.exit_code != null ? `exit ${data.exit_code}` : "";
+      showStatus("err");
+    }
+  } catch (err) {
+    stderrContent.textContent = String(err);
+    stderrSection.classList.remove("hidden");
+    showStatus("err");
+  } finally {
+    runBtn.disabled = false;
+    runBtn.style.opacity = "1";
+  }
+});
+</script>
+
+<script>
+// ── Delete ───────────────────────────────────────────────────
+const deleteModal = document.getElementById("delete-modal");
+
+document.getElementById("delete-file").addEventListener("click", () => {
+  deleteModal.classList.replace("hidden", "flex");
+});
+document.getElementById("delete-cancel").addEventListener("click", () => {
+  deleteModal.classList.replace("flex", "hidden");
+});
+deleteModal.addEventListener("click", e => { if (e.target === deleteModal) deleteModal.classList.replace("flex", "hidden"); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") deleteModal.classList.replace("flex", "hidden"); });
+
+document.getElementById("delete-confirm").addEventListener("click", async () => {
+  const btn = document.getElementById("delete-confirm");
+  btn.disabled = true;
+  btn.style.opacity = "0.5";
+  try {
+    const res = await fetch("{% url 'antaresia:delete_file' file_pk=vault_file.pk %}", {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status === "ok") {
+      window.location.href = data.redirect || "/vault/";
+    } else {
+      alert(data.error || "Delete failed.");
+      btn.disabled = false;
+      btn.style.opacity = "1";
+    }
+  } catch (err) {
+    alert("Delete failed: " + err);
+    btn.disabled = false;
+    btn.style.opacity = "1";
+  }
+});
+</script>
+{% endblock %}
+
+{% block floating_widgets %}{% endblock %}

@@ -1,0 +1,192 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Application Submitted | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center">
+
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="grid w-full overflow-hidden rounded-2xl border shadow-sm lg:grid-cols-2">
+
+      <!-- Confirmation Panel -->
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="border-b p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
+
+        <div class="flex h-full flex-col justify-between gap-10">
+          <div class="space-y-6">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="flex h-16 w-16 items-center justify-center rounded-2xl border shadow-sm">
+              <i
+                :class="darkMode
+                  ? 'fa-moon text-accent-dark'
+                  : 'fa-sun text-accent-light'"
+                class="fa-solid text-2xl"></i>
+            </div>
+
+            <div>
+              <p
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="text-xs font-semibold uppercase tracking-wide">{% trans "Application received" %}</p>
+
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Thank you for applying." %}</h1>
+
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">
+                We’ve received your application. Continue to verification, where you’ll be
+                shown a code image to retype and confirm you’re human. Once verified, you’ll
+                be able to access member features and continue into {{ platform.site_name }}.
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-eye"></i>
+              <p class="mt-2 font-semibold">{% trans "Read the code" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "A code image is shown." %}</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-key"></i>
+              <p class="mt-2 font-semibold">{% trans "Verify" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Submit your code." %}</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-door-open"></i>
+              <p class="mt-2 font-semibold">{% trans "Enter" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Access member tools." %}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Next Steps Panel -->
+      <section class="p-6 sm:p-8 lg:p-10">
+        <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
+
+          <div>
+            <h2 class="text-2xl font-bold">{% trans "Next step" %}</h2>
+
+            <p class="mt-2 text-sm leading-6 opacity-70">
+              Continue to verification to retype the code image. You can also return to login
+              and come back later.
+            </p>
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 text-sm shadow-sm">
+
+            {% if username %}
+              <div class="space-y-3">
+                <div
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="flex h-12 w-12 items-center justify-center rounded-xl border">
+                  <i
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="fa-solid fa-shield-halved"></i>
+                </div>
+
+                <div>
+                  <p class="font-semibold">{% trans "Ready to verify?" %}</p>
+                  <p class="mt-1 opacity-70">{% trans "Continue to read your code image and complete verification." %}</p>
+                </div>
+
+                <a
+                  href="{% url 'socialhub:membership_verification' username %}"
+                  :class="darkMode
+                    ? 'bg-accent-dark text-primary-bg-dark'
+                    : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-key"></i>{% trans "Submit Code" %}</a>
+              </div>
+            {% else %}
+              <div class="space-y-3">
+                <div
+                  :class="darkMode
+                    ? 'border-accent-1 bg-primary-bg-dark'
+                    : 'border-accent-2 bg-primary-bg-light'"
+                  class="flex h-12 w-12 items-center justify-center rounded-xl border">
+                  <i
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="fa-solid fa-clock"></i>
+                </div>
+
+                <div>
+                  <p class="font-semibold">{% trans "Verification will be available soon." %}</p>
+
+                  <p class="mt-1 opacity-70">{% trans "Once your application is ready, you'll be shown a code image to verify." %}</p>
+                </div>
+              </div>
+            {% endif %}
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4 text-center text-sm">
+
+            <p class="opacity-75">{% trans "Want to sign in instead?" %}</p>
+
+            <a
+              href="{% url 'core:login' %}"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+              class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">{% trans "Back to Login" %}<i class="fa-solid fa-arrow-right text-xs"></i>
+            </a>
+          </div>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</section>
+{% endblock %}

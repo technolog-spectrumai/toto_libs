@@ -1,0 +1,132 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Generate Invoice" %} — {{ bucket.name }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'vault:bucket_metrics' bucket.slug %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {{ bucket.name }} {% trans "Metrics" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "File Vault" %}</p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-file-invoice-dollar"></i>
+          {% trans "Generate Invoice" %}
+        </h1>
+      </div>
+    </header>
+
+    <!-- Tariff info card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm overflow-hidden">
+      <div class="px-5 py-3 border-b text-xs font-semibold uppercase tracking-wide opacity-55"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <i class="fa-solid fa-receipt mr-1"></i>{% trans "Tariff" %}: {{ tariff.code }}
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="flex items-center gap-3 text-sm">
+          <span class="font-semibold">{{ tariff.name }}</span>
+          {% if tariff.is_active %}
+          <span :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
+                class="rounded px-2 py-0.5 text-xs font-semibold">{% trans "Active" %}</span>
+          {% endif %}
+        </div>
+        {% if tariff_items %}
+        <table class="w-full text-xs">
+          <thead>
+            <tr class="opacity-50 border-b" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="text-left pb-2">{% trans "Metric" %}</th>
+              <th class="text-right pb-2">{% trans "Rate" %}</th>
+              <th class="text-left pb-2 pl-2">{% trans "Unit" %}</th>
+              <th class="text-left pb-2 pl-2">{% trans "Token" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y opacity-80" :class="darkMode ? 'divide-accent-1/30' : 'divide-accent-2/30'">
+            {% for item in tariff_items %}
+            <tr>
+              <td class="py-1.5 font-mono">{{ item.metric.code }}</td>
+              <td class="py-1.5 text-right font-mono">{{ item.price_per_unit_display }}</td>
+              <td class="py-1.5 pl-2 opacity-60">{% if item.unit %}{{ item.unit.code }}{% endif %}</td>
+              <td class="py-1.5 pl-2">{% if item.charged_asset %}{{ item.charged_asset.unit_name }}{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+        {% endif %}
+        <p class="text-xs opacity-50">
+          <i class="fa-solid fa-hard-drive mr-1"></i>
+          {% trans "Current storage" %}: <strong>{{ usage_mb }} MB</strong>
+          &nbsp;·&nbsp;{% trans "Estimate is usage × rate × 730 h/month" %}
+        </p>
+      </div>
+    </div>
+
+    <!-- Invoice preview (read-only) -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm overflow-hidden">
+
+      <div class="px-5 py-3 border-b text-xs font-semibold uppercase tracking-wide opacity-55"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <i class="fa-solid fa-file-invoice mr-1"></i>{% trans "Invoice Preview" %}
+      </div>
+
+      <div class="px-5 py-5 space-y-4">
+
+        <div class="space-y-1">
+          <p class="text-xs font-semibold opacity-50 uppercase tracking-wide">{% trans "Title" %}</p>
+          <p class="text-sm font-semibold">{{ suggested_title }}</p>
+        </div>
+
+        <div class="space-y-1">
+          <p class="text-xs font-semibold opacity-50 uppercase tracking-wide">{% trans "Description" %}</p>
+          <p class="text-sm opacity-70">{% trans "Storage billing for" %} {{ bucket.name }} ({{ tariff.code }}). {{ usage_mb }} MB {% trans "used" %}.</p>
+        </div>
+
+        <div class="flex items-center gap-8">
+          <div class="space-y-1">
+            <p class="text-xs font-semibold opacity-50 uppercase tracking-wide">{% trans "Amount" %}</p>
+            <p class="text-2xl font-bold font-mono">{{ suggested_amount }} <span class="text-sm opacity-60">{{ suggested_currency }}</span></p>
+          </div>
+        </div>
+
+        <p class="text-xs opacity-40 border-t pt-3" :class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
+          {% trans "Issued to" %}: <strong>{{ bucket.owner.username }}</strong>
+          &nbsp;·&nbsp;{% trans "Bucket" %}: <strong>{{ bucket.name }}</strong>
+        </p>
+
+      </div>
+    </div>
+
+    <!-- Confirm form — values are computed server-side on POST, nothing editable -->
+    <form method="post">
+      {% csrf_token %}
+
+      <div class="flex items-center justify-end gap-3 pt-2">
+        <a href="{% url 'vault:bucket_metrics' bucket.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+          <i class="fa-solid fa-file-invoice-dollar"></i>
+          {% trans "Confirm & Generate" %}
+        </button>
+      </div>
+    </form>
+
+  </div>
+</div>
+{% endblock %}

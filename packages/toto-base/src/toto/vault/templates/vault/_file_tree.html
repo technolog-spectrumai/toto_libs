@@ -1,0 +1,71 @@
+{% comment %}
+Reusable, collapsible, searchable file-tree picker. Context:
+  tree            grouped structure from vault.filetree.build_file_tree
+  tree_input_name checkbox name (checkbox mode)
+  tree_value_field "title" or "id"
+  tree_selected   pre-selected values (checkbox mode)
+  tree_alpine     bind checkboxes to Alpine `selected` + syncExtraFiles()
+  tree_link_prefix render rows as links "<prefix><id>" instead of checkboxes
+  tree_current_id  highlight this file id (link mode)
+Search + collapse handled client-side (mirrors the vault app's glob/substring search).
+{% endcomment %}
+{% load i18n %}
+<div x-data="fileTree()">
+  <div class="relative mb-3">
+    <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-40"></i>
+    <input type="text" x-model="q" placeholder="{% trans 'Search files… (use * for wildcards)' %}"
+      class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm focus:outline-none focus:ring-2"
+      x-bind:class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'">
+  </div>
+
+  <div class="space-y-2">
+    {% for bnode in tree %}
+    <div x-data="{ open: true }">
+      <button type="button" @click="open = !open"
+        class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs font-semibold uppercase tracking-wide opacity-60 hover:opacity-100">
+        <i class="fa-solid w-3 text-[10px]" :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+        <i class="fa-solid fa-database opacity-50"></i>{{ bnode.bucket.name|default:"(no bucket)" }}
+      </button>
+      <div x-show="open" class="ml-2 border-l pl-3" x-bind:class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
+        {% for group in bnode.groups %}
+          {% if group.dir %}
+          <div x-data="{ open: true }">
+            <button type="button" @click="open = !open"
+              class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs opacity-55 hover:opacity-100">
+              <i class="fa-solid w-3 text-[10px]" :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
+              <i class="fa-solid fa-folder opacity-50"></i>{{ group.dir }}
+            </button>
+            <div x-show="open" class="ml-2 border-l pl-3" x-bind:class="darkMode ? 'border-accent-1/20' : 'border-accent-2/20'">
+              {% for file in group.files %}{% include "vault/_file_tree_row.html" %}{% endfor %}
+            </div>
+          </div>
+          {% else %}
+            {% for file in group.files %}{% include "vault/_file_tree_row.html" %}{% endfor %}
+          {% endif %}
+        {% endfor %}
+      </div>
+    </div>
+    {% empty %}
+    <p class="text-xs opacity-50">{% trans "No matching files you can access." %}</p>
+    {% endfor %}
+  </div>
+</div>
+
+<script>
+  window.fileTree = window.fileTree || function () {
+    return {
+      q: "",
+      match(title) {
+        const q = (this.q || "").trim().toLowerCase();
+        if (!q) return true;
+        const t = (title || "").toLowerCase();
+        if (q.includes("*")) {
+          const re = new RegExp("^" + q.split("*")
+            .map(s => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join(".*") + "$");
+          return re.test(t);
+        }
+        return t.includes(q);
+      },
+    };
+  };
+</script>

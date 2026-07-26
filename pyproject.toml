@@ -1,0 +1,21 @@
+# The repository root is deliberately NOT an installable distribution.
+#
+# toto ships as several lockstep-versioned packages under packages/, all filling
+# the PEP 420 `toto.*` namespace:
+#
+#   toto-base   foundation + host API (every host installs it)
+#   toto-auth   OIDC provider/consumer apps + login strategy (every host installs it)
+#   toto-flow   workflow engine and compute kernels
+#   toto-works  workflow-backed file/document/data services
+#   toto-geo    geo feature apps (weather)
+#   toto-media  video, transcription and media processing
+#   toto-chat   encrypted mesh chat
+#   toto-ops    onion identity, device directory, monitoring
+#   toto-ai     agents, embeddings, assistants
+#   toto-graph  Neo4j knowledge graph, ingestion, connectors
+#
+# Install them with scripts/install_toto.sh (editable) or build wheels with
+# scripts/build_wheels.py. See README.md.
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

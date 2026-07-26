@@ -1,0 +1,139 @@
+{% load static %}
+{% load i18n %}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+
+<script>
+function createOrgChart(containerElement, data, colors, darkMode) {
+  const theme = darkMode ? 'dark' : 'light';
+  // Warning colors are inverted bubble-background
+  const bgColor = colors[`primary-bg-${theme}`];
+  const textColor = colors[`text-main-${theme}`];
+  const accentColor = colors[`accent-${theme}`];
+  const bubbleColor = colors[`bubble-bg-${theme}`];
+
+  const elements = [];
+  data.forEach(node => {
+    elements.push({
+      data: {
+        id: node.id,
+        label: `${node.name}\n${node.title}`,
+        profile_url: node.profile_url
+      }
+    });
+    if (node.pid) {
+      elements.push({
+        data: { id: `${node.pid}-${node.id}`, source: node.pid, target: node.id }
+      });
+    }
+  });
+  const cy = cytoscape({
+    container: containerElement,
+    elements,
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color': bubbleColor,
+          'border-color': accentColor,
+          'border-width': 2,
+          'label': 'data(label)',
+          'color': textColor,
+          'font-size': 12,
+          'text-wrap': 'wrap',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'width': 200,
+          'height': 100,
+          'shape': 'round-rectangle'
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 2,
+          'line-color': accentColor,
+          'curve-style': 'bezier',
+          'target-arrow-shape': 'triangle',
+          'target-arrow-color': accentColor
+        }
+      }
+    ],
+    layout: {
+      name: 'breadthfirst',
+      directed: true,
+      orientation: 'vertical',
+      roots: data.filter(n => !n.pid).map(n => n.id),
+      spacingFactor: 1.2,
+      padding: 0,
+      fit: true
+    },
+    wheelSensitivity: 0.2
+  });
+
+  cy.on('tap', 'node', function(evt){
+    const node = evt.target;
+    const url = node.data('profile_url');
+    if (url) window.open(url, '_blank');
+  });
+
+  cy.resize();
+  cy.fit();
+  cy.center();
+  containerElement.style.backgroundColor = bgColor;
+
+  return cy;
+}
+</script>
+<script>
+document.addEventListener("DOMContentLoaded", () => {
+  const container = document.getElementById("orgchart-container");
+  const colors = {{ theme.theme.colors|safe }};
+  const fetchUrl = "{{ fetch_url }}";
+  let cy;
+
+  const loadChart = async () => {
+    if (!fetchUrl) return;
+
+    container.classList.add("opacity-50");
+
+    try {
+      const response = await fetch(fetchUrl);
+      const data = await response.json();
+      const nodes = data.nodes || [];
+
+      if (cy) {
+        cy.destroy();
+        cy = null;
+      }
+
+      cy = createOrgChart(
+        container,
+        nodes,
+        colors,
+        Alpine.evaluate(document.documentElement, 'darkMode')
+      );
+
+    } catch (error) {
+      console.error("Failed to load org chart:", error);
+    } finally {
+      container.classList.remove("opacity-50");
+    }
+  };
+
+  loadChart();
+
+  const toggleButton = document.querySelector(".site-theme-toggle-button");
+  if (toggleButton) {
+    toggleButton.addEventListener("click", () => loadChart());
+  }
+
+  const resizeObserver = new ResizeObserver(() => {
+    if (cy) {
+      cy.resize();
+      cy.fit();
+    }
+  });
+
+  resizeObserver.observe(container);
+});
+</script>

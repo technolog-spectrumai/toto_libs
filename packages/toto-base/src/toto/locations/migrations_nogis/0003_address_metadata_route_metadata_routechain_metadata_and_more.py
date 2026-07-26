@@ -1,0 +1,38 @@
+# GIS-off variant — identical to the GIS-on 0003 (no geometry involved).
+
+from django.db import migrations, models
+
+
+class Migration(migrations.Migration):
+
+    dependencies = [
+        ('locations', '0002_initial'),
+    ]
+
+    operations = [
+        migrations.AddField(
+            model_name='address',
+            name='metadata',
+            field=models.JSONField(blank=True, default=dict, help_text='Free-form JSON metadata for this location.'),
+        ),
+        migrations.AddField(
+            model_name='route',
+            name='metadata',
+            field=models.JSONField(blank=True, default=dict, help_text='Free-form JSON metadata for this location.'),
+        ),
+        migrations.AddField(
+            model_name='routechain',
+            name='metadata',
+            field=models.JSONField(blank=True, default=dict, help_text='Free-form JSON metadata for this location.'),
+        ),
+        migrations.AddField(
+            model_name='territory',
+            name='metadata',
+            field=models.JSONField(blank=True, default=dict, help_text='Free-form JSON metadata for this location.'),
+        ),
+        migrations.AddField(
+            model_name='zone',
+            name='metadata',
+            field=models.JSONField(blank=True, default=dict, help_text='Free-form JSON metadata for this location.'),
+        ),
+    ]

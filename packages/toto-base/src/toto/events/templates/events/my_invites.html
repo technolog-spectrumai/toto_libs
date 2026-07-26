@@ -1,0 +1,157 @@
+{% extends "events/base.html" %}
+{% load i18n %}
+
+{% block events_title %}{% trans "My Invites" %}{% endblock %}
+
+{% block events_content %}
+<div class="mx-auto max-w-3xl space-y-8">
+
+  {% if no_profile %}
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm flex items-start gap-4">
+    <i class="fa-solid fa-circle-exclamation mt-0.5 text-amber-500 shrink-0"></i>
+    <div>
+      <p class="font-semibold">{% trans "No person profile linked to your account" %}</p>
+      <p class="mt-1 text-sm opacity-65">{% trans "Ask an admin to link your user account to a person profile so you can receive event invites." %}</p>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Pending -->
+  <section>
+    <div class="mb-3 flex items-center gap-3">
+      <h2 class="text-lg font-bold">{% trans "Awaiting response" %}</h2>
+      {% if pending_invites %}
+        <span
+          :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+          class="rounded-full px-2.5 py-0.5 text-xs font-semibold">
+          {{ pending_invites|length }}
+        </span>
+      {% endif %}
+    </div>
+
+    {% if pending_invites %}
+      <div class="space-y-3">
+        {% for invite in pending_invites %}
+        <article
+          x-data="{ responding: false }"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm transition">
+          <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div class="min-w-0 space-y-1">
+              <a
+                href="{% url 'events:event_detail' invite.event.pk %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="text-lg font-bold underline-offset-4 hover:underline break-words">
+                {{ invite.event.title }}
+              </a>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs opacity-65">
+                <span class="inline-flex items-center gap-1">
+                  <i class="fa-solid fa-clock"></i>
+                  {{ invite.event.start_time|date:"M j, Y · g:i A" }}
+                </span>
+                {% if invite.event.organizer %}
+                <span class="inline-flex items-center gap-1">
+                  <i class="fa-solid fa-user"></i>
+                  {{ invite.event.organizer.display_name }}
+                </span>
+                {% endif %}
+                {% if invite.event.address %}
+                <span class="inline-flex items-center gap-1">
+                  <i class="fa-solid fa-location-dot"></i>
+                  {{ invite.event.address }}
+                </span>
+                {% endif %}
+              </div>
+              <p class="text-xs opacity-40">{% trans "Invited" %} {{ invite.sent_at|date:"M j, Y" }}</p>
+            </div>
+
+            <!-- Action buttons -->
+            <div class="flex shrink-0 gap-2">
+              <form method="post" action="{% url 'events:invite_respond' invite.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="accept">
+                <button
+                  type="submit"
+                  class="inline-flex items-center gap-2 rounded-lg bg-success-light px-4 py-2 text-sm font-semibold text-white shadow-sm transition hover:opacity-90">
+                  <i class="fa-solid fa-check"></i>
+                  {% trans "Accept" %}
+                </button>
+              </form>
+              <form method="post" action="{% url 'events:invite_respond' invite.pk %}">
+                {% csrf_token %}
+                <input type="hidden" name="action" value="decline">
+                <button
+                  type="submit"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+                  <i class="fa-solid fa-xmark"></i>
+                  {% trans "Decline" %}
+                </button>
+              </form>
+            </div>
+          </div>
+        </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-8 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="fa-solid fa-inbox text-2xl"></i>
+        <p class="mt-2 text-sm opacity-60">{% trans "No pending invites." %}</p>
+      </div>
+    {% endif %}
+  </section>
+
+  <!-- Accepted -->
+  {% if accepted_invites %}
+  <section>
+    <h2 class="mb-3 text-lg font-bold">{% trans "Accepted" %}</h2>
+    <div class="space-y-2">
+      {% for invite in accepted_invites %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center justify-between rounded-lg border px-4 py-3 shadow-sm">
+        <div class="min-w-0">
+          <a href="{% url 'events:event_detail' invite.event.pk %}"
+             class="font-semibold hover:underline truncate block">{{ invite.event.title }}</a>
+          <p class="text-xs opacity-50">{{ invite.event.start_time|date:"M j, Y · g:i A" }}</p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-success-light/15 px-3 py-1 text-xs font-semibold text-success-light shrink-0 ml-3">
+          <i class="fa-solid fa-circle-check"></i>
+          {% trans "Accepted" %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  <!-- Declined -->
+  {% if declined_invites %}
+  <section>
+    <h2 class="mb-3 text-lg font-bold">{% trans "Declined" %}</h2>
+    <div class="space-y-2">
+      {% for invite in declined_invites %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex items-center justify-between rounded-lg border px-4 py-3 shadow-sm opacity-60">
+        <div class="min-w-0">
+          <p class="font-semibold truncate">{{ invite.event.title }}</p>
+          <p class="text-xs opacity-50">{{ invite.event.start_time|date:"M j, Y · g:i A" }}</p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-warn-light/15 px-3 py-1 text-xs font-semibold text-warn-light shrink-0 ml-3">
+          <i class="fa-solid fa-circle-xmark"></i>
+          {% trans "Declined" %}
+        </span>
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,15 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+{% block content %}
+  <h1>{{ title }}</h1>
+  <p>Dumping {{ queryset|length }} object{{ queryset|length|pluralize }}:</p>
+  <ul>
+    {% for obj in queryset %}
+      <li>{{ obj }}</li>
+    {% endfor %}
+  </ul>
+  <form method="post">{% csrf_token %}
+    {{ form.as_p }}
+    <button type="submit" class="default">{% trans "Dump" %}</button>
+  </form>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ page.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] { display: none !important; }
+  .prose p { margin-top: 0.8rem; margin-bottom: 0.8rem; }
+  .prose pre { padding: 1rem; border-radius: 0.75rem; overflow-x: auto; }
+  .prose code { padding: 0.2rem 0.4rem; border-radius: 0.35rem; }
+  .prose h1 { margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: 800; font-size: 1.25rem; }
+  .prose h2 { margin-top: 2rem; margin-bottom: 1rem; font-weight: 800; }
+  .prose h3 { margin-top: 1.5rem; margin-bottom: 0.75rem; font-weight: 700; }
+  .prose img { border-radius: 0.75rem; margin: 1rem auto; }
+  .prose table { width: 100%; border-collapse: collapse; }
+  .prose th, .prose td { padding: 0.65rem; }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="min-w-0">
+        <a href="{% block back_href %}{% url back_url %}{% endblock %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% block back_label_text %}{{ back_label }}{% endblock %}
+        </a>
+
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="mt-5 text-xs font-semibold uppercase tracking-wide">
+          {% block page_type %}{{ page_type_label }}{% endblock %}
+        </p>
+
+        <h1 class="mt-2 break-words text-3xl font-bold tracking-tight sm:text-4xl">
+          {{ page.title }}
+        </h1>
+
+        {% if page.description %}
+          <p class="mt-3 max-w-3xl text-sm leading-6 opacity-75">{{ page.description }}</p>
+        {% else %}
+          <p class="mt-3 max-w-3xl text-sm italic leading-6 opacity-60">{% trans "No description provided." %}</p>
+        {% endif %}
+
+        {% block page_meta %}{% endblock %}
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        {% block header_nav %}{% endblock %}
+      </nav>
+    </header>
+
+    <!-- Sections -->
+    <div class="space-y-5">
+      {% for section in sections %}
+        <article x-data="{ open: true }"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="overflow-hidden rounded-2xl border shadow-sm">
+
+          <button type="button" @click="open = !open"
+                  :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+                  class="flex w-full items-start justify-between gap-4 border-b border-current/10 px-5 py-4 text-left transition hover:opacity-90 sm:px-6">
+            <span class="min-w-0">
+              <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+                Section {{ forloop.counter }}
+              </span>
+              <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="mt-1 break-words text-2xl font-bold">
+                {{ section.title }}
+              </h2>
+              {% if section.author %}
+                <span class="mt-1 block text-xs opacity-55">
+                  <i class="fa-solid fa-user-pen"></i> {{ section.author.display_name }}
+                </span>
+              {% endif %}
+            </span>
+            <span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-sm font-bold">
+              <span x-text="open ? '−' : '+'"></span>
+            </span>
+          </button>
+
+          <div x-show="open" x-collapse class="px-5 py-5 sm:px-6">
+            <div class="prose max-w-none dark:prose-invert">
+              {{ section.html|safe }}
+            </div>
+          </div>
+        </article>
+      {% empty %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border border-dashed p-10 text-center shadow-sm">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-file-lines text-3xl"></i>
+          <p class="mt-3 text-sm italic opacity-70">{% trans "No sections yet." %}</p>
+        </div>
+      {% endfor %}
+    </div>
+
+    {% block extra_content %}{% endblock %}
+
+    <!-- Footer -->
+    <footer class="flex flex-wrap items-center justify-between gap-3 pt-2">
+      <a href="{% block footer_back_href %}{% url back_url %}{% endblock %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% block footer_back_label %}{{ back_label }}{% endblock %}
+      </a>
+      {% block footer_extra %}{% endblock %}
+    </footer>
+
+  </div>
+</section>
+{% endblock %}
