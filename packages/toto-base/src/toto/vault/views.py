@@ -1402,6 +1402,10 @@ class BucketConnectionUrlView(LoginRequiredMixin, View):
 
     def get(self, request, bucket_slug):
         bucket = get_object_or_404(Bucket, slug=bucket_slug, owner=request.user)
+        from .models import external_buckets_allowed
+        if bucket.storage_backend != "local" and not external_buckets_allowed():
+            # Don't advertise endpoint hosts of backends this host refuses to use.
+            return JsonResponse({"error": "Not found."}, status=404)
         from .connection import BucketConnectionSpec
         spec = BucketConnectionSpec.from_bucket(bucket)
         return JsonResponse({
@@ -1424,6 +1428,10 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
     """
 
     def post(self, request):
+        from .models import external_buckets_allowed
+        if not external_buckets_allowed():
+            return JsonResponse({"error": "External buckets are disabled on this host."}, status=403)
+
         try:
             data = json.loads(request.body)
         except (json.JSONDecodeError, TypeError):

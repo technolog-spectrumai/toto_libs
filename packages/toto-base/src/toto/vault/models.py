@@ -17,6 +17,15 @@ class StorageBackend(models.TextChoices):
     REMOTE_TOTO = "remote_toto", "Remote Toto Server"
 
 
+def external_buckets_allowed() -> bool:
+    """Host contract flag (LOCATIONS_GEOCODING / USE_EXTERNAL_FONTS register):
+    a host sets ``VAULT_EXTERNAL_BUCKETS = False`` (faros does) to forbid any
+    bucket whose storage is not this server's own filesystem — no S3, no
+    remote-toto proxying, no public CDN base URLs. Default keeps the full
+    backend matrix (zenobia unchanged)."""
+    return getattr(settings, "VAULT_EXTERNAL_BUCKETS", True)
+
+
 class StorageProvider(models.Model):
     """
     A named S3-compatible provider preset (AWS, OVH, MinIO, …).
@@ -116,12 +125,21 @@ class Bucket(models.Model):
     def __str__(self):
         return f"Bucket {self.name}"
 
+    def clean(self):
+        super().clean()
+        # Model-level belt for the host contract: whatever code path tries to
+        # persist a non-local bucket on a local-only host must fail loudly.
+        if self.storage_backend != StorageBackend.LOCAL and not external_buckets_allowed():
+            from django.core.exceptions import ValidationError
+            raise ValidationError("External buckets are disabled on this host.")
+
     def get_connection_url(self) -> str:
         from toto.vault.connection import BucketConnectionSpec
         return BucketConnectionSpec.from_bucket(self).to_url()
 
     def get_public_file_url(self, file_key: str) -> str:
-        if not self.public_base_url:
+        # A public base URL is a third-party origin — off with external buckets.
+        if not self.public_base_url or not external_buckets_allowed():
             return ""
         base = self.public_base_url.rstrip("/")
         return f"{base}/{file_key}"

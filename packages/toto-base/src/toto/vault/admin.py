@@ -5,7 +5,10 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
 
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider
+from .models import (
+    VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider,
+    external_buckets_allowed,
+)
 from toto.core.batch import BatchAction
 
 
@@ -42,6 +45,11 @@ class StorageProviderAdmin(admin.ModelAdmin):
         if obj and obj.is_builtin:
             return False
         return super().has_delete_permission(request, obj)
+
+    def has_module_permission(self, request):
+        # Provider presets only exist to configure S3 buckets — pointless (and
+        # misleading) on a local-only host.
+        return external_buckets_allowed() and super().has_module_permission(request)
 
 
 @admin.register(Bucket)
@@ -84,6 +92,14 @@ class BucketAdmin(admin.ModelAdmin):
         except Exception as exc:
             return f'(error: {exc})'
     connection_url_display.short_description = 'Connection URL'
+
+    def get_fieldsets(self, request, obj=None):
+        # Local-only host: the whole storage-backend fieldset disappears, so a
+        # superuser cannot point a bucket at S3/remote storage from the admin.
+        fieldsets = super().get_fieldsets(request, obj)
+        if external_buckets_allowed():
+            return fieldsets
+        return tuple(fs for fs in fieldsets if fs[0] != 'Storage backend')
 
 
 @admin.register(VaultFile)

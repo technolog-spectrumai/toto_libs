@@ -268,6 +268,13 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
     backend = getattr(bucket, "storage_backend", None) or "local"
     config: dict = getattr(bucket, "storage_config", None) or {}
 
+    if backend != "local":
+        from toto.vault.models import external_buckets_allowed
+        if not external_buckets_allowed():
+            # The single driver chokepoint: a lingering non-local bucket row on
+            # a local-only host must never reach an external service.
+            raise RuntimeError("External buckets are disabled on this host.")
+
     if backend == "s3":
         merged = dict(config)
         # Fill in provider defaults when the bucket has a linked provider
