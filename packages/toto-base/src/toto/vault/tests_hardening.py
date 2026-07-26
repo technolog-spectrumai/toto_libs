@@ -4,7 +4,8 @@
 contract flags (the faros onion host sets both); the library defaults keep
 every behavior unchanged. This module deliberately avoids any editor-app
 import so a host without ``toto.editor`` can run it via
-``manage.py test toto.vault.tests_hardening``.
+``manage.py test toto.vault.tests_hardening``. Permissive-side tests set
+their flag explicitly, so the module passes on hosts that turn either off.
 """
 import tempfile
 
@@ -38,7 +39,8 @@ class ExternalBucketFlagTests(TestCase):
         c.force_login(self.user)
         return c
 
-    def test_flag_defaults_on(self):
+    @override_settings(VAULT_EXTERNAL_BUCKETS=True)
+    def test_flag_on_allows(self):
         self.assertTrue(external_buckets_allowed())
 
     @override_settings(VAULT_EXTERNAL_BUCKETS=False)
@@ -51,7 +53,8 @@ class ExternalBucketFlagTests(TestCase):
         self.assertEqual(resp.status_code, 403)
         self.assertIn("disabled", resp.json()["error"])
 
-    def test_import_remote_still_works_by_default(self):
+    @override_settings(VAULT_EXTERNAL_BUCKETS=True)
+    def test_import_remote_works_when_allowed(self):
         resp = self._client().post(
             reverse("vault:bucket_import_remote"),
             '{"url": "toto://other.example/vault/buckets/x/"}',
@@ -65,7 +68,8 @@ class ExternalBucketFlagTests(TestCase):
             get_bucket_storage(self.s3)
         self.assertIsInstance(get_bucket_storage(self.local), LocalVaultStorageDriver)
 
-    def test_driver_chokepoint_open_by_default(self):
+    @override_settings(VAULT_EXTERNAL_BUCKETS=True)
+    def test_driver_chokepoint_open_when_allowed(self):
         self.assertIsInstance(get_bucket_storage(self.s3), S3CompatibleVaultStorageDriver)
 
     @override_settings(VAULT_EXTERNAL_BUCKETS=False)
@@ -84,7 +88,8 @@ class ExternalBucketFlagTests(TestCase):
         self.local.public_base_url = "https://cdn.example.com/vault/"
         self.assertEqual(self.local.get_public_file_url("k"), "")
 
-    def test_public_base_url_used_by_default(self):
+    @override_settings(VAULT_EXTERNAL_BUCKETS=True)
+    def test_public_base_url_used_when_allowed(self):
         self.local.public_base_url = "https://cdn.example.com/vault/"
         self.assertEqual(
             self.local.get_public_file_url("k"), "https://cdn.example.com/vault/k",
@@ -133,7 +138,8 @@ class FileEditsFlagTests(TestCase):
         )
         self.assertEqual(resp.status_code, 403)
 
-    def test_content_put_works_by_default(self):
+    @override_settings(VAULT_FILE_EDITS=True)
+    def test_content_put_works_when_allowed(self):
         key = self._upload()["key"]
         resp = self.client.put(
             reverse("vault:api_file_content", args=[key]),
