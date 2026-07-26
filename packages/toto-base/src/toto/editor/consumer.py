@@ -13,25 +13,43 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         self.file_pk = self.scope["url_route"]["kwargs"]["file_pk"]
+        # The socket rewrites file content, so it carries the same contract as
+        # editor save_file: an authenticated OWNER of an unencrypted file, on a
+        # host that allows edits at all. Anyone else is refused at the door.
+        user = self.scope.get("user")
+        self.user = user if user is not None and user.is_authenticated else None
+        if self.user is None or not await self._may_edit():
+            await self.close()
+            return
         self.room = f"{self.room_prefix}_{self.file_pk}"
         self.dmp = diff_match_patch()
         await self.channel_layer.group_add(self.room, self.channel_name)
         await self.accept()
 
     async def disconnect(self, close_code):
-        await self.channel_layer.group_discard(self.room, self.channel_name)
+        if getattr(self, "room", None):
+            await self.channel_layer.group_discard(self.room, self.channel_name)
+
+    @database_sync_to_async
+    def _may_edit(self) -> bool:
+        from toto.vault.models import VaultFile, file_edits_allowed
+        if not file_edits_allowed():
+            return False
+        return VaultFile.objects.filter(
+            pk=self.file_pk, owner=self.user, is_encrypted=False,
+        ).exists()
 
     @database_sync_to_async
     def read_file(self) -> str:
         from toto.vault.models import VaultFile
-        vf = VaultFile.objects.get(pk=self.file_pk)
+        vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
         with vf.file.open("r") as f:
             return f.read()
 
     @database_sync_to_async
     def write_file(self, content: str) -> None:
         from toto.vault.models import VaultFile
-        vf = VaultFile.objects.get(pk=self.file_pk)
+        vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
         with vf.file.open("w") as f:
             f.write(content)
 
