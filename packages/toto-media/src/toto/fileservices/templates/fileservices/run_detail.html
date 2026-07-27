@@ -1,0 +1,148 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ service_title }} — {% trans "Run" %} #{{ run.id }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
+<script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
+{% endblock %}
+
+{% block content %}
+<div
+  x-data="fileServiceRun()"
+  x-init="init()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="max-w-3xl mx-auto flex flex-col gap-4">
+
+    <!-- Breadcrumb -->
+    <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
+      <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="opacity-70">{% trans "File services" %}</span>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="font-semibold opacity-100">{% trans "Run" %} #{{ run.id }}</span>
+    </nav>
+
+    <!-- Header card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border shadow-sm p-5">
+      <div class="flex items-center gap-3">
+        <i class="{{ service_icon }} text-xl opacity-70"></i>
+        <div class="flex-1 min-w-0">
+          <h1 class="text-lg font-bold truncate">{{ service_title }}</h1>
+          <p class="text-xs opacity-60 truncate">
+            {% trans "Input" %}: <span class="font-mono">{{ run.input_file.title }}</span>
+          </p>
+        </div>
+        <!-- Status pill -->
+        <span x-show="status === 'pending'"  class="rounded-full px-3 py-1 text-xs font-bold bg-current/10">{% trans "Pending" %}</span>
+        <span x-show="status === 'running'"  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-full px-3 py-1 text-xs font-bold inline-flex items-center gap-1.5"><i class="fa-solid fa-spinner fa-spin"></i>{% trans "Running" %}</span>
+        <span x-show="status === 'success'"  :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+              class="rounded-full px-3 py-1 text-xs font-bold">{% trans "Success" %}</span>
+        <span x-show="status === 'failed'"   :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+              class="rounded-full px-3 py-1 text-xs font-bold">{% trans "Failed" %}</span>
+      </div>
+
+      {% if run.args %}
+      <div class="mt-3">
+        <p class="text-[10px] font-bold uppercase tracking-widest opacity-40 mb-1">{% trans "Arguments" %}</p>
+        <pre class="text-xs font-mono opacity-80 whitespace-pre-wrap rounded-lg border border-current/10 px-3 py-2">{{ run.args }}</pre>
+      </div>
+      {% endif %}
+
+      {% if run.workflow_run_id %}
+      <a href="{% url 'workflows:workflow_run_detail' run.workflow_run_id %}"
+         class="mt-3 inline-flex items-center gap-1.5 text-xs underline underline-offset-2 opacity-60 hover:opacity-90">
+        <i class="fa-solid fa-diagram-project"></i>{% trans "Workflow run" %} #{{ run.workflow_run_id }}
+      </a>
+      {% endif %}
+    </div>
+
+    <!-- Output files -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border shadow-sm p-5">
+      <h2 class="text-sm font-bold mb-3 flex items-center gap-2">
+        <i class="fa-solid fa-folder-open opacity-50"></i>{% trans "Files created" %}
+        <span class="rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-bold" x-text="outputs.length"></span>
+      </h2>
+      <template x-if="outputs.length === 0">
+        <p class="text-xs opacity-50 italic" x-text="status === 'running' || status === 'pending' ? '{% trans "Waiting for output…" %}' : '{% trans "No files were created." %}'"></p>
+      </template>
+      <div class="flex flex-col gap-1.5">
+        <template x-for="f in outputs" :key="f.pk">
+          <a :href="f.url || '#'" target="_blank"
+             :class="darkMode ? 'border-accent-1/40 hover:bg-primary-bg-dark/30' : 'border-accent-2/40 hover:bg-primary-bg-light/30'"
+             class="flex items-center gap-3 rounded-lg border px-3 py-2 text-sm transition">
+            <i class="fa-regular fa-file opacity-50"></i>
+            <span class="font-mono truncate flex-1" x-text="f.title"></span>
+            <span class="text-[10px] uppercase opacity-50" x-text="f.file_type"></span>
+            <i class="fa-solid fa-arrow-up-right-from-square text-xs opacity-40"></i>
+          </a>
+        </template>
+      </div>
+    </div>
+
+    <!-- Logs -->
+    <div x-show="stdout || stderr"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border shadow-sm overflow-hidden">
+      <div x-show="stderr">
+        <div class="px-5 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest"
+             :class="darkMode ? 'text-warn-dark opacity-70' : 'text-warn-light opacity-70'">stderr</div>
+        <pre class="px-5 pb-4 max-h-72 overflow-auto text-xs whitespace-pre-wrap opacity-75 font-mono"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="stderr"></pre>
+      </div>
+      <div x-show="stdout">
+        <div class="px-5 pt-4 pb-1 text-[10px] font-bold uppercase tracking-widest opacity-40">stdout</div>
+        <pre class="px-5 pb-4 max-h-72 overflow-auto text-xs whitespace-pre-wrap opacity-75 font-mono" x-text="stdout"></pre>
+      </div>
+    </div>
+
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+{{ run.stdout|json_script:"run-stdout" }}
+{{ run.stderr|json_script:"run-stderr" }}
+<script>
+document.addEventListener("alpine:init", () => {
+  Alpine.data("fileServiceRun", () => ({
+    status: "{{ run.status }}",
+    stdout: JSON.parse(document.getElementById("run-stdout").textContent) || "",
+    stderr: JSON.parse(document.getElementById("run-stderr").textContent) || "",
+    outputs: [
+      {% for f in outputs %}
+      { pk: {{ f.pk }}, title: "{{ f.title|escapejs }}", file_type: "{{ f.file_type }}", url: "{{ f.get_public_url|default:''|escapejs }}" },
+      {% endfor %}
+    ],
+    _timer: null,
+
+    init() {
+      if (this.status === "pending" || this.status === "running") {
+        this._timer = setInterval(() => this.poll(), 1500);
+      }
+    },
+
+    async poll() {
+      try {
+        const res = await fetch("{{ status_url }}", { credentials: "same-origin" });
+        const d = await res.json();
+        this.status = d.status;
+        this.stdout = d.stdout || "";
+        this.stderr = d.stderr || "";
+        this.outputs = d.outputs || [];
+        if (d.status === "success" || d.status === "failed") {
+          clearInterval(this._timer); this._timer = null;
+        }
+      } catch (e) { /* keep polling */ }
+    },
+  }));
+});
+</script>
+{% endblock %}

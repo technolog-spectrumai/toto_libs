@@ -1,0 +1,4 @@
+include LICENSE
+include README.md
+recursive-include src/toto *.html *.txt *.yaml *.yml *.js *.ts *.wasm *.json *.css *.png *.svg *.ico *.woff *.woff2
+global-exclude __pycache__ *.py[cod] *.orig *.rej

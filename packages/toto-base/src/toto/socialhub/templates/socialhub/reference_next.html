@@ -1,0 +1,155 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Thank You | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex min-h-[calc(100vh-5rem)] max-w-6xl items-center">
+
+    <div
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="grid w-full overflow-hidden rounded-2xl border shadow-sm lg:grid-cols-2">
+
+      <!-- Confirmation Panel -->
+      <section
+        :class="darkMode
+          ? 'border-accent-1 bg-sunken-dark'
+          : 'border-accent-2 bg-sunken-light'"
+        class="border-b p-6 sm:p-8 lg:border-b-0 lg:border-r lg:p-10">
+
+        <div class="flex h-full flex-col justify-between gap-10">
+          <div class="space-y-6">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="flex h-16 w-16 items-center justify-center rounded-2xl border shadow-sm">
+              <i
+                :class="darkMode
+                  ? 'fa-moon text-accent-dark'
+                  : 'fa-sun text-accent-light'"
+                class="fa-solid text-2xl"></i>
+            </div>
+
+            <div>
+              <p
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="text-xs font-semibold uppercase tracking-wide">{% trans "Request sent" %}</p>
+
+              <h1 class="mt-3 max-w-xl text-3xl font-bold leading-tight sm:text-4xl">{% trans "Reference request sent." %}</h1>
+
+              <p class="mt-4 max-w-xl text-sm leading-6 opacity-75 sm:text-base">{% trans "You successfully requested a reference for" %}<span class="font-semibold">{{ application.email }}</span>. {% trans "We'll notify the selected community member and keep the application moving once their endorsement is received." %}
+              </p>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-1 gap-3 text-sm sm:grid-cols-3 lg:grid-cols-1 xl:grid-cols-3">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-paper-plane"></i>
+              <p class="mt-2 font-semibold">{% trans "Sent" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "The request is out." %}</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-user-check"></i>
+              <p class="mt-2 font-semibold">{% trans "Review" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "Member can respond." %}</p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark'
+                : 'border-accent-2 bg-bubble-bg-light'"
+              class="rounded-xl border p-4">
+              <i
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="fa-solid fa-bell"></i>
+              <p class="mt-2 font-semibold">{% trans "Update" %}</p>
+              <p class="mt-1 text-xs opacity-65">{% trans "You’ll be notified." %}</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Next Steps Panel -->
+      <section class="p-6 sm:p-8 lg:p-10">
+        <div class="mx-auto flex h-full max-w-md flex-col justify-center space-y-6">
+
+          <div>
+            <h2 class="text-2xl font-bold">{% trans "What happens next?" %}</h2>
+
+            <p class="mt-2 text-sm leading-6 opacity-70">
+              {% trans "The community member will review the request. Once they respond, the application can continue through the membership process." %}
+            </p>
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-2xl border p-5 text-sm shadow-sm">
+
+            <div class="space-y-3">
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="flex h-12 w-12 items-center justify-center rounded-xl border">
+                <i
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="fa-solid fa-circle-check"></i>
+              </div>
+
+              <div>
+                <p class="font-semibold">{% trans "Request completed successfully" %}</p>
+
+                <p class="mt-1 leading-6 opacity-70">{% trans "The reference request for" %}<span class="font-semibold">{{ application.email }}</span> {% trans "has been recorded and sent for endorsement." %}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <a
+            href="{% url 'core:dashboard' %}"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-table-columns"></i>{% trans "Return to Dashboard" %}</a>
+
+        </div>
+      </section>
+
+    </div>
+  </div>
+</section>
+{% endblock %}

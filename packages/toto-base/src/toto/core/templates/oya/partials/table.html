@@ -1,0 +1,47 @@
+{% load i18n %}
+<section x-data="paginate({ perPage: 8 })" x-init="init()">
+
+  {% include "oya/partials/page_size.html" %}
+
+  <div class="hidden md:block overflow-x-auto">
+    <table class="min-w-full text-sm border rounded">
+      <thead>
+        <tr class="text-left border-b">
+          {% for col in columns %}
+            <th class="px-4 py-2">{{ col.label }}</th>
+          {% endfor %}
+        </tr>
+      </thead>
+
+      <tbody x-ref="items">
+        {% for row in rows %}
+        <tr class="border-b">
+
+          {% for cell in row %}
+            <td class="px-4 py-2">
+              {% if cell.type == "link" %}
+                {% if cell.url %}
+                  <a href="{{ cell.url }}"
+                     class="underline text-link-light dark:text-link-light">
+                    {{ cell.text }}
+                  </a>
+                {% else %}
+                  —
+                {% endif %}
+              {% else %}
+                {{ cell.text|default:"—" }}
+              {% endif %}
+            </td>
+          {% endfor %}
+
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <div>
+    {% include "oya/partials/pagination.html" %}
+  </div>
+
+</section>

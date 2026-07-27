@@ -1,0 +1,257 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Storage Account" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'vault:public_list' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Back to Files" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          <i class="fa-solid fa-vault mr-1"></i>{% trans "Vault" %}
+        </p>
+        <h1 class="mt-1 text-2xl font-bold">{% trans "Storage Account" %}</h1>
+        <p class="text-sm opacity-60 mt-1">
+          {% trans "Connect a ledger account to enable upload billing credits." %}
+        </p>
+      </div>
+      <a href="{% url 'vault:buy_tokens' %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-bag-shopping"></i>
+        {% trans "Buy tokens" %}
+      </a>
+    </header>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-semibold">
+      {{ msg }}
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    {% if storage_account %}
+
+    <!-- Connected account card -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border shadow-sm overflow-hidden">
+      <div class="flex items-center justify-between border-b px-5 py-4"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-link-horizontal opacity-60"></i>
+          {% trans "Connected Account" %}
+        </h2>
+        <span class="rounded px-2 py-0.5 text-xs font-semibold
+          {% if storage_account.active %}
+            :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
+          {% else %}
+            :class="darkMode ? 'bg-gray-700 text-gray-300' : 'bg-gray-100 text-gray-600'"
+          {% endif %}">
+          {% if storage_account.active %}{% trans "Active" %}{% else %}{% trans "Inactive" %}{% endif %}
+        </span>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <div class="flex flex-wrap gap-4 text-sm">
+          <div>
+            <div class="text-xs opacity-55 uppercase tracking-wide">{% trans "Code" %}</div>
+            <code class="font-mono font-semibold">{{ storage_account.ledger_account.code }}</code>
+          </div>
+          <div>
+            <div class="text-xs opacity-55 uppercase tracking-wide">{% trans "Account name" %}</div>
+            <div class="font-semibold">{{ storage_account.ledger_account.name }}</div>
+          </div>
+          {% if storage_account.name %}
+          <div>
+            <div class="text-xs opacity-55 uppercase tracking-wide">{% trans "Label" %}</div>
+            <div class="font-semibold">{{ storage_account.name }}</div>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if holdings %}
+        <div class="pt-2 border-t" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+          <div class="text-xs opacity-55 uppercase tracking-wide mb-2">{% trans "Balances" %}</div>
+          <div class="flex flex-wrap gap-3">
+            {% for h in holdings %}
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
+              <div class="font-mono font-bold text-sm">{{ h.balance_display }}</div>
+              <div class="text-xs opacity-55 mt-0.5">{{ h.asset.unit_name }}</div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+        {% else %}
+        <p class="text-sm opacity-55">{% trans "No asset balances yet." %}</p>
+        {% endif %}
+      </div>
+      <!-- Authorization status -->
+      <div class="border-t px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <div class="text-xs opacity-55 uppercase tracking-wide mb-3">{% trans "Transaction authorization" %}</div>
+        {% if storage_account.authorization %}
+        <div class="flex items-center justify-between gap-4">
+          <div class="flex items-center gap-2 text-sm">
+            <i :class="darkMode ? 'text-success-light' : 'text-success-light'" class="fa-solid fa-shield-check shrink-0"></i>
+            <div>
+              <div class="font-semibold">{{ storage_account.authorization.name }}</div>
+              <div class="text-xs opacity-55">{% trans "Auto-authorized — no manual confirmation needed" %}</div>
+            </div>
+          </div>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="set_authorization">
+            <button type="submit"
+                    :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-xmark"></i>
+              {% trans "Remove" %}
+            </button>
+          </form>
+        </div>
+        {% elif available_authorizations %}
+        <div class="space-y-2">
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            {% trans "No authorization set — you will be asked to confirm each upload manually." %}
+          </p>
+          <form method="post" class="flex gap-2 items-center flex-wrap">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="set_authorization">
+            <select name="authorization_pk"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                    class="rounded-lg border px-3 py-1.5 text-xs outline-none">
+              {% for auth in available_authorizations %}
+              <option value="{{ auth.pk }}">{{ auth.name }}</option>
+              {% endfor %}
+            </select>
+            <button type="submit"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="inline-flex items-center gap-1 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-shield-check"></i>
+              {% trans "Enable auto-auth" %}
+            </button>
+          </form>
+        </div>
+        {% else %}
+        <div class="space-y-2">
+          <p class="text-xs opacity-60">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            {% trans "No authorization set — each upload and token purchase will require manual confirmation (your click counts as consent)." %}
+          </p>
+          <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="grant_authorization">
+            <button type="submit"
+                    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-key"></i>
+              {% trans "Grant app authorization" %}
+            </button>
+            <p class="text-xs opacity-45 mt-1">
+              {% trans "Generates a secure keypair that lets the app sign billing transactions on your behalf. You can revoke it any time." %}
+            </p>
+          </form>
+        </div>
+        {% endif %}
+      </div>
+
+      <div class="flex gap-2 border-t px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        {% if storage_account.active %}
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="disconnect">
+          <button type="submit"
+                  :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+            <i class="fa-solid fa-unlink"></i>
+            {% trans "Disconnect" %}
+          </button>
+        </form>
+        {% else %}
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="reconnect">
+          <button type="submit"
+                  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-link"></i>
+            {% trans "Reconnect" %}
+          </button>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    {% endif %}
+
+    <!-- Connect form (show when not connected, or to switch) -->
+    {% if available_accounts %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-plus-circle opacity-60"></i>
+          {% if storage_account %}{% trans "Switch account" %}{% else %}{% trans "Connect an account" %}{% endif %}
+        </h2>
+        <p class="text-xs opacity-60 mt-0.5">
+          {% trans "Select one of your ledger accounts to use for vault upload credits." %}
+        </p>
+      </div>
+      <form method="post" class="px-5 py-4 space-y-4">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="connect">
+        <div class="space-y-1">
+          <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Ledger account" %}</label>
+          <select name="ledger_account"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            {% for acct in available_accounts %}
+            <option value="{{ acct.pk }}">{{ acct.code }} — {{ acct.name }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="space-y-1">
+          <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Label" %} <span class="font-normal opacity-60">({% trans "optional" %})</span>
+          </label>
+          <input type="text" name="name" maxlength="255" placeholder="{% trans 'e.g. My Storage Credits' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-link"></i>
+          {% trans "Connect" %}
+        </button>
+      </form>
+    </div>
+    {% elif not storage_account %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+      <i class="fa-solid fa-wallet text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "No ledger accounts available." %}</p>
+      <p class="text-xs opacity-45 mt-1">{% trans "Ask an administrator to create a user ledger account for you." %}</p>
+    </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

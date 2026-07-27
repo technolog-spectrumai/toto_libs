@@ -1,0 +1,47 @@
+{% load static %}
+{% load i18n %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <div class="mb-4 flex items-center gap-3">
+    <i class="fa-solid fa-id-card-clip"
+       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    <h2 class="text-lg font-bold">{% trans "Member Status" %}</h2>
+  </div>
+
+  <!-- Badges row -->
+  <div class="flex flex-wrap gap-2 mb-5">
+
+    {% if is_federal_agent %}
+      <span
+        :class="darkMode ? 'bg-accent-dark/20 text-accent-dark border-accent-dark/30' : 'bg-accent-light/20 text-accent-light border-accent-light/30'"
+        class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
+        <i class="fa-solid fa-shield-halved"></i>{% trans "Federal Agent" %}</span>
+    {% endif %}
+  </div>
+
+  <!-- Signed constitutions -->
+  {% if signed_constitutions %}
+  <div>
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-50 mb-2">{% trans "Signed Documents" %}</p>
+    <ul class="space-y-2">
+      {% for sig in signed_constitutions %}
+        <li
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="flex items-center gap-3 rounded-xl border px-4 py-2 text-sm">
+          <i class="fa-solid fa-pen-nib text-xs opacity-60"></i>
+          <span class="flex-1 font-semibold">{{ sig.constitution.community.name }}</span>
+          <span class="text-xs opacity-50">{{ sig.signed_at|date:"Y-m-d" }}</span>
+          {% if sig.cryptographic_signature %}
+            <i class="fa-solid fa-shield-halved text-xs"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+               title="{% trans 'Cryptographically signed' %}"></i>
+          {% endif %}
+        </li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+</section>

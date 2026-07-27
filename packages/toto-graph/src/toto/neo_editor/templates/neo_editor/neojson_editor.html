@@ -1,0 +1,342 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
+
+{% block start_script %}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
+<script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col min-h-screen px-4 pt-6 pb-10 transition-colors duration-300">
+
+  <div class="max-w-7xl w-full mx-auto flex flex-col gap-3 flex-1">
+
+    <!-- ── Breadcrumb ──────────────────────────────────────── -->
+    <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
+      <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="opacity-70">{{ directory_name }}</span>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="font-semibold opacity-100">{{ vault_file.title }}</span>
+    </nav>
+
+    <!-- ── Toolbar ─────────────────────────────────────────── -->
+    <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <i class="fa-solid fa-circle-nodes opacity-50 shrink-0"></i>
+        <span class="font-mono text-sm font-semibold truncate">{{ vault_file.title }}</span>
+        <span class="shrink-0 rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-50">
+          NeoJSON
+        </span>
+      </div>
+
+      <!-- Mode toggle -->
+      <div class="flex items-center rounded-lg border border-current/15 overflow-hidden text-sm">
+        <button id="mode-json" class="mode-tab px-3 py-1 font-semibold">
+          <i class="fa-solid fa-code mr-1"></i><span class="hidden sm:inline">{% trans "JSON" %}</span>
+        </button>
+        <button id="mode-graph" class="mode-tab px-3 py-1 font-semibold border-l border-current/15">
+          <i class="fa-solid fa-diagram-project mr-1"></i><span class="hidden sm:inline">{% trans "Graph" %}</span>
+        </button>
+      </div>
+
+      <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
+
+      <!-- JSON-mode tools: save the file + load it into the live graph -->
+      <div id="json-tools" class="flex items-center gap-2">
+        <button id="save-file" title="{% trans 'Save' %}"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span class="hidden sm:inline">{% trans "Save" %}</span>
+        </button>
+
+        <div class="flex items-center rounded-lg border border-current/15 overflow-hidden text-sm">
+          <button id="load-merge" title="{% trans 'Merge this NeoJSON into the graph' %}"
+            class="px-3 py-1 font-semibold">
+            <i class="fa-solid fa-code-merge mr-1"></i><span class="hidden sm:inline">{% trans "Merge → graph" %}</span>
+          </button>
+          <button id="load-replace" title="{% trans 'Replace the ravioli-owned graph with this NeoJSON' %}"
+            class="px-3 py-1 font-semibold border-l border-current/15">
+            <i class="fa-solid fa-arrows-rotate mr-1"></i><span class="hidden sm:inline">{% trans "Replace graph" %}</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── JSON (Ace) view ─────────────────────────────────── -->
+    <div id="json-wrap" class="flex-1 relative">
+      <div id="editor"
+           class="w-full rounded-xl border"
+           style="height: calc(100vh - 11rem);"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      </div>
+    </div>
+
+    <!-- ── Graph (cytoscape) view ──────────────────────────── -->
+    <div id="graph-wrap" class="flex-1 hidden flex-col lg:flex-row gap-3" style="height: calc(100vh - 11rem);">
+      <div id="cy" class="flex-1 rounded-xl border"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"></div>
+
+      <!-- Properties panel -->
+      <aside id="np-panel"
+             class="lg:w-80 shrink-0 rounded-xl border p-4 overflow-auto"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <h3 id="np-title" class="flex items-center gap-2 text-sm font-bold mb-3"
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-circle-info"></i>{% trans "Element details" %}
+        </h3>
+        <div id="np-body" class="text-sm opacity-60">
+          <em>{% trans "Click a node or edge to see its properties…" %}</em>
+        </div>
+      </aside>
+    </div>
+
+  </div>
+</div>
+
+<style>
+.toolbar-btn-primary {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.25rem 0.625rem; border-radius: 0.5rem;
+  font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
+}
+.toolbar-btn-primary:hover { opacity: 0.85; }
+.mode-tab { transition: background 0.15s, opacity 0.15s; opacity: 0.6; }
+.mode-tab.active { opacity: 1; background: color-mix(in srgb, currentColor 12%, transparent); }
+.np-row { padding: 0.4rem 0; border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent); }
+.np-key { font-size: 0.65rem; text-transform: uppercase; letter-spacing: 0.04em; opacity: 0.5; }
+.np-val { font-family: monospace; font-weight: 600; word-break: break-all; }
+</style>
+{% endblock %}
+
+{% block end_script %}
+<script>
+ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+const editor = ace.edit("editor");
+editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+editor.session.setMode("ace/mode/json");
+editor.setValue(`{{ content|escapejs }}`, -1);
+editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: false, useWorker: true });
+
+const SAVE_URL = "{{ save_url }}";
+const LOAD_URL = "{{ load_url }}";
+
+// ── Mode switching ───────────────────────────────────────────
+const jsonWrap  = document.getElementById("json-wrap");
+const graphWrap = document.getElementById("graph-wrap");
+const saveBtn   = document.getElementById("save-file");
+const jsonTools = document.getElementById("json-tools");
+const tabJson   = document.getElementById("mode-json");
+const tabGraph  = document.getElementById("mode-graph");
+let cy = null;
+
+function showJson() {
+  jsonWrap.classList.remove("hidden");
+  graphWrap.classList.add("hidden");
+  graphWrap.classList.remove("flex");
+  jsonTools.style.display = "";
+  tabJson.classList.add("active");
+  tabGraph.classList.remove("active");
+  editor.resize();
+}
+
+function showGraph() {
+  jsonWrap.classList.add("hidden");
+  graphWrap.classList.remove("hidden");
+  graphWrap.classList.add("flex");
+  jsonTools.style.display = "none";
+  tabGraph.classList.add("active");
+  tabJson.classList.remove("active");
+  renderGraph();
+}
+
+tabJson.addEventListener("click", showJson);
+tabGraph.addEventListener("click", showGraph);
+
+// ── NeoJSON → cytoscape elements ─────────────────────────────
+function buildElements(doc) {
+  const els = [];
+  const ids = new Set();
+  (doc.nodes || []).forEach(n => {
+    const props = n.properties || {};
+    const labels = n.labels || [];
+    const id = String(n.id);
+    ids.add(id);
+    els.push({ data: {
+      id: id,
+      label: props.name || props.title || labels.join(", ") || id,
+      props: props,
+      etype: labels.join(", ") || "Node",
+    }});
+  });
+  (doc.relationships || []).forEach((r, i) => {
+    const start = String(r.start), end = String(r.end);
+    if (!ids.has(start) || !ids.has(end)) return;   // skip dangling endpoints
+    els.push({ data: {
+      id: r.id || ("r" + i),
+      source: start,
+      target: end,
+      label: r.relType || "",
+      props: r.properties || {},
+      etype: r.relType || "Relationship",
+    }});
+  });
+  return els;
+}
+
+function renderGraph() {
+  let doc;
+  try {
+    doc = JSON.parse(editor.getValue());
+  } catch (err) {
+    document.getElementById("cy").innerHTML =
+      '<div style="padding:1rem;font-family:monospace;color:#e57373;">Invalid JSON: ' +
+      String(err).replace(/[<>&]/g, "") + "</div>";
+    if (cy) { cy.destroy(); cy = null; }
+    return;
+  }
+
+  const border = darkMode ? "#8AB4F8" : "#3B82F6";
+  const edgeColor = darkMode ? "#9AA0A6" : "#888";
+  const selected = "#F59E0B";
+
+  if (cy) { cy.destroy(); cy = null; }
+  cy = cytoscape({
+    container: document.getElementById("cy"),
+    elements: buildElements(doc),
+    style: [
+      { selector: "node", style: {
+          "background-opacity": 0, "border-width": 2, "border-color": border,
+          "label": "data(label)", "color": border, "font-size": "11px",
+          "text-valign": "center", "text-halign": "center",
+          "text-wrap": "ellipsis", "text-max-width": "90px" } },
+      { selector: "edge", style: {
+          "width": 1.5, "line-color": edgeColor, "target-arrow-color": edgeColor,
+          "target-arrow-shape": "triangle", "curve-style": "bezier",
+          "label": "data(label)", "font-size": "9px", "color": edgeColor,
+          "text-rotation": "autorotate" } },
+      { selector: ":selected", style: {
+          "border-color": selected, "line-color": selected,
+          "target-arrow-color": selected } },
+    ],
+    layout: { name: "cose", animate: true, padding: 30 },
+  });
+
+  cy.on("tap", "node, edge", evt => showDetails(evt.target.data(), evt.target.isEdge()));
+  cy.on("tap", evt => { if (evt.target === cy) clearDetails(); });
+  cy.resize();
+}
+
+// ── Properties panel ─────────────────────────────────────────
+function showDetails(d, isEdge) {
+  document.getElementById("np-title").innerHTML =
+    '<i class="fa-solid fa-circle-info"></i>' +
+    (isEdge ? "Relationship" : "Node") + ': ' + esc(d.etype || "");
+  const props = d.props || {};
+  const keys = Object.keys(props);
+  const body = document.getElementById("np-body");
+  body.classList.remove("opacity-60");
+  let html = '<div class="np-row"><div class="np-key">id</div><div class="np-val">' + esc(d.id) + "</div></div>";
+  if (isEdge) {
+    html += '<div class="np-row"><div class="np-key">type</div><div class="np-val">' + esc(d.label) + "</div></div>";
+  }
+  if (keys.length === 0) {
+    html += '<div class="opacity-50 mt-2"><em>No properties.</em></div>';
+  } else {
+    keys.forEach(k => {
+      const v = props[k];
+      const sv = (v !== null && typeof v === "object") ? JSON.stringify(v) : String(v);
+      html += '<div class="np-row"><div class="np-key">' + esc(k) + '</div><div class="np-val">' + esc(sv) + "</div></div>";
+    });
+  }
+  body.innerHTML = html;
+}
+
+function clearDetails() {
+  const body = document.getElementById("np-body");
+  body.classList.add("opacity-60");
+  body.innerHTML = "<em>{% trans 'Click a node or edge to see its properties…' %}</em>";
+}
+
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, c =>
+    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+// ── Save ─────────────────────────────────────────────────────
+async function saveFile() {
+  const btn = saveBtn;
+  const formData = new FormData();
+  formData.append("content", editor.getValue());
+  btn.style.opacity = "0.5";
+  try {
+    const res = await fetch(SAVE_URL, {
+      method: "POST", body: formData,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status !== "ok") { alert(data.error || "Failed to save file."); return; }
+    btn.title = "Saved";
+  } catch (err) {
+    alert("Save failed: " + err);
+  } finally {
+    btn.style.opacity = "1";
+  }
+}
+saveBtn.addEventListener("click", saveFile);
+
+// ── Load into the live graph (merge / replace) ───────────────
+async function loadIntoGraph(mode) {
+  if (mode === "replace" && !confirm(
+    "Replace the ravioli-owned graph with this document?\n\n" +
+    "Nodes and relationships in the managed graph that aren't in this document will be DELETED."
+  )) return;
+  const fd = new FormData();
+  fd.append("content", editor.getValue());
+  fd.append("mode", mode);
+  try {
+    const res = await fetch(LOAD_URL, {
+      method: "POST", body: fd,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status !== "ok") { alert(data.error || "Failed to load into graph."); return; }
+    const s = data.summary || {}, n = s.nodes || {}, r = s.relationships || {};
+    alert(
+      `Loaded into graph (${s.mode}).\n` +
+      `Nodes:  +${n.create || 0}  ~${n.update || 0}  -${n.delete || 0}\n` +
+      `Edges:  +${r.create || 0}  ~${r.update || 0}  -${r.delete || 0}`
+    );
+  } catch (err) {
+    alert("Load failed: " + err);
+  }
+}
+document.getElementById("load-merge").addEventListener("click", () => loadIntoGraph("merge"));
+document.getElementById("load-replace").addEventListener("click", () => loadIntoGraph("replace"));
+
+// Open straight into the graph when arrived via ?view=graph (e.g. from export);
+// otherwise default to the editable JSON view.
+if (new URLSearchParams(window.location.search).get("view") === "graph") {
+  showGraph();
+} else {
+  showJson();
+}
+</script>
+{% endblock %}
+
+{% block floating_widgets %}{% endblock %}

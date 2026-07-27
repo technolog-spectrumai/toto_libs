@@ -1,0 +1,56 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<style>
+  .console-box {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    background: #fff;
+  }
+  .console-box-body { padding: 16px; }
+  .app-checklist { list-style: none; padding: 0; margin: 8px 0 12px; }
+  .app-checklist li { margin: 4px 0; }
+  .app-checklist label { font-family: monospace; cursor: pointer; }
+  .field-error { color: #ba2121; font-size: 13px; margin: 4px 0; }
+  .option-row { margin: 6px 0; }
+  .option-row label { cursor: pointer; }
+</style>
+
+<div class="console-box">
+  <div class="console-box-body">
+    <p>{% trans "Select apps and create a backup ZIP. You can download it now or store it for remote API pull." %}</p>
+    <form method="post">
+      {% csrf_token %}
+
+      <p><strong>{% trans "Apps:" %}</strong></p>
+      {% if backup_form.apps.errors %}
+        <p class="field-error">{{ backup_form.apps.errors.as_text }}</p>
+      {% endif %}
+      <ul class="app-checklist">
+        {% for checkbox in backup_form.apps %}
+          <li>
+            <label>{{ checkbox.tag }} {{ checkbox.choice_label }}</label>
+          </li>
+        {% endfor %}
+      </ul>
+
+      <p><strong>{% trans "Options:" %}</strong></p>
+      <div class="option-row">
+        <label>
+          <input type="checkbox" name="sign_backup" value="1" checked>{% trans "Sign backup" %}</label>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-top:12px;">
+        <button type="submit" class="default">{% trans "Create &amp; download backup" %}</button>
+        <button type="submit" name="store_backup" value="1">{% trans "Create stored backup" %}</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<p><a href="../..">← Back to Platform list</a></p>
+{% endblock %}

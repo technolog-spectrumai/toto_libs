@@ -1,0 +1,503 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Vault Metrics" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+{{ files_by_type|json_script:"files-by-type" }}
+{{ files_by_bucket|json_script:"files-by-bucket" }}
+{{ daily_series|json_script:"daily-series" }}
+{{ copy_flows|json_script:"copy-flows" }}
+{{ copy_daily_series|json_script:"copy-daily-series" }}
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-6xl space-y-8">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div class="space-y-1">
+        <a href="{% url 'vault:public_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Back to Files" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "File Vault" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-chart-column"></i>
+            {% trans "Metrics" %}
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Stat cards -->
+    <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-layer-group" label="Buckets" value=total_buckets color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-folder-tree" label="Directories" value=total_dirs color="neutral" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-file" label="Total Files" value=total_files color="accent" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-globe" label="Public" value=public_files color="success" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-lock" label="Encrypted" value=encrypted_files color="warn" %}
+      {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_count color="accent" %}
+
+    </div>
+
+    <!-- Charts row -->
+    <div class="grid gap-5 lg:grid-cols-3">
+
+      <!-- File types donut -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-shapes"></i> {% trans "Files by Type" %}
+        </h2>
+        <canvas id="typeChart" height="200"></canvas>
+      </div>
+
+      <!-- Files per bucket bar -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-layer-group"></i> {% trans "Files per Bucket" %}
+        </h2>
+        <canvas id="bucketChart" height="200"></canvas>
+      </div>
+
+      <!-- Daily uploads line -->
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border p-5 shadow-sm">
+        <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-arrow-trend-up"></i> {% trans "Uploads (30 days)" %}
+        </h2>
+        <canvas id="activityChart" height="200"></canvas>
+      </div>
+
+    </div>
+
+    <!-- Copy Flows -->
+    <section id="copy-flows-section">
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-shuffle mr-1"></i>{% trans "File Flow Between Buckets" %}
+      </p>
+
+      <!-- Empty state (hidden by JS when data exists) -->
+      <div id="copy-flows-empty"
+           :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
+           class="rounded-xl border border-dashed px-6 py-10 text-center text-sm opacity-50">
+        <i class="fa-solid fa-arrows-left-right mb-2 text-2xl block"></i>
+        {% trans "No copy operations recorded yet. Use the Copy Files feature to track flow between buckets." %}
+      </div>
+
+      <div id="copy-flows-content" class="hidden">
+        <div class="grid gap-5 lg:grid-cols-3">
+
+          <!-- Sankey diagram (2/3 width on lg) -->
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="lg:col-span-2 rounded-xl border p-5 shadow-sm">
+            <h2 class="mb-1 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-diagram-project"></i> {% trans "Copy Flow Diagram" %}
+            </h2>
+            <p class="mb-4 text-xs opacity-40">{% trans "Path width ∝ files copied. Hover for details." %}</p>
+            <div id="flow-diagram" class="overflow-x-auto"></div>
+          </div>
+
+          <!-- Flow table (1/3 width) -->
+          <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-xl border p-5 shadow-sm">
+            <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-table-list"></i> {% trans "Top Flows" %}
+            </h2>
+            <div id="flow-table" class="space-y-2"></div>
+          </div>
+
+        </div>
+
+        <!-- Copy activity line chart -->
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="mt-5 rounded-xl border p-5 shadow-sm">
+          <h2 class="mb-4 flex items-center gap-2 text-sm font-bold uppercase tracking-wide opacity-60">
+            <i class="fa-solid fa-arrow-right-arrow-left"></i> {% trans "Files Copied (30 days)" %}
+          </h2>
+          <canvas id="copyActivityChart" height="80"></canvas>
+        </div>
+      </div>
+    </section>
+
+    <!-- Per-bucket breakdown table -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-table mr-1"></i>{% trans "Bucket Breakdown" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        <table class="min-w-full text-sm">
+          <thead>
+            <tr
+              :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+              class="text-left text-xs font-semibold uppercase tracking-wide opacity-65">
+              <th class="px-4 py-3">{% trans "Bucket" %}</th>
+              <th class="px-4 py-3">{% trans "Owner" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Files" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Dirs" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Public" %}</th>
+              <th class="px-4 py-3 text-right">{% trans "Encrypted" %}</th>
+              <th class="px-4 py-3 text-center">{% trans "Gateway" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for bucket in bucket_stats %}
+            <tr
+              :class="darkMode
+                ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+              class="transition-colors duration-150">
+              <td class="px-4 py-3 font-semibold">{{ bucket.name }}</td>
+              <td class="px-4 py-3 opacity-60 text-xs">{{ bucket.owner.username }}</td>
+              <td class="px-4 py-3 text-right font-mono text-sm">{{ bucket.file_count }}</td>
+              <td class="px-4 py-3 text-right font-mono text-sm opacity-70">{{ bucket.dir_count }}</td>
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                  {{ bucket.public_count }}
+                </span>
+              </td>
+              <td class="px-4 py-3 text-right font-mono text-sm">
+                {% if bucket.encrypted_count %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    {{ bucket.encrypted_count }}
+                  </span>
+                {% else %}
+                  <span class="opacity-30">—</span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-center text-xs">
+                {% if bucket.pk in gateway_bucket_pks %}
+                  <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                    <i class="fa-solid fa-circle-check"></i>
+                  </span>
+                {% else %}
+                  <span class="opacity-25"><i class="fa-solid fa-circle-xmark"></i></span>
+                {% endif %}
+              </td>
+              <td class="px-4 py-3 text-right">
+                <div class="flex items-center justify-end gap-3">
+                  <a href="{% url 'vault:bucket_metrics' bucket.slug %}"
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="text-xs hover:underline underline-offset-2 font-semibold">
+                    <i class="fa-solid fa-chart-column"></i>
+                  </a>
+                  <a href="{% url 'vault:public_list' %}?bucket={{ bucket.slug }}"
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="text-xs hover:underline underline-offset-2 font-semibold">
+                    {% trans "Browse" %} <i class="fa-solid fa-arrow-right text-xs"></i>
+                  </a>
+                </div>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="8" class="px-4 py-8 text-center text-sm opacity-50">
+                {% trans "No buckets yet." %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Recent files -->
+    <section>
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+        <i class="fa-solid fa-clock mr-1"></i>{% trans "Recent Uploads" %}
+      </p>
+      <div
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="overflow-hidden rounded-xl border shadow-sm">
+        {% for file in recent_files %}
+        <div
+          :class="darkMode
+            ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark'
+            : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+          class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+
+          <span
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+            class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase">
+            {{ file.file_type }}
+          </span>
+
+          <span class="font-medium truncate flex-1 min-w-0">{{ file.title }}</span>
+
+          {% if file.bucket %}
+            <span class="hidden sm:block text-xs opacity-50 shrink-0">{{ file.bucket.name }}</span>
+          {% endif %}
+
+          {% if file.directory %}
+            <span class="hidden md:flex items-center gap-1 text-xs opacity-50 shrink-0">
+              <i class="fa-solid fa-folder text-xs"></i>{{ file.directory.name }}
+            </span>
+          {% endif %}
+
+          <span class="text-xs opacity-50 shrink-0">{{ file.uploaded_at|date:"Y-m-d" }}</span>
+
+          {% if file.is_encrypted %}
+            <span class="text-success-light text-xs shrink-0"><i class="fa-solid fa-lock"></i></span>
+          {% endif %}
+
+          {% if file.is_public %}
+            <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-xs shrink-0"><i class="fa-solid fa-globe"></i></span>
+          {% endif %}
+        </div>
+        {% empty %}
+        <div class="px-4 py-8 text-center text-sm opacity-50">{% trans "No files yet." %}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script>
+// ── Sankey helpers ───────────────────────────────────────────────────────────
+function _svgEsc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+function _truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
+
+function buildSankeySvg(flows, isDark) {
+  const W = 500, nodeW = 110, nodeH = 32, nodeGap = 14, padX = 12, padY = 22;
+  const fromNames = [...new Set(flows.map(f => f.from_bucket__name).filter(Boolean))];
+  const toNames   = [...new Set(flows.map(f => f.to_bucket__name).filter(Boolean))];
+  const rows = Math.max(fromNames.length, toNames.length);
+  const H = padY * 2 + rows * (nodeH + nodeGap);
+
+  const fromY = Object.fromEntries(fromNames.map((n, i) => [n, padY + i * (nodeH + nodeGap)]));
+  const toY   = Object.fromEntries(toNames.map((n, i)   => [n, padY + i * (nodeH + nodeGap)]));
+  const maxFiles = Math.max(...flows.map(f => f.total_files), 1);
+
+  const pathStroke = isDark ? 'rgba(99,102,241,0.50)' : 'rgba(79,70,229,0.32)';
+  const nodeFill   = isDark ? '#1e293b' : '#f8fafc';
+  const nodeStroke = isDark ? '#6366f1' : '#4f46e5';
+  const textFill   = isDark ? '#cbd5e1' : '#334155';
+  const labelFill  = isDark ? '#94a3b8' : '#64748b';
+
+  let s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" width="100%">`;
+
+  // Column labels
+  s += `<text x="${padX + nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">{% trans "FROM" %}</text>`;
+  s += `<text x="${W - padX - nodeW/2}" y="${padY - 7}" text-anchor="middle" font-size="9" font-weight="700" fill="${labelFill}" letter-spacing="0.1em">{% trans "TO" %}</text>`;
+
+  // Paths (drawn first, behind nodes)
+  for (const f of flows) {
+    const y1 = (fromY[f.from_bucket__name] ?? 0) + nodeH / 2;
+    const y2 = (toY[f.to_bucket__name] ?? 0) + nodeH / 2;
+    const x1 = padX + nodeW, x2 = W - padX - nodeW;
+    const cp = (x2 - x1) * 0.48;
+    const sw = Math.max(2, Math.round(f.total_files / maxFiles * 22));
+    const lastCopy = f.last_copy ? new Date(f.last_copy).toISOString().split('T')[0] : '';
+    const tip = `${_svgEsc(f.from_bucket__name)} → ${_svgEsc(f.to_bucket__name)}: ${f.total_files} file${f.total_files !== 1 ? 's' : ''}${lastCopy ? ' · ' + lastCopy : ''}`;
+    s += `<path d="M ${x1} ${y1} C ${x1+cp} ${y1}, ${x2-cp} ${y2}, ${x2} ${y2}" fill="none" stroke="${pathStroke}" stroke-width="${sw}" stroke-linecap="round"><title>${tip}</title></path>`;
+
+    // Count badge at midpoint
+    const mx = W / 2, my = (y1 + y2) / 2;
+    s += `<text x="${mx}" y="${my + 4}" text-anchor="middle" font-size="10" font-weight="700" fill="${labelFill}">${f.total_files}</text>`;
+  }
+
+  // From nodes
+  for (const name of fromNames) {
+    const y = fromY[name];
+    s += `<rect x="${padX}" y="${y}" width="${nodeW}" height="${nodeH}" rx="5" fill="${nodeFill}" stroke="${nodeStroke}" stroke-width="1.5"/>`;
+    s += `<text x="${padX + nodeW/2}" y="${y + nodeH/2 + 4.5}" text-anchor="middle" font-size="11" font-weight="600" fill="${textFill}">${_svgEsc(_truncate(name, 13))}</text>`;
+  }
+
+  // To nodes
+  for (const name of toNames) {
+    const y = toY[name], x = W - padX - nodeW;
+    s += `<rect x="${x}" y="${y}" width="${nodeW}" height="${nodeH}" rx="5" fill="${nodeFill}" stroke="${nodeStroke}" stroke-width="1.5"/>`;
+    s += `<text x="${x + nodeW/2}" y="${y + nodeH/2 + 4.5}" text-anchor="middle" font-size="11" font-weight="600" fill="${textFill}">${_svgEsc(_truncate(name, 13))}</text>`;
+  }
+
+  s += '</svg>';
+  return s;
+}
+
+function buildFlowTable(flows, isDark) {
+  if (!flows.length) return '';
+  const border = isDark ? 'rgba(99,102,241,0.25)' : 'rgba(79,70,229,0.18)';
+  const fg     = isDark ? '#94a3b8' : '#64748b';
+  const accent = isDark ? '#818cf8' : '#4f46e5';
+  let h = '';
+  for (const f of flows.slice(0, 10)) {
+    const pct = Math.round(f.total_files / flows[0].total_files * 100);
+    const lastCopy = f.last_copy ? new Date(f.last_copy).toISOString().split('T')[0] : '';
+    h += `<div style="border-bottom:1px solid ${border};padding:8px 0">
+      <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600">
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${_svgEsc(f.from_bucket__name)}</span>
+        <span style="color:${fg};font-size:10px">→</span>
+        <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:right">${_svgEsc(f.to_bucket__name)}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+        <div style="flex:1;height:4px;background:${border};border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${pct}%;background:${accent};border-radius:4px"></div>
+        </div>
+        <span style="color:${fg};font-size:10px;white-space:nowrap;font-variant-numeric:tabular-nums">${f.total_files} files</span>
+      </div>
+      ${lastCopy ? `<div style="font-size:9px;color:${fg};margin-top:2px;opacity:0.7">last: ${lastCopy}</div>` : ''}
+    </div>`;
+  }
+  return h;
+}
+
+(function () {
+  const isDark = localStorage.getItem('darkMode') === 'true';
+  const gridColor = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.06)';
+  const textColor = isDark ? '#e2e8f0' : '#374151';
+
+  Chart.defaults.color = textColor;
+  Chart.defaults.borderColor = gridColor;
+
+  const byType    = JSON.parse(document.getElementById('files-by-type').textContent);
+  const byBucket  = JSON.parse(document.getElementById('files-by-bucket').textContent);
+  const dailySeries = JSON.parse(document.getElementById('daily-series').textContent);
+
+  const TYPE_COLORS = {
+    pdf:   '#ef4444',
+    image: '#3b82f6',
+    svg:   '#8b5cf6',
+    text:  '#6b7280',
+    json:  '#f59e0b',
+    html:  '#10b981',
+    audio: '#ec4899',
+    video: '#0ea5e9',
+  };
+
+  // Donut — files by type
+  new Chart(document.getElementById('typeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: byType.map(d => d.file_type.toUpperCase()),
+      datasets: [{
+        data: byType.map(d => d.count),
+        backgroundColor: byType.map(d => TYPE_COLORS[d.file_type] || '#94a3b8'),
+        borderWidth: 0,
+      }]
+    },
+    options: {
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12 } } },
+      cutout: '60%',
+    }
+  });
+
+  // Horizontal bar — files per bucket
+  new Chart(document.getElementById('bucketChart'), {
+    type: 'bar',
+    data: {
+      labels: byBucket.map(d => d.bucket__name),
+      datasets: [{
+        data: byBucket.map(d => d.count),
+        backgroundColor: isDark ? 'rgba(99,102,241,0.7)' : 'rgba(79,70,229,0.7)',
+        borderRadius: 5,
+      }]
+    },
+    options: {
+      indexAxis: 'y',
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { grid: { color: gridColor }, ticks: { precision: 0 } },
+        y: { grid: { display: false } },
+      }
+    }
+  });
+
+  // Line — upload activity
+  new Chart(document.getElementById('activityChart'), {
+    type: 'line',
+    data: {
+      labels: dailySeries.map(d => d.date),
+      datasets: [{
+        data: dailySeries.map(d => d.count),
+        borderColor: isDark ? '#818cf8' : '#4f46e5',
+        backgroundColor: isDark ? 'rgba(99,102,241,0.15)' : 'rgba(79,70,229,0.10)',
+        borderWidth: 2,
+        pointRadius: 2,
+        pointHoverRadius: 4,
+        fill: true,
+        tension: 0.35,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: {
+          grid: { display: false },
+          ticks: { maxTicksLimit: 6, maxRotation: 0 }
+        },
+        y: {
+          grid: { color: gridColor },
+          ticks: { precision: 0 },
+          beginAtZero: true,
+        }
+      }
+    }
+  });
+
+  // ── Copy flows ──────────────────────────────────────────────────────────────
+  const copyFlows = JSON.parse(document.getElementById('copy-flows').textContent);
+  const copyDailySeries = JSON.parse(document.getElementById('copy-daily-series').textContent);
+
+  if (copyFlows.length > 0) {
+    document.getElementById('copy-flows-empty').style.display = 'none';
+    document.getElementById('copy-flows-content').classList.remove('hidden');
+
+    document.getElementById('flow-diagram').innerHTML = buildSankeySvg(copyFlows, isDark);
+    document.getElementById('flow-table').innerHTML   = buildFlowTable(copyFlows, isDark);
+
+    new Chart(document.getElementById('copyActivityChart'), {
+      type: 'bar',
+      data: {
+        labels: copyDailySeries.map(d => d.date),
+        datasets: [{
+          data: copyDailySeries.map(d => d.count),
+          backgroundColor: isDark ? 'rgba(16,185,129,0.55)' : 'rgba(5,150,105,0.45)',
+          borderColor:     isDark ? '#34d399' : '#059669',
+          borderWidth: 1,
+          borderRadius: 3,
+        }]
+      },
+      options: {
+        plugins: { legend: { display: false } },
+        scales: {
+          x: {
+            grid: { display: false },
+            ticks: { maxTicksLimit: 6, maxRotation: 0 }
+          },
+          y: {
+            grid: { color: gridColor },
+            ticks: { precision: 0 },
+            beginAtZero: true,
+          }
+        }
+      }
+    });
+  }
+})();
+</script>
+{% endblock %}

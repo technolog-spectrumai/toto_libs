@@ -1,0 +1,127 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Export to graph" %} · {{ object_label }}{% endblock %}
+
+{% block content %}
+<script id="ge-nodes" type="application/json">{{ nodes_json|safe }}</script>
+<script id="ge-edges" type="application/json">{{ edges_json|safe }}</script>
+
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    {% include "ravioli/_neo4j_warning.html" %}
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-1">
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Export to graph" %}</p>
+        <h1 class="flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-diagram-project"></i>{{ object_label }}
+        </h1>
+        <p class="text-sm opacity-70">
+          {% blocktrans %}Preview of the {{ graph_label }} node and its 1-hop neighbours before writing to the graph.{% endblocktrans %}
+        </p>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a href="{{ back_url }}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-xmark"></i>{% trans "Cancel" %}
+        </a>
+        <form method="post" action="{{ apply_url }}">
+          {% csrf_token %}
+          <input type="hidden" name="back" value="{{ back_url }}">
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-cloud-arrow-up"></i>{% trans "Apply to graph" %}
+          </button>
+        </form>
+      </nav>
+    </header>
+
+    <div class="flex flex-wrap items-center gap-2 text-xs font-semibold">
+      <span class="rounded-full bg-green-500/15 px-3 py-1 text-green-600">{{ summary.new_nodes }} {% trans "new" %}</span>
+      <span class="rounded-full bg-amber-500/15 px-3 py-1 text-amber-600">{{ summary.changed_nodes }} {% trans "changed" %}</span>
+      <span class="rounded-full bg-gray-400/15 px-3 py-1 opacity-70">{{ summary.existing_nodes }} {% trans "already in graph" %}</span>
+      <span class="rounded-full bg-green-500/10 px-3 py-1 text-green-600">{{ summary.new_edges }} {% trans "new links" %}</span>
+    </div>
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border p-3 shadow-sm">
+      <div id="cy" style="width:100%;height:560px;"></div>
+    </div>
+
+    <div class="flex flex-wrap gap-4 text-xs opacity-80">
+      <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#22c55e"></span>{% trans "New node" %}</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#f59e0b"></span>{% trans "Changed — previous version kept as :_HISTORICAL" %}</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full" style="background:#9ca3af"></span>{% trans "Already in graph" %}</span>
+      <span class="inline-flex items-center gap-2"><span class="inline-block h-3 w-3 rounded-full ring-2 ring-offset-1" style="background:#22c55e"></span>{% trans "Exported record (thick border)" %}</span>
+    </div>
+  </div>
+</section>
+
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<script>
+(function () {
+  const nodes = JSON.parse(document.getElementById('ge-nodes').textContent);
+  const edges = JSON.parse(document.getElementById('ge-edges').textContent);
+  const STATUS = {
+    new:      { bg: '#22c55e', border: '#16a34a' },
+    changed:  { bg: '#f59e0b', border: '#d97706' },
+    existing: { bg: '#9ca3af', border: '#6b7280' },
+  };
+  const colorOf = (s) => STATUS[s] || STATUS.existing;
+
+  cytoscape({
+    container: document.getElementById('cy'),
+    elements: [
+      ...nodes.map(n => ({ data: {
+        id: n.id,
+        label: n.props.name || n.props.title || n.labels.join(', '),
+        type: n.labels.join(', '),
+        status: n.status,
+        root: !!n.is_root,
+      }})),
+      ...edges.map(e => ({ data: {
+        id: e.id, source: e.start, target: e.end, label: e.type, status: e.status,
+      }})),
+    ],
+    style: [
+      { selector: 'node', style: {
+        'background-color': (ele) => colorOf(ele.data('status')).bg,
+        'background-opacity': (ele) => ele.data('status') === 'existing' ? 0.45 : 0.95,
+        'border-width': (ele) => ele.data('root') ? 5 : 2,
+        'border-color': (ele) => colorOf(ele.data('status')).border,
+        'label': 'data(label)',
+        'color': '#111827',
+        'font-size': '11px',
+        'text-valign': 'center',
+        'text-halign': 'center',
+        'text-wrap': 'ellipsis',
+        'text-max-width': '90px',
+      }},
+      { selector: 'edge', style: {
+        'width': 1.6,
+        'line-color': (ele) => ele.data('status') === 'new' ? '#16a34a' : '#9ca3af',
+        'line-style': (ele) => ele.data('status') === 'new' ? 'solid' : 'dashed',
+        'target-arrow-color': (ele) => ele.data('status') === 'new' ? '#16a34a' : '#9ca3af',
+        'target-arrow-shape': 'triangle',
+        'curve-style': 'bezier',
+        'label': 'data(label)',
+        'font-size': '9px',
+        'color': '#6b7280',
+        'text-rotation': 'autorotate',
+      }},
+    ],
+    layout: { name: 'cose', animate: true, padding: 30 },
+  });
+})();
+</script>
+{% endblock %}

@@ -1,0 +1,16 @@
+{% load i18n %}
+<div class="mt-6 flex flex-wrap justify-center items-center gap-4 text-sm mb-2">
+    <div class="mr-2">
+        <button @click="prev" :disabled="page === 1"
+                class="px-3 py-1 border rounded disabled:opacity-50">
+          {% trans "Prev" %}
+        </button>
+
+        <span>{% trans "Page" %} <span x-text="page"></span> {% trans "of" %} <span x-text="pages"></span></span>
+
+        <button @click="next" :disabled="page === pages"
+                class="px-3 py-1 border rounded disabled:opacity-50">
+          {% trans "Next" %}
+        </button>
+    </div>
+</div>

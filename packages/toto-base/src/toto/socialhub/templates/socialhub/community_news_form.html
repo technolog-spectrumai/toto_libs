@@ -1,0 +1,89 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ title }} | {{ community.name }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ form.media }}
+<style>
+  trix-toolbar .trix-button-row { flex-wrap: wrap; }
+  trix-editor {
+    min-height: 11rem;
+    border-radius: 0.5rem;
+    border-color: rgba(128, 128, 128, 0.35);
+    padding: 1rem;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+    <a href="{% url 'socialhub:community_detail' community.slug %}{% if post %}#community-news-post-{{ post.pk }}{% endif %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {{ community.name }}
+    </a>
+
+    <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Community news" %}</p>
+      <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
+        <i class="{{ icon|default:'fa-solid fa-bullhorn' }}"></i>
+        {{ title }}
+      </h1>
+      <p class="mt-2 text-sm opacity-70">{% trans "Publish a short update or pointer to a longer Palimpsest piece." %}</p>
+    </header>
+
+    <form method="post"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-5 rounded-2xl border p-5 shadow-sm">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="rounded-xl border border-current/20 p-4 text-sm font-semibold">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div class="space-y-2">
+        <label for="{{ form.title.id_for_label }}" class="block text-sm font-semibold">{{ form.title.label }}</label>
+        {{ form.title }}
+        {% if form.title.errors %}<p class="text-sm text-warn-light">{{ form.title.errors }}</p>{% endif %}
+      </div>
+
+      <div class="space-y-2">
+        <label for="{{ form.content.id_for_label }}" class="block text-sm font-semibold">{{ form.content.label }}</label>
+        {{ form.content }}
+        {% if form.content.errors %}<p class="text-sm text-warn-light">{{ form.content.errors }}</p>{% endif %}
+      </div>
+
+      <div class="grid gap-5 md:grid-cols-2">
+        {% for field in form %}
+          {% if field.name != "title" and field.name != "content" %}
+            <div class="space-y-2">
+              <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">{{ field.label }}</label>
+              {{ field }}
+              {% if field.errors %}<p class="text-sm text-warn-light">{{ field.errors }}</p>{% endif %}
+            </div>
+          {% endif %}
+        {% endfor %}
+      </div>
+
+      <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
+        <a href="{% url 'socialhub:community_detail' community.slug %}{% if post %}#community-news-post-{{ post.pk }}{% endif %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">{% trans "Cancel" %}</a>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="{{ icon|default:'fa-solid fa-check' }}"></i>
+          {{ submit_label }}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,371 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
+
+{% block start_script %}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+{% if ace_mode == "python" %}
+<script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
+{% elif ace_mode == "json" %}
+<script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
+{% elif ace_mode == "yaml" %}
+<script src="{% static 'vendor/ace/mode-yaml.min.js' %}"></script>
+{% elif ace_mode == "svg" %}
+<script src="{% static 'vendor/ace/mode-svg.min.js' %}"></script>
+{% elif ace_mode == "latex" %}
+<script src="{% static 'vendor/ace/mode-latex.min.js' %}"></script>
+{% elif ace_mode == "bibtex" %}
+<script src="{% static 'vendor/ace/mode-bibtex.min.js' %}"></script>
+{% elif ace_mode == "xml" %}
+<script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
+{% elif ace_mode == "html" %}
+<!-- mode-html bundles its embedded css/javascript/xml highlighters; self-contained. -->
+<script src="{% static 'vendor/ace/mode-html.min.js' %}"></script>
+{% else %}
+<script src="{% static 'vendor/ace/mode-text.min.js' %}"></script>
+{% endif %}
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script src="{% static 'oya/diff_match_patch.js' %}"></script>
+<link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
+<script>const darkMode = localStorage.getItem("darkMode") === "true";</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col min-h-screen px-4 pt-6 pb-10 transition-colors duration-300">
+
+  <div class="max-w-7xl w-full mx-auto flex flex-col gap-3 flex-1">
+
+    <!-- ── Breadcrumb ──────────────────────────────────────── -->
+    <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
+      <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="opacity-70">{{ directory_name }}</span>
+      <i class="fa-solid fa-chevron-right text-[9px]"></i>
+      <span class="font-semibold opacity-100">{{ vault_file.title }}</span>
+    </nav>
+
+    <!-- ── Toolbar ─────────────────────────────────────────── -->
+    <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+
+      <!-- Left: file label -->
+      <div class="flex items-center gap-2 min-w-0 flex-1">
+        <i class="fa-solid fa-file-lines opacity-50 shrink-0"></i>
+        <span class="font-mono text-sm font-semibold truncate">{{ vault_file.title }}</span>
+        <span class="shrink-0 rounded border border-current/15 px-1.5 py-px text-[10px] uppercase tracking-wide opacity-50">
+          {{ vault_file.file_type }}
+        </span>
+        <span data-active-target-badge
+              class="hidden shrink-0 rounded px-1.5 py-px text-[10px] font-bold uppercase tracking-wide
+                     bg-accent-light text-primary-bg-light">live</span>
+      </div>
+
+      <div class="h-5 w-px opacity-20 bg-current hidden sm:block"></div>
+
+      <!-- Right: action buttons. Icon-only toolbar — labels hidden via the
+           .icon-only-toolbar CSS, each button's title= carries the text as a
+           hover tooltip. -->
+      <div class="flex items-center gap-1.5 flex-wrap icon-only-toolbar">
+
+        <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
+          <i id="lock-icon" class="fa-solid fa-lock-open"></i>
+        </button>
+
+        <button id="toggle-sync" title="{% trans 'Toggle live sync' %}" class="toolbar-btn border">
+          <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
+        </button>
+
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Save -->
+        <button id="save-file" title="{% trans 'Save' %}"
+          :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i>
+          <span class="hidden sm:inline">{% trans "Save" %}</span>
+        </button>
+
+        {% if compile_url %}
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Compile (.tex → PDF via the texlab-compile-latex Celery workflow) -->
+        <button id="compile-file" title="{% trans 'Compile to PDF' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i id="compile-icon" class="fa-solid fa-play"></i>
+          <span class="hidden sm:inline" id="compile-label">{% trans "Compile" %}</span>
+        </button>
+        <a id="compile-pdf-link" href="#" target="_blank" class="hidden toolbar-btn border"
+           title="{% trans 'View PDF' %}">
+          <i class="fa-solid fa-file-pdf"></i>
+          <span class="hidden sm:inline">{% trans "PDF" %}</span>
+        </a>
+        <span id="compile-error" class="hidden max-w-[16rem] truncate text-xs text-red-500"></span>
+        {% endif %}
+
+        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
+
+        <div class="h-5 w-px opacity-20 bg-current"></div>
+
+        <!-- Delete -->
+        <button id="delete-file" title="{% trans 'Delete file' %}"
+          :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+          class="toolbar-btn-primary">
+          <i class="fa-solid fa-trash"></i>
+          <span class="hidden sm:inline">{% trans "Delete" %}</span>
+        </button>
+
+      </div>
+    </div>
+
+    <!-- ── Editor ──────────────────────────────────────────── -->
+    <div class="flex-1 relative">
+      <div id="editor"
+           class="w-full rounded-xl border"
+           style="height: calc(100vh - 11rem);"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- ── Delete confirmation modal ─────────────────────────────── -->
+<div id="delete-modal"
+     class="fixed inset-0 z-50 hidden items-center justify-center bg-black/60 px-4 backdrop-blur-sm">
+  <div class="w-full max-w-sm rounded-2xl border shadow-2xl p-6"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+    <h2 class="text-lg font-bold mb-2 flex items-center gap-2">
+      <i class="fa-solid fa-trash opacity-60"></i>{% trans "Delete file?" %}
+    </h2>
+    <p class="text-sm opacity-70 mb-5">
+      {% trans "This will permanently delete" %} <span class="font-mono font-semibold">{{ vault_file.title }}</span>.
+      {% trans "This cannot be undone." %}
+    </p>
+    <div class="flex justify-end gap-2">
+      <button id="delete-cancel"
+              class="rounded-lg border border-current/20 px-4 py-1.5 text-sm font-semibold transition hover:opacity-75">
+        {% trans "Cancel" %}
+      </button>
+      <button id="delete-confirm"
+              :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
+              class="rounded-lg px-4 py-1.5 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-trash mr-1"></i>{% trans "Delete" %}
+      </button>
+    </div>
+  </div>
+</div>
+
+<style>
+.toolbar-btn {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 2rem; height: 2rem; border-radius: 0.5rem; font-size: 0.8rem;
+  transition: opacity 0.15s;
+  border-color: color-mix(in srgb, currentColor 20%, transparent);
+}
+.toolbar-btn:hover { opacity: 0.7; }
+.toolbar-btn-primary {
+  display: inline-flex; align-items: center; gap: 0.375rem;
+  padding: 0.25rem 0.625rem; border-radius: 0.5rem;
+  font-size: 0.8rem; font-weight: 600; transition: opacity 0.15s;
+}
+.toolbar-btn-primary:hover { opacity: 0.85; }
+/* Icon-only toolbar: hide the button/link text labels (the <i> icons and the
+   title= tooltips remain). Targets only the `hidden sm:inline` label spans, so
+   badges/counters (e.g. #deps-count) and the git dropdown menu text stay. */
+.icon-only-toolbar span.sm\:inline { display: none !important; }
+</style>
+
+{% if gitvault_ctx %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
+{% endblock %}
+
+{% block end_script %}
+<script>
+const EditorSync = (() => {
+  const dmp = new diff_match_patch();
+  let lastContent = "";
+  let suppress = false;
+
+  function initBaseline(editor) { lastContent = editor.getValue(); }
+
+  function sendFullAndPatch(editor, socket) {
+    const newContent = editor.getValue();
+    const patches = dmp.patch_make(lastContent, newContent);
+    lastContent = newContent;
+    socket.send(JSON.stringify({ type: "full+patch", content: newContent, patch: dmp.patch_toText(patches) }));
+  }
+
+  function onLocalChange(editor, socket, syncEnabled) {
+    if (!syncEnabled || suppress) return;
+    sendFullAndPatch(editor, socket);
+  }
+
+  function applyIncomingContent(editor, data) {
+    suppress = true;
+    if (data.patch) {
+      const [patched] = dmp.patch_apply(dmp.patch_fromText(data.patch), editor.getValue());
+      editor.setValue(patched, -1);
+      lastContent = patched;
+    } else if (data.content) {
+      editor.setValue(data.content, -1);
+      lastContent = data.content;
+    }
+    suppress = false;
+  }
+
+  function onServerMessage(editor, syncEnabled, event) {
+    if (!syncEnabled) return;
+    applyIncomingContent(editor, JSON.parse(event.data));
+  }
+
+  return { initBaseline, onLocalChange, onServerMessage };
+})();
+</script>
+
+<script>
+ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+const editor = ace.edit("editor");
+editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+editor.session.setMode("ace/mode/{{ ace_mode }}");
+editor.setValue(`{{ content|escapejs }}`, -1);
+editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: {{ wrap_lines }}, readOnly: false });
+window.VaultEditor = editor;
+
+EditorSync.initBaseline(editor);
+
+let isReadOnly = false;
+document.getElementById("toggle-readonly").addEventListener("click", function () {
+  isReadOnly = !isReadOnly;
+  editor.setReadOnly(isReadOnly);
+  document.getElementById("lock-icon").className = `fa-solid ${isReadOnly ? "fa-lock" : "fa-lock-open"}`;
+  editor.container.style.opacity = isReadOnly ? "0.65" : "1";
+  this.title = isReadOnly ? "Read-only (click to unlock)" : "Toggle read-only";
+});
+
+let syncEnabled = true;
+document.getElementById("toggle-sync").addEventListener("click", function () {
+  syncEnabled = !syncEnabled;
+  document.getElementById("sync-icon").className = `fa-solid ${syncEnabled ? "fa-arrows-rotate" : "fa-ban"}`;
+  this.style.opacity = syncEnabled ? "1" : "0.5";
+  this.title = syncEnabled ? "Toggle live sync" : "Sync off (click to enable)";
+});
+
+const filePk = "{{ vault_file.pk }}";
+const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
+const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/{{ ws_path }}/file/${filePk}/`);
+editor.session.on("change", () => EditorSync.onLocalChange(editor, socket, syncEnabled));
+socket.onmessage = event => EditorSync.onServerMessage(editor, syncEnabled, event);
+
+const SAVE_URL   = "{{ save_url }}";
+const DELETE_URL = "{{ delete_url }}";
+
+async function saveFile() {
+  const btn = document.getElementById("save-file");
+  const formData = new FormData();
+  formData.append("content", editor.getValue());
+  btn.style.opacity = "0.5";
+  try {
+    const res = await fetch(SAVE_URL, {
+      method: "POST", body: formData,
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
+    return true;
+  } catch (err) {
+    alert("Save failed: " + err);
+    return false;
+  } finally {
+    btn.style.opacity = "1";
+  }
+}
+document.getElementById("save-file").addEventListener("click", saveFile);
+
+// ── Delete ───────────────────────────────────────────────────
+const deleteModal = document.getElementById("delete-modal");
+document.getElementById("delete-file").addEventListener("click", () => deleteModal.classList.replace("hidden", "flex"));
+document.getElementById("delete-cancel").addEventListener("click", () => deleteModal.classList.replace("flex", "hidden"));
+deleteModal.addEventListener("click", e => { if (e.target === deleteModal) deleteModal.classList.replace("flex", "hidden"); });
+document.addEventListener("keydown", e => { if (e.key === "Escape") deleteModal.classList.replace("flex", "hidden"); });
+
+document.getElementById("delete-confirm").addEventListener("click", async () => {
+  const btn = document.getElementById("delete-confirm");
+  btn.disabled = true; btn.style.opacity = "0.5";
+  try {
+    const res = await fetch(DELETE_URL, {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status === "ok") { window.location.href = data.redirect || "/vault/"; }
+    else { alert(data.error || "Delete failed."); btn.disabled = false; btn.style.opacity = "1"; }
+  } catch (err) {
+    alert("Delete failed: " + err); btn.disabled = false; btn.style.opacity = "1";
+  }
+});
+
+{% if compile_url %}
+// ── Compile (.tex → PDF via the texlab-compile-latex Celery workflow) ───────
+const COMPILE_URL = "{{ compile_url }}";
+const COMPILE_STATUS_BASE = "{{ compile_status_url_base }}";  // "/0/" swapped per run
+let compiling = false, compilePollTimer = null;
+
+function setCompiling(on) {
+  compiling = on;
+  document.getElementById("compile-icon").className = `fa-solid ${on ? "fa-spinner fa-spin" : "fa-play"}`;
+  document.getElementById("compile-label").textContent = on ? "{% trans 'Compiling…' %}" : "{% trans 'Compile' %}";
+  document.getElementById("compile-file").style.opacity = on ? "0.6" : "1";
+}
+
+function compileDone(pdfUrl, errText) {
+  setCompiling(false);
+  const link = document.getElementById("compile-pdf-link");
+  const err = document.getElementById("compile-error");
+  if (pdfUrl) { link.href = pdfUrl; link.classList.remove("hidden"); err.classList.add("hidden"); }
+  else { link.classList.add("hidden"); err.textContent = (errText || "Compile failed").slice(0, 300); err.classList.remove("hidden"); err.title = errText || ""; }
+}
+
+function pollCompile(runId) {
+  const statusUrl = COMPILE_STATUS_BASE.replace("/0/", "/" + runId + "/");
+  compilePollTimer = setInterval(async () => {
+    try {
+      const r = await fetch(statusUrl, { credentials: "same-origin" });
+      const d = await r.json();
+      if (d.status === "success") { clearInterval(compilePollTimer); compileDone(d.pdf_url, ""); }
+      else if (d.status === "failed") { clearInterval(compilePollTimer); compileDone("", d.log); }
+    } catch (e) { clearInterval(compilePollTimer); compileDone("", String(e)); }
+  }, 1500);
+}
+
+document.getElementById("compile-file").addEventListener("click", async () => {
+  if (compiling) return;
+  setCompiling(true);
+  document.getElementById("compile-error").classList.add("hidden");
+  // Save first so the workflow compiles what's on screen.
+  if (!await saveFile()) { setCompiling(false); return; }
+  try {
+    const res = await fetch(COMPILE_URL, {
+      method: "POST",
+      headers: { "X-CSRFToken": "{{ csrf_token }}" },
+      credentials: "same-origin",
+    });
+    const data = await res.json();
+    if (data.status === "queued" && data.run_id) { pollCompile(data.run_id); }
+    else if (data.pdf_url) { compileDone(data.pdf_url, ""); }          // inline (no-worker) success
+    else { compileDone("", data.log || data.error || "Compile failed"); }
+  } catch (e) { compileDone("", String(e)); }
+});
+{% endif %}
+</script>
+{% endblock %}
+
+{% block floating_widgets %}{% endblock %}

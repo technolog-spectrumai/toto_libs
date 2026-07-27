@@ -1,0 +1,1555 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block locations_title %}Map{% endblock %}
+{% block tab_locations %}bg-accent-dark/10 opacity-100{% endblock %}
+
+{% block locations_start_script %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<style>
+  .locations-map .leaflet-control-container {
+    font-family: inherit;
+  }
+
+  .locations-map .leaflet-popup-content-wrapper,
+  .locations-map .leaflet-popup-tip {
+    border-radius: 8px;
+  }
+
+  .locations-map .leaflet-control-zoom a {
+    border-radius: 6px;
+  }
+
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+
+<script>
+  window.locationsPayload = JSON.parse(`{{ locations_json|escapejs }}`);
+  window.mapLayersPayload = JSON.parse(`{{ map_layers_json|escapejs }}`);
+  window.locationSearchUrl = "{% url 'locations:location_search_api' %}";
+  window.vaultGeojsonFiles = JSON.parse(`{{ vault_files_json|escapejs }}`);
+
+  function locationsExplorer() {
+    return {
+      search: "",
+      mapSearch: "",
+      mapSearchRemoteResults: [],
+      mapSearchLoading: false,
+      mapSearchError: "",
+      mapSearchDebounce: null,
+
+      sidebarOpen: false,
+      visibilityOpen: false,
+      layersOpen: false,
+      layerSettingsOpen: false,
+      activeType: "All",
+      selectedName: "",
+      selectedLayerSlug: "",
+      overlayOpacity: 0.35,
+      showOverlayLabels: true,
+      visibleTypes: {},
+      locations: window.locationsPayload || [],
+      mapLayers: window.mapLayersPayload || [],
+      addingAddressesEnabled: true,
+
+      clickedPoint: null,
+      addressModalOpen: false,
+      importOpen: false,
+      importSource: "upload",
+      importFile: null,
+      importName: "",
+      importRunning: false,
+      importResult: null,
+      importError: "",
+      importUploadPassword: "",
+      importVaultFileId: "",
+      importVaultSearch: "",
+      importVaultPassword: "",
+      importVaultFiles: window.vaultGeojsonFiles || [],
+      get importVaultFiltered() {
+        const q = this.importVaultSearch.trim().toLowerCase();
+        return q ? this.importVaultFiles.filter(f => f.title.toLowerCase().includes(q) || f.bucket.toLowerCase().includes(q)) : this.importVaultFiles;
+      },
+      get importVaultSelectedFile() {
+        return this.importVaultFiles.find(f => String(f.id) === String(this.importVaultFileId)) || null;
+      },
+      get importReady() {
+        if (this.importSource === "upload") return !!this.importFile;
+        if (!this.importVaultFileId) return false;
+        if (this.importVaultSelectedFile?.is_encrypted && !this.importVaultPassword) return false;
+        return true;
+      },
+
+      init() {
+        this.availableTypes
+          .filter((type) => type !== "All")
+          .forEach((type) => {
+            this.visibleTypes[type] = true;
+          });
+
+        this.$watch("mapSearch", (value) => {
+          this.queueRemoteMapSearch(value);
+        });
+
+        const defaultLayer = this.mapLayers[0];
+
+        if (!defaultLayer) {
+          this.$nextTick(() => applyLocationTypeVisibility(this.visibleTypes));
+          return;
+        }
+
+        this.selectedLayerSlug = defaultLayer.slug;
+        this.overlayOpacity = Number(defaultLayer.style?.opacity ?? 0.35);
+        this.showOverlayLabels = defaultLayer.style?.show_labels !== false;
+
+        this.$nextTick(() => {
+          applyLocationTypeVisibility(this.visibleTypes);
+          updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
+        });
+      },
+
+      get availableTypes() {
+        return ["All", ...new Set(this.locations.map((location) => location.type).filter(Boolean))];
+      },
+
+      get mappedLocations() {
+        return this.locations.filter((location) => location.geometry);
+      },
+
+      get visibleLocations() {
+        const query = this.search.trim().toLowerCase();
+
+        return this.locations.filter((location) => {
+          const matchesType = this.activeType === "All" || location.type === this.activeType;
+          const typeIsVisible = this.isTypeVisible(location.type);
+          const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
+
+          return typeIsVisible && matchesType && (!query || haystack.includes(query));
+        });
+      },
+
+      get selectedLocation() {
+        return this.locations.find((location) => location.name === this.selectedName);
+      },
+
+      get selectedLayer() {
+        return this.mapLayers.find((layer) => layer.slug === this.selectedLayerSlug) || null;
+      },
+
+      get localMapSearchResults() {
+        const query = this.mapSearch.trim().toLowerCase();
+
+        if (!query) {
+          return [];
+        }
+
+        return this.locations
+          .filter((location) => {
+            if (!location.geometry) return false;
+
+            const haystack = `${location.name || ""} ${location.type || ""} ${location.detail || ""}`.toLowerCase();
+            return haystack.includes(query);
+          })
+          .slice(0, 6)
+          .map((location) => ({
+            ...location,
+            source: "db",
+            label: location.name,
+          }));
+      },
+
+      get mapSearchResults() {
+        const seen = new Set();
+        const results = [];
+
+        [...this.localMapSearchResults, ...this.mapSearchRemoteResults].forEach((item) => {
+          const key = `${item.source || ""}:${item.label || item.name}:${item.lat || ""}:${item.lng || ""}`;
+
+          if (seen.has(key)) {
+            return;
+          }
+
+          seen.add(key);
+          results.push(item);
+        });
+
+        return results.slice(0, 8);
+      },
+
+      selectType(type) {
+        this.activeType = type;
+      },
+
+      isTypeVisible(type) {
+        return this.visibleTypes[type] !== false;
+      },
+
+      toggleType(type) {
+        this.visibleTypes[type] = !this.isTypeVisible(type);
+
+        if (this.activeType === type && !this.visibleTypes[type]) {
+          this.activeType = "All";
+        }
+
+        applyLocationTypeVisibility(this.visibleTypes);
+      },
+
+      showAllTypes() {
+        Object.keys(this.visibleTypes).forEach((type) => {
+          this.visibleTypes[type] = true;
+        });
+
+        applyLocationTypeVisibility(this.visibleTypes);
+      },
+
+      hideAllTypes() {
+        Object.keys(this.visibleTypes).forEach((type) => {
+          this.visibleTypes[type] = false;
+        });
+
+        this.activeType = "All";
+        applyLocationTypeVisibility(this.visibleTypes);
+      },
+
+      selectLayer(slug) {
+        this.selectedLayerSlug = slug;
+
+        const layer = this.selectedLayer;
+
+        if (layer) {
+          this.overlayOpacity = Number(layer.style?.opacity ?? this.overlayOpacity);
+          this.showOverlayLabels = layer.style?.show_labels !== false;
+        }
+
+        updateMapLayerOverlay(layer, this.overlayOpacity, this.showOverlayLabels);
+      },
+
+      clearLayer() {
+        this.selectedLayerSlug = "";
+        updateMapLayerOverlay(null, this.overlayOpacity, this.showOverlayLabels);
+      },
+
+      refreshLayerDisplay() {
+        updateMapLayerOverlay(this.selectedLayer, this.overlayOpacity, this.showOverlayLabels);
+      },
+
+      selectLocation(location) {
+        this.selectedName = location.name;
+        zoomToFeature(location.name);
+        highlightFeature(location.name);
+        this.sidebarOpen = false;
+      },
+
+      queueRemoteMapSearch(value) {
+        const query = value.trim();
+
+        window.clearTimeout(this.mapSearchDebounce);
+
+        if (query.length < 2) {
+          this.mapSearchRemoteResults = [];
+          this.mapSearchError = "";
+          this.mapSearchLoading = false;
+          return;
+        }
+
+        this.mapSearchDebounce = window.setTimeout(() => {
+          this.fetchRemoteMapSearch(query);
+        }, 350);
+      },
+
+      async fetchRemoteMapSearch(query) {
+        this.mapSearchLoading = true;
+        this.mapSearchError = "";
+
+        try {
+          const response = await fetch(`${window.locationSearchUrl}?q=${encodeURIComponent(query)}`, {
+            headers: {
+              "X-Requested-With": "XMLHttpRequest",
+            },
+          });
+
+          if (!response.ok) {
+            throw new Error("Search failed.");
+          }
+
+          const payload = await response.json();
+
+          this.mapSearchRemoteResults = (payload.results || []).map((item) => ({
+            ...item,
+            source: "web",
+            label: item.label || item.name || "Search result",
+            name: item.name || item.label || "Search result",
+            type: item.type || "Place",
+            detail: item.locality_name || item.state_or_province_name || item.country_name || "Web result",
+          }));
+        } catch (error) {
+          this.mapSearchRemoteResults = [];
+          this.mapSearchError = "Could not search online right now.";
+        } finally {
+          this.mapSearchLoading = false;
+        }
+      },
+
+      moveMapToLocation(location) {
+        if (!location) {
+          return;
+        }
+
+        if (location.geometry) {
+          this.selectedName = location.name;
+          zoomToFeature(location.name);
+          highlightFeature(location.name);
+          this.mapSearch = "";
+          return;
+        }
+
+        if (location.lat && location.lng) {
+          moveMapToCoordinates(
+            Number(location.lat),
+            Number(location.lng),
+            location.label || location.name || "Search result"
+          );
+
+          clearFeatureHighlight();
+          this.selectedName = location.label || location.name || "";
+          this.mapSearch = "";
+        }
+      },
+
+      fitAll() {
+        fitAllLocations();
+        clearFeatureHighlight();
+        this.sidebarOpen = false;
+      },
+
+      typeStyle(type) {
+        return {
+          backgroundColor: locationTypeColor(type, this.darkMode),
+          boxShadow: `0 0 0 3px ${locationTypeColor(type, this.darkMode)}26`
+        };
+      },
+
+      geometryLabel(location) {
+        if (!location.geometry) return "No geometry";
+        return location.geometry.type || "Geometry";
+      },
+
+      openAddressModal(latlng) {
+        if (!this.addingAddressesEnabled) {
+          return;
+        }
+
+        this.clickedPoint = {
+          lat: Number(latlng.lat).toFixed(6),
+          lng: Number(latlng.lng).toFixed(6),
+        };
+
+        this.addressModalOpen = true;
+      },
+
+      closeAddressModal() {
+        this.addressModalOpen = false;
+        this.clickedPoint = null;
+      },
+
+      get addAddressUrl() {
+        if (!this.clickedPoint) {
+          return "{% url 'locations:address_create' %}";
+        }
+
+        return `{% url 'locations:address_create' %}?lat=${encodeURIComponent(this.clickedPoint.lat)}&lng=${encodeURIComponent(this.clickedPoint.lng)}`;
+      },
+
+      toggleAddressAdding() {
+        this.addingAddressesEnabled = !this.addingAddressesEnabled;
+      }
+    };
+  }
+
+  function pointToFakePolygon(geometry, size = 0.001) {
+    const [lng, lat] = geometry.coordinates;
+
+    return {
+      type: "Polygon",
+      coordinates: [[
+        [lng - size, lat - size],
+        [lng + size, lat - size],
+        [lng + size, lat + size],
+        [lng - size, lat + size],
+        [lng - size, lat - size]
+      ]]
+    };
+  }
+</script>
+{% endblock %}
+
+{% block locations_content %}
+<div
+  x-data="locationsExplorer()"
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex max-w-7xl flex-col gap-5">
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="min-w-0">
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">{% trans "Spatial overview" %}</p>
+
+        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">{% trans "Locations" %}</h1>
+
+        <p class="mt-2 max-w-2xl text-sm opacity-70">{% trans "Browse territories, routes, travels, and addresses in one focused map workspace." %}</p>
+      </div>
+
+      <div class="flex flex-col gap-3 sm:min-w-[360px]">
+        <div class="grid grid-cols-3 gap-2">
+          <div
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border p-3 shadow-sm">
+            <div class="text-2xl font-bold" x-text="locations.length"></div>
+            <div class="text-xs opacity-65">{% trans "Total" %}</div>
+          </div>
+
+          <div
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border p-3 shadow-sm">
+            <div class="text-2xl font-bold" x-text="mappedLocations.length"></div>
+            <div class="text-xs opacity-65">{% trans "Mapped" %}</div>
+          </div>
+
+          <div
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-lg border p-3 shadow-sm">
+            <div class="text-2xl font-bold" x-text="availableTypes.length - 1"></div>
+            <div class="text-xs opacity-65">{% trans "Types" %}</div>
+          </div>
+        </div>
+
+      </div>
+    </header>
+
+    <div class="flex items-center justify-between gap-3 lg:hidden">
+      <button
+        type="button"
+        @click="sidebarOpen = true; setTimeout(() => refreshMapSize(), 250)"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-sliders"></i>{% trans "Locations" %}</button>
+
+      <button
+        type="button"
+        @click="fitAll"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-location-crosshairs"></i>{% trans "Fit map" %}</button>
+    </div>
+
+    <section class="grid min-h-[76vh] gap-4 lg:grid-cols-[360px_minmax(0,1fr)]">
+      {% include "locations/partials/location_sidebar.html" %}
+
+      <div
+        class="fixed inset-0 z-40 bg-black/50 lg:hidden"
+        x-show="sidebarOpen"
+        x-transition.opacity
+        @click="sidebarOpen = false; setTimeout(() => refreshMapSize(), 250)"
+        x-cloak></div>
+
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="relative min-h-[70vh] overflow-hidden rounded-lg border shadow-sm lg:h-[76vh]">
+
+        <div id="map" class="locations-map h-full min-h-[70vh] w-full lg:min-h-0"></div>
+
+        <div class="pointer-events-none absolute left-4 top-4 flex flex-wrap gap-2">
+          <div
+            :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
+            class="rounded-lg border border-current/10 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+            <span x-text="selectedLocation ? selectedLocation.type : 'Overview'"></span>
+            <span class="opacity-50">/</span>
+            <span x-text="selectedName || 'All mapped locations'"></span>
+          </div>
+        </div>
+
+        {% if map_recent_travels or map_recent_visits %}
+        <div
+          x-data="{ open: true }"
+          class="pointer-events-auto absolute left-4 top-4 z-[500] w-[min(92vw,240px)]">
+
+          <button
+            type="button"
+            @click="open = !open"
+            :class="darkMode
+              ? 'bg-bubble-bg-dark/95 text-text-main-dark border-accent-1'
+              : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
+            class="flex w-full items-center justify-between gap-2 rounded-lg border px-3 py-1 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+            <span class="flex items-center gap-1.5">
+              <i class="fa-solid fa-route opacity-70"></i>{% trans "Travels &amp; Visits" %}</span>
+            <i class="fa-solid text-[10px] opacity-60" :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+          </button>
+
+          <div
+            x-show="open"
+            x-transition
+            x-cloak
+            :class="darkMode
+              ? 'bg-bubble-bg-dark/95 text-text-main-dark border-accent-1'
+              : 'bg-bubble-bg-light/95 text-text-main-light border-accent-2'"
+            class="mt-1 overflow-hidden rounded-lg border shadow-sm backdrop-blur">
+
+            {% if map_recent_travels %}
+            <div class="px-3 pt-3 pb-1">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">{% trans "Recent Travels" %}</span>
+                <a
+                  href="{% url 'travels:travel_create' %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-[10px] font-semibold underline-offset-2 hover:underline">
+                  + Add
+                </a>
+              </div>
+
+              <div class="space-y-0.5">
+                {% for travel in map_recent_travels %}
+                  <a
+                    href="{% url 'travels:travel_review' travel.pk %}"
+                    :class="darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'"
+                    class="flex items-center gap-2 rounded px-1 py-1 transition">
+                    <i class="fa-solid fa-route shrink-0 text-[10px] opacity-40"></i>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[11px] font-semibold leading-tight">
+                        {% if travel.route %}{{ travel.route.name }}{% else %}Travel #{{ travel.pk }}{% endif %}
+                      </span>
+                      <span class="block text-[10px] opacity-50">{{ travel.starts_at|date:"M j, Y" }}</span>
+                    </span>
+                    {% if travel.score %}
+                      <span class="shrink-0 text-[10px] font-bold opacity-60">{{ travel.score }}/5</span>
+                    {% endif %}
+                  </a>
+                {% endfor %}
+              </div>
+
+              <a
+                href="{% url 'travels:my_travels' %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">{% trans "View all travels" %}</a>
+            </div>
+            {% endif %}
+
+            {% if map_recent_travels and map_recent_visits %}
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="mx-3 border-t"></div>
+            {% endif %}
+
+            {% if map_recent_visits %}
+            <div class="px-3 pt-2 pb-3">
+              <div class="mb-2 flex items-center justify-between gap-2">
+                <span class="text-[10px] font-semibold uppercase tracking-wide opacity-60">{% trans "Recent Visits" %}</span>
+                <a
+                  href="{% url 'travels:visit_create' %}"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="text-[10px] font-semibold underline-offset-2 hover:underline">
+                  + Add
+                </a>
+              </div>
+
+              <div class="space-y-0.5">
+                {% for visit in map_recent_visits %}
+                  {% if visit.location %}
+                  <a
+                    href="{% url 'travels:visit_review' visit.location.pk %}"
+                    :class="darkMode ? 'hover:bg-white/10' : 'hover:bg-black/5'"
+                    class="flex items-center gap-2 rounded px-1 py-1 transition">
+                    <i class="fa-solid fa-location-dot shrink-0 text-[10px] opacity-40"></i>
+                    <span class="min-w-0 flex-1">
+                      <span class="block truncate text-[11px] font-semibold leading-tight">{{ visit.location }}</span>
+                      {% if visit.visited_at %}
+                        <span class="block text-[10px] opacity-50">{{ visit.visited_at|date:"M j, Y" }}</span>
+                      {% elif visit.participant %}
+                        <span class="block text-[10px] opacity-50">{{ visit.participant.display_name }}</span>
+                      {% endif %}
+                    </span>
+                    {% if visit.score %}
+                      <span class="shrink-0 text-[10px] font-bold opacity-60">{{ visit.score }}/5</span>
+                    {% endif %}
+                  </a>
+                  {% endif %}
+                {% endfor %}
+              </div>
+
+              <a
+                href="{% url 'travels:my_visits' %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="mt-2 block text-center text-[10px] font-semibold underline-offset-2 hover:underline">{% trans "View all visits" %}</a>
+            </div>
+            {% endif %}
+
+          </div>
+        </div>
+        {% endif %}
+
+        <div class="pointer-events-auto absolute right-4 top-4 z-[500] flex w-[min(92vw,340px)] flex-col gap-2">
+          <div
+            @click.stop
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+            class="rounded-lg border p-2 shadow-sm backdrop-blur">
+
+            <label class="relative block">
+              <span class="sr-only">{% trans "Move map to location" %}</span>
+              <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
+
+              <input
+                x-model="mapSearch"
+                type="search"
+                readonly
+                @focus="$el.removeAttribute('readonly')"
+                autocomplete="off"
+                autocorrect="off"
+                autocapitalize="off"
+                spellcheck="false"
+                data-1p-ignore
+                data-lpignore="true"
+                name="map-target-search"
+                placeholder="{% trans 'Move map to ...' %}"
+                @keydown.enter.prevent="mapSearchResults.length && moveMapToLocation(mapSearchResults[0])"
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/50'
+                  : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/50'"
+                class="w-full rounded-lg border py-2 pl-8 pr-3 text-xs font-semibold outline-none transition focus:ring-2 focus:ring-current/20" />
+            </label>
+
+            <div
+              x-show="mapSearch.trim().length > 0"
+              x-cloak
+              class="mt-2 max-h-64 overflow-y-auto">
+
+              <div
+                x-show="mapSearchLoading"
+                class="rounded-lg border border-current/10 px-3 py-2 text-xs opacity-70">{% trans "Searching map..." %}</div>
+
+              <div
+                x-show="mapSearchError"
+                class="mt-1 rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70"
+                x-text="mapSearchError">
+              </div>
+
+              <template x-if="!mapSearchLoading && mapSearchResults.length === 0">
+                <div class="rounded-lg border border-dashed border-current/15 px-3 py-2 text-xs opacity-70">{% trans "No location found." %}</div>
+              </template>
+
+              <div class="space-y-1">
+                <template x-for="location in mapSearchResults" :key="`map-search-${location.source || 'db'}-${location.label || location.name}-${location.lat || ''}-${location.lng || ''}`">
+                  <button
+                    type="button"
+                    @click.stop="moveMapToLocation(location)"
+                    class="w-full rounded-lg px-3 py-2 text-left text-xs transition hover:bg-current/10">
+
+                    <span class="flex items-start justify-between gap-2">
+                      <span class="block font-bold" x-text="location.label || location.name"></span>
+
+                      <span
+                        class="shrink-0 rounded-full border border-current/10 px-2 py-0.5 text-[10px] font-semibold opacity-70"
+                        x-text="location.source === 'web' ? 'web' : 'db'">
+                      </span>
+                    </span>
+
+                    <span class="mt-0.5 block opacity-60">
+                      <span x-text="location.type"></span>
+                      <span x-show="location.detail"> · </span>
+                      <span x-text="location.detail"></span>
+                    </span>
+                  </button>
+                </template>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="pointer-events-auto absolute bottom-4 left-4 z-[500]">
+          <button
+            type="button"
+            @click.stop="toggleAddressAdding()"
+            :class="addingAddressesEnabled
+              ? (darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light')
+              : (darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light')"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur transition hover:opacity-90">
+            <i
+              class="fa-solid"
+              :class="addingAddressesEnabled ? 'fa-wand-magic-sparkles' : 'fa-ban'"></i>
+
+            <span x-text="addingAddressesEnabled ? 'Add by click: on' : 'Add by click: off'"></span>
+          </button>
+        </div>
+
+        <div
+          :class="darkMode ? 'bg-bubble-bg-dark/95 text-text-main-dark' : 'bg-bubble-bg-light/95 text-text-main-light'"
+          class="absolute bottom-4 right-4 hidden rounded-lg border border-current/10 p-3 text-xs shadow-sm backdrop-blur sm:block">
+
+          <div class="mb-2 font-semibold">{% trans "Legend" %}</div>
+
+          <div class="grid gap-1.5">
+            <div class="flex items-center gap-2"><span :style="typeStyle('Territory')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Territory" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Zone')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Zone" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Route Chain')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Route Chain" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Route')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Route" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Address')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Address" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Travel')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Travel" %}</div>
+            <div class="flex items-center gap-2"><span :style="typeStyle('Visit')" class="h-2.5 w-2.5 rounded-full"></span>{% trans "Visit" %}</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Below-map actions -->
+    <div class="flex flex-wrap gap-2">
+      <a
+        href="{% url 'locations:address_create' %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-location-dot"></i>{% trans "Add address" %}</a>
+      <button
+        type="button"
+        @click="importOpen = true"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-file-import"></i>{% trans "Import layer" %}</button>
+    </div>
+
+    <div
+      class="fixed inset-0 z-[60] flex items-center justify-center bg-black/55 p-4"
+      x-show="layerSettingsOpen"
+      x-transition.opacity
+      x-cloak>
+
+      <div
+        @click.outside="layerSettingsOpen = false"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+        class="w-full max-w-md rounded-lg border p-5 shadow-xl">
+
+        <div class="flex items-start justify-between gap-3">
+          <div>
+            <h2 class="text-lg font-bold">{% trans "Overlay display" %}</h2>
+            <p class="mt-1 text-sm opacity-70" x-text="selectedLayer ? selectedLayer.name : 'No layer selected'"></p>
+          </div>
+
+          <button
+            type="button"
+            @click="layerSettingsOpen = false"
+            class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75"
+            aria-label="{% trans 'Close overlay display settings' %}">
+            <i class="fa-solid fa-xmark"></i>
+          </button>
+        </div>
+
+        <div class="mt-5 space-y-5">
+          <label class="block">
+            <span class="mb-2 flex items-center justify-between gap-3 text-sm font-semibold">
+              <span>{% trans "Opacity" %}</span>
+              <span x-text="`${Math.round(overlayOpacity * 100)}%`"></span>
+            </span>
+
+            <input
+              type="range"
+              min="0.05"
+              max="0.85"
+              step="0.05"
+              x-model.number="overlayOpacity"
+              @input="refreshLayerDisplay"
+              class="w-full accent-current">
+          </label>
+
+          <label class="flex items-center justify-between gap-4">
+            <span>
+              <span class="block text-sm font-semibold">{% trans "Value labels" %}</span>
+              <span class="block text-xs opacity-65">{% trans "Show numeric labels in overlay polygons." %}</span>
+            </span>
+
+            <input
+              type="checkbox"
+              x-model="showOverlayLabels"
+              @change="refreshLayerDisplay"
+              class="h-5 w-5 accent-current">
+          </label>
+
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-lg border p-3 text-sm">
+            <div class="font-semibold">{% trans "Legend" %}</div>
+            <div class="mt-3 grid gap-2" id="overlay-legend"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div
+    class="fixed inset-0 z-[1000] flex items-center justify-center bg-black/50 px-4 py-6"
+    x-show="addressModalOpen"
+    x-transition.opacity
+    x-cloak>
+
+    <div
+      @click.outside="closeAddressModal()"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+      class="w-full max-w-md rounded-2xl border p-5 shadow-2xl">
+
+      <div class="flex items-start justify-between gap-4">
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Map point" %}</p>
+
+          <h2 class="mt-1 flex items-center gap-2 text-xl font-bold">
+            <i class="fa-solid fa-location-dot"></i>{% trans "Add address here?" %}</h2>
+
+          <p class="mt-2 text-sm opacity-70">{% trans "Save this clicked map position as a reusable address." %}</p>
+        </div>
+
+        <button
+          type="button"
+          @click="closeAddressModal()"
+          class="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 transition hover:opacity-75">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark'
+          : 'border-accent-2 bg-primary-bg-light'"
+        class="mt-5 grid grid-cols-2 gap-3 rounded-xl border p-4 text-sm">
+
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Latitude" %}</p>
+          <p class="mt-1 font-bold" x-text="clickedPoint?.lat || '—'"></p>
+        </div>
+
+        <div>
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Longitude" %}</p>
+          <p class="mt-1 font-bold" x-text="clickedPoint?.lng || '—'"></p>
+        </div>
+      </div>
+
+      <div class="mt-5 flex flex-wrap justify-end gap-2">
+        <button
+          type="button"
+          @click="closeAddressModal()"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="inline-flex items-center justify-center rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">{% trans "Cancel" %}</button>
+
+        <a
+          :href="addAddressUrl"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>{% trans "Add address" %}</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================================================================ -->
+  <!-- IMPORT LAYER MODAL -->
+  <!-- ================================================================ -->
+  <div x-show="importOpen" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="importOpen = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <!-- Header -->
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-import"></i>{% trans "Import Layer from GeoJSON" %}</h2>
+        <button type="button" @click="importOpen = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <!-- Source tabs -->
+      <div class="flex border-b border-current/10">
+        <button type="button" @click="importSource = 'upload'; importResult = null; importError = ''"
+                class="flex-1 px-4 py-2.5 text-sm font-semibold transition border-b-2 -mb-px"
+                :class="importSource === 'upload'
+                  ? (darkMode ? 'border-accent-dark text-accent-dark' : 'border-accent-light text-accent-light')
+                  : 'border-transparent opacity-50 hover:opacity-80'">
+          <i class="fa-solid fa-upload mr-1.5"></i>{% trans "Upload file" %}
+        </button>
+        <button type="button" @click="importSource = 'vault'; importResult = null; importError = ''"
+                class="flex-1 px-4 py-2.5 text-sm font-semibold transition border-b-2 -mb-px"
+                :class="importSource === 'vault'
+                  ? (darkMode ? 'border-accent-dark text-accent-dark' : 'border-accent-light text-accent-light')
+                  : 'border-transparent opacity-50 hover:opacity-80'">
+          <i class="fa-solid fa-vault mr-1.5"></i>{% trans "From Vault" %}
+        </button>
+      </div>
+
+      <!-- Body -->
+      <div class="space-y-4 p-5">
+
+        <!-- Upload tab -->
+        <div x-show="importSource === 'upload'" class="space-y-3">
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "GeoJSON file" %}</label>
+            <label class="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed px-4 py-6 text-sm transition hover:bg-current/5"
+                   :class="importFile ? (darkMode ? 'border-accent-dark/60' : 'border-accent-light/60') : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+              <i class="fa-solid text-2xl opacity-40" :class="importFile ? 'fa-file-check' : 'fa-file-arrow-up'"></i>
+              <span x-text="importFile ? importFile.name : '{% trans "Click to select a .geojson file" %}'" class="font-semibold"></span>
+              <input type="file" accept=".geojson,application/geo+json,application/json"
+                     class="sr-only"
+                     @change="importFile = $event.target.files[0]; importResult = null; importError = ''">
+            </label>
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-lock mr-1"></i>{% trans "Password" %}
+              <span class="font-normal opacity-50"> {% trans "(only if file is encrypted)" %}</span>
+            </label>
+            <input type="password" x-model="importUploadPassword"
+                   placeholder="{% trans 'Leave blank for unencrypted files' %}"
+                   autocomplete="current-password"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <!-- Vault tab -->
+        <div x-show="importSource === 'vault'" class="space-y-3">
+          <input type="text" x-model="importVaultSearch" placeholder="{% trans 'Filter by title or bucket…' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+          <div class="max-h-48 overflow-y-auto rounded-lg border"
+               :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <template x-if="importVaultFiltered.length === 0">
+              <p class="px-4 py-5 text-center text-sm opacity-40">{% trans "No JSON files found in Vault." %}</p>
+            </template>
+            <template x-for="f in importVaultFiltered" :key="f.id">
+              <button type="button" @click="importVaultFileId = String(f.id); importVaultPassword = ''; importResult = null; importError = ''"
+                      class="w-full flex items-center gap-3 px-4 py-2.5 text-left text-sm transition hover:bg-current/5"
+                      :class="importVaultFileId === String(f.id) ? (darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10') : ''">
+                <i class="fa-solid shrink-0 opacity-50"
+                   :class="f.is_encrypted ? 'fa-lock' : 'fa-file-code'"></i>
+                <span class="flex-1 min-w-0">
+                  <span class="font-semibold block truncate" x-text="f.title"></span>
+                  <span class="text-xs opacity-50" x-text="f.bucket + ' · ' + f.uploaded_at + (f.is_encrypted ? ' · 🔒 encrypted' : '')"></span>
+                </span>
+                <i class="fa-solid fa-check shrink-0" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                   x-show="importVaultFileId === String(f.id)"></i>
+              </button>
+            </template>
+          </div>
+          <!-- Password field — only shown when selected file is encrypted -->
+          <div x-show="importVaultSelectedFile && importVaultSelectedFile.is_encrypted">
+            <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-lock mr-1"></i>{% trans "Password" %}
+            </label>
+            <input type="password" x-model="importVaultPassword"
+                   placeholder="{% trans 'Enter password to decrypt' %}"
+                   autocomplete="current-password"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+          </div>
+        </div>
+
+        <!-- Optional layer name -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Layer name" %} <span class="font-normal opacity-50">{% trans "(optional override)" %}</span>
+          </label>
+          <input type="text" x-model="importName" placeholder="{% trans 'Use name from file' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+        </div>
+
+        <!-- Error -->
+        <div x-show="importError" x-cloak
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'"
+             class="rounded-lg border p-3 text-sm">
+          <i class="fa-solid fa-circle-exclamation mr-2"></i>
+          <span x-text="importError"></span>
+        </div>
+
+        <!-- Result -->
+        <div x-show="importResult" x-cloak class="space-y-3">
+          <p class="flex items-center gap-2 text-sm font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+            <i class="fa-solid fa-circle-check"></i>{% trans "Import complete" %}</p>
+          <template x-for="layer in (importResult || [])" :key="layer.slug">
+            <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="rounded-lg border px-4 py-2.5 text-sm">
+              <p class="font-semibold" x-text="layer.name"></p>
+              <p class="mt-0.5 text-xs opacity-60">
+                <span x-text="layer.polygon_count"></span> {% trans "polygons" %}
+                &nbsp;·&nbsp; slug: <span x-text="layer.slug" class="font-mono"></span>
+              </p>
+            </div>
+          </template>
+          <button type="button" @click="window.location.reload()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex w-full items-center justify-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-rotate-right"></i>{% trans "Reload map to see layers" %}</button>
+        </div>
+
+      </div>
+
+      <!-- Footer -->
+      <div x-show="!importResult" class="flex items-center justify-end gap-3 border-t border-current/10 px-5 py-4">
+        <button type="button" @click="importOpen = false"
+                :class="darkMode ? 'border-accent-1 hover:bg-sunken-dark' : 'border-accent-2 hover:bg-sunken-light'"
+                class="rounded-xl border px-4 py-2 text-sm font-semibold transition">{% trans "Cancel" %}</button>
+        <button type="button"
+                :disabled="!importReady || importRunning"
+                @click="
+                  importRunning = true; importError = ''; importResult = null;
+                  const fd = new FormData();
+                  if (importSource === 'upload') {
+                    fd.append('file', importFile);
+                    if (importUploadPassword) fd.append('password', importUploadPassword);
+                  } else {
+                    fd.append('vault_file_id', importVaultFileId);
+                    if (importVaultPassword) fd.append('password', importVaultPassword);
+                  }
+                  fd.append('name', importName);
+                  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+                  fetch('{% url "locations:api_import_layer" %}', {method:'POST', body:fd})
+                    .then(r => r.json())
+                    .then(d => { importRunning = false; if (d.error) { importError = d.error; } else { importResult = d.imported; } })
+                    .catch(e => { importRunning = false; importError = e.message; })
+                "
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90 disabled:opacity-40' : 'bg-accent-light text-primary-bg-light hover:opacity-90 disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-xl px-4 py-2 text-sm font-bold shadow-sm transition">
+          <i class="fa-solid" :class="importRunning ? 'fa-spinner fa-spin' : 'fa-file-import'"></i>
+          <span x-text="importRunning ? '{% trans "Importing…" %}' : '{% trans "Import" %}'"></span>
+        </button>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  let map = null;
+  let featuresDict = {};
+  let featureLayers = [];
+  let allBounds = null;
+  let mapLayerOverlay = null;
+  let mapLayerCenterOverlay = null;
+  let mapSearchMarker = null;
+
+  function refreshMapSize() {
+    if (map) map.invalidateSize();
+  }
+
+  function themeColors() {
+    return window.tailwind?.config?.theme?.extend?.colors || {};
+  }
+
+  function themeColor(name, fallback) {
+    return themeColors()[name] || fallback;
+  }
+
+  function locationTypeColor(type, isDark) {
+    const mode = isDark ? "dark" : "light";
+
+    const palette = {
+      Territory: `accent-${mode}`,
+      Zone: isDark ? "accent-1" : "accent-2",
+      "Route Chain": `warn-${mode}`,
+      Route: `link-${mode}`,
+      Address: `success-${mode}`,
+      Travel: `error-${mode}`,
+      Visit: isDark ? "warn-dark" : "warn-light"
+    };
+
+    const fallback = isDark
+      ? themeColor("accent-dark", "#4f5fa1")
+      : themeColor("accent-light", "#2f3d63");
+
+    return themeColor(palette[type], fallback);
+  }
+
+  function featureStyle(type, isDark) {
+    const color = locationTypeColor(type, isDark);
+
+    return {
+      color: color,
+      fillColor: color,
+      fillOpacity: ["Territory", "Zone"].includes(type) ? 0.16 : 0.7,
+      opacity: 0.95,
+      radius: 7,
+      weight: type === "Route Chain" ? 6 : (["Route", "Travel"].includes(type) ? 4 : 2)
+    };
+  }
+
+  function hexToRgb(color) {
+    const normalized = color.replace("#", "");
+    const value = parseInt(normalized.length === 3
+      ? normalized.split("").map((part) => part + part).join("")
+      : normalized, 16);
+
+    return {
+      r: (value >> 16) & 255,
+      g: (value >> 8) & 255,
+      b: value & 255
+    };
+  }
+
+  function rgbToHex({ r, g, b }) {
+    return `#${[r, g, b].map((part) => Math.round(part).toString(16).padStart(2, "0")).join("")}`;
+  }
+
+  function mixColors(start, end, ratio) {
+    const normalized = Math.max(0, Math.min(1, ratio));
+    const from = hexToRgb(start);
+    const to = hexToRgb(end);
+
+    return rgbToHex({
+      r: from.r + (to.r - from.r) * normalized,
+      g: from.g + (to.g - from.g) * normalized,
+      b: from.b + (to.b - from.b) * normalized
+    });
+  }
+
+  function layerPalette(isDark) {
+    return [
+      themeColor(isDark ? "link-dark" : "link-light", isDark ? "#5f7fc9" : "#2a4b8f"),
+      themeColor(isDark ? "success-dark" : "success-light", isDark ? "#5fa38c" : "#4a8f7a"),
+      themeColor(isDark ? "warn-dark" : "warn-light", isDark ? "#ff4455" : "#d94a4a")
+    ];
+  }
+
+  function layerValueRange(layer) {
+    const values = (layer?.polygons || []).map((polygon) => Number(polygon.value));
+    const style = layer?.style || {};
+
+    return {
+      min: Number(layer?.min_value ?? style.min ?? Math.min(...values)),
+      max: Number(layer?.max_value ?? style.max ?? Math.max(...values))
+    };
+  }
+
+  function layerHeatColor(layer, value, isDark) {
+    const palette = layerPalette(isDark);
+    const { min, max } = layerValueRange(layer);
+
+    let ratio = max === min ? 0.5 : (Number(value) - min) / (max - min);
+
+    if (layer?.inverted_importance) {
+      ratio = 1 - ratio;
+    }
+
+    if (layer?.half_range) {
+      ratio = ratio * 0.5;
+    }
+
+    if (ratio <= 0.5) return mixColors(palette[0], palette[1], ratio * 2);
+    return mixColors(palette[1], palette[2], (ratio - 0.5) * 2);
+  }
+
+  function layerZoneStyle(layer, value, opacity, isDark) {
+    const zoneStyle = featureStyle("Zone", isDark);
+    const color = layerHeatColor(layer, value, isDark);
+
+    return {
+      ...zoneStyle,
+      color: color,
+      fillColor: color,
+      fillOpacity: opacity,
+      opacity: Math.min(0.95, opacity + 0.25),
+      weight: 2
+    };
+  }
+
+  function updateOverlayLegend(layer) {
+    const legend = document.getElementById("overlay-legend");
+    if (!legend) return;
+
+    if (!layer) {
+      legend.innerHTML = '<div class="text-xs opacity-65">{% trans "Select a layer to see its legend." %}</div>';
+      return;
+    }
+
+    if (!layer.polygons.length) {
+      legend.innerHTML = '<div class="text-xs opacity-65">{% trans "This layer has no polygons yet." %}</div>';
+      return;
+    }
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const { min, max } = layerValueRange(layer);
+    const unit = layer.unit ? ` ${escapeHtml(layer.unit)}` : "";
+    const lowColor = layerHeatColor(layer, min, isDark);
+    const highColor = layerHeatColor(layer, max, isDark);
+
+    legend.innerHTML = `
+      <div class="h-3 rounded" style="background: linear-gradient(90deg, ${lowColor}, ${highColor});"></div>
+      <div class="flex justify-between gap-3 text-xs opacity-70">
+        <span>${min}${unit}</span>
+        <span>${max}${unit}</span>
+      </div>
+      <div class="text-xs opacity-65">
+        ${escapeHtml(layer.polygons.length)} zone-like polygons, colored by value.
+      </div>
+    `;
+  }
+
+  function centerLatLng(polygon, leafletLayer) {
+    if (polygon.center?.coordinates) {
+      return [polygon.center.coordinates[1], polygon.center.coordinates[0]];
+    }
+
+    return leafletLayer.getBounds().getCenter();
+  }
+
+  function updateMapLayerOverlay(layer, opacity, showLabels) {
+    if (!map) return;
+
+    if (mapLayerOverlay) {
+      map.removeLayer(mapLayerOverlay);
+      mapLayerOverlay = null;
+    }
+
+    if (mapLayerCenterOverlay) {
+      map.removeLayer(mapLayerCenterOverlay);
+      mapLayerCenterOverlay = null;
+    }
+
+    updateOverlayLegend(layer);
+
+    if (!layer) return;
+
+    const centers = [];
+
+    const features = layer.polygons.map((polygon) => ({
+      type: "Feature",
+      properties: {
+        id: polygon.id,
+        name: polygon.name,
+        value: polygon.value,
+        metadata: polygon.properties || {}
+      },
+      center: polygon.center,
+      geometry: polygon.geometry
+    }));
+
+    mapLayerOverlay = L.geoJSON(features, {
+      style: function (feature) {
+        return layerZoneStyle(layer, feature.properties.value, opacity, localStorage.getItem("darkMode") === "true");
+      },
+      onEachFeature: function (feature, leafletLayer) {
+        const unit = layer.unit ? ` ${layer.unit}` : "";
+
+        leafletLayer.bindPopup(`<strong>${escapeHtml(layer.name)}</strong><br>${escapeHtml(feature.properties.name)}<br>${feature.properties.value}${escapeHtml(unit)}`);
+
+        const center = centerLatLng(feature, leafletLayer);
+        const markerColor = layerHeatColor(layer, feature.properties.value, localStorage.getItem("darkMode") === "true");
+
+        if (!showLabels) return;
+
+        centers.push(L.marker(center, {
+          interactive: true,
+          icon: L.divIcon({
+            className: "map-layer-value-marker",
+            html: `
+              <span style="display: inline-flex; align-items: center; gap: 4px; background: ${markerColor}; color: white; border: 2px solid white; border-radius: 999px; padding: 3px 8px; font-size: 11px; font-weight: 800; box-shadow: 0 8px 18px rgba(0,0,0,0.2);">
+                <i class="fa-solid fa-location-dot"></i>
+                ${feature.properties.value}${escapeHtml(unit)}
+              </span>
+            `
+          })
+        }).bindPopup(`<strong>${escapeHtml(feature.properties.name)}</strong><br>{% trans "Center marker" %}<br>${feature.properties.value}${escapeHtml(unit)}`));
+      }
+    }).addTo(map);
+
+    if (centers.length) {
+      mapLayerCenterOverlay = L.layerGroup(centers).addTo(map);
+    }
+  }
+
+  function applyLocationTypeVisibility(visibleTypes) {
+    if (!map) return;
+
+    featureLayers.forEach((item) => {
+      const shouldShow = visibleTypes[item.type] !== false;
+      const isShown = map.hasLayer(item.layer);
+
+      if (shouldShow && !isShown) {
+        item.layer.addTo(map);
+      }
+
+      if (!shouldShow && isShown) {
+        map.removeLayer(item.layer);
+      }
+    });
+  }
+
+  function visibleLocationBounds() {
+    let bounds = null;
+
+    featureLayers.forEach((item) => {
+      if (!map.hasLayer(item.layer)) return;
+
+      if (bounds) {
+        bounds.extend(item.layer.getBounds());
+      } else {
+        bounds = item.layer.getBounds();
+      }
+    });
+
+    return bounds;
+  }
+
+  function escapeHtml(value) {
+    const element = document.createElement("div");
+    element.textContent = value || "";
+    return element.innerHTML;
+  }
+
+  function escapeAttribute(value) {
+    return escapeHtml(value).replaceAll('"', "&quot;").replaceAll("'", "&#39;");
+  }
+
+  function stylePopupForTheme(popup) {
+    const element = popup?.getElement?.();
+    if (!element) return;
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const background = isDark
+      ? themeColor("bubble-bg-dark", "#2C2C2C")
+      : themeColor("bubble-bg-light", "#ffffff");
+    const text = isDark
+      ? themeColor("text-main-dark", "#f3f4f6")
+      : themeColor("text-main-light", "#111827");
+
+    const wrapper = element.querySelector(".leaflet-popup-content-wrapper");
+    const tip = element.querySelector(".leaflet-popup-tip");
+    const closeButton = element.querySelector(".leaflet-popup-close-button");
+
+    if (wrapper) {
+      wrapper.style.backgroundColor = background;
+      wrapper.style.color = text;
+    }
+    if (tip) {
+      tip.style.backgroundColor = background;
+    }
+    if (closeButton) {
+      closeButton.style.color = text;
+    }
+  }
+
+  const POPUP_BTN_STYLE = "display: inline-flex; align-items: center; gap: 6px; border: 1px solid currentColor; border-radius: 6px; padding: 4px 8px; font-size: 12px; font-weight: 700; background: transparent; cursor: pointer; text-decoration: none; color: inherit;";
+
+  function popupContent(item) {
+    const type = item.type;
+    const name = item.name;
+    const title = `<strong>${escapeHtml(type)}</strong><br>${escapeHtml(name)}`;
+
+    let note = "";
+    if (item.note) {
+      const text = item.note.length > 160 ? item.note.slice(0, 160) + "…" : item.note;
+      note = `<div style="margin-top: 6px; font-size: 12px; opacity: 0.8; max-width: 220px;">${escapeHtml(text)}</div>`;
+    }
+
+    const actions = [];
+
+    if (item.review_url) {
+      actions.push(`<a href="${escapeAttribute(item.review_url)}" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-star-half-stroke"></i>{% trans "Review" %}</a>`);
+    } else if (item.detail_url) {
+      actions.push(`<a href="${escapeAttribute(item.detail_url)}" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-arrow-right"></i>{% trans "View" %}</a>`);
+    } else if (type === "Address") {
+      actions.push(`<button type="button" data-location-name="${escapeAttribute(name)}" onclick="zoomToAddressFromPopup(this)" style="${POPUP_BTN_STYLE}"><i class="fa-solid fa-location-crosshairs"></i>{% trans "Zoom" %}</button>`);
+    }
+
+    if (!actions.length) return `${title}${note}`;
+
+    return `${title}${note}<div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 6px;">${actions.join("")}</div>`;
+  }
+
+  function zoomToAddressFromPopup(button) {
+    const name = button?.dataset?.locationName;
+    if (!name) return;
+    zoomToFeature(name);
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    const isDark = localStorage.getItem("darkMode") === "true";
+    const features = window.locationsPayload || [];
+
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    });
+
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+    });
+
+    map = L.map("map", {
+      zoomControl: false,
+      scrollWheelZoom: true
+    }).setView([52.0, 19.0], 6);
+
+    map.on("popupopen", function (event) {
+      stylePopupForTheme(event.popup);
+    });
+
+    map.on("click", function (event) {
+      const root = document.querySelector("[x-data='locationsExplorer()']");
+      const alpine = root ? Alpine.$data(root) : null;
+
+      if (!alpine || typeof alpine.openAddressModal !== "function") {
+        return;
+      }
+
+      alpine.openAddressModal(event.latlng);
+    });
+
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    (isDark ? darkTiles : lightTiles).addTo(map);
+
+    features.forEach((item) => {
+      const name = item.name;
+      const type = item.type;
+      const originalGeom = item.geometry;
+
+      if (!originalGeom) return;
+
+      const zoomGeom = originalGeom.type === "Point"
+        ? pointToFakePolygon(originalGeom)
+        : originalGeom;
+
+      const layer = L.geoJSON(originalGeom, {
+        style: featureStyle(type, isDark),
+        pointToLayer: function (feature, latlng) {
+          return L.circleMarker(latlng, featureStyle(type, isDark));
+        }
+      }).addTo(map);
+
+      featuresDict[name] = {
+        displayGeom: originalGeom,
+        zoomGeom: zoomGeom,
+        layer: layer,
+        type: type
+      };
+
+      featureLayers.push({
+        type: type,
+        name: name,
+        layer: layer
+      });
+
+      if (allBounds) {
+        allBounds.extend(layer.getBounds());
+      } else {
+        allBounds = layer.getBounds();
+      }
+
+      layer.bindPopup(popupContent(item));
+    });
+
+    fitAllLocations();
+
+    if (window.mapLayersPayload?.length) {
+      const defaultLayer = window.mapLayersPayload[0];
+      updateMapLayerOverlay(defaultLayer, Number(defaultLayer.style?.opacity ?? 0.35), defaultLayer.style?.show_labels !== false);
+    } else {
+      updateOverlayLegend(null);
+    }
+
+    setTimeout(refreshMapSize, 100);
+  });
+
+  function fitAllLocations() {
+    if (!map) return;
+
+    const bounds = visibleLocationBounds() || allBounds;
+
+    if (!bounds || !bounds.isValid()) return;
+
+    map.fitBounds(bounds, { padding: [28, 28], maxZoom: 14 });
+  }
+
+  function zoomToFeature(name) {
+    const item = featuresDict[name];
+
+    if (!item || !map || !map.hasLayer(item.layer)) return;
+
+    const layer = L.geoJSON(item.zoomGeom);
+    const bounds = layer.getBounds();
+
+    if (bounds.isValid()) {
+      map.fitBounds(bounds, { padding: [36, 36], maxZoom: ["Address", "Visit"].includes(item.type) ? 16 : 13 });
+      item.layer.openPopup();
+    }
+  }
+
+  function moveMapToCoordinates(lat, lng, label) {
+    if (!map || Number.isNaN(lat) || Number.isNaN(lng)) {
+      return;
+    }
+
+    if (mapSearchMarker) {
+      map.removeLayer(mapSearchMarker);
+      mapSearchMarker = null;
+    }
+
+    mapSearchMarker = L.circleMarker([lat, lng], {
+      radius: 9,
+      weight: 3,
+      fillOpacity: 0.85,
+    })
+      .bindPopup(`<strong>${escapeHtml(label)}</strong><br>${lat.toFixed(6)}, ${lng.toFixed(6)}`)
+      .addTo(map);
+
+    map.setView([lat, lng], 13);
+    mapSearchMarker.openPopup();
+  }
+
+  function highlightFeature(name) {
+    if (!map) return;
+
+    featureLayers.forEach((item) => {
+      if (!item.layer) return;
+
+      const isSelected = item.name === name;
+      const isDark = localStorage.getItem("darkMode") === "true";
+
+      if (item.layer.setStyle) {
+        item.layer.setStyle({
+          ...featureStyle(item.type, isDark),
+          opacity: isSelected ? 1 : 0.18,
+          fillOpacity: isSelected ? 0.7 : 0.06,
+          weight: isSelected ? 7 : featureStyle(item.type, isDark).weight,
+        });
+      }
+
+      if (isSelected && item.layer.bringToFront) {
+        item.layer.bringToFront();
+      }
+    });
+  }
+
+  function clearFeatureHighlight() {
+    const isDark = localStorage.getItem("darkMode") === "true";
+
+    featureLayers.forEach((item) => {
+      if (item.layer?.setStyle) {
+        item.layer.setStyle(featureStyle(item.type, isDark));
+      }
+    });
+  }
+</script>
+{% endblock %}

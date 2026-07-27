@@ -1,0 +1,130 @@
+app: socialhub
+
+nodes:
+  - label: Community
+    model: toto.socialhub.models.Community
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+      org_type: org_type
+      established_year: established_year
+      is_autonomous: is_autonomous
+      is_foreign: is_foreign
+      is_federal_tribe: is_federal_tribe
+
+  - label: Person
+    model: toto.people.models.Person
+    uuid_field: uid
+    fields:
+      display_name: display_name
+      email: email
+      phone: phone
+      date_of_birth:
+        source: date_of_birth
+        transform: str
+
+  - label: CommunityNewsTopic
+    model: toto.socialhub.models.CommunityNewsTopic
+    uuid_field: uid
+    fields:
+      name: name
+      slug: slug
+
+  - label: CommunityNewsPost
+    model: toto.socialhub.models.CommunityNewsPost
+    uuid_field: uid
+    fields:
+      title: title
+      content: content
+      visibility: visibility
+      created_at: created_at
+
+  - label: MembershipApplication
+    model: toto.socialhub.models.MembershipApplication
+    uuid_field: id
+    fields:
+      email: email
+      status: status
+      created_at: created_at
+
+links:
+  - from_label: Community
+    to_label: Person
+    relation: HAS_MEMBER
+    source: members
+    cardinality: many
+
+  - from_label: Community
+    to_label: Person
+    relation: HEAD
+    source: head
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Person
+    relation: HAS_SENIOR_MEMBER
+    source: senior_members
+    cardinality: many
+
+  - from_label: CommunityNewsPost
+    to_label: Community
+    relation: ANNOUNCES_IN
+    source: community
+    cardinality: one
+
+  - from_label: CommunityNewsPost
+    to_label: CommunityNewsTopic
+    relation: HAS_TOPIC
+    source: topics
+    cardinality: many
+
+  - from_label: CommunityNewsPost
+    to_label: Person
+    relation: AUTHORED_BY
+    source: author
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Federation
+    relation: BELONGS_TO
+    source: federation
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Address
+    relation: LOCATED_AT
+    source: location
+    cardinality: one
+    nullable: true
+
+  - from_label: Community
+    to_label: Territory
+    relation: IN_TERRITORY
+    source: territory
+    cardinality: one
+    nullable: true
+
+  - from_label: Person
+    to_label: Person
+    relation: MENTORED_BY
+    source: patron
+    cardinality: one
+    nullable: true
+
+  - from_label: Person
+    to_label: Address
+    relation: RESIDES_AT
+    source: address
+    cardinality: one
+    nullable: true
+
+  - from_label: MembershipApplication
+    to_label: Community
+    relation: APPLIED_TO
+    source: community
+    cardinality: one
+    nullable: false

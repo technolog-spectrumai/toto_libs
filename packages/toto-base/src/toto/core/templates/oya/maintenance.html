@@ -1,0 +1,42 @@
+{% load i18n %}
+<!DOCTYPE html>
+<html lang="en" x-data="{ darkMode: localStorage.getItem('darkMode') === 'true' }">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{% trans "Maintenance Mode" %}</title>
+
+  <!-- Tailwind & Alpine -->
+  {% load static %}
+  <script src="{% static 'oya/tailwind.js' %}"></script>
+  <script defer src="{% static 'vendor/alpinejs/alpine.min.js' %}"></script>
+
+  <style>
+    body {
+      font-family: ui-monospace, 'Courier New', monospace;
+      background: #0d0d0d;
+      color: #e0e0e0;
+    }
+  </style>
+</head>
+<body
+  :class="darkMode ? 'bg-gray-900 text-white' : 'bg-gray-100 text-gray-900'"
+  class="transition-colors duration-300 min-h-screen flex items-center justify-center">
+
+  <main class="w-full max-w-lg text-center rounded-lg shadow-lg p-8 border border-gray-700 bg-gray-900 space-y-6">
+    <h2 class="text-3xl dark-glow-title">
+      {% trans "Site Under Maintenance" %}
+    </h2>
+
+    <p class="text-sm dark-glow">
+      {% trans "We’re currently performing scheduled maintenance to improve reliability and performance." %}<br>
+      {% trans "Please check back shortly once the system is available again." %}
+    </p>
+
+    <div class="inline-block px-6 py-3 font-semibold rounded bg-gray-800 border border-gray-600 text-gray-300 opacity-80 cursor-not-allowed text-sm dark-glow">
+      {% trans "Dashboard Unavailable" %}
+    </div>
+  </main>
+
+</body>
+</html>

@@ -1,0 +1,168 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Formica Colony" %}{% endblock %}
+
+{% block content %}
+<div
+  x-data="formicaOverview()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    {% include "ravioli/_neo4j_warning.html" %}
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-bugs mr-2 text-2xl"></i>{% trans "Formica" %}</h1>
+        <p class="mt-1 text-sm opacity-60">
+          {% trans "Ant/termite colony that curates the knowledge graph: forage, repair, prune, build." %}</p>
+      </div>
+      {% include "formica/_nav.html" with active_tab="overview" %}
+    </div>
+
+    {% if not colony %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-6 text-sm shadow-sm">
+      {% trans "No colony configured yet. Seed one with" %} <code>python manage.py ingress_formica</code>.
+    </section>
+    {% else %}
+
+    {% if not celery_up %}
+    <div class="rounded-lg border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-500">
+      <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+      {% trans "No celery worker responding — scheduled cycles will not run; 'Run cycle now' executes inline." %}
+    </div>
+    {% endif %}
+
+    <!-- status + controls -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 shadow-sm">
+      <div class="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm">
+        <div class="text-lg font-semibold">{{ colony.name }}</div>
+        <div>
+          {% if cycle_running %}
+          <span class="rounded-full bg-sky-500/15 px-2 py-0.5 text-xs font-semibold text-sky-500">
+            <i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "cycle running" %}</span>
+          {% elif colony.paused %}
+          <span class="rounded-full bg-slate-500/15 px-2 py-0.5 text-xs font-semibold text-slate-400">{% trans "paused" %}</span>
+          {% else %}
+          <span class="rounded-full bg-emerald-500/15 px-2 py-0.5 text-xs font-semibold text-emerald-500">{% trans "active" %}</span>
+          {% endif %}
+          {% if colony.trusted %}
+          <span class="rounded-full bg-violet-500/15 px-2 py-0.5 text-xs font-semibold text-violet-500"
+                title="{% trans 'Valid proposal ops auto-apply after each cycle' %}">{% trans "trusted" %}</span>
+          {% endif %}
+        </div>
+        <div><span class="opacity-55">{% trans "last cycle" %}:</span>
+          {% if last_cycle %}#{{ last_cycle.number }} · {{ last_cycle.status }} · {{ last_cycle.created_at|date:"Y-m-d H:i" }}
+          {% else %}{% trans "never" %}{% endif %}</div>
+        <div><span class="opacity-55">{% trans "interval" %}:</span> {{ colony.interval_minutes }} min</div>
+      </div>
+
+      <div class="mt-4 flex flex-wrap gap-3">
+        <button @click="runNow" :disabled="busy || {{ cycle_running|yesno:'true,false' }}"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'">
+          <i class="fa-solid fa-play mr-1"></i>{% trans "Run cycle now" %}</button>
+        <button @click="togglePause" :disabled="busy"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+          <i class="fa-solid {{ colony.paused|yesno:'fa-circle-play,fa-circle-pause' }} mr-1"></i>
+          {% if colony.paused %}{% trans "Resume" %}{% else %}{% trans "Pause" %}{% endif %}</button>
+        <button @click="toggleTrusted" :disabled="busy"
+                class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+          <i class="fa-solid fa-shield-halved mr-1"></i>
+          {% if colony.trusted %}{% trans "Revoke trust" %}{% else %}{% trans "Trust colony" %}{% endif %}</button>
+        <a href="{% url 'formica:proposals' %}"
+           class="inline-flex items-center rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+          <i class="fa-solid fa-list-check mr-1"></i>{% trans "Proposals" %}
+          {% if pending_proposals %}
+          <span class="ml-2 rounded-full bg-amber-500/20 px-2 py-0.5 text-xs font-bold text-amber-500">{{ pending_proposals }}</span>
+          {% endif %}</a>
+      </div>
+      <p x-show="error" x-cloak class="mt-3 text-sm text-rose-500" x-text="error"></p>
+    </section>
+
+    <!-- KPI tiles -->
+    <section class="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Nodes visited" %}</div>
+        <div class="mt-1 text-2xl font-bold">{{ kpis.nodes_visited }}</div>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Pheromone mass" %}</div>
+        <div class="mt-1 text-2xl font-bold">{{ kpis.ph_mass }}</div>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Pending proposals" %}</div>
+        <div class="mt-1 text-2xl font-bold">{{ pending_proposals }}</div>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Quarantined" %}</div>
+        <div class="mt-1 text-2xl font-bold">{{ kpis.quarantined }}</div>
+      </div>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-4 shadow-sm">
+        <div class="text-xs uppercase tracking-wide opacity-60">{% trans "Edges built (last cycle)" %}</div>
+        <div class="mt-1 text-2xl font-bold">{{ kpis.builds }}</div>
+      </div>
+    </section>
+
+    {% if last_cycle and last_cycle.stats.castes %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 shadow-sm">
+      <h2 class="mb-2 text-lg font-semibold">{% trans "Last cycle by caste" %}</h2>
+      <div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-3 text-sm">
+        {% for caste, stats in last_cycle.stats.castes.items %}
+        <div class="rounded-lg border p-3" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+          <div class="font-semibold capitalize">{{ caste }}</div>
+          <div class="mt-1 space-y-0.5 text-xs opacity-75">
+            {% for key, value in stats.items %}<div>{{ key }}: <span class="font-semibold">{{ value }}</span></div>{% endfor %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script>
+function formicaOverview() {
+  return {
+    busy: false, error: null,
+    async _post(url, confirmMsg) {
+      if (confirmMsg && !confirm(confirmMsg)) return;
+      this.busy = true; this.error = null;
+      try {
+        const res = await fetch(url, { method: 'POST', headers: { 'X-CSRFToken': '{{ csrf_token }}' } });
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || ('Error ' + res.status));
+        window.location.reload();
+      } catch (e) { this.error = e.message; this.busy = false; }
+    },
+    runNow() { this._post("{% url 'formica:api_run_now' %}"); },
+    togglePause() { this._post("{% url 'formica:api_pause' %}"); },
+    toggleTrusted() {
+      this._post(
+        "{% url 'formica:api_trusted' %}",
+        {% if colony.trusted %}"{% trans 'Revoke trust? Future proposals will wait for review.' %}"{% else %}"{% trans 'Trust this colony? Valid structural changes (repairs, prunes, new edges) will auto-apply after every cycle. The full audit trail is still recorded.' %}"{% endif %}
+      );
+    },
+  };
+}
+</script>
+{% if cycle_running %}<script>setTimeout(function () { window.location.reload(); }, 5000);</script>{% endif %}
+{% endblock %}

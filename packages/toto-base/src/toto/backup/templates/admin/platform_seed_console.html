@@ -1,0 +1,29 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<h1>{{ title }}</h1>
+
+<style>
+  .console-box {
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 20px;
+    background: #fff;
+  }
+  .console-box-body { padding: 16px; }
+</style>
+
+<div class="console-box">
+  <div class="console-box-body">
+    <p>{% trans "Upload a signed or unsigned backup ZIP and seed this portal from it." %}</p>
+    <form method="post" enctype="multipart/form-data">
+      {% csrf_token %}
+      {{ apply_form.as_p }}
+      <input type="submit" value="Apply backup" class="default" style="margin-top:10px;">
+    </form>
+  </div>
+</div>
+
+<p><a href="../..">← Back to Platform list</a></p>
+{% endblock %}

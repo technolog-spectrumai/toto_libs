@@ -1,0 +1,64 @@
+{% extends "bento/base.html" %}
+{% load i18n %}
+
+{% block bento_title %}{{ title }}{% endblock %}
+
+{% block bento_content %}
+<div class="{% if node %}grid gap-5 lg:grid-cols-[minmax(0,1fr)_360px]{% else %}mx-auto max-w-3xl{% endif %}">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="space-y-4 rounded-lg border p-6 shadow-sm">
+
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <span class="inline-flex items-center gap-2 rounded border border-current/20 px-2 py-1 text-xs font-semibold">
+          {{ category.name }}
+        </span>
+        <h2 class="mt-2 text-2xl font-bold">{{ title }}</h2>
+        {% if node %}<p class="mt-1 text-xs opacity-60">uid: {{ node.uid }}</p>{% endif %}
+      </div>
+      {% if node %}
+        <a href="{% url 'bento:node_detail' node.uid %}" class="rounded-lg border border-current/20 px-3 py-2 text-sm hover:opacity-80">
+          <i class="fa-solid fa-xmark"></i> {% trans "Cancel" %}
+        </a>
+      {% endif %}
+    </div>
+
+    {% if error %}
+      <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% if category %}<input type="hidden" name="category" value="{{ category.slug }}">{% endif %}
+
+      {% trans "Properties (JSON)" as props_label %}
+      {% include "bento/_ace_json.html" with field="data" label=props_label value=data height="26rem" %}
+
+      {% if category.property_schema %}
+        <p class="text-xs opacity-60">
+          {% trans "Schema" %}:
+          {% for f in category.property_schema %}<span class="mr-2"><b>{{ f.name }}</b> ({{ f.type }}{% if f.required %}, {% trans "required" %}{% endif %})</span>{% endfor %}
+          — {% trans "extra keys are kept too." %}
+        </p>
+      {% endif %}
+
+      <div class="flex gap-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
+        </button>
+        <a href="{% if node %}{% url 'bento:node_detail' node.uid %}{% else %}{% url 'bento:node_list' %}{% endif %}"
+           class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+
+  {% if node %}{% include "bento/_node_relations.html" %}{% endif %}
+</div>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
+{% endblock %}

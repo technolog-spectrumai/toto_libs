@@ -1,0 +1,19 @@
+{% load i18n %}
+<div class="mt-6 mb-2 flex items-center justify-between text-sm">
+
+  <!-- Items per page dropdown -->
+  <select
+    @change="setPerPage($event.target.value)"
+    class="border rounded px-2 py-1 transition-colors duration-300"
+    :class="darkMode
+      ? 'bg-primary-bg-dark text-text-main-dark border-text-main-dark'
+      : 'bg-primary-bg-light text-text-main-light border-text-main-light'"
+  >
+    <option value="4">{% trans "4 per page" %}</option>
+    <option value="8" selected>{% trans "8 per page" %}</option>
+    <option value="12">{% trans "12 per page" %}</option>
+    <option value="20">{% trans "20 per page" %}</option>
+    <option value="50">{% trans "50 per page" %}</option>
+  </select>
+
+</div>

@@ -1,0 +1,76 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}Authorize {{ client.name }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex min-h-[calc(100vh-5rem)] max-w-2xl items-center justify-center">
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="w-full overflow-hidden rounded-2xl border shadow-sm">
+
+      <div
+        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+        class="border-b px-8 py-6">
+        <div class="flex items-center gap-4">
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border">
+            <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-key text-xl"></i>
+          </div>
+          <div>
+            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">{% trans "Authorization request" %}</p>
+            <h1 class="mt-0.5 text-xl font-bold">{{ client.name }}</h1>
+          </div>
+        </div>
+      </div>
+
+      <div class="px-8 py-6 space-y-6">
+        <p class="text-sm opacity-80">
+          <strong>{{ client.name }}</strong> wants to sign you in and access the following identity claims:
+        </p>
+
+        <ul class="space-y-2">
+          {% for item in scope_items %}
+            <li
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="flex items-center gap-3 rounded-lg border px-4 py-3 text-sm">
+              <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-circle-check text-xs"></i>
+              <code class="font-mono">{{ item }}</code>
+            </li>
+          {% endfor %}
+        </ul>
+
+        <p class="text-xs opacity-60">
+          Your password is never shared. Only the identity claims listed above are passed to {{ client.name }}.
+        </p>
+
+        <form method="post" action="{% url 'sso:consent' %}" class="flex gap-3">
+          {% csrf_token %}
+          <input type="hidden" name="query_string" value="{{ query_string }}">
+          <button
+            type="submit" name="decision" value="approve"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-check"></i>{% trans "Allow" %}</button>
+          <button
+            type="submit" name="decision" value="deny"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center justify-center gap-2 rounded-lg border px-5 py-3 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-xmark"></i>{% trans "Deny" %}</button>
+        </form>
+      </div>
+
+    </div>
+  </div>
+</section>
+{% endblock %}

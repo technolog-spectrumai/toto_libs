@@ -1,0 +1,180 @@
+{% load i18n %}
+{% if agent %}
+<div
+  x-data="stevenChat()"
+  x-init="init()"
+  class="fixed bottom-6 right-6 z-50 flex flex-col items-end gap-3"
+>
+  <!-- Chat panel -->
+  <div
+    x-show="open"
+    x-transition:enter="transition ease-out duration-200"
+    x-transition:enter-start="opacity-0 translate-y-4 scale-95"
+    x-transition:enter-end="opacity-100 translate-y-0 scale-100"
+    x-transition:leave="transition ease-in duration-150"
+    x-transition:leave-start="opacity-100 translate-y-0 scale-100"
+    x-transition:leave-end="opacity-0 translate-y-4 scale-95"
+    :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-dark/30' : 'bg-bubble-bg-light text-text-main-light border-accent-light/30'"
+    class="w-80 rounded-2xl border shadow-2xl overflow-hidden"
+    style="display: none;"
+  >
+    <!-- Header -->
+    <div
+      :class="darkMode ? 'bg-appbar-bg-dark text-appbar-text-dark' : 'bg-appbar-bg-light text-appbar-text-light'"
+      class="flex items-center justify-between px-4 py-3"
+    >
+      <div class="flex items-center gap-2 text-sm font-semibold">
+        <i class="fa-solid fa-robot text-xs"></i>
+        <span>{{ agent.name }}</span>
+        <span x-show="!connected" class="text-[10px] font-normal opacity-60 ml-1" x-text="statusLabel"></span>
+      </div>
+      <button @click="open = false" class="opacity-60 hover:opacity-100 transition text-xs">
+        <i class="fa-solid fa-xmark"></i>
+      </button>
+    </div>
+
+    <!-- Messages -->
+    <div
+      x-ref="messages"
+      :class="darkMode ? 'bg-primary-bg-dark/60' : 'bg-primary-bg-light/60'"
+      class="min-h-20 max-h-72 overflow-y-auto px-4 py-3 text-sm leading-relaxed flex flex-col gap-2"
+    >
+      <template x-for="(msg, i) in messages" :key="i">
+        <div
+          :class="msg.role === 'user'
+            ? (darkMode ? 'self-end bg-accent-dark/20' : 'self-end bg-accent-light/20')
+            : (darkMode ? 'self-start bg-primary-bg-dark' : 'self-start bg-primary-bg-light')"
+          class="max-w-[85%] rounded-lg px-3 py-2 whitespace-pre-wrap break-words"
+          x-text="msg.content"
+        ></div>
+      </template>
+      <div x-show="typing" class="self-start opacity-60 text-xs italic">{% trans "Thinking…" %}</div>
+    </div>
+
+    <!-- Form -->
+    <form
+      @submit.prevent="send()"
+      class="flex flex-col gap-2 px-4 py-3 border-t"
+      :class="darkMode ? 'border-accent-dark/20' : 'border-accent-light/20'"
+    >
+      <textarea
+        x-model="draft"
+        @keydown.enter.prevent="send()"
+        rows="2"
+        placeholder="{% blocktrans with name=agent.name %}Ask {{ name }} something…{% endblocktrans %}"
+        :class="darkMode
+          ? 'bg-primary-bg-dark text-text-main-dark placeholder:text-text-main-dark/40 border-accent-dark/30'
+          : 'bg-primary-bg-light text-text-main-light placeholder:text-text-main-light/40 border-accent-light/30'"
+        class="w-full resize-none rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition"
+      ></textarea>
+      <button
+        type="submit"
+        :disabled="typing || !draft.trim()"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-50"
+      >
+        <i x-show="typing" class="fa-solid fa-spinner fa-spin"></i>
+        <span x-text="typing ? '{% trans "Thinking…" %}' : '{% trans "Send" %}'"></span>
+      </button>
+    </form>
+  </div>
+
+  <!-- Toggle button -->
+  <button
+    @click="toggle()"
+    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark shadow-accent-dark/30' : 'bg-accent-light text-primary-bg-light shadow-accent-light/30'"
+    class="flex items-center gap-2 rounded-full px-5 py-3 text-sm font-bold shadow-lg transition hover:scale-105 active:scale-95"
+    title="{% trans 'Ask AI' %}"
+  >
+    <i class="fa-solid fa-robot"></i>
+    <span x-text="open ? '{% trans "Close" %}' : '{% trans "Ask AI" %}'"></span>
+  </button>
+</div>
+
+<script>
+function stevenChat() {
+  return {
+    open: false,
+    connected: false,
+    typing: false,
+    draft: "",
+    messages: [],
+    socket: null,
+    reconnectAttempts: 0,
+    maxReconnectAttempts: 3,
+    statusLabel: "{% trans 'connecting…' %}",
+    agentSlug: "{{ agent.slug }}",
+
+    init() {
+      // Lazy-connect on first open so closed widgets hold no socket.
+      this.$watch("open", value => { if (value && !this.socket) this.connect(); });
+    },
+
+    toggle() { this.open = !this.open; },
+
+    connect() {
+      const scheme = window.location.protocol === "https:" ? "wss" : "ws";
+      this.statusLabel = "{% trans 'connecting…' %}";
+      this.socket = new WebSocket(`${scheme}://${window.location.host}/ws/sabbia/agent/${this.agentSlug}/`);
+
+      this.socket.addEventListener("open", () => {
+        this.connected = true;
+        this.reconnectAttempts = 0;
+      });
+      this.socket.addEventListener("close", () => {
+        this.connected = false;
+        this.socket = null;
+        this.scheduleReconnect();
+      });
+      this.socket.addEventListener("error", () => { this.connected = false; });
+      this.socket.addEventListener("message", event => {
+        let data;
+        try { data = JSON.parse(event.data); } catch { return; }
+        if (data.type === "assistant_message") {
+          this.typing = false;
+          this.messages.push({ role: "assistant", content: data.content });
+          this.scrollDown();
+        } else if (data.type === "typing") {
+          this.typing = !!data.state;
+          this.scrollDown();
+        } else if (data.type === "error") {
+          this.typing = false;
+          this.messages.push({ role: "assistant", content: "⚠ " + data.message });
+          this.scrollDown();
+        }
+      });
+    },
+
+    scheduleReconnect() {
+      if (!this.open) return;
+      if (this.reconnectAttempts >= this.maxReconnectAttempts) {
+        this.statusLabel = "{% trans 'offline' %}";
+        return;
+      }
+      this.reconnectAttempts += 1;
+      setTimeout(() => { if (this.open && !this.socket) this.connect(); }, 1500);
+    },
+
+    send() {
+      const content = this.draft.trim();
+      if (!content) return;
+      if (!this.socket || this.socket.readyState !== WebSocket.OPEN) {
+        if (!this.socket) this.connect();
+        return;
+      }
+      this.messages.push({ role: "user", content });
+      this.socket.send(JSON.stringify({ type: "user_message", content }));
+      this.draft = "";
+      this.scrollDown();
+    },
+
+    scrollDown() {
+      this.$nextTick(() => {
+        const el = this.$refs.messages;
+        if (el) el.scrollTop = el.scrollHeight;
+      });
+    },
+  };
+}
+</script>
+{% endif %}

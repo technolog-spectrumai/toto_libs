@@ -1,0 +1,177 @@
+app: kanban
+
+nodes:
+  - label: KanbanProject
+    model: toto.kanban.models.Project
+    uuid_field: uid
+    fields:
+      name: name
+      description: description
+
+  - label: KanbanColumn
+    model: toto.kanban.models.Column
+    uuid_field: uid
+    fields:
+      name: name
+      position: position
+      can_add_task: can_add_task
+
+  - label: KanbanCampaign
+    model: toto.kanban.models.Campaign
+    uuid_field: uid
+    fields:
+      name: name
+      description: description
+      start_date:
+        source: start_date
+        transform: str
+      end_date:
+        source: end_date
+        transform: str
+      metadata:
+        source: metadata
+        transform: default_dict
+
+  - label: KanbanMission
+    model: toto.kanban.models.Mission
+    uuid_field: uid
+    fields:
+      title: title
+      description: description
+      urgency: urgency
+      impact: impact
+      metadata:
+        source: metadata
+        transform: default_dict
+
+  - label: KanbanSprint
+    model: toto.kanban.models.Sprint
+    uuid_field: uid
+    fields:
+      name: name
+      start_time: start_time
+      end_time: end_time
+
+  - label: KanbanTask
+    model: toto.kanban.models.Task
+    uuid_field: uid
+    fields:
+      title: title
+      description: description
+      due_date:
+        source: due_date
+        transform: str
+      position: position
+      weight: weight
+      metadata:
+        source: metadata
+        transform: default_dict
+      completed_at: completed_at
+
+  - label: KanbanDocPage
+    model: toto.kanban.models.DocumentationPage
+    uuid_field: uid
+    fields:
+      title: title
+      slug: slug
+      is_manual: is_manual
+
+  - label: KanbanDocSection
+    model: toto.kanban.models.DocumentationSection
+    uuid_field: uid
+    fields:
+      title: title
+      content: content
+      order: order
+
+links:
+  - from_label: KanbanProject
+    to_label: Person
+    relation: LED_BY
+    source: project_lead
+    cardinality: one
+    nullable: true
+
+  - from_label: KanbanColumn
+    to_label: KanbanProject
+    relation: BELONGS_TO_PROJECT
+    source: project
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanCampaign
+    to_label: KanbanProject
+    relation: BELONGS_TO_PROJECT
+    source: project
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanCampaign
+    to_label: Person
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: KanbanMission
+    to_label: KanbanCampaign
+    relation: BELONGS_TO_CAMPAIGN
+    source: campaign
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanMission
+    to_label: Person
+    relation: OWNED_BY
+    source: owner
+    cardinality: one
+    nullable: true
+
+  - from_label: KanbanSprint
+    to_label: KanbanProject
+    relation: BELONGS_TO_PROJECT
+    source: project
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanTask
+    to_label: KanbanMission
+    relation: BELONGS_TO_MISSION
+    source: mission
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanTask
+    to_label: KanbanColumn
+    relation: HAS_STATUS
+    source: column
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanTask
+    to_label: KanbanSprint
+    relation: BELONGS_TO_SPRINT
+    source: sprint
+    cardinality: one
+    nullable: true
+
+  - from_label: KanbanTask
+    to_label: Person
+    relation: ASSIGNED_TO
+    source: assignee
+    cardinality: one
+    nullable: true
+
+  - from_label: KanbanDocPage
+    to_label: KanbanMission
+    relation: DOCUMENTS
+    source: mission
+    cardinality: one
+    nullable: false
+
+  - from_label: KanbanDocSection
+    to_label: KanbanDocPage
+    relation: SECTION_OF
+    source: page
+    cardinality: one
+    nullable: false

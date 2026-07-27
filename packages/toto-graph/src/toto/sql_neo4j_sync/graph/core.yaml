@@ -1,0 +1,16 @@
+app: core
+
+nodes:
+  - label: Federation
+    model: toto.core.models.Federation
+    uuid_field: uid
+    fields:
+      name: name
+      description: description
+      logo:
+        source: logo
+        transform: file_url
+      created_at: created_at
+      active: active
+
+links: []

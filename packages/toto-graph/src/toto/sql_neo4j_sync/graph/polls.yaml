@@ -1,0 +1,48 @@
+app: polls
+
+nodes:
+  - label: Poll
+    model: toto.polls.models.Poll
+    uuid_field: slug
+    fields:
+      name: name
+      question_text: question_text
+      slug: slug
+      is_active: is_active
+      pub_date: pub_date
+
+  - label: PollOption
+    model: toto.polls.models.Option
+    uuid_field: id
+    fields:
+      label: label
+      option_text: option_text
+      value: value
+
+  - label: PollVote
+    model: toto.polls.models.Vote
+    uuid_field: id
+    fields:
+      voted_at: voted_at
+
+links:
+  - from_label: PollOption
+    to_label: Poll
+    relation: OPTION_OF
+    source: poll
+    cardinality: one
+    nullable: false
+
+  - from_label: PollVote
+    to_label: Poll
+    relation: VOTE_IN
+    source: poll
+    cardinality: one
+    nullable: false
+
+  - from_label: PollVote
+    to_label: PollOption
+    relation: CHOSE
+    source: option
+    cardinality: one
+    nullable: false

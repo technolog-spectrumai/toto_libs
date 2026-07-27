@@ -1,0 +1,1225 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ channel.name }} · Forum{% endblock %}
+
+{# Full-height app layout: chat fills the viewport, footer dropped, composer always on-screen (mobile) #}
+{% block main_class %}flex grow min-h-0 flex-col{% endblock %}
+{% block footer %}{% endblock %}
+
+{% block start_script %}
+<script type="module">
+document.addEventListener("DOMContentLoaded", async () => {
+  const channelSlug   = "{{ channel.slug }}";
+  const userName      = "{{ current_chat_user|escapejs }}";
+  const userAvatarUrl = "{{ current_chat_avatar_url|escapejs }}";
+  const canSend       = {{ can_send_messages|yesno:"true,false" }};
+  const csrfToken     = "{{ csrf_token }}";
+
+  let socket = null;
+
+  // Server-assigned message ids, so a message rendered from the history replay is not
+  // rendered again when the live broadcast of it arrives (and vice versa).
+  const renderedIds = new Set();
+  // Edits/deletes received for messages not currently in the DOM, keyed by id.
+  const pendingMutations = new Map();
+  // Keyset cursor for paging backwards: (created_at, id) of the oldest message held.
+  // The timestamp alone is not a total order, so a tie at a page boundary would drop a
+  // message; the id makes the cursor total.
+  let oldestLoaded = null;
+  let oldestLoadedId = null;
+  let historyExhausted = false;
+  let loadingOlder = false;
+  // Composer state: replying to, or editing, an existing message.
+  let replyingTo = null;
+  let editingId  = null;
+
+  const form            = document.querySelector("#message-form");
+  const input           = document.querySelector("#message-input");
+  const sendButton      = document.querySelector("#message-send-button");
+  const container       = document.querySelector("#messages");
+  const connectionChips = document.querySelectorAll(".connection-status-chip");
+  const connectionTexts = document.querySelectorAll(".connection-status-text");
+  const loadOlderWrap   = document.querySelector("#load-older-wrap");
+  const loadOlderBtn    = document.querySelector("#load-older-button");
+  const typingIndicator = document.querySelector("#typing-indicator");
+  const composerBar     = document.querySelector("#composer-context");
+  const composerLabel   = document.querySelector("#composer-context-label");
+  const composerCancel  = document.querySelector("#composer-context-cancel");
+
+  if (!form || !input || !sendButton || !container) return;
+
+  // ── UI status helpers ──────────────────────────────────────────────────────
+
+  function setConnectionStatus(status) {
+    const labels = {
+      connected:    "{% trans 'Connected' %}",
+      connecting:   "{% trans 'Connecting' %}",
+      disconnected: "{% trans 'Disconnected' %}",
+      observer:     "{% trans 'Observer' %}",
+    };
+    connectionTexts.forEach((el) => { el.textContent = labels[status] || status; });
+    connectionChips.forEach((chip) => chip.setAttribute("data-status", status));
+    document.querySelectorAll("[data-forum-channel]").forEach((el) => {
+      if (window.Alpine) window.Alpine.$data(el).connectionStatus = status;
+    });
+  }
+
+  // ── Typing indicator ───────────────────────────────────────────────────────
+
+  const typingUsers = new Map();  // name → timeout handle
+  let typingSentAt = 0;
+
+  function renderTypingIndicator() {
+    if (!typingIndicator) return;
+    const names = [...typingUsers.keys()];
+    if (!names.length) {
+      typingIndicator.textContent = "";
+      typingIndicator.classList.add("hidden");
+      return;
+    }
+    const label = names.length === 1
+      ? `${names[0]} {% trans "is typing…" %}`
+      : names.length === 2
+        ? `${names[0]} {% trans "and" %} ${names[1]} {% trans "are typing…" %}`
+        : "{% trans 'Several people are typing…' %}";
+    typingIndicator.textContent = label;
+    typingIndicator.classList.remove("hidden");
+  }
+
+  function noteTyping(name, stopped) {
+    if (!name || name === userName) return;
+    const existing = typingUsers.get(name);
+    if (existing) clearTimeout(existing);
+    if (stopped) {
+      typingUsers.delete(name);
+    } else {
+      // Self-expiring: a client that disconnects mid-keystroke never leaves a ghost.
+      typingUsers.set(name, setTimeout(() => {
+        typingUsers.delete(name);
+        renderTypingIndicator();
+      }, 6000));
+    }
+    renderTypingIndicator();
+  }
+
+  function announceTyping() {
+    if (!canSend) return;
+    const now = Date.now();
+    if (now - typingSentAt < 3000) return;  // throttle: at most one frame per 3s
+    typingSentAt = now;
+    sendSocketPayload({ type: "typing_start" });
+  }
+
+  // ── Message rendering ──────────────────────────────────────────────────────
+
+  function formatTimestamp(value) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    return date.toLocaleString([], {
+      month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+  }
+
+  function buildMessageNode(data) {
+    const author    = data.user || "Guest";
+    const isSelf    = author === userName;
+    const avatarUrl = data.avatar_url || (isSelf ? userAvatarUrl : "");
+
+    const row = document.createElement("div");
+    row.className = `group flex min-w-0 gap-3 ${isSelf ? "justify-end" : "justify-start"}`;
+    if (data.id) row.dataset.messageId = data.id;
+    if (data.created_at) row.dataset.createdAt = data.created_at;
+
+    let avatar;
+    if (avatarUrl) {
+      avatar = document.createElement("img");
+      avatar.src = avatarUrl;
+      avatar.alt = author;
+      avatar.className = "h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover self-end";
+    } else {
+      avatar = document.createElement("div");
+      avatar.textContent = (author.trim().charAt(0) || "?").toUpperCase();
+      avatar.className = "flex h-9 w-9 shrink-0 items-center justify-center self-end rounded-lg border border-current/15 text-xs font-bold";
+    }
+
+    const bubble = document.createElement("div");
+    bubble.className = "min-w-0 max-w-[calc(100%-3.25rem)] overflow-hidden rounded-2xl border p-3 shadow-sm transition-colors duration-300 sm:max-w-[78%] xl:max-w-[42rem]";
+    bubble.setAttribute(":class", "darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'");
+
+    const meta = document.createElement("p");
+    meta.className = `flex flex-wrap items-center gap-1.5 text-xs font-semibold opacity-60 ${isSelf ? "justify-end" : ""}`;
+    const who = document.createElement("span");
+    who.textContent = author;
+    meta.appendChild(who);
+    const when = document.createElement("span");
+    when.className = "font-normal opacity-70";
+    when.textContent = formatTimestamp(data.created_at);
+    meta.appendChild(when);
+    if (data.edited_at) {
+      const edited = document.createElement("span");
+      edited.className = "font-normal italic opacity-60";
+      edited.textContent = "{% trans '(edited)' %}";
+      meta.appendChild(edited);
+    }
+
+    // Quoted parent, when this message is a reply.
+    let quote = null;
+    if (data.reply_to) {
+      const parent = container.querySelector(`[data-message-id="${data.reply_to}"]`);
+      quote = document.createElement("button");
+      quote.type = "button";
+      quote.className = "mb-1.5 block w-full truncate rounded border-l-2 border-current/30 bg-current/5 px-2 py-1 text-left text-xs opacity-70 transition hover:opacity-100";
+      const parentAuthor = parent?.querySelector("[data-author]")?.textContent || "{% trans 'a message' %}";
+      const parentText   = parent?.querySelector("[data-body]")?.textContent || "";
+      quote.textContent = `↳ ${parentAuthor}: ${parentText}`.slice(0, 120);
+      quote.addEventListener("click", () => {
+        parent?.scrollIntoView({ behavior: "smooth", block: "center" });
+        parent?.classList.add("ring-2", "ring-current/40", "rounded-2xl");
+        setTimeout(() => parent?.classList.remove("ring-2", "ring-current/40", "rounded-2xl"), 1200);
+      });
+    }
+
+    who.setAttribute("data-author", "");
+
+    let body;
+    if (data.deleted) {
+      body = document.createElement("p");
+      body.className = "mt-1 text-sm italic opacity-50";
+      body.textContent = "{% trans 'This message was deleted.' %}";
+    } else if (data.type === "image_message" && (data.image_url || data.image_data)) {
+      const src = data.image_url || data.image_data;
+      body = document.createElement("a");
+      body.href = src;
+      body.target = "_blank";
+      body.rel = "noopener noreferrer";
+      const img = document.createElement("img");
+      img.src = src;
+      img.alt = data.attachment_name || "image";
+      img.className = "mt-1 max-h-64 max-w-full rounded object-contain";
+      body.appendChild(img);
+    } else if (data.type === "voice_message" && (data.audio_url || data.audio_data)) {
+      body = document.createElement("audio");
+      body.controls = true;
+      body.src = data.audio_url || data.audio_data;
+      body.className = "mt-1 max-w-xs";
+    } else {
+      body = document.createElement("p");
+      body.className = `mt-1 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere] ${isSelf ? "text-right" : ""}`;
+      body.textContent = data.message || "";
+    }
+    body.setAttribute("data-body", "");
+
+    if (quote) bubble.appendChild(quote);
+    bubble.appendChild(meta);
+    bubble.appendChild(body);
+
+    // Hover actions: reply for everyone, edit/delete for your own live messages.
+    if (canSend && data.id && !data.deleted && data.user !== "System") {
+      const actions = document.createElement("div");
+      actions.className = "mt-1.5 flex gap-2 text-xs opacity-0 transition group-hover:opacity-60 focus-within:opacity-60";
+
+      const replyBtn = document.createElement("button");
+      replyBtn.type = "button";
+      replyBtn.className = "underline hover:opacity-100";
+      replyBtn.textContent = "{% trans 'Reply' %}";
+      replyBtn.addEventListener("click", () => startReply(data.id, author, body.textContent));
+      actions.appendChild(replyBtn);
+
+      if (isSelf && data.type === "chat_message") {
+        const editBtn = document.createElement("button");
+        editBtn.type = "button";
+        editBtn.className = "underline hover:opacity-100";
+        editBtn.textContent = "{% trans 'Edit' %}";
+        editBtn.addEventListener("click", () => startEdit(data.id, body.textContent));
+        actions.appendChild(editBtn);
+      }
+      if (isSelf) {
+        const delBtn = document.createElement("button");
+        delBtn.type = "button";
+        delBtn.className = "underline hover:opacity-100";
+        delBtn.textContent = "{% trans 'Delete' %}";
+        delBtn.addEventListener("click", () => {
+          if (!confirm("{% trans 'Delete this message?' %}")) return;
+          if (!sendSocketPayload({ type: "message_delete", id: data.id })) {
+            appendSystemMessage("{% trans 'Not connected — message not deleted.' %}");
+          }
+        });
+        actions.appendChild(delBtn);
+      }
+      bubble.appendChild(actions);
+    }
+
+    if (isSelf) { row.appendChild(bubble); row.appendChild(avatar); }
+    else        { row.appendChild(avatar);  row.appendChild(bubble); }
+
+    return row;
+  }
+
+  // Returns the rendered node (or null when the message was deduped), so a caller
+  // prepending a page can chain each insert after the previous one.
+  function appendMessage(data, { prepend = false, after = null } = {}) {
+    const id = data.id || data.message_id;
+    if (id && renderedIds.has(id)) return null;
+    if (id) renderedIds.add(id);
+    // A live edit/delete may have arrived while this message was outside the loaded
+    // window; apply it now so history never renders a stale or un-tombstoned body.
+    if (id && pendingMutations.has(id)) {
+      data = { ...data, ...pendingMutations.get(id) };
+      pendingMutations.delete(id);
+    }
+
+    container.querySelectorAll("[data-empty-messages]").forEach((el) => el.remove());
+
+    const row = buildMessageNode(data);
+
+    if (prepend) {
+      // Preserve the scroll position while older messages are spliced in above, so
+      // loading history does not yank the viewport.
+      const before = container.scrollHeight - container.scrollTop;
+      const anchor = after || (loadOlderWrap ? loadOlderWrap : null);
+      if (anchor && anchor.parentNode === container) {
+        container.insertBefore(row, anchor.nextSibling);
+      } else {
+        container.insertBefore(row, container.firstChild);
+      }
+      if (window.Alpine) window.Alpine.initTree(row);
+      container.scrollTop = container.scrollHeight - before;
+    } else {
+      const atBottom = container.scrollHeight - container.scrollTop - container.clientHeight < 80;
+      container.appendChild(row);
+      if (window.Alpine) window.Alpine.initTree(row);
+      // Only auto-scroll if the reader was already at the bottom.
+      if (atBottom) container.scrollTop = container.scrollHeight;
+    }
+    return row;
+  }
+
+  function appendSystemMessage(message) {
+    appendMessage({ id: crypto.randomUUID(), user: "System", message });
+  }
+
+  function replaceMessage(data) {
+    const existing = container.querySelector(`[data-message-id="${data.id}"]`);
+    if (!existing) {
+      // Outside the loaded window — remember the edit so a later history page
+      // renders the new body rather than the stale one.
+      pendingMutations.set(data.id, { ...data, type: data.msg_type || "chat_message" });
+      return;
+    }
+    renderedIds.add(data.id);
+    const replacement = buildMessageNode({ ...data, type: data.msg_type || "chat_message" });
+    existing.replaceWith(replacement);
+    if (window.Alpine) window.Alpine.initTree(replacement);
+  }
+
+  function markDeleted(id) {
+    const existing = container.querySelector(`[data-message-id="${id}"]`);
+    if (!existing) {
+      pendingMutations.set(id, { id, deleted: true });
+      return;
+    }
+    renderedIds.add(id);
+    const author = existing.querySelector("[data-author]")?.textContent || "";
+    const createdAt = existing.dataset.createdAt;
+    const replacement = buildMessageNode({ id, user: author, created_at: createdAt, deleted: true });
+    existing.replaceWith(replacement);
+    if (window.Alpine) window.Alpine.initTree(replacement);
+  }
+
+  // ── Composer context (reply / edit) ────────────────────────────────────────
+
+  function showComposerContext(label) {
+    if (!composerBar || !composerLabel) return;
+    composerLabel.textContent = label;
+    composerBar.classList.remove("hidden");
+  }
+
+  function clearComposerContext() {
+    replyingTo = null;
+    editingId = null;
+    if (composerBar) composerBar.classList.add("hidden");
+    input.placeholder = canSend
+      ? "{% trans 'Message' %} {{ channel.name|escapejs }}…"
+      : "{% trans 'Join this channel to send messages' %}";
+  }
+
+  function startReply(id, author, preview) {
+    // Leaving an edit must not leave its draft in the box, or the next Enter would
+    // post the edited text as a brand-new message.
+    if (editingId) input.value = "";
+    editingId = null;
+    replyingTo = id;
+    showComposerContext(`{% trans "Replying to" %} ${author}: ${(preview || "").slice(0, 60)}`);
+    input.focus();
+  }
+
+  function startEdit(id, currentText) {
+    replyingTo = null;
+    editingId = id;
+    input.value = currentText || "";
+    showComposerContext("{% trans 'Editing message' %}");
+    input.focus();
+  }
+
+  if (composerCancel) {
+    composerCancel.addEventListener("click", () => {
+      if (editingId) input.value = "";
+      clearComposerContext();
+    });
+  }
+
+  // ── Socket ─────────────────────────────────────────────────────────────────
+
+  function sendSocketPayload(payload) {
+    if (!socket || socket.readyState !== WebSocket.OPEN) return false;
+    socket.send(JSON.stringify(payload));
+    return true;
+  }
+
+  // ── History paging ─────────────────────────────────────────────────────────
+
+  function updateLoadOlder() {
+    if (!loadOlderWrap) return;
+    loadOlderWrap.classList.toggle("hidden", historyExhausted || !oldestLoaded);
+  }
+
+  async function loadOlderMessages() {
+    if (loadingOlder || historyExhausted || !oldestLoaded) return;
+    loadingOlder = true;
+    if (loadOlderBtn) loadOlderBtn.disabled = true;
+    try {
+      const url = `/forum/api/channels/${channelSlug}/messages/`
+        + `?before=${encodeURIComponent(oldestLoaded)}`
+        + `&before_id=${encodeURIComponent(oldestLoadedId || "")}`;
+      const res = await fetch(url, { headers: { "Accept": "application/json" } });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      // The page is oldest-first. Insert in that order, each after the previous one,
+      // so a reply's parent is already in the DOM when its quote is built.
+      let anchor = null;
+      (data.messages || []).forEach((m) => {
+        anchor = appendMessage(m, { prepend: true, after: anchor }) || anchor;
+      });
+      if (data.messages && data.messages.length) {
+        oldestLoaded = data.messages[0].created_at;
+        oldestLoadedId = data.messages[0].id;
+      }
+      historyExhausted = !data.has_more;
+    } catch (err) {
+      appendSystemMessage(`{% trans "Could not load older messages" %}: ${err?.message || err}`);
+    } finally {
+      loadingOlder = false;
+      if (loadOlderBtn) loadOlderBtn.disabled = false;
+      updateLoadOlder();
+    }
+  }
+
+  if (loadOlderBtn) loadOlderBtn.addEventListener("click", loadOlderMessages);
+
+  // Auto-load when the reader scrolls to the top.
+  container.addEventListener("scroll", () => {
+    if (container.scrollTop <= 4) loadOlderMessages();
+  });
+
+  // ── Media upload (multipart REST; the server broadcasts the stored message) ──
+
+  async function uploadMedia(endpoint, field, file, filename) {
+    const progressWrap = document.querySelector("#upload-progress-wrap");
+    const progressBar  = document.querySelector("#upload-progress-bar");
+    const progressText = document.querySelector("#upload-progress-pct");
+
+    const body = new FormData();
+    body.append(field, file, filename);
+
+    if (progressWrap) progressWrap.classList.remove("hidden");
+    if (progressBar)  progressBar.style.width = "40%";
+    if (progressText) progressText.textContent = "40%";
+
+    try {
+      const res = await fetch(`/forum/api/channels/${channelSlug}/${endpoint}`, {
+        method: "POST",
+        body,
+        headers: { "X-CSRFToken": csrfToken },
+      });
+      if (progressBar)  progressBar.style.width = "100%";
+      if (progressText) progressText.textContent = "100%";
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        appendSystemMessage(err.error || `{% trans "Upload failed" %} (HTTP ${res.status}).`);
+      }
+      // On success the server broadcasts the stored message to the group, including
+      // this socket — so there is nothing to render here.
+    } catch (err) {
+      appendSystemMessage(`{% trans "Upload failed" %}: ${err?.message || err}`);
+    } finally {
+      if (progressWrap) progressWrap.classList.add("hidden");
+    }
+  }
+
+  function uploadAndSendImage(file) {
+    if (!canSend) return;
+    const maxBytes = 10 * 1024 * 1024;
+    const allowed = ["image/jpeg", "image/png", "image/gif", "image/webp"];
+    if (!allowed.includes(file.type)) {
+      appendSystemMessage("{% trans 'Unsupported image type. Use JPEG, PNG, GIF or WebP.' %}");
+      return;
+    }
+    if (file.size > maxBytes) {
+      appendSystemMessage("{% trans 'Image is too large (max 10 MB).' %}");
+      return;
+    }
+    return uploadMedia("upload/", "image", file, file.name);
+  }
+
+  // ── Emoji picker ───────────────────────────────────────────────────────────
+
+  const EMOJI_CATEGORIES = [
+    { label: "😀", title: "Smileys",
+      emojis: ["😀","😃","😄","😁","😅","😂","🤣","😊","😇","🙂","🙃","😉","😌","😍","🥰","😘","😋","😛","😝","😜","🤪","😎","🥳","😏","😒","😔","😢","😭","😤","😡","🤯","🥺","😳","🤗","🤭","🤫","🤔","😶","😐","😑","🙄","😬","😴","🤢","🤧","🥵","🥶","😷","🤕"] },
+    { label: "👋", title: "People",
+      emojis: ["👋","🤚","🖐","✋","🖖","🤙","💪","🦾","🙏","👏","🤝","👍","👎","👊","✊","🤛","🤜","👌","🤌","🤏","✌","🤞","🫶","🫂","💃","🕺","🧍","🧎","🏃","🚶","👶","👧","🧒","👦","👩","🧑","👨","👴","👵"] },
+    { label: "🐶", title: "Animals",
+      emojis: ["🐶","🐱","🐭","🐹","🐰","🦊","🐻","🐼","🐨","🐯","🦁","🐮","🐷","🐸","🐵","🐔","🐧","🐦","🦆","🦅","🦉","🦋","🐛","🐝","🐞","🐠","🐙","🦈","🐬","🐳","🦭","🐊","🦒","🦓","🦏","🦛","🦧","🐘","🦩","🦚"] },
+    { label: "🍎", title: "Food",
+      emojis: ["🍎","🍊","🍋","🍇","🍓","🫐","🍒","🍑","🥭","🍍","🥥","🍕","🍔","🌮","🌯","🍜","🍣","🍱","🍛","🍲","🥗","🥘","🍿","🍩","🎂","🍰","🧁","🍫","🍬","🍭","☕","🧃","🥤","🧋","🍺","🥂","🍷","🥃","🧊"] },
+    { label: "✈️", title: "Travel",
+      emojis: ["✈️","🚀","🛸","🚂","🚗","🚕","🚙","🏎","🚌","🚁","⛵","🚢","🏠","🏰","🗼","⛺","🌍","🌏","🗺","🧳","🎡","🎢","🎠","🏖","🏕","🌋","🗻","🏔","🌅","🌇","🌉","🎆","🎇"] },
+    { label: "💡", title: "Objects",
+      emojis: ["💡","🔦","📱","💻","⌨","🖥","📷","📸","🎵","🎶","🎮","🕹","🎲","📚","📖","📝","✏","📌","📎","🔑","🔒","🔓","💰","💳","💎","🎁","🎀","🏆","🥇","🎖","🎗","🔭","🔬","🧪","🧲","🔧","🔨","⚙"] },
+    { label: "❤️", title: "Symbols",
+      emojis: ["❤️","🧡","💛","💚","💙","💜","🖤","🤍","🤎","💔","❣","💕","💞","💓","💗","💖","💘","💝","✨","⭐","🌟","💫","🔥","💯","✅","❌","⚡","🌈","🎉","🎊","💢","💥","❓","❗","🔴","🟠","🟡","🟢","🔵","🟣"] },
+  ];
+
+  const emojiPanel      = document.querySelector("#emoji-panel");
+  const emojiTabs       = document.querySelector("#emoji-tabs");
+  const emojiGrid       = document.querySelector("#emoji-grid");
+  const emojiToggleBtn  = document.querySelector("#emoji-toggle-button");
+  let emojiOpen         = false;
+  let activeCatIndex    = 0;
+
+  function renderEmojiCategory(index) {
+    activeCatIndex = index;
+    const cat = EMOJI_CATEGORIES[index];
+    emojiGrid.innerHTML = "";
+    cat.emojis.forEach((em) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = em;
+      btn.title = em;
+      btn.className = "flex items-center justify-center w-8 h-8 rounded hover:bg-current/10 cursor-pointer transition leading-none";
+      btn.addEventListener("click", () => insertEmoji(em));
+      emojiGrid.appendChild(btn);
+    });
+    emojiTabs.querySelectorAll("button").forEach((b, i) => {
+      b.classList.toggle("opacity-100", i === index);
+      b.classList.toggle("opacity-40",  i !== index);
+      b.classList.toggle("border-b-2",  i === index);
+    });
+  }
+
+  function buildEmojiTabs() {
+    EMOJI_CATEGORIES.forEach((cat, i) => {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = cat.label;
+      btn.title = cat.title;
+      btn.className = "flex-shrink-0 w-9 h-9 flex items-center justify-center rounded-t text-base border-b-2 border-transparent transition";
+      btn.classList.add(i === 0 ? "opacity-100" : "opacity-40");
+      if (i === 0) btn.classList.add("border-b-2");
+      btn.addEventListener("click", () => renderEmojiCategory(i));
+      emojiTabs.appendChild(btn);
+    });
+  }
+
+  function insertEmoji(em) {
+    if (!input) return;
+    const start = input.selectionStart ?? input.value.length;
+    const end   = input.selectionEnd   ?? input.value.length;
+    input.value = input.value.slice(0, start) + em + input.value.slice(end);
+    const cursor = start + em.length;
+    input.setSelectionRange(cursor, cursor);
+    input.focus();
+  }
+
+  function toggleEmojiPanel() {
+    emojiOpen = !emojiOpen;
+    emojiPanel.classList.toggle("hidden", !emojiOpen);
+  }
+
+  if (emojiPanel && emojiToggleBtn) {
+    buildEmojiTabs();
+    renderEmojiCategory(0);
+
+    emojiToggleBtn.addEventListener("click", (e) => { e.stopPropagation(); toggleEmojiPanel(); });
+
+    document.addEventListener("click", (e) => {
+      if (emojiOpen && !emojiPanel.contains(e.target) && e.target !== emojiToggleBtn) {
+        emojiOpen = false;
+        emojiPanel.classList.add("hidden");
+      }
+    });
+
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && emojiOpen) {
+        emojiOpen = false;
+        emojiPanel.classList.add("hidden");
+      }
+    });
+  }
+
+  // ── Voice recording ────────────────────────────────────────────────────────
+
+  let mediaRecorder   = null;
+  let recordingChunks = [];
+  let recordingTimer  = null;
+  let recordingSeconds = 0;
+
+  const voiceButton         = document.querySelector("#voice-record-button");
+  const recordingStatusWrap = document.querySelector("#recording-status-wrap");
+  const recordingTimerEl    = document.querySelector("#recording-timer");
+  const recordingCancelBtn  = document.querySelector("#recording-cancel-button");
+
+  function formatRecordingTime(s) {
+    return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  function stopRecordingCleanup() {
+    clearInterval(recordingTimer);
+    recordingTimer   = null;
+    recordingSeconds = 0;
+    if (mediaRecorder && mediaRecorder.stream) {
+      mediaRecorder.stream.getTracks().forEach((t) => t.stop());
+    }
+    mediaRecorder = null;
+    recordingChunks = [];
+    if (recordingStatusWrap) recordingStatusWrap.classList.add("hidden");
+    if (voiceButton) {
+      voiceButton.classList.remove("text-warn-light", "border-warn-light");
+      voiceButton.querySelector("i").className = "fa-solid fa-microphone text-sm";
+    }
+  }
+
+  async function startRecording() {
+    if (!canSend) return;
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      appendSystemMessage("Not connected — cannot send voice message.");
+      return;
+    }
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    } catch (err) {
+      appendSystemMessage("Microphone access denied.");
+      return;
+    }
+
+    recordingChunks  = [];
+    recordingSeconds = 0;
+    mediaRecorder    = new MediaRecorder(stream);
+
+    mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordingChunks.push(e.data); };
+
+    mediaRecorder.onstop = async () => {
+      const blob = new Blob(recordingChunks, { type: mediaRecorder.mimeType || "audio/webm" });
+      // Uploaded as a real file; the server stores it and broadcasts the message back.
+      const upload = uploadMedia("upload-audio/", "audio", blob, "voice-message.webm");
+      stopRecordingCleanup();
+      await upload;
+    };
+
+    mediaRecorder.start();
+
+    if (recordingStatusWrap) recordingStatusWrap.classList.remove("hidden");
+    if (recordingTimerEl)    recordingTimerEl.textContent = "0:00";
+    if (voiceButton) {
+      voiceButton.classList.add("text-warn-light", "border-warn-light");
+      voiceButton.querySelector("i").className = "fa-solid fa-stop text-sm";
+    }
+
+    recordingTimer = setInterval(() => {
+      recordingSeconds++;
+      if (recordingTimerEl) recordingTimerEl.textContent = formatRecordingTime(recordingSeconds);
+      if (recordingSeconds >= 300) stopRecording(); // 5-minute max
+    }, 1000);
+  }
+
+  function stopRecording() {
+    if (!mediaRecorder || mediaRecorder.state === "inactive") return;
+    mediaRecorder.stop();
+  }
+
+  if (voiceButton) {
+    voiceButton.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        stopRecording();
+      } else {
+        startRecording();
+      }
+    });
+  }
+
+  if (recordingCancelBtn) {
+    recordingCancelBtn.addEventListener("click", () => {
+      if (mediaRecorder && mediaRecorder.state === "recording") {
+        mediaRecorder.ondataavailable = null;
+        mediaRecorder.onstop = () => stopRecordingCleanup();
+        mediaRecorder.stop();
+      }
+    });
+  }
+
+  // ── Inbound socket messages ────────────────────────────────────────────────
+
+  async function handleSocketMessage(data) {
+    if (!data || !data.type) return;
+
+    switch (data.type) {
+      case "chat_history":
+        // Replayed oldest-first on connect; the newest page lands at the bottom.
+        (data.messages || []).forEach((m) => appendMessage(m));
+        if (data.messages && data.messages.length) {
+          oldestLoaded = data.messages[0].created_at;
+          oldestLoadedId = data.messages[0].id;
+        }
+        historyExhausted = !data.has_more;
+        updateLoadOlder();
+        container.scrollTop = container.scrollHeight;
+        return;
+
+      case "chat_message":
+      case "image_message":
+      case "voice_message":
+        noteTyping(data.user, true);
+        appendMessage(data);
+        return;
+
+      case "message_edit":
+        replaceMessage(data);
+        return;
+
+      case "message_delete":
+        markDeleted(data.id);
+        return;
+
+      case "typing_start":
+        noteTyping(data.user, false);
+        return;
+
+      case "typing_stop":
+        noteTyping(data.user, true);
+        return;
+
+      case "room_participants":
+        renderParticipants(data);
+        return;
+
+      case "system_error":
+        appendSystemMessage(data.message || "{% trans 'Unknown error.' %}");
+        return;
+
+      default:
+        console.debug("forum: ignoring unknown frame", data.type);
+    }
+  }
+
+  // ── Presence ───────────────────────────────────────────────────────────────
+
+  function renderParticipants(data) {
+    // `online` is who actually has a socket open; `participants` is the full roster.
+    // These used to be the same list, which made every member look permanently online.
+    const online = new Set(
+      data.online || (data.participants || []).filter((p) => p.online).map((p) => p.name)
+    );
+    document.querySelectorAll("[data-member-name]").forEach((el) => {
+      const dot = el.querySelector("[data-presence-dot]");
+      if (!dot) return;
+      const isOnline = online.has(el.dataset.memberName);
+      dot.classList.toggle("bg-success-light", isOnline);
+      dot.classList.toggle("bg-current/25", !isOnline);
+      dot.title = isOnline ? "{% trans 'Online' %}" : "{% trans 'Offline' %}";
+    });
+    document.querySelectorAll("[data-online-count]").forEach((el) => {
+      el.textContent = data.online_count ?? online.size;
+    });
+  }
+
+  // ── Send ───────────────────────────────────────────────────────────────────
+
+  function sendCurrentMessage() {
+    const message = input.value.trim();
+    if (!message || !canSend) return;
+
+    if (editingId) {
+      if (!sendSocketPayload({ type: "message_edit", id: editingId, message })) {
+        appendSystemMessage("{% trans 'Not connected — edit not saved.' %}");
+        return;
+      }
+      input.value = "";
+      clearComposerContext();
+      return;
+    }
+
+    const sent = sendSocketPayload({
+      type: "chat_message",
+      message,
+      reply_to: replyingTo || undefined,
+    });
+    if (!sent) {
+      appendSystemMessage("{% trans 'Not connected — message not sent.' %}");
+      return;
+    }
+    // The server persists the message and broadcasts it back to this socket, so the
+    // stored row (with its real id and timestamp) is what gets rendered.
+    input.value = "";
+    clearComposerContext();
+    sendSocketPayload({ type: "typing_stop" });
+    typingSentAt = 0;
+  }
+
+  sendButton.addEventListener("click", (e) => { e.preventDefault(); sendCurrentMessage(); });
+
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && (replyingTo || editingId)) {
+      if (editingId) input.value = "";
+      clearComposerContext();
+      return;
+    }
+    if (e.key !== "Enter" || e.shiftKey) return;
+    e.preventDefault();
+    sendCurrentMessage();
+  });
+
+  input.addEventListener("input", announceTyping);
+
+  const imageFileInput = document.querySelector("#image-file-input");
+  const imageUploadButton = document.querySelector("#image-upload-button");
+
+  if (imageUploadButton && imageFileInput) {
+    imageUploadButton.addEventListener("click", () => imageFileInput.click());
+    imageFileInput.addEventListener("change", async () => {
+      const file = imageFileInput.files?.[0];
+      if (file) {
+        await uploadAndSendImage(file);
+        imageFileInput.value = "";
+      }
+    });
+  }
+
+  // ── Connect ────────────────────────────────────────────────────────────────
+
+  if (canSend) {
+    setConnectionStatus("connecting");
+
+    socket = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws/forum/${channelSlug}/`);
+
+    socket.onopen    = () => setConnectionStatus("connected");
+    socket.onclose   = () => setConnectionStatus("disconnected");
+    socket.onerror   = () => setConnectionStatus("disconnected");
+    socket.onmessage = (e) => handleSocketMessage(JSON.parse(e.data));
+
+    window.addEventListener("beforeunload", () => sendSocketPayload({ type: "typing_stop" }));
+  } else {
+    setConnectionStatus("observer");
+  }
+});
+</script>
+{% endblock %}
+
+{% block content %}
+<main
+  x-data="{ sidebarOpen: false, connectionStatus: 'observer' }"
+  data-forum-channel
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex min-h-0 flex-1 flex-col px-2 py-2 transition-colors duration-300 sm:px-6 sm:py-6 lg:px-8">
+
+  {# Fills remaining viewport via the flex chain (body→main→here) so the grid has a real height for internal scroll #}
+  <div class="mx-auto grid min-h-0 w-full flex-1 max-w-7xl grid-cols-1 gap-2 sm:gap-4 overflow-hidden lg:grid-cols-[15rem_minmax(0,1fr)_15rem] xl:grid-cols-[17rem_minmax(0,1fr)_17rem]">
+
+    {# ── Left sidebar: channel list ───────────────────────────────────────── #}
+    <aside
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
+
+      <div class="flex items-center justify-between border-b border-current/10 pb-3">
+        <a href="{% url 'forum:channel_list' %}" class="text-sm font-semibold underline hover:opacity-80">{% trans "Channels" %}</a>
+        <span class="text-xs opacity-50">{{ all_channels|length }}</span>
+      </div>
+
+      <nav class="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto pr-1">
+        {% for c in all_channels %}
+          <a
+            href="{% url 'forum:channel_detail' c.slug %}"
+            :class="darkMode
+              ? '{% if c.slug == channel.slug %}bg-primary-bg-dark border-accent-dark{% else %}border-transparent hover:border-accent-1 hover:bg-primary-bg-dark/50{% endif %}'
+              : '{% if c.slug == channel.slug %}bg-primary-bg-light border-accent-light{% else %}border-transparent hover:border-accent-2 hover:bg-primary-bg-light/50{% endif %}'"
+            class="block rounded-lg border px-3 py-2.5 transition">
+            <span class="block truncate text-sm font-semibold">{{ c.name }}</span>
+            <span class="mt-0.5 block text-xs opacity-50">{{ c.member_count }} member{{ c.member_count|pluralize }}</span>
+          </a>
+        {% endfor %}
+      </nav>
+    </aside>
+
+    {# ── Centre: chat ─────────────────────────────────────────────────────── #}
+    <section
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+
+      {# Header #}
+      <header class="flex min-w-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
+        <button
+          type="button"
+          @click="sidebarOpen = true"
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="inline-flex h-9 w-9 items-center justify-center rounded border lg:hidden"
+          aria-label="{% trans 'Open channels' %}">
+          <i class="fa-solid fa-bars text-sm"></i>
+        </button>
+
+        <div class="min-w-0 flex-1">
+          <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="truncate text-xl font-bold">
+            {{ channel.name }}
+          </h1>
+          <div class="mt-0.5 flex flex-wrap gap-2 text-xs opacity-60">
+            <span><span data-online-count>0</span> {% trans "online" %} · {{ participants|length }} {% trans "member" %}{{ participants|length|pluralize }}</span>
+          </div>
+        </div>
+
+        {# Message search #}
+        {% if can_send_messages %}
+        <form method="get" action="{% url 'forum:message_search' %}" class="hidden shrink-0 items-center gap-1.5 sm:flex">
+          <input type="hidden" name="channel" value="{{ channel.slug }}">
+          <label class="sr-only" for="header-search">{% trans "Search messages" %}</label>
+          <input
+            id="header-search"
+            type="search"
+            name="q"
+            placeholder="{% trans 'Search messages…' %}"
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+            class="w-40 rounded border px-2.5 py-1.5 text-xs outline-none transition focus:w-56 focus:ring-2 focus:ring-current/20">
+          <button type="submit"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex h-8 w-8 items-center justify-center rounded border text-xs transition hover:opacity-80"
+            aria-label="{% trans 'Search' %}">
+            <i class="fa-solid fa-magnifying-glass"></i>
+          </button>
+        </form>
+        {% endif %}
+
+        <a href="{% url 'forum:channel_list' %}" class="hidden shrink-0 text-xs underline opacity-60 hover:opacity-90 sm:inline">{% trans "All channels" %}</a>
+
+        {# Connection chip #}
+        <div
+          class="connection-status-chip hidden shrink-0 items-center gap-1.5 rounded border px-2.5 py-1.5 text-xs font-semibold sm:flex"
+          :class="connectionStatus === 'connected'
+            ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+            : connectionStatus === 'connecting'
+              ? 'animate-pulse ' + (darkMode ? 'border-accent-1' : 'border-accent-2')
+              : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+          <i class="fa-solid fa-gear"
+             :class="[connectionStatus === 'connecting' ? 'fa-spin' : '', darkMode ? 'text-accent-dark' : 'text-accent-light']"
+             style="animation-duration: 2s"></i>
+          <span class="connection-status-text">{% if can_send_messages %}{% trans "Connecting" %}{% else %}{% trans "Observer" %}{% endif %}</span>
+        </div>
+
+        {# Join / Leave #}
+        {% if can_join %}
+          <form method="post" action="{% url 'forum:channel_join' channel.slug %}" class="hidden shrink-0 sm:block">
+            {% csrf_token %}
+            <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join" %}</button>
+          </form>
+        {% elif can_leave %}
+          <form method="post" action="{% url 'forum:channel_leave' channel.slug %}" class="hidden shrink-0 sm:block">
+            {% csrf_token %}
+            <button type="submit"
+              :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+              class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+              <i class="fa-solid fa-right-from-bracket"></i>{% trans "Leave" %}</button>
+          </form>
+        {% endif %}
+      </header>
+
+      {# Observer / join banner #}
+      {% if not can_send_messages %}
+        <div
+          :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+          class="flex flex-wrap items-center justify-between gap-3 border-b px-4 py-2.5">
+          <p class="text-sm opacity-70">{{ observer_reason }}</p>
+          {% if can_join %}
+            <form method="post" action="{% url 'forum:channel_join' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+                <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join Channel" %}</button>
+            </form>
+          {% endif %}
+        </div>
+      {% endif %}
+
+      {# Messages — pinned to row 3 so composer always stays visible regardless of whether the observer banner renders #}
+      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:3]">
+        {# History is delivered over the websocket, never server-rendered. #}
+        <div id="load-older-wrap" class="hidden pb-1 text-center">
+          <button type="button" id="load-older-button"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="rounded border px-3 py-1 text-xs opacity-70 transition hover:opacity-100 disabled:opacity-40">
+            {% trans "Load older messages" %}
+          </button>
+        </div>
+        {% if can_send_messages %}
+          <div data-empty-messages class="flex h-full items-center justify-center py-12 text-sm opacity-50">{% trans "No messages yet. Be the first to say something." %}</div>
+        {% else %}
+          <div class="flex h-full items-center justify-center py-12 text-sm opacity-50">{% trans "Join this channel to read its history." %}</div>
+        {% endif %}
+      </div>
+
+      {# Input #}
+      <div id="message-form" class="border-t border-current/10 p-3 [grid-row:4]">
+        {# Mobile chips row #}
+        <div class="mb-2 flex flex-wrap gap-2 sm:hidden">
+          <div
+            class="connection-status-chip inline-flex items-center rounded border px-2.5 py-1 text-xs font-semibold"
+            :class="connectionStatus === 'connected'
+              ? (darkMode ? 'bg-success-dark text-primary-bg-dark border-success-dark' : 'bg-success-light text-primary-bg-light border-success-light')
+              : (darkMode ? 'border-accent-1' : 'border-accent-2')">
+            <span class="connection-status-text">{% if can_send_messages %}{% trans "Connecting" %}{% else %}{% trans "Observer" %}{% endif %}</span>
+          </div>
+          {% if can_join %}
+            <form method="post" action="{% url 'forum:channel_join' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition hover:opacity-90">
+                <i class="fa-solid fa-right-to-bracket"></i>{% trans "Join" %}</button>
+            </form>
+          {% elif can_leave %}
+            <form method="post" action="{% url 'forum:channel_leave' channel.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+                class="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold transition hover:opacity-80">
+                <i class="fa-solid fa-right-from-bracket"></i>{% trans "Leave" %}</button>
+            </form>
+          {% endif %}
+        </div>
+
+        {# Reply / edit context #}
+        <div id="composer-context" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 rounded border-l-2 border-current/40 bg-current/5 px-2 py-1 text-xs">
+            <span id="composer-context-label" class="min-w-0 flex-1 truncate opacity-80"></span>
+            <button type="button" id="composer-context-cancel" class="opacity-50 transition hover:opacity-90"
+              aria-label="{% trans 'Cancel' %}">
+              <i class="fa-solid fa-xmark"></i>
+            </button>
+          </div>
+        </div>
+
+        <p id="typing-indicator" class="hidden px-1 pb-1 text-xs italic opacity-60"></p>
+
+        <div id="recording-status-wrap" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 text-xs">
+            <span class="inline-block h-2 w-2 animate-pulse rounded-full bg-warn-light"></span>
+            <span class="opacity-70">{% trans "Recording" %}</span>
+            <span id="recording-timer" class="font-mono">0:00</span>
+            <button type="button" id="recording-cancel-button"
+              class="ml-auto opacity-50 hover:opacity-90 transition">
+              <i class="fa-solid fa-xmark"></i>{% trans "Cancel" %}</button>
+          </div>
+        </div>
+
+        <div id="upload-progress-wrap" class="hidden px-1 pb-1">
+          <div class="flex items-center gap-2 text-xs opacity-60">
+            <span>{% trans "Uploading…" %}</span>
+            <div class="relative h-1.5 flex-1 overflow-hidden rounded-full bg-current/20">
+              <div id="upload-progress-bar" class="absolute left-0 top-0 h-full rounded-full bg-current transition-all duration-100" style="width: 0%"></div>
+            </div>
+            <span id="upload-progress-pct">0%</span>
+          </div>
+        </div>
+
+        <div class="relative">
+
+          {# ── Emoji panel ──────────────────────────────────────────────────── #}
+          <div id="emoji-panel"
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+            class="hidden absolute bottom-full left-0 mb-2 w-72 max-w-[calc(100vw-1.5rem)] rounded-xl border shadow-xl z-50 overflow-hidden">
+            <div id="emoji-tabs" class="flex overflow-x-auto border-b border-current/10 px-1 pt-1 gap-0.5 text-base">
+            </div>
+            <div id="emoji-grid" class="grid grid-cols-8 gap-0.5 p-2 h-44 overflow-y-auto text-xl leading-none">
+            </div>
+          </div>
+
+          {# Composer: stacks into 3 rows on mobile (attachments / text / full-width send); single row at sm+ #}
+          <div class="flex flex-col gap-2 sm:flex-row sm:items-end">
+          {# Row 1 (mobile): attachment buttons #}
+          <div class="flex gap-2">
+          <input
+            id="image-file-input"
+            type="file"
+            accept="image/jpeg,image/png,image/gif,image/webp"
+            class="hidden"
+            {% if not can_send_messages %}disabled{% endif %}>
+
+          <button
+            type="button"
+            id="image-upload-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="{% trans 'Send image' %}">
+            <i class="fa-solid fa-image text-sm"></i>
+          </button>
+
+          <button
+            type="button"
+            id="voice-record-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="{% trans 'Record voice message' %}">
+            <i class="fa-solid fa-microphone text-sm"></i>
+          </button>
+
+          <button
+            type="button"
+            id="emoji-toggle-button"
+            :class="darkMode ? 'border-accent-1 text-text-main-dark' : 'border-accent-2 text-text-main-light'"
+            class="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition hover:opacity-80 disabled:cursor-not-allowed disabled:opacity-40"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="{% trans 'Insert emoji' %}">
+            <i class="fa-regular fa-face-smile text-sm"></i>
+          </button>
+          </div>{# /row 1 attachments #}
+
+          {# Row 2 (mobile): the text field #}
+          <textarea
+            id="message-input"
+            name="content"
+            rows="1"
+            placeholder="{% if can_send_messages %}{% trans "Message" %} {{ channel.name }}…{% else %}{% trans "Join this channel to send messages" %}{% endif %}"
+            :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+            class="min-h-[2.75rem] w-full resize-none rounded-xl border px-3 py-2.5 text-base outline-none transition focus:ring-2 focus:ring-current/20 sm:w-auto sm:flex-1 sm:text-sm"
+            {% if not can_send_messages %}disabled{% endif %}></textarea>
+
+          {# Row 3 (mobile): send — full-width on mobile, square icon button at sm+ #}
+          <button
+            type="button"
+            id="message-send-button"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex h-11 w-full shrink-0 items-center justify-center gap-2 rounded-xl font-semibold transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40 sm:w-11"
+            {% if not can_send_messages %}disabled{% endif %}
+            aria-label="{% trans 'Send' %}">
+            <i class="fa-solid fa-paper-plane text-sm"></i><span class="text-sm font-semibold sm:hidden">{% trans "Send" %}</span>
+          </button>
+          </div>{# /composer rows #}
+        </div>{# /relative #}
+      </div>
+    </section>
+
+    {# ── Right sidebar: members ───────────────────────────────────────────── #}
+    <aside
+      :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+      class="hidden min-h-0 min-w-0 overflow-hidden rounded-lg border p-4 shadow-md lg:flex lg:flex-col">
+
+      <div class="flex items-center justify-between border-b border-current/10 pb-3">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-sm font-bold">{% trans "Members" %}</h2>
+        <span class="text-xs opacity-50">{{ participants|length }}</span>
+      </div>
+
+      <div class="mt-3 min-h-0 flex-1 space-y-2 overflow-y-auto pr-1">
+        {% for user in participants %}
+          <div class="flex items-center gap-3" data-member-name="{{ user.username }}">
+            <div class="relative shrink-0">
+              {% if user.avatar_url %}
+                <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
+                  class="h-9 w-9 rounded-lg border border-current/15 object-cover">
+              {% else %}
+                <div class="flex h-9 w-9 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
+                  {{ user.username|first|upper }}
+                </div>
+              {% endif %}
+              {# Presence dot, driven live by the room_participants frame #}
+              <span data-presence-dot
+                class="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full border-2 border-current/10 bg-current/25"
+                title="{% trans 'Offline' %}"></span>
+            </div>
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ user.username }}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
+            </div>
+            {% if user.type == "ai_agent" %}
+              <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">{% trans "AI" %}</span>
+            {% endif %}
+          </div>
+        {% empty %}
+          <p class="py-4 text-center text-sm opacity-50">{% trans "No members yet." %}</p>
+        {% endfor %}
+      </div>
+    </aside>
+  </div>
+
+  {# ── Mobile sidebar overlay ────────────────────────────────────────────── #}
+  <div x-show="sidebarOpen" x-cloak class="fixed inset-0 z-40 bg-black/40 lg:hidden" @click="sidebarOpen = false"></div>
+
+  <aside
+    x-show="sidebarOpen"
+    x-cloak
+    @click.away="sidebarOpen = false"
+    :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+    class="fixed inset-y-0 left-0 z-50 w-72 border-r p-4 shadow-xl lg:hidden">
+
+    <div class="flex items-center justify-between border-b border-current/10 pb-3">
+      <span class="text-sm font-semibold">{% trans "Channels" %}</span>
+      <button type="button" @click="sidebarOpen = false"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="inline-flex h-8 w-8 items-center justify-center rounded border">
+        <i class="fa-solid fa-xmark text-sm"></i>
+      </button>
+    </div>
+
+    <nav class="mt-3 space-y-1">
+      {% for c in all_channels %}
+        <a href="{% url 'forum:channel_detail' c.slug %}"
+          :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+          class="block rounded border px-3 py-2.5 text-sm font-semibold transition">
+          {{ c.name }}
+        </a>
+      {% endfor %}
+    </nav>
+
+    <div class="mt-5 border-t border-current/10 pt-4">
+      <div class="flex items-center justify-between">
+        <span class="text-sm font-semibold">{% trans "Members" %}</span>
+        <span class="text-xs opacity-50">{{ participants|length }}</span>
+      </div>
+      <div class="mt-3 space-y-2">
+        {% for user in participants %}
+          <div class="flex items-center gap-3">
+            {% if user.avatar_url %}
+              <img src="{{ user.avatar_url }}" alt="{{ user.username }}"
+                class="h-9 w-9 shrink-0 rounded-lg border border-current/15 object-cover">
+            {% else %}
+              <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-current/15 text-xs font-bold">
+                {{ user.username|first|upper }}
+              </div>
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">{{ user.username }}</p>
+              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
+            </div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-50">{% trans "No members yet." %}</p>
+        {% endfor %}
+      </div>
+    </div>
+  </aside>
+</main>
+{% endblock %}

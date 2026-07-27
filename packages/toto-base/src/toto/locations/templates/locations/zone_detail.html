@@ -1,0 +1,180 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Zone - {{ zone.name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block locations_content %}
+<script>
+  window.zonePayload = JSON.parse(`{{ zone_payload_json|escapejs }}`);
+</script>
+
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl">
+    <a href="{% url 'locations:locations_all' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>{% trans "Locations" %}</a>
+
+    <header class="mt-5 grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-xs font-semibold uppercase tracking-wide">{% trans "Zone detail" %}</p>
+
+        <h1 class="mt-2 text-3xl font-bold sm:text-4xl">{{ zone.name }}</h1>
+
+        <p class="mt-2 text-sm opacity-70">
+          {% if zone.territory %}
+            Inside {{ zone.territory.name }}
+          {% else %}
+            Standalone zone
+          {% endif %}
+        </p>
+      </div>
+
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-4 shadow-sm">
+        <div class="text-sm font-semibold">{% trans "Zone activity" %}</div>
+
+        <div class="mt-3 grid grid-cols-2 gap-3 text-sm">
+          <div>
+            <div class="text-2xl font-bold">{{ events|length }}</div>
+            <div class="text-xs opacity-60">{% trans "Events" %}</div>
+          </div>
+
+          <div>
+            <div class="text-2xl font-bold">{{ campaigns|length }}</div>
+            <div class="text-xs opacity-60">{% trans "Campaigns" %}</div>
+          </div>
+
+          <div>
+            <div class="text-2xl font-bold">{{ missions|length }}</div>
+            <div class="text-xs opacity-60">{% trans "Missions" %}</div>
+          </div>
+
+          <div>
+            <div class="text-2xl font-bold">{{ routes|length }}</div>
+            <div class="text-xs opacity-60">{% trans "Routes" %}</div>
+          </div>
+        </div>
+      </div>
+    </header>
+
+    <section class="mt-6 grid gap-5 lg:grid-cols-[minmax(0,1fr)_420px]">
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="overflow-hidden rounded-lg border shadow-sm">
+        <div id="zone-detail-map" class="h-[560px] w-full"></div>
+      </div>
+
+      <aside class="space-y-5">
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+          <h2 class="text-lg font-bold">{% trans "Events" %}</h2>
+
+          <div class="mt-4 space-y-3">
+            {% for event in events %}
+              <article class="rounded-lg border border-current/10 p-3">
+                <p class="text-sm font-bold">{{ event.title }}</p>
+                <p class="mt-1 text-xs opacity-60">
+                  {{ event.start_time|date:"M j, Y H:i" }} – {{ event.end_time|date:"M j, Y H:i" }}
+                </p>
+
+                {% if event.description %}
+                  <p class="mt-2 text-sm opacity-80">
+                    {{ event.description|truncatechars:140 }}
+                  </p>
+                {% endif %}
+              </article>
+            {% empty %}
+              <p class="rounded-lg border border-dashed border-current/15 p-4 text-sm opacity-70">{% trans "No events linked to this zone." %}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+          <h2 class="text-lg font-bold">{% trans "Routes" %}</h2>
+
+          <div class="mt-4 space-y-3">
+            {% for route in routes %}
+              <a
+                href="{% url 'locations:route_detail' route.pk %}"
+                class="block rounded-lg border border-current/10 p-3 text-sm transition hover:opacity-80">
+                <span class="font-semibold">{{ route.name|default:"Route" }}</span>
+                <span class="mt-1 block text-xs opacity-60">
+                  {{ route.start_address|default:"?" }} → {{ route.end_address|default:"?" }}
+                </span>
+              </a>
+            {% empty %}
+              <p class="text-sm opacity-70">{% trans "No routes linked to this zone." %}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-lg border p-5 shadow-sm">
+          <h2 class="text-lg font-bold">{% trans "Addresses" %}</h2>
+
+          <div class="mt-4 space-y-3">
+            {% for address in addresses %}
+              <a
+                href="{% url 'locations:address_detail' address.pk %}"
+                class="block rounded-lg border border-current/10 p-3 text-sm transition hover:opacity-80">
+                {{ address }}
+              </a>
+            {% empty %}
+              <p class="text-sm opacity-70">{% trans "No addresses linked through missions." %}</p>
+            {% endfor %}
+          </div>
+        </div>
+
+      </aside>
+    </section>
+  </div>
+</div>
+
+<script>
+  document.addEventListener("DOMContentLoaded", function () {
+    const payload = window.zonePayload;
+    const isDark = localStorage.getItem("darkMode") === "true";
+
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    });
+
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+    });
+
+    const map = L.map("zone-detail-map", { zoomControl: false }).setView([52.0, 19.0], 5);
+    L.control.zoom({ position: "bottomright" }).addTo(map);
+    (isDark ? darkTiles : lightTiles).addTo(map);
+
+    if (payload?.geometry) {
+      const layer = L.geoJSON(payload.geometry, {
+        style: {
+          weight: 3,
+          opacity: 0.9,
+          fillOpacity: 0.18
+        }
+      }).bindPopup(payload.name).addTo(map);
+
+      map.fitBounds(layer.getBounds(), { padding: [36, 36], maxZoom: 13 });
+    }
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,380 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Community Members – {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a
+          href="{% url 'core:dashboard' %}"
+          class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}</a>
+
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Social Hub" %}</p>
+
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-users"></i>{% trans "Community Members" %}</h1>
+
+          <p class="mt-1 text-sm opacity-70">{% trans "Browse public profiles, communities, patrons, and member details." %}</p>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap gap-2">
+        <a
+          href="{% url 'socialhub:profile_list' %}"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-id-card"></i>{% trans "Profiles" %}</a>
+      </nav>
+    </header>
+
+    <!-- Overview -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-4 shadow-sm sm:p-5">
+
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <i class="fa-solid fa-address-book"></i>{% trans "Profile directory" %}</h2>
+
+          <p class="mt-1 text-sm opacity-70">{% trans "View members, communities, join dates, and profile information." %}</p>
+        </div>
+
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold shadow-sm">
+          <i class="fa-solid fa-user-group"></i>
+          {{ profiles|length }} profile{% if profiles|length != 1 %}s{% endif %}
+        </div>
+      </div>
+    </section>
+
+    <!-- Desktop Table -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="hidden overflow-hidden rounded-2xl border shadow-sm md:block">
+
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-sm">
+          <thead
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="border-b">
+            <tr class="text-left">
+              <th class="px-5 py-4 font-semibold">{% trans "Member" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Bio" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Joined" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Patron" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Communities" %}</th>
+              <th class="px-5 py-4 font-semibold">{% trans "Action" %}</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for member in profiles %}
+              <tr
+                :class="darkMode
+                  ? 'border-accent-1 hover:bg-sunken-dark'
+                  : 'border-accent-2 hover:bg-sunken-light'"
+                class="border-b transition last:border-b-0">
+
+                <td class="px-5 py-4 align-top">
+                  <div class="flex items-center gap-3">
+                    {% if member.avatar %}
+                      <img
+                        src="{{ member.avatar.url }}"
+                        alt="{{ member.display_name }}"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        class="h-11 w-11 rounded-xl border object-cover shadow-sm">
+                    {% else %}
+                      <div
+                        :class="darkMode
+                          ? 'border-accent-1 bg-primary-bg-dark'
+                          : 'border-accent-2 bg-primary-bg-light'"
+                        class="flex h-11 w-11 items-center justify-center rounded-xl border shadow-sm">
+                        <i
+                          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                          class="fa-solid fa-user text-sm"></i>
+                      </div>
+                    {% endif %}
+
+                    <div class="min-w-0">
+                      <a
+                        href="{% url 'socialhub:profile_details' member.slug %}"
+                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                        class="block truncate font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                        {{ member.display_name }}
+                      </a>
+
+                      {% if member.email %}
+                        <p class="mt-1 truncate text-xs opacity-60">
+                          {{ member.email }}
+                        </p>
+                      {% endif %}
+                    </div>
+                  </div>
+                </td>
+
+                <td class="max-w-xs px-5 py-4 align-top">
+                  <p class="line-clamp-2 opacity-80">
+                    {{ member.bio|default:"—" }}
+                  </p>
+                </td>
+
+                <td class="px-5 py-4 align-top">
+                  {{ member.joined_date|date:"F j, Y" }}
+                </td>
+
+                <td class="px-5 py-4 align-top">
+                  {% if member.patron %}
+                    <a
+                      href="{% url 'socialhub:profile_details' member.patron.slug %}"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                      class="font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
+                      {{ member.patron.display_name }}
+                    </a>
+                  {% else %}
+                    <span class="opacity-60">—</span>
+                  {% endif %}
+                </td>
+
+                <td class="px-5 py-4 align-top">
+                  <div class="flex flex-wrap gap-2">
+                    {% for community in member.communities.all %}
+                      <a
+                        href="{% url 'socialhub:community_detail' community.slug %}"
+                        :class="darkMode
+                          ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                          : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                        class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                        <i class="fa-solid fa-people-group text-[10px]"></i>
+                        {{ community.name }}
+                      </a>
+                    {% empty %}
+                      <span class="opacity-60">—</span>
+                    {% endfor %}
+                  </div>
+                </td>
+
+                <td class="px-5 py-4 align-top">
+                  <a
+                    href="{% url 'socialhub:profile_details' member.slug %}"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark'
+                      : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center justify-center gap-2 rounded-lg px-3 py-2 text-xs font-semibold shadow-sm transition hover:opacity-90">
+                    <i class="fa-solid fa-eye"></i>{% trans "View" %}</a>
+                </td>
+              </tr>
+            {% empty %}
+              <tr>
+                <td colspan="6" class="px-5 py-10 text-center text-sm opacity-70">
+                  <i class="fa-regular fa-folder-open mb-3 block text-2xl"></i>{% trans "No members found." %}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <!-- Mobile Cards -->
+    <section class="space-y-4 md:hidden">
+      {% for member in profiles %}
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border p-4 shadow-sm">
+
+          <div class="flex items-start gap-3">
+            {% if member.avatar %}
+              <img
+                src="{{ member.avatar.url }}"
+                alt="{{ member.display_name }}"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="h-14 w-14 rounded-xl border object-cover shadow-sm">
+            {% else %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="flex h-14 w-14 items-center justify-center rounded-xl border shadow-sm">
+                <i
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="fa-solid fa-user"></i>
+              </div>
+            {% endif %}
+
+            <div class="min-w-0 flex-1">
+              <a
+                href="{% url 'socialhub:profile_details' member.slug %}"
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="block truncate text-base font-bold underline-offset-4 transition hover:underline hover:opacity-80">
+                {{ member.display_name }}
+              </a>
+
+              <p class="mt-1 text-xs opacity-70">
+                Joined {{ member.joined_date|date:"F j, Y" }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-4 grid grid-cols-1 gap-3 text-sm">
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark'
+                : 'border-accent-2 bg-sunken-light'"
+              class="rounded-xl border p-3">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bio" %}</p>
+              <p class="mt-1 opacity-80">
+                {{ member.bio|default:"—" }}
+              </p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark'
+                : 'border-accent-2 bg-sunken-light'"
+              class="rounded-xl border p-3">
+              <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Patron" %}</p>
+              <p class="mt-1 font-semibold">
+                {% if member.patron %}
+                  <a
+                    href="{% url 'socialhub:profile_details' member.patron.slug %}"
+                    :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                    class="underline-offset-4 transition hover:underline hover:opacity-80">
+                    {{ member.patron.display_name }}
+                  </a>
+                {% else %}
+                  —
+                {% endif %}
+              </p>
+            </div>
+
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-sunken-dark'
+                : 'border-accent-2 bg-sunken-light'"
+              class="rounded-xl border p-3">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Communities" %}</p>
+
+              <div class="flex flex-wrap gap-2">
+                {% for community in member.communities.all %}
+                  <a
+                    href="{% url 'socialhub:community_detail' community.slug %}"
+                    :class="darkMode
+                      ? 'border-accent-1 bg-primary-bg-dark text-accent-dark'
+                      : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                    class="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                    <i class="fa-solid fa-people-group text-[10px]"></i>
+                    {{ community.name }}
+                  </a>
+                {% empty %}
+                  <span class="text-sm italic opacity-60">{% trans "None" %}</span>
+                {% endfor %}
+              </div>
+            </div>
+          </div>
+
+          <a
+            href="{% url 'socialhub:profile_details' member.slug %}"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-eye"></i>{% trans "View Profile" %}</a>
+        </article>
+      {% empty %}
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border p-8 text-center text-sm shadow-sm">
+          <i class="fa-regular fa-folder-open mb-3 block text-2xl opacity-70"></i>{% trans "No members found." %}</div>
+      {% endfor %}
+    </section>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+      <nav class="flex flex-wrap items-center justify-center gap-2 text-sm">
+        {% if page_obj.has_previous %}
+          <a
+            href="?page=1"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark'
+              : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-angles-left text-xs"></i>{% trans "First" %}</a>
+
+          <a
+            href="?page={{ page_obj.previous_page_number }}"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark'
+              : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-chevron-left text-xs"></i>{% trans "Previous" %}</a>
+        {% endif %}
+
+        <span
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold shadow-sm">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        {% if page_obj.has_next %}
+          <a
+            href="?page={{ page_obj.next_page_number }}"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark'
+              : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">{% trans "Next" %}<i class="fa-solid fa-chevron-right text-xs"></i>
+          </a>
+
+          <a
+            href="?page={{ page_obj.paginator.num_pages }}"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark'
+              : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 font-semibold transition hover:opacity-85">{% trans "Last" %}<i class="fa-solid fa-angles-right text-xs"></i>
+          </a>
+        {% endif %}
+      </nav>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

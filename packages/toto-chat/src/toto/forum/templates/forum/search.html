@@ -1,0 +1,115 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Search messages" %}{% endblock %}
+
+{% block content %}
+<main
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto flex w-full max-w-4xl flex-col gap-6">
+    <header class="flex flex-col gap-4 border-b border-current/10 pb-6">
+      <div class="space-y-2">
+        <a href="{% url 'forum:channel_list' %}" class="text-sm underline hover:opacity-80">{% trans "Channels" %}</a>
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "Search messages" %}</h1>
+        <p class="max-w-2xl text-sm opacity-70">
+          {% trans "Searches only the channels you are a member of." %}
+        </p>
+      </div>
+
+      <form method="get" class="flex w-full flex-col gap-2 sm:flex-row">
+        <input
+          type="search"
+          name="q"
+          value="{{ query }}"
+          placeholder="{% trans 'Search messages' %}"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+            : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="min-w-0 flex-1 rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+
+        <select
+          name="channel"
+          :class="darkMode
+            ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+            : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="rounded border px-3 py-2 text-sm outline-none transition focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "All my channels" %}</option>
+          {% for c in searchable_channels %}
+            <option value="{{ c.slug }}" {% if c.slug == channel_slug %}selected{% endif %}>{{ c.name }}</option>
+          {% endfor %}
+        </select>
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-magnifying-glass"></i>{% trans "Search" %}
+        </button>
+      </form>
+
+      {% if search_fallback_used and query %}
+        {# Mirrors ravioli's effective-mode disclosure: say when a weaker engine ran. #}
+        <p class="text-xs opacity-60">
+          <i class="fa-solid fa-circle-info"></i>
+          {% blocktrans %}Substring matching (this database is {{ search_engine }}); full-text ranking needs PostgreSQL.{% endblocktrans %}
+        </p>
+      {% endif %}
+    </header>
+
+    {% if query %}
+      {% if results %}
+        <p class="text-sm opacity-70">
+          {% blocktrans count counter=paginator.count %}{{ counter }} match{% plural %}{{ counter }} matches{% endblocktrans %}
+        </p>
+
+        <div class="flex flex-col gap-3">
+          {% for message in results %}
+            <a
+              href="{% url 'forum:channel_detail' message.channel.slug %}"
+              :class="darkMode
+                ? 'bg-bubble-bg-dark border-accent-1 hover:border-accent-dark'
+                : 'bg-bubble-bg-light border-accent-2 hover:border-accent-light'"
+              class="rounded-lg border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+              <div class="flex flex-wrap items-center gap-2 text-xs opacity-60">
+                <span class="font-semibold">{{ message.sender_name|default:_("Unknown") }}</span>
+                <span>{% trans "in" %} {{ message.channel.name }}</span>
+                <span>{{ message.created_at|date:"j M Y, H:i" }}</span>
+                {% if message.edited_at %}<span class="italic">{% trans "(edited)" %}</span>{% endif %}
+              </div>
+              <p class="mt-1.5 whitespace-pre-wrap break-words text-sm opacity-90 [overflow-wrap:anywhere]">{{ message.body|truncatechars:400 }}</p>
+            </a>
+          {% endfor %}
+        </div>
+
+        {% if is_paginated %}
+          <nav class="flex items-center justify-between border-t border-current/10 pt-5 text-sm">
+            {% if page_obj.has_previous %}
+              <a href="?q={{ query|urlencode }}&channel={{ channel_slug }}&page={{ page_obj.previous_page_number }}"
+                 class="underline hover:opacity-80">{% trans "Previous" %}</a>
+            {% else %}<span></span>{% endif %}
+
+            <span class="opacity-70">{% blocktrans with num=page_obj.number total=page_obj.paginator.num_pages %}Page {{ num }} of {{ total }}{% endblocktrans %}</span>
+
+            {% if page_obj.has_next %}
+              <a href="?q={{ query|urlencode }}&channel={{ channel_slug }}&page={{ page_obj.next_page_number }}"
+                 class="underline hover:opacity-80">{% trans "Next" %}</a>
+            {% else %}<span></span>{% endif %}
+          </nav>
+        {% endif %}
+      {% else %}
+        <section
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+          class="rounded-lg border p-6 text-sm opacity-75 shadow-md">
+          {% blocktrans %}No messages match “{{ query }}”.{% endblocktrans %}
+        </section>
+      {% endif %}
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

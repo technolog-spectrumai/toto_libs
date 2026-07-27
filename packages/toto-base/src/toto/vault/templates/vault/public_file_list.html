@@ -1,0 +1,2220 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Public Files" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+<script>
+  const _encryptUrl          = "{% url 'vault:encrypt_file' %}";
+  const _encryptStatusUrl    = "{% url 'vault:encrypt_status' %}";
+  const _encryptedDownloadUrl = "{% url 'vault:download_encrypted' %}";
+  const _decryptUrl   = "{% url 'vault:decrypt_file' %}";
+  const _moveUrl      = "{% url 'vault:move_file' %}";
+  const _renameUrl    = "{% url 'vault:rename_file' %}";
+  const _deleteUrl    = "{% url 'vault:delete_file' %}";
+  const _currentUser  = "{{ user.username|escapejs }}";
+  const _servicesUrlTpl   = "{{ services_url_tpl }}";
+  const _runServiceUrlTpl = "{{ run_service_url_tpl }}";
+  const _openServiceUrlTpl = "{{ open_service_url_tpl }}";
+  const _createZipUrl = "{% url 'vault:create_zip' %}";
+  const _zipStatusUrl = "{% url 'vault:zip_status' %}";
+  const _zipEnabled   = {{ zip_enabled|yesno:"true,false" }};
+
+  document.addEventListener('alpine:init', () => {
+    Alpine.data('vaultTree', () => {
+      const raw = document.getElementById('vault-items');
+      const items = raw ? JSON.parse(raw.textContent) : [];
+      const dirMap = {};
+      for (const item of items) {
+        if (item.t === 'dir') dirMap[item.id] = item;
+      }
+      return {
+        items,
+        dirMap,
+        openDirs: {},
+        currentUser: _currentUser,
+
+        // image preview modal state
+        imageModalOpen: false,
+        imageModalUrl: '',
+        imageModalTitle: '',
+
+        // search state
+        search: '',
+        _matchingIds: null,        // null = no search; plain object { id: true } when active
+        _visibleAncestorIds: null, // ancestor dirs of matched files
+
+        // view mode
+        viewMode: localStorage.getItem('vault_view_mode') || 'tree', // 'tree' | 'grid'
+
+        // sort & date filter state
+        sortMode: 'name_asc',  // 'name_asc' | 'name_desc' | 'date_asc' | 'date_desc'
+        dateFilter: '',         // '' | 'today' | 'week' | 'month'
+
+        // cipher (encrypt/decrypt) state
+        cipherModal: false,
+        cipherMode: 'encrypt',   // 'encrypt' | 'decrypt'
+        cipherFileId: null,
+        cipherFileTitle: '',
+        cipherIsPdf: false,
+        cipherPassword: '',
+        cipherOwnerPassword: '',
+        cipherError: '',
+        cipherLoading: false,
+
+        // encrypted download state
+        encDownloadModal: false,
+        encDownloadFileId: null,
+        encDownloadFileTitle: '',
+        encDownloadRawUrl: '',
+        encDownloadPassword: '',
+        encDownloadError: '',
+        encDownloadLoading: false,
+
+        // remove encryption (caution) state
+        removeEncModal: false,
+        removeEncFileId: null,
+        removeEncFileTitle: '',
+        removeEncPassword: '',
+        removeEncError: '',
+        removeEncLoading: false,
+
+        // move state
+        moveModal: false,
+        moveFileId: null,
+        moveFileTitle: '',
+        moveFileBucketPk: null,
+        moveFilePid: null,
+        moveOpenDirs: {},
+        moveSelectedId: 'root',  // 'root' = bucket root, or dir pk (number)
+        moveLoading: false,
+        moveError: '',
+
+        // delete state
+        deleteModal: false,
+        deleteFileId: null,
+        deleteFileTitle: '',
+        deleteLoading: false,
+        deleteError: '',
+
+        // rename state
+        renameModal: false,
+        renameFileId: null,
+        renameOldTitle: '',
+        renameNewTitle: '',
+        renameFileType: '',
+        renameError: '',
+        renameLoading: false,
+
+        // create new file state. createTypes ([[type, ext], …]) is the set of file
+        // types whose editor is installed on this deployment (filled in init()).
+        createModal: false,
+        createDirId: null,
+        createTitle: '',
+        createType: 'text',
+        createTypes: [],
+        createLoading: false,
+        createError: '',
+
+        // zip directory state
+        zipEnabled: _zipEnabled,
+        zipModal: false,
+        zipSourceId: null,
+        zipSourceName: '',
+        zipBucketPk: null,
+        zipFilename: '',
+        zipTargetId: 'root',   // 'root' = bucket root, or dir pk
+        zipFiles: [],          // [{id, title, selected}]
+        zipLoading: false,
+        zipError: '',
+        zipRunUrl: '',
+        zipStatus: '',
+
+        // actions chooser state
+        actionsModal: false,
+        actionsItem: null,
+
+        // file-service (wand) state
+        svcModal: false,
+        svcFileId: null,
+        svcFileTitle: '',
+        svcList: [],
+        svcSelected: '',
+        svcArgs: '',
+        svcLoading: false,
+        svcError: '',
+
+        setViewMode(m) {
+          this.viewMode = m;
+          localStorage.setItem('vault_view_mode', m);
+        },
+
+        fileTypeIcon(ft) {
+          const map = { pdf:'fa-file-pdf', image:'fa-image', audio:'fa-music', video:'fa-film',
+            text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
+            html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
+            latex:'fa-file-lines', bib:'fa-book', notebook:'fa-book',
+            presentation:'fa-person-chalkboard', zip:'fa-file-zipper' };
+          return map[ft] || 'fa-file';
+        },
+        fileTypeColor(ft) {
+          const map = { pdf:'text-red-400', image:'text-pink-400', audio:'text-purple-400',
+            video:'text-orange-400', text:'text-blue-400', json:'text-green-400',
+            yaml:'text-green-400', csv:'text-teal-400', html:'text-amber-400' };
+          return map[ft] || 'text-gray-400';
+        },
+        get gridFiles() {
+          return this.displayItems.filter(item => item.t === 'file' && this.isVisible(item));
+        },
+
+        init() {
+          try {
+            this.createTypes = JSON.parse(document.getElementById('vault-create-types').textContent);
+          } catch { this.createTypes = []; }
+          const clearSearchAutofill = () => {
+            this.search = '';
+            if (this.$refs.searchInput) this.$refs.searchInput.value = '';
+          };
+          this.$nextTick(() => {
+            clearSearchAutofill();
+            window.setTimeout(clearSearchAutofill, 250);
+          });
+          this.$watch('renameModal', open => {
+            if (open) this.$nextTick(() => this.$refs.renameInput?.select());
+          });
+          this.$watch('cipherModal', open => {
+            if (open) this.$nextTick(() => this.$refs.cipherPasswordInput?.focus());
+          });
+          this.$watch('encDownloadModal', open => {
+            if (open) this.$nextTick(() => this.$refs.encDownloadInput?.focus());
+          });
+          this.$watch('removeEncModal', open => {
+            if (open) this.$nextTick(() => this.$refs.removeEncInput?.focus());
+          });
+          this.$watch('search', () => this._updateSearch());
+        },
+
+        // ── search ──────────────────────────────────────────────
+        _scoreMatch(q, title) {
+          const t = (title || '').toLowerCase();
+          if (t === q) return 100;
+          if (t.startsWith(q)) return 90;
+          if (t.includes(q)) return 70;
+          // multi-word: every word must appear somewhere
+          const words = q.split(/[\s\-_\.]+/).filter(w => w.length > 0);
+          if (words.length > 1 && words.every(w => t.includes(w))) return 55;
+          // fuzzy: all chars of query appear in order (min 2 chars)
+          if (q.length >= 2) {
+            let qi = 0;
+            for (let ci = 0; ci < t.length && qi < q.length; ci++) {
+              if (t[ci] === q[qi]) qi++;
+            }
+            if (qi === q.length) return 30;
+          }
+          return 0;
+        },
+        // Glob → anchored, case-insensitive RegExp. Supports * (any run) and ? (one char).
+        // e.g. "*.mp4" → /^.*\.mp4$/i , "aa_*_.png" → /^aa_.*_\.png$/i
+        _globToRegExp(glob) {
+          const escaped = glob
+            .replace(/[.+^${}()|[\]\\]/g, '\\$&')   // escape regex specials (leave * and ?)
+            .replace(/\*/g, '.*')
+            .replace(/\?/g, '.');
+          return new RegExp('^' + escaped + '$', 'i');
+        },
+        _updateSearch() {
+          const q = this.search.trim().toLowerCase();
+          if (!q) { this._matchingIds = null; this._visibleAncestorIds = null; return; }
+          // Wildcard mode: glob match the whole filename instead of fuzzy scoring.
+          const globRe = (q.includes('*') || q.includes('?')) ? this._globToRegExp(q) : null;
+          const matched = {};
+          for (const item of this.items) {
+            if (item.t !== 'file') continue;
+            const ok = globRe
+              ? globRe.test((item.title || '').toLowerCase())
+              : this._scoreMatch(q, item.title) > 0;
+            if (ok) matched[item.id] = true;
+          }
+          const ancestors = {};
+          for (const item of this.items) {
+            if (item.t === 'file' && matched[item.id]) {
+              let pid = item.pid;
+              while (pid !== null && pid !== undefined) {
+                if (ancestors[pid]) break;
+                ancestors[pid] = true;
+                const dir = this.dirMap[pid];
+                pid = dir ? dir.pid : null;
+              }
+            }
+          }
+          this._matchingIds = matched;
+          this._visibleAncestorIds = ancestors;
+        },
+        get _matchCount() {
+          return this._matchingIds ? Object.keys(this._matchingIds).length : 0;
+        },
+
+        get displayItems() {
+          const cutoff = this.dateFilter === 'today'
+            ? new Date().toISOString().slice(0, 10)
+            : this.dateFilter === 'week'
+            ? new Date(Date.now() - 7*24*3600*1000).toISOString().slice(0, 10)
+            : this.dateFilter === 'month'
+            ? new Date(Date.now() - 30*24*3600*1000).toISOString().slice(0, 10)
+            : null;
+
+          const [field, dir] = this.sortMode.split('_');
+          const mult = dir === 'asc' ? 1 : -1;
+
+          // Collect files per parent dir, applying date filter and sort
+          const filesByPid = {};
+          for (const item of this.items) {
+            if (item.t !== 'file') continue;
+            if (cutoff && item.uploaded < cutoff) continue;
+            const k = String(item.pid ?? '');
+            (filesByPid[k] = filesByPid[k] || []).push(item);
+          }
+          for (const k in filesByPid) {
+            filesByPid[k].sort((a, b) => {
+              if (field === 'date')
+                return (a.uploaded < b.uploaded ? -1 : a.uploaded > b.uploaded ? 1 : 0) * mult;
+              return a.title.toLowerCase().localeCompare(b.title.toLowerCase()) * mult;
+            });
+          }
+
+          // Rebuild flat list: dirs in original DFS order, each dir's files replaced by sorted/filtered group
+          const result = [];
+          const insertedPids = new Set();
+          for (const item of this.items) {
+            if (item.t === 'dir') {
+              result.push(item);
+            } else {
+              const k = String(item.pid ?? '');
+              if (!insertedPids.has(k)) {
+                insertedPids.add(k);
+                result.push(...(filesByPid[k] || []));
+              }
+            }
+          }
+          return result;
+        },
+
+        toggle(id) {
+          if (this.openDirs[id]) {
+            this.openDirs[id] = false;
+            this.closeDescendants(id);
+          } else {
+            this.openDirs[id] = true;
+          }
+        },
+        closeDescendants(dirId) {
+          for (const item of this.items) {
+            if (item.t === 'dir' && item.pid === dirId) {
+              this.openDirs[item.id] = false;
+              this.closeDescendants(item.id);
+            }
+          }
+        },
+        isVisible(item) {
+          if (this._matchingIds !== null) {
+            return item.t === 'file'
+              ? !!this._matchingIds[item.id]
+              : !!(this._visibleAncestorIds && this._visibleAncestorIds[item.id]);
+          }
+          if (item.pid === null || item.pid === undefined) return true;
+          if (!this.openDirs[item.pid]) return false;
+          const parent = this.dirMap[item.pid];
+          if (!parent) return true;
+          return this.isVisible(parent);
+        },
+        isOpen(id) { return !!this.openDirs[id]; },
+
+        openCipher(item, mode) {
+          this.cipherMode          = mode;
+          this.cipherFileId        = item.id;
+          this.cipherFileTitle     = item.title;
+          this.cipherIsPdf         = item.file_type === 'pdf';
+          this.cipherPassword      = '';
+          this.cipherOwnerPassword = '';
+          this.cipherError         = '';
+          this.cipherModal         = true;
+        },
+        async submitCipher() {
+          if (!this.cipherPassword.trim()) { this.cipherError = 'Password is required.'; return; }
+          this.cipherLoading = true;
+          this.cipherError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const url  = this.cipherMode === 'encrypt' ? _encryptUrl : _decryptUrl;
+            const body = new URLSearchParams({ file_pk: this.cipherFileId, password: this.cipherPassword });
+            if (this.cipherMode === 'encrypt' && this.cipherIsPdf && this.cipherOwnerPassword.trim()) {
+              body.append('owner_password', this.cipherOwnerPassword);
+            }
+            const res  = await fetch(url, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body,
+            });
+            let data = await res.json();
+            // Async encryption (faros/Tor): the server started a 'vault-encrypt'
+            // workflow run — poll it with short requests instead of holding one long
+            // connection.
+            if (data.ok && data.workflow_run_id) {
+              data = await this.pollCipher(data.workflow_run_id, csrf);
+            }
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.cipherFileId);
+              if (item) {
+                if (this.cipherMode === 'encrypt') {
+                  item.encrypted = true;
+                  item.raw_url = data.raw_url || item.url || item.raw_url;
+                  item.url = '';
+                  // Encrypted files are not editable/playable — drop those links so
+                  // the Open-in-editor / Play buttons disappear without a reload.
+                  item.editor_url = '';
+                  item.play_url = '';
+                } else {
+                  item.encrypted = false;
+                  item.url = data.url;
+                }
+              }
+              this.cipherModal = false;
+            } else {
+              this.cipherError = data.error || 'Operation failed.';
+            }
+          } catch {
+            this.cipherError = 'Network error. Please try again.';
+          }
+          this.cipherLoading = false;
+        },
+
+        // Poll the encrypt workflow run until it finishes. Each request is short,
+        // so it survives Tor where a single multi-minute request would not.
+        async pollCipher(runId, csrf) {
+          const url = _encryptStatusUrl + '?run_id=' + encodeURIComponent(runId);
+          for (let i = 0; i < 150; i++) {            // ~5 min ceiling (150 × 2s)
+            await new Promise(r => setTimeout(r, 2000));
+            const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });
+            const s = await res.json();
+            if (s.done) return s;                    // {ok, raw_url} or {ok:false, error}
+          }
+          return { ok: false, error: 'Encryption timed out. Please try again.' };
+        },
+
+        openEncDownload(item) {
+          this.encDownloadFileId    = item.id;
+          this.encDownloadFileTitle = item.title;
+          this.encDownloadRawUrl    = item.raw_url || '';
+          this.encDownloadPassword  = '';
+          this.encDownloadError     = '';
+          this.encDownloadModal     = true;
+        },
+        async submitEncDownload() {
+          if (!this.encDownloadPassword.trim()) { this.encDownloadError = 'Password is required.'; return; }
+          this.encDownloadLoading = true;
+          this.encDownloadError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res = await fetch(_encryptedDownloadUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.encDownloadFileId, password: this.encDownloadPassword }),
+            });
+            if (res.ok && !(res.headers.get('Content-Type') || '').includes('application/json')) {
+              const blob = await res.blob();
+              const url  = URL.createObjectURL(blob);
+              const a    = document.createElement('a');
+              a.href     = url;
+              a.download = this.encDownloadFileTitle;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+              this.encDownloadModal = false;
+            } else {
+              const data = await res.json().catch(() => ({}));
+              this.encDownloadError = data.error || `Download failed (${res.status}).`;
+            }
+          } catch {
+            this.encDownloadError = 'Network error. Please try again.';
+          }
+          this.encDownloadLoading = false;
+        },
+
+        openRemoveEnc(item) {
+          this.removeEncFileId    = item.id;
+          this.removeEncFileTitle = item.title;
+          this.removeEncPassword  = '';
+          this.removeEncError     = '';
+          this.removeEncModal     = true;
+        },
+        async submitRemoveEnc() {
+          if (!this.removeEncPassword.trim()) { this.removeEncError = 'Password is required.'; return; }
+          this.removeEncLoading = true;
+          this.removeEncError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_decryptUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.removeEncFileId, password: this.removeEncPassword }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.removeEncFileId);
+              if (item) { item.encrypted = false; item.url = data.url; }
+              this.removeEncModal = false;
+            } else {
+              this.removeEncError = data.error || 'Failed to remove encryption.';
+            }
+          } catch {
+            this.removeEncError = 'Network error. Please try again.';
+          }
+          this.removeEncLoading = false;
+        },
+
+        openMove(item) {
+          this.moveFileId     = item.id;
+          this.moveFileTitle  = item.title;
+          this.moveFileBucketPk = item.bpk;
+          this.moveFilePid    = item.pid;
+          this.moveOpenDirs   = {};
+          this.moveSelectedId = item.pid === null ? 'root' : item.pid;
+          this.moveError      = '';
+          this.moveModal      = true;
+        },
+        get moveDirs() {
+          return this.items.filter(i => i.t === 'dir' && i.bpk === this.moveFileBucketPk);
+        },
+        isMoveVisible(item) {
+          if (item.pid === null || item.pid === undefined) return true;
+          if (!this.moveOpenDirs[item.pid]) return false;
+          const parent = this.dirMap[item.pid];
+          if (!parent) return true;
+          return this.isMoveVisible(parent);
+        },
+        toggleMoveDir(id) {
+          this.moveOpenDirs[id] = !this.moveOpenDirs[id];
+        },
+        async submitMove() {
+          const destDirPk = this.moveSelectedId === 'root' ? '' : String(this.moveSelectedId);
+          this.moveLoading = true;
+          this.moveError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_moveUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.moveFileId, destination_directory: destDirPk }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.moveFileId);
+              if (item) item.pid = data.new_pid;
+              this.moveModal = false;
+            } else {
+              this.moveError = data.error || 'Move failed.';
+            }
+          } catch {
+            this.moveError = 'Network error. Please try again.';
+          }
+          this.moveLoading = false;
+        },
+
+        openDelete(item) {
+          this.deleteFileId    = item.id;
+          this.deleteFileTitle = item.title;
+          this.deleteError     = '';
+          this.deleteModal     = true;
+        },
+        async submitDelete() {
+          this.deleteLoading = true;
+          this.deleteError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_deleteUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.deleteFileId }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              this.items = this.items.filter(i => i.id !== this.deleteFileId);
+              this.deleteModal = false;
+            } else {
+              this.deleteError = data.error || 'Delete failed.';
+            }
+          } catch {
+            this.deleteError = 'Network error. Please try again.';
+          }
+          this.deleteLoading = false;
+        },
+
+        openRename(item) {
+          this.renameFileId   = item.id;
+          this.renameOldTitle = item.title;
+          this.renameNewTitle = item.title;
+          this.renameFileType = item.file_type || '';
+          this.renameError    = '';
+          this.renameModal    = true;
+        },
+        async submitRename() {
+          const title = this.renameNewTitle.trim();
+          if (!title) { this.renameError = 'Name cannot be empty.'; return; }
+          const item0 = this.items.find(i => i.id === this.renameFileId);
+          if (title === this.renameOldTitle && this.renameFileType === (item0?.file_type || '')) {
+            this.renameModal = false; return;
+          }
+          this.renameLoading = true;
+          this.renameError   = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const res  = await fetch(_renameUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body: new URLSearchParams({ file_pk: this.renameFileId, title, file_type: this.renameFileType }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              const item = this.items.find(i => i.id === this.renameFileId);
+              if (item) { item.title = data.title; item.file_type = data.file_type; }
+              this.renameModal = false;
+            } else {
+              this.renameError = data.error || 'Rename failed.';
+            }
+          } catch {
+            this.renameError = 'Network error. Please try again.';
+          }
+          this.renameLoading = false;
+        },
+
+        // ── Create new file ───────────────────────────────────
+        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', xml: '.xml', csv: '.csv', html: '.html', latex: '.tex', bib: '.bib', svg: '.svg', notebook: '.tpy', presentation: '.pml' },
+
+        openCreateFile(dirItem) {
+          this.createDirId = dirItem.id;
+          const first = this.createTypes[0]?.[0] || 'text';
+          this.createType = first;
+          this.createTitle = 'untitled' + (this._typeExtMap[first] || '');
+          this.createError = '';
+          this.createModal = true;
+        },
+
+        setCreateType(t) {
+          const ext = this._typeExtMap[t] || '';
+          const old = this._typeExtMap[this.createType] || '';
+          if (this.createTitle.endsWith(old)) {
+            this.createTitle = this.createTitle.slice(0, -old.length) + ext;
+          }
+          this.createType = t;
+        },
+
+        async submitCreateFile() {
+          this.createError = '';
+          if (!this.createTitle.trim()) { this.createError = 'Filename is required.'; return; }
+          this.createLoading = true;
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams({
+              directory_id: this.createDirId,
+              title: this.createTitle.trim(),
+              file_type: this.createType,
+            });
+            const res = await fetch('{% url "vault:create_file" %}', {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf },
+              credentials: 'same-origin',
+              body,
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+              this.createModal = false;
+              if (data.editor_url) { window.location.href = data.editor_url; }
+              else { window.location.reload(); }
+            } else {
+              this.createError = data.error || 'Failed to create file.';
+            }
+          } catch {
+            this.createError = 'Network error. Please try again.';
+          }
+          this.createLoading = false;
+        },
+
+        // ── Zip a directory (workflow-backed) ─────────────────
+        _descendantFiles(dirId) {
+          const inDir = (item) => {
+            let pid = item.pid, seen = new Set();
+            while (pid !== null && pid !== undefined && !seen.has(pid)) {
+              if (pid === dirId) return true;
+              seen.add(pid);
+              const parent = this.dirMap[pid];
+              pid = parent ? parent.pid : null;
+            }
+            return false;
+          };
+          return this.items.filter(i => i.t === 'file' && !i.encrypted && inDir(i));
+        },
+        openZip(item) {
+          this.zipSourceId   = item.id;
+          this.zipSourceName = item.name;
+          this.zipBucketPk   = item.bpk;
+          this.zipFilename   = item.name + '.zip';
+          this.zipTargetId   = String(item.id);
+          this.zipFiles      = this._descendantFiles(item.id)
+            .map(f => ({ id: f.id, title: f.title, selected: true }));
+          this.zipError = ''; this.zipRunUrl = ''; this.zipStatus = '';
+          this.zipModal = true;
+        },
+        get zipDirs() {
+          return this.items.filter(i => i.t === 'dir' && i.bpk === this.zipBucketPk);
+        },
+        setAllZip(val) { this.zipFiles.forEach(f => f.selected = val); },
+        get zipSelectedCount() { return this.zipFiles.filter(f => f.selected).length; },
+        async submitZip() {
+          const selected = this.zipFiles.filter(f => f.selected).map(f => f.id);
+          if (selected.length === 0) { this.zipError = 'Select at least one file.'; return; }
+          if (!this.zipFilename.trim()) { this.zipError = 'Filename is required.'; return; }
+          this.zipLoading = true; this.zipError = '';
+          try {
+            const csrf = document.cookie.split(';')
+              .find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams();
+            body.append('source_directory_id', this.zipSourceId);
+            body.append('target_directory_id', this.zipTargetId === 'root' ? '' : this.zipTargetId);
+            body.append('output_name', this.zipFilename.trim());
+            selected.forEach(id => body.append('file_ids', id));
+            const res = await fetch(_createZipUrl, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf, 'Content-Type': 'application/x-www-form-urlencoded' },
+              body,
+            });
+            const data = await res.json();
+            if (data.status === 'queued') {
+              this.zipRunUrl = data.workflow_run_url || '';
+              this.zipStatus = 'running';
+              this.pollZip(data.workflow_run_id, csrf);
+            } else {
+              this.zipError = data.error || 'Could not start archiving.';
+              this.zipLoading = false;
+            }
+          } catch {
+            this.zipError = 'Network error. Please try again.';
+            this.zipLoading = false;
+          }
+        },
+        pollZip(runId, csrf) {
+          const url = _zipStatusUrl + '?run_id=' + encodeURIComponent(runId);
+          const tick = async () => {
+            try {
+              const res = await fetch(url, { headers: { 'X-CSRFToken': csrf } });
+              const data = await res.json();
+              this.zipStatus = data.status;
+              if (data.is_terminal) {
+                if (data.status === 'completed') { window.location.reload(); }
+                else { this.zipError = 'Archiving failed.'; this.zipLoading = false; }
+                return;
+              }
+            } catch { /* keep polling */ }
+            setTimeout(tick, 2000);
+          };
+          setTimeout(tick, 1500);
+        },
+
+        // ── Actions chooser ───────────────────────────────────
+        openActions(item) {
+          this.actionsItem = item;
+          this.actionsModal = true;
+        },
+
+        // ── Image preview ─────────────────────────────────────
+        openImageModal(item) {
+          this.imageModalUrl = item.url;
+          this.imageModalTitle = item.title;
+          this.imageModalOpen = true;
+        },
+
+        // Close the chooser, then open the chosen action's own modal.
+        chooseAction(name) {
+          const item = this.actionsItem;
+          this.actionsModal = false;
+          this.$nextTick(() => {
+            if (name === 'edit')         window.location.href = item.editor_url;
+            else if (name === 'service') this.openServices(item);
+            else if (name === 'move')    this.openMove(item);
+            else if (name === 'rename')  this.openRename(item);
+          });
+        },
+
+        // ── File services (wand) ──────────────────────────────
+        get svcCurrent() {
+          return this.svcList.find(s => s.key === this.svcSelected) || null;
+        },
+
+        async openServices(fileItem) {
+          this.svcFileId = fileItem.id;
+          this.svcFileTitle = fileItem.title;
+          this.svcList = [];
+          this.svcSelected = '';
+          this.svcArgs = '';
+          this.svcError = '';
+          this.svcModal = true;
+          try {
+            const res = await fetch(_servicesUrlTpl.replace('0', fileItem.id), { credentials: 'same-origin' });
+            const data = await res.json();
+            this.svcList = data.services || [];
+            if (this.svcList.length) this.svcSelected = this.svcList[0].key;
+          } catch {
+            this.svcError = 'Could not load services.';
+          }
+        },
+
+        async submitService() {
+          this.svcError = '';
+          const svc = this.svcCurrent;
+          if (!svc) { this.svcError = 'Pick a service.'; return; }
+          // Builder-backed services collect their arguments on the next page.
+          if (svc.args_required && !svc.builder && !this.svcArgs.trim()) {
+            this.svcError = `${svc.args_label} are required.`; return;
+          }
+          this.svcLoading = true;
+          try {
+            const csrf = document.cookie.split(';').find(c => c.trim().startsWith('csrftoken='))?.split('=')[1] ?? '';
+            const body = new URLSearchParams({ service_key: this.svcSelected, args: this.svcArgs });
+            const res = await fetch(_runServiceUrlTpl.replace('0', this.svcFileId), {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrf },
+              credentials: 'same-origin',
+              body,
+            });
+            const data = await res.json();
+            if (data.redirect_url) {
+              window.location.href = data.redirect_url;
+            } else if (data.run_url) {
+              window.location.href = data.run_url;
+            } else {
+              this.svcError = data.error || 'Failed to start service.';
+            }
+          } catch {
+            this.svcError = 'Network error. Please try again.';
+          }
+          this.svcLoading = false;
+        },
+      };
+    });
+  });
+</script>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Dashboard" %}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "File vault" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-vault"></i>
+            {% trans "Public Files" %}
+          </h1>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <!-- Bucket filter -->
+        <form method="get" class="flex items-center gap-2">
+          <label for="bucket"
+                 :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+                 class="text-xs font-semibold opacity-65 whitespace-nowrap">
+            {% trans "Bucket" %}
+          </label>
+          <select
+            name="bucket" id="bucket"
+            onchange="this.form.submit()"
+            :class="darkMode
+              ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+            class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition shadow-sm">
+            <option value="">{% trans "All buckets" %}</option>
+            {% for bucket in buckets %}
+              <option value="{{ bucket.slug }}" {% if bucket.slug == selected_bucket %}selected{% endif %}>
+                {{ bucket.name }}
+              </option>
+            {% endfor %}
+          </select>
+        </form>
+
+        <!-- File / dir counts -->
+        {% if total_files or total_dirs %}
+          <div
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="flex items-center gap-2 rounded-lg border px-4 py-2 text-sm shadow-sm">
+            {% if total_dirs %}
+              <i class="fa-solid fa-folder opacity-60"></i>
+              <span class="font-bold">{{ total_dirs }}</span>
+              <span class="opacity-65">{% trans "dirs" %}</span>
+            {% endif %}
+            {% if total_dirs and total_files %}
+              <span class="opacity-30">·</span>
+            {% endif %}
+            {% if total_files %}
+              <i class="fa-solid fa-file opacity-60"></i>
+              <span class="font-bold">{{ total_files }}</span>
+              <span class="opacity-65">{% trans "files" %}</span>
+            {% endif %}
+          </div>
+        {% endif %}
+
+        <!-- Metrics link -->
+        {% if selected_bucket %}
+          <a href="{% url 'vault:bucket_metrics' selected_bucket %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
+            <i class="fa-solid fa-chart-column"></i>
+            {% trans "Metrics" %}
+          </a>
+        {% else %}
+          <a href="{% url 'vault:metrics' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">
+            <i class="fa-solid fa-chart-column"></i>
+            {% trans "Metrics" %}
+          </a>
+        {% endif %}
+
+        <!-- Copy files button — only when a bucket is filtered and user is logged in -->
+        {% if selected_bucket and user.is_authenticated %}
+          <a href="{% url 'vault:copy_files' selected_bucket %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-copy"></i>
+            {% trans "Copy files" %}
+          </a>
+        {% endif %}
+
+      </div>
+    </header>
+
+    <!-- JSON data island -->
+    {{ flat_items|json_script:"vault-items" }}
+    {{ create_file_types|json_script:"vault-create-types" }}
+
+    <!-- Tree -->
+    <div x-data="vaultTree()">
+
+      <!-- Search bar -->
+      <div x-show="items.length > 0" class="mb-3">
+        <div class="relative">
+          <div class="pointer-events-none absolute inset-y-0 left-3 flex items-center">
+            <i class="fa-solid fa-magnifying-glass text-xs opacity-40"></i>
+          </div>
+          <input id="vault-file-search"
+                 x-ref="searchInput"
+                 x-model="search"
+                 type="search"
+                 name="vault_file_filter"
+                 autocomplete="new-password"
+                 autocapitalize="none"
+                 autocorrect="off"
+                 spellcheck="false"
+                 readonly
+                 placeholder="{% trans "Search files… (use * or ? for wildcards, e.g. *.mp4)" %}"
+                 @focus="$el.removeAttribute('readonly')"
+                 @keydown.escape.stop="search = ''"
+                 :class="darkMode
+                   ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/40'
+                   : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/40'"
+                 class="w-full rounded-xl border py-2.5 pl-9 pr-9 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          <button x-show="search"
+                  @click="search = ''"
+                  class="absolute inset-y-0 right-3 flex items-center opacity-40 hover:opacity-70 transition-opacity">
+            <i class="fa-solid fa-xmark text-xs"></i>
+          </button>
+        </div>
+        <div x-show="search.trim()" class="mt-1.5 flex items-center gap-1.5 px-1 text-xs opacity-55">
+          <template x-if="_matchingIds !== null && _matchCount > 0">
+            <span>
+              <span class="font-semibold" x-text="_matchCount"></span>
+              {% trans "file(s) found" %}
+            </span>
+          </template>
+          <template x-if="_matchingIds !== null && _matchCount === 0">
+            <span>{% trans "No files match your search." %}</span>
+          </template>
+        </div>
+      </div>
+
+      <!-- Sort, date filter & view toggle controls -->
+      <div x-show="items.length > 0" class="mb-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-xs">
+        <div class="flex items-center gap-1.5">
+          <span :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+                class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+            <i class="fa-solid fa-arrow-up-wide-short mr-1"></i>{% trans "Sort" %}
+          </span>
+          <select x-model="sortMode"
+                  :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                  class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+            <option value="name_asc">{% trans "Name A–Z" %}</option>
+            <option value="name_desc">{% trans "Name Z–A" %}</option>
+            <option value="date_desc">{% trans "Date (newest)" %}</option>
+            <option value="date_asc">{% trans "Date (oldest)" %}</option>
+          </select>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'"
+                class="opacity-45 font-semibold uppercase tracking-wide shrink-0">
+            <i class="fa-solid fa-calendar-days mr-1"></i>{% trans "Uploaded" %}
+          </span>
+          <select x-model="dateFilter"
+                  :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                  class="rounded-lg border px-2 py-1 text-xs focus:outline-none cursor-pointer">
+            <option value="">{% trans "Any time" %}</option>
+            <option value="today">{% trans "Today" %}</option>
+            <option value="week">{% trans "This week" %}</option>
+            <option value="month">{% trans "This month" %}</option>
+          </select>
+        </div>
+
+        <!-- View toggle -->
+        <div class="ml-auto flex rounded-lg overflow-hidden border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <button @click="setViewMode('tree')"
+                  :class="viewMode === 'tree'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-50 hover:opacity-100'"
+                  class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-list"></i> {% trans "Tree" %}
+          </button>
+          <button @click="setViewMode('grid')"
+                  :class="viewMode === 'grid'
+                    ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                    : 'opacity-50 hover:opacity-100'"
+                  class="px-3 py-1.5 text-xs font-semibold transition flex items-center gap-1.5">
+            <i class="fa-solid fa-table-cells"></i> {% trans "Grid" %}
+          </button>
+        </div>
+      </div>
+
+      <!-- Empty state -->
+      <template x-if="items.length === 0">
+        <div
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+          <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+          <p class="mt-4 text-sm font-semibold opacity-55">{% trans "No public files available." %}</p>
+        </div>
+      </template>
+
+      <!-- Tree container -->
+      <template x-if="items.length > 0 && viewMode === 'tree'">
+        <div
+          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+          class="overflow-hidden rounded-xl border shadow-sm">
+
+          <template x-for="item in displayItems" :key="`${item.t}-${item.id}`">
+            <div x-show="isVisible(item)">
+
+              <!-- Directory row -->
+              <template x-if="item.t === 'dir'">
+                <div
+                  @click="toggle(item.id)"
+                  :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                  :class="darkMode
+                    ? 'border-b border-accent-1/40 hover:bg-bubble-bg-dark'
+                    : 'border-b border-accent-2/40 hover:bg-bubble-bg-light'"
+                  class="flex items-center gap-2 cursor-pointer py-3 pr-4 transition-colors duration-150 select-none">
+
+                  <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                     :class="isOpen(item.id) ? 'rotate-90' : ''"></i>
+
+                  <i class="fa-solid shrink-0"
+                     :class="[
+                       isOpen(item.id) ? 'fa-folder-open' : 'fa-folder',
+                       darkMode ? 'text-accent-dark' : 'text-accent-light'
+                     ]"></i>
+
+                  <span class="font-semibold text-sm" x-text="item.name"></span>
+
+                  <span class="flex items-center gap-2 text-xs opacity-40 ml-1">
+                    <span x-show="item.n_dirs > 0"
+                          x-text="`${item.n_dirs} dir${item.n_dirs !== 1 ? 's' : ''}`"></span>
+                    <span x-show="item.n_dirs > 0 && item.n_files > 0" class="opacity-60">·</span>
+                    <span x-show="item.n_files > 0"
+                          x-text="`${item.n_files} file${item.n_files !== 1 ? 's' : ''}`"></span>
+                  </span>
+
+                  <span x-show="item.locked" class="text-xs opacity-40 ml-1">
+                    <i class="fa-solid fa-lock"></i>
+                  </span>
+
+                  <div class="ml-auto flex items-center gap-1 shrink-0">
+                    <button x-show="item.can_create"
+                            @click.stop="openCreateFile(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-file-circle-plus text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "New" %}</span>
+                    </button>
+                    <button x-show="item.can_create && zipEnabled && (item.n_files > 0 || item.n_dirs > 0)"
+                            @click.stop="openZip(item)"
+                            :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                            class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                      <i class="fa-solid fa-file-zipper text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Zip" %}</span>
+                    </button>
+                    <!-- Git actions for this directory: one dropdown. Repo-less
+                         dirs offer Initialize; repo dirs offer Commit/Push/Pull/
+                         History/Repository. The menu is position:fixed (computed
+                         from the button rect) so the tree container's overflow
+                         never clips it, and it flips up near the viewport bottom.
+                         ctx is built via the global gitCtx(item.git). -->
+                    <div x-show="item.git && ((item.git.init_url && item.can_create) || item.git.repo_pk)"
+                         class="relative"
+                         x-data="{ gitMenu:false, mLeft:0, mTop:0, mBottom:0, flipUp:false,
+                                   openGit(e){ const r=e.currentTarget.getBoundingClientRect();
+                                     this.mLeft=r.right;
+                                     this.flipUp=(window.innerHeight-r.bottom)<260;
+                                     this.mTop=r.bottom+4; this.mBottom=window.innerHeight-r.top+4;
+                                     this.gitMenu=true; } }"
+                         @keydown.escape.window="gitMenu=false"
+                         @scroll.window="gitMenu=false">
+                      <button @click.stop="gitMenu ? (gitMenu=false) : openGit($event)"
+                              :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
+                              class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
+                        <i class="fa-solid fa-code-branch text-xs"></i>
+                        <span class="hidden sm:inline">{% trans "Git" %}</span>
+                        <i class="fa-solid fa-chevron-down text-[8px] opacity-60"></i>
+                      </button>
+                      <div x-show="gitMenu" x-cloak @click.outside="gitMenu=false" @click.stop
+                           :style="`position:fixed; left:${mLeft}px; transform:translateX(-100%); z-index:60; ` + (flipUp ? `bottom:${mBottom}px;` : `top:${mTop}px;`)"
+                           class="w-44 overflow-hidden rounded-lg border shadow-xl"
+                           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+                        <template x-if="item.git.init_url">
+                          <button @click.stop="gitMenu=false; GitUI.openInit(item.git.init_url, item.name)" class="git-menu-item">
+                            <i class="fa-solid fa-code-branch"></i>{% trans "Initialize repository" %}
+                          </button>
+                        </template>
+                        <template x-if="item.git.repo_pk">
+                          <div>
+                            <button @click.stop="gitMenu=false; GitUI.openCommit(gitCtx(item.git))" class="git-menu-item">
+                              <i class="fa-solid fa-code-commit"></i>{% trans "Commit…" %}
+                            </button>
+                            <button @click.stop="gitMenu=false; GitUI.openAndRun(gitCtx(item.git), 'push')" class="git-menu-item">
+                              <i class="fa-solid fa-cloud-arrow-up"></i>{% trans "Push" %}
+                            </button>
+                            <button @click.stop="gitMenu=false; GitUI.openAndRun(gitCtx(item.git), 'pull')" class="git-menu-item">
+                              <i class="fa-solid fa-cloud-arrow-down"></i>{% trans "Pull" %}
+                            </button>
+                            <button @click.stop="gitMenu=false; GitUI.openHistory(gitCtx(item.git))" class="git-menu-item">
+                              <i class="fa-solid fa-timeline"></i>{% trans "History" %}
+                            </button>
+                            <div class="h-px bg-current opacity-10"></div>
+                            <button @click.stop="gitMenu=false; GitUI.openPanel(gitCtx(item.git))" class="git-menu-item">
+                              <i class="fa-solid fa-sliders"></i>{% trans "Repository…" %}
+                            </button>
+                          </div>
+                        </template>
+                      </div>
+                    </div>
+                    <a x-show="item.upload_url" :href="item.upload_url" @click.stop
+                       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                       class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
+                      <i class="fa-solid fa-upload text-xs"></i>
+                      <span class="hidden sm:inline">{% trans "Upload" %}</span>
+                    </a>
+                  </div>
+                </div>
+              </template>
+
+              <!-- File row -->
+              <template x-if="item.t === 'file'">
+                <div
+                  :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                  :class="darkMode
+                    ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark/50'
+                    : 'border-b border-accent-2/20 hover:bg-bubble-bg-light/50'"
+                  class="group flex items-center gap-3 py-2.5 pr-4 text-sm transition-colors duration-150">
+
+                  <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+
+                  <span class="font-medium truncate flex-1 min-w-0" x-text="item.title"></span>
+
+                  <span class="shrink-0 rounded-full border px-2 py-0.5 text-xs font-semibold uppercase"
+                        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+                        x-text="item.file_type"></span>
+
+                  <span class="hidden sm:inline-flex items-center gap-1 shrink-0 rounded-full border px-2 py-0.5 text-[10px] opacity-70"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        :title="`Author: ${item.owner}`">
+                    <i class="fa-solid fa-user opacity-60"></i><span x-text="item.owner"></span>
+                  </span>
+
+                  <span class="hidden md:block text-xs opacity-50 shrink-0" x-text="item.uploaded"></span>
+
+                  <span x-show="item.encrypted"
+                        class="text-success-light text-xs shrink-0">
+                    <i class="fa-solid fa-lock"></i>
+                  </span>
+
+                  <a x-show="item.url" :href="item.url" @click.stop
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="inline-flex items-center gap-1 text-xs font-semibold hover:underline underline-offset-2 shrink-0">
+                    <i class="fa-solid fa-download"></i>
+                  </a>
+
+                  <!-- Encrypt — unencrypted owner files, revealed on hover -->
+                  <button x-show="item.owner === currentUser && !item.encrypted"
+                          @click.stop="openCipher(item, 'encrypt')"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Encrypt ${item.title}`' %}">
+                    <i class="fa-solid fa-lock text-xs"></i>
+                  </button>
+
+                  <!-- Download encrypted — encrypted owner files, revealed on hover -->
+                  <button x-show="item.owner === currentUser && item.encrypted"
+                          @click.stop="openEncDownload(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Download ${item.title}`' %}">
+                    <i class="fa-solid fa-download text-xs"></i>
+                  </button>
+
+                  <!-- Remove encryption — encrypted owner files, revealed on hover -->
+                  <button x-show="item.owner === currentUser && item.encrypted"
+                          @click.stop="openRemoveEnc(item)"
+                          :class="darkMode ? 'text-caution-dark hover:bg-caution-dark/15' : 'text-caution-light hover:bg-caution-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Remove encryption from ${item.title}`' %}">
+                    <i class="fa-solid fa-lock-open text-xs"></i>
+                  </button>
+
+                  <!-- Actions menu — owner only (move / rename / edit / run service) -->
+                  <button x-show="item.owner === currentUser"
+                          @click.stop="openActions(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Edit ${item.title}`' %}">
+                    <i class="fa-solid fa-pen-to-square text-xs"></i>
+                  </button>
+
+                  <!-- View image — full-screen preview for image files -->
+                  <button x-show="item.file_type === 'image' && item.url"
+                          @click.stop="openImageModal(item)"
+                          :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`View ${item.title}`' %}">
+                    <i class="fa-solid fa-expand text-xs"></i>
+                  </button>
+
+                  <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                  <button x-show="item.play_url"
+                          @click.stop="window.location.href = item.play_url"
+                          :class="darkMode ? 'text-green-400 hover:bg-green-400/15' : 'text-green-600 hover:bg-green-600/15'"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
+                          :title="{% trans '`Play ${item.title}`' %}">
+                    <i class="fa-solid fa-play text-xs"></i>
+                  </button>
+
+                  <!-- Delete trash — owner only, revealed on row hover -->
+                  <button x-show="item.owner === currentUser"
+                          @click.stop="openDelete(item)"
+                          class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-warn-light hover:bg-warn-light/10"
+                          :title="{% trans '`Delete ${item.title}`' %}">
+                    <i class="fa-solid fa-trash text-xs"></i>
+                  </button>
+                </div>
+              </template>
+
+            </div>
+          </template>
+
+        </div>
+      </template>
+
+      <!-- Grid container -->
+      <template x-if="items.length > 0 && viewMode === 'grid'">
+        <div>
+          <template x-if="gridFiles.length === 0">
+            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+              <i class="fa-solid fa-folder-open text-3xl opacity-20"></i>
+              <p class="mt-4 text-sm font-semibold opacity-55">{% trans "No files match your filters." %}</p>
+            </div>
+          </template>
+          <template x-if="gridFiles.length > 0">
+            <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+              <template x-for="item in gridFiles" :key="`grid-${item.id}`">
+                <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                     class="group relative flex flex-col gap-2 rounded-xl border p-3 shadow-sm transition hover:shadow-md">
+
+                  <!-- Encrypted badge -->
+                  <div x-show="item.encrypted" class="absolute top-2 right-2">
+                    <i class="fa-solid fa-lock text-xs text-yellow-400"></i>
+                  </div>
+
+                  <!-- File icon -->
+                  <div class="flex items-center justify-center h-12 opacity-70">
+                    <i class="fa-solid text-3xl" :class="[fileTypeIcon(item.file_type), fileTypeColor(item.file_type)]"></i>
+                  </div>
+
+                  <!-- Title -->
+                  <p class="truncate text-xs font-semibold" :title="item.title" x-text="item.title"></p>
+
+                  <!-- Meta -->
+                  <div class="flex items-center gap-1.5 flex-wrap">
+                    <span class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-60"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          x-text="item.file_type"></span>
+                    <span class="text-xs opacity-40" x-text="item.uploaded"></span>
+                  </div>
+
+                  <!-- Author -->
+                  <span class="inline-flex max-w-full items-center gap-1 self-start rounded-full border px-2 py-0.5 text-[10px] opacity-70"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        :title="`Author: ${item.owner}`">
+                    <i class="fa-solid fa-user opacity-60"></i><span class="truncate" x-text="item.owner"></span>
+                  </span>
+
+                  <!-- Actions -->
+                  <div class="mt-auto flex flex-wrap gap-1">
+                    <!-- Download (unencrypted) -->
+                    <a x-show="item.url" :href="item.url"
+                       :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                       class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "Download" %}">
+                      <i class="fa-solid fa-download"></i>
+                    </a>
+                    <!-- Download encrypted -->
+                    <button x-show="item.owner === currentUser && item.encrypted"
+                            @click.stop="openEncDownload(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "Download encrypted" %}">
+                      <i class="fa-solid fa-download"></i>
+                    </button>
+                    <!-- Encrypt -->
+                    <button x-show="item.owner === currentUser && !item.encrypted"
+                            @click.stop="openCipher(item, 'encrypt')"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" title="{% trans "Encrypt" %}">
+                      <i class="fa-solid fa-lock"></i>
+                    </button>
+                    <!-- Remove encryption -->
+                    <button x-show="item.owner === currentUser && item.encrypted"
+                            @click.stop="openRemoveEnc(item)"
+                            class="rounded-lg border border-yellow-400/40 px-2 py-1 text-xs text-yellow-400 hover:opacity-80 transition" title="{% trans "Remove encryption" %}">
+                      <i class="fa-solid fa-lock-open"></i>
+                    </button>
+                    <!-- Actions menu (move / rename / edit / run service) -->
+                    <button x-show="item.owner === currentUser"
+                            @click.stop="openActions(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Edit ${item.title}`">
+                      <i class="fa-solid fa-pen-to-square"></i>
+                    </button>
+                    <!-- View image — full-screen preview for image files -->
+                    <button x-show="item.file_type === 'image' && item.url"
+                            @click.stop="openImageModal(item)"
+                            :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
+                            class="rounded-lg border px-2 py-1 text-xs transition" title="{% trans "View image" %}">
+                      <i class="fa-solid fa-expand"></i>
+                    </button>
+                    <!-- Play — enabled when plugin registered, disabled (owner-only) when not -->
+                    <button x-show="item.play_url"
+                            @click.stop="window.location.href = item.play_url"
+                            class="rounded-lg border border-green-400/40 px-2 py-1 text-xs text-green-500 hover:opacity-80 transition" title="{% trans "Play" %}">
+                      <i class="fa-solid fa-play"></i>
+                    </button>
+                    <!-- Delete -->
+                    <button x-show="item.owner === currentUser"
+                            @click.stop="openDelete(item)"
+                            class="rounded-lg border border-red-400/30 px-2 py-1 text-xs text-red-400 hover:opacity-80 transition" title="{% trans "Delete" %}">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </div>
+
+                </div>
+              </template>
+            </div>
+          </template>
+        </div>
+      </template>
+
+      <!-- Encrypted download modal -->
+      <div x-show="encDownloadModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="encDownloadModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="encDownloadModal = false"></div>
+
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-download text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Download encrypted file" %}
+          </h2>
+
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "File" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="encDownloadFileTitle"></p>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="enc-dl-password">
+              {% trans "Password" %}
+            </label>
+            <input id="enc-dl-password"
+                   x-ref="encDownloadInput"
+                   x-model="encDownloadPassword"
+                   type="password"
+                   autocomplete="current-password"
+                   @keydown.enter.prevent="submitEncDownload"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <p x-show="encDownloadError" x-text="encDownloadError" class="text-xs text-warn-light -mt-2"></p>
+
+          <div class="flex gap-3">
+            <button @click="submitEncDownload"
+                    :disabled="encDownloadLoading"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!encDownloadLoading">{% trans "Download decrypted" %}</span>
+              <span x-show="encDownloadLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="encDownloadModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+          <!-- Download raw (encrypted bytes as-is) -->
+          <div x-show="encDownloadRawUrl"
+               :class="darkMode ? 'border-t border-accent-1/30' : 'border-t border-accent-2/30'"
+               class="pt-4">
+            <p class="mb-2 text-xs opacity-50">{% trans "Or download the file as-is (still encrypted):" %}</p>
+            <a :href="encDownloadRawUrl"
+               :download="encDownloadFileTitle"
+               :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+               class="flex w-full items-center justify-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              <i class="fa-solid fa-file-arrow-down text-xs"></i>
+              {% trans "Download raw" %}
+            </a>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Remove encryption (caution) modal -->
+      <div x-show="removeEncModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="removeEncModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="removeEncModal = false"></div>
+
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-lock-open text-sm"
+               :class="darkMode ? 'text-caution-dark' : 'text-caution-light'"></i>
+            {% trans "Remove encryption" %}
+          </h2>
+
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "File" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="removeEncFileTitle"></p>
+          </div>
+
+          <!-- Caution warning -->
+          <div :class="darkMode
+                        ? 'border-caution-dark/60 bg-caution-dark/10 text-caution-dark'
+                        : 'border-caution-light/60 bg-caution-light/10 text-caution-light'"
+               class="rounded-xl border px-4 py-3 text-sm font-medium space-y-1">
+            <p class="flex items-center gap-2 font-semibold">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              {% trans "Do you want to remove encryption?" %}
+            </p>
+            <p class="text-xs opacity-80">
+              {% trans "The file will be permanently decrypted and made public again. This cannot be undone." %}
+            </p>
+          </div>
+
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="remove-enc-password">
+              {% trans "Enter password to confirm" %}
+            </label>
+            <input id="remove-enc-password"
+                   x-ref="removeEncInput"
+                   x-model="removeEncPassword"
+                   type="password"
+                   autocomplete="current-password"
+                   @keydown.enter.prevent="submitRemoveEnc"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <p x-show="removeEncError" x-text="removeEncError" class="text-xs text-warn-light -mt-2"></p>
+
+          <div class="flex gap-3">
+            <button @click="submitRemoveEnc"
+                    :disabled="removeEncLoading"
+                    :class="darkMode
+                      ? 'border-caution-dark text-caution-dark hover:bg-caution-dark/10'
+                      : 'border-caution-light text-caution-light hover:bg-caution-light/10'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!removeEncLoading">{% trans "Remove encryption" %}</span>
+              <span x-show="removeEncLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="removeEncModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Encrypt / Decrypt modal -->
+      <div x-show="cipherModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="cipherModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="cipherModal = false"></div>
+
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <!-- Title -->
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid text-sm"
+               :class="[
+                 cipherMode === 'encrypt' ? 'fa-lock' : 'fa-lock-open',
+                 cipherMode === 'encrypt'
+                   ? (darkMode ? 'text-accent-dark' : 'text-accent-light')
+                   : 'text-amber-500'
+               ]"></i>
+            <span x-text="cipherMode === 'encrypt' ? '{% trans "Encrypt file" %}' : '{% trans "Decrypt file" %}'"></span>
+          </h2>
+
+          <!-- File name -->
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "File" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="cipherFileTitle"></p>
+          </div>
+
+          <!-- Password (main) -->
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="cipher-password">
+              <span x-show="cipherMode === 'encrypt' && cipherIsPdf">{% trans "User password" %}</span>
+              <span x-show="!(cipherMode === 'encrypt' && cipherIsPdf)">{% trans "Password" %}</span>
+            </label>
+            <input id="cipher-password"
+                   x-ref="cipherPasswordInput"
+                   x-model="cipherPassword"
+                   type="password"
+                   autocomplete="new-password"
+                   @keydown.enter.prevent="submitCipher"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Owner password — PDF encrypt only -->
+          <div x-show="cipherMode === 'encrypt' && cipherIsPdf">
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="cipher-owner-password">
+              {% trans "Owner password" %}
+              <span class="font-normal opacity-60">({% trans "optional — defaults to user password" %})</span>
+            </label>
+            <input id="cipher-owner-password"
+                   x-model="cipherOwnerPassword"
+                   type="password"
+                   autocomplete="new-password"
+                   @keydown.enter.prevent="submitCipher"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Encrypt notice -->
+          <p x-show="cipherMode === 'encrypt'"
+             :class="darkMode ? 'border-accent-1/40 bg-bubble-bg-dark' : 'border-accent-2/40 bg-bubble-bg-light'"
+             class="rounded-xl border px-4 py-3 text-xs opacity-70">
+            <i class="fa-solid fa-circle-info mr-1.5"></i>
+            {% trans "The file will be removed from public access after encryption. You can decrypt it here later." %}
+          </p>
+
+          <!-- Error -->
+          <p x-show="cipherError" x-text="cipherError" class="text-xs text-warn-light -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitCipher"
+                    :disabled="cipherLoading"
+                    :class="cipherMode === 'encrypt'
+                      ? (darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-primary-bg-light hover:opacity-90')
+                      : 'bg-amber-500 text-white hover:bg-amber-600'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!cipherLoading" x-text="cipherMode === 'encrypt' ? '{% trans "Encrypt" %}' : '{% trans "Decrypt" %}'"></span>
+              <span x-show="cipherLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="cipherModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Move modal -->
+      <div x-show="moveModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="moveModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="moveModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-up-down text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Move file" %}
+          </h2>
+
+          <!-- File name -->
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "File" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="moveFileTitle"></p>
+          </div>
+
+          <!-- Destination tree -->
+          <div>
+            <p class="mb-2 text-xs font-semibold opacity-50">{% trans "Move to" %}</p>
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="overflow-hidden rounded-xl border max-h-64 overflow-y-auto">
+
+              <!-- Bucket root row -->
+              <div @click="moveSelectedId = 'root'"
+                   :class="[
+                     moveSelectedId === 'root'
+                       ? (darkMode ? 'border-l-2 border-accent-dark bg-accent-dark/10' : 'border-l-2 border-accent-light bg-accent-light/10')
+                       : (darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light')
+                   ]"
+                   class="flex items-center gap-2 cursor-pointer px-3 py-2.5 text-sm transition-colors duration-100 select-none">
+                <i class="fa-solid fa-database w-3 shrink-0 text-xs opacity-50"></i>
+                <span class="font-semibold flex-1">{% trans "Bucket root" %}</span>
+                <span x-show="moveFilePid === null"
+                      class="text-xs opacity-40 italic">{% trans "current" %}</span>
+                <i x-show="moveSelectedId === 'root'"
+                   class="fa-solid fa-check text-xs"
+                   :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+              </div>
+
+              <!-- Dir rows -->
+              <template x-for="item in moveDirs" :key="item.id">
+                <div x-show="isMoveVisible(item)">
+                  <div @click="moveSelectedId = item.id"
+                       :style="`padding-left: calc(${item.depth} * 1.25rem + 0.75rem)`"
+                       :class="[
+                         moveSelectedId === item.id
+                           ? (darkMode ? 'border-l-2 border-accent-dark bg-accent-dark/10' : 'border-l-2 border-accent-light bg-accent-light/10')
+                           : (darkMode ? 'border-b border-accent-1/20 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/20 hover:bg-bubble-bg-light')
+                       ]"
+                       class="flex items-center gap-2 cursor-pointer py-2.5 pr-3 text-sm transition-colors duration-100 select-none">
+
+                    <!-- Expand chevron if has sub-dirs -->
+                    <i x-show="item.n_dirs > 0"
+                       @click.stop="toggleMoveDir(item.id)"
+                       class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-150"
+                       :class="moveOpenDirs[item.id] ? 'rotate-90' : ''"></i>
+                    <span x-show="item.n_dirs === 0" class="w-3 shrink-0"></span>
+
+                    <i class="fa-solid fa-folder shrink-0 text-xs"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                    <span class="truncate flex-1 font-medium" x-text="item.name"></span>
+
+                    <span x-show="moveFilePid === item.id"
+                          class="text-xs opacity-40 italic shrink-0">{% trans "current" %}</span>
+                    <i x-show="moveSelectedId === item.id"
+                       class="fa-solid fa-check text-xs shrink-0"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                  </div>
+                </div>
+              </template>
+
+            </div>
+          </div>
+
+          <!-- Error -->
+          <p x-show="moveError" x-text="moveError" class="text-xs text-warn-light -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitMove"
+                    :disabled="moveLoading || moveSelectedId === moveFilePid || (moveSelectedId === 'root' && moveFilePid === null)"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-40 disabled:cursor-not-allowed">
+              <span x-show="!moveLoading">{% trans "Move here" %}</span>
+              <span x-show="moveLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="moveModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Delete modal -->
+      <div x-show="deleteModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="deleteModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="deleteModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold text-warn-light">
+            <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+            {% trans "Delete file" %}
+          </h2>
+
+          <!-- File name -->
+          <div>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="deleteFileTitle"></p>
+          </div>
+
+          <!-- Warning -->
+          <p class="rounded-xl border border-warn-light/30 bg-warn-light/10 px-4 py-3 text-sm text-warn-light font-medium">
+            <i class="fa-solid fa-circle-exclamation mr-1.5"></i>
+            {% trans "This action is permanent and cannot be undone. The file and all its data will be deleted immediately." %}
+          </p>
+
+          <!-- Error -->
+          <p x-show="deleteError" x-text="deleteError" class="text-xs text-warn-light -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitDelete"
+                    :disabled="deleteLoading"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition bg-warn-light text-white hover:bg-warn-light disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!deleteLoading">{% trans "Delete permanently" %}</span>
+              <span x-show="deleteLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="deleteModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- Rename modal -->
+      <div x-show="renameModal"
+           x-cloak
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0"
+           x-transition:enter-end="opacity-100"
+           x-transition:leave="transition ease-in duration-100"
+           x-transition:leave-start="opacity-100"
+           x-transition:leave-end="opacity-0"
+           @keydown.escape.window="renameModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+
+        <!-- Backdrop -->
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="renameModal = false"></div>
+
+        <!-- Dialog -->
+        <div :class="darkMode
+                      ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-5"
+             @click.stop>
+
+          <h2 class="flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-pencil text-sm"
+               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+            {% trans "Rename file" %}
+          </h2>
+
+          <!-- Current name -->
+          <div>
+            <p class="mb-1 text-xs font-semibold opacity-50">{% trans "Current name" %}</p>
+            <p class="truncate rounded-lg px-3 py-2 text-sm font-mono opacity-60"
+               :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+               x-text="renameOldTitle"></p>
+          </div>
+
+          <!-- New name -->
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="rename-input">
+              {% trans "New name" %}
+            </label>
+            <input id="rename-input"
+                   x-ref="renameInput"
+                   x-model="renameNewTitle"
+                   @keydown.enter.prevent="submitRename"
+                   :class="darkMode
+                     ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/30'
+                     : 'bg-bubble-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/30'"
+                   class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition"
+                   autocomplete="off">
+          </div>
+
+          <!-- File type -->
+          <div>
+            <label class="mb-1 block text-xs font-semibold opacity-60" for="rename-type">
+              {% trans "File type" %}
+            </label>
+            <select id="rename-type"
+                    x-model="renameFileType"
+                    :class="darkMode
+                      ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
+                      : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+                    class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
+              <option value="pdf">pdf</option>
+              <option value="image">image</option>
+              <option value="html">html</option>
+              <option value="text">text</option>
+              <option value="json">json</option>
+              <option value="yaml">yaml</option>
+              <option value="xml">xml</option>
+              <option value="presentation">presentation</option>
+              <option value="latex">latex</option>
+              <option value="bib">bib</option>
+              <option value="csv">csv</option>
+              <option value="svg">svg</option>
+              <option value="notebook">notebook</option>
+              <option value="audio">audio</option>
+              <option value="video">video</option>
+            </select>
+          </div>
+
+          <!-- Error -->
+          <p x-show="renameError" x-text="renameError" class="text-xs text-warn-light -mt-2"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-3">
+            <button @click="submitRename"
+                    :disabled="renameLoading"
+                    :class="darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!renameLoading">{% trans "Rename" %}</span>
+              <span x-show="renameLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="renameModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Create New File modal ───────────────────────────────── -->
+      <div x-show="createModal"
+           x-cloak
+           @keydown.escape.window="createModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="createModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-file-circle-plus opacity-60"></i>{% trans "New File" %}
+          </h2>
+
+          <!-- Type pills -->
+          <div>
+            <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Type" %}</p>
+            <div class="flex flex-wrap gap-1.5">
+              <template x-for="[key, label] in createTypes" :key="key">
+                <button type="button"
+                        @click="setCreateType(key)"
+                        :class="createType === key
+                          ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                          : (darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15')"
+                        class="rounded-lg border px-3 py-1 text-xs font-semibold transition font-mono"
+                        :style="createType !== key ? (darkMode ? 'border-color:var(--color-accent-1)' : 'border-color:var(--color-accent-2)') : ''"
+                        x-text="label">
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <!-- Filename -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Filename" %}</label>
+            <input x-model="createTitle"
+                   @keydown.enter="submitCreateFile"
+                   type="text"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Error -->
+          <p x-show="createError" x-text="createError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-1">
+            <button @click="submitCreateFile"
+                    :disabled="createLoading"
+                    :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!createLoading"><i class="fa-solid fa-plus mr-1"></i>{% trans "Create" %}</span>
+              <span x-show="createLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="createModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Zip directory modal ──────────────────────────────────── -->
+      <div x-show="zipModal"
+           x-cloak
+           @keydown.escape.window="zipModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="if (!zipLoading) zipModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2 min-w-0">
+            <i class="fa-solid fa-file-zipper opacity-60 shrink-0"></i>
+            <span class="truncate">{% trans "Zip" %} “<span x-text="zipSourceName"></span>”</span>
+          </h2>
+
+          <!-- Filename -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Archive name" %}</label>
+            <input x-model="zipFilename" type="text"
+                   :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                   class="w-full rounded-xl border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20 transition">
+          </div>
+
+          <!-- Destination -->
+          <div>
+            <label class="text-xs font-semibold opacity-55 uppercase tracking-wide block mb-1">{% trans "Save to" %}</label>
+            <select x-model="zipTargetId"
+                    :class="darkMode ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark' : 'bg-primary-bg-light border-accent-2 text-text-main-light'"
+                    class="w-full rounded-xl border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 transition">
+              <option value="root">{% trans "Bucket root" %}</option>
+              <template x-for="d in zipDirs" :key="d.id">
+                <option :value="String(d.id)" x-text="'— '.repeat(d.depth) + d.name"></option>
+              </template>
+            </select>
+          </div>
+
+          <!-- File selection -->
+          <div>
+            <div class="flex items-center justify-between mb-1">
+              <label class="text-xs font-semibold opacity-55 uppercase tracking-wide">
+                {% trans "Files" %} (<span x-text="zipSelectedCount"></span>/<span x-text="zipFiles.length"></span>)
+              </label>
+              <div class="flex gap-2 text-xs">
+                <button type="button" @click="setAllZip(true)" class="opacity-70 hover:opacity-100 underline">{% trans "All" %}</button>
+                <button type="button" @click="setAllZip(false)" class="opacity-70 hover:opacity-100 underline">{% trans "None" %}</button>
+              </div>
+            </div>
+            <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="max-h-56 overflow-auto rounded-xl border divide-y"
+                 style="border-color:var(--color-accent-2)">
+              <template x-for="f in zipFiles" :key="f.id">
+                <label class="flex items-center gap-2 px-3 py-2 text-sm cursor-pointer"
+                       :class="darkMode ? 'hover:bg-primary-bg-dark border-accent-1/30' : 'hover:bg-primary-bg-light border-accent-2/30'">
+                  <input type="checkbox" x-model="f.selected" class="shrink-0">
+                  <span class="truncate" x-text="f.title"></span>
+                </label>
+              </template>
+              <p x-show="zipFiles.length === 0" class="px-3 py-3 text-xs opacity-60">{% trans "No files in this folder." %}</p>
+            </div>
+          </div>
+
+          <!-- Error / progress -->
+          <p x-show="zipError" x-text="zipError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+          <p x-show="zipLoading && !zipError" class="text-xs opacity-70 flex items-center gap-2">
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            <span>{% trans "Archiving in the background…" %}</span>
+            <a x-show="zipRunUrl" :href="zipRunUrl" class="underline">{% trans "view run" %}</a>
+          </p>
+
+          <!-- Actions -->
+          <div class="flex gap-2 pt-1">
+            <button @click="submitZip" :disabled="zipLoading"
+                    :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!zipLoading"><i class="fa-solid fa-file-zipper mr-1"></i>{% trans "Create zip" %}</span>
+              <span x-show="zipLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="zipModal = false" :disabled="zipLoading"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition disabled:opacity-50">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Actions chooser modal ────────────────────────────────── -->
+      <div x-show="actionsModal"
+           x-cloak
+           @keydown.escape.window="actionsModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="actionsModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-xs rounded-2xl border shadow-2xl p-5 space-y-3">
+
+          <h2 class="text-base font-bold flex items-center gap-2 min-w-0">
+            <i class="fa-solid fa-pen-to-square opacity-60 shrink-0"></i>
+            <span class="truncate" x-text="actionsItem ? actionsItem.title : ''"></span>
+          </h2>
+
+          <div class="flex flex-col gap-1.5">
+            <!-- Edit in editor -->
+            <button x-show="actionsItem && actionsItem.editor_url"
+                    @click="chooseAction('edit')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-code w-5 text-center opacity-70"></i>{% trans "Open in editor" %}
+            </button>
+            <!-- Open the file's tool directly (no service picker) -->
+            <button x-show="actionsItem && actionsItem.has_services && _openServiceUrlTpl"
+                    @click="window.location.href = _openServiceUrlTpl.replace('0', actionsItem.id)"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-wand-magic-sparkles w-5 text-center opacity-70"></i>{% trans "Open tool" %}
+            </button>
+            <!-- Move -->
+            <button @click="chooseAction('move')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-up-down w-5 text-center opacity-70"></i>{% trans "Move" %}
+            </button>
+            <!-- Rename -->
+            <button @click="chooseAction('rename')"
+                    :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/15' : 'border-accent-2 hover:bg-accent-light/15'"
+                    class="flex items-center gap-3 rounded-lg border px-3 py-2.5 text-sm font-semibold text-left transition">
+              <i class="fa-solid fa-pencil w-5 text-center opacity-70"></i>{% trans "Rename" %}
+            </button>
+          </div>
+
+          <button @click="actionsModal = false"
+                  :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                  class="w-full rounded-xl border px-4 py-2 text-sm font-semibold transition">
+            {% trans "Cancel" %}
+          </button>
+        </div>
+      </div>
+
+      <!-- ── File services (wand) modal ───────────────────────────── -->
+      <div x-show="svcModal"
+           x-cloak
+           @keydown.escape.window="svcModal = false"
+           class="fixed inset-0 z-50 flex items-center justify-center px-4">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="svcModal = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+             class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl p-6 space-y-4">
+
+          <h2 class="text-base font-bold flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles opacity-60"></i>{% trans "Run a service" %}
+          </h2>
+          <p class="text-xs opacity-60 -mt-2 truncate">
+            <span class="font-mono" x-text="svcFileTitle"></span>
+          </p>
+
+          <template x-if="svcList.length === 0">
+            <p class="text-xs opacity-50 italic">{% trans "No services available for this file." %}</p>
+          </template>
+
+          <!-- Service picker -->
+          <div x-show="svcList.length > 0">
+            <p class="text-xs font-semibold opacity-55 mb-2 uppercase tracking-wide">{% trans "Service" %}</p>
+            <div class="flex flex-col gap-1.5">
+              <template x-for="s in svcList" :key="s.key">
+                <button type="button"
+                        @click="svcSelected = s.key; svcArgs = ''"
+                        :class="svcSelected === s.key
+                          ? (darkMode ? 'border-accent-1 bg-accent-dark/15' : 'border-accent-2 bg-accent-light/15')
+                          : (darkMode ? 'border-accent-1/40 hover:bg-accent-dark/10' : 'border-accent-2/40 hover:bg-accent-light/10')"
+                        class="flex items-start gap-3 rounded-lg border px-3 py-2 text-left transition">
+                  <i :class="s.icon + ' mt-0.5 opacity-70'"></i>
+                  <span class="min-w-0">
+                    <span class="block text-sm font-semibold" x-text="s.title"></span>
+                    <span class="block text-[11px] opacity-55 leading-snug" x-text="s.description"></span>
+                  </span>
+                </button>
+              </template>
+            </div>
+          </div>
+
+          <p x-show="svcError" x-text="svcError"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <div class="flex gap-2 pt-1">
+            <button @click="submitService"
+                    :disabled="svcLoading || !svcCurrent"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="flex-1 rounded-xl px-4 py-2.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50 disabled:cursor-not-allowed">
+              <span x-show="!svcLoading"><i class="fa-solid fa-play mr-1"></i>{% trans "Run" %}</span>
+              <span x-show="svcLoading"><i class="fa-solid fa-spinner fa-spin"></i></span>
+            </button>
+            <button @click="svcModal = false"
+                    :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                    class="flex-1 rounded-xl border px-4 py-2.5 text-sm font-semibold transition">
+              {% trans "Cancel" %}
+            </button>
+          </div>
+
+        </div>
+      </div>
+
+      <!-- ── Image preview modal ──────────────────────────────────── -->
+      <div x-show="imageModalOpen"
+           x-cloak
+           @keydown.escape.window="imageModalOpen = false"
+           class="fixed inset-0 z-50 flex items-center justify-center p-4">
+        <div class="absolute inset-0 bg-black/80 backdrop-blur-sm" @click="imageModalOpen = false"></div>
+        <div class="relative z-10 flex max-h-[95vh] max-w-[95vw] flex-col items-center" @click.stop>
+          <img :src="imageModalUrl" :alt="imageModalTitle"
+               class="max-h-[88vh] max-w-[95vw] rounded-lg object-contain shadow-2xl">
+          <div class="mt-3 flex items-center gap-3">
+            <span class="max-w-[60vw] truncate text-sm text-white/80" x-text="imageModalTitle"></span>
+            <a :href="imageModalUrl" target="_blank" rel="noopener"
+               class="rounded-lg border border-white/30 px-3 py-1 text-xs font-semibold text-white/90 transition hover:bg-white/10"
+               title="{% trans 'Open in new tab' %}"><i class="fa-solid fa-up-right-from-square"></i></a>
+            <button @click="imageModalOpen = false"
+                    class="rounded-lg border border-white/30 px-3 py-1 text-xs font-semibold text-white/90 transition hover:bg-white/10">
+              <i class="fa-solid fa-xmark mr-1"></i>{% trans "Close" %}
+            </button>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /vaultTree -->
+
+  </div>
+</div>
+
+{% if gitvault_enabled %}
+  {% include "gitvault/_git_ui.html" %}
+{% endif %}
+{% endblock %}
