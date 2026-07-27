@@ -1,9 +1,0 @@
-{# params: label, value, sub (optional) , icon (fa classes, optional) #}
-<div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
-     class="rounded-xl p-4 shadow-sm">
-  <div class="flex items-center gap-2 text-xs uppercase tracking-wide opacity-70">
-    {% if icon %}<i class="{{ icon }}"></i>{% endif %}{{ label }}
-  </div>
-  <div class="mt-1 text-2xl font-bold">{{ value }}</div>
-  {% if sub %}<div class="mt-1 text-xs opacity-60">{{ sub }}</div>{% endif %}
-</div>
