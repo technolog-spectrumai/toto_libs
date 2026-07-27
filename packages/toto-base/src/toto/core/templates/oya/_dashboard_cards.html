@@ -1,0 +1,38 @@
+{% load i18n %}
+{% for block in items %}
+  <article
+    :class="darkMode
+      ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark'
+      : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+    class="rounded-lg border p-5 shadow-sm transition">
+
+    <div class="flex items-center justify-between gap-4">
+      <div class="flex min-w-0 items-center gap-3">
+        <div
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="w-6 shrink-0 text-center text-xl">
+          <i class="{{ block.icon|default:'fa-solid fa-cube' }}"></i>
+        </div>
+        <div class="min-w-0">
+          <h3
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="break-words font-bold">
+            {{ block.title|default:"Untitled" }}
+          </h3>
+          <p class="mt-0.5 line-clamp-2 text-sm opacity-70">
+            {{ block.description|default:"No description available." }}
+          </p>
+        </div>
+      </div>
+
+      <a
+        href="{{ block.link|default:'#' }}"
+        {% if block.link and block.link != '#' %}target="_blank" rel="noopener noreferrer"{% endif %}
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-arrow-right"></i>
+        {% trans "Open" %}
+      </a>
+    </div>
+  </article>
+{% endfor %}

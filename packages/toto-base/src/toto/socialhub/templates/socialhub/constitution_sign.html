@@ -1,0 +1,167 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Sign" %} — {{ constitution.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+<div class="mx-auto max-w-2xl space-y-6">
+
+  <a href="{% url 'socialhub:constitution_detail' community.slug %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i> {{ constitution.title }}
+  </a>
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-6 shadow-sm space-y-5">
+
+    <h2 class="text-xl font-bold flex items-center gap-2">
+      <i class="fa-solid fa-signature" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      {% trans "Sign Rules" %}
+    </h2>
+
+    {% if not person %}
+    <div class="rounded-lg border border-warn-light bg-warn-light/10 p-4 text-sm text-warn-light">
+      {% trans "You need a Person profile linked to your account to sign." %}
+    </div>
+
+    {% elif not is_member %}
+    <div class="rounded-lg border border-accent-light bg-accent-light/10 p-4 text-sm text-accent-light">
+      {% trans "Only community members may sign the constitution." %}
+    </div>
+
+    {% elif my_signature and my_signature.has_signed %}
+    <div class="rounded-lg border border-success-light bg-success-light/10 p-4 text-sm text-success-light space-y-3">
+      <div class="flex items-center gap-3">
+        <i class="fa-solid fa-circle-check text-success-light text-xl"></i>
+        <div>
+          <p class="font-semibold">{% trans "Already signed" %}</p>
+          <p class="opacity-80">{% trans "Signed on" %} {{ my_signature.signed_at|date:"Y-m-d H:i" }}</p>
+        </div>
+      </div>
+      {% if my_signature.is_cryptographically_signed %}
+      <div :class="darkMode ? 'bg-black/10 border-accent-1' : 'bg-white/60 border-accent-2'"
+           class="rounded border p-3 space-y-1 text-xs font-mono">
+        <p class="font-semibold not-mono text-xs uppercase opacity-60 tracking-wide">
+          {% trans "Cryptographic signature" %}
+        </p>
+        <p class="break-all opacity-80">{{ my_signature.cryptographic_signature }}</p>
+        <p class="opacity-50 break-all">{% trans "Key" %}: {{ my_signature.signing_key.key_id }}</p>
+      </div>
+      {% endif %}
+      {% if my_signature.signature_data %}
+      <div>
+        <p class="text-xs font-semibold uppercase opacity-60 mb-1">{% trans "Decorative signature" %}</p>
+        <img src="{{ my_signature.signature_data }}" alt="{% trans 'Signature' %}"
+             class="max-h-16 rounded border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             :style="darkMode ? 'filter: invert(1)' : ''">
+      </div>
+      {% endif %}
+    </div>
+
+    {% else %}
+
+    <dl class="text-sm space-y-1">
+      <div class="grid grid-cols-[160px_1fr]">
+        <dt class="opacity-60 font-semibold">{% trans "Community" %}</dt>
+        <dd>{{ community.name }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr]">
+        <dt class="opacity-60 font-semibold">{% trans "Constitution" %}</dt>
+        <dd>{{ constitution.title }}{% if constitution.version %} ({{ constitution.version }}){% endif %}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr]">
+        <dt class="opacity-60 font-semibold">{% trans "Signatory" %}</dt>
+        <dd>{{ person }}</dd>
+      </div>
+      <div class="grid grid-cols-[160px_1fr]">
+        <dt class="opacity-60 font-semibold">{% trans "Signing key" %}</dt>
+        <dd>
+          {% if existing_signing_key %}
+          <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+            <i class="fa-solid fa-key mr-1"></i>{{ existing_signing_key.encrypted_private_key.key_id }}
+          </span>
+          {% else %}
+          <span class="opacity-50 italic">{% trans "None — will be provisioned on sign" %}</span>
+          {% endif %}
+        </dd>
+      </div>
+    </dl>
+
+    <div :class="darkMode ? 'border-accent-1 bg-black/10' : 'border-accent-2 bg-link-light/10/40'"
+         class="rounded-lg border p-3 text-xs space-y-1">
+      <p class="font-semibold flex items-center gap-1">
+        <i class="fa-solid fa-shield-halved"></i>
+        {% trans "How signing works" %}
+      </p>
+      <p class="opacity-70">
+        {% trans "Your strongbox password decrypts your Ed25519 private key in memory. The key signs a canonical payload (constitution ID + your identity + timestamp). The signature is stored and verifiable without your password using only the public key." %}
+      </p>
+    </div>
+
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+
+      {% if required_strongbox %}
+      <input type="hidden" name="strongbox_id" value="{{ required_strongbox.pk }}">
+      {% elif strongboxes|length > 1 %}
+      <div class="space-y-1">
+        <label class="block text-sm font-semibold opacity-70">{% trans "Strongbox" %}</label>
+        <select name="strongbox_id"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1">
+          {% for sb in strongboxes %}
+          <option value="{{ sb.pk }}">{{ sb.name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      {% elif strongboxes %}
+      <input type="hidden" name="strongbox_id" value="{{ strongboxes.0.pk }}">
+      {% endif %}
+
+      <div class="space-y-1">
+        <label for="strongbox_password" class="block text-sm font-semibold opacity-70">
+          {% if required_strongbox %}
+            {% trans "Password for strongbox" %} <span class="font-mono">{{ required_strongbox.name }}</span>
+          {% else %}
+            {% trans "Strongbox password" %}
+          {% endif %}
+          <span class="text-warn-light">*</span>
+        </label>
+        <input type="password" id="strongbox_password" name="strongbox_password"
+          required autocomplete="current-password"
+          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm focus:outline-none focus:ring-1"
+          placeholder="{% trans 'Enter your strongbox password' %}">
+        <p class="text-xs opacity-50">{% trans "Used only to decrypt your private key in memory. Never stored." %}</p>
+      </div>
+
+      {% include "contracts/_signature_pad.html" with pad_id="const_sigpad" input_name="signature_data" initial_data=existing_signature %}
+
+      {% if not strongboxes %}
+      <div class="rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">
+        {% trans "No strongbox found. Set up a Gervazy strongbox before signing." %}
+      </div>
+      {% endif %}
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="rounded-lg border p-3 text-xs opacity-70 leading-relaxed">
+        {% trans "By submitting, I confirm I have read and agree to the terms of this constitution, and that this submission constitutes my legal signature." %}
+      </div>
+
+      <button type="submit" {% if not strongboxes %}disabled{% endif %}
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-pen-nib"></i>
+        {% trans "Sign Rules" %}
+      </button>
+    </form>
+    {% endif %}
+
+  </div>
+</div>
+</section>
+{% endblock %}

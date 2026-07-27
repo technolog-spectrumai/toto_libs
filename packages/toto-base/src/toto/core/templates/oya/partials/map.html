@@ -1,0 +1,173 @@
+{% load static %}
+{% load i18n %}
+
+<div
+  x-data="mapWidget_{{ widget.id }}()"
+  x-init="init()"
+  class="p-4 rounded-lg border mb-4 transition-colors duration-300"
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+    : 'bg-primary-bg-light text-text-main-light border-accent-2'">
+
+  <!-- Title -->
+  <h3 class="text-lg font-semibold mb-4">
+    Map View : {{ widget.title }}
+  </h3>
+
+  <!-- SIDEBAR + MAP -->
+  <div class="flex flex-row gap-4 h-80">
+
+    <!-- 📌 SIDEBAR -->
+    <aside
+      class="w-48 h-full overflow-y-auto rounded border p-3 space-y-3 transition-colors duration-300"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+
+      <h4 class="font-semibold text-sm">{% trans "Locations" %}</h4>
+
+      <!-- 🔍 SEARCH -->
+      <input
+        x-model="search"
+        type="text"
+        placeholder="{% trans 'Search...' %}"
+        class="w-full px-2 py-1 rounded text-sm transition-colors duration-300 border"
+        :class="darkMode
+          ? 'bg-primary-bg-dark text-text-main-dark border-accent-1'
+          : 'bg-primary-bg-light text-text-main-light border-accent-2'
+        "
+      />
+
+      <!-- 📋 FILTERED LIST -->
+      <div class="space-y-1">
+        {% for loc in widget.features %}
+          <template x-if="matches('{{ loc.name|lower }}')">
+            <button
+              @click="zoomTo('{{ loc.name }}')"
+              class="w-full text-left px-2 py-1 rounded text-sm transition
+                     hover:bg-link-light/15 dark:hover:bg-link-light">
+              <div class="font-medium">{{ loc.type }}</div>
+              <div class="text-xs opacity-80">{{ loc.name }}</div>
+            </button>
+          </template>
+        {% endfor %}
+      </div>
+
+    </aside>
+
+    <!-- 🗺️ MAP -->
+    <div class="flex-1 h-full">
+      <div
+        id="map_{{ widget.id }}"
+        class="w-full h-full rounded border transition-colors duration-300"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Leaflet -->
+<link rel="stylesheet"
+      href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+
+<script>
+function mapWidget_{{ widget.id }}() {
+  return {
+    map: null,
+    layers: {},
+    search: "",
+
+    matches(name) {
+      return name.includes(this.search.toLowerCase());
+    },
+
+    zoomTo(name) {
+      const layer = this.layers[name];
+      if (!layer) return;
+
+      const feature = this.features[name];   // 👈 we will store features by name
+      const customZoom = feature?.zoom;
+
+      const bounds = layer.getBounds();
+
+      if (customZoom && layer.getLatLng) {
+        // Point feature → use flyTo
+        const latlng = layer.getLatLng();
+        this.map.flyTo(latlng, customZoom, { duration: 1.2 });
+        return;
+      }
+
+      if (customZoom && bounds.isValid()) {
+        // Polygon or line → zoom to bounds, then set zoom
+        this.map.fitBounds(bounds, { padding: [20, 20] });
+        this.map.setZoom(customZoom);
+        return;
+      }
+
+      // Default behavior
+      if (bounds.isValid()) {
+        this.map.fitBounds(bounds, { padding: [20, 20] });
+      }
+    },
+
+    init() {
+      const id = "map_{{ widget.id }}";
+      const el = document.getElementById(id);
+      if (!el) return;
+
+      const center = {{ widget.center|safe }};
+      const zoom = {{ widget.zoom|default:6 }};
+      const features = {{ widget.features|safe }};
+      const isDark = localStorage.getItem("darkMode") === "true";
+      const existing = L.DomUtil.get(id);
+      if (existing && existing._leaflet_id) {
+          existing._leaflet_id = null;
+      }
+      this.map = L.map(id).setView(center, zoom);
+
+      const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png");
+      const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png");
+
+      (isDark ? darkTiles : lightTiles).addTo(this.map);
+
+      const layerList = [];
+      features.forEach(item => {
+        if (!item.geometry) return;
+
+        const layer = L.geoJSON(item.geometry, {
+          style: {
+            color: isDark ? "#FFCE56" : "#2563EB",
+            weight: 2
+          },
+          pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+            radius: 6,
+            fillColor: isDark ? "#FFCE56" : "#2563EB",
+            color: "#000",
+            weight: 1,
+            fillOpacity: 0.9
+          })
+        });
+
+        layer.bindPopup(`<strong>${item.type}</strong><br>${item.name}`);
+        layer.addTo(this.map);
+
+        this.layers[item.name] = layer;
+        layerList.push(layer);
+      });
+
+      this.features = {};
+      features.forEach(item => { this.features[item.name] = item; });
+
+      if (layerList.length > 0) {
+        const group = L.featureGroup(layerList);
+        const bounds = group.getBounds();
+        if (bounds.isValid()) {
+          this.map.fitBounds(bounds, { padding: [20, 20] });
+        }
+      }
+    }
+  }
+}
+</script>

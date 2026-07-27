@@ -1,0 +1,374 @@
+{% extends "events/base.html" %}
+{% load i18n %}
+
+{% block events_title %}{% trans "Plan" %}: {{ event.title }}{% endblock %}
+
+{% block events_content %}
+<div
+  x-data="{
+    search: '',
+    modal: { open: false, loading: false, data: null },
+    async openAvailability(personId) {
+      this.modal.open = true;
+      this.modal.loading = true;
+      this.modal.data = null;
+      try {
+        const resp = await fetch(`{% url 'events:event_availability_api' %}?person_id=${personId}&event_id={{ event.pk }}`);
+        this.modal.data = await resp.json();
+      } finally {
+        this.modal.loading = false;
+      }
+    },
+    get statusColor() {
+      if (!this.modal.data) return '';
+      const s = this.modal.data.status;
+      if (s === 'available') return 'text-success-light';
+      if (s === 'blocked')   return 'text-warn-light';
+      if (s === 'busy')      return 'text-amber-500';
+      return 'text-success-light opacity-60';
+    },
+    get statusDot() {
+      if (!this.modal.data) return '';
+      const s = this.modal.data.status;
+      if (s === 'available') return 'bg-success-light';
+      if (s === 'blocked')   return 'bg-warn-light';
+      if (s === 'busy')      return 'bg-amber-500';
+      return 'bg-success-light opacity-40';
+    },
+    get statusLabel() {
+      if (!this.modal.data) return '';
+      const map = { available: '{% trans "Available" %}', blocked: '{% trans "Unavailable" %}', busy: '{% trans "Busy" %}', unknown: '{% trans "Free" %}' };
+      return map[this.modal.data.status] || this.modal.data.status;
+    }
+  }"
+  class="grid gap-5 lg:grid-cols-[320px_minmax(0,1fr)]">
+
+  <!-- ── Sidebar ─────────────────────────────────────────────────────────── -->
+  <aside class="space-y-4">
+
+    <!-- Event card -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm space-y-4">
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Event" %}</p>
+        <h2 class="mt-1 text-xl font-bold">{{ event.title }}</h2>
+      </div>
+
+      <div class="grid grid-cols-1 gap-2 text-sm">
+        <div class="flex items-center gap-2">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="fa-solid fa-clock w-4 shrink-0"></i>
+          <span>{{ event.start_time|date:"M j, Y · g:i A" }}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="fa-solid fa-hourglass-end w-4 shrink-0"></i>
+          <span>{{ event.end_time|date:"g:i A" }}</span>
+        </div>
+        {% if event.address %}
+        <div class="flex items-center gap-2">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="fa-solid fa-location-dot w-4 shrink-0"></i>
+          <span>{{ event.address }}</span>
+        </div>
+        {% endif %}
+        {% if event.organizer %}
+        <div class="flex items-center gap-2">
+          <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="fa-solid fa-user w-4 shrink-0"></i>
+          <span>{{ event.organizer.display_name }}</span>
+        </div>
+        {% endif %}
+      </div>
+
+      <a href="{% url 'events:event_detail' event.pk %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Back to event" %}
+      </a>
+    </div>
+
+    <!-- Invite stats -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Responses" %}</p>
+      <div class="grid grid-cols-3 gap-2 text-center text-sm">
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+          <div class="text-xl font-bold text-success-light">{{ accepted_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Accepted" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+          <div class="text-xl font-bold text-warn-light">{{ declined_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Declined" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+          <div class="text-xl font-bold opacity-60">{{ pending_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Pending" %}</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Add participants (organizers only) -->
+    {% if user_is_organizer and uninvited %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Add participants" %}</p>
+
+      <div class="relative mb-3">
+        <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-50"></i>
+        <input
+          type="text"
+          x-model="search"
+          placeholder="{% trans "Filter people..." %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border py-2 pl-10 pr-3 text-sm outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+
+      <form method="post">
+        {% csrf_token %}
+        <div class="max-h-64 overflow-y-auto space-y-1 pr-1">
+          {% for person in uninvited %}
+          <div
+            x-show="!search || '{{ person.display_name|lower }}'.includes(search.toLowerCase())"
+            :class="darkMode ? 'hover:bg-primary-bg-dark' : 'hover:bg-primary-bg-light'"
+            class="flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-sm transition">
+
+            <!-- Checkbox + name -->
+            <label class="flex flex-1 min-w-0 items-center gap-2 cursor-pointer">
+              <input type="checkbox" name="person_ids" value="{{ person.pk }}"
+                     class="h-4 w-4 shrink-0 rounded">
+              <span
+                :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
+                class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold">
+                {{ person.display_name|first|upper }}
+              </span>
+              <span class="truncate">{{ person.display_name }}</span>
+            </label>
+
+            <!-- Availability info button -->
+            <button
+              type="button"
+              @click.prevent="openAvailability('{{ person.pk }}')"
+              :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+              class="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg border text-xs opacity-60 transition hover:opacity-100"
+              title="{% trans "View availability" %}">
+              <i class="fa-solid fa-calendar-check"></i>
+            </button>
+          </div>
+          {% endfor %}
+        </div>
+
+        <button
+          type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="mt-4 inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i>
+          {% trans "Send invites" %}
+        </button>
+      </form>
+    </div>
+    {% elif user_is_organizer %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm text-center text-sm opacity-60">
+      {% trans "All people have been invited." %}
+    </div>
+    {% endif %}
+
+  </aside>
+
+  <!-- ── Main: participant grid ─────────────────────────────────────────── -->
+  <section class="space-y-3">
+
+    <div class="flex items-center justify-between">
+      <h2 class="text-lg font-bold">{% trans "Participants" %}</h2>
+      <span class="text-sm opacity-60">{{ invite_rows|length }} {% trans "invited" %}</span>
+    </div>
+
+    {% if not invite_rows %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="fa-solid fa-user-plus text-3xl"></i>
+        <p class="mt-3 text-sm opacity-60">{% trans "No participants yet. Add people from the sidebar." %}</p>
+      </div>
+    {% endif %}
+
+    {% for row in invite_rows %}
+    {% with invite=row.invite person=row.person %}
+    <article
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-4 shadow-sm transition">
+      <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+
+        <!-- Person + availability -->
+        <div class="flex items-center gap-3 min-w-0">
+          <button
+            type="button"
+            @click="openAvailability('{{ person.pk }}')"
+            :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+            class="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-bold transition hover:ring-2 hover:ring-current/30"
+            title="{% trans "View availability" %}">
+            {{ person.display_name|first|upper }}
+          </button>
+          <div class="min-w-0">
+            <p class="truncate font-semibold">{{ person.display_name }}</p>
+            <div class="mt-1 flex flex-wrap items-center gap-2 text-xs">
+              {% if row.avail_status == "available" %}
+                <span class="inline-flex items-center gap-1 text-success-light font-medium">
+                  <span class="h-2 w-2 rounded-full bg-success-light"></span>{% trans "Available" %}
+                </span>
+              {% elif row.avail_status == "blocked" %}
+                <span class="inline-flex items-center gap-1 text-warn-light font-medium">
+                  <span class="h-2 w-2 rounded-full bg-warn-light"></span>{% trans "Unavailable" %}
+                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.get_availability_type_display }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
+                </span>
+              {% elif row.avail_status == "busy" %}
+                <span class="inline-flex items-center gap-1 text-amber-500 font-medium">
+                  <span class="h-2 w-2 rounded-full bg-amber-500"></span>{% trans "Busy" %}
+                  {% if row.conflict %}<span class="opacity-70">— {{ row.conflict.get_availability_type_display }}{% if row.conflict.reason %}: {{ row.conflict.reason }}{% endif %}</span>{% endif %}
+                </span>
+              {% else %}
+                <span class="inline-flex items-center gap-1 text-success-light font-medium">
+                  <span class="h-2 w-2 rounded-full bg-success-light opacity-50"></span>{% trans "Free" %}
+                </span>
+              {% endif %}
+            </div>
+          </div>
+        </div>
+
+        <!-- Invite status badge -->
+        <div class="flex items-center gap-2 shrink-0">
+          {% if invite.status == "accepted" %}
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-success-light/15 px-3 py-1 text-xs font-semibold text-success-light">
+              <i class="fa-solid fa-circle-check"></i>{% trans "Accepted" %}
+            </span>
+          {% elif invite.status == "declined" %}
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-warn-light/15 px-3 py-1 text-xs font-semibold text-warn-light">
+              <i class="fa-solid fa-circle-xmark"></i>{% trans "Declined" %}
+            </span>
+          {% else %}
+            <span class="inline-flex items-center gap-1.5 rounded-full border border-current/20 px-3 py-1 text-xs font-semibold opacity-60">
+              <i class="fa-regular fa-clock"></i>{% trans "Pending" %}
+            </span>
+          {% endif %}
+          <span class="text-xs opacity-40">{{ invite.sent_at|date:"M j" }}</span>
+        </div>
+
+      </div>
+    </article>
+    {% endwith %}
+    {% endfor %}
+
+  </section>
+
+  <!-- ── Availability modal ──────────────────────────────────────────────── -->
+  <div
+    x-show="modal.open"
+    x-cloak
+    x-transition:enter="transition ease-out duration-150"
+    x-transition:enter-start="opacity-0"
+    x-transition:enter-end="opacity-100"
+    x-transition:leave="transition ease-in duration-100"
+    x-transition:leave-start="opacity-100"
+    x-transition:leave-end="opacity-0"
+    class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 px-4 py-8"
+    @click.self="modal.open = false"
+    @keydown.escape.window="modal.open = false">
+
+    <div
+      x-show="modal.open"
+      x-transition:enter="transition ease-out duration-150"
+      x-transition:enter-start="opacity-0 scale-95"
+      x-transition:enter-end="opacity-100 scale-100"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+      class="w-full max-w-md rounded-xl border shadow-2xl overflow-hidden">
+
+      <!-- Modal header -->
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="flex items-center justify-between border-b px-5 py-4">
+        <div class="flex items-center gap-3">
+          <!-- Avatar -->
+          <div x-show="!modal.loading && modal.data"
+               :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
+               class="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-bold"
+               x-text="modal.data?.person?.initials || '?'"></div>
+          <div>
+            <p class="font-semibold text-sm" x-text="modal.loading ? '{% trans "Loading..." %}' : (modal.data?.person?.name || '')"></p>
+            <p class="text-xs opacity-50" x-show="modal.data">
+              {% trans "Availability for" %}
+              <span x-text="modal.data?.event?.date"></span>
+              <span x-text="modal.data?.event?.start + ' – ' + modal.data?.event?.end"></span>
+            </p>
+          </div>
+        </div>
+        <button @click="modal.open = false"
+                class="rounded-lg p-1.5 hover:opacity-70 transition">
+          <i class="fa-solid fa-xmark text-sm"></i>
+        </button>
+      </div>
+
+      <!-- Modal body -->
+      <div class="p-5 space-y-4">
+
+        <!-- Loading spinner -->
+        <div x-show="modal.loading" class="flex justify-center py-6">
+          <i class="fa-solid fa-spinner animate-spin text-2xl opacity-40"></i>
+        </div>
+
+        <template x-if="!modal.loading && modal.data">
+          <div class="space-y-4">
+
+            <!-- Overall status -->
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                 class="flex items-center gap-3 rounded-lg px-4 py-3">
+              <span class="h-3 w-3 rounded-full shrink-0" :class="statusDot"></span>
+              <div>
+                <p class="text-sm font-semibold" :class="statusColor" x-text="statusLabel"></p>
+                <p class="text-xs opacity-55" x-show="modal.data.conflict"
+                   x-text="modal.data.conflict ? modal.data.conflict.type + (modal.data.conflict.reason ? ': ' + modal.data.conflict.reason : '') : ''"></p>
+              </div>
+            </div>
+
+            <!-- Availability entries during event window -->
+            <div x-show="modal.data.availabilities && modal.data.availabilities.length > 0">
+              <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "Entries overlapping event" %}</p>
+              <div class="space-y-2">
+                <template x-for="entry in modal.data.availabilities" :key="entry.start + entry.type">
+                  <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                       class="flex items-center justify-between rounded-lg px-3 py-2 text-sm">
+                    <div class="flex items-center gap-2">
+                      <span class="h-2 w-2 rounded-full shrink-0"
+                            :class="entry.blocks ? 'bg-warn-light' : 'bg-amber-500'"></span>
+                      <div>
+                        <p class="font-medium" x-text="entry.type"></p>
+                        <p class="text-xs opacity-55" x-show="entry.reason" x-text="entry.reason"></p>
+                      </div>
+                    </div>
+                    <span class="text-xs opacity-50 shrink-0 ml-3" x-text="entry.start + ' – ' + entry.end"></span>
+                  </div>
+                </template>
+              </div>
+            </div>
+
+            <div x-show="modal.data.availabilities && modal.data.availabilities.length === 0"
+                 class="text-center text-sm opacity-50 py-2">
+              {% trans "No availability entries overlap with the event window." %}
+            </div>
+
+          </div>
+        </template>
+
+      </div>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+# Clean-environment test dependencies for the toto suite.
+# Django pinned to the version the hosts run; the third-party packages are the
+# ones the BASE_APPS import at check time (seeded from the portal host's
+# requirements.txt), plus what the upper tiers need to load at all so the tier
+# matrix in scripts/clean_env_check.sh actually exercises them.
+pytest
+Django==4.2.23
+djangorestframework
+django-cors-headers
+django-colorfield
+django-reversion
+django-jsonform
+django-json-widget
+django-markdownx
+django-trix-editor
+Pillow
+PyJWT
+PyPDF2
+cryptography
+PyYAML
+requests
+# tier matrix: toto-flow and everything above it import these at module level
+# (mandragora's admin reaches the compute-kernel client through pyzmq).
+celery
+django-jsoneditor
+pyzmq

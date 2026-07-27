@@ -1,0 +1,89 @@
+{% comment %}
+Shared command form: extra-input picker (ffmpeg only), options, live preview and
+the Run button. Expects the standard command_builder context (vf, op, tab, form,
+needs_extra, extra_slot, extra_tree, backend). Used by both the ffmpeg tab and
+the focused ffprobe/transcribe tabs.
+{% endcomment %}
+{% load i18n %}
+<form method="post" action="{% url 'manta:command_builder' %}" class="space-y-6"
+  x-data="builderForm()" x-init="preview()"
+  @input.debounce.400ms="preview()" @change.debounce.400ms="preview()">
+  {% csrf_token %}
+  <input type="hidden" name="file" value="{{ vf.id }}">
+  <input type="hidden" name="op" value="{{ op }}">
+  <input type="hidden" name="tab" value="{{ tab }}">
+
+  <!-- Preset-driven extra-input picker (ffmpeg commands that take a 2nd file) -->
+  {% if needs_extra %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{{ extra_slot.label }}</h2>
+    <p class="mb-3 text-xs opacity-50">
+      {% blocktrans with t=extra_slot.types %}Pick {{ t }} file(s) from this bucket.{% endblocktrans %}
+    </p>
+    {% include "vault/_file_tree.html" with tree=extra_tree tree_input_name=extra_slot.name tree_value_field="id" tree_selected=None tree_alpine=False %}
+  </div>
+  {% endif %}
+
+  <!-- Options -->
+  {% if form %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm space-y-4">
+    <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Options" %}</h2>
+    {% for field in form %}
+    <div>
+      {% if field.field.widget.input_type == 'checkbox' %}
+      <label class="flex items-center gap-2 text-sm cursor-pointer">
+        {{ field }}
+        <span class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</span>
+      </label>
+      {% else %}
+      <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{{ field.label }}</label>
+      {{ field }}
+      {% endif %}
+      {% if field.help_text %}<p class="mt-0.5 text-xs opacity-50">{{ field.help_text }}</p>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Generated command (live) -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-5 shadow-sm">
+    <div class="mb-2 flex items-center justify-between">
+      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+        {% trans "Command" %} <span class="opacity-50 lowercase" x-text="backend ? '(' + backend + ')' : ''"></span></h2>
+      <button type="button" x-show="command"
+        @click="navigator.clipboard.writeText($refs.cmd.innerText); copied = true; setTimeout(() => copied = false, 1500)"
+        class="text-xs opacity-60 hover:opacity-100">
+        <i class="fa-solid fa-copy mr-1"></i><span x-text="copied ? '{% trans "Copied" %}' : '{% trans "Copy" %}'"></span>
+      </button>
+    </div>
+    <pre x-ref="cmd" class="overflow-x-auto rounded-md p-3 font-mono text-xs leading-relaxed"
+      x-bind:class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light border border-accent-2'"
+      x-text="command || '{% trans "Fill the form to generate the command…" %}'"></pre>
+
+    <template x-if="previewErrors.length">
+      <div class="mt-2 text-xs text-warn-light space-y-0.5">
+        <template x-for="e in previewErrors" :key="e"><p class="font-mono" x-text="e"></p></template>
+      </div>
+    </template>
+
+    <template x-if="outputs.length">
+      <div class="mt-3">
+        <h3 class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Expected output(s)" %}</h3>
+        <ul class="list-inside list-disc text-sm opacity-80">
+          <template x-for="o in outputs" :key="o"><li class="font-mono" x-text="o"></li></template>
+        </ul>
+      </div>
+    </template>
+
+    <div class="mt-4">
+      <button type="submit" name="action" value="run" :disabled="!command"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
+        <i class="fa-solid fa-play"></i> {% trans "Run" %}
+      </button>
+    </div>
+  </div>
+</form>

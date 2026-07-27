@@ -1,0 +1,256 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Graph History" %}{% endblock %}
+
+{% block content %}
+<style>[x-cloak]{display:none !important}</style>
+<script>
+  const CSRF_TOKEN       = "{{ csrf_token }}";
+  const PRUNE_PLAN_URL   = "{% url 'ravioli:graph_prune_plan' %}";
+  const HISTORY_DATA_URL = "{% url 'ravioli:history_data' %}";
+  const DEFAULT_KEEP     = {{ default_keep }};
+</script>
+
+<div
+  x-data="historyViewer()"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    {% include "ravioli/_neo4j_warning.html" %}
+
+    <!-- Page header -->
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-clock-rotate-left mr-2 text-2xl"></i>{% trans "Graph History" %}</h1>
+        <p class="mt-1 text-sm opacity-60">{% trans "Kept :_HISTORICAL snapshots of changed nodes. Prune to a depth — reviewed before deletion." %}</p>
+      </div>
+      {% include "ravioli/_tabs.html" with active_tab="history" %}
+    </div>
+
+    <!-- Controls -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="flex flex-wrap items-center gap-x-5 gap-y-3 rounded-lg border px-4 py-3 shadow-sm">
+      <button
+        @click="loadHistory()" :disabled="loading"
+        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-50"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      >
+        <i class="fa-solid" :class="loading ? 'fa-circle-notch fa-spin' : (loaded ? 'fa-rotate' : 'fa-clock-rotate-left')"></i>
+        <span x-text="loaded ? '{% trans "Refresh" %}' : '{% trans "Show history" %}'"></span>
+      </button>
+
+      <div x-show="loaded" class="inline-flex items-center gap-2">
+        <label class="text-sm font-semibold opacity-70">{% trans "Keep depth" %}</label>
+        <input type="number" min="0" x-model.number="keep" @input="recolor()"
+               class="w-16 rounded-lg border border-current/20 bg-transparent px-2 py-1 text-sm"
+               :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+        <span class="text-xs opacity-60">{% trans "newest versions to keep per node" %}</span>
+      </div>
+
+      <div x-show="loaded" class="text-xs opacity-70">
+        <span class="font-semibold" x-text="snapshotCount"></span> {% trans "snapshot(s)" %} ·
+        <span class="font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-text="prunableCount"></span> {% trans "prunable" %}
+      </div>
+
+      <button
+        x-show="loaded"
+        @click="pruneNow()"
+        :disabled="prunableCount === 0 || reviewPhase !== 'idle'"
+        class="ml-auto inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40"
+        :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+      >
+        <i class="fa-solid fa-scissors text-xs"></i>{% trans "Prune history" %}…
+      </button>
+    </div>
+
+    <!-- History graph -->
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="flex min-h-[28rem] flex-col overflow-hidden rounded-xl border shadow-sm">
+      <div x-show="!loaded && !loading" class="flex flex-1 flex-col items-center justify-center gap-3 py-16 text-center">
+        <i class="fa-solid fa-clock-rotate-left text-4xl opacity-25"></i>
+        <p class="text-sm opacity-60">{% trans "History isn't loaded yet." %}</p>
+        <button @click="loadHistory()"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'">
+          <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Show history" %}
+        </button>
+      </div>
+      <div x-show="loading" class="flex flex-1 items-center justify-center gap-2 text-sm opacity-60">
+        <i class="fa-solid fa-circle-notch fa-spin"></i>{% trans "Loading history…" %}
+      </div>
+      <div x-show="loaded && !loading && snapshotCount === 0" class="flex flex-1 flex-col items-center justify-center gap-2 py-16 text-center">
+        <i class="fa-solid fa-clock-rotate-left text-3xl opacity-30"></i>
+        <p class="text-sm opacity-60">{% trans "No history yet — snapshots appear when an exported node changes." %}</p>
+      </div>
+      <div x-show="loaded && !loading && snapshotCount > 0" class="flex min-h-0 flex-1 flex-col">
+        <div id="history-cy" class="min-h-[24rem] flex-1"></div>
+        <div class="flex flex-wrap gap-3 border-t border-current/10 px-3 py-2 text-[10px] opacity-70">
+          <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-text-main-dark/50' : 'bg-text-main-light/50'"></span>{% trans "canonical node" %}</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></span>{% trans "kept version" %}</span>
+          <span class="inline-flex items-center gap-1"><span class="inline-block h-2.5 w-2.5 rounded-full" :class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'"></span>{% trans "prunable (beyond depth)" %}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Node detail panel — click a node in the history graph (like the query view) -->
+    <article
+      x-show="selectedElement"
+      x-transition
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <div class="mb-4 flex items-start justify-between gap-3">
+        <div>
+          <h3 class="flex items-center gap-2 text-lg font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+            <i class="fa-solid fa-circle-info text-base"></i>
+            <span x-text="selectedElement?.name || 'Node'"></span>
+          </h3>
+          <p class="mt-0.5 text-xs opacity-60">
+            <span x-text="selectedElement?.kind === 'snapshot' ? ('{% trans "snapshot" %} v' + selectedElement?.depth) : '{% trans "canonical" %}'"></span>
+            <span x-show="selectedElement?.kind === 'canonical' && selectedElement?.present === false" class="italic"> · {% trans "deleted" %}</span>
+            <span class="font-mono opacity-70" x-text="' · ' + (selectedElement?.uuid || '')"></span>
+          </p>
+        </div>
+        <button @click="selectedElement = null"
+          :class="darkMode ? 'border-accent-1 hover:bg-primary-bg-dark' : 'border-accent-2 hover:bg-primary-bg-light'"
+          class="rounded-lg border px-2 py-1 text-xs font-semibold transition">
+          <i class="fa-solid fa-xmark"></i> {% trans "Close" %}
+        </button>
+      </div>
+      <div class="grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-3">
+        <template x-for="[k, v] in Object.entries(selectedElement?.props || {})" :key="k">
+          <template x-if="v !== null && v !== undefined && v !== ''">
+            <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-3">
+              <div class="mb-0.5 text-xs uppercase tracking-wide opacity-50" x-text="k"></div>
+              <div class="break-all font-mono text-sm font-semibold" x-text="v"></div>
+            </div>
+          </template>
+        </template>
+      </div>
+      <p x-show="Object.keys(selectedElement?.props || {}).length === 0"
+        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="rounded-lg border border-dashed p-4 text-center text-sm italic opacity-60">
+        {% trans "No properties on this node." %}</p>
+    </article>
+  </div>
+
+  {% include "ravioli/_review_modal.html" %}
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+{% include "ravioli/_review_flow.html" %}
+<script>
+function historyViewer() {
+  return {
+    ...reviewFlow(),     // review-then-apply modal state + methods (Prune uses it)
+    keep: DEFAULT_KEEP,
+    nodes: [],
+    edges: [],
+    loaded: false,
+    loading: false,
+    error: null,
+    selectedElement: null,
+    _historyCy: null,
+
+    get snapshotCount() { return this.nodes.filter(n => n.kind === 'snapshot').length; },
+    get prunableCount() {
+      return this.nodes.filter(n => n.kind === 'snapshot' && n.depth >= this.keep).length;
+    },
+
+    async loadHistory() {
+      this.loading = true;
+      this.error = null;
+      this.selectedElement = null;
+      try {
+        const res = await fetch(HISTORY_DATA_URL);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
+        this.nodes = data.nodes;
+        this.edges = data.edges;
+        this.loaded = true;
+      } catch (e) {
+        this.error = e.message;
+      }
+      this.loading = false;
+      this.$nextTick(() => this.renderHistoryGraph());
+    },
+
+    pruneNow() {
+      this.openReview(PRUNE_PLAN_URL, '{% trans "Review history pruning" %}', { keep: this.keep });
+    },
+
+    renderHistoryGraph() {
+      const container = document.getElementById('history-cy');
+      if (!container || typeof cytoscape === 'undefined' || this.snapshotCount === 0) return;
+      if (this._historyCy) { this._historyCy.destroy(); this._historyCy = null; }
+
+      const tw = (window.tailwind && tailwind.config && tailwind.config.theme.extend.colors) || {};
+      const dark = localStorage.getItem('darkMode') === 'true';
+      const tone = (name, fb) => tw[name + (dark ? '-dark' : '-light')] || fb;
+      this._CANON = tone('text-main', '#9ca3af');
+      this._KEPT  = tone('accent', '#3b82f6');
+      this._PRUNE = tone('warn', '#ef4444');
+
+      this._historyCy = cytoscape({
+        container,
+        elements: [
+          ...this.nodes.map(n => ({ data: {
+            id: n.id,
+            label: n.kind === 'snapshot' ? ('v' + n.depth) : n.label,
+            name: n.label,                  // model label (for the detail panel)
+            uuid: n.uuid,
+            props: n.props || {},
+            kind: n.kind,
+            depth: n.depth ?? -1,
+            present: n.present !== false,   // orphan canonical (deleted) when false
+          }})),
+          ...this.edges.map(e => ({ data: { id: e.id, source: e.source, target: e.target } })),
+        ],
+        style: [
+          { selector: 'node', style: {
+            'background-color': '#9ca3af', 'border-width': 2, 'border-color': '#9ca3af',
+            'label': 'data(label)', 'color': '#111827', 'font-size': '10px',
+            'text-valign': 'center', 'text-halign': 'center', 'width': 26, 'height': 26,
+            'text-wrap': 'ellipsis', 'text-max-width': '70px',
+          }},
+          { selector: 'node[kind = "canonical"]', style: { 'width': 36, 'height': 36, 'font-size': '11px' } },
+          { selector: 'edge', style: {
+            'width': 1.4, 'line-color': '#9ca3af', 'target-arrow-color': '#9ca3af',
+            'target-arrow-shape': 'triangle', 'curve-style': 'bezier',
+          }},
+        ],
+        layout: { name: 'cose', animate: false, padding: 30 },
+      });
+      const self = this;
+      this._historyCy.on('tap', 'node', function (evt) { self.selectedElement = evt.target.data(); });
+      this._historyCy.on('tap', function (evt) { if (evt.target === self._historyCy) self.selectedElement = null; });
+      this.recolor();
+      setTimeout(() => { try { this._historyCy.resize(); this._historyCy.fit(undefined, 30); } catch (_) {} }, 80);
+    },
+
+    recolor() {
+      if (!this._historyCy) return;
+      const keep = this.keep;
+      this._historyCy.nodes().forEach((n) => {
+        const canonical = n.data('kind') === 'canonical';
+        const color = canonical ? this._CANON : (n.data('depth') >= keep ? this._PRUNE : this._KEPT);
+        n.style('background-color', color);
+        n.style('border-color', color);
+        // Orphan canonical (its live node was deleted) → faint + dashed.
+        const orphan = canonical && n.data('present') === false;
+        n.style('border-style', orphan ? 'dashed' : 'solid');
+        n.style('background-opacity', canonical ? (orphan ? 0.15 : 0.5) : 0.92);
+      });
+    },
+  };
+}
+</script>
+{% endblock %}

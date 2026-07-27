@@ -1,0 +1,42 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}SSO Test Result{% endblock %}
+
+{% block content %}
+<div style="max-width:720px">
+  <h1>{% trans "SSO Client Test" %}</h1>
+
+  {% if error %}
+    <div style="padding:1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;margin-bottom:1.5rem;">
+      <strong>{% trans "Error:" %}</strong> {{ error }}
+    </div>
+    <a href="javascript:history.back()" class="button">{% trans "Back" %}</a>
+
+  {% else %}
+    <div style="padding:1rem;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;margin-bottom:1.5rem;">{% trans "Authorization code flow completed successfully for" %}<strong>{{ user.username }}</strong>
+      via client <strong>{{ client.name }}</strong>.
+    </div>
+
+    <h2 style="font-size:1rem;margin-bottom:.5rem;">{% trans "User Claims" %}</h2>
+    <table>
+      <thead>
+        <tr><th>{% trans "Claim" %}</th><th>{% trans "Value" %}</th></tr>
+      </thead>
+      <tbody>
+        {% for key, value in claims.items %}
+          <tr><td><code>{{ key }}</code></td><td>{{ value }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
+    <h2 style="font-size:1rem;margin:1.5rem 0 .5rem;">{% trans "Token Info" %}</h2>
+    <table>
+      <tbody>
+        <tr><td><code>scope</code></td><td>{{ scope }}</td></tr>
+        <tr><td><code>access_token</code></td><td style="word-break:break-all;"><code>{{ access_token }}</code></td></tr>
+      </tbody>
+    </table>
+  {% endif %}
+</div>
+{% endblock %}

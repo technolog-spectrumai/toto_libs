@@ -1,0 +1,109 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Formica Cycles" %}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-5 py-8 transition-colors duration-300"
+>
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+      <div>
+        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <i class="fa-solid fa-clock-rotate-left mr-2 text-2xl"></i>{% trans "Cycle history" %}</h1>
+        <p class="mt-1 text-sm opacity-60">{% trans "Every epoch the colony has run, with its stats and audit trail." %}</p>
+      </div>
+      {% include "formica/_nav.html" with active_tab="cycles" %}
+    </div>
+
+    <!-- time series -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 shadow-sm">
+      <h2 class="mb-2 text-lg font-semibold">{% trans "Colony health over cycles" %}</h2>
+      <div class="h-72"><canvas id="cycleChart"></canvas></div>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-4 shadow-sm space-y-3">
+      {% if page_obj.object_list %}
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide opacity-60">
+            <th class="px-2 py-1.5">#</th>
+            <th class="px-2 py-1.5">{% trans "Status" %}</th>
+            <th class="px-2 py-1.5">{% trans "Trigger" %}</th>
+            <th class="px-2 py-1.5">{% trans "Started" %}</th>
+            <th class="px-2 py-1.5">{% trans "Sampled" %}</th>
+            <th class="px-2 py-1.5">{% trans "Writes" %}</th>
+            <th class="px-2 py-1.5">{% trans "Seed" %}</th>
+            <th class="px-2 py-1.5"></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for cycle in page_obj.object_list %}
+          <tr class="border-t align-top" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+            <td class="px-2 py-2 font-semibold">{{ cycle.number }}</td>
+            <td class="px-2 py-2">
+              <span class="rounded-full px-2 py-0.5 text-xs font-semibold
+                {% if cycle.status == 'completed' %}bg-emerald-500/15 text-emerald-500
+                {% elif cycle.status == 'failed' %}bg-rose-500/15 text-rose-500
+                {% elif cycle.status == 'running' %}bg-sky-500/15 text-sky-500
+                {% else %}bg-slate-500/15 text-slate-400{% endif %}">{{ cycle.status }}</span></td>
+            <td class="px-2 py-2 text-xs opacity-70">{{ cycle.triggered_by }}</td>
+            <td class="px-2 py-2 text-xs opacity-70">{{ cycle.started_at|date:"Y-m-d H:i:s"|default:"—" }}</td>
+            <td class="px-2 py-2 text-xs opacity-70">
+              {{ cycle.stats.nodes_sampled|default:"—" }} n / {{ cycle.stats.edges_sampled|default:"—" }} e</td>
+            <td class="px-2 py-2 text-xs opacity-70">{{ cycle.stats.writes_used|default:"—" }}</td>
+            <td class="px-2 py-2 font-mono text-xs opacity-50">{{ cycle.rng_seed }}</td>
+            <td class="px-2 py-2 text-right">
+              <details>
+                <summary class="cursor-pointer text-xs opacity-70 hover:opacity-100">{% trans "stats" %}</summary>
+                <pre class="mt-1 max-w-xl overflow-x-auto whitespace-pre-wrap rounded border p-2 text-left text-xs"
+                     :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">{{ cycle.stats|pprint }}</pre>
+                {% if cycle.error %}<pre class="mt-1 max-w-xl overflow-x-auto rounded border border-rose-500/40 bg-rose-500/10 p-2 text-left text-xs text-rose-500">{{ cycle.error }}</pre>{% endif %}
+              </details>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% include "oya/partials/_server_pagination.html" %}
+      {% else %}
+      <p class="text-sm opacity-60">{% trans "No cycles yet — run one from the Colony page." %}</p>
+      {% endif %}
+    </section>
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+<script>
+fetch("{% url 'formica:api_cycle_chart' %}")
+  .then(r => r.json())
+  .then(data => {
+    if (!data.labels || !data.labels.length) return;
+    const palette = ['#8b5cf6', '#0ea5e9', '#f59e0b', '#10b981', '#ef4444'];
+    new Chart(document.getElementById('cycleChart'), {
+      type: 'line',
+      data: {
+        labels: data.labels,
+        datasets: data.datasets.map((ds, i) => ({
+          ...ds, borderColor: palette[i % palette.length],
+          backgroundColor: 'transparent', tension: 0.25, pointRadius: 2,
+        })),
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: { y: { beginAtZero: true } },
+      },
+    });
+  })
+  .catch(() => {});
+</script>
+{% endblock %}

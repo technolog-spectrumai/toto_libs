@@ -1,0 +1,30 @@
+{% load i18n %}
+{% comment %}
+Non-blocking, self-correcting Neo4j health banner. Hidden via inline display
+(NOT the `hidden` attribute — a `display:` utility class would override it), shown
+only while the graph is enabled but unreachable, and hidden again as soon as Neo4j
+is reachable (polled — no page reload needed).
+{% endcomment %}
+<div id="ravioli-neo4j-warning" style="display:none"
+     class="items-center gap-3 rounded-lg border px-4 py-3 text-sm font-medium"
+     :class="darkMode ? 'border-warn-dark bg-warn-dark/15 text-warn-dark' : 'border-warn-light bg-warn-light/15 text-warn-light'">
+  <i class="fa-solid fa-triangle-exclamation"></i>
+  <span>{% trans "Neo4j is not running — graph features are unavailable until it is reachable." %}</span>
+</div>
+<script>
+(function () {
+  var HEALTH_URL = "{% url 'ravioli:graph_health' %}";
+  function setDown(down) {
+    var el = document.getElementById('ravioli-neo4j-warning');
+    if (el) el.style.display = down ? 'flex' : 'none';
+  }
+  function check() {
+    fetch(HEALTH_URL, { cache: 'no-store', headers: { 'Accept': 'application/json' } })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { setDown(!!(d && d.enabled && !d.alive)); })
+      .catch(function () { setDown(false); });   // probe failed / not authed — hide
+  }
+  check();
+  setInterval(check, 20000);   // re-probe so the banner self-corrects
+})();
+</script>

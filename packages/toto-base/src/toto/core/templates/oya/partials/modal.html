@@ -1,0 +1,28 @@
+{% load i18n %}
+<div
+  x-show="openYamlModal"
+  x-transition.opacity
+  class="fixed inset-0 flex items-center justify-center z-50"
+  :class="darkMode ? 'bg-black bg-opacity-60' : 'bg-black bg-opacity-40'">
+
+  <div
+    class="p-6 rounded shadow-xl max-w-lg w-full relative transition-colors duration-300"
+    :class="darkMode
+      ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+      : 'bg-primary-bg-light text-text-main-light border border-accent-2'">
+
+    <button
+      class="absolute top-2 right-2"
+      :class="darkMode ? 'text-gray-300' : 'text-gray-600'"
+      @click="openYamlModal = false">
+      ✕
+    </button>
+
+    <h4 class="text-lg font-semibold mb-3">{% trans "Data (YAML)" %}</h4>
+
+    <pre id="yaml-{{widget_id}}"
+         class="whitespace-pre-wrap break-words text-sm p-2 rounded transition-colors duration-300"
+         :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+    </pre>
+  </div>
+</div>

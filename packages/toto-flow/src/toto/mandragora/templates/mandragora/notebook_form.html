@@ -1,0 +1,74 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ title }} | Mandragora | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-4xl space-y-6">
+    <a href="{% if notebook %}{% url 'mandragora:notebook_detail' notebook.slug %}{% else %}{% url 'mandragora:notebook_list' %}{% endif %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% if notebook %}{{ notebook.title }}{% else %}{% trans "Notebooks" %}{% endif %}
+    </a>
+
+    <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded-2xl border p-5 shadow-sm">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Compute workspace" %}</p>
+      <h1 class="mt-2 flex items-center gap-3 text-3xl font-bold">
+        <i class="{{ icon|default:'fa-solid fa-book-open' }}"></i>
+        {{ title }}
+      </h1>
+    </header>
+
+    <form method="post"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-5 rounded-2xl border p-5 shadow-sm">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+             class="rounded-xl border p-4 text-sm font-semibold">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% for field in form %}
+        <div class="space-y-2">
+          <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">
+            {{ field.label }}
+          </label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="text-xs opacity-60">{{ field.help_text }}</p>
+          {% endif %}
+          {% if field.errors %}
+            <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm">
+              {{ field.errors }}
+            </p>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <div class="flex flex-wrap items-center justify-end gap-3 pt-2">
+        <a href="{% if notebook %}{% url 'mandragora:notebook_detail' notebook.slug %}{% else %}{% url 'mandragora:notebook_list' %}{% endif %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+          {% trans "Cancel" %}
+        </a>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="{{ icon|default:'fa-solid fa-check' }}"></i>
+          {{ submit_label }}
+        </button>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

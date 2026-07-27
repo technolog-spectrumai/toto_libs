@@ -1,0 +1,414 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Copy Files" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+<script>
+document.addEventListener('alpine:init', () => {
+  Alpine.data('copyFilesPage', () => {
+    const sourceItems = JSON.parse(document.getElementById('source-items').textContent);
+    const destItems   = JSON.parse(document.getElementById('dest-items').textContent);
+
+    const sourceDirMap = {};
+    for (const i of sourceItems) if (i.t === 'dir') sourceDirMap[i.id] = i;
+    const destNodeMap = {};
+    for (const i of destItems) destNodeMap[String(i.id)] = i;
+
+    return {
+      sourceItems,
+      destItems,
+      search: '',
+      sourceOpenDirs: {},
+      selectedFiles: [],
+      destOpenItems: {},
+      selectedDestId: null,
+      selectedDestBucketPk: null,
+      selectedDestDirPk: '',
+      copyPolicy: 'add_suffix',
+
+      // ── source tree ──────────────────────────────────────────────────
+      isSourceVisible(item) {
+        const s = this.search.toLowerCase().trim();
+        if (s) return item.t === 'file' && item.title.toLowerCase().includes(s);
+        if (item.pid === null || item.pid === undefined) return true;
+        if (!this.sourceOpenDirs[item.pid]) return false;
+        const p = sourceDirMap[item.pid];
+        return p ? this.isSourceVisible(p) : true;
+      },
+      toggleSourceDir(id) {
+        this.sourceOpenDirs[id] = !this.sourceOpenDirs[id];
+        if (!this.sourceOpenDirs[id]) this._closeSourceKids(id);
+      },
+      _closeSourceKids(id) {
+        for (const i of sourceItems) {
+          if (i.t === 'dir' && i.pid === id) {
+            this.sourceOpenDirs[i.id] = false;
+            this._closeSourceKids(i.id);
+          }
+        }
+      },
+      get allSourceFiles() { return sourceItems.filter(i => i.t === 'file'); },
+      get visibleSourceFiles() {
+        return sourceItems.filter(i => i.t === 'file' && this.isSourceVisible(i));
+      },
+      get allVisibleSelected() {
+        const v = this.visibleSourceFiles;
+        return v.length > 0 && v.every(f => this.selectedFiles.includes(f.id));
+      },
+      get someVisibleSelected() {
+        return this.visibleSourceFiles.some(f => this.selectedFiles.includes(f.id));
+      },
+      toggleAll() {
+        const v = this.visibleSourceFiles;
+        if (this.allVisibleSelected) {
+          const ids = new Set(v.map(f => f.id));
+          this.selectedFiles = this.selectedFiles.filter(id => !ids.has(id));
+        } else {
+          v.forEach(f => { if (!this.selectedFiles.includes(f.id)) this.selectedFiles.push(f.id); });
+        }
+      },
+
+      // ── dest tree ────────────────────────────────────────────────────
+      isDestVisible(item) {
+        if (item.pid === null || item.pid === undefined) return true;
+        const pid = String(item.pid);
+        if (!this.destOpenItems[pid]) return false;
+        const p = destNodeMap[pid];
+        return p ? this.isDestVisible(p) : true;
+      },
+      isDestSelected(item) { return this.selectedDestId === String(item.id); },
+      isDestOpen(id) { return !!this.destOpenItems[String(id)]; },
+      selectDest(item) {
+        const id = String(item.id);
+        this.destOpenItems[id] = (this.selectedDestId === id) ? !this.destOpenItems[id] : true;
+        this.selectedDestId = id;
+        this.selectedDestBucketPk = item.bpk;
+        this.selectedDestDirPk = item.t === 'dir' ? item.id : '';
+      },
+      get selectedDestLabel() {
+        if (!this.selectedDestId) return '';
+        const n = destNodeMap[this.selectedDestId];
+        return n ? (n.t === 'bucket_root' ? `${n.name} (root)` : n.name) : '';
+      },
+
+      // ── submit ───────────────────────────────────────────────────────
+      get canSubmit() {
+        return this.selectedFiles.length > 0 && this.selectedDestBucketPk !== null;
+      },
+    };
+  });
+});
+</script>
+{% endblock %}
+
+{% block content %}
+{{ source_items|json_script:"source-items" }}
+{{ dest_items|json_script:"dest-items" }}
+
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'vault:bucket_metrics' source_bucket.slug %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {{ source_bucket.name }}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Vault" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-copy"></i>
+            {% trans "Copy files from" %} &ldquo;{{ source_bucket.name }}&rdquo;
+          </h1>
+        </div>
+      </div>
+    </header>
+
+    <!-- Form -->
+    <form method="post" x-data="copyFilesPage()" x-cloak>
+      {% csrf_token %}
+
+      <!-- Form errors -->
+      {% if form.errors %}
+      <div class="mb-4 rounded-xl border border-warn-light/40 bg-warn-light/5 p-4 text-sm text-warn-light space-y-1">
+        {% for field, errors in form.errors.items %}{% for e in errors %}
+          <p><i class="fa-solid fa-triangle-exclamation mr-1.5"></i>{{ e }}</p>
+        {% endfor %}{% endfor %}
+      </div>
+      {% endif %}
+
+      <!-- Two-panel tree grid -->
+      <div class="grid grid-cols-1 gap-6 lg:grid-cols-2">
+
+        <!-- ── Source panel ─────────────────────────────────────────── -->
+        <section :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="rounded-xl border shadow-sm overflow-hidden flex flex-col">
+
+          <!-- Panel header -->
+          <div :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+               class="flex items-center gap-3 px-4 py-3 shrink-0">
+            <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="fa-solid fa-vault shrink-0 text-sm"></i>
+            <span class="font-semibold text-sm truncate flex-1">{{ source_bucket.name }}</span>
+            <span class="shrink-0 text-xs opacity-50">
+              <span x-text="selectedFiles.length"></span>
+              <span class="opacity-60">/</span>
+              <span x-text="allSourceFiles.length"></span>
+              <span class="ml-0.5 opacity-70">{% trans "sel." %}</span>
+            </span>
+          </div>
+
+          <!-- Toolbar: select-all + search -->
+          <div :class="darkMode ? 'bg-bubble-bg-dark/50 border-b border-accent-1/40' : 'bg-bubble-bg-light/50 border-b border-accent-2/40'"
+               class="flex items-center gap-3 px-4 py-2 shrink-0">
+            <label class="flex items-center gap-2 cursor-pointer text-sm font-semibold select-none shrink-0">
+              <input type="checkbox"
+                     :checked="allVisibleSelected"
+                     :indeterminate.prop="someVisibleSelected && !allVisibleSelected"
+                     @change="toggleAll"
+                     class="rounded">
+              {% trans "All" %}
+            </label>
+            <div class="flex-1"></div>
+            <input type="text" x-model="search"
+                   placeholder="{% trans 'Filter…' %}"
+                   :class="darkMode
+                     ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark placeholder:text-text-main-dark/40'
+                     : 'bg-primary-bg-light border-accent-2 text-text-main-light placeholder:text-text-main-light/40'"
+                   class="w-36 rounded-lg border px-3 py-1.5 text-xs focus:outline-none"
+                   autocomplete="off">
+          </div>
+
+          <!-- Tree -->
+          <div class="overflow-y-auto divide-y min-h-[200px] max-h-[58vh]"
+               :class="darkMode ? 'divide-accent-1/20' : 'divide-accent-2/20'">
+
+            <template x-if="allSourceFiles.length === 0">
+              <div class="px-4 py-12 text-center text-sm opacity-50">
+                <i class="fa-solid fa-folder-open mb-2 text-xl block"></i>
+                {% trans "No files in this bucket." %}
+              </div>
+            </template>
+
+            <template x-for="item in sourceItems" :key="'s-' + item.t + '-' + item.id">
+              <div x-show="isSourceVisible(item)">
+
+                <!-- Dir row -->
+                <template x-if="item.t === 'dir'">
+                  <div @click="toggleSourceDir(item.id)"
+                       :style="`padding-left: calc(${item.depth} * 1.5rem + 0.75rem)`"
+                       :class="darkMode ? 'hover:bg-bubble-bg-dark' : 'hover:bg-bubble-bg-light'"
+                       class="flex items-center gap-2 cursor-pointer py-2.5 pr-4 select-none transition-colors">
+                    <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                       :class="sourceOpenDirs[item.id] ? 'rotate-90' : ''"></i>
+                    <i class="fa-solid shrink-0 text-xs"
+                       :class="[sourceOpenDirs[item.id] ? 'fa-folder-open' : 'fa-folder',
+                                darkMode ? 'text-accent-dark' : 'text-accent-light']"></i>
+                    <span class="font-semibold text-sm" x-text="item.name"></span>
+                    <span x-show="item.n_files > 0"
+                          class="ml-1 text-xs opacity-40"
+                          x-text="`${item.n_files} file${item.n_files !== 1 ? 's' : ''}`"></span>
+                    <span x-show="item.n_dirs > 0 && item.n_files > 0" class="text-xs opacity-25">·</span>
+                    <span x-show="item.n_dirs > 0"
+                          class="text-xs opacity-40"
+                          x-text="`${item.n_dirs} dir${item.n_dirs !== 1 ? 's' : ''}`"></span>
+                  </div>
+                </template>
+
+                <!-- File row -->
+                <template x-if="item.t === 'file'">
+                  <label :style="`padding-left: calc(${item.depth} * 1.5rem + 0.5rem)`"
+                         :class="[
+                           selectedFiles.includes(item.id)
+                             ? (darkMode ? 'bg-accent-dark/10' : 'bg-accent-light/10')
+                             : (darkMode ? 'hover:bg-white/5' : 'hover:bg-black/4'),
+                         ]"
+                         class="flex items-center gap-3 pr-4 py-2.5 cursor-pointer transition-colors">
+                    <input type="checkbox" :value="item.id" x-model="selectedFiles"
+                           class="rounded shrink-0">
+                    <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                          class="shrink-0 rounded border px-1.5 py-0.5 text-xs font-semibold uppercase leading-none"
+                          x-text="item.file_type"></span>
+                    <span class="flex-1 min-w-0 text-sm font-medium truncate" x-text="item.title"></span>
+                    <span class="font-mono text-xs opacity-35 shrink-0 hidden sm:block" x-text="item.key"></span>
+                  </label>
+                </template>
+
+              </div>
+            </template>
+          </div>
+
+        </section>
+
+        <!-- ── Destination panel ────────────────────────────────────── -->
+        <section :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="rounded-xl border shadow-sm overflow-hidden flex flex-col">
+
+          <!-- Panel header -->
+          <div :class="darkMode ? 'bg-bubble-bg-dark border-b border-accent-1' : 'bg-bubble-bg-light border-b border-accent-2'"
+               class="flex items-center gap-3 px-4 py-3 shrink-0">
+            <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="fa-solid fa-folder-tree shrink-0 text-sm"></i>
+            <span class="font-semibold text-sm">{% trans "Destination" %}</span>
+            <span x-show="selectedDestLabel"
+                  :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                  class="ml-auto text-xs font-semibold truncate max-w-[45%]"
+                  x-text="selectedDestLabel"></span>
+            <span x-show="!selectedDestLabel"
+                  class="ml-auto text-xs opacity-40">{% trans "click to select" %}</span>
+          </div>
+
+          <!-- Dest tree -->
+          <div class="overflow-y-auto divide-y min-h-[200px] max-h-[58vh]"
+               :class="darkMode ? 'divide-accent-1/20' : 'divide-accent-2/20'">
+
+            <template x-if="destItems.length === 0">
+              <div class="px-4 py-12 text-center text-sm opacity-50">
+                <i class="fa-solid fa-inbox mb-2 text-xl block"></i>
+                {% trans "No other buckets available. Create one first." %}
+              </div>
+            </template>
+
+            <template x-for="item in destItems" :key="'d-' + item.t + '-' + item.id">
+              <div x-show="isDestVisible(item)">
+
+                <!-- Bucket root -->
+                <template x-if="item.t === 'bucket_root'">
+                  <div @click="selectDest(item)"
+                       :class="[
+                         isDestSelected(item)
+                           ? (darkMode ? 'bg-accent-dark/15 border-l-accent-dark' : 'bg-accent-light/15 border-l-accent-light')
+                           : (darkMode ? 'hover:bg-bubble-bg-dark border-l-transparent' : 'hover:bg-bubble-bg-light border-l-transparent'),
+                       ]"
+                       class="flex items-center gap-2 cursor-pointer py-2.5 px-3 select-none border-l-2 transition-colors">
+                    <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                       :class="isDestOpen(item.id) ? 'rotate-90' : ''"></i>
+                    <i class="fa-solid fa-database shrink-0 text-xs"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                    <span class="font-bold text-sm flex-1 truncate" x-text="item.name"></span>
+                    <span x-show="item.n_dirs > 0" class="text-xs opacity-40 shrink-0"
+                          x-text="`${item.n_dirs} dir${item.n_dirs !== 1 ? 's' : ''}`"></span>
+                    <span x-show="isDestSelected(item)"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="ml-2 shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold leading-none">
+                      {% trans "root" %}
+                    </span>
+                  </div>
+                </template>
+
+                <!-- Directory -->
+                <template x-if="item.t === 'dir'">
+                  <div @click="selectDest(item)"
+                       :style="`padding-left: calc(${item.depth} * 1.5rem + 0.25rem)`"
+                       :class="[
+                         isDestSelected(item)
+                           ? (darkMode ? 'bg-accent-dark/15 border-l-accent-dark' : 'bg-accent-light/15 border-l-accent-light')
+                           : (darkMode ? 'hover:bg-bubble-bg-dark border-l-transparent' : 'hover:bg-bubble-bg-light border-l-transparent'),
+                       ]"
+                       class="flex items-center gap-2 cursor-pointer py-2.5 pr-4 select-none border-l-2 transition-colors">
+                    <i class="fa-solid fa-chevron-right w-3 shrink-0 text-xs opacity-40 transition-transform duration-200"
+                       :class="isDestOpen(item.id) ? 'rotate-90' : ''"></i>
+                    <i class="fa-solid shrink-0 text-xs"
+                       :class="[isDestOpen(item.id) ? 'fa-folder-open' : 'fa-folder',
+                                darkMode ? 'text-accent-dark opacity-80' : 'text-accent-light opacity-80']"></i>
+                    <span class="text-sm font-medium flex-1 truncate" x-text="item.name"></span>
+                    <span x-show="isDestSelected(item)"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="ml-auto shrink-0 rounded-full px-2 py-0.5 text-xs font-bold leading-none">✓</span>
+                  </div>
+                </template>
+
+              </div>
+            </template>
+
+          </div>
+        </section>
+
+      </div><!-- /grid -->
+
+      <!-- Copy policy -->
+      <div :class="darkMode ? 'border-accent-1/40 bg-bubble-bg-dark' : 'border-accent-2/40 bg-bubble-bg-light'"
+           class="rounded-xl border px-5 py-4 mt-2">
+        <p class="mb-3 text-xs font-semibold uppercase tracking-wide opacity-55">
+          <i class="fa-solid fa-sliders mr-1.5"></i>{% trans "Copy policy" %}
+        </p>
+        <div class="flex flex-wrap gap-6">
+
+          <label class="flex items-start gap-2.5 cursor-pointer">
+            <input type="radio" x-model="copyPolicy" value="add_suffix" class="mt-0.5 shrink-0">
+            <div>
+              <p class="text-sm font-semibold">{% trans "Add suffix" %}</p>
+              <p class="text-xs opacity-55 mt-0.5">{% trans "Rename on conflict — file → file-1, file-2 …" %}</p>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 cursor-pointer">
+            <input type="radio" x-model="copyPolicy" value="replace" class="mt-0.5 shrink-0">
+            <div>
+              <p class="text-sm font-semibold">{% trans "Replace" %}</p>
+              <p class="text-xs opacity-55 mt-0.5">{% trans "Overwrite any existing file with the same key." %}</p>
+            </div>
+          </label>
+
+          <label class="flex items-start gap-2.5 cursor-pointer">
+            <input type="radio" x-model="copyPolicy" value="fail" class="mt-0.5 shrink-0">
+            <div>
+              <p class="text-sm font-semibold">{% trans "Fail on conflict" %}</p>
+              <p class="text-xs opacity-55 mt-0.5">{% trans "Abort the entire copy if any key already exists." %}</p>
+            </div>
+          </label>
+
+        </div>
+      </div>
+
+      <!-- Hidden form inputs (submitted with the form) -->
+      <div class="hidden" aria-hidden="true">
+        <template x-for="fid in selectedFiles" :key="fid">
+          <input type="hidden" name="files" :value="fid">
+        </template>
+        <input type="hidden" name="destination_bucket" :value="selectedDestBucketPk || ''">
+        <input type="hidden" name="destination_directory" :value="selectedDestDirPk">
+        <input type="hidden" name="copy_policy" :value="copyPolicy">
+      </div>
+
+      <!-- Actions -->
+      <div class="flex flex-wrap items-center gap-3 pt-1">
+        <button type="submit"
+                :disabled="!canSubmit"
+                :class="canSubmit
+                  ? (darkMode
+                      ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90'
+                      : 'bg-accent-light text-primary-bg-light hover:opacity-90')
+                  : 'cursor-not-allowed opacity-40 bg-gray-400 text-white'"
+                class="inline-flex items-center gap-2 rounded-xl px-5 py-2.5 text-sm font-bold transition">
+          <i class="fa-solid fa-copy"></i>
+          {% trans "Copy" %}
+          <span x-show="selectedFiles.length > 0"
+                x-text="selectedFiles.length + (selectedFiles.length !== 1 ? ' files' : ' file')"
+                class="opacity-70"></span>
+          <template x-if="selectedDestLabel">
+            <span class="opacity-55">→ <span x-text="selectedDestLabel"></span></span>
+          </template>
+        </button>
+
+        <a href="{% url 'vault:bucket_metrics' source_bucket.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-xl border px-4 py-2.5 text-sm font-semibold transition hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+      </div>
+
+    </form>
+  </div>
+</div>
+{% endblock %}

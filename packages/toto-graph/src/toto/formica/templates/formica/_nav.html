@@ -1,0 +1,44 @@
+{% load i18n %}
+{# Formica tab bar. Caller passes active_tab = overview|params|cycles|map|proposals #}
+<nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Formica navigation' %}">
+  <a href="{% url 'formica:overview' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'overview' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-bugs"></i>{% trans "Colony" %}</a>
+  <a href="{% url 'formica:params' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'params' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-sliders"></i>{% trans "Parameters" %}</a>
+  <a href="{% url 'formica:cycles' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'cycles' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Cycles" %}</a>
+  <a href="{% url 'formica:map' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'map' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-map"></i>{% trans "Map" %}</a>
+  <a href="{% url 'formica:proposals' %}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'proposals' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-list-check"></i>{% trans "Proposals" %}</a>
+</nav>

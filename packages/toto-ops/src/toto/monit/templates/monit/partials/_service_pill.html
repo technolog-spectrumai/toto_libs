@@ -1,0 +1,21 @@
+{# params: label, state (True | False | None = unknown), detail (optional) #}
+<div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+     class="flex items-center justify-between gap-3 rounded-lg px-4 py-3">
+  <span class="text-sm font-semibold">{{ label }}</span>
+  <span class="flex items-center gap-2">
+    {% if detail %}<span class="text-xs opacity-60">{{ detail }}</span>{% endif %}
+    {% if state is True %}
+    <span :class="darkMode ? 'bg-success-dark text-primary-bg-dark' : 'bg-success-light text-white'"
+          class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold">
+      <i class="fa-solid fa-circle-check"></i>up</span>
+    {% elif state is False %}
+    <span :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-white'"
+          class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold">
+      <i class="fa-solid fa-circle-xmark"></i>down</span>
+    {% else %}
+    <span :class="darkMode ? 'bg-accent-1 text-primary-bg-dark' : 'bg-accent-2 text-white'"
+          class="inline-flex items-center gap-1 rounded-full px-3 py-1 text-xs font-bold">
+      <i class="fa-solid fa-circle-question"></i>unknown</span>
+    {% endif %}
+  </span>
+</div>

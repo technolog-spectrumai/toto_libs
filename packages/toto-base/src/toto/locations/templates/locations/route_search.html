@@ -1,0 +1,525 @@
+{% extends "locations/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Route Search" %} - {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<style>
+  [x-cloak] {
+    display: none !important;
+  }
+</style>
+{% endblock %}
+
+{% block locations_content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto grid max-w-7xl gap-5 lg:grid-cols-[380px_minmax(0,1fr)]">
+
+    <!-- Sidebar -->
+    <aside
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+
+      <a
+        href="{% url 'locations:locations_all' %}"
+        class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Locations" %}
+      </a>
+
+      <div class="mt-5">
+        <p
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          {% trans "Traversable path" %}
+        </p>
+
+        <h1 class="mt-2 flex items-center gap-2 text-2xl font-bold">
+          <i class="fa-solid fa-route"></i>
+          {% trans "Route Search" %}
+        </h1>
+
+        <p class="mt-2 text-sm opacity-70">
+          {% trans "Search a real route between two saved addresses or manual WGS84 points." %}
+        </p>
+      </div>
+
+      <!-- Search form -->
+      <form method="get" class="mt-5 space-y-4">
+
+        <!-- Mode -->
+        <div>
+          <label for="mode" class="mb-1 block text-sm font-semibold">{% trans "Mode" %}</label>
+
+          <div class="relative">
+            <i
+              id="mode_icon"
+              class="fa-solid {{ selected_mode.icon }} pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70"></i>
+
+            <select
+              id="mode"
+              name="mode"
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="w-full appearance-none rounded-lg border py-2 pl-10 pr-10 text-sm font-semibold outline-none focus:ring-2 focus:ring-current/20">
+              {% for mode in mode_options %}
+                <option
+                  value="{{ mode.value }}"
+                  data-icon="{{ mode.icon }}"
+                  {% if form.mode == mode.value %}selected{% endif %}>
+                  {{ mode.label }}
+                </option>
+              {% endfor %}
+            </select>
+
+            <i class="fa-solid fa-chevron-down pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-xs opacity-60"></i>
+          </div>
+
+          <div
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark'
+              : 'border-accent-2 bg-primary-bg-light'"
+            class="mt-3 flex items-center gap-3 rounded-lg border p-3 text-sm">
+
+            <span
+              :class="darkMode
+                ? 'bg-accent-dark text-primary-bg-dark'
+                : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+              <i id="selected_mode_icon" class="fa-solid {{ selected_mode.icon }}"></i>
+            </span>
+
+            <span>
+              <span class="block text-xs opacity-60">{% trans "Selected mode" %}</span>
+              <strong id="selected_mode_label">{{ selected_mode.label }}</strong>
+            </span>
+          </div>
+        </div>
+
+        <!-- Geolocation -->
+        <button
+          type="button"
+          id="find-my-location"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-location-crosshairs"></i>
+          {% trans "Use my location as start" %}
+        </button>
+
+        <!-- Start -->
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border p-3">
+
+          <h2 class="text-sm font-semibold">{% trans "Start point" %}</h2>
+
+          <label class="mt-3 block">
+            <span class="mb-1 block text-xs opacity-70">{% trans "Saved address" %}</span>
+
+            <select
+              id="start_address"
+              name="start_address"
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+
+              <option value="">{% trans "Manual coordinates" %}</option>
+
+              {% for address in address_options %}
+                <option
+                  value="{{ address.id }}"
+                  data-lat="{{ address.latitude }}"
+                  data-lng="{{ address.longitude }}"
+                  {% if address.selected_start %}selected{% endif %}>
+                  {{ address.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "Latitude" %}</span>
+              <input
+                id="start_lat"
+                name="start_lat"
+                value="{{ form.start_lat }}"
+                inputmode="decimal"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+
+            <label class="block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "Longitude" %}</span>
+              <input
+                id="start_lng"
+                name="start_lng"
+                value="{{ form.start_lng }}"
+                inputmode="decimal"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+          </div>
+        </div>
+
+        <!-- End -->
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="rounded-lg border p-3">
+
+          <h2 class="text-sm font-semibold">{% trans "End point" %}</h2>
+
+          <label class="mt-3 block">
+            <span class="mb-1 block text-xs opacity-70">{% trans "Saved address" %}</span>
+
+            <select
+              id="end_address"
+              name="end_address"
+              :class="darkMode
+                ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+
+              <option value="">{% trans "Manual coordinates" %}</option>
+
+              {% for address in address_options %}
+                <option
+                  value="{{ address.id }}"
+                  data-lat="{{ address.latitude }}"
+                  data-lng="{{ address.longitude }}"
+                  {% if address.selected_end %}selected{% endif %}>
+                  {{ address.label }}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+
+          <div class="mt-3 grid grid-cols-2 gap-3">
+            <label class="block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "Latitude" %}</span>
+              <input
+                id="end_lat"
+                name="end_lat"
+                value="{{ form.end_lat }}"
+                inputmode="decimal"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+
+            <label class="block">
+              <span class="mb-1 block text-xs opacity-70">{% trans "Longitude" %}</span>
+              <input
+                id="end_lng"
+                name="end_lng"
+                value="{{ form.end_lng }}"
+                inputmode="decimal"
+                :class="darkMode
+                  ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                  : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            </label>
+          </div>
+        </div>
+
+        {% if error %}
+          <div
+            :class="darkMode
+              ? 'border-warn-dark text-warn-dark bg-primary-bg-dark'
+              : 'border-warn-light text-warn-light bg-primary-bg-light'"
+            class="rounded-lg border p-3 text-sm">
+            {{ error }}
+          </div>
+        {% endif %}
+
+        <button
+          type="submit"
+          :class="darkMode
+            ? 'bg-accent-dark text-primary-bg-dark'
+            : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-magnifying-glass-location"></i>{% trans "Search route" %}</button>
+      </form>
+
+      <!-- Result + save route -->
+      {% if route %}
+        <div
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark'
+            : 'border-accent-2 bg-primary-bg-light'"
+          class="mt-5 grid grid-cols-2 gap-2 rounded-lg border p-3 text-sm">
+
+          <div>
+            <div class="text-lg font-bold">{{ route.properties.distance_km }}</div>
+            <div class="text-xs opacity-65">km</div>
+          </div>
+
+          <div>
+            <div class="text-lg font-bold">{{ route.properties.duration_min }}</div>
+            <div class="text-xs opacity-65">min</div>
+          </div>
+
+          <div class="col-span-2 flex items-center gap-2 border-t border-current/10 pt-2 text-xs font-semibold">
+            <i class="fa-solid {{ selected_mode.icon }}"></i>
+            {{ selected_mode.label }}
+          </div>
+
+          <div class="col-span-2 border-t border-current/10 pt-3">
+            <form method="post" action="{% url 'locations:route_save' %}" class="space-y-3">
+              {% csrf_token %}
+
+              <input type="hidden" name="mode" value="{{ form.mode }}">
+              <input type="hidden" name="start_address" value="{{ form.start_address }}">
+              <input type="hidden" name="end_address" value="{{ form.end_address }}">
+              <input type="hidden" name="start_lat" value="{{ form.start_lat }}">
+              <input type="hidden" name="start_lng" value="{{ form.start_lng }}">
+              <input type="hidden" name="end_lat" value="{{ form.end_lat }}">
+              <input type="hidden" name="end_lng" value="{{ form.end_lng }}">
+              <input type="hidden" name="route_json" value="{{ route_json|escape }}">
+
+              <label class="block">
+                <span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Route name" %}</span>
+                <input
+                  name="name"
+                  value="{{ selected_mode.label }} route"
+                  :class="darkMode
+                    ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+                    : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              </label>
+
+              <button
+                type="submit"
+                :class="darkMode
+                  ? 'bg-accent-dark text-primary-bg-dark'
+                  : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+                <i class="fa-solid fa-floppy-disk"></i>{% trans "Add route" %}</button>
+            </form>
+          </div>
+        </div>
+      {% endif %}
+    </aside>
+
+    <!-- Map -->
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="relative min-h-[72vh] overflow-hidden rounded-lg border shadow-sm">
+
+      <div id="route-map" class="h-full min-h-[72vh] w-full"></div>
+
+      <div
+        :class="darkMode
+          ? 'bg-bubble-bg-dark/95 text-text-main-dark'
+          : 'bg-bubble-bg-light/95 text-text-main-light'"
+        class="pointer-events-none absolute left-4 top-4 rounded-lg border border-current/10 px-3 py-2 text-xs font-semibold shadow-sm backdrop-blur">
+        <i class="fa-solid fa-circle-info mr-1"></i>{% trans "Map clicks are disabled here. Add addresses from the locations map." %}</div>
+    </section>
+  </div>
+</div>
+
+<script>
+  const routeFeature = JSON.parse(`{{ route_json|escapejs }}`);
+
+  const formPoints = {
+    start: [Number("{{ form.start_lat }}"), Number("{{ form.start_lng }}")],
+    end: [Number("{{ form.end_lat }}"), Number("{{ form.end_lng }}")]
+  };
+
+  const currentMode = "{{ form.mode }}";
+  let routeMap = null;
+
+  function routeThemeColor(isDark, mode = currentMode) {
+    const colors = window.tailwind?.config?.theme?.extend?.colors || {};
+
+    const modeColors = {
+      car: isDark ? "accent-dark" : "accent-light",
+      bicycle: isDark ? "success-dark" : "success-light",
+      foot: isDark ? "link-dark" : "link-light",
+      public_transport: isDark ? "warn-dark" : "warn-light"
+    };
+
+    const fallback = isDark
+      ? (colors["accent-dark"] || colors["accent-1"] || "#4f5fa1")
+      : (colors["accent-light"] || colors["accent-2"] || "#2f3d63");
+
+    return colors[modeColors[mode]] || fallback;
+  }
+
+  function bindModeSelect() {
+    const select = document.getElementById("mode");
+    const selectIcon = document.getElementById("mode_icon");
+    const selectedIcon = document.getElementById("selected_mode_icon");
+    const selectedLabel = document.getElementById("selected_mode_label");
+
+    if (!select || !selectIcon || !selectedIcon || !selectedLabel) return;
+
+    select.addEventListener("change", function () {
+      const option = select.options[select.selectedIndex];
+      const icon = option.dataset.icon || "fa-route";
+
+      selectIcon.className = `fa-solid ${icon} pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm opacity-70`;
+      selectedIcon.className = `fa-solid ${icon}`;
+      selectedLabel.textContent = option.textContent.trim();
+    });
+  }
+
+  function bindAddressSelect(selectId, latInputId, lngInputId) {
+    const select = document.getElementById(selectId);
+    const latInput = document.getElementById(latInputId);
+    const lngInput = document.getElementById(lngInputId);
+
+    if (!select || !latInput || !lngInput) return;
+
+    select.addEventListener("change", function () {
+      const option = select.options[select.selectedIndex];
+
+      if (!option || !option.dataset.lat || !option.dataset.lng) return;
+
+      latInput.value = option.dataset.lat;
+      lngInput.value = option.dataset.lng;
+    });
+  }
+
+  function bindGeolocationStart() {
+    const button = document.getElementById("find-my-location");
+    const startAddress = document.getElementById("start_address");
+    const startLat = document.getElementById("start_lat");
+    const startLng = document.getElementById("start_lng");
+
+    if (!button || !startLat || !startLng) return;
+
+    button.addEventListener("click", function () {
+      if (!navigator.geolocation) {
+        window.alert("Your browser does not support location lookup.");
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        function (position) {
+          const lat = position.coords.latitude;
+          const lng = position.coords.longitude;
+
+          if (startAddress) {
+            startAddress.value = "";
+          }
+
+          startLat.value = Number(lat).toFixed(6);
+          startLng.value = Number(lng).toFixed(6);
+
+          if (routeMap) {
+            routeMap.setView([lat, lng], Math.max(routeMap.getZoom(), 14));
+          }
+        },
+        function () {
+          window.alert("Location permission was not granted.");
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 30000
+        }
+      );
+    });
+  }
+
+  document.addEventListener("DOMContentLoaded", function () {
+    bindModeSelect();
+    bindAddressSelect("start_address", "start_lat", "start_lng");
+    bindAddressSelect("end_address", "end_lat", "end_lng");
+    bindGeolocationStart();
+
+    const isDark = localStorage.getItem("darkMode") === "true";
+
+    const map = L.map("route-map", {
+      zoomControl: false
+    }).setView([52.0, 19.0], 5);
+
+    routeMap = map;
+
+    const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors"
+    });
+
+    const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+      maxZoom: 19,
+      attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+    });
+
+    const pointLayer = L.layerGroup().addTo(map);
+
+    L.control.zoom({
+      position: "bottomright"
+    }).addTo(map);
+
+    (isDark ? darkTiles : lightTiles).addTo(map);
+
+    L.circleMarker(formPoints.start, {
+      radius: 7,
+      weight: 2,
+      color: routeThemeColor(isDark),
+      fillColor: routeThemeColor(isDark),
+      fillOpacity: 0.85
+    }).bindPopup("Start").addTo(pointLayer);
+
+    L.circleMarker(formPoints.end, {
+      radius: 7,
+      weight: 2,
+      color: routeThemeColor(isDark),
+      fillColor: routeThemeColor(isDark),
+      fillOpacity: 0.85
+    }).bindPopup("End").addTo(pointLayer);
+
+    if (routeFeature) {
+      const routeLayer = L.geoJSON(routeFeature, {
+        style: {
+          color: routeThemeColor(isDark),
+          weight: 6,
+          opacity: 0.9
+        }
+      }).addTo(map);
+
+      map.fitBounds(routeLayer.getBounds(), {
+        padding: [36, 36]
+      });
+    } else {
+      const bounds = L.latLngBounds([formPoints.start, formPoints.end]);
+
+      map.fitBounds(bounds, {
+        padding: [36, 36],
+        maxZoom: 13
+      });
+    }
+
+    setTimeout(function () {
+      map.invalidateSize();
+    }, 100);
+  });
+</script>
+{% endblock %}

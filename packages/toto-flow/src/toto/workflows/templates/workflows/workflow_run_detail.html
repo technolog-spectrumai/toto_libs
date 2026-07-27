@@ -1,0 +1,631 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Run #{{ run.id }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-5xl space-y-8">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'workflows:workflow_detail' run.workflow.id %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i> {{ run.workflow.name }}
+      </a>
+      <div class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Workflow run" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-play-circle"></i>
+            {% trans "Run" %} #{{ run.id }}
+          </h1>
+        </div>
+
+        <!-- Actions -->
+        <div x-data="runActions()" class="flex flex-wrap items-center gap-2">
+          <span class="rounded-full px-4 py-1.5 text-sm font-bold
+            {% if run.status == 'completed' %}
+              :class="darkMode ? 'bg-success-dark/20 text-success-dark' : 'bg-success-light/20 text-success-light'"
+            {% elif run.status == 'failed' %}
+              :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
+            {% elif run.status == 'running' %}
+              :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/20 text-accent-light'"
+            {% elif run.status == 'cancelled' %}
+              :class="darkMode ? 'bg-warn-dark/20 text-warn-dark' : 'bg-warn-light/20 text-warn-light'"
+            {% else %}
+              :class="'bg-gray-500/20 text-gray-500'"
+            {% endif %}">
+            {% if run.status == 'running' %}<i class="fa-solid fa-spinner fa-spin mr-1"></i>{% endif %}
+            <span x-text="displayStatus">{{ run.status|upper }}</span>
+          </span>
+
+          {% if run.status in 'pending,running' %}
+          <button
+            @click="cancelRun()"
+            :disabled="cancelling || done"
+            :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+            class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm font-semibold transition disabled:opacity-40"
+          >
+            <svg x-show="cancelling" class="animate-spin h-3 w-3" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>
+            </svg>
+            <i x-show="!cancelling" class="fa-solid fa-xmark text-xs"></i>
+            <span x-text="cancelling ? '{% trans "Cancelling…" %}' : '{% trans "Kill run" %}'"></span>
+          </button>
+          {% endif %}
+        </div>
+      </div>
+
+      <!-- Meta -->
+      <div class="flex flex-wrap gap-4 text-xs opacity-55">
+        {% if run.started_at %}
+          <span><i class="fa-regular fa-clock mr-1"></i> {% trans "Started" %} {{ run.started_at|date:"Y-m-d H:i:s" }}</span>
+        {% endif %}
+        {% if run.completed_at %}
+          <span><i class="fa-solid fa-flag-checkered mr-1"></i> {% trans "Completed" %} {{ run.completed_at|date:"Y-m-d H:i:s" }}</span>
+        {% endif %}
+      </div>
+      {% if run.status == 'failed' and run_error %}
+        <div class="rounded-lg border p-4 text-sm"
+             :class="darkMode ? 'border-warn-dark/40 bg-warn-dark/10 text-warn-dark' : 'border-warn-light/40 bg-warn-light/10 text-warn-light'">
+          <p class="mb-1 flex items-center gap-2 font-bold">
+            <i class="fa-solid fa-triangle-exclamation"></i>
+            {% trans "Run failed" %}
+            {% if run_error_node %}
+              <span class="font-normal opacity-75">({{ run_error_node.label|default:run_error_node.id }})</span>
+            {% endif %}
+          </p>
+          <p class="font-mono text-xs leading-relaxed">{{ run_error }}</p>
+        </div>
+      {% endif %}
+    </header>
+
+    {% include "workflows/workflow_run_inputs_panel.html" %}
+
+    <details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <summary class="flex cursor-pointer items-center gap-2 text-lg font-semibold">
+        <i class="fa-solid fa-code"></i>
+        {% trans "Stored run payload" %}
+      </summary>
+      <div class="mt-4 space-y-4 text-xs">
+        <div>
+          <p class="mb-1 font-semibold opacity-60">{% trans "Run input data" %}</p>
+          <pre class="overflow-x-auto rounded-lg p-3 font-mono leading-relaxed"
+               :class="darkMode ? 'bg-black/30' : 'bg-gray-100'">{{ run.input_data|pprint }}</pre>
+        </div>
+        {% if lambda_payload %}
+          <div>
+            <p class="mb-1 font-semibold opacity-60">{% trans "Lambda payload" %}</p>
+            <pre class="overflow-x-auto rounded-lg p-3 font-mono leading-relaxed"
+                 :class="darkMode ? 'bg-black/30' : 'bg-gray-100'">{{ lambda_payload|pprint }}</pre>
+          </div>
+        {% endif %}
+      </div>
+    </details>
+
+    <!-- Graph -->
+    <section>
+      <div class="mb-3 flex items-center justify-between">
+        <h2 class="flex items-center gap-2 text-lg font-semibold">
+          <i class="fa-solid fa-diagram-project"></i> {% trans "Graph" %}
+        </h2>
+        <button id="workflow-graph-fit"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+                class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors">
+          <i class="fa-solid fa-compress mr-1"></i> {% trans "Fit" %}
+        </button>
+      </div>
+
+      <!-- Legend -->
+      <div class="mb-3 flex flex-wrap gap-3 text-xs font-semibold">
+        <span class="flex items-center gap-1.5"
+              :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+          <span class="inline-block h-3 w-3 rounded-sm border-2"
+                :class="darkMode ? 'border-success-dark bg-success-dark/20' : 'border-success-light bg-success-light/20'"></span>
+          completed
+        </span>
+        <span class="flex items-center gap-1.5"
+              :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+          <span class="inline-block h-3 w-3 rounded-sm border-2"
+                :class="darkMode ? 'border-warn-dark bg-warn-dark/20' : 'border-warn-light bg-warn-light/20'"></span>
+          failed
+        </span>
+        <span class="flex items-center gap-1.5"
+              :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+          <span class="inline-block h-3 w-3 rounded-sm border-2"
+                :class="darkMode ? 'border-accent-dark bg-accent-dark/20' : 'border-accent-light bg-accent-light/20'"></span>
+          running
+        </span>
+        <span class="flex items-center gap-1.5 opacity-50">
+          <span class="inline-block h-3 w-3 rounded-sm border-2 border-dashed border-gray-400 bg-transparent"></span>
+          not started
+        </span>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="rounded-xl border shadow-sm overflow-hidden">
+        <div id="workflow-graph-container" class="h-80 w-full"></div>
+      </div>
+    </section>
+
+    <!-- Node runs -->
+    <section>
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold">
+        <i class="fa-solid fa-circle-nodes"></i> {% trans "Node runs" %}
+      </h2>
+      {% if node_runs %}
+        <div class="space-y-3">
+          {% for nr in node_runs %}
+            <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="rounded-xl border p-4 shadow-sm"
+                 x-data="{ open: false, reportModal: null }"
+                 @keydown.escape.window="reportModal = null">
+              <div class="flex items-center justify-between cursor-pointer" @click="open = !open">
+                <div class="flex items-center gap-3">
+                  {% if nr.status == "completed" %}
+                    <i class="fa-solid fa-circle-check"
+                       :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+                  {% elif nr.status == "failed" %}
+                    <i class="fa-solid fa-circle-xmark"
+                       :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+                  {% elif nr.status == "running" %}
+                    <i class="fa-solid fa-spinner fa-spin"
+                       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+                  {% else %}
+                    <i class="fa-regular fa-circle opacity-40"></i>
+                  {% endif %}
+
+                  <div>
+                    <span class="font-semibold text-sm">{{ nr.node.label|default:nr.node.id }}</span>
+                  {% if nr.node.node_type == 'lambda' %}
+                    <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                          :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">lambda</span>
+                  {% elif nr.node.node_type == 'split' %}
+                    <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                          :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">split</span>
+                  {% elif nr.node.node_type == 'join' %}
+                    <span class="ml-2 rounded-full px-2 py-0.5 text-xs font-medium"
+                          :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">join</span>
+                  {% elif nr.node.node_type == 'report' %}
+                    <span class="ml-2 rounded-full bg-cyan-500/15 px-2 py-0.5 text-xs font-medium text-cyan-600">report</span>
+                  {% else %}
+                    <span class="ml-2 rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-medium text-gray-500">{{ nr.node.node_type }}</span>
+                  {% endif %}
+                  </div>
+                </div>
+
+                <div class="flex items-center gap-3">
+                  <span class="text-xs opacity-50">
+                    {% if nr.started_at %}{{ nr.started_at|date:"H:i:s" }}{% endif %}
+                  </span>
+                  {% if nr.status == 'completed' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">
+                      {{ nr.status }}
+                    </span>
+                  {% elif nr.status == 'failed' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-warn-dark/15 text-warn-dark' : 'bg-warn-light/15 text-warn-light'">
+                      {{ nr.status }}
+                    </span>
+                  {% elif nr.status == 'running' %}
+                    <span class="rounded-full px-2 py-0.5 text-xs font-semibold"
+                          :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">{{ nr.status }}</span>
+                  {% else %}
+                    <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-semibold text-gray-500">{{ nr.status }}</span>
+                  {% endif %}
+                  <i class="fa-solid text-xs opacity-40 transition-transform"
+                     :class="open ? 'fa-chevron-up' : 'fa-chevron-down'"></i>
+                </div>
+              </div>
+
+              <!-- Expanded detail -->
+              <div x-show="open" x-collapse class="mt-4 space-y-3 text-xs">
+                {% if nr.error %}
+                  <div class="rounded-lg p-3 font-mono"
+                       :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">
+                    <p class="font-semibold mb-1">{% trans "Error" %}</p>
+                    {{ nr.display_error }}
+                  </div>
+                {% endif %}
+                {% if nr.input_data %}
+                  <div>
+                    <p class="font-semibold mb-1 opacity-60">{% trans "Input" %}</p>
+                    <pre class="overflow-x-auto rounded-lg p-3 font-mono text-xs leading-relaxed"
+                         :class="darkMode ? 'bg-black/30' : 'bg-gray-100'">{{ nr.input_data|pprint }}</pre>
+                  </div>
+                {% endif %}
+                {% if nr.generated_reports %}
+                  <div>
+                    <p class="mb-2 flex items-center gap-2 font-semibold opacity-70">
+                      <i class="fa-solid fa-chart-column"></i>
+                      {% trans "Reports" %}
+                    </p>
+                    <div class="space-y-3">
+                      {% for report in nr.generated_reports %}
+                        <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                             class="rounded-lg border p-3">
+                          <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
+                            <button type="button"
+                                    class="text-left font-semibold underline hover:opacity-80"
+                                    @click="reportModal = 'report-{{ report.id }}'">
+                              {{ report.title }}
+                            </button>
+                            <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-gray-500">
+                              {{ report.report_type }}
+                            </span>
+                          </div>
+
+                          {% with block=report.render_block %}
+                            {% if block.type == "table" %}
+                              <div class="overflow-x-auto">
+                                <table class="min-w-full text-left text-xs">
+                                  <thead class="border-b border-current/15 uppercase tracking-wide opacity-60">
+                                    <tr>
+                                      {% for column in block.columns %}
+                                        <th class="px-2 py-1">{% if column.label %}{{ column.label }}{% else %}{{ column.key }}{% endif %}</th>
+                                      {% endfor %}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {% for row in block.rows|slice:":6" %}
+                                      <tr class="border-b border-current/10 last:border-b-0">
+                                        {% for value in row.values %}
+                                          <td class="px-2 py-1.5">{{ value }}</td>
+                                        {% endfor %}
+                                      </tr>
+                                    {% empty %}
+                                      <tr>
+                                        <td class="px-2 py-2 opacity-55" colspan="{{ block.columns|length }}">{% trans "No rows." %}</td>
+                                      </tr>
+                                    {% endfor %}
+                                  </tbody>
+                                </table>
+                              </div>
+                            {% elif block.type == "chart" %}
+                              {% if block.chart == "line" and block.points %}
+                                <div class="grid grid-cols-[minmax(0,1fr)_120px] items-center gap-4">
+                                  <svg viewBox="-12 0 116 76" class="h-24 w-full overflow-visible" role="img" aria-label="{{ block.title }}">
+                                    <g class="opacity-15">
+                                      <line x1="0" y1="5" x2="100" y2="5" stroke="currentColor" stroke-width="0.5"></line>
+                                      <line x1="0" y1="32.5" x2="100" y2="32.5" stroke="currentColor" stroke-width="0.5"></line>
+                                      <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                      <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                      <line x1="50" y1="5" x2="50" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                      <line x1="100" y1="5" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                    </g>
+                                    <g class="opacity-45">
+                                      <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="1"></line>
+                                      <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="1"></line>
+                                    </g>
+                                    <g class="text-[5px] opacity-60">
+                                      {% for tick in block.y_ticks %}
+                                        <text x="-3" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle" fill="currentColor">{{ tick.label }}</text>
+                                      {% endfor %}
+                                    </g>
+                                    <polyline points="{{ block.line_points }}"
+                                              fill="none"
+                                              stroke="currentColor"
+                                              stroke-width="2"
+                                              stroke-linecap="round"
+                                              stroke-linejoin="round"
+                                              class="opacity-80"></polyline>
+                                    {% for point in block.points|slice:":8" %}
+                                      <circle cx="{{ point.x_percent }}" cy="{{ point.y_percent }}" r="2.4" fill="{{ point.color }}"></circle>
+                                      <text x="{{ point.x_percent }}" y="70" text-anchor="middle" fill="currentColor" class="text-[5px] opacity-60">{{ point.label }}</text>
+                                    {% endfor %}
+                                  </svg>
+                                  <div class="space-y-1.5">
+                                    {% for point in block.points|slice:":5" %}
+                                      <div class="grid grid-cols-[10px_minmax(0,1fr)_38px] items-center gap-2">
+                                        <span class="h-2.5 w-2.5 rounded-full" style="background: {{ point.color }}"></span>
+                                        <span class="truncate opacity-70">{{ point.label }}</span>
+                                        <span class="text-right font-semibold">{{ point.value }}</span>
+                                      </div>
+                                    {% endfor %}
+                                  </div>
+                                </div>
+                              {% elif block.chart == "pie" and block.points %}
+                                <div class="grid grid-cols-[96px_minmax(0,1fr)] items-center gap-4">
+                                  <div class="aspect-square rounded-full shadow-inner"
+                                       style="background: {{ block.pie_gradient }}"></div>
+                                  <div class="space-y-1.5">
+                                    {% for point in block.points|slice:":5" %}
+                                      <div class="grid grid-cols-[10px_minmax(0,1fr)_42px] items-center gap-2">
+                                        <span class="h-2.5 w-2.5 rounded-full" style="background: {{ point.color }}"></span>
+                                        <span class="truncate opacity-70">{{ point.label }}</span>
+                                        <span class="text-right font-semibold">{{ point.share_percent }}%</span>
+                                      </div>
+                                    {% endfor %}
+                                  </div>
+                                </div>
+                              {% else %}
+                                <div class="space-y-2">
+                                  {% for point in block.points|slice:":6" %}
+                                    <div class="grid grid-cols-[100px_minmax(0,1fr)_56px] items-center gap-2">
+                                      <div class="truncate opacity-70">{{ point.label }}</div>
+                                      <div class="h-2 overflow-hidden rounded-full bg-gray-500/15">
+                                        <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                                             class="h-full rounded-full"
+                                             style="width: {{ point.percent }}%"></div>
+                                      </div>
+                                      <div class="text-right font-semibold">{{ point.value }}</div>
+                                    </div>
+                                  {% empty %}
+                                    <p class="opacity-55">{% trans "No chart data." %}</p>
+                                  {% endfor %}
+                                </div>
+                              {% endif %}
+                            {% elif block.type == "card" %}
+                              <div class="text-2xl font-bold">{{ block.value|default:"-" }}</div>
+                              {% if block.subtitle %}<p class="mt-1 opacity-65">{{ block.subtitle }}</p>{% endif %}
+                            {% else %}
+                              <div class="leading-6 opacity-80">{{ block.body|linebreaks }}</div>
+                            {% endif %}
+
+                            <div x-show="reportModal === 'report-{{ report.id }}'"
+                                 x-cloak
+                                 class="fixed inset-0 z-50 flex items-center justify-center bg-black/55 px-4 py-6"
+                                 @click.self="reportModal = null">
+                              <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                                   class="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-lg border p-5 shadow-2xl">
+                                <div class="mb-5 flex items-start justify-between gap-4">
+                                  <div>
+                                    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Report details" %}</p>
+                                    <h3 class="mt-1 text-xl font-bold">{{ report.title }}</h3>
+                                  </div>
+                                  <button type="button"
+                                          class="inline-flex h-9 w-9 items-center justify-center rounded-full border border-current/15"
+                                          @click="reportModal = null"
+                                          aria-label="{% trans 'Close report details' %}">
+                                    <i class="fa-solid fa-xmark"></i>
+                                  </button>
+                                </div>
+
+                                {% if block.type == "table" %}
+                                  <div class="overflow-x-auto">
+                                    <table class="min-w-full text-left text-sm">
+                                      <thead class="border-b border-current/15 uppercase tracking-wide opacity-60">
+                                        <tr>
+                                          {% for column in block.columns %}
+                                            <th class="px-3 py-2">{% if column.label %}{{ column.label }}{% else %}{{ column.key }}{% endif %}</th>
+                                          {% endfor %}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {% for row in block.rows %}
+                                          <tr class="border-b border-current/10 last:border-b-0">
+                                            {% for value in row.values %}
+                                              <td class="px-3 py-2">{{ value }}</td>
+                                            {% endfor %}
+                                          </tr>
+                                        {% empty %}
+                                          <tr>
+                                            <td class="px-3 py-4 opacity-55" colspan="{{ block.columns|length }}">{% trans "No rows." %}</td>
+                                          </tr>
+                                        {% endfor %}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                {% elif block.type == "chart" %}
+                                  {% if block.chart == "line" and block.points %}
+                                    <div class="grid gap-6 lg:grid-cols-[minmax(0,1fr)_220px] lg:items-center">
+                                      <svg viewBox="-12 0 116 76" class="h-64 w-full overflow-visible" role="img" aria-label="{{ block.title }}">
+                                        <g class="opacity-15">
+                                          <line x1="0" y1="5" x2="100" y2="5" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="0" y1="18.75" x2="100" y2="18.75" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="0" y1="32.5" x2="100" y2="32.5" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="0" y1="46.25" x2="100" y2="46.25" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="25" y1="5" x2="25" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="50" y1="5" x2="50" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="75" y1="5" x2="75" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                          <line x1="100" y1="5" x2="100" y2="60" stroke="currentColor" stroke-width="0.5"></line>
+                                        </g>
+                                        <g class="opacity-45">
+                                          <line x1="0" y1="60" x2="100" y2="60" stroke="currentColor" stroke-width="1"></line>
+                                          <line x1="0" y1="5" x2="0" y2="60" stroke="currentColor" stroke-width="1"></line>
+                                        </g>
+                                        <g class="text-[4px] opacity-60">
+                                          {% for tick in block.y_ticks %}
+                                            <text x="-3" y="{{ tick.y }}" text-anchor="end" dominant-baseline="middle" fill="currentColor">{{ tick.label }}</text>
+                                          {% endfor %}
+                                        </g>
+                                        <polyline points="{{ block.line_points }}"
+                                                  fill="none"
+                                                  stroke="currentColor"
+                                                  stroke-width="2.4"
+                                                  stroke-linecap="round"
+                                                  stroke-linejoin="round"
+                                                  class="opacity-85"></polyline>
+                                        {% for point in block.points %}
+                                          <line x1="{{ point.x_percent }}" y1="60" x2="{{ point.x_percent }}" y2="63" stroke="currentColor" stroke-width="0.7" class="opacity-45"></line>
+                                          <circle cx="{{ point.x_percent }}" cy="{{ point.y_percent }}" r="2.4" fill="{{ point.color }}"></circle>
+                                          <text x="{{ point.x_percent }}" y="70" text-anchor="middle" fill="currentColor" class="text-[4px] opacity-60">{{ point.label }}</text>
+                                        {% endfor %}
+                                      </svg>
+                                      <div class="space-y-3">
+                                        {% for point in block.points %}
+                                          <div class="grid grid-cols-[16px_minmax(0,1fr)_70px] items-center gap-3 text-sm">
+                                            <span class="h-3 w-3 rounded-full" style="background: {{ point.color }}"></span>
+                                            <span class="truncate opacity-75">{{ point.label }}</span>
+                                            <span class="text-right font-semibold">{{ point.value }}</span>
+                                          </div>
+                                        {% endfor %}
+                                      </div>
+                                    </div>
+                                  {% elif block.chart == "pie" and block.points %}
+                                    <div class="grid gap-6 md:grid-cols-[220px_minmax(0,1fr)] md:items-center">
+                                      <div class="mx-auto aspect-square w-52 rounded-full shadow-inner"
+                                           style="background: {{ block.pie_gradient }}"></div>
+                                      <div class="space-y-3">
+                                        {% for point in block.points %}
+                                          <div class="grid grid-cols-[16px_minmax(0,1fr)_70px_70px] items-center gap-3 text-sm">
+                                            <span class="h-3 w-3 rounded-full" style="background: {{ point.color }}"></span>
+                                            <span class="truncate opacity-75">{{ point.label }}</span>
+                                            <span class="text-right font-semibold">{{ point.value }}</span>
+                                            <span class="text-right opacity-65">{{ point.share_percent }}%</span>
+                                          </div>
+                                        {% endfor %}
+                                      </div>
+                                    </div>
+                                  {% else %}
+                                    <div class="space-y-3">
+                                      {% for point in block.points %}
+                                        <div class="grid grid-cols-[140px_minmax(0,1fr)_80px] items-center gap-3 text-sm">
+                                          <div class="truncate opacity-75">{{ point.label }}</div>
+                                          <div class="h-3 overflow-hidden rounded-full bg-gray-500/15">
+                                            <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                                                 class="h-full rounded-full"
+                                                 style="width: {{ point.percent }}%"></div>
+                                          </div>
+                                          <div class="text-right font-semibold">{{ point.value }}</div>
+                                        </div>
+                                      {% empty %}
+                                        <p class="opacity-55">{% trans "No chart data." %}</p>
+                                      {% endfor %}
+                                    </div>
+                                  {% endif %}
+                                {% elif block.type == "card" %}
+                                  <div class="text-4xl font-bold">{{ block.value|default:"-" }}</div>
+                                  {% if block.subtitle %}<p class="mt-2 opacity-65">{{ block.subtitle }}</p>{% endif %}
+                                {% else %}
+                                  <div class="text-sm leading-7 opacity-85">{{ block.body|linebreaks }}</div>
+                                {% endif %}
+                              </div>
+                            </div>
+                          {% endwith %}
+                        </div>
+                      {% endfor %}
+                    </div>
+                  </div>
+                {% endif %}
+                {% if nr.output_data %}
+                  <div>
+                    <p class="font-semibold mb-1 opacity-60">{% trans "Output" %}</p>
+                    <pre class="overflow-x-auto rounded-lg p-3 font-mono text-xs leading-relaxed"
+                         :class="darkMode ? 'bg-black/30' : 'bg-gray-100'">{{ nr.output_data|pprint }}</pre>
+                  </div>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No node runs yet." %}</p>
+      {% endif %}
+    </section>
+
+    <!-- Edge runs -->
+    <section>
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-semibold">
+        <i class="fa-solid fa-arrow-right-long"></i> {% trans "Edge activations" %}
+      </h2>
+      {% if edge_runs %}
+        <div class="overflow-x-auto rounded-xl border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <table class="w-full text-sm">
+            <thead :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+              <tr class="text-left">
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "Source" %}</th>
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "Target" %}</th>
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "Branch key" %}</th>
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "Activated?" %}</th>
+                <th class="px-4 py-3 font-semibold opacity-70">{% trans "At" %}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+              {% for er in edge_runs %}
+                <tr :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                  <td class="px-4 py-3 font-mono text-xs">{{ er.edge.source.label|default:er.edge.source.id }}</td>
+                  <td class="px-4 py-3 font-mono text-xs">{{ er.edge.target.label|default:er.edge.target.id }}</td>
+                  <td class="px-4 py-3 text-xs">{{ er.edge.branch_key|default:"—" }}</td>
+                  <td class="px-4 py-3">
+                    {% if er.activated %}
+                      <span class="inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold"
+                            :class="darkMode ? 'bg-success-dark/15 text-success-dark' : 'bg-success-light/15 text-success-light'">
+                        <i class="fa-solid fa-bolt"></i> {% trans "activated" %}
+                      </span>
+                    {% else %}
+                      <span class="inline-flex items-center gap-1 rounded-full bg-gray-500/10 px-2 py-0.5 text-xs font-semibold opacity-50">
+                        {% trans "skipped" %}
+                      </span>
+                    {% endif %}
+                  </td>
+                  <td class="px-4 py-3 text-xs opacity-55">
+                    {{ er.activated_at|date:"H:i:s"|default:"—" }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-sm opacity-55">{% trans "No edge runs yet." %}</p>
+      {% endif %}
+    </section>
+
+  </div>
+</div>
+{% include "workflows/workflow_graph_scripts.html" %}
+
+{% if run.status == 'running' or run.status == 'pending' %}
+<script>
+  (function () {
+    var tid = setInterval(function () {
+      fetch("{% url 'workflows:api_run_detail' run.id %}")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+          if (data.status !== 'running' && data.status !== 'pending') {
+            clearInterval(tid);
+            window.location.reload();
+          }
+        })
+        .catch(function () { clearInterval(tid); });
+    }, 2000);
+  })();
+</script>
+{% endif %}
+<script>
+const CANCEL_URL = "/workflows/api/runs/{{ run.id }}/cancel/";
+const CSRF_TOKEN = "{{ csrf_token }}";
+
+function runActions() {
+  return {
+    cancelling: false,
+    done: false,
+    displayStatus: "{{ run.status|upper }}",
+
+    async cancelRun() {
+      if (this.cancelling || this.done) return;
+      if (!confirm("Kill run #{{ run.id }}? This marks it as cancelled immediately.")) return;
+      this.cancelling = true;
+      try {
+        const res = await fetch(CANCEL_URL, {
+          method: "POST",
+          headers: { "X-CSRFToken": CSRF_TOKEN, "Content-Type": "application/json" },
+        });
+        const data = await res.json();
+        this.displayStatus = (data.status || "cancelled").toUpperCase();
+        this.done = true;
+      } catch (e) {
+        alert("Failed to cancel run: " + e.message);
+      } finally {
+        this.cancelling = false;
+      }
+    },
+  };
+}
+</script>
+{% endblock %}

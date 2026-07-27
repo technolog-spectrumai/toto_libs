@@ -1,0 +1,141 @@
+{% load i18n %}
+{% get_current_language as LANGUAGE_CODE %}
+{% get_available_languages as LANGUAGES %}
+<header x-data="{ navOpen: false }"
+        :class="darkMode
+          ? `bg-appbar-bg-dark text-appbar-text-dark {{ platform.theme.header.dark }}`
+          : `bg-appbar-bg-light text-appbar-text-light {{ platform.theme.header.light }}`"
+        class="w-full px-4 sm:px-6 py-3">
+
+  <div class="max-w-6xl mx-auto flex justify-between items-center">
+    <!-- Site Name -->
+    <div class="flex items-center gap-3">
+        {% if logo %}
+          <a href="{% url 'core:welcome' %}" class="flex items-center" id="federation-logo-link">
+            <img src="{{ logo }}" alt="" class="h-8 w-auto hover:opacity-80 transition"
+                 onerror="document.getElementById('federation-logo-link').style.display='none'">
+          </a>
+        {% endif %}
+      <h1 class="text-2xl font-bold tracking-tight">
+        {{ platform.site_name }}
+      </h1>
+    </div>
+
+    <!-- Desktop Nav -->
+    <div class="hidden sm:flex items-center gap-3">
+
+      {% if user.is_authenticated %}
+      <!-- Logout Button -->
+      <a href="{% url 'sso:logout' %}"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-sign-out-alt text-base"></i>
+        <span>{% trans "Logout" %}</span>
+      </a>
+      {% else %}
+      <!-- Login Button -->
+      <a href="{% url 'sso:login' %}"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-sign-in-alt text-base"></i>
+        <span>{% trans "Login" %}</span>
+      </a>
+      {% endif %}
+
+      <!-- Dynamic Nav Items -->
+      {% for item in header_nav_items %}
+      <a href="{{ item.url }}"
+         class="flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        {% if item.icon %}
+          <i class="{{ item.icon }} text-base"></i>
+        {% endif %}
+        <span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+
+      <!-- Theme Toggle -->
+      <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
+              class="site-theme-toggle-button flex items-center gap-2 px-3 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
+        <span
+          data-light="{% trans 'Light Mode' %}"
+          data-dark="{% trans 'Dark Mode' %}"
+          x-text="!darkMode ? $el.dataset.light : $el.dataset.dark"></span>
+      </button>
+
+      <!-- Language Switcher -->
+      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
+        {% csrf_token %}
+        <input name="next" type="hidden" value="{{ request.get_full_path }}">
+        <select name="language" onchange="this.form.submit()"
+                class="flex items-center px-2 py-1 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer">
+          {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{{ lang.1 }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+
+    <!-- Mobile Menu Toggle -->
+    <button @click="navOpen = !navOpen"
+            class="sm:hidden flex items-center gap-2 px-3 py-1 rounded text-sm font-medium border shadow-sm transition hover:opacity-90"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark border-accent-2'
+              : 'bg-accent-light text-primary-bg-light border-accent-1'">
+      <i class="fas fa-bars text-base"></i>
+    </button>
+  </div>
+
+  <!-- Mobile Dropdown -->
+  <div x-show="navOpen" x-transition class="sm:hidden mt-3 px-4">
+    <div class="flex flex-col gap-3">
+
+      {% if user.is_authenticated %}
+      <!-- Logout Button (Mobile) -->
+      <a href="{% url 'sso:logout' %}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-sign-out-alt text-base"></i>
+        <span>{% trans "Logout" %}</span>
+      </a>
+      {% else %}
+      <!-- Login Button (Mobile) -->
+      <a href="{% url 'sso:login' %}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i class="fas fa-sign-in-alt text-base"></i>
+        <span>{% trans "Login" %}</span>
+      </a>
+      {% endif %}
+
+      <!-- Dynamic Nav Items (Mobile) -->
+      {% for item in header_nav_items %}
+      <a href="{{ item.url }}"
+         class="flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        {% if item.icon %}
+          <i class="{{ item.icon }} text-base"></i>
+        {% endif %}
+        <span>{{ item.label }}</span>
+      </a>
+      {% endfor %}
+
+      <!-- Theme Toggle (Mobile) -->
+      <button @click="darkMode = !darkMode; localStorage.setItem('darkMode', darkMode); location.reload();"
+              class="site-theme-toggle-button flex items-center gap-2 px-3 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90">
+        <i :class="darkMode ? 'fas fa-moon' : 'fas fa-sun'" class="text-base"></i>
+        <span
+          data-light="{% trans 'Light Mode' %}"
+          data-dark="{% trans 'Dark Mode' %}"
+          x-text="!darkMode ? $el.dataset.light : $el.dataset.dark"></span>
+      </button>
+
+      <!-- Language Switcher (Mobile) -->
+      <form action="{% url 'set_language' %}" method="post" title="{% trans 'Language' %}">
+        {% csrf_token %}
+        <input name="next" type="hidden" value="{{ request.get_full_path }}">
+        <select name="language" onchange="this.form.submit()"
+                class="flex items-center px-2 py-2 rounded text-sm font-medium shadow-sm transition hover:opacity-90 bg-transparent border border-current cursor-pointer w-full">
+          {% for lang in LANGUAGES %}
+          <option value="{{ lang.0 }}" {% if lang.0 == LANGUAGE_CODE %}selected{% endif %}>{{ lang.1 }}</option>
+          {% endfor %}
+        </select>
+      </form>
+    </div>
+  </div>
+</header>

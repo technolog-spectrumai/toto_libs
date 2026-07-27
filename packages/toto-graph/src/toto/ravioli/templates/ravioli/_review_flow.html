@@ -1,0 +1,159 @@
+{% comment %}
+Shared Alpine factory for the review-then-apply modal (Sync all + Prune history).
+Spread into a page component: return { ...reviewFlow(), ...own }. Requires a global
+CSRF_TOKEN and cytoscape on the page, plus an included ravioli/_review_modal.html.
+{% endcomment %}
+<script>
+function reviewFlow() {
+  return {
+    reviewPhase: 'idle',   // idle | planning | review | applying | done
+    reviewPlan: null,      // {plan_id, summary, total_changes, diff, apply_url, detail_url}
+    reviewTitle: '',
+    reviewError: null,
+    reviewAllowStaging: false,   // show the "staging" checkbox (sync only)
+    reviewStaging: false,        // archive replaced nodes to :HISTORICAL on apply
+    _reviewCy: null,
+
+    async openReview(url, title, body, allowStaging) {
+      if (this.reviewPhase !== 'idle') return;
+      this.reviewPhase = 'planning';
+      this.reviewTitle = title;
+      this.reviewAllowStaging = !!allowStaging;
+      this.reviewStaging = false;
+      this.reviewError = null;
+      this.reviewPlan = null;
+      try {
+        const opts = { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } };
+        if (body) {
+          const fd = new FormData();
+          Object.entries(body).forEach(([k, v]) => fd.append(k, v));
+          opts.body = fd;
+        }
+        const res = await fetch(url, opts);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
+        this.reviewPlan = data;
+        this.reviewPhase = 'review';
+        if ((data.total_changes || 0) > 0) setTimeout(() => this.renderReviewGraph(), 60);
+      } catch (e) {
+        this.reviewPhase = 'idle';
+        this.error = 'Could not compute the plan: ' + e.message;
+      }
+    },
+
+    async applyReview() {
+      if (!this.reviewPlan || this.reviewPhase === 'applying') return;
+      this.reviewPhase = 'applying';
+      this.reviewError = null;
+      try {
+        const opts = { method: 'POST', headers: { 'X-CSRFToken': CSRF_TOKEN } };
+        if (this.reviewStaging) {
+          var fd = new FormData(); fd.append('staged', '1'); opts.body = fd;
+        }
+        const res = await fetch(this.reviewPlan.apply_url, opts);
+        const data = await res.json();
+        if (!res.ok || data.error) throw new Error(data.error || `Error ${res.status}`);
+        this.reviewPhase = 'done';
+        // Reload so stats / any open result reflect the new graph.
+        setTimeout(() => window.location.reload(), 900);
+      } catch (e) {
+        this.reviewError = e.message;
+        this.reviewPhase = 'review';
+      }
+    },
+
+    closeReview() {
+      if (this.reviewPhase === 'applying') return;
+      if (this._reviewCy) { this._reviewCy.destroy(); this._reviewCy = null; }
+      this.reviewPhase = 'idle';
+      this.reviewPlan = null;
+      this.reviewError = null;
+    },
+
+    // ── diff graph: same Cytoscape style as the per-object export preview ──
+    actionTone(a) { return a === 'create' ? 'success' : a === 'update' ? 'caution' : 'warn'; },
+    actionSign(a) { return a === 'create' ? '+' : a === 'update' ? '~' : '−'; },
+
+    diffItemText(kind, item) {
+      if (kind === 'nodes') return `${item.label} · ${item.uuid}`;
+      return `${item.from_label}:${item.from_uuid} -[${item.relation}]-> ${item.to_label}:${item.to_uuid}`;
+    },
+
+    renderReviewGraph() {
+      const diff = this.reviewPlan && this.reviewPlan.diff;
+      const container = document.getElementById('review-cy');
+      if (!diff || !container || typeof cytoscape === 'undefined') return;
+      if (this._reviewCy) { this._reviewCy.destroy(); this._reviewCy = null; }
+
+      // A node's strongest action wins if it appears as both a change and an edge endpoint.
+      const rank = { context: 0, create: 1, update: 2, delete: 3 };
+      const nodeMap = new Map();
+      const addNode = (label, uuid, status) => {
+        const id = label + ':' + uuid;
+        const prev = nodeMap.get(id);
+        if (!prev || rank[status] > rank[prev.status]) nodeMap.set(id, { id, label, uuid, status });
+        return id;
+      };
+      ['create', 'update', 'delete'].forEach(a =>
+        (diff.nodes?.[a] || []).forEach(n => addNode(n.label, n.uuid, a)));
+
+      const edges = [];
+      ['create', 'update', 'delete'].forEach(a =>
+        (diff.relationships?.[a] || []).forEach((r, i) => {
+          const s = addNode(r.from_label, r.from_uuid, 'context');
+          const t = addNode(r.to_label, r.to_uuid, 'context');
+          edges.push({ data: { id: 'e' + a + i, source: s, target: t, label: r.relation, status: a } });
+        }));
+
+      // Pull hexes from the active theme so the diff graph matches system colors.
+      const tw = (window.tailwind && tailwind.config && tailwind.config.theme.extend.colors) || {};
+      const dark = localStorage.getItem('darkMode') === 'true';
+      const tone = (name, fb) => tw[name + (dark ? '-dark' : '-light')] || fb;
+      const STATUS = {
+        create:  tone('success', '#22c55e'),
+        update:  tone('caution', '#f59e0b'),
+        delete:  tone('warn', '#ef4444'),
+        context: tone('text-main', '#9ca3af'),
+      };
+      const colorOf = (s) => STATUS[s] || STATUS.context;
+      const nodes = [...nodeMap.values()].map(n => ({
+        data: { id: n.id, label: n.label, uuid: n.uuid, status: n.status },
+      }));
+
+      this._reviewCy = cytoscape({
+        container,
+        elements: [...nodes, ...edges],
+        style: [
+          { selector: 'node', style: {
+            'background-color': (e) => colorOf(e.data('status')),
+            'background-opacity': (e) => e.data('status') === 'context' ? 0.4 : 0.9,
+            'border-width': 2,
+            'border-color': (e) => colorOf(e.data('status')),
+            'label': 'data(label)',
+            'color': '#111827',
+            'font-size': '11px',
+            'text-valign': 'center',
+            'text-halign': 'center',
+            'text-wrap': 'ellipsis',
+            'text-max-width': '90px',
+          }},
+          { selector: 'edge', style: {
+            'width': 1.6,
+            'line-color': (e) => colorOf(e.data('status')),
+            'line-style': (e) => e.data('status') === 'delete' ? 'dashed' : 'solid',
+            'target-arrow-color': (e) => colorOf(e.data('status')),
+            'target-arrow-shape': 'triangle',
+            'curve-style': 'bezier',
+            'label': 'data(label)',
+            'font-size': '9px',
+            'color': '#6b7280',
+            'text-rotation': 'autorotate',
+          }},
+        ],
+        layout: { name: 'cose', animate: false, padding: 30 },
+      });
+      setTimeout(() => { try { this._reviewCy.resize(); this._reviewCy.fit(undefined, 30); } catch (_) {} }, 80);
+    },
+  };
+}
+</script>

@@ -1,0 +1,49 @@
+{% load i18n %}
+<div class="rounded-lg border border-current/10 p-4">
+  <div class="flex items-center justify-between gap-3">
+    <h3 class="flex items-center gap-2 text-sm font-bold uppercase opacity-75">
+      <i class="fa-solid {{ icon }}"></i>
+      {{ title }}
+    </h3>
+    <span class="rounded border border-current/20 px-2 py-1 text-xs font-semibold">{{ items|length }}</span>
+  </div>
+
+  {% if items %}
+    <div class="mt-4 max-h-96 space-y-3 overflow-auto pr-1">
+      {% for item in items|slice:":40" %}
+        <article class="rounded border border-current/10 p-3 text-xs">
+          <div class="flex items-start justify-between gap-3">
+            <p class="font-bold">{{ item.relation }}</p>
+            {% if item.claim %}
+              <span class="rounded border border-current/20 px-2 py-0.5 font-semibold">claim</span>
+            {% endif %}
+          </div>
+          <p class="mt-2 break-all opacity-75">
+            {{ item.from_label }}:{{ item.from_uuid }} → {{ item.to_label }}:{{ item.to_uuid }}
+          </p>
+          {% if item.ravioli_uuid %}
+            <p class="mt-1 break-all opacity-60">{{ item.ravioli_uuid }}</p>
+          {% endif %}
+          {% if item.endpoint_changed %}
+            <p class="mt-2 font-semibold">{% trans "Endpoint changed" %}</p>
+          {% endif %}
+          {% if item.changes %}
+            <dl class="mt-3 space-y-2">
+              {% for key, change in item.changes.items %}
+                <div>
+                  <dt class="font-semibold">{{ key }}</dt>
+                  <dd class="break-words opacity-70">{{ change.from }} → {{ change.to }}</dd>
+                </div>
+              {% endfor %}
+            </dl>
+          {% endif %}
+        </article>
+      {% endfor %}
+      {% if items|length > 40 %}
+        <p class="text-xs opacity-60">{% trans "Showing first 40." %}</p>
+      {% endif %}
+    </div>
+  {% else %}
+    <p class="mt-4 text-sm opacity-60">{% trans "No changes." %}</p>
+  {% endif %}
+</div>

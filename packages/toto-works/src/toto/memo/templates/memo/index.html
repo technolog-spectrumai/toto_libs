@@ -1,0 +1,165 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Presentations" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{% if is_authenticated %}
+<script>
+  window._newFileBuckets = JSON.parse(`{{ buckets_json|escapejs }}`);
+  window._newFileDirectories = JSON.parse(`{{ directories_json|escapejs }}`);
+</script>
+{% endif %}
+<section
+  x-data="{ showCreate: false, fname: '', bucketId: '', dirId: '',
+            buckets: window._newFileBuckets || [],
+            directories: window._newFileDirectories || [],
+            get filteredDirs() { return this.directories.filter(d => String(d.bucket_id) === String(this.bucketId)); } }"
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-6 py-16 transition-colors duration-300">
+
+  <div class="max-w-5xl mx-auto space-y-8">
+
+    <div class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-3xl font-bold">{% trans "Presentations" %}</h1>
+        <p class="opacity-75">{% trans "Self-contained presentations stored as vault files." %}</p>
+      </div>
+      <div class="flex items-center gap-4">
+        {% if is_authenticated %}
+          <button type="button" @click="showCreate = true"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+        {% endif %}
+        <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
+          {% trans "Vault" %}</a>
+      </div>
+    </div>
+
+    {% if presentations %}
+      <div class="grid gap-5 md:grid-cols-2">
+        {% for p in presentations %}
+          <article
+            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+            class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
+            <div class="space-y-2">
+              <a href="{{ p.present_url }}" class="block text-xl font-bold underline hover:opacity-80">
+                {{ p.title }}
+              </a>
+              <div class="flex items-center gap-1.5 text-xs opacity-60">
+                <i class="fa-solid fa-folder-open"></i>
+                <span>{{ p.location }}</span>
+              </div>
+              <div class="flex flex-wrap gap-4 text-xs opacity-65">
+                <span>{{ p.owner }}</span>
+                <span>{{ p.uploaded|date:"M d, Y" }}</span>
+              </div>
+            </div>
+            <div class="flex gap-3 text-sm">
+              <a href="{{ p.present_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
+              {% if p.is_owner %}
+                <a href="{{ p.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+                <a href="{{ p.source_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-code"></i> {% trans "Source" %}</a>
+              {% endif %}
+            </div>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div
+        :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+        class="border rounded-lg p-8 text-center shadow-md">
+        <p class="text-sm opacity-70 mb-4">
+          {% trans "No presentations yet." %}
+        </p>
+        {% if is_authenticated %}
+          <button type="button" @click="showCreate = true"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+
+  {% if is_authenticated %}
+  <!-- New presentation modal -->
+  <div x-show="showCreate" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showCreate = false"></div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-circle-plus"></i>{% trans "New presentation" %}</h2>
+        <button type="button" @click="showCreate = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+
+      <form method="post" action="{% url 'memo:create' %}" class="space-y-4 p-5">
+        {% csrf_token %}
+
+        <!-- Filename -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Filename" %}</label>
+          <div class="flex items-center gap-2">
+            <input type="text" name="filename" x-model="fname" required
+                   placeholder="{% trans 'my-talk' %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+            <span class="text-sm opacity-50">.xml</span>
+          </div>
+        </div>
+
+        <!-- Target bucket -->
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Bucket" %}</label>
+          <select name="bucket_id" x-model="bucketId" @change="dirId = ''"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Personal (default)" %}</option>
+            <template x-for="b in buckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+
+        <!-- Directory (optional) -->
+        <div x-show="bucketId" x-cloak>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Folder" %}
+            <span class="font-normal opacity-50">({% trans "optional" %})</span></label>
+          <select name="directory_id" x-model="dirId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "— root of bucket —" %}</option>
+            <template x-for="d in filteredDirs" :key="d.id">
+              <option :value="d.id" x-text="d.path"></option>
+            </template>
+          </select>
+        </div>
+
+        <div class="flex justify-end gap-3 pt-2">
+          <button type="button" @click="showCreate = false"
+                  class="rounded px-4 py-2 text-sm font-semibold opacity-70 hover:opacity-100 transition">
+            {% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-plus"></i>{% trans "Create" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+  {% endif %}
+
+</section>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "bento/base.html" %}
+{% load i18n %}
+
+{% block bento_title %}{{ title }}{% endblock %}
+
+{% block bento_content %}
+<div class="mx-auto max-w-2xl">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border p-6 shadow-sm">
+    <h2 class="mb-4 text-xl font-bold">{{ title }}</h2>
+
+    {% if error %}
+      <div class="mb-4 rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light">{{ error }}</div>
+    {% endif %}
+
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+
+      <input type="hidden" name="origin" value="{{ selected.origin }}">
+      {% if edge %}
+        {# editing: endpoints + type are fixed, only the data changes #}
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 text-sm">
+          <span class="font-mono">{{ edge.source|truncatechars:12 }}</span>
+          <span class="font-semibold" :class="darkMode ? 'text-link-dark' : 'text-link-light'">→ {{ edge.edge_type_name }} →</span>
+          <span class="font-mono">{{ edge.target|truncatechars:12 }}</span>
+        </div>
+      {% else %}
+        <div class="grid gap-3 sm:grid-cols-3">
+          <div class="space-y-1">
+            <label for="from_uid" class="block text-sm font-semibold">{% trans "Link from" %}</label>
+            <select id="from_uid" name="from_uid"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for n in nodes %}
+                <option value="{{ n.uid }}" {% if n.uid == selected.from_uid %}selected{% endif %}>{{ n.display }} · {{ n.category_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label for="edge_type" class="block text-sm font-semibold">{% trans "Edge type" %}</label>
+            <select id="edge_type" name="edge_type"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for et in edge_types %}
+                <option value="{{ et.slug }}" {% if et.slug == selected.edge_type %}selected{% endif %}>{{ et.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="space-y-1">
+            <label for="to_uid" class="block text-sm font-semibold">{% trans "Link to" %}</label>
+            <select id="to_uid" name="to_uid"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              <option value="">—</option>
+              {% for n in nodes %}
+                <option value="{{ n.uid }}" {% if n.uid == selected.to_uid %}selected{% endif %}>{{ n.display }} · {{ n.category_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+      {% endif %}
+
+      {% trans "Data (JSON)" as data_label %}
+      {% include "bento/_ace_json.html" with field="data" label=data_label value=selected.data height="16rem" %}
+
+      <div class="flex gap-2">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}
+        </button>
+        <a href="{% url 'bento:edge_list' %}" class="rounded-lg border border-current/20 px-4 py-2 text-sm hover:opacity-80">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{% include "bento/_metadata_ace_scripts.html" %}
+{% endblock %}

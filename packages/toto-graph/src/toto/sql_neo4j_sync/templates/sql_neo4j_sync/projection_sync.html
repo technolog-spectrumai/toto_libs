@@ -1,0 +1,162 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}Projection Plans{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-7xl space-y-6">
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'ravioli:query_unified' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>{% trans "Knowledge Graph" %}</a>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">{% trans "Ravioli" %}</p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-code-compare"></i>{% trans "Projection Plans" %}</h1>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <form method="post" action="{% url 'sql_neo4j_sync:full_sync' %}"
+              x-data="{ going: false }" @submit="going = true">
+          {% csrf_token %}
+          <button type="submit" :disabled="going"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-success-light text-white">
+            <i x-show="!going" class="fa-solid fa-rotate"></i>
+            <i x-show="going" class="fa-solid fa-spinner fa-spin"></i>
+            <span x-text="going ? 'Queuing…' : 'Full Sync'"></span>
+          </button>
+        </form>
+
+        <form method="post" action="{% url 'sql_neo4j_sync:clear_db' %}"
+              x-data="{ going: false }"
+              @submit.prevent="if (confirm('Delete ALL ravioli-owned nodes and relationships from Neo4j?')) { going = true; $el.submit() }">
+          {% csrf_token %}
+          <button type="submit" :disabled="going"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed bg-warn-light text-white">
+            <i x-show="!going" class="fa-solid fa-trash-can"></i>
+            <i x-show="going" class="fa-solid fa-spinner fa-spin"></i>
+            <span x-text="going ? 'Queuing…' : 'Clear DB'"></span>
+          </button>
+        </form>
+      </div>
+    </header>
+
+    <form
+      method="post"
+      action="{% url 'sql_neo4j_sync:create_projection_plan' %}"
+      x-data="{ submitting: false }"
+      @submit="submitting = true"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-6 shadow-sm">
+      {% csrf_token %}
+      <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+        <div>
+          <h2 class="flex items-center gap-2 text-xl font-bold">
+            <i class="fa-solid fa-diagram-project"></i>{% trans "Generate diff" %}</h2>
+          <p class="mt-1 text-sm opacity-70">{% trans "Build a reviewable projection plan from selected graph labels." %}</p>
+        </div>
+        <button
+          type="submit"
+          :disabled="submitting"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-60 disabled:cursor-not-allowed">
+          <i x-show="!submitting" class="fa-solid fa-wand-magic-sparkles"></i>
+          <i x-show="submitting" class="fa-solid fa-spinner fa-spin"></i>
+          <span x-text="submitting ? 'Generating…' : 'Generate plan'"></span>
+        </button>
+      </div>
+
+      <div class="mt-6 flex flex-wrap gap-2 text-sm">
+        <button type="button" id="select-all" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-check-double"></i>{% trans "Select all" %}</button>
+        <button type="button" id="deselect-all" class="inline-flex items-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
+          <i class="fa-solid fa-eraser"></i>{% trans "Clear" %}</button>
+      </div>
+
+      <div class="mt-5 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        {% for app, models in grouped_models.items %}
+          <fieldset
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-lg border p-4">
+            <legend class="px-2 text-sm font-bold">{{ app }}</legend>
+            <div class="mt-2 grid gap-2 text-sm">
+              {% for model in models %}
+                <label class="flex items-center gap-2">
+                  <input
+                    type="checkbox"
+                    name="models"
+                    value="{{ model }}"
+                    class="projection-model h-4 w-4 rounded"
+                    checked>
+                  <span>{{ model }}</span>
+                </label>
+              {% endfor %}
+            </div>
+          </fieldset>
+        {% endfor %}
+      </div>
+    </form>
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-6 shadow-sm">
+      <div class="flex items-center justify-between gap-4">
+        <h2 class="flex items-center gap-2 text-xl font-bold">
+          <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Recent plans" %}</h2>
+      </div>
+
+      {% if plans %}
+        <div class="mt-5 overflow-x-auto">
+          <table class="min-w-full text-left text-sm">
+            <thead class="border-b border-current/10 text-xs uppercase opacity-70">
+              <tr>
+                <th class="py-3 pr-4">{% trans "Plan" %}</th>
+                <th class="py-3 pr-4">{% trans "Status" %}</th>
+                <th class="py-3 pr-4">{% trans "Changes" %}</th>
+                <th class="py-3 pr-4">{% trans "Created" %}</th>
+                <th class="py-3 text-right">{% trans "Action" %}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y divide-current/10">
+              {% for plan in plans %}
+                <tr>
+                  <td class="py-3 pr-4 font-semibold">#{{ plan.pk }}</td>
+                  <td class="py-3 pr-4">{{ plan.status }}</td>
+                  <td class="py-3 pr-4">{{ plan.total_changes }}</td>
+                  <td class="py-3 pr-4">{{ plan.created_at|date:"M d, Y H:i" }}</td>
+                  <td class="py-3 text-right">
+                    <a href="{% url 'sql_neo4j_sync:projection_plan_detail' plan.pk %}" class="inline-flex items-center justify-center gap-2 rounded-lg border border-current/20 px-3 py-2 font-semibold transition hover:opacity-80">
+                      <i class="fa-solid fa-eye"></i>{% trans "Review" %}</a>
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-4 text-sm opacity-60">{% trans "No projection plans yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+</section>
+{% endblock %}
+
+{% block end_script %}
+<script>
+document.getElementById("select-all")?.addEventListener("click", function () {
+  document.querySelectorAll(".projection-model").forEach((input) => input.checked = true);
+});
+
+document.getElementById("deselect-all")?.addEventListener("click", function () {
+  document.querySelectorAll(".projection-model").forEach((input) => input.checked = false);
+});
+</script>
+{% endblock %}

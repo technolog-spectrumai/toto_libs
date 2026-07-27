@@ -1,0 +1,146 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Communities – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300">
+
+  <div class="max-w-6xl mx-auto space-y-12">
+
+    <!-- Header -->
+    <section
+      :class="darkMode
+        ? 'bg-primary-bg-dark text-text-main-dark border border-accent-1'
+        : 'bg-primary-bg-light text-text-main-light border border-accent-2'"
+      class="p-4 sm:p-6 rounded-lg space-y-3 text-center">
+
+      <h1 class="text-xl sm:text-2xl font-extrabold">{% trans "Communities" %}</h1>
+      <p class="text-sm opacity-80">{% trans "Browse all registered communities" %}</p>
+    </section>
+
+    <!-- Desktop Table -->
+    <section>
+      <h2 class="text-2xl font-bold mb-4">{% trans "Community Directory" %}</h2>
+
+      <div class="hidden md:block overflow-x-auto">
+        <table class="min-w-full text-sm border rounded"
+               :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-white text-text-main-light border-accent-2'">
+          <thead>
+            <tr class="text-left border-b"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-4 py-2">{% trans "Logo" %}</th>
+              <th class="px-4 py-2">{% trans "Name" %}</th>
+              <th class="px-4 py-2">{% trans "Type" %}</th>
+              <th class="px-4 py-2">{% trans "Established" %}</th>
+              <th class="px-4 py-2">{% trans "Head" %}</th>
+              <th class="px-4 py-2">{% trans "Action" %}</th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {% for community in communities %}
+            <tr class="border-b"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+
+              <td class="px-4 py-2">
+                {% if community.logo %}
+                  <img src="{{ community.logo.url }}" class="w-10 h-10 rounded object-cover">
+                {% else %}
+                  <div class="w-10 h-10 rounded bg-gray-300 dark:bg-gray-700"></div>
+                {% endif %}
+              </td>
+
+              <td class="px-4 py-2 font-medium">{{ community.name }}</td>
+              <td class="px-4 py-2">{{ community.get_org_type_display }}</td>
+              <td class="px-4 py-2">{{ community.established_year|default:"—" }}</td>
+              <td class="px-4 py-2">
+                {{ community.head.display_name|default:"—" }}
+              </td>
+
+              <td class="px-4 py-2">
+                <a href="{% url 'socialhub:community_detail' community.slug %}"
+                   class="underline text-link-light dark:text-link-light">{% trans "View Community" %}</a>
+              </td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="px-4 py-4 text-center text-gray-500">{% trans "No communities found." %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Mobile Cards -->
+      <div class="md:hidden space-y-4">
+        {% for community in communities %}
+        <div class="border rounded-lg p-4"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-white border-accent-2 text-text-main-light'">
+
+          <div class="flex items-center space-x-3">
+            {% if community.logo %}
+              <img src="{{ community.logo.url }}" class="w-12 h-12 rounded object-cover">
+            {% else %}
+              <div class="w-12 h-12 rounded bg-gray-300 dark:bg-gray-700"></div>
+            {% endif %}
+
+            <div>
+              <p class="font-semibold text-base">{{ community.name }}</p>
+              <p class="text-xs text-gray-500">
+                {{ community.get_org_type_display }}
+              </p>
+            </div>
+          </div>
+
+          <div class="mt-3 text-sm space-y-1">
+            <p><strong>{% trans "Established:" %}</strong> {{ community.established_year|default:"—" }}</p>
+            <p><strong>{% trans "Head:" %}</strong> {{ community.head.display_name|default:"—" }}</p>
+
+            <a href="{% url 'socialhub:community_detail' community.slug %}"
+               class="block mt-2 underline text-link-light dark:text-link-light">{% trans "View Community" %}</a>
+          </div>
+        </div>
+        {% empty %}
+        <div class="p-4 rounded border text-sm text-center"
+             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'">{% trans "No communities found." %}</div>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Pagination -->
+    {% if is_paginated %}
+      <div class="mt-8 flex flex-wrap justify-center items-center gap-2 text-sm">
+        {% if page_obj.has_previous %}
+          <a href="?page=1"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">{% trans "First" %}</a>
+          <a href="?page={{ page_obj.previous_page_number }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">{% trans "Previous" %}</a>
+        {% endif %}
+
+        <span class="px-3 py-1 rounded border font-medium"
+              :class="darkMode ? 'bg-gray-800 border-gray-600' : 'bg-gray-200 border-gray-300'">
+          Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}
+        </span>
+
+        {% if page_obj.has_next %}
+          <a href="?page={{ page_obj.next_page_number }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">{% trans "Next" %}</a>
+          <a href="?page={{ page_obj.paginator.num_pages }}"
+             class="px-3 py-1 rounded border transition-colors duration-200"
+             :class="darkMode ? 'border-gray-600 hover:bg-gray-700' : 'border-gray-300 hover:bg-gray-100'">{% trans "Last" %}</a>
+        {% endif %}
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

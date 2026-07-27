@@ -1,0 +1,386 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "Buy Storage Tokens" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-xl space-y-6">
+
+    <!-- Header -->
+    <header class="space-y-2">
+      <a href="{% url 'vault:storage_account' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {% trans "Back to Storage Account" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">
+          <i class="fa-solid fa-vault mr-1"></i>{% trans "Vault" %}
+        </p>
+        <h1 class="mt-1 text-2xl font-bold">{% trans "Buy Storage Tokens" %}</h1>
+        <p class="text-sm opacity-60 mt-1">{% trans "Top up your storage credits to upload files." %}</p>
+      </div>
+    </header>
+
+    {% if messages %}
+    {% for msg in messages %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-semibold">{{ msg }}</div>
+    {% endfor %}
+    {% endif %}
+
+    {% if not payer_account %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+      <i class="fa-solid fa-wallet text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "No storage account connected." %}</p>
+      <a href="{% url 'vault:storage_account' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-link"></i>{% trans "Connect account" %}
+      </a>
+    </div>
+
+    {% elif not asset %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-10 text-center shadow-sm">
+      <i class="fa-solid fa-triangle-exclamation text-3xl opacity-20 mb-3"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "Storage tokens are not available right now." %}</p>
+      <p class="text-xs opacity-45 mt-1">{% trans "Ask an administrator to configure the storage token reserve." %}</p>
+    </div>
+
+    {% else %}
+
+    <!-- Balance card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm">
+      <div class="border-b px-5 py-3" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-coins opacity-60"></i>{% trans "Your token balance" %}
+        </h2>
+      </div>
+      <div class="px-5 py-4 flex items-center justify-between gap-4">
+        <div class="font-mono text-2xl font-bold">
+          {{ token_balance|default:"0" }}
+          <span class="text-sm font-semibold opacity-60">{{ asset.unit_name }}</span>
+        </div>
+        <div class="text-xs opacity-50 text-right">
+          <div>{{ asset.name }}</div>
+          <div>{% trans "Decimals" %}: {{ asset.decimals }}</div>
+        </div>
+      </div>
+    </div>
+
+    {% if billing_summary %}
+    <!-- Upload costs card -->
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm">
+      <div class="border-b px-5 py-3" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2 text-sm">
+          <i class="fa-solid fa-upload opacity-60"></i>{% trans "Upload credits" %}
+        </h2>
+      </div>
+      <div class="px-5 py-4 space-y-3">
+        <p class="text-xs opacity-60">
+          {{ billing_summary.token_name }}
+          <span class="opacity-70">({{ billing_summary.token_unit }})</span>
+          — {% trans "uploads to this bucket are charged in" %} <strong>{{ billing_summary.token_unit }}</strong> {% trans "credits, not currency" %}.
+        </p>
+        <div class="flex flex-wrap gap-3 text-xs">
+          {% if billing_summary.request_rate %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
+            <div class="font-mono font-bold">{{ billing_summary.request_rate }}</div>
+            <div class="opacity-55 mt-0.5">{{ billing_summary.request_asset }} / {% trans "upload" %}</div>
+          </div>
+          {% endif %}
+          {% if billing_summary.transfer_rate %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
+            <div class="font-mono font-bold">{{ billing_summary.transfer_rate }}</div>
+            <div class="opacity-55 mt-0.5">{{ billing_summary.transfer_asset }} / MB</div>
+          </div>
+          {% endif %}
+          {% if billing_summary.has_billing_account %}
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg px-3 py-2 text-center">
+            <div class="font-mono font-bold">{{ billing_summary.user_balance_display }}</div>
+            <div class="opacity-55 mt-0.5">{% trans "your balance" %}</div>
+          </div>
+          {% endif %}
+        </div>
+        <a href="#purchase"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-bag-shopping"></i>
+          {% trans "Buy credits" %}
+        </a>
+      </div>
+    </div>
+    {% endif %}
+
+    <!-- Exchange widget -->
+    {% if prices %}
+    <div id="purchase" x-data="tokenExchange({{ prices_json }})"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border shadow-sm overflow-hidden">
+
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h2 class="font-semibold flex items-center gap-2">
+          <i class="fa-solid fa-arrows-rotate opacity-60"></i>
+          {% trans "Purchase tokens" %}
+        </h2>
+        <p class="text-xs opacity-60 mt-0.5">{% trans "Tokens are credited instantly. Exchange is immediate." %}</p>
+      </div>
+
+      <form method="post" class="px-5 py-5 space-y-5">
+        {% csrf_token %}
+
+        <!-- Currency selector -->
+        <div class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Pay with" %}</label>
+          <div class="grid gap-2" :class="prices.length > 2 ? 'sm:grid-cols-3' : 'sm:grid-cols-2'">
+            <template x-for="p in prices" :key="p.pk">
+              <button type="button"
+                      @click="select(p)"
+                      :class="selected && selected.pk === p.pk
+                        ? (darkMode ? 'border-accent-dark bg-accent-dark/10 ring-1 ring-inset ring-accent-dark/30' : 'border-accent-light bg-accent-light/10 ring-1 ring-inset ring-accent-light/30')
+                        : (darkMode ? 'border-accent-1 opacity-70 hover:opacity-100' : 'border-accent-2 opacity-70 hover:opacity-100')"
+                      class="rounded-xl border px-4 py-3 text-left transition">
+                <div class="font-bold font-mono text-sm" x-text="p.unit_name"></div>
+                <div class="text-xs opacity-60 mt-0.5">
+                  {% trans "Balance" %}: <span class="font-mono" x-text="p.payer_balance"></span>
+                </div>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <!-- Rate display -->
+        <div x-show="selected"
+             :class="darkMode ? 'border-accent-1/40 bg-primary-bg-dark' : 'border-accent-2/40 bg-primary-bg-light'"
+             class="rounded-lg border px-4 py-3 text-sm space-y-1">
+          <div class="flex items-center justify-between gap-2">
+            <span class="opacity-60">{% trans "Exchange rate" %}</span>
+            <span class="font-mono font-semibold">
+              1 {{ asset.unit_name }} =
+              <span x-text="selected ? selected.price_per_token : '—'"></span>
+              <span x-text="selected ? selected.unit_name : ''"></span>
+            </span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="opacity-60">{% trans "Your balance" %}</span>
+            <span class="font-mono" x-text="selected ? selected.payer_balance + ' ' + selected.unit_name : '—'"></span>
+          </div>
+          <div class="flex items-center justify-between gap-2">
+            <span class="opacity-60">{% trans "Max tokens you can buy" %}</span>
+            <span class="font-mono font-semibold" x-text="maxTokens()"></span>
+          </div>
+        </div>
+
+        <!-- Token amount input -->
+        <div x-show="selected" class="space-y-2">
+          <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Tokens to buy" %}
+            <span class="font-normal opacity-60">({{ asset.unit_name }})</span>
+          </label>
+          <!-- Quick presets -->
+          <div class="flex gap-2 flex-wrap">
+            <button type="button" @click="tokenAmount = '10'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-accent-dark/10' : 'border-accent-2 bg-primary-bg-light hover:bg-accent-light/10'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition">10</button>
+            <button type="button" @click="tokenAmount = '50'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-accent-dark/10' : 'border-accent-2 bg-primary-bg-light hover:bg-accent-light/10'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition">50</button>
+            <button type="button" @click="tokenAmount = '100'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-accent-dark/10' : 'border-accent-2 bg-primary-bg-light hover:bg-accent-light/10'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition">100</button>
+            <button type="button" @click="tokenAmount = '500'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-accent-dark/10' : 'border-accent-2 bg-primary-bg-light hover:bg-accent-light/10'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition">500</button>
+            <button type="button" @click="tokenAmount = '1000'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark hover:bg-accent-dark/10' : 'border-accent-2 bg-primary-bg-light hover:bg-accent-light/10'"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold transition">1000</button>
+          </div>
+          <input type="number"
+                 x-model="tokenAmount"
+                 name="token_amount"
+                 step="any" min="0.000001" required
+                 placeholder="{% trans 'e.g. 100' %}"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+
+        <!-- Cost summary -->
+        <div x-show="selected && tokenAmount > 0"
+             :class="darkMode ? 'bg-accent-dark/10 border-accent-dark/20' : 'bg-accent-light/10 border-accent-light/20'"
+             class="rounded-xl border px-4 py-4 space-y-2">
+          <div class="text-xs font-semibold uppercase tracking-wide opacity-60 mb-3">{% trans "Order summary" %}</div>
+          <div class="flex items-center justify-between text-sm">
+            <span class="opacity-70">{% trans "You receive" %}</span>
+            <span class="font-mono font-bold" x-text="tokenAmount + ' {{ asset.unit_name }}'"></span>
+          </div>
+          <div class="flex items-center justify-between text-sm border-t pt-2"
+               :class="darkMode ? 'border-accent-dark/20' : 'border-accent-light/20'">
+            <span class="opacity-70">{% trans "You pay" %}</span>
+            <span class="font-mono font-bold text-lg"
+                  x-text="paymentAmount() + ' ' + (selected ? selected.unit_name : '')"></span>
+          </div>
+          <p x-show="parseFloat(tokenAmount) > parseFloat(maxTokens())"
+             class="text-xs text-warn-light font-semibold mt-1">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            {% trans "Insufficient balance." %}
+          </p>
+        </div>
+
+        <!-- Hidden price_pk -->
+        <input type="hidden" name="price_pk" :value="selected ? selected.pk : ''">
+
+        <button type="button"
+                @click="requirePin($el.closest('form'))"
+                :disabled="!selected || !tokenAmount || parseFloat(tokenAmount) <= 0 || parseFloat(tokenAmount) > parseFloat(maxTokens())"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark disabled:opacity-40' : 'bg-accent-light text-primary-bg-light disabled:opacity-40'"
+                class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition hover:opacity-90 disabled:cursor-not-allowed">
+          <i class="fa-solid fa-lock text-xs"></i>
+          {% trans "Buy tokens" %}
+        </button>
+      </form>
+
+      <!-- PIN modal (inlined) -->
+      <div x-show="pinOpen"
+           x-transition:enter="transition ease-out duration-150"
+           x-transition:enter-start="opacity-0 scale-95"
+           x-transition:enter-end="opacity-100 scale-100"
+           x-cloak
+           class="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+           @keydown.escape.window="pinOpen = false">
+        <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="pinOpen = false"></div>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+             class="relative z-10 w-full max-w-sm rounded-2xl border p-6 shadow-2xl space-y-4">
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <h3 class="font-bold text-lg">{% trans "Wallet PIN" %}</h3>
+              <p class="text-xs opacity-50 mt-0.5">{% trans "Enter your PIN to authorise this purchase." %}</p>
+            </div>
+            <button type="button" @click="pinOpen = false" class="opacity-40 hover:opacity-80 transition text-xl leading-none">&times;</button>
+          </div>
+          <div class="space-y-1">
+            <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "PIN" %}</label>
+            <input type="password" inputmode="numeric" autocomplete="current-password"
+                   x-model="pinValue"
+                   @keydown.enter.prevent="submitPin()"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                   class="w-full rounded-xl border px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] outline-none focus:ring-2 focus:ring-current/20"
+                   placeholder="••••">
+            <p x-show="pinError" x-text="pinError"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+               class="text-xs mt-1 font-semibold"></p>
+          </div>
+          <button type="button" @click="submitPin()"
+                  :disabled="pinLoading"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="w-full rounded-xl py-3 font-bold text-sm transition hover:opacity-85 disabled:opacity-50 flex items-center justify-center gap-2">
+            <i class="fa-solid" :class="pinLoading ? 'fa-spinner fa-spin' : 'fa-bolt'"></i>
+            <span x-text="pinLoading ? '{% trans "Verifying…" %}' : '{% trans "Confirm purchase" %}'"></span>
+          </button>
+          <p class="text-center text-xs opacity-40">
+            <a href="{% url 'assets:wallet_pin_set' %}" class="underline hover:opacity-80 transition">{% trans "Change PIN" %}</a>
+          </p>
+        </div>
+      </div>
+    </div>
+
+    {% else %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border border-dashed p-10 text-center shadow-sm space-y-3">
+      <i class="fa-solid fa-lock text-3xl opacity-20 mb-1"></i>
+      <p class="text-sm font-semibold opacity-55">{% trans "Token purchases are not available." %}</p>
+      <p class="text-xs opacity-45">{% trans "No payment methods have been configured for this bucket." %}</p>
+      {% if request.user.is_staff %}
+      <a href="/admin/vault/bucketbilling/"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-plus"></i>
+        {% trans "Configure pricing" %}
+      </a>
+      {% endif %}
+    </div>
+    {% endif %}
+
+    {% endif %}
+  </div>
+</div>
+
+<script>
+function tokenExchange(prices) {
+  return {
+    prices: prices,
+    selected: prices.length > 0 ? prices[0] : null,
+    tokenAmount: '',
+
+    // PIN modal state
+    pinOpen: false,
+    pinValue: '',
+    pinError: '',
+    pinLoading: false,
+    pendingForm: null,
+    walletPinReady: {{ has_wallet_pin|yesno:'true,false' }},
+
+    select(p) { this.selected = p; },
+
+    requirePin(form) {
+      if (!this.walletPinReady) {
+        window.location.href = '{% url "assets:wallet_pin_set" %}';
+        return;
+      }
+      this.pendingForm = form;
+      this.pinValue = '';
+      this.pinError = '';
+      this.pinOpen = true;
+    },
+
+    async submitPin() {
+      if (!this.pinValue) { this.pinError = '{% trans "Enter your PIN." %}'; return; }
+      this.pinLoading = true;
+      this.pinError = '';
+      try {
+        const res = await fetch('{% url "assets:wallet_pin_verify" %}', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+          body: JSON.stringify({ pin: this.pinValue }),
+        });
+        const data = await res.json();
+        if (data.ok) {
+          this.pinOpen = false;
+          this.pendingForm.submit();
+        } else {
+          this.pinError = data.error || '{% trans "Incorrect PIN." %}';
+        }
+      } catch {
+        this.pinError = '{% trans "Network error. Try again." %}';
+      }
+      this.pinLoading = false;
+    },
+
+    maxTokens() {
+      if (!this.selected || !this.selected.price_per_token) return '0';
+      const bal = parseFloat(this.selected.payer_balance);
+      const rate = parseFloat(this.selected.price_per_token);
+      if (rate <= 0) return '∞';
+      return (bal / rate).toFixed(6);
+    },
+
+    paymentAmount() {
+      if (!this.selected || !this.tokenAmount) return '0';
+      const tokens = parseFloat(this.tokenAmount) || 0;
+      const rate = parseFloat(this.selected.price_per_token) || 0;
+      const dec = this.selected.decimals || 6;
+      return (tokens * rate).toFixed(dec);
+    },
+  };
+}
+</script>
+{% endblock %}

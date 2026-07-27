@@ -1,0 +1,9 @@
+{% load i18n %}
+{# Read-only JSON viewer backed by ACE. Expects `value` (JSON-serialisable) and `id` (unique DOM id). #}
+<div class="metadata-ace-view" data-source="{{ id }}">
+  {# Django escapes & embeds the value safely as <script type="application/json" id="{{ id }}">…</script>. #}
+  {{ value|json_script:id }}
+  <div id="{{ id }}_ace"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="metadata-ace-editor w-full overflow-hidden rounded-lg border text-sm"></div>
+</div>

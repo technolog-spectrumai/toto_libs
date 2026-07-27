@@ -1,0 +1,190 @@
+{% extends "admin/base_site.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block extrastyle %}
+    {{ block.super }}
+    <style>
+        #cy {
+            width: 100%;
+            height: 600px;
+            border: 1px solid #ccc;
+            margin-bottom: 30px;
+        }
+
+        table.admin-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        table.admin-table th, table.admin-table td {
+            border: 1px solid #ddd;
+            padding: 8px;
+        }
+    </style>
+{% endblock %}
+
+{% block content %}
+<div id="content-main">
+
+    <h2>{% trans "Cypher Query" %}</h2>
+    <pre>{{ query }}</pre>
+
+    <div id="cy"></div>
+
+    <div id="details-box"
+         style="
+            width: 100%;
+            min-height: 120px;
+            border: 1px solid #ccc;
+            padding: 10px;
+            margin-bottom: 20px;
+            background: #fafafa;
+            white-space: pre-wrap;
+            font-family: monospace;
+         ">
+        <em>{% trans "Click a node or edge to see details…" %}</em>
+    </div>
+
+    <h2>{% trans "Nodes" %}</h2>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>{% trans "ID" %}</th>
+                <th>{% trans "Labels" %}</th>
+                <th>{% trans "Properties" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for n in nodes %}
+            <tr>
+                <td>{{ n.id }}</td>
+                <td>{{ n.labels|join:", " }}</td>
+                <td><pre>{{ n.props|safe }}</pre></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+    <h2>{% trans "Edges" %}</h2>
+    <table class="admin-table">
+        <thead>
+            <tr>
+                <th>{% trans "ID" %}</th>
+                <th>{% trans "Type" %}</th>
+                <th>{% trans "Start" %}</th>
+                <th>{% trans "End" %}</th>
+                <th>{% trans "Properties" %}</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for e in edges %}
+            <tr>
+                <td>{{ e.id }}</td>
+                <td>{{ e.type }}</td>
+                <td>{{ e.start }}</td>
+                <td>{{ e.end }}</td>
+                <td><pre>{{ e.props|safe }}</pre></td>
+            </tr>
+            {% endfor %}
+        </tbody>
+    </table>
+
+</div>
+
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<script>
+    const cy = cytoscape({
+        container: document.getElementById('cy'),
+
+        elements: [
+            {% for n in nodes %}
+            {
+                data: {
+                    id: "{{ n.id }}",
+                    label: "{{ n.labels|join:', ' }}",
+                    props: JSON.parse("{{ n.props|escapejs }}")
+                }
+            },
+            {% endfor %}
+            {% for e in edges %}
+            {
+                data: {
+                    id: "{{ e.id }}",
+                    source: "{{ e.start }}",
+                    target: "{{ e.end }}",
+                    label: "{{ e.type }}",
+                    props: JSON.parse("{{ e.props|escapejs }}")
+                }
+            },
+            {% endfor %}
+        ],
+
+        style: [
+            {
+                selector: 'node',
+                style: {
+                    'background-opacity': 0,
+                    'border-width': 2,
+                    'border-color': '#5A8DEE',
+                    'label': 'data(label)',
+                    'color': '#5A8DEE',
+                    'font-size': '11px',
+                    'text-valign': 'center',
+                    'text-halign': 'center'
+                }
+            },
+            {
+                selector: 'edge',
+                style: {
+                    'width': 1.5,
+                    'line-color': '#888',
+                    'target-arrow-color': '#888',
+                    'target-arrow-shape': 'triangle',
+                    'curve-style': 'bezier',
+                    'label': 'data(label)',
+                    'font-size': '9px',
+                    'color': '#AAA'
+                }
+            },
+            {
+                selector: ':selected',
+                style: {
+                    'border-color': '#FFB547',
+                    'line-color': '#FFB547',
+                    'target-arrow-color': '#FFB547'
+                }
+            }
+        ],
+
+        layout: { name: 'cose', animate: true }
+    });
+
+    const detailsBox = document.getElementById("details-box");
+
+    function showDetails(title, data) {
+        const props = data.props ? JSON.stringify(data.props, null, 2) : "{}";
+        detailsBox.innerText = `${title}\n\n${props}`;
+    }
+
+    function clearDetails() {
+        detailsBox.innerHTML = "<em>{% trans "Click a node or edge to see details…" %}</em>";
+    }
+
+    cy.on("tap", "node", function(evt) {
+        const d = evt.target.data();
+        showDetails(`Node ${d.id} (${d.label})`, d);
+    });
+
+    cy.on("tap", "edge", function(evt) {
+        const d = evt.target.data();
+        showDetails(`Edge ${d.id} [${d.label}]`, d);
+    });
+
+    cy.on("tap", function(evt) {
+        if (evt.target === cy) {
+            clearDetails();
+        }
+    });
+</script>
+
+{% endblock %}

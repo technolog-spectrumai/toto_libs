@@ -1,0 +1,130 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}Dashboard | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8"
+  x-data="{
+    allOpen: true,
+    toggleAll() {
+      this.allOpen = !this.allOpen;
+      this.$dispatch('dashboard-toggle', { open: this.allOpen });
+    }
+  }">
+
+  <div class="mx-auto max-w-7xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:welcome' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Welcome Page" %}
+        </a>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Toto Platform" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-gauge-high"></i>
+            {% trans "Dashboard" %}
+          </h1>
+        </div>
+      </div>
+
+      <nav class="flex flex-wrap items-center gap-2">
+        <span class="text-sm opacity-55">
+          {% blocktrans with count=total_items %}{{ count }} modules{% endblocktrans %}
+        </span>
+        {% if use_groups %}
+        <button
+          type="button"
+          @click="toggleAll()"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-layer-group"></i>
+          <span x-text="allOpen ? '{% trans "Collapse all" %}' : '{% trans "Expand all" %}'"></span>
+        </button>
+        {% endif %}
+      </nav>
+    </header>
+
+    <!-- Messages -->
+    {% if messages %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-4 shadow-sm">
+        <div class="space-y-2">
+          {% for message in messages %}
+            <p class="text-sm font-semibold">{{ message }}</p>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+
+    <!-- Dashboard content -->
+    {% if groups %}
+
+      {% if use_groups %}
+        <!-- Authenticated: grouped sections with collapse -->
+        {% for group in groups %}
+          <section
+            x-data="{ open: true }"
+            @dashboard-toggle.window="open = $event.detail.open"
+            class="space-y-3">
+
+            <button
+              type="button"
+              @click="open = !open"
+              class="flex w-full items-center justify-between gap-3 text-left">
+              <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+                {{ group.title }}
+              </h2>
+              <i
+                class="fa-solid fa-chevron-down text-xs opacity-40 transition-transform duration-200"
+                :class="open ? '' : '-rotate-90'"></i>
+            </button>
+
+            <div
+              x-show="open"
+              x-transition:enter="transition ease-out duration-200"
+              x-transition:enter-start="opacity-0 -translate-y-1"
+              x-transition:enter-end="opacity-100 translate-y-0"
+              x-transition:leave="transition ease-in duration-150"
+              x-transition:leave-start="opacity-100 translate-y-0"
+              x-transition:leave-end="opacity-0 -translate-y-1"
+              class="grid grid-cols-1 gap-3 md:grid-cols-2">
+              {% include "oya/_dashboard_cards.html" with items=group.items %}
+            </div>
+          </section>
+        {% endfor %}
+
+      {% else %}
+        <!-- Public: flat grid, no section headers -->
+        <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          {% include "oya/_dashboard_cards.html" with items=groups.0.items %}
+        </div>
+      {% endif %}
+
+    {% else %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border border-dashed p-10 text-center shadow-sm">
+        <i
+          :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+          class="fa-solid fa-box-open text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No dashboard items" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "No elements are available right now." %}</p>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

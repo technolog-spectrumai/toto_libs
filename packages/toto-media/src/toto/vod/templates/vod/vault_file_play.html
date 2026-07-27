@@ -1,0 +1,80 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div x-data="{ darkMode: $store.theme ? $store.theme.dark : false }"
+     class="mx-auto max-w-4xl px-4 py-6 space-y-4">
+
+  {# Back link #}
+  <div>
+    <a href="{% url 'vault:public_list' %}"
+       :class="darkMode ? 'text-accent-dark hover:text-accent-dark/70' : 'text-accent-light hover:text-accent-light/70'"
+       class="inline-flex items-center gap-1.5 text-sm font-medium transition">
+      <i class="fa-solid fa-arrow-left text-xs"></i>
+      {% trans "Back to vault" %}
+    </a>
+  </div>
+
+  {# Player #}
+  {% if source_url %}
+    {% if vault_file.file_type == "audio" %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+           class="rounded-2xl border p-6 shadow-lg flex flex-col items-center gap-4">
+        <i class="fa-solid fa-music text-5xl opacity-30"></i>
+        <audio id="vault-player"
+               controls
+               preload="metadata"
+               class="w-full"
+               src="{{ source_url }}"></audio>
+      </div>
+    {% else %}
+      <div class="overflow-hidden rounded-2xl bg-black shadow-lg aspect-video">
+        <video id="vault-player"
+               controls
+               playsinline
+               preload="metadata"
+               class="h-full w-full"
+               src="{{ source_url }}"></video>
+      </div>
+    {% endif %}
+  {% else %}
+    <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+         class="flex flex-col items-center justify-center rounded-2xl border py-16 text-center shadow-sm">
+      <i class="fa-solid fa-triangle-exclamation mb-4 text-4xl opacity-30"></i>
+      <h3 class="text-lg font-bold">{% trans "File not available" %}</h3>
+      <p class="mt-1 max-w-sm text-sm opacity-60">
+        {% trans "This file cannot be streamed directly. Try downloading it instead." %}
+      </p>
+    </div>
+  {% endif %}
+
+  {# File info #}
+  <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+       class="rounded-2xl border p-4 shadow-sm space-y-2">
+
+    <h1 class="text-xl font-bold leading-snug sm:text-2xl">{{ vault_file.title }}</h1>
+
+    <div class="flex flex-wrap items-center gap-3 text-sm opacity-60">
+      <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="rounded border px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-wide">
+        {{ vault_file.file_type }}
+      </span>
+      <span>{{ vault_file.owner.username }}</span>
+      <span>·</span>
+      <span>{{ vault_file.uploaded_at|date:"Y-m-d" }}</span>
+      {% if vault_file.file_size_bytes %}
+        <span>·</span>
+        <span>{{ vault_file.file_size_bytes|filesizeformat }}</span>
+      {% endif %}
+    </div>
+
+    {% if vault_file.notes %}
+      <p class="text-sm leading-relaxed opacity-80">{{ vault_file.notes|linebreaksbr }}</p>
+    {% endif %}
+  </div>
+
+</div>
+{% endblock %}

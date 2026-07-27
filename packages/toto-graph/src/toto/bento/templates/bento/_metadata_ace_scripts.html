@@ -1,0 +1,93 @@
+{% load static i18n %}
+{# ACE assets + init for any `.metadata-ace` JSON editors on the page. Include once, in end_script. #}
+<script src="{% static 'vendor/ace/ace.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-json.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script>
+(function () {
+  if (!window.ace) { return; }
+  ace.config.set("basePath", "{% static 'vendor/ace/' %}");
+  const darkMode = localStorage.getItem("darkMode") === "true";
+
+  document.querySelectorAll(".metadata-ace").forEach(function (wrap) {
+    const textarea = document.getElementById(wrap.dataset.target);
+    const host = document.getElementById(wrap.dataset.target + "_ace");
+    if (!textarea || !host) { return; }
+
+    const editor = ace.edit(host);
+    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+    editor.session.setMode("ace/mode/json");
+    editor.setOptions({ fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2 });
+
+    // Seed from the current field value, pretty-printed when it is already valid JSON.
+    let initial = (textarea.value || "").trim();
+    if (initial) {
+      try { initial = JSON.stringify(JSON.parse(initial), null, 2); } catch (e) { /* keep raw text */ }
+    } else {
+      initial = "{}";
+    }
+    editor.setValue(initial, -1);
+    textarea.value = editor.getValue();
+
+    const status = wrap.querySelector(".metadata-ace-status");
+    function setStatus(message, ok) {
+      if (!status) { return; }
+      if (!message) { status.classList.add("hidden"); return; }
+      status.textContent = message;
+      status.classList.remove("hidden");
+      status.style.background = ok ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)";
+      status.style.color = ok ? "#16a34a" : "#ef4444";
+    }
+
+    editor.session.on("change", function () {
+      textarea.value = editor.getValue();
+      const text = editor.getValue().trim();
+      if (!text || text === "{}") { setStatus("", true); return; }
+      try { JSON.parse(text); setStatus("{% trans 'Valid JSON' %}", true); }
+      catch (err) { setStatus("{% trans 'Invalid JSON' %}", false); }
+    });
+
+    const form = textarea.closest("form");
+    if (form) {
+      form.addEventListener("submit", function (e) {
+        const text = editor.getValue().trim();
+        textarea.value = text === "" ? "{}" : text;
+        try {
+          JSON.parse(textarea.value);
+        } catch (err) {
+          e.preventDefault();
+          setStatus("{% trans 'Invalid JSON:' %} " + err.message, false);
+          editor.focus();
+        }
+      });
+    }
+  });
+
+  // Read-only JSON viewers (e.g. the box detail Properties panel). Seeded from a
+  // `json_script` <script> element and never editable.
+  document.querySelectorAll(".metadata-ace-view").forEach(function (wrap) {
+    const source = document.getElementById(wrap.dataset.source);
+    const host = document.getElementById(wrap.dataset.source + "_ace");
+    if (!source || !host) { return; }
+
+    const editor = ace.edit(host);
+    editor.setTheme(darkMode ? "ace/theme/twilight" : "ace/theme/textmate");
+    editor.session.setMode("ace/mode/json");
+    editor.setReadOnly(true);
+    editor.setHighlightActiveLine(false);
+    editor.setOptions({
+      fontSize: "14px", showPrintMargin: false, useSoftTabs: true, tabSize: 2,
+      minLines: 3, maxLines: 40, highlightGutterLine: false,
+    });
+    if (editor.renderer.$cursorLayer) {
+      editor.renderer.$cursorLayer.element.style.display = "none";
+    }
+
+    let data = {};
+    try { data = JSON.parse(source.textContent || "{}"); } catch (e) { data = {}; }
+    editor.setValue(JSON.stringify(data, null, 2), -1);
+    editor.clearSelection();
+  });
+})();
+</script>

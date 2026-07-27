@@ -1,0 +1,41 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{% trans "User Manual" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <!-- Header -->
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'core:dashboard' %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>
+          {% trans "Dashboard" %}
+        </a>
+        <div>
+          <p
+            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+            class="text-xs font-semibold uppercase tracking-wide">
+            {% trans "Toto Platform" %}
+          </p>
+          <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+            <i class="fa-solid fa-book-open"></i>
+            {% trans "User Manual" %}
+          </h1>
+          <p class="mt-1 text-sm opacity-70">{% trans "How to use the platform. Only features installed on this server are described." %}</p>
+        </div>
+      </div>
+    </header>
+
+    {% include manual_body_template %}
+
+  </div>
+</section>
+{% endblock %}
