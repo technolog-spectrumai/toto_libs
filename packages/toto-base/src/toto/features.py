@@ -39,6 +39,10 @@ class Features:
     # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
     # Address carries plain lat/lon floats — a much lighter host. Default on.
     geo: bool
+    # Task boards. Subtractive like geo: a long-standing core app, so it stays on
+    # unless a host says otherwise, and turning it off only drops toto.kanban.
+    # Nothing has a model FK into it, so it leaves nothing dangling.
+    kanban: bool
     # Derived.
     editor: bool
     vicuna: bool
@@ -118,6 +122,13 @@ def resolve_features(get) -> Features:
     # for a light host: locations stays installed but geometry-less, no GDAL.
     geo = flag(get, "BUILD_GEO", default=True)                # django.contrib.gis + spatial DB
 
+    # Task boards. Subtractive like geo, and for the same reason: it has always
+    # been a core app, so a host that never names it keeps it. Set BUILD_KANBAN=0
+    # to drop it. No closure entry — nothing else needs it. toto.locations reads
+    # kanban models on the zone page, but guards that with apps.is_installed and
+    # imports them inside the view, so a kanban-less host just shows the zone.
+    kanban = flag(get, "BUILD_KANBAN", default=True)          # toto.kanban — project/task boards
+
     # Map-dependent apps cannot run without geometry — fail loud rather than
     # silently pulling GIS back in (the coordinate reads and map overlays in
     # weather/travels need it). Explicit per the build contract.
@@ -182,6 +193,7 @@ def resolve_features(get) -> Features:
         travels=travels,
         gitvault=gitvault,
         geo=geo,
+        kanban=kanban,
         editor=editor,
         vicuna=vicuna,
         sabbia_openai=sabbia_openai,
