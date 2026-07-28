@@ -9,7 +9,7 @@ build-backend = "setuptools.build_meta"
 # cluster that cannot be layered apart: core, gervazy, people, locations
 # and events form one irreducible foreign-key/import cycle.
 name = "toto-base"
-version = "1.9"
+version = "1.10"
 description = "toto foundation: core platform, identity, storage and the host API"
 readme = "README.md"
 license = { text = "MIT" }
