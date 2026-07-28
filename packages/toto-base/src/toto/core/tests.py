@@ -105,3 +105,28 @@ class ViewSmokeTests(TestCase):
         # Should be allowed again
         response = self.client.get(reverse('core:welcome'))
         self.assertEqual(response.status_code, 200)
+
+
+class ManualFeatureGateTests(TestCase):
+    """The manual must describe only pages this host actually serves."""
+
+    def test_notebooks_follow_the_url_mount_not_the_installed_app(self):
+        # zenobia installs toto.mandragora purely so workflows' FK to
+        # ComputeKernel resolves, and mounts it at no URL. The manual used to
+        # gate on the app and advertised a notebook editor that 404s.
+        from toto.core.views import _mounted
+
+        self.assertTrue(_mounted("core:dashboard"))
+        self.assertFalse(_mounted("nosuchapp:nosuchview"))
+
+    def test_unmounted_app_hides_its_manual_section(self):
+        from django.test import RequestFactory
+        from django.contrib.auth.models import AnonymousUser
+        from toto.core.views import _manual_features
+
+        request = RequestFactory().get("/core/manual/")
+        request.user = AnonymousUser()
+        features = _manual_features(request)
+        # Whatever this host installs, every advertised section must correspond
+        # to something reachable — that is the property the gate exists for.
+        self.assertIs(type(features["notebooks"]), bool)

@@ -7,7 +7,7 @@ build-backend = "setuptools.build_meta"
 # bento/ingestor/connectors raise ImproperlyConfigured unless the rest of
 # this cluster is installed, so they ship together.
 name = "toto-graph"
-version = "1.10"
+version = "1.11"
 description = "toto Neo4j knowledge graph, ingestion and connectors"
 readme = "README.md"
 license = { text = "MIT" }
@@ -15,9 +15,9 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.10",
-    "toto-flow==1.10",
-    "toto-ai==1.10",
+    "toto-base==1.11",
+    "toto-flow==1.11",
+    "toto-ai==1.11",
 ]
 
 [tool.setuptools.packages.find]
