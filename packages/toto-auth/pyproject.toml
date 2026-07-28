@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "toto-auth"
-version = "1.9"
+version = "1.10"
 description = "toto authentication: OIDC provider/consumer apps and the login strategy resolver"
 readme = "README.md"
 license = { text = "MIT" }
@@ -13,7 +13,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.9",
+    "toto-base==1.10",
     "PyJWT>=2.0",
     "cryptography>=41",
     "requests>=2.28",

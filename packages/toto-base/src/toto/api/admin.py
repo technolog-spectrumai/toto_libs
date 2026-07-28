@@ -31,7 +31,7 @@ class ApiConnectorSecretAdminMixin:
     connector's secret value (write-only) and RE-ENCRYPT it (rotate its data key).
 
     The plaintext is never displayed or stored in the form — it's written
-    straight into the Gervazy vault via ``toto.sabbia.vault``. ``api_secret`` is
+    straight into the Gervazy vault via ``toto.gervazy.vault``. ``api_secret`` is
     read-only; manage it only through the write-only field + the action.
     """
 
@@ -46,7 +46,7 @@ class ApiConnectorSecretAdminMixin:
         new_value = (form.cleaned_data.get("new_secret_value") or "").strip()
         if not new_value:
             return
-        from toto.sabbia import vault
+        from toto.gervazy import vault
 
         try:
             old = obj.api_secret
@@ -70,7 +70,7 @@ class ApiConnectorSecretAdminMixin:
 
     @admin.action(description="🔒 Re-encrypt secret (rotate data key)")
     def reencrypt_api_secret(self, request, queryset):
-        from toto.sabbia import vault
+        from toto.gervazy import vault
 
         rotated = skipped = failed = 0
         for obj in queryset:
