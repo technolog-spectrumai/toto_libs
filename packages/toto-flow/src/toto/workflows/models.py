@@ -3,6 +3,8 @@ from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 
 REPORT_BLOCK_TYPES = {"card", "chart", "table", "text"}
 REPORT_CHART_TYPES = {"bar", "line", "area", "pie"}
@@ -415,3 +417,19 @@ class WorkflowEdgeRun(models.Model):
     def __str__(self):
         state = "activated" if self.activated else "skipped"
         return f"EdgeRun {self.id} (edge {self.edge_id}) [{state}]"
+
+
+# Workflows meters run starts in its own tables — see toto.quota.models.
+
+class WorkflowUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Workflow usage event"
+        verbose_name_plural = "Workflow usage events"
+
+
+class WorkflowQuotaPolicy(AbstractQuotaPolicy):
+    events = WorkflowUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Workflow quota policy"
+        verbose_name_plural = "Workflow quota policies"

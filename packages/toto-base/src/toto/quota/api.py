@@ -1,23 +1,50 @@
+"""The quota service layer.
+
+Every function takes the app's own concrete policy model as its first argument
+— there is no registry to fall out of step with the app graph, and nothing here
+knows which apps exist. The event model is reached through
+``policy_model.events``, so a call site names one class.
+
+Two behaviours are worth knowing before you rely on them:
+
+* **No policy means allowed.** An unmetered metric is free, and a metric whose
+  policy was deleted becomes free again. Enforcement is opt-in per metric, by
+  the presence of a row.
+* **Checking is not spending.** :func:`check_quota` reads; :func:`record_usage`
+  writes. Between the two, a concurrent request can consume the same headroom.
+  That is fine for cost control and wrong for anything that must never be
+  exceeded.
+
+Periods are **calendar-aligned**: a daily limit resets at midnight rather than
+sliding 24 hours behind the last request, a week starts on Monday, and a month
+starts on the 1st whatever its length.
+"""
+
 from __future__ import annotations
 
 import logging
 from datetime import timedelta
 from decimal import Decimal
 
-from django.db.models import Q, Sum
+from django.db.models import Sum
 from django.utils import timezone
+
+from .choices import EventStatus, Mode, Period
 
 logger = logging.getLogger("toto.quota")
 
-_PERIOD_DELTAS = {
-    "daily": timedelta(days=1),
-    "weekly": timedelta(weeks=1),
-    "monthly": timedelta(days=30),
-    "yearly": timedelta(days=365),
-}
+
+class ImproperlyConfiguredQuota(Exception):
+    """A policy model was declared without its paired event model."""
 
 
 class QuotaExceeded(Exception):
+    """Raised by :func:`check_quota` when a blocking policy would be exceeded."""
+
+    #: What an HTTP layer should answer with. Quota is a rate problem, not a
+    #: payment one — see toto.quota.charge for the 402 case.
+    status_code = 429
+
     def __init__(self, policy, current: Decimal, limit: Decimal) -> None:
         self.policy = policy
         self.current = current
@@ -25,117 +52,141 @@ class QuotaExceeded(Exception):
 
     def __str__(self) -> str:
         p = self.policy
+        per = f" per {p.period}" if p.period != Period.LIFETIME else ""
         return (
             f"{p.name or p.metric_code} quota exceeded "
-            f"(used {self.current}/{self.limit} {p.unit or 'units'}"
-            f"{' per ' + p.period if p.period != 'lifetime' else ''})"
+            f"(used {self.current}/{self.limit} {p.unit or 'units'}{per})"
         )
 
 
-def get_policy(app_label: str, metric_code: str,
-               subject_type: str = "", subject_id: str = ""):
+# ---------------------------------------------------------------------------
+# Periods
+# ---------------------------------------------------------------------------
+
+def period_start(period: str, at=None):
+    """The start of the current window, or None for a lifetime policy.
+
+    Calendar-aligned, in the project's timezone. The alternative — subtracting
+    a timedelta from now — never resets: a user who hits a daily cap stays
+    capped for a rolling 24 hours from each request rather than until midnight.
     """
-    Return the most-specific active QuotaPolicy for the given tuple.
-    Subject-specific beats global (subject_type="" / subject_id="").
-    Returns None if no active policy exists.
-    """
-    from .models import QuotaPolicy
-
-    now = timezone.now()
-    qs = QuotaPolicy.objects.filter(
-        app_label=app_label,
-        metric_code=metric_code,
-        active=True,
-    ).filter(
-        Q(starts_at__isnull=True) | Q(starts_at__lte=now)
-    ).filter(
-        Q(ends_at__isnull=True) | Q(ends_at__gt=now)
-    )
-
-    if subject_type and subject_id:
-        specific = qs.filter(subject_type=subject_type, subject_id=subject_id).first()
-        if specific:
-            return specific
-
-    return qs.filter(subject_type="", subject_id="").first()
-
-
-def _period_start(period: str):
-    """Return the start of the current period window, or None for lifetime."""
-    if period == "lifetime":
+    if period == Period.LIFETIME:
         return None
-    delta = _PERIOD_DELTAS.get(period, timedelta(days=1))
-    return timezone.now() - delta
+
+    now = at or timezone.now()
+    day = now.replace(hour=0, minute=0, second=0, microsecond=0)
+
+    if period == Period.DAILY:
+        return day
+    if period == Period.WEEKLY:
+        return day - timedelta(days=now.weekday())   # Monday
+    if period == Period.MONTHLY:
+        return day.replace(day=1)
+    if period == Period.YEARLY:
+        return day.replace(month=1, day=1)
+    return day
 
 
-def _period_total(app_label: str, metric_code: str,
-                  subject_type: str, subject_id: str,
-                  since=None) -> Decimal:
-    """Sum of recorded (non-voided) usage for the given subject+metric since `since`."""
-    from .models import UsageEvent
+def _event_model(policy_model):
+    events = getattr(policy_model, "events", None)
+    if events is None:
+        raise ImproperlyConfiguredQuota(
+            f"{policy_model.__name__} does not name its usage-event model. "
+            f"Set `events = <YourUsageEvent>` on it."
+        )
+    return events
 
-    qs = UsageEvent.objects.filter(
-        app_label=app_label,
-        metric_code=metric_code,
-        subject_type=subject_type,
-        subject_id=subject_id,
-        status="recorded",
-    )
+
+# ---------------------------------------------------------------------------
+# Reading
+# ---------------------------------------------------------------------------
+
+def get_policy(policy_model, metric_code: str, user=None):
+    """The policy governing this metric for this user, or None.
+
+    A row naming the user wins; otherwise the default row (``user=None``).
+    """
+    now = timezone.now()
+    base = policy_model.objects.filter(metric_code=metric_code, active=True)
+    base = base.exclude(starts_at__gt=now).exclude(ends_at__lte=now)
+
+    if user is not None and getattr(user, "pk", None):
+        specific = base.filter(user=user).first()
+        if specific is not None:
+            return specific
+    return base.filter(user__isnull=True).first()
+
+
+def used(policy_model, metric_code: str, user=None, *, period=Period.LIFETIME, at=None) -> Decimal:
+    """How much of this metric the user has consumed in the current window."""
+    events = _event_model(policy_model)
+    qs = events.objects.filter(metric_code=metric_code, status=EventStatus.RECORDED)
+    qs = qs.filter(user=user) if user is not None else qs.filter(user__isnull=True)
+
+    since = period_start(period, at)
     if since is not None:
         qs = qs.filter(occurred_at__gte=since)
-
-    result = qs.aggregate(total=Sum("quantity"))["total"]
-    return result or Decimal("0")
+    return qs.aggregate(total=Sum("quantity"))["total"] or Decimal("0")
 
 
-def check_quota(app_label: str, metric_code: str, quantity,
-                subject_type: str, subject_id: str) -> None:
+def remaining(policy_model, metric_code: str, user=None) -> Decimal | None:
+    """Headroom left, or None when the metric is unmetered."""
+    policy = get_policy(policy_model, metric_code, user)
+    if policy is None:
+        return None
+    consumed = used(policy_model, metric_code, user, period=policy.period)
+    return max(Decimal("0"), Decimal(policy.limit) - consumed)
+
+
+# ---------------------------------------------------------------------------
+# Enforcing
+# ---------------------------------------------------------------------------
+
+def check_quota(policy_model, metric_code: str, quantity=1, user=None) -> None:
+    """Raise :class:`QuotaExceeded` if consuming this much would break a limit.
+
+    Silent when no policy exists or the policy is not in block mode. The test
+    is prospective — consuming exactly up to the limit is allowed.
     """
-    Raise QuotaExceeded if an active block-mode policy would be exceeded.
-    Does nothing if no policy exists or if mode != block.
-    """
-    policy = get_policy(app_label, metric_code, subject_type, subject_id)
-    if policy is None or policy.mode != "block":
+    policy = get_policy(policy_model, metric_code, user)
+    if policy is None or policy.mode != Mode.BLOCK:
         return
 
-    since = _period_start(policy.period)
-    current = _period_total(app_label, metric_code, subject_type, subject_id, since)
-    if current + Decimal(str(quantity)) > policy.limit:
-        raise QuotaExceeded(policy, current, policy.limit)
+    consumed = used(policy_model, metric_code, user, period=policy.period)
+    if consumed + Decimal(str(quantity)) > Decimal(policy.limit):
+        raise QuotaExceeded(policy, consumed, Decimal(policy.limit))
 
 
 def record_usage(
-    app_label: str,
+    event_model,
     metric_code: str,
     quantity,
-    subject_type: str,
-    subject_id: str,
-    subject_label: str = "",
+    user=None,
+    *,
+    unit: str = "",
     source_type: str = "",
     source_id: str = "",
     source_label: str = "",
     idempotency_key: str = "",
-    metadata: dict | None = None,
+    metadata=None,
     occurred_at=None,
 ):
-    """
-    Best-effort usage recording. Never raises — all exceptions are logged.
-    Returns the created UsageEvent or None.
-    """
-    from .models import UsageEvent
+    """Record one usage action. Never raises — metering must not break a request.
 
+    Returns the event, or None when it was a duplicate or the write failed.
+    Those two are deliberately indistinguishable to the caller: neither is an
+    error it can do anything about.
+    """
     try:
         if idempotency_key:
-            if UsageEvent.objects.filter(idempotency_key=idempotency_key).exists():
+            existing = event_model.objects.filter(idempotency_key=idempotency_key).first()
+            if existing is not None:
                 return None
-
-        event = UsageEvent.objects.create(
-            app_label=app_label,
+        return event_model.objects.create(
             metric_code=metric_code,
             quantity=Decimal(str(quantity)),
-            subject_type=subject_type,
-            subject_id=subject_id,
-            subject_label=subject_label,
+            unit=unit,
+            user=user if getattr(user, "pk", None) else None,
             source_type=source_type,
             source_id=source_id,
             source_label=source_label,
@@ -143,74 +194,41 @@ def record_usage(
             metadata=metadata or {},
             occurred_at=occurred_at or timezone.now(),
         )
-        return event
-    except Exception:
-        logger.exception(
-            "quota: failed to record usage %s/%s qty=%s subject=%s:%s",
-            app_label, metric_code, quantity, subject_type, subject_id,
-        )
+    except Exception:  # noqa: BLE001 - logged, never surfaced to the caller
+        logger.exception("quota: could not record %s x%s", metric_code, quantity)
         return None
 
 
-def usage_summary(
-    app_label: str,
-    subject_type: str,
-    subject_id: str,
-    metric_codes=None,
-) -> list[dict]:
-    """
-    Return a list of usage summary dicts for all metrics of an app for a subject.
-    Each dict: {metric_code, unit, period, total, limit, pct_used, mode}
-    Used by each app's metrics view.
-    """
-    from .models import QuotaPolicy, UsageEvent
+def usage_summary(policy_model, user=None, metric_codes=None) -> list[dict]:
+    """Dashboard rows: one per metric that has either a policy or any usage."""
+    events = _event_model(policy_model)
 
-    policy_qs = QuotaPolicy.objects.filter(
-        app_label=app_label,
-        active=True,
-    ).filter(
-        Q(subject_type="") | Q(subject_type=subject_type, subject_id=subject_id)
-    )
-    if metric_codes:
-        policy_qs = policy_qs.filter(metric_code__in=metric_codes)
+    policies = {p.metric_code: p for p in policy_model.objects.filter(active=True)}
+    if user is not None and getattr(user, "pk", None):
+        for p in policy_model.objects.filter(active=True, user=user):
+            policies[p.metric_code] = p
 
-    event_codes_qs = UsageEvent.objects.filter(
-        app_label=app_label,
-        subject_type=subject_type,
-        subject_id=subject_id,
-        status="recorded",
-    )
-    if metric_codes:
-        event_codes_qs = event_codes_qs.filter(metric_code__in=metric_codes)
-    event_codes = set(event_codes_qs.values_list("metric_code", flat=True).distinct())
+    seen = set(policies)
+    event_qs = events.objects.filter(status=EventStatus.RECORDED)
+    event_qs = event_qs.filter(user=user) if user is not None else event_qs.filter(user__isnull=True)
+    seen |= set(event_qs.values_list("metric_code", flat=True).distinct())
 
-    policy_map: dict = {}
-    for p in policy_qs:
-        code = p.metric_code
-        existing = policy_map.get(code)
-        if existing is None:
-            policy_map[code] = p
-        elif p.subject_type and not existing.subject_type:
-            policy_map[code] = p
+    if metric_codes is not None:
+        seen &= set(metric_codes)
 
-    all_codes = set(policy_map.keys()) | event_codes
-
-    results = []
-    for code in sorted(all_codes):
-        policy = policy_map.get(code)
-        period = policy.period if policy else "lifetime"
-        since = _period_start(period)
-        total = _period_total(app_label, code, subject_type, subject_id, since)
-        limit = policy.limit if policy else None
-        pct_used = float(total / limit * 100) if (limit and limit > 0) else None
-        results.append({
+    rows = []
+    for code in sorted(seen):
+        policy = policies.get(code)
+        period = policy.period if policy else Period.LIFETIME
+        total = used(policy_model, code, user, period=period)
+        limit = Decimal(policy.limit) if policy else None
+        rows.append({
             "metric_code": code,
             "unit": policy.unit if policy else "",
             "period": period,
             "total": total,
             "limit": limit,
-            "pct_used": pct_used,
-            "mode": policy.mode if policy else "track",
+            "pct_used": (float(total / limit * 100) if limit else None),
+            "mode": policy.mode if policy else Mode.TRACK,
         })
-
-    return results
+    return rows

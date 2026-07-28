@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Not enough gas</title>
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      background: radial-gradient(1200px 600px at 50% -10%, #1b2440 0%, #0b0f1c 60%, #070a14 100%);
+      color: #e7ecf5; padding: 24px;
+    }
+    .card {
+      width: 100%; max-width: 30rem; background: rgba(255,255,255,0.04);
+      border: 1px solid rgba(255,255,255,0.10); border-radius: 20px; padding: 40px 32px;
+      box-shadow: 0 24px 60px rgba(0,0,0,0.45); text-align: center; backdrop-filter: blur(8px);
+    }
+    .badge {
+      width: 64px; height: 64px; margin: 0 auto 20px; border-radius: 18px;
+      display: flex; align-items: center; justify-content: center; font-size: 30px;
+      background: linear-gradient(135deg, #3b82f6, #8b5cf6); box-shadow: 0 10px 30px rgba(99,102,241,0.45);
+    }
+    h1 { font-size: 1.5rem; margin: 0 0 10px; letter-spacing: -0.01em; }
+    p { margin: 0 0 14px; line-height: 1.6; color: #b9c2d6; font-size: 0.95rem; }
+    .reason {
+      margin: 22px 0; padding: 14px 16px; border-radius: 12px; font-size: 0.9rem;
+      background: rgba(59,130,246,0.10); border: 1px solid rgba(59,130,246,0.30); color: #bfd7ff;
+    }
+    .amounts { display: flex; justify-content: center; gap: 18px; margin: 18px 0 4px; font-size: 13px; }
+    .amounts div { text-align: center; }
+    .amounts strong { display: block; font-size: 1.05rem; color: #e7ecf5; }
+    .amounts span { color: #7e8aa6; }
+    .hint { font-size: 12px; color: #7e8aa6; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <main class="card">
+    <div class="badge">⛽</div>
+    <h1>Not enough gas</h1>
+    <p>This action costs more than your account currently holds, so nothing was run
+       and nothing was charged.</p>
+
+    {% if reason %}<div class="reason">{{ reason }}</div>{% endif %}
+
+    {% if error.needed_display %}
+    <div class="amounts">
+      <div><strong>{{ error.needed_display }}</strong><span>needed</span></div>
+      <div><strong>{{ error.have_display }}</strong><span>you have</span></div>
+      <div><strong>{{ error.shortfall_display }}</strong><span>short by</span></div>
+    </div>
+    {% endif %}
+
+    <p class="hint">Your balance is in your wallet. An administrator can top it up,
+       or you can trade for more on the exchange.</p>
+  </main>
+</body>
+</html>

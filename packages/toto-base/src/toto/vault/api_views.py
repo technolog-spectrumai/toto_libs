@@ -100,6 +100,24 @@ class FileUploadApiView(CorsApiView):
         if not file:
             return JsonResponse({"error": "No file provided."}, status=400)
 
+        # Same metrics and the same rate card as the gateway upload — this is
+        # the other door onto one resource, so it must not be the cheap one.
+        from decimal import Decimal
+
+        from toto.quota import QuotaExceeded, check_quota, record_usage
+        from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+        from toto.vault.models import VaultQuotaPolicy, VaultUsageEvent
+
+        size_mb = Decimal(str(file.size)) / Decimal("1048576")
+        tariff = price_for(request.user, "vault")
+        try:
+            check_quota(VaultQuotaPolicy, "storage.request", 1, request.user)
+            check_quota(VaultQuotaPolicy, "storage.transfer_mb", size_mb, request.user)
+            check_funds(request.user, tariff, "storage.request", 1)
+            check_funds(request.user, tariff, "storage.transfer_mb", size_mb)
+        except (QuotaExceeded, InsufficientFunds) as exc:
+            return JsonResponse({"error": str(exc)}, status=exc.status_code)
+
         title = request.POST.get("title", "").strip() or os.path.splitext(file.name)[0]
         content_type = file.content_type or ""
         file_type = VaultFile.detect_type(content_type, file.name)
@@ -144,6 +162,16 @@ class FileUploadApiView(CorsApiView):
             directory=directory,
         )
         vf.file.save(file.name, file, save=True)
+
+        src = {"source_type": "vault.VaultFile", "source_id": str(vf.pk)}
+        record_usage(VaultUsageEvent, "storage.request", 1, request.user,
+                     idempotency_key=f"vault.api_upload.request:{vf.pk}", **src)
+        charge(request.user, tariff, "storage.request", 1, **src)
+        if size_mb > 0:
+            record_usage(VaultUsageEvent, "storage.transfer_mb", size_mb, request.user,
+                         unit="MB",
+                         idempotency_key=f"vault.api_upload.transfer:{vf.pk}", **src)
+            charge(request.user, tariff, "storage.transfer_mb", size_mb, unit="MB", **src)
 
         return JsonResponse(_file_to_dict(request, vf), status=201)
 

@@ -1,42 +1,81 @@
+"""Abstract bases for per-app usage metering and limits.
+
+This app owns no tables. Each app that wants to meter something declares its
+own concrete pair, so the rows live in that app's database tables, in that
+app's migrations, and go away with it::
+
+    from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
+    class VaultUsageEvent(AbstractUsageEvent):
+        pass
+
+    class VaultQuotaPolicy(AbstractQuotaPolicy):
+        events = VaultUsageEvent
+
+That is the whole opt-in. Callers then name the concrete policy and the API
+finds the event model through it::
+
+    check_quota(VaultQuotaPolicy, "storage.request", 1, request.user)
+
+Three things the per-app split buys that one shared table could not:
+
+* ``idempotency_key`` can be genuinely unique (partial, ignoring blanks), so a
+  duplicate record is refused by the database rather than by a racy
+  check-then-insert;
+* the subject is a real FK, so deleting a user cascades their usage away
+  instead of orphaning rows that still sum into the totals;
+* one default policy per metric and one override per user are expressible as
+  two partial unique constraints.
+
+Names in ``Meta.constraints``/``Meta.indexes`` must interpolate ``%(class)s``
+(Django requires uniqueness across the subclasses), and index names are capped
+at 30 characters — hence the terse suffixes.
+"""
+
 from __future__ import annotations
 
+from typing import ClassVar
+
+from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 
+from .choices import EventStatus, Mode, Period
 
-class Period(models.TextChoices):
-    DAILY = "daily", "Daily"
-    WEEKLY = "weekly", "Weekly"
-    MONTHLY = "monthly", "Monthly"
-    YEARLY = "yearly", "Yearly"
-    LIFETIME = "lifetime", "Lifetime"
-
-
-class Mode(models.TextChoices):
-    TRACK = "track", "Track only"
-    WARN = "warn", "Warn"
-    BLOCK = "block", "Block"
+__all__ = [
+    "AbstractQuotaPolicy",
+    "AbstractUsageEvent",
+    "EventStatus",
+    "Mode",
+    "Period",
+]
 
 
-class EventStatus(models.TextChoices):
-    RECORDED = "recorded", "Recorded"
-    VOIDED = "voided", "Voided"
+class AbstractQuotaPolicy(models.Model):
+    """A limit on one metric, for one user or for everybody.
 
-
-class QuotaPolicy(models.Model):
-    """
-    Defines a usage limit for a (app_label, metric_code, subject) tuple.
-
-    subject_type + subject_id = "" means the policy applies globally to all
-    subjects for that metric. A subject-specific policy overrides the global one.
+    ``user = None`` is the default policy for the metric; a row naming a user
+    overrides it. Nothing is limited until a policy exists — an unmetered
+    metric is free, which is what makes the free tier expressible as an
+    absence rather than a magic number.
     """
 
-    name = models.CharField(max_length=255)
-    app_label = models.CharField(max_length=100, db_index=True)
+    #: The concrete AbstractUsageEvent subclass this policy meters. Set it on
+    #: the subclass; the API reads it rather than taking two model arguments.
+    events: ClassVar[type | None] = None
+
+    name = models.CharField(max_length=255, blank=True)
     metric_code = models.CharField(max_length=100, db_index=True)
 
-    subject_type = models.CharField(max_length=100, blank=True, db_index=True)
-    subject_id = models.CharField(max_length=255, blank=True, db_index=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="+",
+        help_text="Leave empty for the default policy that applies to everyone.",
+    )
 
     limit = models.DecimalField(max_digits=30, decimal_places=10)
     unit = models.CharField(max_length=100, blank=True)
@@ -51,22 +90,27 @@ class QuotaPolicy(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        verbose_name = "Quota Policy"
-        verbose_name_plural = "Quota Policies"
-        ordering = ["app_label", "metric_code"]
+        abstract = True
+        ordering = ["metric_code"]
         constraints = [
             models.UniqueConstraint(
-                fields=["app_label", "metric_code", "subject_type", "subject_id"],
-                name="quota_unique_policy_per_subject_metric",
-            )
+                fields=["metric_code"],
+                condition=Q(user__isnull=True),
+                name="%(app_label)s_%(class)s_one_default",
+            ),
+            models.UniqueConstraint(
+                fields=["metric_code", "user"],
+                condition=Q(user__isnull=False),
+                name="%(app_label)s_%(class)s_one_per_user",
+            ),
         ]
 
     def __str__(self) -> str:
-        subject = f"{self.subject_type}:{self.subject_id}" if self.subject_type else "global"
-        return f"{self.app_label}/{self.metric_code} — {self.limit} {self.unit}/{self.period} [{subject}]"
+        who = self.user or "everyone"
+        return f"{self.metric_code} — {self.limit} {self.unit}/{self.period} [{who}]"
 
-    def is_active_now(self) -> bool:
-        now = timezone.now()
+    def is_active_now(self, at=None) -> bool:
+        now = at or timezone.now()
         if not self.active:
             return False
         if self.starts_at and self.starts_at > now:
@@ -76,24 +120,32 @@ class QuotaPolicy(models.Model):
         return True
 
 
-class UsageEvent(models.Model):
-    """One recorded usage action."""
+class AbstractUsageEvent(models.Model):
+    """One recorded usage action.
 
-    app_label = models.CharField(max_length=100)
+    Events are the only record of consumption — there is no counter to fall out
+    of step with them. A voided event stops counting without being deleted, so
+    the history stays honest.
+    """
+
     metric_code = models.CharField(max_length=100)
     quantity = models.DecimalField(max_digits=30, decimal_places=10)
     unit = models.CharField(max_length=100, blank=True)
 
-    subject_type = models.CharField(max_length=100)
-    subject_id = models.CharField(max_length=255)
-    subject_label = models.CharField(max_length=255, blank=True)
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        null=True,
+        blank=True,
+        on_delete=models.CASCADE,
+        related_name="+",
+    )
 
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=255, blank=True)
     source_label = models.CharField(max_length=255, blank=True)
 
-    # Unique idempotency key prevents duplicate recording; blank = no dedup.
-    idempotency_key = models.CharField(max_length=512, blank=True, db_index=True)
+    # Blank means "do not deduplicate this one"; anything else must be unique.
+    idempotency_key = models.CharField(max_length=512, blank=True)
 
     status = models.CharField(
         max_length=20, choices=EventStatus.choices, default=EventStatus.RECORDED
@@ -103,22 +155,19 @@ class UsageEvent(models.Model):
     metadata = models.JSONField(default=dict, blank=True)
 
     class Meta:
-        verbose_name = "Usage Event"
-        verbose_name_plural = "Usage Events"
+        abstract = True
         ordering = ["-occurred_at"]
         indexes = [
-            models.Index(
-                fields=["app_label", "metric_code", "occurred_at"],
-                name="quota_evt_app_metric_time",
-            ),
-            models.Index(
-                fields=["subject_type", "subject_id", "metric_code"],
-                name="quota_evt_subject_metric",
+            models.Index(fields=["metric_code", "occurred_at"], name="%(class)s_mtime"),
+            models.Index(fields=["user", "metric_code"], name="%(class)s_umetric"),
+        ]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["idempotency_key"],
+                condition=~Q(idempotency_key=""),
+                name="%(app_label)s_%(class)s_idem",
             ),
         ]
 
     def __str__(self) -> str:
-        return (
-            f"{self.app_label}/{self.metric_code} × {self.quantity}"
-            f" [{self.subject_type}:{self.subject_id}]"
-        )
+        return f"{self.metric_code} × {self.quantity} [{self.user or 'anonymous'}]"
