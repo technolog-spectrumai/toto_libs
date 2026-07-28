@@ -5,8 +5,11 @@ from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
 
+from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
+
 from .models import (
     VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog, StorageProvider,
+    VaultQuotaPolicy, VaultUsageEvent,
     external_buckets_allowed,
 )
 from toto.core.batch import BatchAction
@@ -280,3 +283,13 @@ class VaultDirectoryAdmin(admin.ModelAdmin):
         return obj.files.count()
     file_count.short_description = "Files"
 
+
+
+@admin.register(VaultQuotaPolicy)
+class VaultQuotaPolicyAdmin(QuotaPolicyAdminBase):
+    pass
+
+
+@admin.register(VaultUsageEvent)
+class VaultUsageEventAdmin(UsageEventAdminBase):
+    pass

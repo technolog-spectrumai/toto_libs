@@ -6,7 +6,8 @@ from django.urls import reverse_lazy
 from django.views.generic import DetailView, ListView
 
 from rest_framework import status
-from rest_framework.decorators import api_view
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
 from toto.celery_utils import celery_available
@@ -53,6 +54,7 @@ from .tasks import start_workflow_run_task
 # ---------------------------------------------------------------------------
 
 @api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
 def report_template_list(request):
     if request.method == "GET":
         qs = ReportTemplate.objects.all().order_by("name")
@@ -65,6 +67,7 @@ def report_template_list(request):
 
 
 @api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
 def report_template_detail(request, template_id):
     try:
         template = ReportTemplate.objects.get(pk=template_id)
@@ -86,12 +89,14 @@ def report_template_detail(request, template_id):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def report_list(request):
     qs = Report.objects.select_related("template", "workflow_run").prefetch_related("pages").order_by("-created_at")
     return Response(ReportSerializer(qs, many=True).data)
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def report_detail(request, report_id):
     try:
         report = Report.objects.select_related("template", "workflow_run").prefetch_related("pages").get(pk=report_id)
@@ -106,6 +111,7 @@ def report_detail(request, report_id):
 # ---------------------------------------------------------------------------
 
 @api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
 def workflow_list(request):
     if request.method == "GET":
         qs = Workflow.objects.all().order_by("-created_at")
@@ -118,6 +124,7 @@ def workflow_list(request):
 
 
 @api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
 def workflow_detail(request, workflow_id):
     try:
         workflow = Workflow.objects.get(pk=workflow_id)
@@ -143,6 +150,7 @@ def workflow_detail(request, workflow_id):
 # ---------------------------------------------------------------------------
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def validate_workflow(request, workflow_id):
     try:
         workflow = Workflow.objects.get(pk=workflow_id)
@@ -162,6 +170,7 @@ def validate_workflow(request, workflow_id):
 # ---------------------------------------------------------------------------
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def node_create(request, workflow_id):
     try:
         workflow = Workflow.objects.get(pk=workflow_id)
@@ -176,6 +185,7 @@ def node_create(request, workflow_id):
 
 
 @api_view(["GET", "PUT", "PATCH", "DELETE"])
+@permission_classes([IsAuthenticated])
 def node_detail(request, workflow_id, node_id):
     try:
         node = WorkflowNode.objects.get(pk=node_id, workflow_id=workflow_id)
@@ -201,6 +211,7 @@ def node_detail(request, workflow_id, node_id):
 # ---------------------------------------------------------------------------
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def edge_create(request, workflow_id):
     try:
         workflow = Workflow.objects.get(pk=workflow_id)
@@ -215,6 +226,7 @@ def edge_create(request, workflow_id):
 
 
 @api_view(["DELETE"])
+@permission_classes([IsAuthenticated])
 def edge_delete(request, workflow_id, edge_id):
     try:
         edge = WorkflowEdge.objects.get(pk=edge_id, workflow_id=workflow_id)
@@ -230,6 +242,7 @@ def edge_delete(request, workflow_id, edge_id):
 # ---------------------------------------------------------------------------
 
 @api_view(["GET", "POST"])
+@permission_classes([IsAuthenticated])
 def run_list(request, workflow_id):
     try:
         workflow = Workflow.objects.get(pk=workflow_id)
@@ -257,10 +270,29 @@ def run_list(request, workflow_id):
             status=status.HTTP_503_SERVICE_UNAVAILABLE,
         )
 
+    # A run executes whatever the DAG says, including lambda nodes — so it is
+    # both rate-limited and priced before anything is dispatched.
+    from toto.quota import QuotaExceeded, check_quota, record_usage
+    from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+
+    from .models import WorkflowQuotaPolicy, WorkflowUsageEvent
+
+    tariff = price_for(request.user, "workflows")
+    try:
+        check_quota(WorkflowQuotaPolicy, "run.started", 1, request.user)
+        check_funds(request.user, tariff, "workflows.run", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        return Response({"error": str(exc)}, status=exc.status_code)
+
     run = WorkflowRun.objects.create(
         workflow=workflow,
         input_data=ser.validated_data.get("input_data") or {},
     )
+    src = {"source_type": "workflows.WorkflowRun", "source_id": str(run.pk)}
+    record_usage(WorkflowUsageEvent, "run.started", 1, request.user,
+                 idempotency_key=f"workflows.run:{run.pk}", **src)
+    charge(request.user, tariff, "workflows.run", 1, **src)
+
     task_result = start_workflow_run_task.delay(run.id)
     run.refresh_from_db()
     data = WorkflowRunSerializer(run).data
@@ -269,6 +301,7 @@ def run_list(request, workflow_id):
 
 
 @api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def run_detail(request, run_id):
     try:
         run = WorkflowRun.objects.prefetch_related(
@@ -281,6 +314,7 @@ def run_detail(request, run_id):
 
 
 @api_view(["POST"])
+@permission_classes([IsAuthenticated])
 def cancel_run(request, run_id):
     """Mark a pending or running workflow run as cancelled.
 

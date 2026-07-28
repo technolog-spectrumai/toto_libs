@@ -5,6 +5,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.vault.strategy.pdf import PdfStrategy
 from toto.vault.strategy.image import ImageStrategy
 from toto.vault.strategy.text import TextStrategy
@@ -458,3 +459,24 @@ class VaultDirectory(models.Model):
             return True
         return self.allowed_users.filter(pk=user.pk).exists()
 
+
+
+# ---------------------------------------------------------------------------
+# Usage metering
+# ---------------------------------------------------------------------------
+# Vault owns its own quota tables rather than sharing a central pair — see
+# toto.quota.models for why. Metrics: storage.request (one upload) and
+# storage.transfer_mb (its size).
+
+class VaultUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Vault usage event"
+        verbose_name_plural = "Vault usage events"
+
+
+class VaultQuotaPolicy(AbstractQuotaPolicy):
+    events = VaultUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Vault quota policy"
+        verbose_name_plural = "Vault quota policies"

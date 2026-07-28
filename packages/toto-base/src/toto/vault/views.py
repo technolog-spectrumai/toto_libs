@@ -466,6 +466,12 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
             location = "Root"
 
         from toto.quota import QuotaExceeded, check_quota, record_usage as _ru
+        from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+        from toto.vault.models import VaultQuotaPolicy, VaultUsageEvent
+
+        # One rate-card lookup for the whole batch; None when nothing is priced
+        # or the host carries no billing at all.
+        tariff = price_for(request.user, "vault") if request.user.is_authenticated else None
 
         results, errors = [], []
         for uploaded_file in uploaded_files:
@@ -477,11 +483,17 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 )
                 continue
 
-            # ── Per-file quota check ─────────────────────────────────────────
+            # ── Per-file quota and funding checks ────────────────────────────
+            # Both degrade into this file's error entry rather than failing the
+            # batch, so one over-limit file does not lose the others.
             if request.user.is_authenticated:
+                _size_mb = Decimal(str(uploaded_file.size)) / Decimal("1048576")
                 try:
-                    check_quota("vault", "storage.request", 1, "auth.User", str(request.user.pk))
-                except QuotaExceeded as _exc:
+                    check_quota(VaultQuotaPolicy, "storage.request", 1, request.user)
+                    check_quota(VaultQuotaPolicy, "storage.transfer_mb", _size_mb, request.user)
+                    check_funds(request.user, tariff, "storage.request", 1)
+                    check_funds(request.user, tariff, "storage.transfer_mb", _size_mb)
+                except (QuotaExceeded, InsufficientFunds) as _exc:
                     errors.append(f"{uploaded_file.name}: {_exc}")
                     continue
 
@@ -512,16 +524,23 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 errors.append(f"{uploaded_file.name}: {_exc}")
                 continue
 
-            # ── Record usage ─────────────────────────────────────────────────
+            # ── Record usage and bill for it ─────────────────────────────────
+            # The file exists by now, so its pk makes both the idempotency key
+            # and the charge reference stable across a retried request.
             if request.user.is_authenticated:
-                _uid = str(request.user.pk)
                 _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk)}
-                _ru("vault", "storage.request", 1, "auth.User", _uid,
+                _ru(VaultUsageEvent, "storage.request", 1, request.user,
                     idempotency_key=f"vault.upload.request:{vault_file.pk}", **_src)
                 _size_mb = Decimal(str(vault_file.file_size_bytes or uploaded_file.size)) / Decimal("1048576")
                 if _size_mb > 0:
-                    _ru("vault", "storage.transfer_mb", _size_mb, "auth.User", _uid,
+                    _ru(VaultUsageEvent, "storage.transfer_mb", _size_mb, request.user,
+                        unit="MB",
                         idempotency_key=f"vault.upload.transfer:{vault_file.pk}", **_src)
+
+                charge(request.user, tariff, "storage.request", 1, **_src)
+                if _size_mb > 0:
+                    charge(request.user, tariff, "storage.transfer_mb", _size_mb,
+                           unit="MB", **_src)
 
             results.append({
                 "title": vault_file.title,
@@ -645,9 +664,8 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
         ]
 
         from toto.quota import usage_summary
-        context["quota_data"] = usage_summary(
-            "vault", "auth.User", str(self.request.user.pk)
-        )
+        from toto.vault.models import VaultQuotaPolicy
+        context["quota_data"] = usage_summary(VaultQuotaPolicy, self.request.user)
 
         return PageProcessor().decorate(context, self.request)
 
