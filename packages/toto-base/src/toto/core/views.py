@@ -196,6 +196,25 @@ def dashboard_view(request):
 
 
 
+def _mounted(url_name: str) -> bool:
+    """True when a URL name actually resolves on this host.
+
+    Stronger than `apps.is_installed` for anything the manual describes as a
+    *page the reader can open*. An app can be installed and still have no UI:
+    zenobia keeps `toto.mandragora` in INSTALLED_APPS purely because
+    `workflows.LambdaFunction` has a live FK to its ComputeKernel, but mounts it
+    at no URL. Gating on the app alone documented a notebook editor that host
+    does not serve.
+    """
+    from django.urls import NoReverseMatch, reverse  # noqa: PLC0415
+
+    try:
+        reverse(url_name)
+    except NoReverseMatch:
+        return False
+    return True
+
+
 def _manual_features(request):
     """Which manual sections to show — only features actually installed on
     this server (portal and faros install different app subsets)."""
@@ -217,7 +236,7 @@ def _manual_features(request):
         "sketch": apps.is_installed("toto.sketch"),
         "chat": apps.is_installed("toto.forum"),
         "workflows": apps.is_installed("toto.workflows"),
-        "notebooks": apps.is_installed("toto.mandragora"),
+        "notebooks": _mounted("mandragora:notebook_list"),
         "graph": apps.is_installed("toto.ravioli"),
         "ocr": apps.is_installed("toto.ocr"),
         "latex": apps.is_installed("toto.texlab"),
