@@ -25,12 +25,14 @@
       </p>
     </div>
 
-    <!-- Platform branding — its own card, logo + name alongside -->
-    {% if platform.logo %}
+    <!-- Platform branding — its own card, logo + name alongside.
+         `logo` is the platform logo URL from PageProcessor (toto.ui.page); the
+         `platform` context object is a serialized dict and carries no logo. -->
+    {% if logo %}
     <div
       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
       class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
-      <img src="{{ platform.logo.url }}"
+      <img src="{{ logo }}"
            alt="{{ platform.site_name }} logo"
            class="h-12 w-12 shrink-0 rounded-lg object-contain" />
       <div class="min-w-0 text-left">
