@@ -150,9 +150,9 @@
           {% url 'core:login' as form_action %}
           {% include "oya/_login_form.html" with form_action=form_action submit_label=submit_label %}
 
-          {# The `as` form swallows NoReverseMatch, so a host that does not mount
-             socialhub simply drops the invitation instead of 500ing its own
-             login page. Same guard shape as sso:my_profile below. #}
+          {% comment %}The `as` form swallows NoReverseMatch, so a host that does
+             not mount socialhub simply drops the invitation instead of 500ing its
+             own login page. Same guard shape as sso:my_profile below.{% endcomment %}
           {% url 'socialhub:membership_application' as membership_url %}
           {% if membership_url %}
           <div

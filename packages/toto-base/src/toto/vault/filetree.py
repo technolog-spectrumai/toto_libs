@@ -1,5 +1,5 @@
 """
-Reusable file-tree picker for vault-backed apps (manta, transcription, ocr).
+Reusable file-tree picker for vault-backed apps (ocr).
 
 Provides an access-checked query + a grouped (bucket → directory → files) tree
 structure, rendered by the ``vault/_file_tree.html`` partial with checkboxes.

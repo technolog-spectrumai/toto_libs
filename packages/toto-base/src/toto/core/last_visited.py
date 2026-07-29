@@ -4,6 +4,9 @@ _TIMEOUT = 60 * 60 * 12  # 12 hours
 _KEY = "last_visited:{}"
 
 # Ordered list of (url_prefix, display_name) for meaningful app sections.
+# These are user-visible "back to …" labels, so they follow the names the section
+# uses in its own nav and dashboard tile — "Video", not the app label "VOD".
+# A prefix whose app is not installed simply never matches.
 _APPS = [
     ("/vault/", "Vault"),
     ("/socialhub/", "Community"),
@@ -11,8 +14,8 @@ _APPS = [
     ("/kanban/", "Tasks"),
     ("/memo/", "Presentations"),
     ("/robots/", "Robots"),
-    ("/transcription/", "Transcription"),
-    ("/vod/", "VOD"),
+    ("/vod/", "Video"),
+    ("/ocr/", "OCR"),
     ("/polls/", "Polls"),
 ]
 

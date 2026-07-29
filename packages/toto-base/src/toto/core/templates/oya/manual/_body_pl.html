@@ -19,8 +19,9 @@
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Ankiety</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Czat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
+    {% if features.vod %}<a href="#video" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Wideo</a>{% endif %}
+    {% if features.ocr %}<a href="#ocr" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">OCR</a>{% endif %}
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Graf wiedzy</a>{% endif %}
-    {% if features.manta %}<a href="#manta" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Narzędzia mediów</a>{% endif %}
     {% if features.steven %}<a href="#steven" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Asystent</a>{% endif %}
     {% if features.grafana %}<a href="#monitoring" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Monitorowanie</a>{% endif %}
   </div>
@@ -104,7 +105,6 @@
     {% if features.notebooks %}<li><span class="font-semibold">Notatniki</span> — notatniki <code>.tpy</code> łączą komórki z kodem i ich wyniki; edytuj je i uruchamiaj w edytorze notatników.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — edytuj pliki <code>.tex</code> z podglądem na żywo i kompiluj je do PDF.</li>{% endif %}
     {% if features.pyeditor %}<li><span class="font-semibold">Python</span> — edytuj i uruchamiaj skrypty <code>.py</code> bezpośrednio z przechowywania.</li>{% endif %}
-    {% if features.fileservices %}<li><span class="font-semibold">Usługi plikowe</span> — przycisk różdżki uruchamia usługę na pliku (np. konwersję lub analizę mediów, rozpoznawanie tekstu, transkrypcję — zależnie od konfiguracji serwera). Wyniki zapisywane są jako nowe pliki.</li>{% endif %}
   </ul>
 </section>
 {% endif %}
@@ -206,6 +206,40 @@
 </section>
 {% endif %}
 
+{% if features.vod %}
+<!-- Wideo -->
+<section id="video"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-video"></i>Wideo</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Strona <a href="{% url 'vod:library' %}" class="font-semibold underline hover:opacity-80">Wideo</a>
+    pokazuje wszystkie pliki audio i wideo z magazynu, do których masz dostęp — od
+    najnowszych. Kliknij, aby odtworzyć plik w przeglądarce; nic nie jest wcześniej
+    konwertowane ani pobierane. Odtwarzanie można też uruchomić bezpośrednio z magazynu.
+  </p>
+</section>
+{% endif %}
+
+{% if features.ocr %}
+<!-- OCR -->
+<section id="ocr"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-file-lines"></i>Rozpoznawanie tekstu (OCR)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'ocr:home' %}" class="font-semibold underline hover:opacity-80">OCR</a>
+    odczytuje tekst ze zrzutu ekranu lub zdjęcia. Wczytaj obraz, wybierz jego język, a
+    rozpoznany tekst pojawi się obok. Przy okazji możesz zapisać obraz w wybranym koszu
+    magazynu.{% if features.graph %} Gdy Graf wiedzy jest włączony, przycisk przekazuje
+    tekst do zakładki Wiedza, gdzie zamienia się w węzły i krawędzie; bez grafu przycisk
+    po prostu się nie pojawia.{% endif %}
+  </p>
+</section>
+{% endif %}
+
 {% if features.graph %}
 <!-- Graf wiedzy -->
 <section id="graph"
@@ -223,24 +257,9 @@
     <li><span class="font-semibold">Dane</span> — przeglądaj i edytuj graf: definiuj kategorie węzłów i typy krawędzi, a następnie dodawaj i zmieniaj węzły oraz krawędzie.</li>
     {% if features.workflows %}<li><span class="font-semibold">Analiza</span> — uruchamiaj gotowe analizy grafu; wyniki zapisywane są w przechowywaniu.</li>{% endif %}
     <li><span class="font-semibold">Wiedza</span> — wklej tekst, a platforma zaproponuje encje i relacje; przejrzyj propozycję na kanwie i zastosuj ją do grafu.</li>
-    {% if features.ocr %}<li><span class="font-semibold">OCR</span> — wgraj zrzut ekranu lub zdjęcie, wydobądź z niego tekst i przekaż go do powyższego potoku wiedzy.</li>{% endif %}
+    {% if features.ocr %}<li><span class="font-semibold">OCR</span> — tekst wydobyty z obrazu (patrz sekcja OCR) można przekazać wprost do zakładki Wiedza.</li>{% endif %}
     <li>Obiekty w innych częściach platformy (np. zdarzenia czy lokalizacje) mają przycisk <span class="font-semibold">Eksportuj do grafu</span>, który dodaje je do grafu wraz z bezpośrednimi powiązaniami.</li>
   </ul>
-</section>
-{% endif %}
-
-{% if features.manta %}
-<!-- Narzędzia mediów -->
-<section id="manta"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-clapperboard"></i>Narzędzia mediów (Manta)</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    Manta to kreator poleceń do pracy z mediami: zbuduj zadanie konwersji, analizy, transkrypcji
-    lub rozpoznawania tekstu na plikach z przechowywania, obejrzyj dokładne polecenie na żywo
-    i uruchom je. Wyniki zapisywane są z powrotem w przechowywaniu.
-  </p>
 </section>
 {% endif %}
 
