@@ -79,3 +79,74 @@ def test_map_features_without_geometry_are_a_hard_error():
         resolve(BUILD_WEATHER=1, BUILD_GEO=0)
     with pytest.raises(FeatureConfigError):
         resolve(BUILD_TRAVELS=1, BUILD_GEO=0)
+
+
+# ---------------------------------------------------------------------------
+# vod, split out of the media group
+# ---------------------------------------------------------------------------
+
+def test_vod_follows_media_when_unnamed():
+    # The back-compat path: a host that never says BUILD_VOD gets exactly what
+    # it got when vod was part of the media block.
+    assert resolve(BUILD_MEDIA=1).vod is True
+    assert resolve().vod is False
+
+
+def test_vod_can_be_kept_without_the_processing_stack():
+    # The point of the split: the vault keeps its play button, the image keeps
+    # no ffmpeg and no transcription.
+    light = resolve(BUILD_VOD=1, BUILD_MEDIA=0)
+    assert light.vod is True
+    assert (light.media, light.manta, light.fileservices) == (False, False, False)
+    assert light.ffmpeg is False
+
+
+def test_vod_can_be_dropped_from_a_media_host():
+    assert resolve(BUILD_MEDIA=1, BUILD_VOD=0).vod is False
+
+
+# ---------------------------------------------------------------------------
+# The realtime tier, and the BUILD_STUDIO name it used to have
+# ---------------------------------------------------------------------------
+
+def test_the_realtime_tier_defaults_its_group():
+    tier = resolve(BUILD_REALTIME=1)
+    assert (tier.chat, tier.workflows, tier.weather) == (True, True, True)
+    assert tier.realtime is True
+    # A member flag still overrides the tier that offered it as a default.
+    assert resolve(BUILD_REALTIME=1, BUILD_CHAT=0).chat is False
+
+
+def test_realtime_is_derived_not_merely_echoed():
+    # The tier is an INPUT default and also an OUTPUT: any realtime feature
+    # implies the pip layer, even when the tier flag was never set. This is why
+    # zenobia still installs it after the split — it keeps workflows.
+    assert resolve(BUILD_WORKFLOWS=1).realtime is True
+    assert resolve(BUILD_CHAT=1).realtime is True
+    assert resolve(BUILD_LATEX=1).realtime is True      # via needs_channels
+    assert resolve().realtime is False
+
+
+def test_build_studio_is_still_honoured_as_the_old_tier_name():
+    # The sibling hosts (delta, faros) vendor their own copy of this module at
+    # their own pins and still say BUILD_STUDIO in their configs. Their next
+    # re-vendor must not change a single build decision.
+    old = resolve(BUILD_STUDIO=1)
+    new = resolve(BUILD_REALTIME=1)
+    assert old == new
+    assert old.realtime is True
+    assert (old.chat, old.workflows, old.weather) == (True, True, True)
+
+
+def test_features_studio_property_still_answers():
+    # Read by the sibling hosts' deploy tooling as f.studio.
+    assert resolve(BUILD_REALTIME=1).studio is True
+    assert resolve().studio is False
+    assert resolve(BUILD_WORKFLOWS=1).studio is resolve(BUILD_WORKFLOWS=1).realtime
+
+
+def test_an_explicit_build_realtime_wins_over_the_old_name():
+    # Both present and disagreeing: the new name decides, so a host can retire
+    # BUILD_STUDIO from its configs incrementally without a flag-day.
+    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).realtime is False
+    assert resolve(BUILD_STUDIO=0, BUILD_REALTIME=1).realtime is True

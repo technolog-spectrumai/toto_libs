@@ -7,6 +7,13 @@ Reads connection details from environment variables:
   SSO_CLIENT_SECRET   — client secret (stored in the record for dev; use env var in prod)
   SSO_APP_NAME        — optional display name (default: "SSO Client")
   SSO_REDIRECT_URIS   — optional comma-separated redirect URIs
+  SSO_SCOPES          — optional space-separated scopes
+                        (default: "openid email profile roles")
+
+``roles`` is what carries staff/superuser across the federation; without it a
+consumer host has no administrators at all. The provider must also grant it on
+the relying party — it rejects any scope the client was not allowed — so drop it
+here for a portal that does not.
 
 In production, import a connection bundle via the admin instead.
 """
@@ -35,6 +42,7 @@ class Command(IngressCommand):
         app_name = os.environ.get("SSO_APP_NAME", "SSO Client")
         raw_uris = os.environ.get("SSO_REDIRECT_URIS", "")
         redirect_uris = "\n".join(u.strip() for u in raw_uris.split(",") if u.strip())
+        scopes = os.environ.get("SSO_SCOPES", "").strip() or "openid email profile roles"
 
         OIDCProviderConfig.objects.filter(active=True).update(active=False)
 
@@ -44,7 +52,7 @@ class Command(IngressCommand):
             defaults={
                 "label": f"{app_name} dev",
                 "client_secret": client_secret,
-                "scopes": "openid email profile",
+                "scopes": scopes,
                 "app_name": app_name,
                 "trusted": True,
                 "redirect_uris": redirect_uris,

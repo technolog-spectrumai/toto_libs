@@ -4,6 +4,10 @@ Single source of truth for the BUILD_* / INSTALL_* flag logic that was
 previously duplicated between the portal host settings and the deploy
 tooling (portal/portal/settings.py and portal/scripts/deploy.py).  An
 explicit BUILD_<FEATURE> value overrides its tier; tiers are just defaults.
+
+The realtime tier was called ``studio`` until ``studio`` became the name of a
+host.  ``BUILD_STUDIO`` is still read as a fallback and ``Features.studio``
+still resolves, so a host that has not been updated behaves identically.
 """
 from dataclasses import dataclass
 
@@ -14,7 +18,7 @@ class FeatureConfigError(ValueError):
 
 @dataclass(frozen=True)
 class Features:
-    # Studio-group features (default to the studio tier).
+    # Realtime-group features (default to the realtime tier).
     chat: bool
     workflows: bool
     weather: bool
@@ -24,6 +28,7 @@ class Features:
     sketch: bool
     media: bool
     fileservices: bool
+    vod: bool
     # Graph-group features (graph/ocr default to the neo4j tier).
     graph: bool
     ocr: bool
@@ -50,12 +55,27 @@ class Features:
     sabbia_ollama: bool
     needs_channels: bool
     # Effective tiers (image pip layers / ENV).
-    studio: bool
+    realtime: bool
     neo4j: bool
     # Native binaries the image needs (deploy-side).
     tesseract: bool
     ffmpeg: bool
     texlive: bool
+
+    @property
+    def studio(self) -> bool:
+        """Deprecated alias for :attr:`realtime`.
+
+        The tier was called ``studio`` until ``studio`` became the name of a
+        HOST (see the portal monorepo's ``studio.md``). It never meant "the
+        studio host" — it meant "this image needs celery and channels" — so it
+        was renamed rather than left to collide.
+
+        Kept because the sibling hosts vendor their own copy of this module at
+        their own pins and read ``f.studio`` in their deploy tooling; this makes
+        their next re-vendor a no-op. Do not remove without checking them.
+        """
+        return self.realtime
 
 
 def flag(get, name, default=False):
@@ -73,13 +93,16 @@ def flag(get, name, default=False):
 
 def resolve_features(get) -> Features:
     """Resolve coarse tiers + per-feature flags into effective build decisions."""
-    tier_studio = flag(get, "BUILD_STUDIO")
+    # BUILD_STUDIO is the tier's old name, honoured so a host that has not been
+    # updated still builds the same image. An explicit BUILD_REALTIME wins.
+    tier_realtime = (flag(get, "BUILD_REALTIME") if get("BUILD_REALTIME") is not None
+                     else flag(get, "BUILD_STUDIO"))
     tier_neo4j = flag(get, "BUILD_NEO4J")
 
-    # Studio-group features (default to the studio tier).
-    chat = flag(get, "BUILD_CHAT", tier_studio)               # toto.forum — live chat (WebSocket)
-    workflows = flag(get, "BUILD_WORKFLOWS", tier_studio)     # toto.workflows + toto.mandragora kernel
-    weather = flag(get, "BUILD_WEATHER", tier_studio)         # toto.weather (FKs workflows.WorkflowRun)
+    # Realtime-group features (default to the realtime tier).
+    chat = flag(get, "BUILD_CHAT", tier_realtime)             # toto.forum — live chat (WebSocket)
+    workflows = flag(get, "BUILD_WORKFLOWS", tier_realtime)   # toto.workflows + toto.mandragora kernel
+    weather = flag(get, "BUILD_WEATHER", tier_realtime)       # toto.weather (FKs workflows.WorkflowRun)
 
     # Editing features (standalone — each enabled on its own; no labs tier).
     latex = flag(get, "BUILD_LATEX")                          # toto.texlab
@@ -101,6 +124,13 @@ def resolve_features(get) -> Features:
              or flag(get, "BUILD_FILESERVICES"))
     fileservices = media
     manta = media
+    # toto.vod is the odd one out of the four: no models (it dropped them), no
+    # celery, no ffmpeg — it is just the vault's play button for video and audio.
+    # It therefore separates from the processing half of the package, which lets
+    # a host keep playback without an ffmpeg layer and a transcription stack it
+    # will never run. Defaults to media so nothing changes for a host that does
+    # not name it.
+    vod = flag(get, "BUILD_VOD", media)
 
     # Graph-group features (default to the neo4j tier).
     graph = flag(get, "BUILD_GRAPH", tier_neo4j)              # ravioli + sql_neo4j_sync + neo_editor + bento + ingestor
@@ -159,7 +189,7 @@ def resolve_features(get) -> Features:
     vicuna = graph or sabbia_ollama
 
     # Effective tier booleans (image pip layers + back-compat module attributes).
-    studio = chat or workflows or weather or needs_channels
+    realtime = chat or workflows or weather or needs_channels
     neo4j = graph or ocr
 
     # Native binaries. INSTALL_TESSERACT historically also pulled ffmpeg in (the
@@ -181,6 +211,7 @@ def resolve_features(get) -> Features:
         pyeditor=pyeditor,
         sketch=sketch,
         media=media,
+        vod=vod,
         fileservices=fileservices,
         graph=graph,
         ocr=ocr,
@@ -199,7 +230,7 @@ def resolve_features(get) -> Features:
         sabbia_openai=sabbia_openai,
         sabbia_ollama=sabbia_ollama,
         needs_channels=needs_channels,
-        studio=studio,
+        realtime=realtime,
         neo4j=neo4j,
         tesseract=tesseract,
         ffmpeg=ffmpeg,

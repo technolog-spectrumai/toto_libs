@@ -59,6 +59,15 @@ class Person(DomainEntity):
         default="en",
         blank=True,
     )
+    federated_sub = models.CharField(
+        max_length=255,
+        blank=True,
+        db_index=True,
+        help_text=(
+            "OIDC subject of the identity provider this person was provisioned "
+            "from, on a consumer host. Empty on the provider itself."
+        ),
+    )
 
     class Meta:
         # Keep the same physical table — zero DB migration needed.

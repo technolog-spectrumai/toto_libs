@@ -150,6 +150,11 @@
           {% url 'core:login' as form_action %}
           {% include "oya/_login_form.html" with form_action=form_action submit_label=submit_label %}
 
+          {# The `as` form swallows NoReverseMatch, so a host that does not mount
+             socialhub simply drops the invitation instead of 500ing its own
+             login page. Same guard shape as sso:my_profile below. #}
+          {% url 'socialhub:membership_application' as membership_url %}
+          {% if membership_url %}
           <div
             :class="darkMode
               ? 'border-accent-1 bg-sunken-dark'
@@ -157,13 +162,14 @@
             class="rounded-xl border p-4 text-center text-sm">
             <p class="opacity-70">{% trans "Don't have an account?" %}</p>
             <a
-              href="{% url 'socialhub:membership_application' %}"
+              href="{{ membership_url }}"
               :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
               class="mt-1 inline-flex items-center justify-center gap-2 font-semibold underline-offset-4 transition hover:underline hover:opacity-80">
               {% trans "Apply for membership" %}
               <i class="fa-solid fa-arrow-right text-xs"></i>
             </a>
           </div>
+          {% endif %}
 
           {% url 'sso:my_profile' as my_profile_url %}
           {% if user.is_authenticated and my_profile_url %}
