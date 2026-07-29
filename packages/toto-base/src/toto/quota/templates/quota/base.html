@@ -1,0 +1,59 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block quota_title %}{% trans "Limits" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Metering" %}
+      </p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-gauge-high"></i>
+        {% block quota_heading %}{% trans "Limits" %}{% endblock %}
+      </h1>
+    </header>
+
+    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="flex flex-wrap gap-1 border-b pb-0">
+      <a href="{% url 'quota:index' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_index %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-list-check"></i>{% trans "All limits" %}
+      </a>
+      <a href="{% url 'quota:my_usage' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_mine %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-user-clock"></i>{% trans "My usage" %}
+      </a>
+      {% if billing_enabled %}
+      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="mx-1 self-center h-5 border-l opacity-30"></span>
+      <a href="{% url 'tariffs:tariff_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition opacity-50">
+        <i class="fa-solid fa-gas-pump"></i>{% trans "Prices" %}
+      </a>
+      {% endif %}
+    </nav>
+
+    {% if messages %}
+      {% for msg in messages %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border px-4 py-3 text-sm font-semibold">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% block quota_content %}{% endblock %}
+
+  </div>
+</section>
+{% endblock %}

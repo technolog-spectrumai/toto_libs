@@ -68,8 +68,12 @@ def query_unified_view(request):
     total_nodes = sum(len(r.result_nodes or []) for r in results_by_query.values())
     total_edges = sum(len(r.result_edges or []) for r in results_by_query.values())
 
-    from toto.quota import usage_summary
-    quota_data = usage_summary("ravioli", "auth.User", str(request.user.pk)) if request.user.is_authenticated else []
+    # Metering removed: quota's models became abstract and per-app, and this
+    # app declares no concrete pair — so there is nothing to summarise. The old
+    # string-based call raised on every render for a signed-in user. To meter
+    # again, declare a RavioliUsageEvent/RavioliQuotaPolicy pair and a
+    # ravioli/metrics.py, then call usage_summary(RavioliQuotaPolicy, user).
+    quota_data = []
 
     # Buckets / directories for the "Export → NeoJSON → Vault" dialog.
     from toto.vault.models import Bucket, VaultDirectory
@@ -145,18 +149,8 @@ def query_graph_data(request, query_id):
         },
     )
 
-    from toto.quota import record_usage as _ru
-    _stype = "auth.User" if request.user.is_authenticated else "system"
-    _sid = str(request.user.pk) if request.user.is_authenticated else "ravioli"
-    _src_type = "ravioli.CypherQuery"
-    _src_id = str(selected_query.pk)
-    _ru("ravioli", "graph.query", 1, _stype, _sid,
-        source_type=_src_type, source_id=_src_id,
-        idempotency_key=f"ravioli.query.view:{selected_query.pk}:{timezone.now().strftime('%Y%m%dT%H%M')}")
-    _row_count = len(nodes) + len(edges)
-    if _row_count:
-        _ru("ravioli", "graph.rows", _row_count, _stype, _sid,
-            source_type=_src_type, source_id=_src_id)
+    # Metering removed — see the note in the view above. These calls used the
+    # pre-abstract signature and had been failing silently since.
 
     return JsonResponse({
         "nodes": nodes,

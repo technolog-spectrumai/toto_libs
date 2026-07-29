@@ -1,0 +1,164 @@
+{% extends "quota/base.html" %}
+{% load i18n %}
+
+{% block quota_title %}{{ metric.label }}{% endblock %}
+{% block quota_heading %}{{ metric.label }}{% endblock %}
+{% block tab_index %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block quota_content %}
+
+<a href="{% url 'quota:index' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+  <i class="fa-solid fa-arrow-left"></i>{% trans "All limits" %}
+</a>
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-5 shadow-sm space-y-2">
+  <div class="flex flex-wrap items-center gap-3">
+    <code class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ metric.code }}</code>
+    <span class="text-xs opacity-60">{% trans "measured in" %} {{ metric.unit }}</span>
+    <span class="text-xs opacity-60">{% trans "owned by" %} {{ metric.app_label }}</span>
+  </div>
+  {% if metric.description %}<p class="text-sm opacity-70">{{ metric.description }}</p>{% endif %}
+  <p class="text-xs opacity-55">
+    {% blocktrans with table=policy_table %}Limits are stored in {{ table }}.{% endblocktrans %}
+    {% if billing_enabled %}
+      <a href="{{ billing_url }}" class="underline hover:opacity-80">{% trans "What it costs is set in prices." %}</a>
+    {% endif %}
+  </p>
+</div>
+
+<!-- Default limit -->
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm space-y-4">
+  <div>
+    <h2 class="text-lg font-bold">{% trans "Default limit" %}</h2>
+    <p class="mt-1 text-sm opacity-65">
+      {% trans "Applies to everyone without an override. Delete it to make the action unlimited." %}
+    </p>
+  </div>
+
+  <form method="post" class="space-y-4">
+    {% csrf_token %}
+    <input type="hidden" name="action" value="default" />
+
+    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+      {% for field in form %}
+      <div class="space-y-1">
+        <label for="{{ field.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-70">
+          {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
+        </label>
+        <div class="[&>input]:w-full [&>select]:w-full [&>input]:rounded-lg [&>select]:rounded-lg
+                    [&>input]:border [&>select]:border [&>input]:px-3 [&>select]:px-3
+                    [&>input]:py-2 [&>select]:py-2 [&>input]:text-sm [&>select]:text-sm
+                    [&>input]:bg-transparent [&>select]:bg-transparent
+                    [&>input[type=checkbox]]:w-auto [&>input[type=checkbox]]:mt-2"
+             :class="darkMode ? '[&>input]:border-accent-1 [&>select]:border-accent-1' : '[&>input]:border-accent-2 [&>select]:border-accent-2'">
+          {{ field }}
+        </div>
+        {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
+        {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
+      </div>
+      {% endfor %}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk"></i>{% trans "Save default" %}
+      </button>
+      {% if not default %}
+      <span class="text-xs opacity-55">
+        {% trans "No default set yet — the action is currently unlimited." %}
+      </span>
+      {% endif %}
+    </div>
+  </form>
+</section>
+
+<!-- Per-user overrides -->
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-6 shadow-sm space-y-4">
+  <div>
+    <h2 class="text-lg font-bold">{% trans "Per-user overrides" %}</h2>
+    <p class="mt-1 text-sm opacity-65">
+      {% trans "A user's own limit replaces the default entirely — it is not added to it." %}
+    </p>
+  </div>
+
+  {% if overrides %}
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+        <tr class="text-left">
+          <th class="py-2 pr-4 font-semibold">{% trans "User" %}</th>
+          <th class="py-2 pr-4 font-semibold">{% trans "Limit" %}</th>
+          <th class="py-2 pr-4 font-semibold">{% trans "Period" %}</th>
+          <th class="py-2 pr-4 font-semibold">{% trans "Mode" %}</th>
+          <th class="py-2 pr-4 font-semibold">{% trans "Active" %}</th>
+          <th class="py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+      {% for policy in overrides %}
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
+          <td class="py-2 pr-4 font-semibold">{{ policy.user }}</td>
+          <td class="py-2 pr-4 font-mono">{{ policy.limit|floatformat:"-2" }} {{ policy.unit }}</td>
+          <td class="py-2 pr-4">{{ policy.get_period_display }}</td>
+          <td class="py-2 pr-4">{{ policy.get_mode_display }}</td>
+          <td class="py-2 pr-4">
+            {% if policy.active %}<i class="fa-solid fa-check opacity-70"></i>
+            {% else %}<i class="fa-solid fa-xmark opacity-40"></i>{% endif %}
+          </td>
+          <td class="py-2 text-right">
+            <form method="post" action="{% url 'quota:override_delete' metric.code policy.pk %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-80">
+                <i class="fa-solid fa-trash"></i>{% trans "Remove" %}
+              </button>
+            </form>
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="text-sm opacity-55">{% trans "No overrides — everyone gets the default." %}</p>
+  {% endif %}
+
+  <details class="pt-2">
+    <summary class="cursor-pointer text-sm font-semibold">{% trans "Add an override" %}</summary>
+    <form method="post" class="mt-4 space-y-4">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="override" />
+      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {% for field in override_form %}
+        <div class="space-y-1">
+          <label for="{{ field.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-70">
+            {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
+          </label>
+          <div class="[&>input]:w-full [&>select]:w-full [&>input]:rounded-lg [&>select]:rounded-lg
+                      [&>input]:border [&>select]:border [&>input]:px-3 [&>select]:px-3
+                      [&>input]:py-2 [&>select]:py-2 [&>input]:text-sm [&>select]:text-sm
+                      [&>input]:bg-transparent [&>select]:bg-transparent
+                      [&>input[type=checkbox]]:w-auto [&>input[type=checkbox]]:mt-2"
+               :class="darkMode ? '[&>input]:border-accent-1 [&>select]:border-accent-1' : '[&>input]:border-accent-2 [&>select]:border-accent-2'">
+            {{ field }}
+          </div>
+          {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
+          {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
+        </div>
+        {% endfor %}
+      </div>
+      <button type="submit"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-user-plus"></i>{% trans "Add override" %}
+      </button>
+    </form>
+  </details>
+</section>
+
+{% endblock %}

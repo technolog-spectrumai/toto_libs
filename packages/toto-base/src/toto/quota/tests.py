@@ -329,3 +329,107 @@ class ChargeFacadeTests(TestCase):
             instance = InsufficientFunds("broke")            # the stub
         with self.assertRaises(InsufficientFunds):
             raise instance
+
+
+# ---------------------------------------------------------------------------
+# The metric registry
+# ---------------------------------------------------------------------------
+
+class MetricRegistryTests(TestCase):
+    """What apps declare, and what the UI reads back."""
+
+    def test_apps_declared_their_metrics(self):
+        from toto.quota.metrics import registry
+
+        # Autodiscovery ran at startup; if it had not, this whole feature is
+        # invisible and the failure would otherwise be a mysteriously empty page.
+        self.assertGreater(len(registry), 0)
+        for metric in registry.all():
+            self.assertTrue(metric.code)
+            self.assertTrue(metric.label)
+            self.assertTrue(metric.app_label)
+
+    def test_every_metric_resolves_to_a_table_to_store_limits_in(self):
+        from django.apps import apps
+        from toto.quota.metrics import policy_model_for, registry
+
+        for metric in registry.all():
+            with self.subTest(metric=metric.code):
+                if not apps.is_installed(f"toto.{metric.app_label}"):
+                    continue
+                self.assertIsNotNone(
+                    policy_model_for(metric.app_label),
+                    f"{metric.app_label} declares {metric.code} but ships no quota table",
+                )
+
+    def test_a_second_app_cannot_claim_a_code(self):
+        from toto.quota.metrics import DuplicateMetric, Metric, MetricRegistry
+
+        local = MetricRegistry()
+        local.register(Metric(code="a.b", label="A", app_label="one"))
+        local.register(Metric(code="a.b", label="A", app_label="one"))   # identical: fine
+        with self.assertRaises(DuplicateMetric):
+            local.register(Metric(code="a.b", label="Different", app_label="two"))
+
+    def test_grouping_and_lookup(self):
+        from toto.quota.metrics import Metric, MetricRegistry
+
+        local = MetricRegistry()
+        local.register(Metric(code="x.one", label="One", app_label="x"))
+        local.register(Metric(code="y.one", label="One", app_label="y"))
+        self.assertEqual(sorted(local.by_app()), ["x", "y"])
+        self.assertEqual(local.get("x.one").label, "One")
+        self.assertIsNone(local.get("nope"))
+        self.assertEqual(local.codes(), ["x.one", "y.one"])
+
+    def test_the_code_is_the_whole_identity(self):
+        """One string names the limit, the charge and the idempotency key.
+
+        Three apps used to record under a short name and bill under a long one,
+        so a limit could never match what was charged.
+        """
+        from toto.quota.metrics import registry
+
+        for stale in ("compile.run", "run.started", "chain.verify"):
+            self.assertIsNone(
+                registry.get(stale),
+                f"{stale} is the old quota-side spelling and must not come back",
+            )
+
+
+class LimitsUiTests(SampleModels):
+    """The pages, and who may see them."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "test", "publication_year": 2026, "active": True},
+        )
+        self.staff = User.objects.create_user(username="uistaff", password="pw", is_staff=True)
+        self.plain = User.objects.create_user(username="uiplain", password="pw")
+
+    def test_index_and_my_usage_are_for_everyone(self):
+        self.client.force_login(self.plain)
+        for url in ("/quota/", "/quota/me/"):
+            with self.subTest(url=url):
+                self.assertEqual(self.client.get(url).status_code, 200)
+
+    def test_anonymous_is_sent_to_log_in(self):
+        for url in ("/quota/", "/quota/me/"):
+            with self.subTest(url=url):
+                self.assertNotEqual(self.client.get(url).status_code, 200)
+
+    def test_only_staff_may_set_a_limit(self):
+        from toto.quota.metrics import registry
+
+        code = registry.codes()[0]
+        self.client.force_login(self.plain)
+        self.assertEqual(self.client.get(f"/quota/{code}/").status_code, 403)
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get(f"/quota/{code}/").status_code, 200)
+
+    def test_an_unregistered_metric_is_a_404(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get("/quota/no.such.metric/").status_code, 404)
