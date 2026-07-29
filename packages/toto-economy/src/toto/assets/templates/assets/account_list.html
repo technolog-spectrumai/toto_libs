@@ -1,0 +1,70 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Accounts" %}{% endblock %}
+{% block tab_accounts %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Overview" %}</h2>
+    <div class="space-y-3">
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+        <div class="text-2xl font-bold">{{ account_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Total accounts" %}</div>
+      </div>
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+        <div class="text-2xl font-bold">{{ active_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Active" %}</div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for account in accounts %}
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+        class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="font-bold">
+                {{ account.code }}
+              </span>
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                {{ account.get_account_type_display }}
+              </span>
+              {% if not account.active %}
+                <span class="rounded px-2 py-0.5 text-xs font-semibold"
+                      :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">
+                  {% trans "Inactive" %}
+                </span>
+              {% endif %}
+            </div>
+            <div class="text-sm opacity-70">{{ account.name }}</div>
+          </div>
+          <a
+            href="{% url 'assets:account_detail' account.pk %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+            {% trans "View" %}
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-users text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No accounts yet" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Create ledger accounts via the API or admin." %}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

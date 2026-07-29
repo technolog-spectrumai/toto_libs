@@ -1,0 +1,109 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Authorizations" %}{% endblock %}
+{% block tab_authorizations %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+
+  <div class="flex items-center justify-between gap-4">
+    <div>
+      <h2 class="text-xl font-bold">{% trans "Wallet Authorizations" %}</h2>
+      <p class="text-sm opacity-60 mt-0.5">
+        {% trans "Keypairs that let apps sign billing transactions on your behalf automatically." %}
+      </p>
+    </div>
+  </div>
+
+  {% if messages %}
+  {% for msg in messages %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border px-4 py-3 text-sm font-semibold">{{ msg }}</div>
+  {% endfor %}
+  {% endif %}
+
+  {% if authorizations %}
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-xl border shadow-sm overflow-hidden">
+    <div class="border-b px-5 py-3" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold text-sm flex items-center gap-2">
+        <i class="fa-solid fa-key opacity-60"></i>{% trans "Your authorizations" %}
+      </h3>
+    </div>
+    {% for auth in authorizations %}
+    <div class="flex flex-col gap-3 px-5 py-4 sm:flex-row sm:items-center sm:justify-between
+                {% if not forloop.last %}border-b{% endif %}"
+         :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+
+      <!-- Identity -->
+      <div class="space-y-1 min-w-0">
+        <div class="flex items-center gap-2 flex-wrap">
+          <span class="font-semibold text-sm">{{ auth.name }}</span>
+          {% if auth.active %}
+          <span :class="darkMode ? 'bg-success-light/20 text-success-light' : 'bg-success-light/15 text-success-light'"
+                class="rounded px-2 py-0.5 text-xs font-semibold">
+            {% trans "Active" %}
+          </span>
+          {% else %}
+          <span :class="darkMode ? 'bg-gray-700 text-gray-400' : 'bg-gray-100 text-gray-500'"
+                class="rounded px-2 py-0.5 text-xs font-semibold">
+            {% trans "Revoked" %}
+          </span>
+          {% endif %}
+          {% if auth.in_use %}
+          <span :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/10 text-accent-light'"
+                class="rounded px-2 py-0.5 text-xs font-semibold">
+            <i class="fa-solid fa-vault mr-1 text-xs"></i>{% trans "Vault" %}
+          </span>
+          {% endif %}
+        </div>
+        <div class="text-xs opacity-55 flex flex-wrap gap-x-4 gap-y-0.5">
+          <span><i class="fa-solid fa-circle-nodes mr-1"></i>{{ auth.ledger_account.code }}</span>
+          <span><i class="fa-solid fa-calendar mr-1"></i>{{ auth.created_at|date:"Y-m-d" }}</span>
+        </div>
+        <div class="text-xs opacity-40 font-mono truncate max-w-xs" title="{{ auth.public_key }}">
+          {{ auth.public_key|truncatechars:60 }}
+        </div>
+      </div>
+
+      <!-- Actions -->
+      {% if auth.active %}
+      <form method="post" class="shrink-0">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="revoke">
+        <input type="hidden" name="auth_pk" value="{{ auth.pk }}">
+        <button type="submit"
+                :class="darkMode ? 'border-warn-dark text-warn-dark hover:bg-warn-dark/10' : 'border-warn-light text-warn-light hover:bg-warn-light/10'"
+                class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+          <i class="fa-solid fa-ban"></i>
+          {% trans "Revoke" %}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border border-dashed p-12 text-center shadow-sm">
+    <i class="fa-solid fa-key text-3xl opacity-20 mb-3"></i>
+    <p class="text-sm font-semibold opacity-55">{% trans "No authorizations yet." %}</p>
+    <p class="text-xs opacity-45 mt-1">
+      {% trans "Grant vault authorization from your storage account settings to enable auto-signed billing." %}
+    </p>
+  </div>
+  {% endif %}
+
+  <!-- Info box -->
+  <div :class="darkMode ? 'border-accent-1/40 bg-primary-bg-dark' : 'border-accent-2/40 bg-primary-bg-light'"
+       class="rounded-xl border px-5 py-4 text-xs opacity-60 space-y-1">
+    <p class="font-semibold opacity-80"><i class="fa-solid fa-circle-info mr-1"></i>{% trans "About authorizations" %}</p>
+    <p>{% trans "An authorization is a server-side Ed25519 keypair scoped to one app. It lets the app sign ledger transactions automatically so you don't need to enter your wallet PIN for every billing event." %}</p>
+    <p>{% trans "Revoking an authorization immediately stops auto-signing. You can generate a new one at any time from Vault settings." %}</p>
+  </div>
+
+</div>
+{% endblock %}

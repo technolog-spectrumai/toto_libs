@@ -1,0 +1,41 @@
+[build-system]
+# setuptools >= 62.3 is required for '**' patterns in package-data globs.
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# The ledger and the rate card on top of it. Promoted out of the zenobia host
+# when studio needed to price its own work: metered work on an internal server
+# is not worth what it is worth to the community, and one rate card cannot say
+# both. A host that pins this runs its own economy — its own assets, its own
+# prices, its own wallets. Nothing crosses between hosts; the ledger refuses
+# cross-asset conversion by design.
+#
+# toto.bourse is deliberately NOT here. It is the OTC desk over a ledger, only
+# zenobia runs one, and it stays a host-owned portion — its migration depends on
+# the app label 'assets', not on which package ships it.
+name = "toto-economy"
+version = "1.18"
+description = "toto economy: double-entry ledger (assets) and metered billing (tariffs)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Versions are lockstep across the whole toto suite and are rewritten only by
+# scripts/release.py — never edit them by hand.
+dependencies = [
+    "toto-base==1.18",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# Each package owns exactly the portions present under its own src/toto/.
+# scripts/check_package_graph.py enforces that the partition stays disjoint.
+include = ["toto*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = [
+    "templates/**/*",
+    "static/**/*",
+    "graph/*.yaml",
+]

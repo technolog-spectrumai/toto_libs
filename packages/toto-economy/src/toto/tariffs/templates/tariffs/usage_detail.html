@@ -1,0 +1,187 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Usage Detail" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="space-y-6">
+
+  <!-- Header card -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+      <div class="space-y-2">
+        <div class="flex flex-wrap items-center gap-2">
+          <h2 class="font-mono text-lg font-bold">{{ record.uuid }}</h2>
+          <span class="rounded px-2 py-0.5 text-xs font-semibold
+            {% if record.status == 'posted' %}bg-success-light/20 text-success-light
+            {% elif record.status == 'failed' %}bg-warn-light/20 text-warn-light
+            {% elif record.status == 'pending' %}bg-accent-light/20 text-accent-light
+            {% else %}bg-gray-700 text-gray-300{% endif %}">
+            {{ record.get_status_display }}
+          </span>
+        </div>
+        <div class="flex flex-wrap gap-4 text-sm">
+          <span>
+            <i class="fa-solid fa-receipt mr-1 opacity-60"></i>
+            <a href="{% url 'tariffs:tariff_detail' record.tariff.uuid %}" class="underline">
+              {{ record.tariff.name }}
+            </a>
+          </span>
+          <span>
+            <code class="rounded px-1.5 py-0.5 text-xs"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+              {{ record.metric_code }}
+            </code>
+          </span>
+          <span><i class="fa-solid fa-gauge mr-1 opacity-60"></i>{{ record.quantity }} {{ record.unit }}</span>
+          <span><i class="fa-solid fa-user mr-1 opacity-60"></i>{{ record.payer_account.code }}</span>
+        </div>
+        <div class="flex flex-wrap gap-4 text-xs opacity-60">
+          {% if record.occurred_at %}
+            <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Occurred" %} {{ record.occurred_at|date:"M d, Y H:i" }}</span>
+          {% endif %}
+          {% if record.rated_at %}
+            <span><i class="fa-regular fa-clock mr-1"></i>{% trans "Rated" %} {{ record.rated_at|date:"M d, Y H:i" }}</span>
+          {% endif %}
+          {% if record.source_type %}
+            <span><i class="fa-solid fa-link mr-1"></i>{{ record.source_type }}:{{ record.source_id }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="flex shrink-0 flex-wrap gap-2">
+        {% if record.status == 'posted' and record.ledger_transaction %}
+          <a
+            href="{% url 'assets:transaction_detail' record.ledger_transaction.pk %}"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition hover:opacity-90">
+            <i class="fa-solid fa-receipt"></i>
+            {% trans "View Ledger Transaction" %}
+          </a>
+        {% elif record.status != 'posted' %}
+          <form method="post" action="{% url 'tariffs:usage_post' record.uuid %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold transition hover:opacity-90">
+              <i class="fa-solid fa-paper-plane"></i>
+              {% trans "Post Usage" %}
+            </button>
+          </form>
+        {% endif %}
+      </div>
+    </div>
+    {% if record.error_message %}
+      <div class="mt-4 rounded-lg border border-warn-light bg-warn-light/10 p-3 text-sm text-warn-light"
+           :class="darkMode ? 'border-warn-light/30 bg-warn-light/20 text-warn-light' : 'border-warn-light bg-warn-light/10 text-warn-light'">
+        <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+        {{ record.error_message }}
+      </div>
+    {% endif %}
+  </div>
+
+  <!-- Charge lines -->
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border shadow-sm">
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h3 class="font-semibold">
+        <i class="fa-solid fa-calculator mr-2 opacity-60"></i>
+        {% trans "Charge Lines" %}
+      </h3>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead>
+          <tr class="border-b text-xs font-semibold uppercase opacity-60"
+              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <th class="px-5 py-3 text-left">{% trans "Item" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Quantity" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Price / Unit" %}</th>
+            <th class="px-5 py-3 text-right">{% trans "Amount" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Payer" %}</th>
+            <th class="px-5 py-3 text-left">{% trans "Receiving" %}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+          {% for charge in charges %}
+            <tr>
+              <td class="px-5 py-3">
+                <code class="rounded px-1.5 py-0.5 text-xs"
+                      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                  {{ charge.tariff_item.code }}
+                </code>
+              </td>
+              <td class="px-5 py-3">
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                  {{ charge.charged_asset.unit_name }}
+                </span>
+              </td>
+              <td class="px-5 py-3 text-right font-mono text-xs">{{ charge.quantity }}</td>
+              <td class="px-5 py-3 text-right font-mono text-xs">{{ charge.price_per_unit_base_units }}</td>
+              <td class="px-5 py-3 text-right font-mono text-xs font-bold">
+                {{ charge.amount_display }} {{ charge.charged_asset.unit_name }}
+              </td>
+              <td class="px-5 py-3 text-xs opacity-70">{{ charge.payer_account.code }}</td>
+              <td class="px-5 py-3 text-xs opacity-70">{{ charge.receiving_account.code }}</td>
+            </tr>
+          {% empty %}
+            <tr>
+              <td colspan="7" class="px-5 py-8 text-center text-sm opacity-60">
+                {% trans "No charges calculated yet." %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Ledger entries -->
+  {% if ledger_entries %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border shadow-sm">
+      <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <h3 class="font-semibold">
+          <i class="fa-solid fa-scale-balanced mr-2 opacity-60"></i>
+          {% trans "Ledger Entries" %}
+          <span class="ml-2 font-mono text-xs opacity-60">{{ record.ledger_transaction.reference }}</span>
+        </h3>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead>
+            <tr class="border-b text-xs font-semibold uppercase opacity-60"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <th class="px-5 py-3 text-left">{% trans "Account" %}</th>
+              <th class="px-5 py-3 text-left">{% trans "Asset" %}</th>
+              <th class="px-5 py-3 text-right">{% trans "Amount" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+            {% for entry in ledger_entries %}
+              <tr>
+                <td class="px-5 py-3 text-xs">{{ entry.account.code }} — {{ entry.account.name }}</td>
+                <td class="px-5 py-3 text-xs">{{ entry.asset.unit_name }}</td>
+                <td class="px-5 py-3 text-right font-mono text-xs
+                           {% if entry.amount_base_units > 0 %}
+                             text-success-light
+                           {% else %}
+                             text-warn-light
+                           {% endif %}">
+                  {% if entry.amount_base_units > 0 %}+{% endif %}{{ entry.amount_display }} {{ entry.asset.unit_name }}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

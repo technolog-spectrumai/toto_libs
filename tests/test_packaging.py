@@ -59,10 +59,17 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    assert len(apps_with_migrations) == 35, sorted(apps_with_migrations)
+    # 37 since assets + tariffs were promoted out of the zenobia host into
+    # toto-economy (a second host needed to price its own work). Moving an app
+    # between HOSTS never touches this; moving one into or out of a PACKAGE does.
+    assert len(apps_with_migrations) == 37, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
+    # The promoted pair travels together: tariffs' initial migration depends on
+    # assets', and splitting them across packages would be unbuildable.
+    assert owner.get("toto/assets/migrations/0001_initial.py") == "toto-economy"
+    assert owner.get("toto/tariffs/migrations/0001_initial.py") == "toto-economy"
 
 
 def test_gis_off_migration_graph_is_packaged(owner):

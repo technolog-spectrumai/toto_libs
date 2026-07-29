@@ -1,0 +1,197 @@
+{% load static %}
+{% load i18n %}
+<script src="{% static 'vendor/cytoscape/cytoscape.min.js' %}"></script>
+<script>
+/**
+ * createFlowGraph(container, data, colors, darkMode)
+ *
+ * Renders the ledger account-flow graph in `container`.
+ * data: { nodes: [{id, label, account_type, url}], edges: [{id, source, target, label, color, reference, tx_type, url, created_at}] }
+ * colors: theme color map from PageProcessor ({{ theme.theme.colors|safe }})
+ * Returns the cytoscape instance.
+ */
+function createFlowGraph(container, data, colors, darkMode) {
+  const theme = darkMode ? 'dark' : 'light';
+  const bgColor     = colors[`primary-bg-${theme}`];
+  const bubbleColor = colors[`bubble-bg-${theme}`];
+  const textColor   = colors[`text-main-${theme}`];
+  const accentColor = colors[`accent-${theme}`];
+
+  const ACCOUNT_TYPE_COLORS = {
+    reserve:  '#f59e0b',
+    system:   '#8b5cf6',
+    external: '#6b7280',
+    user:     accentColor,
+  };
+
+  const elements = [];
+  data.nodes.forEach(n => {
+    elements.push({
+      data: {
+        id: n.id,
+        label: n.label,
+        account_type: n.account_type,
+        url: n.url,
+        nodeColor: ACCOUNT_TYPE_COLORS[n.account_type] || accentColor,
+      }
+    });
+  });
+  data.edges.forEach(e => {
+    elements.push({
+      data: {
+        id: e.id,
+        source: e.source,
+        target: e.target,
+        label: e.label,
+        tx_type: e.tx_type,
+        reference: e.reference,
+        color: e.color,
+        url: e.url,
+        created_at: e.created_at,
+      }
+    });
+  });
+
+  const cy = cytoscape({
+    container,
+    elements,
+    style: [
+      {
+        selector: 'node',
+        style: {
+          'background-color': bubbleColor,
+          'border-color': 'data(nodeColor)',
+          'border-width': 3,
+          'label': 'data(label)',
+          'color': textColor,
+          'font-size': 11,
+          'font-weight': 'bold',
+          'text-valign': 'center',
+          'text-halign': 'center',
+          'text-wrap': 'wrap',
+          'width': 120,
+          'height': 48,
+          'shape': 'round-rectangle',
+        }
+      },
+      {
+        selector: 'node:selected',
+        style: {
+          'border-width': 4,
+          'border-color': accentColor,
+          'background-color': accentColor,
+          'color': bgColor,
+        }
+      },
+      {
+        selector: 'edge',
+        style: {
+          'width': 2,
+          'line-color': 'data(color)',
+          'target-arrow-color': 'data(color)',
+          'target-arrow-shape': 'triangle',
+          'curve-style': 'bezier',
+          'label': 'data(label)',
+          'font-size': 9,
+          'color': textColor,
+          'text-background-color': bubbleColor,
+          'text-background-opacity': 0.85,
+          'text-background-padding': '2px',
+          'text-rotation': 'autorotate',
+          'text-margin-y': -6,
+        }
+      },
+      {
+        selector: 'edge:selected',
+        style: { 'width': 3, 'line-color': accentColor, 'target-arrow-color': accentColor }
+      },
+    ],
+    layout: {
+      name: 'cose',
+      animate: true,
+      animationDuration: 400,
+      nodeOverlap: 20,
+      fit: true,
+      padding: 30,
+      randomize: false,
+      componentSpacing: 80,
+      nodeRepulsion: 450000,
+      edgeElasticity: 100,
+      gravity: 80,
+      numIter: 1000,
+      initialTemp: 200,
+      coolingFactor: 0.95,
+      minTemp: 1.0,
+    },
+    wheelSensitivity: 0.2,
+    minZoom: 0.15,
+    maxZoom: 4,
+  });
+
+  container.style.backgroundColor = bgColor;
+
+  cy.on('tap', 'node', evt => {
+    const url = evt.target.data('url');
+    if (url) window.open(url, '_blank');
+  });
+
+  new ResizeObserver(() => { cy.resize(); cy.fit(); }).observe(container);
+
+  return cy;
+}
+
+/**
+ * initFlowGraph({ fetchUrl, containerId, tooltipId, colors, onLoaded })
+ *
+ * Fetches graph data from fetchUrl, renders into containerId, wires
+ * edge-click tooltip into tooltipId. Refreshes on theme toggle.
+ * onLoaded(cy, data) called after each render.
+ */
+function initFlowGraph({ fetchUrl, containerId, tooltipId, colors }) {
+  const container = document.getElementById(containerId);
+  const tooltip   = tooltipId ? document.getElementById(tooltipId) : null;
+  let cy = null;
+  let currentUrl = fetchUrl;
+
+  const load = async (url) => {
+    if (url) currentUrl = url;
+    container.classList.add('opacity-50');
+    try {
+      const res  = await fetch(currentUrl);
+      const data = await res.json();
+      const dark = typeof Alpine !== 'undefined'
+        ? Alpine.evaluate(document.documentElement, 'darkMode')
+        : document.documentElement.classList.contains('dark');
+
+      if (cy) { cy.destroy(); cy = null; }
+      cy = createFlowGraph(container, data, colors, dark);
+
+      if (tooltip) {
+        cy.on('tap', 'edge', evt => {
+          const d = evt.target.data();
+          tooltip.querySelector('[data-field="label"]').textContent     = d.label     || '';
+          tooltip.querySelector('[data-field="type"]').textContent      = d.tx_type   || '';
+          tooltip.querySelector('[data-field="date"]').textContent      = d.created_at|| '';
+          tooltip.querySelector('[data-field="reference"]').textContent = d.reference || '';
+          const link = tooltip.querySelector('a[data-field="link"]');
+          if (link) link.href = d.url || '#';
+          tooltip.classList.remove('hidden');
+        });
+        cy.on('tap', evt => {
+          if (evt.target === cy) tooltip.classList.add('hidden');
+        });
+      }
+
+    } finally {
+      container.classList.remove('opacity-50');
+    }
+  };
+
+  load();
+
+  const toggle = document.querySelector('.site-theme-toggle-button');
+  if (toggle) toggle.addEventListener('click', () => setTimeout(load, 50));
+
+  return { reload: (url) => load(url), fit: () => cy && cy.fit(), center: () => cy && cy.center() };
+}
+</script>

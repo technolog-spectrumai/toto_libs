@@ -1,0 +1,20 @@
+{# Rendered inside a messages loop or standalone when InsufficientBalanceError is caught #}
+{% load i18n %}
+<div class="rounded-lg border px-4 py-4 text-sm"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+  <div class="flex items-start gap-3">
+    <i class="fa-solid fa-circle-xmark mt-0.5 text-warn-light text-base shrink-0"></i>
+    <div class="space-y-1">
+      <p class="font-semibold">{% trans "Insufficient balance" %}</p>
+      <p class="opacity-70">{{ error }}</p>
+      {% if topup_url %}
+      <a href="{{ topup_url }}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="mt-2 inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Top up balance" %}
+      </a>
+      {% endif %}
+    </div>
+  </div>
+</div>

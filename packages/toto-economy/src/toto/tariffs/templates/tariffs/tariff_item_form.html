@@ -1,0 +1,75 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{{ action }}{% endblock %}
+
+{% block tariffs_content %}
+<div class="mx-auto max-w-2xl">
+  {% if tariff %}
+    <div class="mb-4">
+      <a href="{% url 'tariffs:tariff_detail' tariff.uuid %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>
+        {{ tariff.name }}
+      </a>
+    </div>
+  {% endif %}
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <h2 class="mb-5 text-xl font-bold">{{ action }}</h2>
+    {% if tariff %}
+      <p class="mb-4 text-sm opacity-60">
+        <i class="fa-solid fa-receipt mr-1"></i>{% trans "Tariff" %}: <strong>{{ tariff.name }}</strong> ({{ tariff.code }})
+      </p>
+    {% endif %}
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">
+            {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
+          </label>
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>input]:text-sm [&>input]:bg-inherit [&>input]:text-inherit [&>input]:border-inherit [&>input]:outline-none
+                   [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>select]:text-sm [&>select]:bg-inherit [&>select]:text-inherit [&>select]:border-inherit [&>select]:outline-none
+                   [&>textarea]:w-full [&>textarea]:rounded-lg [&>textarea]:border [&>textarea]:px-3 [&>textarea]:py-2 [&>textarea]:text-sm [&>textarea]:bg-inherit [&>textarea]:text-inherit [&>textarea]:border-inherit [&>textarea]:outline-none
+                   [&>input[type=checkbox]]:h-4 [&>input[type=checkbox]]:w-4 [&>input[type=checkbox]]:bg-inherit">
+            {{ field }}
+          </div>
+          {% if field.help_text %}
+            <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
+          {% endif %}
+          {% for error in field.errors %}
+            <p class="mt-1 text-xs text-warn-light">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      {% if form.non_field_errors %}
+        {% for error in form.non_field_errors %}
+          <p class="text-sm text-warn-light">{{ error }}</p>
+        {% endfor %}
+      {% endif %}
+      <div class="flex gap-3 pt-2">
+        <button
+          type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i>
+          {% trans "Save Item" %}
+        </button>
+        {% if tariff %}
+          <a
+            href="{% url 'tariffs:tariff_detail' tariff.uuid %}"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+            {% trans "Cancel" %}
+          </a>
+        {% endif %}
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}

@@ -1,0 +1,187 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Mint New Asset" %}{% endblock %}
+{% block tab_assets %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="mx-auto max-w-2xl space-y-6">
+
+  <header class="space-y-1">
+    <a href="{% url 'assets:asset_list' %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% trans "Back to Assets" %}
+    </a>
+    <div>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        <i class="fa-solid fa-coins mr-1"></i>{% trans "Assets" %}
+      </p>
+      <h1 class="mt-1 text-2xl font-bold">{% trans "Mint New Asset" %}</h1>
+      <p class="text-sm opacity-60 mt-1">
+        {% trans "Define a new token type with a fixed total supply. Supply cannot be increased after creation." %}
+      </p>
+    </div>
+  </header>
+
+  {% if messages %}
+  {% for msg in messages %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border px-4 py-3 text-sm font-semibold">
+    {{ msg }}
+  </div>
+  {% endfor %}
+  {% endif %}
+
+  <form method="post"
+        x-data="{ reserveChoice: 'auto', unitName: '' }"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-xl border shadow-sm">
+
+    {% csrf_token %}
+
+    <!-- Token identity -->
+    <div class="border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold flex items-center gap-2">
+        <i class="fa-solid fa-tag opacity-60"></i>
+        {% trans "Token identity" %}
+      </h2>
+    </div>
+    <div class="px-5 py-5 grid gap-4 sm:grid-cols-2">
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Name" %}
+        </label>
+        <input type="text" name="name" required maxlength="255"
+               placeholder="{% trans 'e.g. AI Usage Token' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Unit name / ticker" %}
+        </label>
+        <input type="text" name="unit_name" required maxlength="20"
+               placeholder="{% trans 'e.g. AI_TOKEN' %}"
+               x-model="unitName"
+               @input="unitName = unitName.toUpperCase()"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Description" %} <span class="font-normal opacity-60">({% trans "optional" %})</span>
+        </label>
+        <input type="text" name="description" maxlength="500"
+               placeholder="{% trans 'e.g. Credits for AI inference usage' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20 sm:col-span-2">
+      </div>
+    </div>
+
+    <!-- Supply -->
+    <div class="border-t border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold flex items-center gap-2">
+        <i class="fa-solid fa-database opacity-60"></i>
+        {% trans "Supply — fixed at creation" %}
+      </h2>
+      <p class="text-xs opacity-60 mt-0.5">
+        {% trans "Total supply and decimals cannot be changed after the asset is created." %}
+      </p>
+    </div>
+    <div class="px-5 py-5 grid gap-4 sm:grid-cols-2">
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Total supply" %} <span class="font-normal opacity-60">({% trans "display units" %})</span>
+        </label>
+        <input type="number" name="total_supply" required step="any" min="1"
+               placeholder="{% trans 'e.g. 1000000000' %}"
+               value="1000000000"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <div class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Decimals" %}
+        </label>
+        <input type="number" name="decimals" required min="0" max="19"
+               value="6"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+               class="w-full rounded-lg border px-3 py-2 text-sm font-mono outline-none focus:ring-2 focus:ring-current/20">
+        <p class="text-xs opacity-50">{% trans "6 decimals = 1.000000 precision" %}</p>
+      </div>
+    </div>
+
+    <!-- Reserve account -->
+    <div class="border-t border-b px-5 py-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold flex items-center gap-2">
+        <i class="fa-solid fa-vault opacity-60"></i>
+        {% trans "Reserve account" %}
+      </h2>
+      <p class="text-xs opacity-60 mt-0.5">
+        {% trans "Holds the entire supply at creation. Only the reserve account holder can distribute tokens." %}
+      </p>
+    </div>
+    <div class="px-5 py-5 space-y-4">
+      <input type="hidden" name="reserve_choice" :value="reserveChoice">
+      <div class="flex flex-col gap-3 sm:flex-row">
+        <button type="button"
+                @click="reserveChoice = 'auto'"
+                :class="reserveChoice === 'auto'
+                  ? (darkMode ? 'border-accent-dark bg-accent-dark/10' : 'border-accent-light bg-accent-light/10')
+                  : (darkMode ? 'border-accent-1 opacity-60' : 'border-accent-2 opacity-60')"
+                class="flex-1 rounded-lg border px-4 py-3 text-left text-sm transition hover:opacity-80">
+          <div class="font-semibold flex items-center gap-2">
+            <i class="fa-solid fa-wand-magic-sparkles"></i>
+            {% trans "Auto-create reserve" %}
+          </div>
+          <div class="text-xs opacity-60 mt-0.5">
+            {% trans "Creates" %} <span class="font-mono" x-text="unitName ? 'RES-' + unitName : 'RES-{UNIT}'"></span>
+          </div>
+        </button>
+        <button type="button"
+                @click="reserveChoice = 'existing'"
+                :class="reserveChoice === 'existing'
+                  ? (darkMode ? 'border-accent-dark bg-accent-dark/10' : 'border-accent-light bg-accent-light/10')
+                  : (darkMode ? 'border-accent-1 opacity-60' : 'border-accent-2 opacity-60')"
+                class="flex-1 rounded-lg border px-4 py-3 text-left text-sm transition hover:opacity-80">
+          <div class="font-semibold flex items-center gap-2">
+            <i class="fa-solid fa-list"></i>
+            {% trans "Use existing account" %}
+          </div>
+          <div class="text-xs opacity-60 mt-0.5">{% trans "Pick from your ledger accounts" %}</div>
+        </button>
+      </div>
+
+      <div x-show="reserveChoice === 'existing'" x-transition class="space-y-1">
+        <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Ledger account" %}</label>
+        {% if ledger_accounts %}
+        <select name="reserve_account"
+                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          {% for acct in ledger_accounts %}
+          <option value="{{ acct.pk }}">{{ acct.code }} — {{ acct.name }}</option>
+          {% endfor %}
+        </select>
+        {% else %}
+        <p class="text-xs opacity-60">{% trans "No active ledger accounts found." %}</p>
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="border-t px-5 py-4 flex items-center gap-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Mint asset" %}
+      </button>
+      <p class="text-xs opacity-50">{% trans "This action is irreversible — supply is locked at creation." %}</p>
+    </div>
+
+  </form>
+
+</div>
+{% endblock %}

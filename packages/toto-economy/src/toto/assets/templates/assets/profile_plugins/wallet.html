@@ -1,0 +1,72 @@
+{% load i18n %}
+<section
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+
+  <!-- Header -->
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <div class="flex items-center gap-3">
+      <i class="{{ profile_plugin_icon }}"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <h2 class="text-lg font-bold">{% trans "Wallet" %}</h2>
+      {% if wallet_account_count > 1 %}
+      <span
+        :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+        class="rounded-full px-2 py-0.5 text-xs font-semibold opacity-60">
+        {{ wallet_account_count }}
+      </span>
+      {% endif %}
+    </div>
+    <a
+      href="{% url 'assets:wallet' %}"
+      :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-primary-bg-dark' : 'border-accent-2 text-text-main-light hover:bg-primary-bg-light'"
+      class="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition"
+    ><i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>{% trans "Open wallet" %}</a>
+  </div>
+
+  {% if wallet_top_account %}
+  <!-- Top-priority billing account -->
+  <div
+    :class="darkMode ? 'bg-accent-dark/10 border-accent-dark/20' : 'bg-accent-light/10 border-accent-light/20'"
+    class="mb-4 flex items-center justify-between gap-2 rounded-xl border px-3 py-2 text-xs"
+  >
+    <div class="flex items-center gap-2 min-w-0">
+      <i class="fa-solid fa-arrow-up-wide-short shrink-0"
+         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <div class="min-w-0">
+        <span class="font-semibold">{% trans "Top billing account" %}:</span>
+        <span class="opacity-70 ml-1 truncate">{{ wallet_top_account.name|default:wallet_top_account.code }}</span>
+      </div>
+    </div>
+    {% if wallet_top_account.user_priority > 0 %}
+    <span
+      :class="darkMode ? 'bg-accent-dark/15 text-accent-dark' : 'bg-accent-light/15 text-accent-light'"
+      class="shrink-0 rounded-full px-2 py-0.5 font-semibold tabular-nums">
+      {{ wallet_top_account.user_priority }}
+    </span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  <!-- Top holdings -->
+  {% if wallet_holdings %}
+  <div class="space-y-2">
+    {% for holding in wallet_holdings %}
+    <div
+      :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+      class="flex items-center justify-between rounded-xl px-3 py-2 text-sm"
+    >
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="font-semibold">{{ holding.asset.unit_name }}</span>
+        <span class="opacity-50 text-xs truncate">{{ holding.asset.name }}</span>
+        <span class="opacity-40 text-xs shrink-0">· {{ holding.account.code }}</span>
+      </div>
+      <span class="font-mono font-bold shrink-0 ml-3">{{ holding.balance_display }}</span>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="text-sm opacity-50">{% trans "No balances yet." %}</p>
+  {% endif %}
+
+</section>

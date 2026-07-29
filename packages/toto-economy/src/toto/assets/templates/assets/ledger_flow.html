@@ -1,0 +1,139 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Ledger Flow" %}{% endblock %}
+{% block tab_flow %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-4">
+
+  <!-- Filter bar -->
+  <form
+    id="flow-filter-form"
+    method="get"
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="flex flex-wrap items-end gap-3 rounded-lg border p-4 shadow-sm">
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold opacity-60">{% trans "From" %}</label>
+      <input type="date" name="date_from" value="{{ date_from }}"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold opacity-60">{% trans "To" %}</label>
+      <input type="date" name="date_to" value="{{ date_to }}"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold opacity-60">{% trans "Asset" %}</label>
+      <select name="asset"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        <option value="">{% trans "All assets" %}</option>
+        {% for asset in assets %}
+          <option value="{{ asset.unit_name }}" {% if asset_filter == asset.unit_name %}selected{% endif %}>{{ asset.unit_name }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <div class="flex flex-col gap-1">
+      <label class="text-xs font-semibold opacity-60">{% trans "Type" %}</label>
+      <select name="type"
+        :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        <option value="">{% trans "All types" %}</option>
+        {% for value, label in transaction_types %}
+          <option value="{{ value }}" {% if tx_type_filter == value %}selected{% endif %}>{{ label }}</option>
+        {% endfor %}
+      </select>
+    </div>
+
+    <button type="submit"
+      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+      class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-filter"></i> {% trans "Apply" %}
+    </button>
+
+    <div class="flex gap-2 ml-auto">
+      <button type="button" onclick="graph.fit()"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-expand"></i> {% trans "Fit" %}
+      </button>
+      <button type="button" onclick="graph.reload()"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+        <i class="fa-solid fa-arrows-rotate"></i> {% trans "Reload" %}
+      </button>
+    </div>
+  </form>
+
+  <!-- Legend -->
+  <div class="flex flex-wrap items-center gap-4 text-xs font-semibold opacity-70">
+    <span class="flex items-center gap-1"><span class="inline-block h-2 w-6 rounded" style="background:#22c55e"></span>{% trans "Create" %}</span>
+    <span class="flex items-center gap-1"><span class="inline-block h-2 w-6 rounded" style="background:#3b82f6"></span>{% trans "Transfer" %}</span>
+    <span class="flex items-center gap-1"><span class="inline-block h-2 w-6 rounded" style="background:#ef4444"></span>{% trans "Reversal" %}</span>
+    <span class="ml-4 flex items-center gap-1"><span class="inline-block h-3 w-3 rounded border-2" style="border-color:#f59e0b"></span>{% trans "Reserve" %}</span>
+    <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded border-2" style="border-color:#8b5cf6"></span>{% trans "System" %}</span>
+    <span class="flex items-center gap-1"><span class="inline-block h-3 w-3 rounded border-2" style="border-color:#6b7280"></span>{% trans "External" %}</span>
+  </div>
+
+  <!-- Graph -->
+  <div class="relative">
+    <!-- Edge tooltip -->
+    <div id="flow-tooltip"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="absolute right-3 top-3 z-20 hidden max-w-xs rounded-xl border p-4 shadow-lg text-sm space-y-1">
+      <div class="font-bold" data-field="label"></div>
+      <div class="opacity-60 text-xs"><span data-field="type"></span> · <span data-field="date"></span></div>
+      <div class="opacity-80 text-xs break-all" data-field="reference"></div>
+      <a data-field="link" href="#" target="_blank"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="inline-flex items-center gap-1 text-xs font-semibold underline-offset-4 hover:underline">
+        {% trans "Open transaction" %} <i class="fa-solid fa-arrow-up-right-from-square text-[10px]"></i>
+      </a>
+    </div>
+
+    <div id="flow-container"
+      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+      class="h-[640px] rounded-xl border shadow-sm transition-colors">
+    </div>
+  </div>
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+{% include "assets/partials/flow_scripts.html" %}
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+  const colors = {{ theme.theme.colors|safe }};
+
+  // Build fetch URL from current query string
+  const qs = new URLSearchParams(window.location.search).toString();
+  const fetchUrl = '{% url "assets:ledger_flow_data" %}' + (qs ? '?' + qs : '');
+
+  const graph = initFlowGraph({
+    fetchUrl,
+    containerId: 'flow-container',
+    tooltipId:   'flow-tooltip',
+    colors,
+  });
+
+  // Re-fetch on filter form submit without page reload
+  document.getElementById('flow-filter-form').addEventListener('submit', e => {
+    e.preventDefault();
+    const params = new URLSearchParams(new FormData(e.target)).toString();
+    history.replaceState(null, '', '?' + params);
+    const newUrl = '{% url "assets:ledger_flow_data" %}' + (params ? '?' + params : '');
+    graph.reload(newUrl);
+  });
+
+  window.graph = graph;
+});
+</script>
+{% endblock %}
