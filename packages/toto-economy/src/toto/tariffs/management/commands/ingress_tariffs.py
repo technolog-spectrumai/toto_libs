@@ -244,20 +244,29 @@ class Command(IngressCommand):
                 continue
             _item(tariff, metric, metric_spec.label, gas, price, unit, revenue)
             priced += 1
-            self.stdout.write(f"  +/✓ price {metric_spec.code} = {price} ASR/{unit.code}")
+            self.stdout.write(f"  +/✓ price {metric_spec.code} = {price} {ticker}/{unit.code}")
 
-        unknown = set(PRICES) - set(registry.codes())
-        assert not unknown, (
-            f"priced but not registered by any app: {sorted(unknown)} — "
-            "a price nothing meters can never be charged"
-        )
+        # A price whose metric this host does not meter is simply not seeded.
+        # This used to assert, which was right while one host installed every
+        # metered app: a price nothing meters can never be charged. It stopped
+        # being right the moment a second host ran its own rate card — "this
+        # host does not install texlab" is not the same fault as "nothing
+        # anywhere meters this", and failing the seed for it takes the whole
+        # entrypoint down. Report instead, so the omission is visible and the
+        # rate card stays a catalogue that each host draws its own subset from.
+        not_metered_here = sorted(set(PRICES) - set(registry.codes()))
+        if not_metered_here:
+            self.stdout.write(self.style.WARNING(
+                f"  ⚠ not priced — this host meters none of: "
+                f"{', '.join(not_metered_here)}"
+            ))
         assert not TariffItem.objects.filter(tariff=tariff).exclude(charged_asset=gas).exists(), (
             "the default tariff must price everything in gas"
         )
 
         if not self.full:
             self.stdout.write(self.style.SUCCESS(
-                f"✅  Rate card seeded: {priced} of {len(registry)} metrics priced in ASR."
+                f"✅  Rate card seeded: {priced} of {len(registry)} metrics priced in {ticker}."
             ))
             return
 
