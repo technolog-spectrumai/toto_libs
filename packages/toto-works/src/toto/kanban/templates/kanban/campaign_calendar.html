@@ -1,0 +1,129 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ campaign.name }} — {% trans "Calendar" %}{% endblock %}
+
+{% block start_script %}
+  {# FullCalendar v6 bundles its CSS into the JS — no separate stylesheet. #}
+  <script src="{% static 'vendor/fullcalendar/fullcalendar.js' %}"></script>
+  <style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-7xl space-y-6 px-4 py-8">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <a
+        href="{% url 'kanban:project_detail' project.pk %}"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-sm font-semibold underline-offset-4 hover:underline">
+        <i class="fa-solid fa-arrow-left mr-1 text-xs"></i>{{ project.name }}
+      </a>
+      <p class="mt-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Campaign" %}</p>
+      <h1 class="mt-1 flex items-center gap-3 text-2xl font-bold">
+        <i class="fa-solid fa-calendar-days"></i>
+        {{ campaign.name }}
+      </h1>
+      {% if not campaign.start_date %}
+        <p class="mt-1 text-sm opacity-70">{% trans "This campaign has no dates of its own; it appears here through its missions and tasks." %}</p>
+      {% endif %}
+    </div>
+
+    <nav class="flex flex-wrap items-center gap-2">
+      <select
+        onchange="window.location = this.value"
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+          : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm font-semibold">
+        {% for sibling in sibling_campaigns %}
+          <option value="{% url 'kanban:campaign_calendar' sibling.pk %}" {% if sibling.pk == campaign.pk %}selected{% endif %}>
+            {{ sibling.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <a
+        href="{% url 'kanban:campaign_map' campaign.pk %}"
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-map-location-dot"></i>
+        {% trans "Map" %}
+      </a>
+    </nav>
+  </header>
+
+  <!-- Calendar -->
+  <section
+    x-data="{ layers: { campaign: true, mission: true, task: true },
+              toggle(key) { this.layers[key] = !this.layers[key];
+                            window.campaignCalToggle && window.campaignCalToggle(key, this.layers[key]); } }"
+    :class="darkMode
+      ? 'border-accent-1 bg-bubble-bg-dark'
+      : 'border-accent-2 bg-bubble-bg-light'"
+    class="overflow-hidden rounded-2xl border shadow-sm">
+
+    <div class="flex flex-wrap items-center gap-2 border-b p-4"
+      :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <p class="mr-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Levels" %}</p>
+      {% for key, label, icon, tone in layer_toggles %}
+        <button
+          type="button"
+          x-on:click="toggle('{{ key }}')"
+          :class="[
+            layers['{{ key }}'] ? 'opacity-100' : 'opacity-40',
+            darkMode ? 'border-{{ tone }}-dark text-{{ tone }}-dark' : 'border-{{ tone }}-light text-{{ tone }}-light',
+          ]"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+          <i class="{{ icon }} text-[11px]"></i>{{ label }}
+          <span class="opacity-60">
+            {% if key == "campaign" %}{{ level_counts.campaign }}{% elif key == "mission" %}{{ level_counts.mission }}{% else %}{{ level_counts.task }}{% endif %}
+          </span>
+        </button>
+      {% endfor %}
+    </div>
+
+    <div class="p-4">
+      <div id="campaignCalendar" class="min-w-[320px]"></div>
+    </div>
+  </section>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const payload = JSON.parse('{{ calendar_payload_json|escapejs }}');
+  const el = document.getElementById("campaignCalendar");
+
+  const calendar = new FullCalendar.Calendar(el, {
+    initialView: "dayGridMonth",
+    initialDate: "{{ initial_date }}",
+    themeSystem: "standard",
+    headerToolbar: {
+      left: "prev,next today",
+      center: "title",
+      right: "dayGridMonth,timeGridWeek,listWeek"
+    },
+    eventSources: [
+      { id: "campaign", events: payload.campaign },
+      { id: "mission", events: payload.mission },
+      { id: "task", events: payload.task },
+    ],
+    height: "auto",
+    handleWindowResize: true,
+    expandRows: true,
+  });
+  calendar.render();
+
+  window.campaignCalToggle = (key, visible) => {
+    const source = calendar.getEventSourceById(key);
+    if (!visible && source) source.remove();
+    if (visible && !source) calendar.addEventSource({ id: key, events: payload[key] });
+  };
+});
+</script>
+{% endblock %}

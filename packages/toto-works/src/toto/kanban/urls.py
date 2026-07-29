@@ -25,6 +25,17 @@ from .views import (
     demote_task,
     relation_create,
     relation_delete,
+    MissionCreateView,
+    MissionUpdateView,
+    mission_event_link,
+    mission_event_create,
+    task_event_link,
+    task_event_create,
+    mission_attachment_add,
+    mission_attachment_remove,
+    CampaignMapView,
+    CampaignCalendarView,
+    campaign_map_data,
     SprintMetricsView,
     DocumentationPageDetailView,
 )
@@ -123,6 +134,72 @@ urlpatterns = [
         "projects/<int:pk>/sprint-metrics/",
         SprintMetricsView.as_view(),
         name="sprint_metrics",
+    ),
+
+    path(
+        "project/<int:pk>/mission/new/",
+        MissionCreateView.as_view(),
+        name="mission_create",
+    ),
+
+    path(
+        "project/<int:project_pk>/mission/<int:pk>/edit/",
+        MissionUpdateView.as_view(),
+        name="mission_edit",
+    ),
+
+    path(
+        "mission/<int:pk>/event/link/",
+        mission_event_link,
+        name="mission_event_link",
+    ),
+
+    path(
+        "mission/<int:pk>/event/create/",
+        mission_event_create,
+        name="mission_event_create",
+    ),
+
+    path(
+        "<int:project_id>/task/<int:task_id>/event/link/",
+        task_event_link,
+        name="task_event_link",
+    ),
+
+    path(
+        "<int:project_id>/task/<int:task_id>/event/create/",
+        task_event_create,
+        name="task_event_create",
+    ),
+
+    path(
+        "mission/<int:pk>/attachments/add/",
+        mission_attachment_add,
+        name="mission_attachment_add",
+    ),
+
+    path(
+        "mission/<int:mission_pk>/attachments/<int:pk>/remove/",
+        mission_attachment_remove,
+        name="mission_attachment_remove",
+    ),
+
+    path(
+        "campaign/<int:pk>/map/",
+        CampaignMapView.as_view(),
+        name="campaign_map",
+    ),
+
+    path(
+        "campaign/<int:pk>/map/data/",
+        campaign_map_data,
+        name="campaign_map_data",
+    ),
+
+    path(
+        "campaign/<int:pk>/calendar/",
+        CampaignCalendarView.as_view(),
+        name="campaign_calendar",
     ),
 
 ]

@@ -33,6 +33,7 @@ class MissionSyncAdapter(BaseSyncAdapter):
         "description",
         "urgency",
         "impact",
+        "visibility",
         "metadata",
     ]
 

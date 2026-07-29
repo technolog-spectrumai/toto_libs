@@ -411,7 +411,8 @@ def zone_detail(request, pk):
     # traverse the kanban Mission reverse relations) only exist when the host
     # installs toto.kanban; without it the zone page shows the zone alone.
     if apps.is_installed("toto.kanban"):
-        from toto.kanban.models import Campaign, Mission
+        from django.db.models import Q as _Q
+        from toto.kanban.models import Campaign, Mission, visible_missions_for
 
         campaigns = (
             Campaign.objects
@@ -421,9 +422,16 @@ def zone_detail(request, pk):
             .order_by("project__name", "name")
         )
 
+        # Effective-zone semantics: a mission is "in" this zone when it points
+        # at it directly, or inherits it from the campaign without overriding.
+        # And only the missions this user may see.
         missions = (
-            Mission.objects
-            .filter(campaign__zone=zone)
+            visible_missions_for(
+                request.user,
+                Mission.objects.filter(
+                    _Q(zone=zone) | _Q(zone__isnull=True, campaign__zone=zone)
+                ),
+            )
             .select_related(
                 "campaign",
                 "campaign__project",
@@ -437,14 +445,14 @@ def zone_detail(request, pk):
 
         addresses = (
             Address.objects
-            .filter(missions__campaign__zone=zone)
+            .filter(missions__in=missions)
             .distinct()
             .order_by("country_name", "locality_name", "street", "building")
         )
 
         routes = (
             Route.objects
-            .filter(missions__campaign__zone=zone)
+            .filter(missions__in=missions)
             .select_related("route_chain", "start_address", "end_address")
             .distinct()
             .order_by("route_chain__name", "sequence", "name")

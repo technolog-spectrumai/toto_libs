@@ -30,6 +30,7 @@ nodes:
     fields:
       title: title
       description: description
+      visibility: visibility
       urgency: urgency
       impact: impact
       metadata:
