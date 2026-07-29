@@ -205,9 +205,18 @@ def token(request):
     except SSORelyingParty.DoesNotExist:
         return JsonResponse({"error": "invalid_client"}, status=401)
 
-    if not client.verify_client_secret(client_secret):
-        return JsonResponse({"error": "invalid_client"}, status=401)
-
+    # The code is looked up and bound to the claimed client BEFORE the secret is
+    # verified, and the order is deliberate. verify_client_secret is PBKDF2 at
+    # Django's default 600k iterations — ~114 ms of CPU — and this endpoint is
+    # csrf-exempt and unauthenticated by construction. Verifying first meant
+    # anyone could spend 114 ms of a worker per request with nothing but a
+    # guessable client_id ("grafana", "gitea"), and roughly 35 req/s saturated
+    # the whole host, not just SSO.
+    #
+    # Reordering costs nothing: an authorization code is token_urlsafe(48),
+    # single-use and five minutes old, so requiring one that already belongs to
+    # the claimed client is not a bar a caller can clear without having been
+    # issued it. The two indexed lookups below are microseconds.
     try:
         auth_code = SSOAuthorizationCode.objects.select_related("client", "user").get(code=code_value)
     except SSOAuthorizationCode.DoesNotExist:
@@ -215,6 +224,10 @@ def token(request):
 
     if auth_code.client_id != client.id:
         return JsonResponse({"error": "invalid_grant"}, status=400)
+
+    if not client.verify_client_secret(client_secret):
+        return JsonResponse({"error": "invalid_client"}, status=401)
+
     if auth_code.redirect_uri != redirect_uri:
         return JsonResponse({"error": "invalid_grant"}, status=400)
     if auth_code.is_used or auth_code.is_expired:

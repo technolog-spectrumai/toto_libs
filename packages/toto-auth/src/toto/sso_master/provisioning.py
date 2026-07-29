@@ -25,31 +25,56 @@ def create_relying_party(
     raw_secret=None,
     force_recreate=False,
 ):
-    client_id = client_id or secrets.token_urlsafe(24)
-    existing = SSORelyingParty.objects.filter(client_id=client_id).first()
-    if existing:
-        if force_recreate:
-            existing.delete()
-        else:
-            raise RelyingPartyProvisioningError(
-                f"Client ID already exists: {client_id}. Use --force-recreate to replace it."
-            )
+    """Register (or re-register) a relying party, idempotently.
 
-    relying_party = SSORelyingParty(
-        name=name,
-        client_id=client_id,
-        redirect_uris="\n".join(redirect_uris),
-        trusted=trusted,
-        allowed_scopes=scopes,
-        client_type=SSORelyingParty.PUBLIC if public else SSORelyingParty.CONFIDENTIAL,
+    ``force_recreate`` UPDATES an existing registration in place. It used to
+    ``delete()`` it, which was a quiet disaster: ``SSOAuthorizationCode.client``
+    and ``SSOAccessToken.client`` both cascade, and ``ingress_all`` runs from the
+    container entrypoint on *every* start — so a routine restart (or an
+    on-failure restart loop) revoked every live token of every seeded relying
+    party, and changed the row's UUID underneath them. Callers want "make the
+    registration match this", not "throw it away and make a new one".
+
+    Deleting is still reachable, deliberately, via ``recreate_relying_party``.
+    """
+    client_id = client_id or secrets.token_urlsafe(24)
+    relying_party = SSORelyingParty.objects.filter(client_id=client_id).first()
+
+    if relying_party and not force_recreate:
+        raise RelyingPartyProvisioningError(
+            f"Client ID already exists: {client_id}. Use --force-recreate to replace it."
+        )
+
+    if relying_party is None:
+        relying_party = SSORelyingParty(client_id=client_id)
+
+    relying_party.name = name
+    relying_party.redirect_uris = "\n".join(redirect_uris)
+    relying_party.trusted = trusted
+    relying_party.allowed_scopes = scopes
+    relying_party.client_type = (
+        SSORelyingParty.PUBLIC if public else SSORelyingParty.CONFIDENTIAL
     )
 
     client_secret = None
     if relying_party.client_type == SSORelyingParty.CONFIDENTIAL:
+        # Re-derives the hash from the same deployment secret on a re-run, so the
+        # value the relying party already holds keeps working.
         client_secret = relying_party.set_client_secret(raw_secret)
 
     relying_party.save()
     return ProvisionedRelyingParty(relying_party=relying_party, client_secret=client_secret)
+
+
+def recreate_relying_party(*, client_id, **kwargs):
+    """Delete a registration and issue a fresh one, cascading its live tokens.
+
+    The rare, deliberate case: a leaked client secret with no way to rotate it
+    on the relying-party side, or a client_id being repurposed. Everything
+    routine should use :func:`create_relying_party`.
+    """
+    SSORelyingParty.objects.filter(client_id=client_id).delete()
+    return create_relying_party(client_id=client_id, **kwargs)
 
 
 def add_relying_party_arguments(parser):
