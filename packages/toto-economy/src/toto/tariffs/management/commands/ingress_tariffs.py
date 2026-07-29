@@ -1,6 +1,7 @@
 """Seed the platform rate card.
 
-Everything is priced in gas — ASR — because that is the only spendable asset a
+Everything is priced in this host's gas asset (settings.GAS_ASSET, ASR by
+default) because that is the only spendable asset a
 real build has. Prices are per operation and deliberately small: the point is
 to make abuse expensive, not to make ordinary use a budgeting exercise.
 
@@ -34,6 +35,8 @@ from toto.assets.models import (
 from toto.assets.queries import get_asset_balance_display
 from toto.assets.services.assets import create_asset, transfer_asset
 from toto.ingress import IngressCommand
+from django.conf import settings
+
 from toto.quota.metrics import registry
 from toto.tariffs.models import (
     BillingMetric,
@@ -196,10 +199,13 @@ class Command(IngressCommand):
     def process(self):
         self.stdout.write("⛽  Seeding tariffs…")
 
-        gas = Asset.objects.filter(unit_name="ASR").first()
+        # The gas ticker is per host: two hosts running their own ledgers must
+        # not both bill in "ASR", because the balances are not interchangeable.
+        ticker = getattr(settings, "GAS_ASSET", "ASR")
+        gas = Asset.objects.filter(unit_name=ticker).first()
         if gas is None:
             self.stdout.write(self.style.WARNING(
-                "  ⚠ ASR not found — run ingress_assets first. No prices seeded."
+                f"  ⚠ {ticker} not found — run ingress_assets first. No prices seeded."
             ))
             return
 
@@ -209,8 +215,8 @@ class Command(IngressCommand):
         tariff, _created = _tariff(
             "platform-default",
             "Platform default",
-            "What metered work costs, in gas (ASR). Applies to everyone without "
-            "a more specific tariff.",
+            f"What metered work costs, in gas ({ticker}). Applies to everyone "
+            "without a more specific tariff.",
         )
         # Deliberately ownerless: this is the platform's rate card, not a
         # person's. `_can_manage` lets any staff member edit an ownerless
