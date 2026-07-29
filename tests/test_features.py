@@ -82,10 +82,10 @@ def test_map_features_without_geometry_are_a_hard_error():
 
 
 # ---------------------------------------------------------------------------
-# The media section: vod and ocr, independent of each other and of everything
-# else. The ffmpeg half (manta, fileservices, transcription) was retired in 1.21
-# — see toto_libs/limbo/*/PARKED.md — so these tests also pin down that the flags
-# behind it are gone rather than merely defaulted off.
+# The media section. toto-media ships vod alone; manta, fileservices,
+# transcription and ocr live in toto-media-ops, a package NO HOST PINS (see
+# packages/toto-media-ops/README.md). The flags for that tier still resolve, so a
+# host that pins the wheel needs no library change — but nothing defaults them on.
 # ---------------------------------------------------------------------------
 
 def test_vod_follows_media_when_unnamed():
@@ -100,24 +100,64 @@ def test_vod_can_be_dropped_from_a_media_host():
 
 
 def test_media_no_longer_drags_the_celery_layer():
-    # What the 1.21 retirement bought. Before it, BUILD_MEDIA reached workflows
-    # through fileservices' FK and so forced the realtime pip layer; zenobia_mini
-    # documented that as the reason it could not be lean. vod is a template and a
-    # queryset, so a media host can now be plain WSGI.
+    # What the 1.21 split bought. Before it, BUILD_MEDIA reached workflows through
+    # fileservices' FK and so forced the realtime pip layer; zenobia_mini documented
+    # that as the reason it could not be lean. vod is a template and a queryset, so
+    # a media host can now be plain WSGI.
     f = resolve(BUILD_MEDIA=1)
     assert f.vod is True
     assert (f.workflows, f.realtime, f.needs_channels) == (False, False, False)
+    assert (f.ffmpeg, f.tesseract) == (False, False)
+
+
+@pytest.mark.parametrize("flag_name", ["BUILD_MANTA", "BUILD_FILESERVICES", "BUILD_OCR"])
+def test_the_media_ops_tier_is_never_implied_by_the_media_tier(flag_name):
+    # THE invariant of the split: BUILD_MEDIA is what every shipped profile sets, and
+    # it must not switch on an app whose wheel the host does not pin. Defaulting any
+    # of these from `media` would make six profiles reference toto-media-ops.
+    attr = {"BUILD_MANTA": "manta", "BUILD_FILESERVICES": "fileservices",
+            "BUILD_OCR": "ocr"}[flag_name]
+    assert getattr(resolve(BUILD_MEDIA=1), attr) is False
+    assert getattr(resolve(BUILD_VOD=1), attr) is False
+    assert getattr(resolve(**{flag_name: 1}), attr) is True
+
+
+def test_manta_buys_the_celery_layer_but_not_workflows():
+    # manta has exactly one FK (FileJob.owner -> User) and names workflows nowhere,
+    # so it is deliberately NOT in the workflows closure. What it does need is
+    # celery: tasks_direct.py imports it at module scope, so the image must carry
+    # the realtime pip layer or it will not boot.
+    f = resolve(BUILD_MANTA=1)
+    assert (f.manta, f.realtime, f.ffmpeg) == (True, True, True)
+    assert f.workflows is False
+
+
+def test_fileservices_forces_workflows():
+    # The opposite case, and the strongest closure in the file: FileServiceRun has a
+    # live FK to workflows.WorkflowRun and predefined_tasks.py imports the workflows
+    # registry at module scope. Without this Django fails with fields.E300/E307.
+    f = resolve(BUILD_FILESERVICES=1)
+    assert (f.fileservices, f.workflows, f.realtime, f.ffmpeg) == (True, True, True, True)
+
+
+def test_manta_and_fileservices_are_independent_of_each_other():
+    # Established while splitting these flags, against what the old comments said:
+    # manta's only two references to fileservices are a pure function in the same
+    # wheel and a plugin module fileservices itself imports. So neither implies
+    # the other, in either direction.
+    assert resolve(BUILD_MANTA=1).fileservices is False
+    assert resolve(BUILD_FILESERVICES=1).manta is False
 
 
 def test_ocr_stands_alone():
     # ocr used to default from the neo4j tier and to force `graph` via a closure,
-    # which cost five Neo4j apps and an auto-started neo4j container for one
-    # optional button that greys itself out. It is opt-in and self-contained now.
+    # which cost five Neo4j apps and an auto-started neo4j container for one optional
+    # button that greys itself out. It is opt-in and self-contained now.
     f = resolve(BUILD_OCR=1)
     assert f.ocr is True
     assert f.tesseract is True                      # brings its own binary
     assert (f.graph, f.neo4j, f.vicuna) == (False, False, False)
-    assert (f.workflows, f.realtime) == (False, False)
+    assert (f.workflows, f.realtime, f.ffmpeg) == (False, False, False)
 
 
 def test_ocr_is_not_implied_by_the_neo4j_tier_any_more():
@@ -125,33 +165,16 @@ def test_ocr_is_not_implied_by_the_neo4j_tier_any_more():
     assert resolve(BUILD_GRAPH=1).ocr is False
 
 
-def test_the_graph_no_longer_needs_ocr_to_be_off_or_on():
-    # The reverse direction of the same closure: graph still stands up by itself.
+def test_the_graph_still_stands_up_without_ocr():
     f = resolve(BUILD_GRAPH=1)
     assert (f.graph, f.neo4j) == (True, True)
 
 
-def test_vod_and_ocr_do_not_imply_each_other():
-    assert resolve(BUILD_VOD=1).ocr is False
-    assert resolve(BUILD_OCR=1).vod is False
-
-
-@pytest.mark.parametrize("attr", ["manta", "fileservices", "ffmpeg"])
-def test_the_retired_media_fields_are_gone(attr):
-    # Deliberately asserted rather than left implicit: these three were read by
-    # host settings and by deploy.py's Dockerfile ARG mapping, so a stray
-    # reference is a build failure, not a silent False.
-    assert not hasattr(resolve(), attr)
-
-
-@pytest.mark.parametrize("name", ["BUILD_MANTA", "BUILD_FILESERVICES", "INSTALL_FFMPEG"])
-def test_a_retired_flag_is_ignored_rather_than_an_error(name):
-    # Unlike BUILD_STUDIO, these are NOT honoured as fallbacks — the apps behind
-    # them are in limbo. An old config keeps deploying; it just gets nothing for
-    # that key. Failing loudly here would strand every profile that still sets it.
-    f = resolve(**{name: 1})
-    assert (f.media, f.vod, f.ocr) == (False, False, False)
-    assert f.realtime is False
+def test_tesseract_no_longer_bundles_ffmpeg():
+    # INSTALL_TESSERACT used to turn ffmpeg on as well (the old "OCR/media binaries"
+    # bundle). Two separate features, two separate binaries.
+    assert resolve(INSTALL_TESSERACT=1).ffmpeg is False
+    assert resolve(INSTALL_FFMPEG=1).tesseract is False
 
 
 # ---------------------------------------------------------------------------

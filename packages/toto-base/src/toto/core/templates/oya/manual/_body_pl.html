@@ -214,7 +214,8 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-video"></i>Wideo</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    Strona <a href="{% url 'vod:library' %}" class="font-semibold underline hover:opacity-80">Wideo</a>
+    {% url 'vod:library' as vod_url %}
+    Strona <a href="{{ vod_url }}" class="font-semibold underline hover:opacity-80">Wideo</a>
     pokazuje wszystkie pliki audio i wideo z magazynu, do których masz dostęp — od
     najnowszych. Kliknij, aby odtworzyć plik w przeglądarce; nic nie jest wcześniej
     konwertowane ani pobierane. Odtwarzanie można też uruchomić bezpośrednio z magazynu.
@@ -230,7 +231,8 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-file-lines"></i>Rozpoznawanie tekstu (OCR)</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    <a href="{% url 'ocr:home' %}" class="font-semibold underline hover:opacity-80">OCR</a>
+    {% url 'ocr:home' as ocr_url %}
+    <a href="{{ ocr_url }}" class="font-semibold underline hover:opacity-80">OCR</a>
     odczytuje tekst ze zrzutu ekranu lub zdjęcia. Wczytaj obraz, wybierz jego język, a
     rozpoznany tekst pojawi się obok. Przy okazji możesz zapisać obraz w wybranym koszu
     magazynu.{% if features.graph %} Gdy Graf wiedzy jest włączony, przycisk przekazuje

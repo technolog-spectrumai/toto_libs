@@ -1,0 +1,48 @@
+[build-system]
+# setuptools >= 62.3 is required for '**' patterns in package-data globs.
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+# The heavy media-processing tier, split out of toto-media in 1.21: manta
+# (ffmpeg/ffprobe command builder), fileservices (the run substrate the builder
+# dispatches through), transcription (local Whisper speech-to-text) and ocr
+# (tesseract text recognition).
+#
+# NO HOST INSTALLS THIS. That is deliberate and it is the point of the split:
+# these four apps want native binaries (ffmpeg, tesseract), Python wheels no host
+# ships (openai-whisper/faster-whisper and transitively torch), and a celery
+# worker. Keeping them as a real package rather than deleting them means they stay
+# versioned in lockstep, importable, and buildable — a wheel is produced on every
+# release and simply never pinned. See README.md for what each app needs before
+# any host could pin it, and scripts/test_monorepo.py, which asserts that none
+# does.
+name = "toto-media-ops"
+version = "1.21"
+description = "toto media processing: ffmpeg, transcription and OCR (installed nowhere)"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+# Versions are lockstep across the whole toto suite and are rewritten only by
+# scripts/release.py — never edit them by hand.
+#
+# toto-flow is a hard dependency of fileservices, not a convenience: FileServiceRun
+# has a live FK to workflows.WorkflowRun and predefined_tasks.py imports the
+# workflows registry at module scope. manta and ocr need only toto-base.
+dependencies = [
+    "toto-base==1.21",
+    "toto-flow==1.21",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+# Each package owns exactly the portions present under its own src/toto/.
+# scripts/check_package_graph.py enforces that the partition stays disjoint.
+include = ["toto*"]
+namespaces = true
+
+[tool.setuptools.package-data]
+"*" = [
+    "templates/**/*",
+    "static/**/*",
+]

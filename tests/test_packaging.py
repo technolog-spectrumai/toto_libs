@@ -59,13 +59,14 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    # 34 as of 1.21: 37 minus manta, fileservices and transcription, retired to
-    # toto_libs/limbo/ (which is never packaged). Before that it was 37, since
-    # assets + tariffs were promoted out of the zenobia host into toto-economy (a
-    # second host needed to price its own work). Moving an app between HOSTS never
-    # touches this; moving one into or out of a PACKAGE does. ocr moving from
-    # toto-graph to toto-media does not change the count either — only the owner.
-    assert len(apps_with_migrations) == 34, sorted(apps_with_migrations)
+    # 37 since assets + tariffs were promoted out of the zenobia host into
+    # toto-economy (a second host needed to price its own work). Moving an app
+    # between HOSTS never touches this; moving one into or out of a PACKAGE does.
+    # The 1.21 media split moved four apps between packages and so left the count
+    # alone: manta, fileservices, transcription and ocr are all still packaged, in
+    # toto-media-ops. What would change it is retiring one to limbo/, which is not
+    # a package and never ships.
+    assert len(apps_with_migrations) == 37, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -140,16 +141,33 @@ def test_auth_apps_ship_in_toto_auth(owner):
     assert owner.get("toto/social_login/templates/social_login/_login_buttons.html") == "toto-auth"
 
 
-def test_media_apps_ship_in_toto_media(owner):
-    # The media apps live in the optional toto-media package, not toto-base or
-    # toto-works — a regression here means a mover drifted back.
+def test_toto_media_ships_vod_and_only_vod(payloads):
+    # The 1.21 split: toto-media is the LIGHT media package, the one hosts pin. If
+    # an app that needs a worker or a native binary lands back here, BUILD_MEDIA
+    # stops being safe for a lean WSGI host — which was the whole point.
+    apps = {n.split("/")[1] for n in payloads["toto-media"] if n.startswith("toto/")}
+    assert apps == {"vod"}, sorted(apps)
+
+
+def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
+    # manta, fileservices, transcription and ocr. Packaged, versioned and
+    # buildable — just pinned by no host; see that package's README, and
+    # test_monorepo.py in the portal monorepo, which asserts the "no host" half.
+    apps = {n.split("/")[1] for n in payloads["toto-media-ops"] if n.startswith("toto/")}
+    assert apps == {"manta", "fileservices", "transcription", "ocr"}, sorted(apps)
+    # ocr came from toto-graph, which hard-depends on toto-ai — a host wanting OCR
+    # alone could never have installed it there.
+    assert owner.get("toto/ocr/templates/ocr/ocr.html") == "toto-media-ops"
+    assert owner.get("toto/ocr/migrations/0001_squashed_0002.py") == "toto-media-ops"
+    assert owner.get("toto/manta/templates/manta/command_builder.html") == "toto-media-ops"
+    assert owner.get("toto/fileservices/models.py") == "toto-media-ops"
+    # Written in 1.21 and never deployed; the app had no run index before it.
+    assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
+
+
+def test_vod_ships_its_library_page(owner):
     assert owner.get("toto/vod/migrations/0002_drop_all_vod_tables.py") == "toto-media"
     assert owner.get("toto/vod/templates/vod/library.html") == "toto-media"
-    # ocr moved here from toto-graph in 1.21. It fits by shape (take a vault file,
-    # shell out to a native binary) and, more practically, toto-graph hard-depends
-    # on toto-ai, so a host wanting OCR alone could not install it there.
-    assert owner.get("toto/ocr/templates/ocr/ocr.html") == "toto-media"
-    assert owner.get("toto/ocr/migrations/0001_squashed_0002.py") == "toto-media"
 
 
 def test_the_media_sub_nav_ships_in_toto_base(owner):
@@ -160,13 +178,18 @@ def test_the_media_sub_nav_ships_in_toto_base(owner):
     assert owner.get("toto/core/templates/media/_tabs.html") == "toto-base"
 
 
-def test_the_retired_ffmpeg_apps_ship_nowhere(all_names):
-    # manta, fileservices and transcription were retired to toto_libs/limbo/ in
-    # 1.21. limbo is stripped from the vendored tree and never packaged, so this
-    # is the assertion that catches a half-finished revival: files present in a
-    # wheel for an app no host installs.
-    for app in ("manta", "fileservices", "transcription"):
-        assert not [n for n in all_names if n.startswith(f"toto/{app}/")], app
+def test_nothing_in_the_suite_depends_on_toto_media_ops(wheels):
+    # The library-side half of "installed nowhere": no other package may require it,
+    # or pinning any of them would drag ffmpeg, tesseract and the whisper stack in
+    # transitively. (The host-side half — that no requirements.toto.txt names it —
+    # lives in the portal monorepo's scripts/test_monorepo.py.)
+    for name, path in wheels.items():
+        if name == "toto-media-ops":
+            continue
+        with zipfile.ZipFile(path) as zf:
+            metadata_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
+            metadata = zf.read(metadata_name).decode()
+        assert "toto-media-ops" not in metadata, f"{name} requires toto-media-ops"
 
 
 def test_toto_media_does_not_depend_on_the_workflow_engine(wheels):

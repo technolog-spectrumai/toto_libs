@@ -9,11 +9,11 @@ The realtime tier was called ``studio`` until ``studio`` became the name of a
 host.  ``BUILD_STUDIO`` is still read as a fallback and ``Features.studio``
 still resolves, so a host that has not been updated behaves identically.
 
-Retired in 1.21: ``BUILD_MANTA``, ``BUILD_FILESERVICES`` and ``INSTALL_FFMPEG``,
-with the apps behind them (see ``toto_libs/limbo/{manta,fileservices,
-transcription}/PARKED.md``). Unlike ``BUILD_STUDIO`` these are not read as
-fallbacks — a config still setting one gets nothing, silently, which is what a
-retired flag should do. ``BUILD_MEDIA`` survives and now means video playback.
+``BUILD_MANTA``, ``BUILD_FILESERVICES``, ``BUILD_OCR`` and their binary flags all
+resolve to features in ``toto-media-ops``, a package no host pins — see that
+package's README. They are honoured here so pinning it needs no library change,
+but they are opt-in and no longer default from ``BUILD_MEDIA``, which since 1.21
+covers only video playback (``toto.vod``, in ``toto-media``).
 """
 from dataclasses import dataclass
 
@@ -34,9 +34,14 @@ class Features:
     sketch: bool
     media: bool
     vod: bool
+    # The toto-media-ops tier. No host pins that package, so these are off on every
+    # shipped profile; the flags exist so a host that does pin it needs no library
+    # change. See packages/toto-media-ops/README.md.
+    manta: bool
+    fileservices: bool
     # Graph-group features (graph defaults to the neo4j tier). ocr is listed here
-    # for continuity only: since 1.21 it is opt-in, implies no Neo4j, and lives in
-    # toto-media beside vod.
+    # for continuity only: since 1.21 it is opt-in, implies no Neo4j, and belongs to
+    # the toto-media-ops tier above.
     graph: bool
     ocr: bool
     connectors: bool
@@ -63,11 +68,11 @@ class Features:
     # Effective tiers (image pip layers / ENV).
     realtime: bool
     neo4j: bool
-    # Native binaries the image needs (deploy-side). ``ffmpeg`` was here until
-    # 1.21; its only two consumers (manta, fileservices) are parked in limbo and
-    # nothing else in the tree shells out to it, so the field, INSTALL_FFMPEG and
-    # the image's apt layer all went with them.
+    # Native binaries the image needs (deploy-side). ffmpeg and tesseract both
+    # belong to toto-media-ops, which no host pins, so both resolve False on every
+    # shipped profile and neither apt layer is declared in a host Dockerfile today.
     tesseract: bool
+    ffmpeg: bool
     texlive: bool
 
     @property
@@ -122,36 +127,36 @@ def resolve_features(get) -> Features:
     # deliberately has no entry for them, since the host supplies the
     # INSTALLED_APPS line from its own portion.
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
-    # BUILD_MEDIA is the media *tier*: a back-compat umbrella default, not an app
-    # switch. It is an INPUT only — it must never be OR-ed back out of the per-app
-    # flags below, or naming one app would silently enable the others.
+    # BUILD_MEDIA is the media *tier*: an umbrella default, not an app switch. It is
+    # an INPUT only — it must never be OR-ed back out of the per-app flags below, or
+    # naming one app would silently enable the others.
     #
-    # The media section was four apps until 1.21 and is two now. transcription,
-    # manta and fileservices are parked in limbo/ (each with a PARKED.md saying
-    # why); what is left is playback and OCR, both cheap and both independent:
-    #
-    #   BUILD_MEDIA=1                     video playback (what it now means)
-    #   BUILD_MEDIA=0 BUILD_VOD=1         the same thing, said directly
-    #   BUILD_MEDIA=0 BUILD_OCR=1         OCR alone: tesseract, no celery, no ffmpeg
-    #
-    # Kept rather than deleted because six shipped profiles set BUILD_MEDIA and
-    # nothing else; without this they would silently lose video playback. New
-    # configs should name BUILD_VOD. BUILD_MANTA and BUILD_FILESERVICES are no
-    # longer read at all — a config still setting them gets no apps and no error,
-    # which is the intended outcome for a retired feature.
+    # It used to cover four apps in one package. Since 1.21 the heavy three live in
+    # toto-media-ops, which no host pins, and BUILD_MEDIA covers only what remains
+    # in toto-media: video playback. Six shipped profiles set it and nothing else,
+    # which is why it survives as the default for BUILD_VOD rather than being
+    # deleted; new configs should name BUILD_VOD directly.
     media = flag(get, "BUILD_MEDIA")
-    # toto.vod: no models (it dropped them in migration 0002), no celery task, no
-    # native binary — an HTML5 player pointed at a vault file, plus a library
-    # listing. This is what lets a small host keep video playback for free.
+    # toto.vod (toto-media): no models (it dropped them in migration 0002), no
+    # celery task, no native binary — an HTML5 player pointed at a vault file, plus
+    # a library listing. Cheap enough for a lean WSGI host.
     vod = flag(get, "BUILD_VOD", media)
+
+    # The toto-media-ops tier: opt-in only, and NOT defaulted from BUILD_MEDIA —
+    # they are in a different package, so defaulting them from the tier every
+    # profile sets would ask hosts to install a wheel they do not pin. Each is
+    # independent of the others; see that package's README for what a host would
+    # have to add first (native binaries, whisper wheels, a celery worker).
+    manta = flag(get, "BUILD_MANTA")          # ffmpeg/ffprobe command builder
+    fileservices = flag(get, "BUILD_FILESERVICES")   # the run substrate + vault wand
 
     # Graph-group features (default to the neo4j tier).
     graph = flag(get, "BUILD_GRAPH", tier_neo4j)              # ravioli + sql_neo4j_sync + neo_editor + bento + ingestor
     # toto.ocr — screenshot → tesseract → (optionally) the ingestor. Opt-in on its
-    # own since 1.21, and no longer defaulted from the neo4j tier: it moved out of
-    # toto-graph into toto-media, where it belongs by shape (take a vault file,
-    # shell out to a native binary). The graph is an optional sink for its text,
-    # not a requirement — hence no ocr → graph closure either; see ocr.views.
+    # own since 1.21, and no longer defaulted from the neo4j tier: it left
+    # toto-graph for toto-media-ops, where it belongs by shape (take a vault file,
+    # shell out to a native binary). The graph is an optional sink for its text, not
+    # a requirement — hence no ocr → graph closure either; see ocr.views.
     ocr = flag(get, "BUILD_OCR")
     connectors = flag(get, "BUILD_CONNECTORS")                # toto.connectors — external-API ETL (opt-in)
     formica = flag(get, "BUILD_FORMICA")                      # toto.formica — colony curating the graph (opt-in)
@@ -187,16 +192,20 @@ def resolve_features(get) -> Features:
         )
 
     # Dependency closure — a feature pulls in what it cannot run without.
-    # weather, latex (texlab), pyeditor (antaresia) and gitvault all have a model FK
-    # to workflows.WorkflowRun, so they require the workflows app — else Django's
-    # system check fails with fields.E300/E307.
+    # weather, fileservices, latex (texlab), pyeditor (antaresia) and gitvault all
+    # have a model FK to workflows.WorkflowRun, so they require the workflows app —
+    # else Django's system check fails with fields.E300/E307.
     #
-    # fileservices was in this list until 1.21 and was the strongest entry (a live
-    # FK plus a module-scope import of workflows.predefined_tasks). It is parked, so
-    # nothing in the media section forces workflows any more: vod has no models at
-    # all, and ocr's last workflows edge was a migration dependency left over from a
-    # deleted model, cut by squashing its migrations.
-    if weather or latex or pyeditor or gitvault:
+    # Neither app still in toto-media appears here, which is new in 1.21: vod has no
+    # models at all, and ocr's last workflows edge was a migration dependency left
+    # over from a deleted model, cut by squashing its migrations. So BUILD_MEDIA no
+    # longer reaches workflows, and through it celery — the reason zenobia_mini
+    # could not be lean.
+    #
+    # manta is NOT here either, though it is in the same package as fileservices: it
+    # has exactly one FK (FileJob.owner → User) and names workflows nowhere. What it
+    # needs is celery, which the realtime tier below installs.
+    if weather or fileservices or latex or pyeditor or gitvault:
         workflows = True
     # connectors / formica feed or curate the ingestor → bento/ravioli graph.
     #
@@ -221,19 +230,33 @@ def resolve_features(get) -> Features:
     vicuna = graph or sabbia_ollama
 
     # Effective tier booleans (image pip layers + back-compat module attributes).
-    # Neither surviving media app appears here: vod is a template and a queryset,
-    # and ocr runs tesseract synchronously inside the request. So the media section
-    # no longer implies the celery/channels pip layer at all — which is what makes
-    # BUILD_MEDIA=1 viable on a lean WSGI host for the first time.
-    realtime = chat or workflows or weather or needs_channels
+    #
+    # vod and ocr are deliberately absent: vod is a template and a queryset, and ocr
+    # runs tesseract synchronously inside the request. So BUILD_MEDIA=1 no longer
+    # implies the celery/channels pip layer at all — which is what makes it viable
+    # on a lean WSGI host for the first time.
+    #
+    # manta IS here, rather than in the workflows closure above, because what it
+    # needs is celery and celery is what this tier installs
+    # (requirements.realtime.txt). manta/tasks_direct.py does
+    # `from celery import shared_task` at module scope and views.py calls
+    # run_direct_job.delay(), so a BUILD_MANTA=1 image without this layer would not
+    # boot. Note this buys the pip layer only: whether a worker container runs is
+    # still services.celery in the profile, and manta jobs queue forever without one.
+    realtime = chat or workflows or weather or needs_channels or manta
     neo4j = graph
 
-    # Native binaries. Two left: tesseract follows ocr, texlive follows latex.
-    # INSTALL_FFMPEG is gone as of 1.21 along with manta and fileservices, and with
-    # it the old "OCR/media binaries" bundling where INSTALL_TESSERACT pulled ffmpeg
-    # in as well. A config still setting INSTALL_FFMPEG is ignored, not an error.
+    # Native binaries, each following the feature that shells out to it. tesseract
+    # and ffmpeg both belong to toto-media-ops apps, so on every shipped profile
+    # both are False and no host Dockerfile declares either layer.
+    #
+    # INSTALL_TESSERACT used to pull ffmpeg in too (the old "OCR/media binaries"
+    # bundle). That bundling is gone: ocr and the ffmpeg apps are separate features
+    # and one is not a reason to ship the other's binary.
     explicit_tess = flag(get, "INSTALL_TESSERACT")
+    explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
+    ffmpeg = fileservices or manta or explicit_ffmpeg
     # texlive (pdflatex) backs latex compilation in texlab AND notarius
     # contract→PDF export. Defaults to the latex feature; an explicit
     # INSTALL_TEXLIVE wins.
@@ -248,6 +271,8 @@ def resolve_features(get) -> Features:
         sketch=sketch,
         media=media,
         vod=vod,
+        manta=manta,
+        fileservices=fileservices,
         graph=graph,
         ocr=ocr,
         connectors=connectors,
@@ -267,5 +292,6 @@ def resolve_features(get) -> Features:
         realtime=realtime,
         neo4j=neo4j,
         tesseract=tesseract,
+        ffmpeg=ffmpeg,
         texlive=texlive,
     )
