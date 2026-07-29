@@ -6,20 +6,23 @@ build-backend = "setuptools.build_meta"
 [project]
 # The heavy media-processing tier, split out of toto-media in 1.21: manta
 # (ffmpeg/ffprobe command builder), fileservices (the run substrate the builder
-# dispatches through), transcription (local Whisper speech-to-text) and ocr
-# (tesseract text recognition).
+# dispatches through) and transcription (local Whisper speech-to-text).
+#
+# toto.ocr started here and moved back to toto-media: it is the odd one out, needing
+# only a small apt package and no worker at all, so grouping it with the whisper and
+# ffmpeg stack forced hosts to choose between OCR and a light image. What is left
+# here is exactly the set that wants a celery worker.
 #
 # NO HOST INSTALLS THIS. That is deliberate and it is the point of the split:
-# these four apps want native binaries (ffmpeg, tesseract), Python wheels no host
-# ships (openai-whisper/faster-whisper and transitively torch), and a celery
-# worker. Keeping them as a real package rather than deleting them means they stay
+# these three apps want a native binary (ffmpeg), Python wheels no host ships
+# (openai-whisper/faster-whisper and transitively torch), and a celery worker. Keeping them as a real package rather than deleting them means they stay
 # versioned in lockstep, importable, and buildable — a wheel is produced on every
 # release and simply never pinned. See README.md for what each app needs before
 # any host could pin it, and scripts/test_monorepo.py, which asserts that none
 # does.
 name = "toto-media-ops"
 version = "1.21"
-description = "toto media processing: ffmpeg, transcription and OCR (installed nowhere)"
+description = "toto media processing: ffmpeg and transcription (installed nowhere)"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
@@ -28,7 +31,7 @@ requires-python = ">=3.10"
 #
 # toto-flow is a hard dependency of fileservices, not a convenience: FileServiceRun
 # has a live FK to workflows.WorkflowRun and predefined_tasks.py imports the
-# workflows registry at module scope. manta and ocr need only toto-base.
+# workflows registry at module scope. manta needs only toto-base.
 dependencies = [
     "toto-base==1.21",
     "toto-flow==1.21",

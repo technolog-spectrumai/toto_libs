@@ -4,21 +4,31 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# One app: toto.vod — video and audio playback over the vault. No models (it
-# dropped them in migration 0002), no celery task, no native binary. Switched by
-# BUILD_VOD, which defaults from the older BUILD_MEDIA.
+# The LIGHT media tier — the one hosts pin. Two apps, both stateless and both
+# switchable on their own:
+#   toto.vod (BUILD_VOD, defaults from the older BUILD_MEDIA) — video and audio
+#     playback plus a library page. No models (it dropped them in migration 0002),
+#     no celery task, no native binary.
+#   toto.ocr (BUILD_OCR, opt-in) — screenshot → tesseract → text. No models either
+#     (its migrations squash to a no-op with no dependencies at all), no celery: it
+#     shells out synchronously inside the request. Its one cost is the tesseract
+#     binary, which INSTALL_TESSERACT gates and no host Dockerfile declares today,
+#     and both of its imports (pytesseract, PIL) are inside the function — so a host
+#     can pin this wheel, leave BUILD_OCR off, and pay nothing.
 #
-# This was the heavy package until 1.21, when the processing tier — manta,
-# fileservices, transcription and ocr — moved to toto-media-ops, which no host
-# pins. That is what dropped the toto-flow dependency: fileservices had a live FK
-# to workflows.WorkflowRun and imported its predefined-task registry at module
-# scope, and it was the last thing here that needed either. Nothing left in this
-# package imports toto-flow, so a host can install toto-media without the workflow
-# engine — which is what makes BUILD_MEDIA=1 viable on a lean WSGI host. Keep it
-# that way: anything needing a worker or a binary belongs in toto-media-ops.
+# This was the heavy package until 1.21, when the PROCESSING tier — manta,
+# fileservices and transcription — moved to toto-media-ops, which no host pins.
+# That is what dropped the toto-flow dependency: fileservices had a live FK to
+# workflows.WorkflowRun and imported its predefined-task registry at module scope,
+# and it was the last thing here that needed either. Nothing here imports toto-flow
+# now, so a host can install toto-media without the workflow engine — which is what
+# makes BUILD_MEDIA=1 viable on a lean WSGI host.
+#
+# Keep it that way. The line is a worker or a heavy wheel, not a native binary:
+# anything needing celery, ffmpeg or torch belongs in toto-media-ops.
 name = "toto-media"
 version = "1.21"
-description = "toto video and audio playback over the vault"
+description = "toto media over the vault: video/audio playback and OCR"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

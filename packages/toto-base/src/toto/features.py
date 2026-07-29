@@ -9,11 +9,12 @@ The realtime tier was called ``studio`` until ``studio`` became the name of a
 host.  ``BUILD_STUDIO`` is still read as a fallback and ``Features.studio``
 still resolves, so a host that has not been updated behaves identically.
 
-``BUILD_MANTA``, ``BUILD_FILESERVICES``, ``BUILD_OCR`` and their binary flags all
-resolve to features in ``toto-media-ops``, a package no host pins — see that
-package's README. They are honoured here so pinning it needs no library change,
-but they are opt-in and no longer default from ``BUILD_MEDIA``, which since 1.21
-covers only video playback (``toto.vod``, in ``toto-media``).
+Since 1.21 the media flags split across two packages. ``BUILD_MEDIA`` and
+``BUILD_VOD``, plus ``BUILD_OCR`` and ``INSTALL_TESSERACT``, resolve to apps in
+``toto-media`` — the light wheel hosts pin. ``BUILD_MANTA``, ``BUILD_FILESERVICES``
+and ``INSTALL_FFMPEG`` resolve to ``toto-media-ops``, which **no host pins** (see
+that package's README); they are honoured so pinning it needs no library change.
+All of them are opt-in except ``BUILD_VOD``, which defaults from ``BUILD_MEDIA``.
 """
 from dataclasses import dataclass
 
@@ -34,14 +35,14 @@ class Features:
     sketch: bool
     media: bool
     vod: bool
-    # The toto-media-ops tier. No host pins that package, so these are off on every
-    # shipped profile; the flags exist so a host that does pin it needs no library
-    # change. See packages/toto-media-ops/README.md.
+    # The toto-media-ops tier — the apps that want a celery worker. No host pins that
+    # package, so these are off on every shipped profile; the flags exist so a host
+    # that does pin it needs no library change. See that package's README.
     manta: bool
     fileservices: bool
-    # Graph-group features (graph defaults to the neo4j tier). ocr is listed here
-    # for continuity only: since 1.21 it is opt-in, implies no Neo4j, and belongs to
-    # the toto-media-ops tier above.
+    # Graph-group features (graph defaults to the neo4j tier). ocr is grouped here
+    # for continuity only: since 1.21 it is opt-in, implies no Neo4j at all, and
+    # ships in toto-media beside vod — see the media block in resolve_features.
     graph: bool
     ocr: bool
     connectors: bool
@@ -68,8 +69,9 @@ class Features:
     # Effective tiers (image pip layers / ENV).
     realtime: bool
     neo4j: bool
-    # Native binaries the image needs (deploy-side). ffmpeg and tesseract both
-    # belong to toto-media-ops, which no host pins, so both resolve False on every
+    # Native binaries the image needs (deploy-side). ffmpeg follows the toto-media-ops
+    # apps, which no host pins; tesseract follows ocr, which ships in a wheel hosts DO
+    # pin but is opt-in and switched off everywhere. So both resolve False on every
     # shipped profile and neither apt layer is declared in a host Dockerfile today.
     tesseract: bool
     ffmpeg: bool
@@ -131,11 +133,14 @@ def resolve_features(get) -> Features:
     # an INPUT only — it must never be OR-ed back out of the per-app flags below, or
     # naming one app would silently enable the others.
     #
-    # It used to cover four apps in one package. Since 1.21 the heavy three live in
-    # toto-media-ops, which no host pins, and BUILD_MEDIA covers only what remains
-    # in toto-media: video playback. Six shipped profiles set it and nothing else,
-    # which is why it survives as the default for BUILD_VOD rather than being
-    # deleted; new configs should name BUILD_VOD directly.
+    # It used to cover four apps in one package. Since 1.21 the three that want a
+    # celery worker live in toto-media-ops, which no host pins, and BUILD_MEDIA covers
+    # only playback. Six shipped profiles set it and nothing else, which is why it
+    # survives as the default for BUILD_VOD rather than being deleted; new configs
+    # should name BUILD_VOD directly.
+    #
+    # It does NOT default BUILD_OCR, even though ocr is its package-mate: a profile
+    # that asked for video must not silently acquire a tesseract apt layer.
     media = flag(get, "BUILD_MEDIA")
     # toto.vod (toto-media): no models (it dropped them in migration 0002), no
     # celery task, no native binary — an HTML5 player pointed at a vault file, plus
@@ -152,11 +157,12 @@ def resolve_features(get) -> Features:
 
     # Graph-group features (default to the neo4j tier).
     graph = flag(get, "BUILD_GRAPH", tier_neo4j)              # ravioli + sql_neo4j_sync + neo_editor + bento + ingestor
-    # toto.ocr — screenshot → tesseract → (optionally) the ingestor. Opt-in on its
-    # own since 1.21, and no longer defaulted from the neo4j tier: it left
-    # toto-graph for toto-media-ops, where it belongs by shape (take a vault file,
-    # shell out to a native binary). The graph is an optional sink for its text, not
-    # a requirement — hence no ocr → graph closure either; see ocr.views.
+    # toto.ocr — screenshot → tesseract → (optionally) the ingestor. Opt-in on its own
+    # since 1.21, and no longer defaulted from the neo4j tier: it left toto-graph for
+    # toto-media, beside vod, because it is light in every way that matters — no
+    # models, no celery task, imports inside the function — and its only cost is a
+    # small apt layer INSTALL_TESSERACT gates. The graph is an optional sink for its
+    # text, not a requirement, hence no ocr → graph closure either; see ocr.views.
     ocr = flag(get, "BUILD_OCR")
     connectors = flag(get, "BUILD_CONNECTORS")                # toto.connectors — external-API ETL (opt-in)
     formica = flag(get, "BUILD_FORMICA")                      # toto.formica — colony curating the graph (opt-in)
