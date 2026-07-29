@@ -174,3 +174,19 @@ class WorkflowNodeRunAdmin(admin.ModelAdmin):
     @admin.display(description="Status")
     def status_badge(self, obj):
         return _run_badge(obj.status, obj.get_status_display())
+
+
+# Metering — the shared bases live in toto.quota.admin so every app's limits
+# screen looks the same.
+from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
+from .models import WorkflowQuotaPolicy, WorkflowUsageEvent
+
+
+@admin.register(WorkflowQuotaPolicy)
+class WorkflowQuotaPolicyAdmin(QuotaPolicyAdminBase):
+    pass
+
+
+@admin.register(WorkflowUsageEvent)
+class WorkflowUsageEventAdmin(UsageEventAdminBase):
+    pass

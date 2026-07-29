@@ -5,7 +5,7 @@ the same shape as gitvault's ``_json_errors``::
 
     @login_required
     @require_POST
-    @quota_limited(TexlabQuotaPolicy, "compile.run")
+    @quota_limited(TexlabQuotaPolicy, "texlab.compile")
     def compile_latex(request, file_pk):
         ...
 

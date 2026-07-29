@@ -279,7 +279,7 @@ def run_list(request, workflow_id):
 
     tariff = price_for(request.user, "workflows")
     try:
-        check_quota(WorkflowQuotaPolicy, "run.started", 1, request.user)
+        check_quota(WorkflowQuotaPolicy, "workflows.run", 1, request.user)
         check_funds(request.user, tariff, "workflows.run", 1)
     except (QuotaExceeded, InsufficientFunds) as exc:
         return Response({"error": str(exc)}, status=exc.status_code)
@@ -289,7 +289,7 @@ def run_list(request, workflow_id):
         input_data=ser.validated_data.get("input_data") or {},
     )
     src = {"source_type": "workflows.WorkflowRun", "source_id": str(run.pk)}
-    record_usage(WorkflowUsageEvent, "run.started", 1, request.user,
+    record_usage(WorkflowUsageEvent, "workflows.run", 1, request.user,
                  idempotency_key=f"workflows.run:{run.pk}", **src)
     charge(request.user, tariff, "workflows.run", 1, **src)
 
