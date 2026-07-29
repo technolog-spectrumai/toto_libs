@@ -193,6 +193,35 @@ PRICES = {
 }
 
 
+def host_prices() -> dict:
+    """The rate card this host seeds: the defaults above, under its overrides.
+
+    Hosts run their own economies and the same action is not worth the same on
+    each of them — moving a gigabyte through an internal working server is not
+    what it is worth to a community. The defaults are a starting point, not a
+    platform-wide truth, so a host states its differences in settings::
+
+        TARIFF_PRICES = {"storage.transfer_mb": "0.001"}   # dearer here
+        TARIFF_PRICES = {"storage.request": None}          # free here
+
+    A ``None`` removes the price, which is how the free tier is expressed —
+    an absence, not a zero. Prices are read as strings and go through Decimal;
+    a float would put binary rounding inside a billing path.
+
+    This only seeds. The rate card lives in the database and staff edit it at
+    /tariffs/ afterwards; re-running ingress does not undo their edits.
+    """
+    from django.conf import settings
+
+    prices = dict(PRICES)
+    for code, value in (getattr(settings, "TARIFF_PRICES", None) or {}).items():
+        if value is None:
+            prices.pop(code, None)
+        else:
+            prices[code] = Decimal(str(value))
+    return prices
+
+
 class Command(IngressCommand):
     help = "Seed the platform rate card (prices in ASR) and, with --full, demo tariffs."
 
@@ -209,6 +238,7 @@ class Command(IngressCommand):
             ))
             return
 
+        prices = host_prices()
         revenue = _account("platform-usage-fees", "Platform Usage Fees")
         self.stdout.write("  +/✓ account platform-usage-fees")
 
@@ -237,7 +267,7 @@ class Command(IngressCommand):
                 app_label=metric_spec.app_label,
                 default_unit=unit,
             )
-            price = PRICES.get(metric_spec.code)
+            price = prices.get(metric_spec.code)
             if price is None:
                 # Metered but not priced — free, and deliberately so.
                 self.stdout.write(f"  ·   {metric_spec.code} is metered but free")
@@ -254,7 +284,7 @@ class Command(IngressCommand):
         # anywhere meters this", and failing the seed for it takes the whole
         # entrypoint down. Report instead, so the omission is visible and the
         # rate card stays a catalogue that each host draws its own subset from.
-        not_metered_here = sorted(set(PRICES) - set(registry.codes()))
+        not_metered_here = sorted(set(prices) - set(registry.codes()))
         if not_metered_here:
             self.stdout.write(self.style.WARNING(
                 f"  ⚠ not priced — this host meters none of: "
