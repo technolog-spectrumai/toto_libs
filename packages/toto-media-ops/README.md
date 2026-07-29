@@ -1,9 +1,15 @@
 # toto-media-ops
 
-The heavy media-processing tier of the toto suite: **ffmpeg, transcription and
-OCR**. Four Django apps under the shared `toto.*` namespace —
-**manta**, **fileservices**, **transcription** and **ocr** — that take a file out
-of the vault, run a native tool over it, and write the result back.
+The heavy media-processing tier of the toto suite: **ffmpeg and transcription**.
+Three Django apps under the shared `toto.*` namespace — **manta**,
+**fileservices** and **transcription** — that take a file out of the vault, run a
+native tool over it on a background worker, and write the result back.
+
+**`toto.ocr` is not here.** It started in this package and moved back to
+`toto-media`, because it is the odd one out: no models, no celery, one small apt
+package, and both of its imports inside the function it needs them in. Grouping it
+with the whisper and ffmpeg stack forced hosts to choose between having OCR and
+having a light image. What is left here is exactly the set that wants a worker.
 
 > ## No host installs this package
 >
@@ -22,13 +28,12 @@ of the vault, run a native tool over it, and write the result back.
 
 ## Why it is uninstalled
 
-Three reasons, and each one applies to more than one app:
+Three reasons, and no app here escapes all three:
 
-- **Native binaries.** manta and fileservices shell out to `ffmpeg`/`ffprobe`; ocr
-  shells out to `tesseract` through `pytesseract`. Each is an apt layer in the
-  image that exists solely for this tier — zenobia's Dockerfile carried an
-  `INSTALL_FFMPEG` layer for years for exactly two apps, and dropping this package
-  from the pins is what let that layer go.
+- **A native binary.** manta and fileservices shell out to `ffmpeg`/`ffprobe` — an
+  apt layer in the image that exists solely for this tier. zenobia's Dockerfile
+  carried an `INSTALL_FFMPEG` layer for years for exactly those two apps, and
+  dropping this package from the pins is what let that layer go.
 - **Python wheels no host ships.** transcription needs `openai-whisper` or
   `faster-whisper`, and transitively torch or ctranslate2. Those appear in no
   host's `requirements.txt`, so its backends have always raised `RuntimeError` on
@@ -115,48 +120,25 @@ scope and its plugin is only ever registered by `fileservices.apps.ready()`, so
 which the four dead reverses above are the spec; and `"transcription"` back in
 `registry.TASK_MODULES`.
 
-### `ocr` — tesseract text recognition
-
-The light one, and the only app here with a working UI and no celery: load a
-screenshot, pick a language, get its text, optionally save the image into a vault
-bucket, optionally hand the text to the graph ingestor.
-
-Two things were fixed on the way into this package and both should be kept:
-
-- **It does not imply the graph.** Its handoff is soft at both ends — `ocr_home`
-  wraps `reverse("ingestor:home")` and the ravioli import in
-  `except (NoReverseMatch, ImportError)` and greys the button out, and `ocr_ingest`
-  redirects back to itself on `NoReverseMatch`. The old
-  `if ocr: graph = True` closure cost five Neo4j apps and an auto-started neo4j
-  container for a button that switches itself off.
-- **Its migrations no longer reference `workflows`.** `0001_initial` declared
-  `('workflows', '0001_initial')` because a since-deleted `ImageTransform` had an
-  FK to `workflows.LambdaFunction`. That edge outlived the model and made
-  `BUILD_OCR=1` unmigratable without `BUILD_WORKFLOWS=1` — Django raises
-  `NodeNotFoundError` for a dependency on an uninstalled app. It is squashed into
-  `0001_squashed_0002`, which has no operations and no dependencies at all. Read
-  that file's docstring before adding a model here.
-
-To revive: `BUILD_OCR`, an `INSTALL_TESSERACT` apt layer (`tesseract-ocr` plus a
-language pack per language — the base package ships no usable language data) and
-`pytesseract` in the host's requirements. Both imports in `ocr/ocr.py` are inside
-the function, so a host without the binary boots fine and only fails on a scan.
-
 ## What is left behind in a database
 
 `manta_filejob`, `fileservices_fileservicerun` and the eight `transcription_*`
 tables remain in any database that once had these apps installed — orphaned, not
 dropped, the same treatment `toto.sketch` got. Rows survive a revival; dropping
-them is a deliberate, separate act. ocr owns no tables at all.
+them is a deliberate, separate act.
 
 Two host-side lists had to lose their entries when the apps went, and both fail in
 a way worth knowing about: a stale label in `APPS_TO_SYNC` makes
 `backup_engine.iter_models()` raise `LookupError`, which breaks **every** backup
 and restore path rather than just this tier's.
 
-## What did *not* move here
+## What stayed in `toto-media`
 
-`toto.vod` stayed in `toto-media`, which hosts do pin. It is the vault's play
-button plus a library listing: no models (it dropped them in migration 0002), no
-celery task, no native binary. Splitting this package off it is what made
-`BUILD_MEDIA=1` viable on a lean WSGI host for the first time.
+`toto.vod` and `toto.ocr`, in the package hosts do pin. vod is the vault's play
+button plus a library listing; ocr is a screenshot, a language and a text box.
+Neither has models, a celery task, or a heavy wheel. Splitting this package off
+them is what made `BUILD_MEDIA=1` viable on a lean WSGI host for the first time.
+
+The dividing line is **a worker or a heavy wheel, not a native binary**: ocr needs
+tesseract and still belongs over there, because a small apt layer nobody is forced
+to build is a different order of cost from torch and a celery container.

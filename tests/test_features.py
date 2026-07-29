@@ -82,10 +82,12 @@ def test_map_features_without_geometry_are_a_hard_error():
 
 
 # ---------------------------------------------------------------------------
-# The media section. toto-media ships vod alone; manta, fileservices,
-# transcription and ocr live in toto-media-ops, a package NO HOST PINS (see
-# packages/toto-media-ops/README.md). The flags for that tier still resolve, so a
-# host that pins the wheel needs no library change — but nothing defaults them on.
+# The media section, split across two packages since 1.21. toto-media (which hosts
+# pin) ships vod and ocr; manta, fileservices and transcription live in
+# toto-media-ops, a package NO HOST PINS. The flags for that tier still resolve, so
+# a host that pins the wheel needs no library change — but nothing defaults them on,
+# and BUILD_MEDIA does not default BUILD_OCR either, so asking for video never
+# silently buys a tesseract apt layer.
 # ---------------------------------------------------------------------------
 
 def test_vod_follows_media_when_unnamed():
@@ -111,10 +113,12 @@ def test_media_no_longer_drags_the_celery_layer():
 
 
 @pytest.mark.parametrize("flag_name", ["BUILD_MANTA", "BUILD_FILESERVICES", "BUILD_OCR"])
-def test_the_media_ops_tier_is_never_implied_by_the_media_tier(flag_name):
-    # THE invariant of the split: BUILD_MEDIA is what every shipped profile sets, and
-    # it must not switch on an app whose wheel the host does not pin. Defaulting any
-    # of these from `media` would make six profiles reference toto-media-ops.
+def test_the_heavier_media_flags_are_never_implied_by_the_media_tier(flag_name):
+    # THE invariant of the split: BUILD_MEDIA is what every shipped profile sets, so
+    # it must buy nothing a profile did not ask for. For manta/fileservices that means
+    # not referencing a wheel the host does not pin; for ocr — which now ships in the
+    # same wheel as vod — it means not pulling a tesseract apt layer into an image
+    # that only wanted a video player.
     attr = {"BUILD_MANTA": "manta", "BUILD_FILESERVICES": "fileservices",
             "BUILD_OCR": "ocr"}[flag_name]
     assert getattr(resolve(BUILD_MEDIA=1), attr) is False

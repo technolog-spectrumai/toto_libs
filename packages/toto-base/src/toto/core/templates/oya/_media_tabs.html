@@ -22,10 +22,11 @@
    clean-env gate caught the missing template. oya/ is where core's shared
    templates live anyway (base.html, _dashboard_cards.html).
 
-   The ffmpeg half of this section — manta, fileservices and transcription — moved
-   to the toto-media-ops package in 1.21, which no host pins (see that package's
-   README). Their tabs went with them rather than being left to self-hide, so this
-   bar states what a host can actually have. A host that does pin that wheel adds
+   Both apps ship in toto-media, so on any host that pins that wheel this bar is
+   complete. The ffmpeg half of the section — manta, fileservices and transcription
+   — moved to toto-media-ops in 1.21, which no host pins (see that package's
+   README); their tabs went with them rather than being left to self-hide, so this
+   bar states what a host can actually have. A host that pins that wheel too adds
    its tabs back here.
 
    Active state is decided server-side; dark/light stays Alpine (darkMode).

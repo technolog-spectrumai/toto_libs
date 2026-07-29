@@ -63,9 +63,9 @@ def test_migrations_are_packaged(all_names, owner):
     # toto-economy (a second host needed to price its own work). Moving an app
     # between HOSTS never touches this; moving one into or out of a PACKAGE does.
     # The 1.21 media split moved four apps between packages and so left the count
-    # alone: manta, fileservices, transcription and ocr are all still packaged, in
-    # toto-media-ops. What would change it is retiring one to limbo/, which is not
-    # a package and never ships.
+    # alone: manta, fileservices and transcription are packaged in toto-media-ops
+    # and ocr in toto-media, so all four still ship. What WOULD change it is
+    # retiring one to limbo/, which is not a package and never ships.
     assert len(apps_with_migrations) == 37, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
@@ -141,33 +141,36 @@ def test_auth_apps_ship_in_toto_auth(owner):
     assert owner.get("toto/social_login/templates/social_login/_login_buttons.html") == "toto-auth"
 
 
-def test_toto_media_ships_vod_and_only_vod(payloads):
-    # The 1.21 split: toto-media is the LIGHT media package, the one hosts pin. If
-    # an app that needs a worker or a native binary lands back here, BUILD_MEDIA
-    # stops being safe for a lean WSGI host — which was the whole point.
+def test_toto_media_ships_the_light_pair(payloads, owner):
+    # toto-media is the LIGHT media package, the one hosts pin: vod and ocr, both
+    # stateless, neither needing a worker. If an app that wants celery or a heavy
+    # wheel lands back here, BUILD_MEDIA stops being safe for a lean WSGI host —
+    # which was the whole point of the 1.21 split.
+    #
+    # ocr sits here rather than with the processing tier on purpose. Its only cost is
+    # a small tesseract apt layer that no host is forced to build, which is a
+    # different order of cost from torch, ffmpeg and a celery container. It also
+    # could not have stayed in toto-graph, where it began: that package
+    # hard-depends on toto-ai, so a host wanting OCR alone had no way to install it.
     apps = {n.split("/")[1] for n in payloads["toto-media"] if n.startswith("toto/")}
-    assert apps == {"vod"}, sorted(apps)
+    assert apps == {"vod", "ocr"}, sorted(apps)
+    assert owner.get("toto/vod/migrations/0002_drop_all_vod_tables.py") == "toto-media"
+    assert owner.get("toto/vod/templates/vod/library.html") == "toto-media"
+    assert owner.get("toto/ocr/templates/ocr/ocr.html") == "toto-media"
+    assert owner.get("toto/ocr/migrations/0001_squashed_0002.py") == "toto-media"
 
 
 def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
-    # manta, fileservices, transcription and ocr. Packaged, versioned and
-    # buildable — just pinned by no host; see that package's README, and
-    # test_monorepo.py in the portal monorepo, which asserts the "no host" half.
+    # manta, fileservices and transcription: the set that wants a celery worker.
+    # Packaged, versioned and buildable — just pinned by no host; see that package's
+    # README, and test_monorepo.py in the portal monorepo, which asserts the "no
+    # host" half.
     apps = {n.split("/")[1] for n in payloads["toto-media-ops"] if n.startswith("toto/")}
-    assert apps == {"manta", "fileservices", "transcription", "ocr"}, sorted(apps)
-    # ocr came from toto-graph, which hard-depends on toto-ai — a host wanting OCR
-    # alone could never have installed it there.
-    assert owner.get("toto/ocr/templates/ocr/ocr.html") == "toto-media-ops"
-    assert owner.get("toto/ocr/migrations/0001_squashed_0002.py") == "toto-media-ops"
+    assert apps == {"manta", "fileservices", "transcription"}, sorted(apps)
     assert owner.get("toto/manta/templates/manta/command_builder.html") == "toto-media-ops"
     assert owner.get("toto/fileservices/models.py") == "toto-media-ops"
     # Written in 1.21 and never deployed; the app had no run index before it.
     assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
-
-
-def test_vod_ships_its_library_page(owner):
-    assert owner.get("toto/vod/migrations/0002_drop_all_vod_tables.py") == "toto-media"
-    assert owner.get("toto/vod/templates/vod/library.html") == "toto-media"
 
 
 def test_the_media_sub_nav_ships_in_toto_base(owner):
@@ -184,32 +187,41 @@ def test_the_media_sub_nav_ships_in_toto_base(owner):
     assert not [n for n in owner if "/templates/media/" in n]
 
 
+def _requires(wheel_path):
+    """The Requires-Dist names a wheel declares.
+
+    Parsed from the headers only, NOT by searching the whole METADATA blob: the
+    long_description is appended to it, so a package whose README merely *mentions*
+    a sibling would otherwise read as depending on it. toto-media's README does
+    exactly that, which is how this was found.
+    """
+    with zipfile.ZipFile(wheel_path) as zf:
+        name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
+        metadata = zf.read(name).decode()
+    headers = metadata.split("\n\n", 1)[0]      # blank line ends the headers
+    return {
+        line.split(":", 1)[1].split("==")[0].split(";")[0].strip()
+        for line in headers.splitlines()
+        if line.startswith("Requires-Dist:")
+    }
+
+
 def test_nothing_in_the_suite_depends_on_toto_media_ops(wheels):
     # The library-side half of "installed nowhere": no other package may require it,
-    # or pinning any of them would drag ffmpeg, tesseract and the whisper stack in
+    # or pinning any of them would drag ffmpeg and the whisper stack in
     # transitively. (The host-side half — that no requirements.toto.txt names it —
     # lives in the portal monorepo's scripts/test_monorepo.py.)
     for name, path in wheels.items():
         if name == "toto-media-ops":
             continue
-        with zipfile.ZipFile(path) as zf:
-            metadata_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
-            metadata = zf.read(metadata_name).decode()
-        assert "toto-media-ops" not in metadata, f"{name} requires toto-media-ops"
+        assert "toto-media-ops" not in _requires(path), f"{name} requires toto-media-ops"
 
 
-def test_toto_media_does_not_depend_on_the_workflow_engine(wheels):
-    # The point of retiring the ffmpeg half: fileservices had a live FK to
-    # workflows.WorkflowRun and imported its predefined-task registry at module
-    # scope, so toto-media used to drag toto-flow (and through it mandragora and
-    # the celery layer) onto any host that wanted video playback. Nothing here
-    # imports it now, and this keeps it that way.
-    with zipfile.ZipFile(wheels["toto-media"]) as zf:
-        metadata_name = next(n for n in zf.namelist() if n.endswith(".dist-info/METADATA"))
-        metadata = zf.read(metadata_name).decode()
-    requires = [ln for ln in metadata.splitlines() if ln.startswith("Requires-Dist:")]
-    assert requires == ["Requires-Dist: toto-base=="
-                        + (REPO_ROOT / "VERSION").read_text().strip()], requires
+def test_toto_media_requires_only_toto_base(wheels):
+    # It carries vod and ocr, neither of which has a model, a task or a sibling
+    # import beyond toto-base. The toto-flow dependency it had until 1.21 left with
+    # fileservices, and that is what lets a lean host pin this wheel.
+    assert _requires(wheels["toto-media"]) == {"toto-base"}
 
 
 def test_no_foreign_payload(all_names):
