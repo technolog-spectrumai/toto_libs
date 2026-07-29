@@ -53,6 +53,11 @@ _FEATURE_APPS = {
     "people": "toto.socialhub",
     "events": "toto.events",
     "graph": "toto.ravioli",
+    # Host-carried apps: present on faros, absent on portal/zenobia. Enigma
+    # uses these to hide its sealed-invite and location-sharing surfaces on a
+    # server that cannot serve them, instead of failing after the click.
+    "aster": "toto.aster",
+    "beacon": "toto.beacon",
 }
 
 

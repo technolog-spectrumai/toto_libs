@@ -180,7 +180,8 @@ class AppsDescriptorApiTests(TestCase):
         res = self.client.get("/api/apps/")
         self.assertEqual(res.status_code, 200)
         apps = res.json()["apps"]
-        for key in ["chat", "vault", "tasks", "locations", "people", "events", "graph"]:
+        for key in ["chat", "vault", "tasks", "locations", "people", "events", "graph",
+                    "aster", "beacon"]:
             self.assertIn(key, apps)
             self.assertIsInstance(apps[key], bool)
         self.assertTrue(apps["chat"])  # telegraph is installed wherever this endpoint runs
@@ -198,6 +199,25 @@ class AppsDescriptorApiTests(TestCase):
         with patch("django.apps.apps.is_installed", side_effect=fake):
             apps = self.client.get("/api/apps/").json()["apps"]
         self.assertFalse(apps["graph"])
+        self.assertTrue(apps["vault"])
+
+    def test_host_carried_apps_reported_false_when_absent(self):
+        # aster/beacon live in the faros host, not the library, so on portal (and
+        # on any vault-only host) they are simply not installed. Enigma reads
+        # these to hide sealed invites and location sharing rather than failing
+        # after the press.
+        from unittest.mock import patch
+        from django.apps import apps as django_apps
+
+        real = django_apps.is_installed
+
+        def fake(label):
+            return False if label in ("toto.aster", "toto.beacon") else real(label)
+
+        with patch("django.apps.apps.is_installed", side_effect=fake):
+            apps = self.client.get("/api/apps/").json()["apps"]
+        self.assertFalse(apps["aster"])
+        self.assertFalse(apps["beacon"])
         self.assertTrue(apps["vault"])
 
 
