@@ -1,7 +1,7 @@
 """
 fileservices test suite.
 
-ffmpeg / ffprobe / transcription executors are backend-only (hidden from the
+ffmpeg / ffprobe executors are backend-only (hidden from the
 menu). The manta media builder is optional (BUILD_MANTA) and lives in toto.manta.
 OCR is no longer a file service — it lives as a Knowledge-Graph tab (toto.ocr).
 """

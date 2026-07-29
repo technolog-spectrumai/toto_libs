@@ -3,9 +3,6 @@ Backend base commands — they own execution.
 
 * ``FfmpegCommand`` / ``FfprobeCommand`` stage inputs, run the argv from
   ``build_spec`` via subprocess, save outputs and serialize the result.
-* ``WhisperCommand`` dispatches the existing fileservices ``FileServiceRun``
-  (whisper) — the long-term home for this is manta, but for now we reuse that
-  backend.
 """
 
 from __future__ import annotations
@@ -129,28 +126,3 @@ class FfprobeCommand(FfmpegCommand):
     backend = "ffprobe"
     backend_label = "ffprobe"
     tab = "ffprobe"
-
-
-class ServiceCommand(BaseCommand):
-    """Dispatches a fileservices FileServiceRun (whisper / tesseract)."""
-
-    backend = "service"
-
-    def execute(self, job: FileJob) -> None:
-        from toto.vault.models import VaultFile
-        from toto.fileservices.dispatch import create_service_run, dispatch_run
-
-        vf = VaultFile.objects.get(pk=job.inputs[0])
-        args = (job.params or {}).get("language", "")
-        run = create_service_run(job.owner, vf, self.service_key, args)
-        job.celery_task_id = str(run.id)
-        job.output = {"service_run_id": run.id}
-        job.status = FileJob.Status.RUNNING
-        job.save(update_fields=["celery_task_id", "output", "status"])
-        dispatch_run(run)
-
-
-class WhisperCommand(ServiceCommand):
-    backend_label = "whisper"
-    service_key = "transcription"
-    tab = "transcribe"

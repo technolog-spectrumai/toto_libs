@@ -11,7 +11,7 @@ from .base import BaseCommand, CommandSpec, UnknownCommand
 from . import (  # noqa: F401
     compress, resize, crop, change_fps, cut, extract_mp3, remove_audio,
     replace_audio, add_subtitles, add_watermark, thumbnail, gif,
-    vstack, hstack, concat, probe, transcribe,
+    vstack, hstack, concat, probe,
 )
 
 COMMANDS = BaseCommand.all()
@@ -21,7 +21,7 @@ COMMAND_FILE_PRESETS = {c.key: {"inputs": c.inputs, "outputs": c.outputs} for c 
 
 # Builder tabs, in display order. ``ffmpeg`` groups the many ffmpeg commands
 # behind a command dropdown; the others are single-command, focused tabs.
-TAB_ORDER = ("ffmpeg", "ffprobe", "transcribe")
+TAB_ORDER = ("ffmpeg", "ffprobe")
 
 
 def commands_for_tab(tab) -> list[type[BaseCommand]]:

@@ -22,7 +22,9 @@ from __future__ import annotations
 
 from django.db.models import Q
 
-# Canonical implementation lives in fileservices so transcription can share it.
+# Canonical implementation lives in fileservices, which owns the run substrate.
+# Importing it is safe whether or not fileservices is in INSTALLED_APPS: it is a
+# pure function in the same wheel, with no model imports.
 from toto.fileservices.access import user_can_access_vault_file  # noqa: F401
 
 

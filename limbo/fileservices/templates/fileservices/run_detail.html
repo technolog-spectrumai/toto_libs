@@ -22,7 +22,7 @@
     <nav class="flex items-center gap-2 text-xs opacity-60 select-none">
       <a href="{% url 'vault:public_list' %}" class="hover:opacity-90 underline underline-offset-2">{% trans "Vault" %}</a>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
-      <span class="opacity-70">{% trans "File services" %}</span>
+      <a href="{% url 'fileservices:run_list' %}" class="opacity-70 hover:opacity-90 underline underline-offset-2">{% trans "File services" %}</a>
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
       <span class="font-semibold opacity-100">{% trans "Run" %} #{{ run.id }}</span>
     </nav>

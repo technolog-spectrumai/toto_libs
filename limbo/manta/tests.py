@@ -1,6 +1,6 @@
 """
 Manta test suite — command classes, the FileJob model, and the form-based
-builder (ffmpeg/ffprobe + transcribe commands).
+builder (ffmpeg/ffprobe commands).
 """
 
 import os
@@ -22,7 +22,7 @@ from .models import FileJob, MediaJob
 
 class CommandRegistryTests(SimpleTestCase):
     def test_all_commands_registered(self):
-        self.assertEqual(len(OPERATIONS), 17)
+        self.assertEqual(len(OPERATIONS), 16)
         for key in OPERATIONS:
             cmd = get_command(key)
             self.assertTrue(cmd.label)
@@ -56,11 +56,6 @@ class CommandRegistryTests(SimpleTestCase):
         self.assertIn("-i clip.mp4", spec.shell_display)
         self.assertIn("-i track.mp3", spec.shell_display)
 
-    def test_service_commands(self):
-        tr = get_command("transcribe")
-        self.assertEqual((tr.backend, tr.backend_label, tr.service_key), ("service", "whisper", "transcription"))
-        self.assertIn("whisper", tr().describe(input_name="a.mp3", params={"language": "en"}))
-
     def test_preset_metadata(self):
         self.assertEqual(set(COMMAND_FILE_PRESETS), set(OPERATIONS))
         self.assertEqual(get_command("replace_audio").inputs["audio"]["file_type"], "audio")
@@ -75,10 +70,8 @@ class CommandRegistryTests(SimpleTestCase):
 
         self.assertEqual(get_command("compress").tab, "ffmpeg")
         self.assertEqual(get_command("probe").tab, "ffprobe")
-        self.assertEqual(get_command("transcribe").tab, "transcribe")
-        # The focused tabs hold exactly one command; ffmpeg holds the rest.
+        # The focused tab holds exactly one command; ffmpeg holds the rest.
         self.assertEqual([c.key for c in commands_for_tab("ffprobe")], ["probe"])
-        self.assertEqual([c.key for c in commands_for_tab("transcribe")], ["transcribe"])
         self.assertGreater(len(commands_for_tab("ffmpeg")), 1)
         # Every registered command belongs to a known tab.
         self.assertTrue(all(get_command(k).tab in TAB_ORDER for k in OPERATIONS))
@@ -143,10 +136,12 @@ class BuilderTests(TestCase):
         self.assertContains(resp, "song.mp3")     # audio
         self.assertContains(resp, "scan.png")     # image
 
-    def test_picking_audio_defaults_to_transcribe(self):
+    def test_picking_audio_lands_on_ffmpeg(self):
+        # Audio used to default to the transcribe tab; that app is parked, and
+        # ffmpeg handles audio (extract, replace, remove) perfectly well.
         resp = self.client.get(self.URL + f"?file={self.audio.pk}")
         self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "whisper")      # audio → transcribe command
+        self.assertContains(resp, "song.mp3")
 
     def test_compress_shows_form_and_backend(self):
         resp = self.client.get(self.URL + f"?file={self.src.pk}&op=compress")
@@ -159,12 +154,6 @@ class BuilderTests(TestCase):
         self.assertContains(resp, "second.mp4")
         self.assertContains(resp, "Videos to concatenate")
 
-    def test_transcribe_source_is_audio(self):
-        resp = self.client.get(self.URL + f"?file={self.audio.pk}&op=transcribe")
-        self.assertEqual(resp.status_code, 200)
-        self.assertContains(resp, "whisper")          # backend chip
-        self.assertContains(resp, "song.mp3")
-
     def test_wrong_source_type_rejected(self):
         resp = self.client.get(self.URL + f"?file={self.audio.pk}&op=compress")
         self.assertContains(resp, "needs a video file")
@@ -173,13 +162,8 @@ class BuilderTests(TestCase):
 
     def test_tab_bar_lists_all_families(self):
         resp = self.client.get(self.URL)
-        for label in ("ffmpeg", "ffprobe", "Transcribe"):
+        for label in ("ffmpeg", "ffprobe"):
             self.assertContains(resp, label)
-
-    def test_ffmpeg_dropdown_excludes_service_commands(self):
-        # The command dropdown is ffmpeg-only; probe/transcribe have own tabs.
-        resp = self.client.get(self.URL + f"?file={self.src.pk}&op=compress")
-        self.assertNotContains(resp, "Transcribe (speech → text)")
 
     def test_ffprobe_tab_accepts_any_media(self):
         resp = self.client.get(self.URL + f"?tab=ffprobe&file={self.audio.pk}")
@@ -187,15 +171,8 @@ class BuilderTests(TestCase):
         self.assertContains(resp, "ffprobe")      # backend chip
         self.assertContains(resp, "song.mp3")     # audio allowed, not just video
 
-    def test_transcribe_language_is_dropdown(self):
-        resp = self.client.get(self.URL + f"?tab=transcribe&file={self.audio.pk}")
-        self.assertContains(resp, "<select")      # friendly language picker
-        self.assertContains(resp, "Auto-detect")
-
-    # -- upload (reuses the vault upload API) ------------------------------
-
     def test_upload_panel_shown_on_focused_tabs(self):
-        resp = self.client.get(self.URL + "?tab=transcribe")
+        resp = self.client.get(self.URL + "?tab=ffprobe")
         self.assertContains(resp, "Upload a new file")
         self.assertContains(resp, "Personal bucket")          # default destination
         self.assertContains(resp, "/vault/api/files/upload/")  # reuses vault API
@@ -203,7 +180,7 @@ class BuilderTests(TestCase):
     def test_upload_panel_lists_user_buckets(self):
         from toto.vault.models import Bucket
         Bucket.objects.create(name="My Own Bucket", owner=self.owner, slug="my-own")
-        resp = self.client.get(self.URL + "?tab=transcribe")
+        resp = self.client.get(self.URL + "?tab=ffprobe")
         self.assertContains(resp, "My Own Bucket")
         # Buckets the user does not own (curator's, slug "mb") are not offered.
         self.assertNotContains(resp, 'value="mb"')
@@ -212,58 +189,8 @@ class BuilderTests(TestCase):
         resp = self.client.get(self.URL + f"?file={self.src.pk}&op=compress")
         self.assertNotContains(resp, "Upload a new file")
 
-    # -- quick record & transcribe ----------------------------------------
-
-    QUICK_URL = "/manta/quick-transcribe/"
-
-    def test_quick_modal_only_on_transcribe_tab(self):
-        on = self.client.get(self.URL + "?tab=transcribe")
-        self.assertContains(on, "Quick record")
-        self.assertContains(on, "/manta/quick-transcribe/")
-        off = self.client.get(self.URL + "?tab=ffprobe")
-        self.assertNotContains(off, "Quick record")
-
-    def test_quick_transcribe_creates_text_file(self):
-        with patch("toto.transcription.services.transcribe_demo_file",
-                   return_value={"text": "hello world", "segments": []}) as tr:
-            resp = self.client.post(self.QUICK_URL, {
-                "audio_id": self.audio.pk, "output_name": "transcript.txt", "language": "en"})
-        self.assertTrue(tr.called)
-        data = resp.json()
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["text"], "hello world")
-
-        from toto.vault.models import VaultFile
-        out = VaultFile.objects.get(pk=data["output"]["id"])
-        self.assertEqual(out.file_type, "text")
-        self.assertEqual(out.bucket_id, self.audio.bucket_id)   # same bucket as audio
-        self.assertEqual(out.owner, self.owner)
-        self.assertEqual(out.file.read(), b"hello world")
-
-    def test_quick_transcribe_default_name_and_uniqueness(self):
-        with patch("toto.transcription.services.transcribe_demo_file",
-                   return_value={"text": "a", "segments": []}):
-            first = self.client.post(self.QUICK_URL, {"audio_id": self.audio.pk}).json()
-            second = self.client.post(self.QUICK_URL, {"audio_id": self.audio.pk}).json()
-        self.assertEqual(first["output"]["title"], "transcript.txt")
-        self.assertEqual(second["output"]["title"], "transcript-1.txt")  # no overwrite
-
-    def test_quick_transcribe_rejects_non_audio(self):
-        resp = self.client.post(self.QUICK_URL, {"audio_id": self.image.pk})
-        self.assertEqual(resp.status_code, 400)
-        self.assertFalse(resp.json()["ok"])
-
-    def test_quick_transcribe_requires_access(self):
-        resp = self.client.post(self.QUICK_URL, {"audio_id": self.secret.pk})
-        self.assertEqual(resp.status_code, 404)
-
-    def test_quick_transcribe_get_not_allowed(self):
-        self.assertEqual(self.client.get(self.QUICK_URL).status_code, 405)
-
-    # -- job page: wait + spinner while running ---------------------------
-
     def test_job_status_endpoint(self):
-        job = FileJob.objects.create(command="transcribe", owner=self.owner, status=FileJob.Status.PENDING)
+        job = FileJob.objects.create(command="compress", owner=self.owner, status=FileJob.Status.PENDING)
         data = self.client.get(f"/manta/jobs/{job.pk}/status/").json()
         self.assertEqual(data["status"], "pending")
         self.assertFalse(data["is_terminal"])
@@ -273,7 +200,7 @@ class BuilderTests(TestCase):
         self.assertTrue(data["is_terminal"])
 
     def test_job_detail_spinner_while_running(self):
-        job = FileJob.objects.create(command="transcribe", owner=self.owner, status=FileJob.Status.PENDING)
+        job = FileJob.objects.create(command="compress", owner=self.owner, status=FileJob.Status.PENDING)
         resp = self.client.get(f"/manta/jobs/{job.pk}/")
         self.assertContains(resp, "Processing")
         self.assertContains(resp, "fa-spinner")
@@ -281,7 +208,7 @@ class BuilderTests(TestCase):
         self.assertNotContains(resp, "Result")                       # no result box yet
 
     def test_job_detail_shows_result_when_done(self):
-        job = FileJob.objects.create(command="transcribe", owner=self.owner,
+        job = FileJob.objects.create(command="compress", owner=self.owner,
                                      status=FileJob.Status.DONE, output={"files": []})
         resp = self.client.get(f"/manta/jobs/{job.pk}/")
         self.assertContains(resp, "Result")
@@ -295,15 +222,6 @@ class BuilderTests(TestCase):
         self.assertTrue(data["ok"])
         self.assertEqual(data["backend"], "ffmpeg")
         self.assertIn("compressed.mp4", data["command"])
-
-    def test_preview_service(self):
-        data = self._ajax({"file": self.audio.pk, "op": "transcribe", "action": "preview",
-                           "language": "en"}).json()
-        self.assertTrue(data["ok"])
-        self.assertEqual(data["backend"], "whisper")
-        self.assertIn("whisper", data["command"])
-
-    # -- run --------------------------------------------------------------
 
     def test_run_ffmpeg_creates_job(self):
         with patch("toto.manta.tasks_direct.run_direct_job.delay") as delay:
@@ -320,14 +238,6 @@ class BuilderTests(TestCase):
                                         "output_name": "merged", "videos": [self.extra.pk]})
         job = FileJob.objects.filter(command="concat").last()
         self.assertEqual(job.inputs, [self.src.pk, self.extra.pk])
-
-    def test_run_transcribe_creates_job(self):
-        with patch("toto.manta.tasks_direct.run_direct_job.delay") as delay:
-            self.client.post(self.URL, {"file": self.audio.pk, "op": "transcribe", "action": "run",
-                                        "language": "en"})
-        job = FileJob.objects.filter(command="transcribe").last()
-        self.assertEqual(job.inputs, [self.audio.pk])
-        self.assertTrue(delay.called)
 
     def test_unauthorized_extra_rejected(self):
         before = FileJob.objects.count()
@@ -356,15 +266,3 @@ class BuilderTests(TestCase):
         self.assertIn("ffmpeg", job.output["command"])
         self.assertEqual(len(job.output["files"]), 1)
 
-    def test_service_command_dispatches_file_service_run(self):
-        from toto.fileservices.models import FileServiceRun
-        with patch("toto.fileservices.dispatch.dispatch_run") as disp:
-            job = FileJob.objects.create(command="transcribe", owner=self.owner,
-                                         inputs=[self.audio.pk], params={"language": "en"})
-            get_command("transcribe")().execute(job)
-        job.refresh_from_db()
-        run = FileServiceRun.objects.latest("started_at")
-        self.assertEqual(run.service_key, "transcription")
-        self.assertEqual(job.output["service_run_id"], run.id)
-        self.assertEqual(job.status, FileJob.Status.RUNNING)
-        self.assertTrue(disp.called)

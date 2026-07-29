@@ -4,8 +4,7 @@ Minimal job persistence for manta.
 A job is a single, unconnected record: a ``name``, the ``celery_task_id`` (job
 id), and a ``json`` ``output`` holding the full serialized result. No progress /
 stdout / rendered argv, and no run history. ``MediaJob`` is a proxy subclass of
-``FileJob`` for the ffmpeg/ffprobe commands; transcribe is a plain ``FileJob``
-row whose output is filled by the FileServiceRun backend.
+``FileJob`` for the ffmpeg/ffprobe commands.
 """
 
 from django.contrib.auth.models import User

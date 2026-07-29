@@ -32,29 +32,25 @@ TAB_UI = {
                  "Produces a .ffprobe.json file.",
         "source_heading": "Media file to inspect", "upload_accept": "audio/*,video/*,image/*",
     },
-    "transcribe": {
-        "label": "Transcribe", "icon": "fa-closed-captioning",
-        "blurb": "Turn speech into a text transcript and .srt subtitles with Whisper.",
-        "source_heading": "Audio to transcribe", "upload_accept": "audio/*",
-    },
 }
 
 # The focused tabs let you upload a new file (to a bucket of your choice) instead
 # of only picking an existing vault file. The ffmpeg tab keeps its existing flow.
-_UPLOAD_TABS = {"ffprobe", "transcribe"}
+_UPLOAD_TABS = {"ffprobe"}
 
 # The single command behind each focused tab.
-_TAB_OP = {"ffprobe": "probe", "transcribe": "transcribe"}
+_TAB_OP = {"ffprobe": "probe"}
 
 # Source file types each focused tab accepts (ffmpeg derives them from the op).
 _TAB_SOURCE_TYPES = {
     "ffprobe": ["video", "audio", "image"],
-    "transcribe": ["audio"],
 }
 
 # When a file arrives with no tab/op (e.g. from the vault wand), route it to the
 # most useful tab for its type.
-_DEFAULT_TAB_BY_TYPE = {"video": "ffmpeg", "audio": "transcribe"}
+# Audio used to route to the transcribe tab; that app is parked (see the suite
+# limbo/transcription/PARKED.md), and ffmpeg handles audio perfectly well.
+_DEFAULT_TAB_BY_TYPE = {"video": "ffmpeg", "audio": "ffmpeg"}
 
 
 def _render(request, template, context):
@@ -230,11 +226,6 @@ def command_builder(request):
     allow_upload = tab in _UPLOAD_TABS
     upload_buckets = _user_upload_buckets(request.user) if allow_upload else []
 
-    quick_languages = []
-    if tab == "transcribe":
-        from .commands.transcribe import LANGUAGE_CHOICES
-        quick_languages = LANGUAGE_CHOICES
-
     context = {
         "vf": vf,
         "op": op,
@@ -256,7 +247,6 @@ def command_builder(request):
         "allow_upload": allow_upload,
         "upload_buckets": upload_buckets,
         "upload_accept": TAB_UI[tab]["upload_accept"],
-        "quick_languages": quick_languages,
     }
 
     if vf is None:
@@ -329,98 +319,10 @@ def job_detail(request, pk):
 @login_required
 def job_status(request, pk):
     """Lightweight poll endpoint so the job page can wait for an async command
-    (ffmpeg / transcribe) and refresh itself when it finishes."""
+    and refresh itself when it finishes."""
     job = get_object_or_404(FileJob, pk=pk)
     return JsonResponse({
         "status": job.status,
         "status_display": job.get_status_display(),
         "is_terminal": job.is_terminal,
-    })
-
-
-def _save_text_file(user, bucket, directory, filename: str, text: str):
-    """Persist *text* as a new text VaultFile in *bucket*, picking a free key
-    (transcript, transcript-1, …) so repeated saves never overwrite. The key is
-    set explicitly so it stays predictable even if storage suffixes the file."""
-    from django.core.files.base import ContentFile
-    from django.utils.text import slugify
-    from toto.vault.models import VaultFile
-
-    base, ext = os.path.splitext(os.path.basename(filename))
-    base, ext = (base or "transcript"), (ext or ".txt")
-    base_key = slugify(base) or "transcript"
-
-    name, key, n = f"{base}{ext}", base_key, 1
-    while VaultFile.objects.filter(bucket=bucket, key=key).exists():
-        name, key, n = f"{base}-{n}{ext}", f"{base_key}-{n}", n + 1
-
-    vf = VaultFile(owner=user, title=name, key=key, file_type="text",
-                   bucket=bucket, directory=directory)
-    vf.file.save(name, ContentFile(text.encode("utf-8")), save=False)
-    vf.save()
-    try:
-        vf.content_hash = vf.create_hash()
-        vf.save(update_fields=["content_hash"])
-    except Exception:
-        pass
-    return vf
-
-
-@login_required
-def quick_transcribe(request):
-    """Synchronously transcribe an already-saved audio file and write the result
-    to a text file in the same bucket. Used by the transcribe tab's quick modal.
-
-    POST: audio_id, output_name (default transcript.txt), language (optional).
-    Returns JSON {ok, text, output:{id,title,download_url}}.
-    """
-    if request.method != "POST":
-        return JsonResponse({"ok": False, "error": "POST required."}, status=405)
-
-    import tempfile
-
-    from django.apps import apps as django_apps
-
-    from toto.fileservices.runner import stage_input
-    from toto.vault.models import VaultFile
-
-    if not django_apps.is_installed("toto.transcription"):
-        return JsonResponse(
-            {"ok": False, "error": "Transcription is not available on this host."},
-            status=400,
-        )
-    from toto.transcription.services import transcribe_demo_file
-
-    audio = (VaultFile.objects.select_related("bucket", "directory")
-             .filter(pk=request.POST.get("audio_id")).first())
-    if audio is None or not user_can_access_vault_file(request.user, audio):
-        return JsonResponse({"ok": False, "error": "Audio file not found or not accessible."}, status=404)
-    # Recorded blobs are detected as audio (we name them .ogg/.weba/.m4a); video is
-    # accepted too since Whisper can read it.
-    if audio.file_type not in ("audio", "video"):
-        return JsonResponse({"ok": False, "error": "That file is not audio."}, status=400)
-
-    output_name = _sanitize_output_name(request.POST.get("output_name") or "transcript.txt")
-    if not output_name.lower().endswith(".txt"):
-        output_name += ".txt"
-    language = (request.POST.get("language") or "").strip()
-
-    try:
-        with tempfile.TemporaryDirectory() as tmp:
-            local = stage_input(audio, tmp)
-            result = transcribe_demo_file(local, language=language)
-    except Exception as exc:
-        return JsonResponse({"ok": False, "error": f"Transcription failed: {exc}"}, status=500)
-
-    text = (result.get("text") or "").strip()
-    out_vf = _save_text_file(request.user, audio.bucket, audio.directory, output_name, text)
-    try:
-        download_url = request.build_absolute_uri(out_vf.file.url)
-    except Exception:
-        download_url = ""
-
-    return JsonResponse({
-        "ok": True,
-        "text": text,
-        "output": {"id": out_vf.id, "title": out_vf.title, "download_url": download_url},
     })

@@ -7,7 +7,7 @@ from toto.fileservices.plugin import FileServicePlugin
 
 @FileServicePlugin.plugin(key="manta", title="Manta (media tools)", order=10)
 class MantaServicePlugin(FileServicePlugin):
-    """Single menu entry for all manta commands (ffmpeg/ffprobe/transcribe).
+    """Single menu entry for all manta commands (ffmpeg/ffprobe).
 
     Selecting it hands the user off to the manta command builder, where they
     pick a command, preview it, and run it. Registered only when toto.manta is
@@ -16,7 +16,7 @@ class MantaServicePlugin(FileServicePlugin):
 
     accepted_file_types = ["video", "audio"]
     icon = "fa-solid fa-film"
-    description = "Build, preview and run media / transcribe commands on the builder page."
+    description = "Build, preview and run media commands on the builder page."
     builder = True
 
     def builder_url(self, vault_file) -> str:

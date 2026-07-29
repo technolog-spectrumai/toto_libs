@@ -112,6 +112,60 @@ def run_status(request, run_id):
     return JsonResponse(_run_payload(run))
 
 
+class RunListView(LoginRequiredMixin, View):
+    """The section landing page: your own runs, newest first.
+
+    Until 1.21 fileservices had ``run_detail`` but no index — the only way to a
+    run was the redirect you got right after starting one, so a run you navigated
+    away from was unreachable. The Media sub-nav needs somewhere to point, and
+    this is it.
+
+    Owner-scoped, deliberately: a run's stdout/stderr can quote file contents.
+    """
+
+    template_name = "fileservices/run_list.html"
+    login_url = reverse_lazy("core:login")
+
+    # Bound the page. Runs accumulate one row per ffmpeg invocation and there is
+    # no pagination here yet; the newest RUN_LIST_CAP are what anyone acts on.
+    RUN_LIST_CAP = 200
+
+    def get(self, request):
+        runs = list(
+            FileServiceRun.objects
+            .filter(owner=request.user)
+            .select_related("input_file", "bucket")
+            .order_by("-started_at")[: self.RUN_LIST_CAP]
+        )
+
+        rows = []
+        for run in runs:
+            plugin = FileServicePlugin.get(run.service_key)
+            rows.append({
+                "id": run.id,
+                "title": plugin.get_title() if plugin else run.service_key,
+                "icon": plugin.icon if plugin else "fa-solid fa-wand-magic-sparkles",
+                "status": run.status,
+                "args": run.args,
+                "input_title": run.input_file.title if run.input_file else "—",
+                "bucket": run.bucket.name if run.bucket else "—",
+                "started_at": run.started_at,
+                "finished_at": run.finished_at,
+                "output_count": len(run.output_file_pks or []),
+                "url": reverse("fileservices:run_detail", args=[run.id]),
+            })
+
+        context = PageProcessor().decorate(
+            {
+                "rows": rows,
+                "capped": len(runs) >= self.RUN_LIST_CAP,
+                "run_list_cap": self.RUN_LIST_CAP,
+            },
+            request,
+        )
+        return render(request, self.template_name, context)
+
+
 class RunDetailView(LoginRequiredMixin, View):
     template_name = "fileservices/run_detail.html"
     login_url = reverse_lazy("core:login")
