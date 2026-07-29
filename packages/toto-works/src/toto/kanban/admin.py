@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.utils.timezone import now
 
 from .models import (
-    Project, Column, Task, Sprint, Mission, Campaign,
+    Project, Task, TaskRelation, Sprint, Mission, Campaign,
     DocumentationPage, DocumentationSection,
     Practitioner, ProjectCommitment,
 )
@@ -44,6 +44,7 @@ class CampaignInline(admin.TabularInline):
 class ProjectAdmin(admin.ModelAdmin):
     list_display = ("name", "project_lead", "commitment_count")
     search_fields = ("name", "description")
+    filter_horizontal = ("auditors",)
     inlines = [CampaignInline, ProjectCommitmentInline]
 
     def commitment_count(self, obj):
@@ -76,27 +77,6 @@ class ProjectCommitmentAdmin(admin.ModelAdmin):
     search_fields = ("practitioner__person__display_name", "project__name")
     raw_id_fields = ("practitioner", "project")
 
-
-# ── Column ────────────────────────────────────────────────────────────────────
-
-class TaskInlineForColumn(admin.TabularInline):
-    model = Task
-    extra = 1
-    fields = ("title", "assignee", "due_date", "position", "sprint", "weight", "mission")
-    ordering = ("position",)
-    raw_id_fields = ("assignee", "mission", "sprint")
-
-
-@admin.register(Column)
-class ColumnAdmin(admin.ModelAdmin):
-    list_display = ("name", "project", "position", "can_add_task")
-    list_filter = ("project",)
-    ordering = ("position",)
-    filter_horizontal = ("auditors",)
-    inlines = [TaskInlineForColumn]
-
-
-# ── Campaign ──────────────────────────────────────────────────────────────────
 
 class MissionInline(admin.TabularInline):
     model = Mission
@@ -146,9 +126,9 @@ class DocumentationSectionInline(SectionInlineMixin):
 class TaskInlineForMission(admin.TabularInline):
     model = Task
     extra = 1
-    fields = ("title", "column", "assignee", "due_date", "position", "sprint", "weight")
+    fields = ("title", "status", "assignee", "due_date", "position", "sprint", "weight")
     ordering = ("position",)
-    raw_id_fields = ("assignee", "column", "sprint")
+    raw_id_fields = ("assignee", "sprint")
 
 
 class MissionAdminForm(forms.ModelForm):
@@ -197,13 +177,15 @@ class TaskAdminForm(forms.ModelForm):
 class TaskAdmin(admin.ModelAdmin):
     form = TaskAdminForm
     list_display = (
-        "title", "column", "sprint", "mission",
+        "title", "status", "sprint", "mission",
         "assignee", "reviewer", "due_date", "position", "weight", "completed_at",
     )
-    list_filter = ("due_date", "sprint", "mission")
+    list_filter = ("status", "due_date", "sprint", "mission")
     search_fields = ("title", "description")
     ordering = ("position",)
-    raw_id_fields = ("assignee", "reviewer", "mission", "column", "sprint")
+    raw_id_fields = ("assignee", "reviewer", "mission", "sprint")
+    # Derived from status by Task.save; editable here it would silently revert.
+    readonly_fields = ("completed_at",)
     actions = ["convert_to_event"]
 
     @admin.action(description="Convert selected tasks to events")
@@ -278,3 +260,13 @@ class DocumentationPageAdmin(PageAdminMixin):
     autocomplete_fields = ("mission",)
     readonly_fields = ["created_at"]
     inlines = [DocumentationSectionInline]
+
+
+# ── Task relations ────────────────────────────────────────────────────────────
+
+@admin.register(TaskRelation)
+class TaskRelationAdmin(admin.ModelAdmin):
+    list_display = ("from_task", "relation_type", "to_task", "created_by", "created_at")
+    list_filter = ("relation_type",)
+    search_fields = ("from_task__title", "to_task__title", "note")
+    raw_id_fields = ("from_task", "to_task", "created_by")

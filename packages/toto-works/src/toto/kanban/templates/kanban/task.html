@@ -23,7 +23,7 @@
         {% if task.assignee %}
           <span class="inline-flex items-center gap-1">
             <i class="fa-solid fa-user text-[10px]"></i>
-            {{ task.assignee.full_name }}
+            {{ task.assignee.person.full_name }}
           </span>
         {% endif %}
 
@@ -95,7 +95,7 @@
           : 'border-accent-2 bg-sunken-light'"
         class="rounded-lg border p-3">
         <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Status" %}</p>
-        <p class="mt-1 font-semibold">{{ task.column.name }}</p>
+        <p class="mt-1 font-semibold">{{ task.get_status_display }}</p>
       </div>
 
       <div
@@ -120,7 +120,7 @@
         <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Assignee" %}</p>
         <p class="mt-1 font-semibold">
           {% if task.assignee %}
-            {{ task.assignee.full_name }}
+            {{ task.assignee.person.full_name }}
           {% else %}
             Unassigned
           {% endif %}
@@ -223,27 +223,88 @@
 
     {% render_task_plugins task %}
 
-    {% if column.is_auditor or column.can_add_task %}
-      <section class="flex flex-wrap gap-2 pt-1">
-        {% if column.is_auditor %}
-          <a
-            href="{% url 'kanban:task_promote' project.pk task.pk %}"
-            :class="darkMode
-              ? 'border-accent-1 text-accent-dark'
-              : 'border-accent-2 text-accent-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
-            <i class="fa-solid fa-arrow-right text-[11px]"></i>{% trans "Promote" %}</a>
+    {% if task.blockers %}
+      <section
+        :class="darkMode
+          ? 'border-warn-dark bg-sunken-dark'
+          : 'border-warn-light bg-sunken-light'"
+        class="rounded-lg border p-3">
+        <p
+          :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+          class="text-xs font-semibold uppercase tracking-wide">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "Blocked by" %}
+        </p>
+        <ul class="mt-1 space-y-0.5 text-xs">
+          {% for blocker in task.blockers %}
+            <li class="truncate">{{ blocker.title }} <span class="opacity-60">({{ blocker.get_status_display }})</span></li>
+          {% endfor %}
+        </ul>
+      </section>
+    {% endif %}
 
-          <a
-            href="{% url 'kanban:task_demote' project.pk task.pk %}"
-            :class="darkMode
-              ? 'border-warn-dark text-warn-dark'
-              : 'border-warn-light text-warn-light'"
-            class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
-            <i class="fa-solid fa-arrow-left text-[11px]"></i>{% trans "Demote" %}</a>
+    {% with edges=task.relations %}
+      {% if edges %}
+        <section
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-lg border p-3">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Related tasks" %}</p>
+          <ul class="mt-1 space-y-1 text-xs">
+            {% for edge in edges %}
+              <li class="flex items-center justify-between gap-2">
+                <span class="min-w-0 truncate">
+                  <span class="opacity-60">{{ edge.label }}</span>
+                  <span class="font-semibold">{{ edge.other.title }}</span>
+                </span>
+                {% if can_manage %}
+                  <form method="post" action="{% url 'kanban:relation_delete' project.pk edge.relation.pk %}">
+                    {% csrf_token %}
+                    <button
+                      type="submit"
+                      :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                      class="shrink-0 opacity-70 transition hover:opacity-100"
+                      title="{% trans 'Remove link' %}">
+                      <i class="fa-solid fa-xmark text-[11px]"></i>
+                    </button>
+                  </form>
+                {% endif %}
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+    {% endwith %}
+
+    {% if column.is_auditor or can_manage %}
+      <section class="flex flex-wrap gap-2 pt-1">
+        {# Forms, not links: these mutate state, and as GET endpoints they moved
+           a card for anyone whose browser fetched the URL. #}
+        {% if column.is_auditor %}
+          <form method="post" action="{% url 'kanban:task_promote' project.pk task.pk %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              :class="darkMode
+                ? 'border-accent-1 text-accent-dark'
+                : 'border-accent-2 text-accent-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+              <i class="fa-solid fa-arrow-right text-[11px]"></i>{% trans "Promote" %}</button>
+          </form>
+
+          <form method="post" action="{% url 'kanban:task_demote' project.pk task.pk %}">
+            {% csrf_token %}
+            <button
+              type="submit"
+              :class="darkMode
+                ? 'border-warn-dark text-warn-dark'
+                : 'border-warn-light text-warn-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+              <i class="fa-solid fa-arrow-left text-[11px]"></i>{% trans "Demote" %}</button>
+          </form>
         {% endif %}
 
-        {% if column.can_add_task %}
+        {% if can_manage %}
           <a
             href="{% url 'kanban:task_edit' project.pk task.pk %}"
             :class="darkMode
@@ -260,6 +321,46 @@
             class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
             <i class="fa-solid fa-trash text-[11px]"></i>{% trans "Delete" %}</a>
         {% endif %}
+      </section>
+    {% endif %}
+
+    {% if can_manage %}
+      <section x-data="{ linking: false }" class="pt-1">
+        <button
+          type="button"
+          x-on:click="linking = !linking"
+          class="text-xs font-semibold underline-offset-4 opacity-70 transition hover:underline hover:opacity-100">
+          <i class="fa-solid fa-link text-[11px]"></i> {% trans "Link to another task" %}
+        </button>
+
+        <form
+          x-show="linking"
+          x-cloak
+          method="post"
+          action="{% url 'kanban:relation_create' project.pk task.pk %}"
+          class="mt-2 space-y-2">
+          {% csrf_token %}
+            <select name="relation_type" class="w-full rounded border px-2 py-1 text-xs"
+              :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'">
+              {% for value, label in relation_type_choices %}
+                <option value="{{ value }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+            <select name="to_task" class="w-full rounded border px-2 py-1 text-xs"
+              :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'">
+              {% for candidate in task.campaign_siblings %}
+                <option value="{{ candidate.pk }}">{{ candidate.title }}</option>
+              {% endfor %}
+            </select>
+          <button
+            type="submit"
+            :class="darkMode
+              ? 'bg-accent-dark text-primary-bg-dark'
+              : 'bg-accent-light text-primary-bg-light'"
+            class="w-full rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+            {% trans "Link" %}
+          </button>
+        </form>
       </section>
     {% endif %}
 

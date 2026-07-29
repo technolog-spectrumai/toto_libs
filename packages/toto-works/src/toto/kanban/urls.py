@@ -23,6 +23,8 @@ from .views import (
     TaskDeleteView,
     promote_task,
     demote_task,
+    relation_create,
+    relation_delete,
     SprintMetricsView,
     DocumentationPageDetailView,
 )
@@ -103,6 +105,18 @@ urlpatterns = [
         "<int:project_id>/task/<int:task_id>/demote/",
         demote_task,
         name="task_demote",
+    ),
+
+    path(
+        "<int:project_id>/task/<int:task_id>/relation/new/",
+        relation_create,
+        name="relation_create",
+    ),
+
+    path(
+        "<int:project_id>/relation/<int:pk>/delete/",
+        relation_delete,
+        name="relation_delete",
     ),
 
     path(
