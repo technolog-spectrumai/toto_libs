@@ -2,7 +2,7 @@ import json
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.http import HttpResponseForbidden
+from django.http import HttpResponseForbidden, JsonResponse
 from django.views.generic import DetailView, ListView, UpdateView, CreateView, DeleteView
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -15,13 +15,17 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
-from toto.kanban.forms import TaskCreateForm, TaskRelationForm
+from toto.kanban.forms import (
+    TaskCreateForm, TaskRelationForm, MissionForm, LinkedEventCreateForm,
+    _linkable_events,
+)
 from toto.kanban.metrics import (
     SprintMetricsCalculator, MissionMetricsCalculator, summarize_tasks,
 )
 from toto.kanban.models import (
-    Project, Task, TaskRelation, TaskStatus, RelationType, STATUS_ORDER,
-    adjacent_status, Sprint, Mission, DocumentationPage, Practitioner,
+    Project, Campaign, Task, TaskRelation, TaskStatus, RelationType,
+    STATUS_ORDER, adjacent_status, Sprint, Mission, MissionAttachment,
+    DocumentationPage, Practitioner, visible_missions_for, visible_tasks_for,
 )
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.kanban.plugins.mission_tab_plugins import MissionTabPlugin
@@ -140,10 +144,10 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
                 selected_sprint = None
 
         tasks = (
-            Task.objects
-            .filter(mission__campaign__project=project)
+            visible_tasks_for(self.request.user, Task.objects.filter(mission__campaign__project=project))
             .select_related(
                 "mission",
+                "mission__zone",
                 "mission__campaign",
                 "mission__campaign__zone",
                 "mission__campaign__zone__territory",
@@ -199,6 +203,7 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
 
         context.update({
             "columns": columns,
+            "first_campaign": project.campaigns.order_by("pk").first(),
             "sprints": sprints,
             "selected_sprint": selected_sprint,
             "is_auditor": is_auditor,
@@ -254,8 +259,7 @@ class EisenhowerMatrixView(LoginRequiredMixin, DetailView):
         project = self.get_object()
 
         missions = (
-            Mission.objects
-            .filter(campaign__project=project)
+            visible_missions_for(self.request.user, Mission.objects.filter(campaign__project=project))
             .select_related("campaign")
         )
 
@@ -312,14 +316,15 @@ class BacklogView(LoginRequiredMixin, DetailView):
         project = self.get_object()
 
         missions = (
-            Mission.objects
-            .filter(campaign__project=project)
+            visible_missions_for(self.request.user, Mission.objects.filter(campaign__project=project))
             .select_related(
                 "campaign",
                 "campaign__zone",
                 "campaign__zone__territory",
                 "location",
                 "route",
+                "zone",
+                "calendar_event",
                 "owner",
             )
             .prefetch_related(
@@ -353,6 +358,7 @@ class TaskCreateView(LoginRequiredMixin, CreateView):
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["project"] = self.project
+        kwargs["user"] = self.request.user
         return kwargs
 
     def form_valid(self, form):
@@ -394,15 +400,15 @@ class TaskUpdateView(LoginRequiredMixin, UpdateView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        return (
-            Task.objects
-            .filter(mission__campaign__project_id=self.kwargs["project_pk"])
-            .select_related("mission", "mission__campaign")
-        )
+        return visible_tasks_for(
+            self.request.user,
+            Task.objects.filter(mission__campaign__project_id=self.kwargs["project_pk"]),
+        ).select_related("mission", "mission__campaign")
 
     def get_form_kwargs(self):
         kwargs = super().get_form_kwargs()
         kwargs["project"] = self.project
+        kwargs["user"] = self.request.user
         return kwargs
 
     def get_success_url(self):
@@ -431,11 +437,10 @@ class TaskDeleteView(LoginRequiredMixin, DeleteView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
-        return (
-            Task.objects
-            .filter(mission__campaign__project_id=self.kwargs["project_pk"])
-            .select_related("mission", "mission__campaign")
-        )
+        return visible_tasks_for(
+            self.request.user,
+            Task.objects.filter(mission__campaign__project_id=self.kwargs["project_pk"]),
+        ).select_related("mission", "mission__campaign")
 
     def get_success_url(self):
         return reverse(
@@ -455,7 +460,10 @@ def promote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("mission", "mission__campaign", "reviewer__person__user"),
+        visible_tasks_for(
+            request.user,
+            Task.objects.select_related("mission", "mission__campaign", "reviewer__person__user"),
+        ),
         id=task_id,
         mission__campaign__project=project,
     )
@@ -507,7 +515,10 @@ def demote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("mission", "mission__campaign"),
+        visible_tasks_for(
+            request.user,
+            Task.objects.select_related("mission", "mission__campaign"),
+        ),
         id=task_id,
         mission__campaign__project=project,
     )
@@ -537,7 +548,7 @@ def relation_create(request, project_id, task_id):
     """Link this task to another in the same campaign."""
     project = get_object_or_404(Project, id=project_id)
     task = get_object_or_404(
-        Task.objects.select_related("mission"),
+        visible_tasks_for(request.user, Task.objects.select_related("mission")),
         id=task_id,
         mission__campaign__project=project,
     )
@@ -565,7 +576,9 @@ def relation_delete(request, project_id, pk):
         return HttpResponseForbidden("You cannot edit tasks in this project.")
 
     relation = get_object_or_404(
-        TaskRelation,
+        TaskRelation.objects.filter(
+            from_task__in=visible_tasks_for(request.user, Task.objects.all()),
+        ),
         pk=pk,
         from_task__mission__campaign__project=project,
     )
@@ -601,7 +614,9 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
         context = PageProcessor().decorate(context, self.request)
 
         project = self.object
-        calculator = SprintMetricsCalculator(project, sprint_id=self.request.GET.get("sprint"))
+        calculator = SprintMetricsCalculator(
+            project, sprint_id=self.request.GET.get("sprint"), user=self.request.user
+        )
         selected_sprint = calculator.selected_sprint
         metrics = calculator.get_context_data()
 
@@ -746,8 +761,10 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         return super().dispatch(request, *args, **kwargs)
 
     def get_queryset(self):
+        # Invisible missions 404 here rather than 403: filtering the queryset
+        # is the repo's scoping convention, and it keeps their existence quiet.
         return (
-            Mission.objects
+            visible_missions_for(self.request.user, Mission.objects.all())
             .select_related(
                 "campaign",
                 "campaign__project",
@@ -755,6 +772,8 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "owner",
                 "campaign__zone",
                 "campaign__zone__territory",
+                "zone",
+                "calendar_event",
                 "documentation_page",
             )
             .prefetch_related(
@@ -762,6 +781,7 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks__sprint",
                 "tasks__assignee__person",
                 "tasks__reviewer__person",
+                "attachments__vault_file",
             )
         )
 
@@ -780,10 +800,21 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         except mission.__class__.documentation_page.RelatedObjectDoesNotExist:
             documentation_page = None
 
+        can_manage = can_manage_tasks(self.request.user, project)
+        file_tree = []
+        if can_manage:
+            from toto.vault.filetree import build_file_tree
+            file_tree = build_file_tree(self.request.user)
+
         context.update({
             "project": project,
             "tasks": tasks,
             "documentation_page": documentation_page,
+            "can_manage": can_manage,
+            "attachments": list(mission.attachments.all()),
+            "file_tree": file_tree,
+            "linkable_events": _linkable_events(mission),
+            "event_create_form": LinkedEventCreateForm(),
             **summarize_tasks(tasks),
         })
         context["mission_plugin_sections"] = MissionPlugin.render_all(
@@ -817,3 +848,460 @@ class DocumentationPageDetailView(PageDetailMixin, DetailView):
 
 # mission_economy, project_tokenize, and project_tokenization_default
 # have moved to toto.mission_economy.views.
+
+
+# ── Missions: create and edit ─────────────────────────────────────────────────
+
+class MissionCreateView(LoginRequiredMixin, CreateView):
+    model = Mission
+    form_class = MissionForm
+    template_name = "kanban/mission_form.html"
+    context_object_name = "mission"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.project = get_object_or_404(Project, pk=kwargs["pk"])
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return HttpResponseForbidden("You cannot add missions to this project.")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["project"] = self.project
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse("kanban:mission_detail", kwargs={"pk": self.object.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["project"] = self.project
+        return PageProcessor().decorate(context, self.request)
+
+
+class MissionUpdateView(LoginRequiredMixin, UpdateView):
+    model = Mission
+    form_class = MissionForm
+    template_name = "kanban/mission_form.html"
+    context_object_name = "mission"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.project = get_object_or_404(Project, pk=kwargs["project_pk"])
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return HttpResponseForbidden("You cannot edit missions in this project.")
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        # Invisible missions 404, same as the detail page.
+        return visible_missions_for(
+            self.request.user,
+            Mission.objects.filter(campaign__project_id=self.kwargs["project_pk"]),
+        )
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["project"] = self.project
+        kwargs["user"] = self.request.user
+        return kwargs
+
+    def get_success_url(self):
+        return reverse("kanban:mission_detail", kwargs={"pk": self.object.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["project"] = self.project
+        return PageProcessor().decorate(context, self.request)
+
+
+# ── Calendar events: pick or create ──────────────────────────────────────────
+
+def _request_person(request):
+    from toto.people.models import Person
+    return Person.objects.filter(user=request.user).first()
+
+
+def _load_visible_mission(request, pk, project=None):
+    qs = visible_missions_for(
+        request.user, Mission.objects.select_related("campaign__project", "owner")
+    )
+    if project is not None:
+        qs = qs.filter(campaign__project=project)
+    return get_object_or_404(qs, pk=pk)
+
+
+@login_required
+@require_POST
+def mission_event_link(request, pk):
+    """Link an existing event, or unlink with an empty POST."""
+    mission = _load_visible_mission(request, pk)
+    if not can_manage_tasks(request.user, mission.campaign.project):
+        return HttpResponseForbidden("You cannot edit missions in this project.")
+
+    event_id = request.POST.get("calendar_event") or None
+    if event_id:
+        from toto.events.models import ScheduledEvent
+        event = get_object_or_404(ScheduledEvent, pk=event_id)
+        mission.calendar_event = event
+        messages.success(request, f"Linked event: {event.title}.")
+    else:
+        mission.calendar_event = None
+        messages.success(request, "Event unlinked.")
+    mission.save(update_fields=["calendar_event"])
+    return redirect("kanban:mission_detail", pk=mission.pk)
+
+
+@login_required
+@require_POST
+def mission_event_create(request, pk):
+    mission = _load_visible_mission(request, pk)
+    if not can_manage_tasks(request.user, mission.campaign.project):
+        return HttpResponseForbidden("You cannot edit missions in this project.")
+
+    form = LinkedEventCreateForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            messages.error(request, "; ".join(errors))
+        return redirect("kanban:mission_detail", pk=mission.pk)
+
+    owner = mission.owner or _request_person(request)
+    event = form.save(commit=False)
+    event.public = False
+    event.owner = owner
+    event.save()
+    if owner:
+        event.organizers.add(owner)
+
+    mission.calendar_event = event
+    mission.save(update_fields=["calendar_event"])
+    messages.success(request, f"Event created and linked: {event.title}.")
+    return redirect("kanban:mission_detail", pk=mission.pk)
+
+
+@login_required
+@require_POST
+def task_event_link(request, project_id, task_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not can_manage_tasks(request.user, project):
+        return HttpResponseForbidden("You cannot edit tasks in this project.")
+    task = get_object_or_404(
+        visible_tasks_for(request.user, Task.objects.select_related("mission")),
+        id=task_id,
+        mission__campaign__project=project,
+    )
+
+    event_id = request.POST.get("calendar_event") or None
+    if event_id:
+        from toto.events.models import ScheduledEvent
+        event = get_object_or_404(ScheduledEvent, pk=event_id)
+        task.calendar_event = event
+        messages.success(request, f"Linked event: {event.title}.")
+    else:
+        task.calendar_event = None
+        messages.success(request, "Event unlinked.")
+    task.save(update_fields=["calendar_event"])
+    return redirect("kanban:project_detail", pk=project_id)
+
+
+@login_required
+@require_POST
+def task_event_create(request, project_id, task_id):
+    project = get_object_or_404(Project, id=project_id)
+    if not can_manage_tasks(request.user, project):
+        return HttpResponseForbidden("You cannot edit tasks in this project.")
+    task = get_object_or_404(
+        visible_tasks_for(
+            request.user, Task.objects.select_related("mission", "assignee__person")
+        ),
+        id=task_id,
+        mission__campaign__project=project,
+    )
+
+    form = LinkedEventCreateForm(request.POST)
+    if not form.is_valid():
+        for errors in form.errors.values():
+            messages.error(request, "; ".join(errors))
+        return redirect("kanban:project_detail", pk=project_id)
+
+    owner = (task.assignee.person if task.assignee else None) or _request_person(request)
+    event = form.save(commit=False)
+    event.public = False
+    event.owner = owner
+    event.save()
+    if owner:
+        event.organizers.add(owner)
+
+    task.calendar_event = event
+    task.save(update_fields=["calendar_event"])
+    messages.success(request, f"Event created and linked: {event.title}.")
+    return redirect("kanban:project_detail", pk=project_id)
+
+
+# ── Attachments ───────────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def mission_attachment_add(request, pk):
+    mission = _load_visible_mission(request, pk)
+    if not can_manage_tasks(request.user, mission.campaign.project):
+        return HttpResponseForbidden("You cannot edit missions in this project.")
+
+    # Vault's own gate, not toto.fileservices — that ships in toto-media,
+    # which toto-works does not depend on.
+    from toto.vault.filetree import accessible_files
+    vault_file = accessible_files(request.user).filter(pk=request.POST.get("vault_file")).first()
+    if vault_file is None:
+        messages.error(request, "Pick a file you have access to.")
+        return redirect("kanban:mission_detail", pk=mission.pk)
+
+    _, created = MissionAttachment.objects.get_or_create(
+        mission=mission,
+        vault_file=vault_file,
+        defaults={
+            "label": request.POST.get("label", "").strip(),
+            "added_by": _request_person(request),
+        },
+    )
+    messages.success(
+        request,
+        f"Attached {vault_file.title}." if created else f"{vault_file.title} was already attached.",
+    )
+    return redirect("kanban:mission_detail", pk=mission.pk)
+
+
+@login_required
+@require_POST
+def mission_attachment_remove(request, mission_pk, pk):
+    mission = _load_visible_mission(request, mission_pk)
+    if not can_manage_tasks(request.user, mission.campaign.project):
+        return HttpResponseForbidden("You cannot edit missions in this project.")
+
+    attachment = get_object_or_404(MissionAttachment, pk=pk, mission=mission)
+    name = attachment.display_name
+    # The link only — never the file.
+    attachment.delete()
+    messages.success(request, f"Removed {name}.")
+    return redirect("kanban:mission_detail", pk=mission.pk)
+
+
+# ── Campaign map and calendar ────────────────────────────────────────────────
+
+def _campaign_scope(campaign, user):
+    """The campaign's visible missions and their tasks — one place, so the map
+    and the calendar can never disagree about who sees what."""
+    missions = list(
+        visible_missions_for(user, Mission.objects.filter(campaign=campaign))
+        .select_related("zone", "location", "route", "calendar_event__address")
+    )
+    tasks = list(
+        Task.objects.filter(mission__in=[m.pk for m in missions])
+        .select_related("mission", "location", "calendar_event__address")
+    )
+    return missions, tasks
+
+
+@login_required
+def campaign_map_data(request, pk):
+    """Kind-discriminated FeatureCollection for the campaign map.
+
+    Plain login_required JSON, not a mesh API view: this is a same-origin feed
+    for kanban's own page, and the page itself carries the mesh gate.
+    """
+    from django.conf import settings as _settings
+    from toto.api.cors import in_data_mesh
+    if request.user.is_authenticated and not in_data_mesh(request.user):
+        return JsonResponse({"error": "Data mesh members only.", "gated": True}, status=403)
+
+    campaign = get_object_or_404(Campaign.objects.select_related("zone", "project"), pk=pk)
+    missions, tasks = _campaign_scope(campaign, request.user)
+    has_gis = getattr(_settings, "HAS_GIS", True)
+
+    features = []
+
+    def point(address):
+        # Lat/lon floats, never the geometry column: identical on every build,
+        # and Address.save keeps the two in sync.
+        if address and address.latitude is not None and address.longitude is not None:
+            return {"type": "Point", "coordinates": [address.longitude, address.latitude]}
+        return None
+
+    def add(kind, level, geometry, **props):
+        if geometry:
+            features.append({
+                "type": "Feature",
+                "properties": {"kind": kind, "level": level, **props},
+                "geometry": geometry,
+            })
+
+    def geo(value):
+        import json as _json
+        return _json.loads(value.geojson) if value is not None else None
+
+    if has_gis and campaign.zone:
+        add("campaign_zone", "campaign", geo(campaign.zone.geometry),
+            label=campaign.zone.name, campaign=campaign.name,
+            url=reverse("locations:zone_detail", args=[campaign.zone.pk]))
+
+    for mission in missions:
+        mission_url = reverse("kanban:mission_detail", args=[mission.pk])
+        if has_gis and mission.zone_id and mission.zone_id != campaign.zone_id:
+            add("mission_zone", "mission", geo(mission.zone.geometry),
+                label=mission.zone.name, mission=mission.title, url=mission_url)
+        add("mission_location", "mission", point(mission.location),
+            label=mission.title,
+            address=str(mission.location) if mission.location else None,
+            url=mission_url)
+        if has_gis and mission.route:
+            add("mission_route", "mission", geo(mission.route.geometry),
+                label=mission.route.name or f"Route {mission.route.pk}",
+                mission=mission.title, url=mission_url)
+        if mission.calendar_event_id:
+            event = mission.calendar_event
+            add("event_location", "mission", point(event.address),
+                label=event.title, start=event.start_time.isoformat(),
+                parent=mission.title,
+                url=reverse("events:event_detail", args=[event.pk]))
+
+    for task in tasks:
+        task_url = reverse("kanban:mission_detail", args=[task.mission_id])
+        add("task_location", "task", point(task.location),
+            label=task.title, status=task.status, url=task_url)
+        if task.calendar_event_id:
+            event = task.calendar_event
+            add("event_location", "task", point(event.address),
+                label=event.title, start=event.start_time.isoformat(),
+                parent=task.title,
+                url=reverse("events:event_detail", args=[event.pk]))
+
+    return JsonResponse({"type": "FeatureCollection", "features": features})
+
+
+class CampaignScopeMixin(LoginRequiredMixin):
+    model = Campaign
+    context_object_name = "campaign"
+
+    #: Shared by map markers and calendar events — one source for both pages.
+    level_colors = {
+        "campaign": "#4f5fa1",
+        "mission": "#5fa38c",
+        "task": "#d94a4a",
+        "done": "#94a3b8",
+    }
+    layer_toggles = [
+        ("campaign", "Campaign", "fa-solid fa-draw-polygon", "accent"),
+        ("mission", "Mission", "fa-solid fa-bullseye", "success"),
+        ("task", "Task", "fa-solid fa-list-check", "caution"),
+    ]
+
+    def dispatch(self, request, *args, **kwargs):
+        # Same gate as the mission page: these views expose the same data class.
+        from toto.api.cors import in_data_mesh, render_access_denied
+        if request.user.is_authenticated and not in_data_mesh(request.user):
+            return render_access_denied(request)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_queryset(self):
+        return Campaign.objects.select_related("project", "zone", "owner")
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context = PageProcessor().decorate(context, self.request)
+        context.update({
+            "project": self.object.project,
+            "sibling_campaigns": self.object.project.campaigns.order_by("name"),
+            "layer_toggles": self.layer_toggles,
+            "level_colors_json": json.dumps(self.level_colors),
+        })
+        return context
+
+
+class CampaignMapView(CampaignScopeMixin, DetailView):
+    template_name = "kanban/campaign_map.html"
+
+    def get_context_data(self, **kwargs):
+        from django.conf import settings as _settings
+        context = super().get_context_data(**kwargs)
+        context.update({
+            "has_gis": getattr(_settings, "HAS_GIS", True),
+            "map_data_url": reverse("kanban:campaign_map_data", args=[self.object.pk]),
+        })
+        return context
+
+
+class CampaignCalendarView(CampaignScopeMixin, DetailView):
+    template_name = "kanban/campaign_calendar.html"
+
+    def get_context_data(self, **kwargs):
+        from datetime import timedelta as _timedelta
+
+        context = super().get_context_data(**kwargs)
+        campaign = self.object
+        missions, tasks = _campaign_scope(campaign, self.request.user)
+        colors = self.level_colors
+
+        campaign_events = []
+        if campaign.start_date:
+            entry = {
+                "title": campaign.name,
+                "start": campaign.start_date.isoformat(),
+                "allDay": True,
+                "display": "block",
+                "color": colors["campaign"],
+                "url": reverse("kanban:campaign_map", args=[campaign.pk]),
+            }
+            if campaign.end_date:
+                # FullCalendar all-day ends are exclusive; DateField ranges are
+                # inclusive. Without the +1 the campaign ends a day early.
+                entry["end"] = (campaign.end_date + _timedelta(days=1)).isoformat()
+            campaign_events.append(entry)
+
+        mission_events = []
+        for mission in missions:
+            if not mission.calendar_event_id:
+                continue
+            event = mission.calendar_event
+            mission_events.append({
+                "title": mission.title,
+                "start": timezone.localtime(event.start_time).isoformat(),
+                "end": timezone.localtime(event.end_time).isoformat(),
+                "color": colors["mission"],
+                "url": reverse("kanban:mission_detail", args=[mission.pk]),
+            })
+
+        task_events = []
+        for task in tasks:
+            color = colors["done"] if task.status == TaskStatus.DONE else colors["task"]
+            url = reverse("kanban:mission_detail", args=[task.mission_id])
+            if task.calendar_event_id:
+                event = task.calendar_event
+                task_events.append({
+                    "title": task.title,
+                    "start": timezone.localtime(event.start_time).isoformat(),
+                    "end": timezone.localtime(event.end_time).isoformat(),
+                    "color": color,
+                    "url": url,
+                })
+            elif task.due_date:
+                # A one-day all-day marker. Done tasks stay, muted — hiding
+                # them would make past months lie.
+                task_events.append({
+                    "title": task.title,
+                    "start": task.due_date.isoformat(),
+                    "allDay": True,
+                    "color": color,
+                    "url": url,
+                })
+
+        context.update({
+            "calendar_payload_json": json.dumps({
+                "campaign": campaign_events,
+                "mission": mission_events,
+                "task": task_events,
+            }),
+            "initial_date": (campaign.start_date or timezone.localdate()).isoformat(),
+            "level_counts": {
+                "campaign": len(campaign_events),
+                "mission": len(mission_events),
+                "task": len(task_events),
+            },
+        })
+        return context

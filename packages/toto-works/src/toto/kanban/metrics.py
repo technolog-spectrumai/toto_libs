@@ -17,7 +17,9 @@ from django.db.models import Sum
 from django.utils import timezone
 from django.utils.functional import cached_property
 
-from toto.kanban.models import Task, TaskStatus, Sprint, Mission
+from toto.kanban.models import (
+    Task, TaskStatus, Sprint, Mission, visible_missions_for, visible_tasks_for,
+)
 
 
 def percent(part, total):
@@ -62,12 +64,16 @@ def summarize_rows(rows):
 
 
 class BaseMetricsCalculator:
-    def __init__(self, project):
+    def __init__(self, project, user=None):
+        #: user=None means unfiltered — programmatic callers and existing
+        #: tests keep their exact numbers; views pass request.user so the
+        #: charts agree with the board the same person sees.
         self.project = project
+        self.user = user
         self.tasks = self.get_project_tasks()
 
     def get_project_tasks(self):
-        return (
+        qs = (
             Task.objects
             .filter(mission__campaign__project=self.project)
             .select_related(
@@ -77,6 +83,9 @@ class BaseMetricsCalculator:
                 "assignee__person",
             )
         )
+        if self.user is not None:
+            qs = visible_tasks_for(self.user, qs)
+        return qs
 
     def percent(self, part, total):
         return percent(part, total)
@@ -104,8 +113,8 @@ class SprintMetricsCalculator(BaseMetricsCalculator):
         "mission__campaign_id",
     )
 
-    def __init__(self, project, sprint_id=None):
-        super().__init__(project)
+    def __init__(self, project, sprint_id=None, user=None):
+        super().__init__(project, user=user)
         self.sprint_id = sprint_id
 
     @cached_property
@@ -376,12 +385,14 @@ class SprintMetricsCalculator(BaseMetricsCalculator):
 
 
 class MissionMetricsCalculator(BaseMetricsCalculator):
-    def __init__(self, project):
-        super().__init__(project)
+    def __init__(self, project, user=None):
+        super().__init__(project, user=user)
 
+        missions = Mission.objects.filter(campaign__project=project)
+        if user is not None:
+            missions = visible_missions_for(user, missions)
         self.missions = (
-            Mission.objects
-            .filter(campaign__project=project)
+            missions
             .select_related("campaign", "owner")
             .prefetch_related(
                 "tasks",

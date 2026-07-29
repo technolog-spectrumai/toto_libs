@@ -1,0 +1,203 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ campaign.name }} — {% trans "Map" %}{% endblock %}
+
+{% block start_script %}
+  <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}" />
+  <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+  <style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto max-w-7xl space-y-6 px-4 py-8">
+
+  <!-- Header -->
+  <header class="flex flex-wrap items-end justify-between gap-4">
+    <div>
+      <a
+        href="{% url 'kanban:project_detail' project.pk %}"
+        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+        class="text-sm font-semibold underline-offset-4 hover:underline">
+        <i class="fa-solid fa-arrow-left mr-1 text-xs"></i>{{ project.name }}
+      </a>
+      <p class="mt-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Campaign" %}</p>
+      <h1 class="mt-1 flex items-center gap-3 text-2xl font-bold">
+        <i class="fa-solid fa-map-location-dot"></i>
+        {{ campaign.name }}
+      </h1>
+    </div>
+
+    <nav class="flex flex-wrap items-center gap-2">
+      <select
+        onchange="window.location = this.value"
+        :class="darkMode
+          ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+          : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+        class="rounded-lg border px-3 py-2 text-sm font-semibold">
+        {% for sibling in sibling_campaigns %}
+          <option value="{% url 'kanban:campaign_map' sibling.pk %}" {% if sibling.pk == campaign.pk %}selected{% endif %}>
+            {{ sibling.name }}
+          </option>
+        {% endfor %}
+      </select>
+
+      <a
+        href="{% url 'kanban:campaign_calendar' campaign.pk %}"
+        :class="darkMode
+          ? 'border-accent-1 bg-bubble-bg-dark'
+          : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-calendar-days"></i>
+        {% trans "Calendar" %}
+      </a>
+    </nav>
+  </header>
+
+  {% if not has_gis %}
+    <div
+      :class="darkMode
+        ? 'border-caution-dark bg-sunken-dark text-caution-dark'
+        : 'border-caution-light bg-sunken-light text-caution-light'"
+      class="rounded-xl border p-4 text-sm font-semibold">
+      <i class="fa-solid fa-triangle-exclamation mr-2"></i>
+      {% trans "Zone and route layers require a GIS build (BUILD_GEO=1); showing location pins only." %}
+    </div>
+  {% endif %}
+
+  <!-- Map -->
+  <section
+    x-data="{ layers: { campaign: true, mission: true, task: true },
+              toggle(key) { this.layers[key] = !this.layers[key];
+                            window.campaignMapToggle && window.campaignMapToggle(key, this.layers[key]); } }"
+    :class="darkMode
+      ? 'border-accent-1 bg-bubble-bg-dark'
+      : 'border-accent-2 bg-bubble-bg-light'"
+    class="overflow-hidden rounded-2xl border shadow-sm">
+
+    <!-- Level toggles double as the legend -->
+    <div class="flex flex-wrap items-center gap-2 border-b p-4"
+      :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <p class="mr-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Levels" %}</p>
+      {% for key, label, icon, tone in layer_toggles %}
+        <button
+          type="button"
+          x-on:click="toggle('{{ key }}')"
+          :class="[
+            layers['{{ key }}'] ? 'opacity-100' : 'opacity-40',
+            darkMode ? 'border-{{ tone }}-dark text-{{ tone }}-dark' : 'border-{{ tone }}-light text-{{ tone }}-light',
+          ]"
+          class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition">
+          <i class="{{ icon }} text-[11px]"></i>{{ label }}
+        </button>
+      {% endfor %}
+    </div>
+
+    <div id="campaign-map" class="h-[540px] w-full"></div>
+  </section>
+</div>
+
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  const COLORS = JSON.parse('{{ level_colors_json|escapejs }}');
+  const isDark = localStorage.getItem("darkMode") === "true";
+
+  const lightTiles = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors"
+  });
+  const darkTiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png", {
+    maxZoom: 19,
+    attribution: "&copy; OpenStreetMap contributors &copy; CARTO"
+  });
+
+  const map = L.map("campaign-map", { zoomControl: false }).setView([52.0, 19.0], 5);
+  L.control.zoom({ position: "bottomright" }).addTo(map);
+  (isDark ? darkTiles : lightTiles).addTo(map);
+
+  // One layer group per detail level — what the toggle chips flip.
+  const mapGroups = {
+    campaign: L.layerGroup(),
+    mission: L.layerGroup(),
+    task: L.layerGroup(),
+  };
+  Object.values(mapGroups).forEach(group => group.addTo(map));
+
+  window.campaignMapToggle = (key, visible) => {
+    const group = mapGroups[key];
+    if (!group) return;
+    visible ? group.addTo(map) : map.removeLayer(group);
+  };
+
+  function makeIcon(bg, size, shape, label) {
+    const radius = shape === "circle" ? "9999px" : shape === "diamond" ? "2px" : "3px";
+    const rotate = shape === "diamond" ? "transform:rotate(45deg);" : "";
+    const html =
+      `<div style="display:flex;align-items:center;gap:4px">` +
+      `<span style="width:${size}px;height:${size}px;background:${bg};border:2px solid #fff;` +
+      `border-radius:${radius};${rotate}box-shadow:0 1px 3px rgba(0,0,0,.4);display:inline-block"></span>` +
+      (label ? `<span style="background:${bg};color:#fff;font-size:10px;padding:1px 5px;border-radius:3px;` +
+        `white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis;` +
+        `box-shadow:0 1px 3px rgba(0,0,0,.4)">${label}</span>` : "") +
+      `</div>`;
+    return L.divIcon({ className: "", html: html, iconSize: null, iconAnchor: [size / 2, size / 2] });
+  }
+
+  let boundsAccum = null;
+  function pushCoords(coords) {
+    if (typeof coords[0] === "number") {
+      const latlng = [coords[1], coords[0]];
+      boundsAccum = boundsAccum ? boundsAccum.extend(latlng) : L.latLngBounds(latlng, latlng);
+    } else {
+      coords.forEach(pushCoords);
+    }
+  }
+
+  function popupFor(props) {
+    const link = props.url ? `<div class="mt-1"><a href="${props.url}">${"{% trans 'Open' %}"}</a></div>` : "";
+    const extra = props.status ? `<div class="opacity-70">${props.status}</div>`
+                : props.parent ? `<div class="opacity-70">${props.parent}</div>` : "";
+    return `<strong>${props.label || ""}</strong>${extra}${link}`;
+  }
+
+  fetch("{{ map_data_url }}")
+    .then(response => response.json())
+    .then(data => {
+      (data.features || []).forEach(feature => {
+        const props = feature.properties || {};
+        const group = mapGroups[props.level] || mapGroups.task;
+        const kind = props.kind;
+
+        if (kind === "campaign_zone" || kind === "mission_zone") {
+          L.geoJSON(feature, {
+            style: { color: COLORS[props.level], weight: 2, opacity: 0.9, fillOpacity: 0.12 },
+          }).bindPopup(popupFor(props)).addTo(group);
+          pushCoords(feature.geometry.coordinates);
+        } else if (kind === "mission_route") {
+          L.geoJSON(feature, {
+            style: { color: COLORS.mission, weight: 3, opacity: 0.85 },
+          }).bindPopup(popupFor(props)).addTo(group);
+          pushCoords(feature.geometry.coordinates);
+        } else {
+          const [lon, lat] = feature.geometry.coordinates;
+          let icon;
+          if (kind === "mission_location") {
+            icon = makeIcon(COLORS.mission, 16, "circle", props.label);
+          } else if (kind === "task_location") {
+            icon = makeIcon(props.status === "done" ? COLORS.done : COLORS.task, 12, "square", props.label);
+          } else {
+            icon = makeIcon(COLORS[props.level] || COLORS.task, 12, "diamond", null);
+          }
+          L.marker([lat, lon], { icon: icon }).bindPopup(popupFor(props)).addTo(group);
+          pushCoords(feature.geometry.coordinates);
+        }
+      });
+
+      if (boundsAccum) {
+        map.fitBounds(boundsAccum, { padding: [48, 48], maxZoom: 14 });
+      }
+    });
+});
+</script>
+{% endblock %}

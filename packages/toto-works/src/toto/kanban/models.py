@@ -1,6 +1,8 @@
 from collections import defaultdict
 
+from django.conf import settings
 from django.db import models
+from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
@@ -101,12 +103,34 @@ class Campaign(DomainEntity):
         return self.name
 
 
+class MissionVisibility(models.TextChoices):
+    #: Anyone who can see the project sees the mission — the status quo, and the
+    #: default, so nothing disappears when the column arrives.
+    PROJECT = "project", _("Project")
+    #: Owner, the people listed on visible_to, the project lead, project
+    #: auditors, and staff. Everyone else gets a 404, not a 403 — a private
+    #: mission's existence must not leak.
+    PRIVATE = "private", _("Private")
+
+
 class Mission(DomainEntity):
     campaign = models.ForeignKey(Campaign, on_delete=models.CASCADE, related_name="missions")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     urgency = models.IntegerField(choices=THREE_SCALE, default=2)
     impact = models.IntegerField(choices=THREE_SCALE, default=2)
+    visibility = models.CharField(
+        max_length=10,
+        choices=MissionVisibility.choices,
+        default=MissionVisibility.PROJECT,
+        db_index=True,
+    )
+    visible_to = models.ManyToManyField(
+        Person,
+        blank=True,
+        related_name="visible_missions",
+        help_text="People who can always see this mission when it is private.",
+    )
     location = models.ForeignKey(
         "locations.Address",
         on_delete=models.SET_NULL,
@@ -120,6 +144,21 @@ class Mission(DomainEntity):
         null=True,
         blank=True,
         related_name="missions",
+    )
+    zone = models.ForeignKey(
+        "locations.Zone",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="missions",
+        help_text="Overrides the campaign's zone; must lie inside it.",
+    )
+    calendar_event = models.ForeignKey(
+        "events.ScheduledEvent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="kanban_missions",
     )
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
@@ -137,7 +176,85 @@ class Mission(DomainEntity):
 
     @property
     def effective_zone(self):
-        return self.campaign.zone
+        return self.zone or self.campaign.zone
+
+    def user_can_read(self, user):
+        """Delegates to the queryset helper so the two can never drift apart."""
+        return visible_missions_for(user, Mission.objects.filter(pk=self.pk)).exists()
+
+    def clean(self):
+        self._validate_zone_containment()
+
+    def _validate_zone_containment(self):
+        """Refuse a mission zone that lies outside its campaign's zone.
+
+        Runs through every form and admin path via full_clean, matching how
+        Task.clean guards the sprint-project rule — deliberately not a save()
+        hook, which would abort restores and blow up on unrelated saves after
+        someone edits a zone's geometry.
+
+        Skips silently when there is nothing to compare: no mission zone, no
+        campaign yet, GIS off (the geometry field does not exist on that
+        build), no campaign zone, same zone on both, or a missing geometry.
+        """
+        if not (self.zone_id and self.campaign_id):
+            return
+        if not getattr(settings, "HAS_GIS", True):
+            return
+        campaign_zone = self.campaign.zone
+        if campaign_zone is None or campaign_zone.pk == self.zone_id:
+            return
+        inner = getattr(self.zone, "geometry", None)
+        outer = getattr(campaign_zone, "geometry", None)
+        if inner is None or outer is None:
+            return
+        # covers(), not contains(): contains is false for a zone sharing an
+        # edge with its parent, and a district on the border is still inside.
+        if not outer.covers(inner):
+            raise ValidationError({
+                "zone": _(
+                    "Mission zone must lie inside the campaign's zone (%(zone)s)."
+                ) % {"zone": campaign_zone.name},
+            })
+
+
+def _mission_visibility_q(user, prefix=""):
+    """Q selecting missions `user` may see; prefix joins from another model,
+    e.g. prefix="mission__" when filtering Task rows."""
+    p = prefix
+    return (
+        Q(**{f"{p}visibility": MissionVisibility.PROJECT})
+        | Q(**{f"{p}owner__user": user})
+        | Q(**{f"{p}visible_to__user": user})
+        | Q(**{f"{p}campaign__project__project_lead__user": user})
+        | Q(**{f"{p}campaign__project__auditors__person__user": user})
+    )
+
+
+def visible_missions_for(user, base_qs=None):
+    """Missions `user` may see.
+
+    Lives here rather than beside the permission helpers in views.py because
+    the metrics calculators need it and views.py imports metrics.py.
+    """
+    qs = base_qs if base_qs is not None else Mission.objects.all()
+    if not getattr(user, "is_authenticated", False):
+        return qs.none()
+    if user.is_staff or user.is_superuser:
+        return qs
+    # distinct() is load-bearing: two M2M joins would duplicate rows, and the
+    # metrics calculator counts rows.
+    return qs.filter(_mission_visibility_q(user)).distinct()
+
+
+def visible_tasks_for(user, base_qs=None):
+    """Tasks whose mission `user` may see."""
+    qs = base_qs if base_qs is not None else Task.objects.all()
+    if not getattr(user, "is_authenticated", False):
+        return qs.none()
+    if user.is_staff or user.is_superuser:
+        return qs
+    return qs.filter(_mission_visibility_q(user, prefix="mission__")).distinct()
 
 
 class Sprint(DomainEntity):
@@ -233,6 +350,22 @@ class Task(DomainEntity):
         help_text="Optional reviewer who signs off the task before it is completed.",
     )
     due_date = models.DateField(null=True, blank=True)
+    location = models.ForeignKey(
+        "locations.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        # "tasks" on Address is not taken, but kanban_tasks mirrors
+        # kanban_missions on ScheduledEvent and keeps the origin obvious.
+        related_name="kanban_tasks",
+    )
+    calendar_event = models.ForeignKey(
+        "events.ScheduledEvent",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="kanban_tasks",
+    )
     position = models.PositiveIntegerField(default=0)
     weight = models.IntegerField(choices=FIB_SCALE, default=1)
     metadata = models.JSONField(blank=True, null=True)
@@ -487,6 +620,57 @@ class TaskRelation(DomainEntity):
             self.full_clean()
         super().save(*args, **kwargs)
 
+
+
+class MissionAttachment(DomainEntity):
+    """A vault file pinned to a mission.
+
+    The link is data; the bytes stay vault-governed, so downloads go through
+    vault's own access rules and removing the link never deletes the file.
+
+    Restore caveat, accepted per the TranscriptArtifact precedent: no host
+    syncs the vault app, so a cross-instance restore can carry attachments
+    whose vault_file no longer resolves.
+    """
+
+    mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="attachments")
+    vault_file = models.ForeignKey(
+        "vault.VaultFile",
+        # CASCADE, not PROTECT: an attachment is a pointer, not provenance,
+        # and PROTECT would make vault deletions fail with an error vault's
+        # own UI cannot explain.
+        on_delete=models.CASCADE,
+        related_name="kanban_attachments",
+    )
+    label = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Display name override; falls back to the file's title.",
+    )
+    added_by = models.ForeignKey(
+        Person,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["mission", "vault_file"],
+                name="unique_mission_attachment",
+            ),
+        ]
+
+    def __str__(self):
+        return self.label or self.vault_file.title
+
+    @property
+    def display_name(self):
+        return self.label or self.vault_file.title
 
 
 class DocumentationPage(AbstractPage):

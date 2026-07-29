@@ -9,6 +9,7 @@ from toto.api.cors import CorsApiView, MeshGatedApiView
 from toto.kanban.models import (
     Project, Task, Mission, Campaign, Practitioner, ProjectCommitment, Sprint,
     TaskStatus, STATUS_ORDER, adjacent_status, FIB_SCALE,
+    visible_missions_for, visible_tasks_for,
 )
 from toto.kanban.views import is_project_auditor
 
@@ -94,7 +95,10 @@ class TaskListCreateApiView(MeshGatedApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         tasks = (
-            Task.objects.filter(mission__campaign__project_id=project_pk)
+            visible_tasks_for(
+                request.user,
+                Task.objects.filter(mission__campaign__project_id=project_pk),
+            )
             .select_related("assignee__person", "mission", "mission__campaign")
             .in_board_order()
         )
@@ -129,7 +133,9 @@ class TaskListCreateApiView(MeshGatedApiView):
             campaign = Campaign.objects.create(
                 project=project, name="Default Campaign", description=""
             )
-        mission = Mission.objects.filter(campaign=campaign).first()
+        mission = visible_missions_for(
+            request.user, Mission.objects.filter(campaign=campaign)
+        ).first()
         if not mission:
             mission = Mission.objects.create(
                 campaign=campaign, title="Default Mission", description=""
@@ -146,10 +152,13 @@ class TaskListCreateApiView(MeshGatedApiView):
 
 @method_decorator(csrf_exempt, name="dispatch")
 class TaskDetailApiView(CorsApiView):
-    def _get_task(self, pk):
+    def _get_task(self, pk, user):
         try:
-            return Task.objects.select_related(
-                "assignee__person", "mission", "mission__campaign__project",
+            return visible_tasks_for(
+                user,
+                Task.objects.select_related(
+                    "assignee__person", "mission", "mission__campaign__project",
+                ),
             ).get(pk=pk)
         except Task.DoesNotExist:
             return None
@@ -157,7 +166,7 @@ class TaskDetailApiView(CorsApiView):
     def patch(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
-        task = self._get_task(pk)
+        task = self._get_task(pk, request.user)
         if not task:
             return JsonResponse({"error": "Task not found."}, status=404)
         try:
@@ -212,7 +221,7 @@ class TaskDetailApiView(CorsApiView):
     def delete(self, request, pk):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
-        task = self._get_task(pk)
+        task = self._get_task(pk, request.user)
         if not task:
             return JsonResponse({"error": "Task not found."}, status=404)
         task.delete()
@@ -230,8 +239,11 @@ def _load_movable_task(request, pk):
         return None, JsonResponse({"error": "Not authenticated."}, status=401)
 
     try:
-        task = Task.objects.select_related(
-            "mission__campaign__project", "reviewer__person__user",
+        task = visible_tasks_for(
+            request.user,
+            Task.objects.select_related(
+                "mission__campaign__project", "reviewer__person__user",
+            ),
         ).get(pk=pk)
     except Task.DoesNotExist:
         return None, JsonResponse({"error": "Task not found."}, status=404)
@@ -296,7 +308,7 @@ class MissionDetailApiView(MeshGatedApiView):
             return JsonResponse({"error": "Not authenticated."}, status=401)
         try:
             mission = (
-                Mission.objects.select_related(
+                visible_missions_for(request.user, Mission.objects.all()).select_related(
                     "campaign__project__project_lead",
                     "campaign__owner",
                     "owner",
@@ -350,7 +362,8 @@ class MissionDetailApiView(MeshGatedApiView):
             "owner": mission.owner.full_name if mission.owner else None,
             "location": str(mission.location) if mission.location else None,
             "route": str(mission.route) if mission.route else None,
-            "zone": str(mission.campaign.zone) if mission.campaign.zone else None,
+            "zone": str(mission.effective_zone) if mission.effective_zone else None,
+            "visibility": mission.visibility,
             "metadata": mission.metadata or {},
             "stats": {
                 "total": total,
@@ -371,7 +384,7 @@ class ProjectMissionsApiView(MeshGatedApiView):
         if not request.user or not request.user.is_authenticated:
             return JsonResponse({"error": "Not authenticated."}, status=401)
         missions = (
-            Mission.objects.filter(campaign__project_id=pk)
+            visible_missions_for(request.user, Mission.objects.filter(campaign__project_id=pk))
             .select_related("campaign")
             .order_by("campaign__name", "title")
         )
@@ -402,7 +415,9 @@ class SprintMetricsApiView(MeshGatedApiView):
             return JsonResponse({"error": "Project not found."}, status=404)
 
         from toto.kanban.metrics import SprintMetricsCalculator
-        calc = SprintMetricsCalculator(project, sprint_id=request.GET.get("sprint"))
+        calc = SprintMetricsCalculator(
+            project, sprint_id=request.GET.get("sprint"), user=request.user
+        )
         summary = calc.get_summary()
 
         def sprint_to_dict(item):
@@ -468,7 +483,7 @@ class BacklogApiView(MeshGatedApiView):
             return JsonResponse({"error": "Project not found."}, status=404)
 
         from toto.kanban.metrics import MissionMetricsCalculator
-        calc = MissionMetricsCalculator(project)
+        calc = MissionMetricsCalculator(project, user=request.user)
         summary = calc.get_context_data()
 
         rows = []
@@ -513,7 +528,7 @@ class EisenhowerMatrixApiView(MeshGatedApiView):
             return JsonResponse({"error": "Project not found."}, status=404)
 
         missions = (
-            Mission.objects.filter(campaign__project=project)
+            visible_missions_for(request.user, Mission.objects.filter(campaign__project=project))
             .select_related("campaign")
             .order_by("title")
         )

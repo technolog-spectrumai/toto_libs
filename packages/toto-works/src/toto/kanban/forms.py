@@ -1,19 +1,39 @@
 from django import forms
 
+from django.utils import timezone
+
+from toto.events.models import ScheduledEvent
+from toto.people.models import Person
 from toto.kanban.models import (
-    Task, TaskRelation, Mission, Sprint, Practitioner, SYMMETRIC_RELATIONS,
+    Task, TaskRelation, Mission, Campaign, Sprint, Practitioner,
+    SYMMETRIC_RELATIONS, visible_missions_for,
 )
+
+
+def _linkable_events(instance=None):
+    """Events worth offering in a link dropdown: upcoming ones, plus whatever
+    is already linked — or editing an old object fails validation on a field
+    the user never touched. Deliberately not "unlinked only": one event may
+    legitimately anchor several missions and tasks.
+    """
+    qs = ScheduledEvent.objects.filter(end_time__gte=timezone.now())
+    if instance is not None and getattr(instance, "calendar_event_id", None):
+        qs = qs | ScheduledEvent.objects.filter(pk=instance.calendar_event_id)
+    return qs.order_by("start_time")
 
 
 class TaskCreateForm(forms.ModelForm):
 
-    def __init__(self, *args, project=None, **kwargs):
+    def __init__(self, *args, project=None, user=None, **kwargs):
         super().__init__(*args, **kwargs)
 
         if project:
-            self.fields["mission"].queryset = Mission.objects.filter(
-                campaign__project=project
-            )
+            missions = Mission.objects.filter(campaign__project=project)
+            if user is not None:
+                # Without this the dropdown lists private missions' titles to
+                # every project member.
+                missions = visible_missions_for(user, missions)
+            self.fields["mission"].queryset = missions
             self.fields["sprint"].queryset = Sprint.objects.filter(
                 project=project
             )
@@ -22,6 +42,8 @@ class TaskCreateForm(forms.ModelForm):
             ).select_related("person").distinct()
             self.fields["assignee"].queryset = practitioners
             self.fields["reviewer"].queryset = practitioners
+
+        self.fields["calendar_event"].queryset = _linkable_events(self.instance)
 
     class Meta:
         model = Task
@@ -33,6 +55,8 @@ class TaskCreateForm(forms.ModelForm):
             "assignee",
             "reviewer",
             "due_date",
+            "location",
+            "calendar_event",
             "weight",
         ]
 
@@ -60,6 +84,8 @@ class TaskCreateForm(forms.ModelForm):
                 "class": _input,
                 "x-bind:class": _dark,
             }),
+            "location": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "calendar_event": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
             "weight": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
         }
 
@@ -142,3 +168,99 @@ class TaskRelationForm(forms.ModelForm):
         if commit:
             relation.save()
         return relation
+
+
+class MissionForm(forms.ModelForm):
+    """Create or edit a mission — the fields admin used to gate.
+
+    Zone-containment errors surface on the zone field automatically:
+    ModelForm validation runs Mission.clean via full_clean.
+    """
+
+    def __init__(self, *args, project=None, user=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.project = project
+
+        if project:
+            self.fields["campaign"].queryset = Campaign.objects.filter(project=project)
+        self.fields["visible_to"].queryset = Person.objects.order_by("display_name")
+        self.fields["calendar_event"].queryset = _linkable_events(self.instance)
+
+    class Meta:
+        model = Mission
+        fields = [
+            "title",
+            "description",
+            "campaign",
+            "urgency",
+            "impact",
+            "owner",
+            "location",
+            "route",
+            "zone",
+            "visibility",
+            "visible_to",
+            "calendar_event",
+        ]
+
+        _input = "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300"
+        _dark = "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+
+        widgets = {
+            "title": forms.TextInput(attrs={
+                "class": _input,
+                "x-bind:class": _dark,
+                "placeholder": "Mission title",
+            }),
+            "description": forms.Textarea(attrs={
+                "class": _input,
+                "x-bind:class": _dark,
+                "rows": 4,
+            }),
+            "campaign": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "urgency": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "impact": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "owner": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "location": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "route": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "zone": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "visibility": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "visible_to": forms.SelectMultiple(attrs={
+                "class": _input,
+                "x-bind:class": _dark,
+                "size": 6,
+            }),
+            "calendar_event": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+        }
+
+
+class LinkedEventCreateForm(forms.ModelForm):
+    """The minimal event a mission or task can schedule itself onto.
+
+    end <= start is refused for free: ModelForm validation runs
+    EventBase.clean.
+    """
+
+    class Meta:
+        model = ScheduledEvent
+        fields = ["title", "start_time", "end_time"]
+
+        _input = "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300"
+        _dark = "darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+
+        widgets = {
+            "title": forms.TextInput(attrs={"class": _input, "x-bind:class": _dark}),
+            "start_time": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "class": _input, "x-bind:class": _dark},
+                format="%Y-%m-%dT%H:%M",
+            ),
+            "end_time": forms.DateTimeInput(
+                attrs={"type": "datetime-local", "class": _input, "x-bind:class": _dark},
+                format="%Y-%m-%dT%H:%M",
+            ),
+        }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for name in ("start_time", "end_time"):
+            self.fields[name].input_formats = ["%Y-%m-%dT%H:%M"]

@@ -108,6 +108,28 @@
           <i class="fa-solid fa-gauge-high"></i>
           {% trans "Metrics" %}
         </a>
+
+        {% if first_campaign %}
+        <a
+          href="{% url 'kanban:campaign_map' first_campaign.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-map-location-dot"></i>
+          {% trans "Map" %}
+        </a>
+
+        <a
+          href="{% url 'kanban:campaign_calendar' first_campaign.pk %}"
+          :class="darkMode
+            ? 'border-accent-1 bg-bubble-bg-dark'
+            : 'border-accent-2 bg-bubble-bg-light'"
+          class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-calendar-days"></i>
+          {% trans "Calendar" %}
+        </a>
+        {% endif %}
       </nav>
     </header>
 

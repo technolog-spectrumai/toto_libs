@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.utils.timezone import now
 
 from .models import (
-    Project, Task, TaskRelation, Sprint, Mission, Campaign,
+    Project, Task, TaskRelation, Sprint, Mission, MissionAttachment, Campaign,
     DocumentationPage, DocumentationSection,
     Practitioner, ProjectCommitment,
 )
@@ -142,14 +142,24 @@ class MissionAdminForm(forms.ModelForm):
         fields = "__all__"
 
 
+class MissionAttachmentInline(admin.TabularInline):
+    model = MissionAttachment
+    extra = 0
+    fields = ("vault_file", "label", "added_by", "created_at")
+    readonly_fields = ("created_at",)
+    raw_id_fields = ("vault_file", "added_by")
+
+
 @admin.register(Mission)
 class MissionAdmin(admin.ModelAdmin):
     form = MissionAdminForm
-    list_display = ("title", "campaign", "urgency", "impact", "owner", "task_count")
-    list_filter = ("campaign", "urgency", "impact")
+    list_display = ("title", "campaign", "visibility", "urgency", "impact", "owner", "task_count")
+    list_filter = ("visibility", "campaign", "urgency", "impact")
     search_fields = ("title", "description")
     ordering = ("campaign", "title")
-    inlines = [TaskInlineForMission, DocumentationPageInline]
+    filter_horizontal = ("visible_to",)
+    raw_id_fields = ("owner", "location", "route", "zone", "calendar_event")
+    inlines = [TaskInlineForMission, DocumentationPageInline, MissionAttachmentInline]
 
     def task_count(self, obj):
         return obj.tasks.count()
@@ -183,7 +193,7 @@ class TaskAdmin(admin.ModelAdmin):
     list_filter = ("status", "due_date", "sprint", "mission")
     search_fields = ("title", "description")
     ordering = ("position",)
-    raw_id_fields = ("assignee", "reviewer", "mission", "sprint")
+    raw_id_fields = ("assignee", "reviewer", "mission", "sprint", "location", "calendar_event")
     # Derived from status by Task.save; editable here it would silently revert.
     readonly_fields = ("completed_at",)
     actions = ["convert_to_event"]
