@@ -203,6 +203,20 @@ def reconcile_completed_at(apps, schema_editor):
         Task.objects.bulk_update(to_clear, ["completed_at", "metadata"], batch_size=500)
 
 
+def flush_deferred_constraints(apps, schema_editor):
+    """Fire pending foreign-key triggers so the next ALTER TABLE is allowed.
+
+    Postgres refuses to ALTER a table that has pending trigger events, and the
+    data steps above UPDATE kanban_task inside this same transaction — so
+    dropping Task.column right afterwards fails with "cannot ALTER TABLE
+    because it has pending trigger events". Forcing the deferred constraints to
+    resolve now clears them. SQLite has no deferred triggers and no such
+    statement, hence the vendor guard.
+    """
+    if schema_editor.connection.vendor == "postgresql":
+        schema_editor.execute("SET CONSTRAINTS ALL IMMEDIATE")
+
+
 def raise_irreversible(apps, schema_editor):
     raise RuntimeError(
         "kanban.0003 cannot be reversed. The collapse is not injective — 'In "
@@ -254,6 +268,9 @@ class Migration(migrations.Migration):
         migrations.RunPython(lift_auditors_to_project, migrations.RunPython.noop, elidable=False),
         migrations.RunPython(renumber_positions, migrations.RunPython.noop, elidable=False),
 
+        migrations.RunPython(
+            flush_deferred_constraints, migrations.RunPython.noop, elidable=False
+        ),
         migrations.RemoveField(model_name="column", name="auditors"),
         migrations.RemoveField(model_name="column", name="project"),
         migrations.RemoveField(model_name="task", name="column"),
@@ -318,6 +335,9 @@ class Migration(migrations.Migration):
 
         # Must run before AddConstraint or the constraint cannot be added.
         migrations.RunPython(reconcile_completed_at, migrations.RunPython.noop, elidable=False),
+        migrations.RunPython(
+            flush_deferred_constraints, migrations.RunPython.noop, elidable=False
+        ),
         migrations.AddIndex(
             model_name="task",
             index=models.Index(fields=["mission", "status"], name="kanban_task_mission_status"),
