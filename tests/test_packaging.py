@@ -175,7 +175,13 @@ def test_the_media_sub_nav_ships_in_toto_base(owner):
     # INSTALLED apps, so a shared partial living in either app would vanish
     # exactly when that app is switched off — which is what BUILD_VOD and
     # BUILD_OCR being independent makes routine.
-    assert owner.get("toto/core/templates/media/_tabs.html") == "toto-base"
+    #
+    # The path matters as much as the package. This started life at
+    # toto/core/templates/media/_tabs.html and shipped in nothing, because
+    # .gitignore's `media/` rule (for MEDIA_ROOT) matches at any depth and quietly
+    # kept it out of every commit. This assertion is what caught that.
+    assert owner.get("toto/core/templates/oya/_media_tabs.html") == "toto-base"
+    assert not [n for n in owner if "/templates/media/" in n]
 
 
 def test_nothing_in_the_suite_depends_on_toto_media_ops(wheels):

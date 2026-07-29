@@ -1,0 +1,60 @@
+{% load i18n app_tags %}
+{% comment %}Shared sub-nav for the Media section: video | ocr.
+   Caller passes active_tab = video | ocr.
+
+   Two apps, two independent flags (BUILD_VOD, BUILD_OCR), and neither implies the
+   other — so on a real host this bar may hold two entries, one, or none. Each is
+   therefore doubly guarded, and both guards are load-bearing:
+
+     * `|app_installed` hides the tab when the app is not in INSTALLED_APPS;
+     * the `url … as` form swallows NoReverseMatch, so an app that is installed
+       but mounted at no URL degrades to no tab rather than a 500.
+
+   It lives in toto-base rather than in vod or ocr on purpose: Django only loads
+   template dirs for INSTALLED apps, so a partial living in, say, vod/templates/
+   would vanish exactly when vod is switched off — which is the case these flags
+   create. core already knows these labels (see core.views._manual_features).
+
+   It sits in oya/ rather than a templates/media/ directory of its own for a dull
+   but expensive reason: .gitignore has a `media/` rule for MEDIA_ROOT, and it
+   matches at any depth, so a templates/media/ partial is silently never committed.
+   The file existed, rendered locally and shipped in no wheel until zenobia's
+   clean-env gate caught the missing template. oya/ is where core's shared
+   templates live anyway (base.html, _dashboard_cards.html).
+
+   The ffmpeg half of this section — manta, fileservices and transcription — moved
+   to the toto-media-ops package in 1.21, which no host pins (see that package's
+   README). Their tabs went with them rather than being left to self-hide, so this
+   bar states what a host can actually have. A host that does pin that wheel adds
+   its tabs back here.
+
+   Active state is decided server-side; dark/light stays Alpine (darkMode).
+
+   Written as a comment tag rather than a hash-brace comment because that form is
+   single-line only — spanning one over several lines makes Django render the whole
+   block as visible page text.{% endcomment %}
+<nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Media navigation' %}">
+
+  {% if "toto.vod"|app_installed %}{% url 'vod:library' as vod_url %}{% if vod_url %}
+  <a href="{{ vod_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'video' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-video"></i>{% trans "Video" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.ocr"|app_installed %}{% url 'ocr:home' as ocr_url %}{% if ocr_url %}
+  <a href="{{ ocr_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'ocr' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-file-lines"></i>{% trans "OCR" %}</a>
+  {% endif %}{% endif %}
+
+</nav>

@@ -22,6 +22,42 @@ PYPROJECTS = sorted((REPO_ROOT / "packages").glob("*/pyproject.toml"))
 # --- the repository itself ------------------------------------------------
 
 
+# Build artefacts and caches. Anything else under packages/ that git ignores is a
+# source file that will never be committed and so will never reach a wheel.
+_IGNORABLE_UNDER_PACKAGES = ("build/", "dist/", "__pycache__/", ".egg-info")
+
+
+def test_no_source_file_under_packages_is_gitignored():
+    """A gitignored source file is invisible twice over: it works locally and ships
+    in nothing.
+
+    This exists because of a real one. The shared Media sub-nav was written to
+    ``packages/toto-base/src/toto/core/templates/media/_tabs.html`` and rendered
+    perfectly from the source tree — but ``.gitignore`` carries ``media/`` for
+    MEDIA_ROOT, and a bare directory rule matches at *any* depth, so the file was
+    never committed and never packaged. It took a host's clean-env gate, several
+    steps later, to surface it as a missing template. It now lives at
+    ``oya/_media_tabs.html``.
+    """
+    done = subprocess.run(
+        ["git", "-C", str(REPO_ROOT), "ls-files", "--others", "--ignored",
+         "--exclude-standard", "--directory", "packages/"],
+        capture_output=True, text=True,
+    )
+    if done.returncode != 0:          # not a git checkout (e.g. a vendored subtree)
+        pytest.skip("not a git checkout")
+    offenders = [
+        line for line in done.stdout.splitlines()
+        if line.strip() and not any(part in line for part in _IGNORABLE_UNDER_PACKAGES)
+    ]
+    assert not offenders, (
+        "gitignored paths under packages/ that are not build output:\n  "
+        + "\n  ".join(offenders)
+        + "\nThese will never be committed and never ship in a wheel. Rename them "
+          "out of the ignored path rather than using `git add -f`."
+    )
+
+
 def test_every_package_is_at_the_suite_version():
     for path in PYPROJECTS:
         project = tomllib.loads(path.read_text())["project"]
