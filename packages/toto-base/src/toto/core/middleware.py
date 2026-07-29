@@ -1,6 +1,4 @@
-import time
 from django.conf import settings
-from django.core.cache import cache
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import translation
@@ -45,10 +43,14 @@ class ProfileLanguageMiddleware:
 
 
 class PlatformMiddleware:
-    """
-    Middleware that enforces:
-    - Redirect to maintenance if Platform.active is False
-    - Rate limiting per IP using Platform settings
+    """Redirect to the maintenance page while Platform.active is False.
+
+    That is all it does. It ran a per-IP rate limiter too, until it turned out
+    the refusal had been commented out and only the cache round-trips remained.
+    Rate limiting is nginx's job now.
+
+    This runs early on every request, so keep it cheap and keep everything it
+    touches bounded.
     """
 
     def __init__(self, get_response):
@@ -65,29 +67,24 @@ class PlatformMiddleware:
                     if request.path != reverse("core:maintenance"):
                         return redirect(reverse("core:maintenance"))
 
-            # 2. Rate limiting check
-            if platform:
-                window = platform.rate_limit_window
-                max_requests = platform.rate_limit_max_requests
-            else:
-                window = 60
-                max_requests = 10
-
-            ip = request.META.get("REMOTE_ADDR", "unknown")
-            key = f"rl:{ip}"
-            requests = cache.get(key, [])
-            now = time.time()
-            # Keep only requests in the last `window` seconds
-            requests = [t for t in requests if now - t < window]
-            # if len(requests) >= max_requests:
+            # There used to be a rate limiter here. Its refusal was commented
+            # out, so the cache.get/cache.set pair around it ran on every single
+            # request and fed a decision that was never taken — two Redis
+            # round-trips per request, in the second middleware, for nothing.
             #
-            #     return HttpResponse("Too many requests, slow down!", status=429)
-
-            requests.append(now)
-            cache.set(key, requests, timeout=window)
+            # Worse than useless: with no socket timeout on the cache client, a
+            # *hung* Redis (a BGSAVE stall, swap, a dropped conntrack entry)
+            # leaves the connection established and recv() blocking forever.
+            # That is not an exception, so the guard below never caught it — the
+            # whole host wedged in its second middleware, healthcheck included.
+            #
+            # Rate limiting belongs in nginx, where it is now (limit_req on
+            # /sso/), and where it costs the app nothing.
 
         except Exception:
-            # Fail gracefully if DB/cache not ready
+            # Fail gracefully if the DB is not ready. Note this only covers
+            # errors, never hangs — anything reached from here must carry its
+            # own timeout.
             pass
 
         return self.get_response(request)
