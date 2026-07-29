@@ -4,20 +4,21 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Two apps over vault files: video/audio playback (vod) and text recognition
-# (ocr). Both are stateless — neither owns a table — and both are independently
-# switchable (BUILD_VOD, BUILD_OCR).
+# One app: toto.vod — video and audio playback over the vault. No models (it
+# dropped them in migration 0002), no celery task, no native binary. Switched by
+# BUILD_VOD, which defaults from the older BUILD_MEDIA.
 #
-# This was the heavy package until 1.21, when the ffmpeg processing half —
-# manta, fileservices and transcription — was retired to toto_libs/limbo/. That
-# is what dropped the toto-flow dependency: fileservices had a live FK to
-# workflows.WorkflowRun and imported its predefined-task registry at module
+# This was the heavy package until 1.21, when the processing tier — manta,
+# fileservices, transcription and ocr — moved to toto-media-ops, which no host
+# pins. That is what dropped the toto-flow dependency: fileservices had a live FK
+# to workflows.WorkflowRun and imported its predefined-task registry at module
 # scope, and it was the last thing here that needed either. Nothing left in this
-# package imports toto-flow, so a host can now install toto-media without the
-# workflow engine. Keep it that way; see the PARKED.md files for the reasoning.
+# package imports toto-flow, so a host can install toto-media without the workflow
+# engine — which is what makes BUILD_MEDIA=1 viable on a lean WSGI host. Keep it
+# that way: anything needing a worker or a binary belongs in toto-media-ops.
 name = "toto-media"
 version = "1.21"
-description = "toto media over the vault: video/audio playback and OCR"
+description = "toto video and audio playback over the vault"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"

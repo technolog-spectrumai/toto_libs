@@ -43,12 +43,17 @@ FEATURE_APPS = {
     ],
     "chat": ["toto.forum"],
     "weather": ["toto.weather"],
-    # The media section, as of 1.21: two independent apps, both in toto-media, both
-    # cheap. There is no "media" key any more — the processing stack it named
-    # (manta + fileservices + transcription, and the ffmpeg layer under them) is
-    # parked in toto_libs/limbo/. BUILD_MEDIA still resolves, as the umbrella
-    # default for "vod"; see toto.features.
+    # The media section, as of 1.21. There is no "media" key any more: the processing
+    # stack it named (manta + fileservices + transcription) moved to the
+    # toto-media-ops package, which no host pins. BUILD_MEDIA still resolves, as the
+    # umbrella default for "vod"; see toto.features.
     "vod": ["toto.vod"],        # video-on-demand vault play plugin + library
+    # The toto-media-ops entries below install nothing on any current host, because
+    # no host pins that wheel. They are the contract for one that does — see
+    # packages/toto-media-ops/README.md. transcription has no entry on purpose: it
+    # has no UI at all, so there is nothing to switch on.
+    "manta": ["toto.manta"],                  # ffmpeg/ffprobe command builder
+    "fileservices": ["toto.fileservices"],    # run substrate + the vault wand
     "graph": [
         "toto.ravioli",         # sole Neo4j boundary
         "toto.sql_neo4j_sync",  # SQL→Neo4j projection/sync layer
@@ -56,9 +61,9 @@ FEATURE_APPS = {
         "toto.bento",           # first-class Neo4j graph editor
         "toto.ingestor",        # text → Bento-validated graph patch
     ],
-    # toto.ocr moved from toto-graph to toto-media in 1.21 and no longer implies
-    # the graph — its ingestor handoff greys itself out. BUILD_OCR is opt-in and
-    # brings the tesseract apt layer with it.
+    # toto.ocr left toto-graph for toto-media-ops in 1.21 and no longer implies the
+    # graph — its ingestor handoff greys itself out. Opt-in, and brings a tesseract
+    # apt layer with it.
     "ocr": ["toto.ocr"],
     "connectors": ["toto.connectors"],
     "formica": ["toto.formica"],
@@ -73,8 +78,9 @@ FEATURE_APPS = {
 
 # Celery task modules for explicit autodiscovery (portal celery_app list,
 # minus the long-dangling "toto.bazaar" whose app left the tree).
-# "toto.transcription" and "toto.manta" left in 1.21 with their apps; nothing in
-# toto-media has a celery task any more.
+# "toto.transcription" and "toto.manta" left in 1.21 for toto-media-ops, which no
+# host pins; nothing in toto-media has a celery task any more. A host that pins
+# that wheel must add its labels back here, or its jobs are never discovered.
 TASK_MODULES = [
     "toto.workflows",
     "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
