@@ -52,10 +52,11 @@ class Command(IngressCommand):
         self._seed_base_currencies(currency_assets)
 
         if not self.full:
-            # A real build ends here: ASR to spend, TPLN to account in, nothing
-            # else. Every other asset below is demonstration material.
+            # A real build ends here: the host's gas to spend, TPLN to account
+            # in, nothing else. Every other asset below is demonstration material.
+            gas_ticker = currency_assets["GAS"].unit_name
             self.stdout.write(self.style.SUCCESS(
-                "✅  Base currency ingress complete (ASR + TPLN). "
+                f"✅  Base currency ingress complete ({gas_ticker} + TPLN). "
                 "Use --full for the demo assets and data."
             ))
             return
