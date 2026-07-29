@@ -1,10 +1,16 @@
-"""OCR — a Knowledge-Graph (ravioli) sub-tab.
+"""OCR — a Media sub-tab.
 
 A deliberately small, stateless flow: upload a screenshot → run Tesseract →
 show the text → optionally save the screenshot into a vault bucket (and folder)
 → forward the text to the ingestor. No DB models; the OCR engine is the shared
 ``OcrHelper`` (pytesseract) and saving reuses the canonical VaultFile create
 pattern.
+
+It sat under the Knowledge Graph until 1.21, which is why the ingestor handoff
+below looks the way it does. OCR needs no Neo4j of its own: it takes a file and
+shells out to a native binary, exactly as manta does to ffmpeg, so it now lives
+in toto-media behind its own BUILD_OCR flag. The graph is an optional *sink* for
+the text, and every reference to it here is soft — see ``ocr_home``.
 """
 from __future__ import annotations
 

@@ -82,27 +82,76 @@ def test_map_features_without_geometry_are_a_hard_error():
 
 
 # ---------------------------------------------------------------------------
-# vod, split out of the media group
+# The media section: vod and ocr, independent of each other and of everything
+# else. The ffmpeg half (manta, fileservices, transcription) was retired in 1.21
+# — see toto_libs/limbo/*/PARKED.md — so these tests also pin down that the flags
+# behind it are gone rather than merely defaulted off.
 # ---------------------------------------------------------------------------
 
 def test_vod_follows_media_when_unnamed():
-    # The back-compat path: a host that never says BUILD_VOD gets exactly what
-    # it got when vod was part of the media block.
+    # The back-compat path, and the whole reason BUILD_MEDIA still exists: six
+    # shipped profiles set it and nothing else, and they must keep playback.
     assert resolve(BUILD_MEDIA=1).vod is True
     assert resolve().vod is False
 
 
-def test_vod_can_be_kept_without_the_processing_stack():
-    # The point of the split: the vault keeps its play button, the image keeps
-    # no ffmpeg and no transcription.
-    light = resolve(BUILD_VOD=1, BUILD_MEDIA=0)
-    assert light.vod is True
-    assert (light.media, light.manta, light.fileservices) == (False, False, False)
-    assert light.ffmpeg is False
-
-
 def test_vod_can_be_dropped_from_a_media_host():
     assert resolve(BUILD_MEDIA=1, BUILD_VOD=0).vod is False
+
+
+def test_media_no_longer_drags_the_celery_layer():
+    # What the 1.21 retirement bought. Before it, BUILD_MEDIA reached workflows
+    # through fileservices' FK and so forced the realtime pip layer; zenobia_mini
+    # documented that as the reason it could not be lean. vod is a template and a
+    # queryset, so a media host can now be plain WSGI.
+    f = resolve(BUILD_MEDIA=1)
+    assert f.vod is True
+    assert (f.workflows, f.realtime, f.needs_channels) == (False, False, False)
+
+
+def test_ocr_stands_alone():
+    # ocr used to default from the neo4j tier and to force `graph` via a closure,
+    # which cost five Neo4j apps and an auto-started neo4j container for one
+    # optional button that greys itself out. It is opt-in and self-contained now.
+    f = resolve(BUILD_OCR=1)
+    assert f.ocr is True
+    assert f.tesseract is True                      # brings its own binary
+    assert (f.graph, f.neo4j, f.vicuna) == (False, False, False)
+    assert (f.workflows, f.realtime) == (False, False)
+
+
+def test_ocr_is_not_implied_by_the_neo4j_tier_any_more():
+    assert resolve(BUILD_NEO4J=1).ocr is False
+    assert resolve(BUILD_GRAPH=1).ocr is False
+
+
+def test_the_graph_no_longer_needs_ocr_to_be_off_or_on():
+    # The reverse direction of the same closure: graph still stands up by itself.
+    f = resolve(BUILD_GRAPH=1)
+    assert (f.graph, f.neo4j) == (True, True)
+
+
+def test_vod_and_ocr_do_not_imply_each_other():
+    assert resolve(BUILD_VOD=1).ocr is False
+    assert resolve(BUILD_OCR=1).vod is False
+
+
+@pytest.mark.parametrize("attr", ["manta", "fileservices", "ffmpeg"])
+def test_the_retired_media_fields_are_gone(attr):
+    # Deliberately asserted rather than left implicit: these three were read by
+    # host settings and by deploy.py's Dockerfile ARG mapping, so a stray
+    # reference is a build failure, not a silent False.
+    assert not hasattr(resolve(), attr)
+
+
+@pytest.mark.parametrize("name", ["BUILD_MANTA", "BUILD_FILESERVICES", "INSTALL_FFMPEG"])
+def test_a_retired_flag_is_ignored_rather_than_an_error(name):
+    # Unlike BUILD_STUDIO, these are NOT honoured as fallbacks — the apps behind
+    # them are in limbo. An old config keeps deploying; it just gets nothing for
+    # that key. Failing loudly here would strand every profile that still sets it.
+    f = resolve(**{name: 1})
+    assert (f.media, f.vod, f.ocr) == (False, False, False)
+    assert f.realtime is False
 
 
 # ---------------------------------------------------------------------------

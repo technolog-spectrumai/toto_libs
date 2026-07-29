@@ -5,5 +5,6 @@ from . import views
 app_name = "vod"
 
 urlpatterns = [
+    path("", views.LibraryView.as_view(), name="library"),
     path("play/<int:file_pk>/", views.vault_file_play, name="vault_file_play"),
 ]

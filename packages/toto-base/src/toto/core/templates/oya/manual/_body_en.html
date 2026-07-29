@@ -19,8 +19,9 @@
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Polls</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Chat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
+    {% if features.vod %}<a href="#video" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Video</a>{% endif %}
+    {% if features.ocr %}<a href="#ocr" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">OCR</a>{% endif %}
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Knowledge Graph</a>{% endif %}
-    {% if features.manta %}<a href="#manta" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Media toolbox</a>{% endif %}
     {% if features.steven %}<a href="#steven" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Assistant</a>{% endif %}
     {% if features.grafana %}<a href="#monitoring" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Monitoring</a>{% endif %}
   </div>
@@ -104,7 +105,6 @@
     {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — edit <code>.tex</code> files with a live preview and compile them to PDF.</li>{% endif %}
     {% if features.pyeditor %}<li><span class="font-semibold">Python</span> — edit and run <code>.py</code> scripts straight from the storage.</li>{% endif %}
-    {% if features.fileservices %}<li><span class="font-semibold">File services</span> — the wand button runs a service over a file (e.g. media conversion or info, text recognition, transcription — depending on server configuration). Results are saved back as new files.</li>{% endif %}
   </ul>
 </section>
 {% endif %}
@@ -206,6 +206,40 @@
 </section>
 {% endif %}
 
+{% if features.vod %}
+<!-- Video -->
+<section id="video"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-video"></i>Video</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    The <a href="{% url 'vod:library' %}" class="font-semibold underline hover:opacity-80">Video</a>
+    page lists every audio and video file in the storage that you can open, newest first.
+    Click one to play it in the browser — nothing is converted or downloaded first. You can
+    also start playback straight from a file in the storage.
+  </p>
+</section>
+{% endif %}
+
+{% if features.ocr %}
+<!-- OCR -->
+<section id="ocr"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-file-lines"></i>Text recognition (OCR)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    <a href="{% url 'ocr:home' %}" class="font-semibold underline hover:opacity-80">OCR</a>
+    reads the text out of a screenshot or photo. Load an image, pick its language, and the
+    extracted text appears beside it. You can optionally save the image into a storage
+    bucket at the same time.{% if features.graph %} With the Knowledge Graph enabled, a
+    button hands the text to the Knowledge tab so it can be turned into nodes and edges;
+    without it the button is simply absent.{% endif %}
+  </p>
+</section>
+{% endif %}
+
 {% if features.graph %}
 <!-- Knowledge Graph -->
 <section id="graph"
@@ -223,24 +257,9 @@
     <li><span class="font-semibold">Data</span> — browse and edit the graph: define node categories and edge types, then add and modify nodes and edges.</li>
     {% if features.workflows %}<li><span class="font-semibold">Analysis</span> — run predefined graph analyses; results are saved to the storage.</li>{% endif %}
     <li><span class="font-semibold">Knowledge</span> — paste text and let the platform suggest entities and relations; review the proposal on a canvas and apply it to the graph.</li>
-    {% if features.ocr %}<li><span class="font-semibold">OCR</span> — upload a screenshot or photo, extract its text, and feed it into the knowledge pipeline above.</li>{% endif %}
+    {% if features.ocr %}<li><span class="font-semibold">OCR</span> — text extracted from an image (see the OCR section) can be handed straight to Knowledge.</li>{% endif %}
     <li>Objects elsewhere in the platform (for example events or locations) offer an <span class="font-semibold">Export to graph</span> button that adds them, with their direct connections, to the graph.</li>
   </ul>
-</section>
-{% endif %}
-
-{% if features.manta %}
-<!-- Media toolbox -->
-<section id="manta"
-  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-  class="rounded-2xl border p-5 shadow-sm sm:p-6">
-  <h2 class="flex items-center gap-2 text-lg font-bold">
-    <i class="fa-solid fa-clapperboard"></i>Media toolbox (Manta)</h2>
-  <p class="mt-2 text-sm leading-6 opacity-80">
-    Manta is a command builder for media work: compose conversion, inspection, transcription
-    or text-recognition jobs over files from the storage, preview the exact command live,
-    and run it. Outputs are saved back to the storage.
-  </p>
 </section>
 {% endif %}
 

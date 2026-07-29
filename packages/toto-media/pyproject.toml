@@ -4,19 +4,27 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# Video/media apps: transcription, video-on-demand, ffmpeg run services and the
-# manta command builder. Only media-capable hosts (zenobia, delta) install it.
+# Two apps over vault files: video/audio playback (vod) and text recognition
+# (ocr). Both are stateless — neither owns a table — and both are independently
+# switchable (BUILD_VOD, BUILD_OCR).
+#
+# This was the heavy package until 1.21, when the ffmpeg processing half —
+# manta, fileservices and transcription — was retired to toto_libs/limbo/. That
+# is what dropped the toto-flow dependency: fileservices had a live FK to
+# workflows.WorkflowRun and imported its predefined-task registry at module
+# scope, and it was the last thing here that needed either. Nothing left in this
+# package imports toto-flow, so a host can now install toto-media without the
+# workflow engine. Keep it that way; see the PARKED.md files for the reasoning.
 name = "toto-media"
-version = "1.20"
-description = "toto video, transcription and media processing"
+version = "1.21"
+description = "toto media over the vault: video/audio playback and OCR"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.20",
-    "toto-flow==1.20",
+    "toto-base==1.21",
 ]
 
 [tool.setuptools.packages.find]

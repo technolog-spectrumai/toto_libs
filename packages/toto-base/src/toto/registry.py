@@ -43,16 +43,12 @@ FEATURE_APPS = {
     ],
     "chat": ["toto.forum"],
     "weather": ["toto.weather"],
-    "media": [                  # BUILD_MEDIA — the video PROCESSING stack
-        "toto.manta",           # media/transcribe command builder
-        "toto.transcription",   # Whisper audio/video transcription
-        "toto.fileservices",    # ffmpeg/ffprobe run services
-    ],
-    # Split out of "media": vod has no models, no tasks and needs no ffmpeg — it
-    # is the vault's play button. BUILD_VOD defaults to media, so a host that
-    # names neither is unaffected; a host that wants playback without the
-    # processing stack sets BUILD_VOD=1 and BUILD_MEDIA=0.
-    "vod": ["toto.vod"],        # video-on-demand vault play plugin
+    # The media section, as of 1.21: two independent apps, both in toto-media, both
+    # cheap. There is no "media" key any more — the processing stack it named
+    # (manta + fileservices + transcription, and the ffmpeg layer under them) is
+    # parked in toto_libs/limbo/. BUILD_MEDIA still resolves, as the umbrella
+    # default for "vod"; see toto.features.
+    "vod": ["toto.vod"],        # video-on-demand vault play plugin + library
     "graph": [
         "toto.ravioli",         # sole Neo4j boundary
         "toto.sql_neo4j_sync",  # SQL→Neo4j projection/sync layer
@@ -60,6 +56,9 @@ FEATURE_APPS = {
         "toto.bento",           # first-class Neo4j graph editor
         "toto.ingestor",        # text → Bento-validated graph patch
     ],
+    # toto.ocr moved from toto-graph to toto-media in 1.21 and no longer implies
+    # the graph — its ingestor handoff greys itself out. BUILD_OCR is opt-in and
+    # brings the tesseract apt layer with it.
     "ocr": ["toto.ocr"],
     "connectors": ["toto.connectors"],
     "formica": ["toto.formica"],
@@ -74,13 +73,13 @@ FEATURE_APPS = {
 
 # Celery task modules for explicit autodiscovery (portal celery_app list,
 # minus the long-dangling "toto.bazaar" whose app left the tree).
+# "toto.transcription" and "toto.manta" left in 1.21 with their apps; nothing in
+# toto-media has a celery task any more.
 TASK_MODULES = [
     "toto.workflows",
     "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
     "toto.mandragora",
     "toto.ravioli",
-    "toto.transcription",
-    "toto.manta",
     "toto.connectors",
     "toto.formica",
 ]
