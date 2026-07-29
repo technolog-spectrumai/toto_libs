@@ -1,0 +1,113 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Transactions" %}{% endblock %}
+{% block tab_transactions %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm">
+    <form method="get" class="space-y-4">
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Asset" %}</label>
+        <select
+          name="asset"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "All assets" %}</option>
+          {% for asset in assets %}
+            <option value="{{ asset.unit_name }}" {% if asset_filter == asset.unit_name %}selected{% endif %}>
+              {{ asset.unit_name }} — {{ asset.name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Type" %}</label>
+        <select
+          name="type"
+          :class="darkMode
+            ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+            : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "All types" %}</option>
+          {% for value, label in transaction_types %}
+            <option value="{{ value }}" {% if tx_type_filter == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-filter"></i>
+        {% trans "Apply" %}
+      </button>
+    </form>
+
+    <div class="mt-5">
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+        <div class="text-2xl font-bold">{{ total_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Matching transactions" %}</div>
+      </div>
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for tx in transactions %}
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+        class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="truncate font-bold">
+                {{ tx.reference }}
+              </span>
+              <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                {{ tx.get_transaction_type_display }}
+              </span>
+              {% if tx.posted %}
+                <span class="shrink-0 rounded px-2 py-0.5 text-xs font-semibold"
+                      :class="darkMode ? 'bg-success-dark/10 text-success-dark' : 'bg-success-light/10 text-success-light'">{% trans "Posted" %}</span>
+              {% endif %}
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs opacity-70">
+              {% if tx.asset %}
+                <span><i class="fa-solid fa-coins mr-1"></i>{{ tx.asset.unit_name }}</span>
+              {% endif %}
+              {% if tx.description %}
+                <span class="truncate max-w-xs">{{ tx.description|truncatewords:10 }}</span>
+              {% endif %}
+              <span>{{ tx.created_at|date:"M d, Y H:i" }}</span>
+            </div>
+          </div>
+          <a
+            href="{% url 'assets:transaction_detail' tx.pk %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+            {% trans "View" %}
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-list text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No transactions found" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Clear the filters or create transactions via the service API." %}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

@@ -1,0 +1,275 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{{ asset.name }}{% endblock %}
+{% block tab_assets %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'assets:asset_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "All assets" %}
+  </a>
+
+  <!-- Asset header -->
+  <article
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <div class="flex flex-col gap-4 md:flex-row md:items-start md:justify-between">
+      <div class="space-y-2">
+        <div class="flex items-center gap-3">
+          <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+            {{ asset.name }}
+          </h2>
+          <span class="rounded border border-current/20 px-2 py-1 text-sm font-semibold">{{ asset.unit_name }}</span>
+          {% if not asset.active %}
+            <span class="rounded px-2 py-1 text-sm font-semibold"
+                  :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">{% trans "Inactive" %}</span>
+          {% endif %}
+        </div>
+        <div class="flex flex-wrap gap-4 text-sm opacity-70">
+          <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
+          <span><i class="fa-solid fa-database mr-1"></i>{% trans "Total supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+          <span><i class="fa-solid fa-calendar mr-1"></i>{{ asset.created_at|date:"M d, Y H:i" }}</span>
+          {% if asset.is_currency %}
+          <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-coins mr-1"></i>{% trans "Payment currency" %}</span>
+          {% endif %}
+        </div>
+        {% if asset.is_currency %}
+        <div class="space-y-1 text-sm mt-2">
+          {% if asset.minting_authority %}
+          <p class="opacity-70"><i class="fa-solid fa-stamp mr-1"></i><strong>{% trans "Minting authority" %}:</strong> {{ asset.minting_authority }}</p>
+          {% endif %}
+          {% if asset.backing_document %}
+          <p class="opacity-60 text-xs"><i class="fa-solid fa-file-lines mr-1"></i>{{ asset.backing_document }}</p>
+          {% endif %}
+        </div>
+        {% endif %}
+      </div>
+      <div class="flex flex-col gap-2 text-sm">
+
+        <!-- Supply check badge with tooltip -->
+        <div x-data="{ open: false }" class="relative">
+          <button @mouseenter="open=true" @mouseleave="open=false" @focus="open=true" @blur="open=false"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="w-full rounded-lg px-4 py-3 text-center cursor-default">
+            {% if ledger_status.total_supply_matches %}
+              <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
+            {% elif ledger_status.supply_diff > 0 %}
+              <i class="fa-solid fa-skull-crossbones text-warn-light"></i>
+              <span class="ml-1 font-semibold text-warn-light">{% trans "FRAUD — oversupply" %}</span>
+            {% else %}
+              <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Supply mismatch" %}</span>
+            {% endif %}
+          </button>
+          <div x-show="open" x-transition
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+               class="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border p-4 shadow-xl text-xs space-y-2">
+            <p class="font-semibold opacity-80 uppercase tracking-wide mb-1">{% trans "Supply check" %}</p>
+            <div class="space-y-1">
+              <div class="flex justify-between gap-2">
+                <span class="opacity-60">{% trans "Declared total supply" %}</span>
+                <span class="font-mono font-semibold">{{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+              </div>
+              <div class="flex justify-between gap-2">
+                <span class="opacity-60">{% trans "Sum of all holdings" %}</span>
+                <span class="font-mono font-semibold">{{ ledger_status.holdings_sum_display }} {{ asset.unit_name }}</span>
+              </div>
+            </div>
+            {% if not ledger_status.total_supply_matches %}
+            <div class="border-t pt-2" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+              <div class="flex justify-between gap-2" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                <span class="font-semibold">{% trans "Discrepancy" %}</span>
+                <span class="font-mono font-bold">{{ ledger_status.supply_diff_sign }}{{ ledger_status.supply_diff_display }} {{ asset.unit_name }}</span>
+              </div>
+              <p class="mt-2 opacity-70 leading-relaxed">
+                {% if ledger_status.supply_diff < 0 %}
+                  {% trans "Holdings are less than declared supply. The reserve account may be missing or its AssetHolding was not created at token creation time." %}
+                {% else %}
+                  {% trans "Holdings exceed declared supply. Supply is immutable after creation — tokens in circulation exceed the authorised limit. Treat this as a fraud signal." %}
+                {% endif %}
+              </p>
+            </div>
+            {% else %}
+            <p class="opacity-60">{% trans "All tokens are accounted for." %}</p>
+            {% endif %}
+          </div>
+        </div>
+
+        <!-- Entries balance badge with tooltip -->
+        <div x-data="{ open: false }" class="relative">
+          <button @mouseenter="open=true" @mouseleave="open=false" @focus="open=true" @blur="open=false"
+                  :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+                  class="w-full rounded-lg px-4 py-3 text-center cursor-default">
+            {% if ledger_status.entries_balanced %}
+              <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Entries balanced" %}</span>
+            {% else %}
+              <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              <span class="ml-1 font-semibold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Entries unbalanced" %}</span>
+            {% endif %}
+          </button>
+          <div x-show="open" x-transition
+               :class="darkMode ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark' : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
+               class="absolute right-0 top-full z-20 mt-1 w-72 rounded-xl border p-4 shadow-xl text-xs space-y-2">
+            <p class="font-semibold opacity-80 uppercase tracking-wide mb-1">{% trans "Entries check" %}</p>
+            <div class="flex justify-between gap-2">
+              <span class="opacity-60">{% trans "Sum of all ledger entries" %}</span>
+              <span class="font-mono font-semibold">{{ ledger_status.entries_sum }}</span>
+            </div>
+            {% if ledger_status.entries_balanced %}
+            <p class="opacity-60">{% trans "Double-entry bookkeeping is intact — every debit has a matching credit." %}</p>
+            {% else %}
+            <div class="border-t pt-2" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+              <p class="leading-relaxed" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                {% trans "Entries do not sum to zero. This indicates a data integrity problem — a transaction may have been recorded without its counterpart." %}
+              </p>
+            </div>
+            {% endif %}
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </article>
+
+  {% for section in asset_plugin_sections %}
+    {{ section.html }}
+  {% endfor %}
+
+  {% if can_distribute %}
+  <!-- Distribution (staff or reserve account owner) -->
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border shadow-sm overflow-hidden">
+    <div class="flex items-center justify-between border-b px-5 py-4"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <h2 class="font-semibold flex items-center gap-2">
+        <i class="fa-solid fa-paper-plane opacity-60"></i>
+        {% trans "Distribution" %}
+      </h2>
+      {% if asset.reserve_account %}
+      <span class="text-xs opacity-60">
+        {% trans "Reserve" %}: <span class="font-mono font-semibold">{{ asset.reserve_account.code }}</span>
+      </span>
+      {% endif %}
+    </div>
+
+    <div class="px-5 py-5 space-y-4">
+      {% if asset.reserve_account %}
+      <p class="text-xs opacity-60">
+        {% trans "Transfer tokens from the reserve account" %}
+        (<span class="font-mono">{{ asset.reserve_account.code }}</span>)
+        {% trans "to any account. Supply is fixed — only existing reserve tokens can be distributed." %}
+      </p>
+      <form method="post" action="{% url 'assets:asset_distribute' asset.pk %}" class="space-y-4">
+        {% csrf_token %}
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="space-y-1">
+            <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Amount" %}</label>
+            <input type="number" name="amount" step="any" min="0" required
+                   placeholder="{% trans 'e.g. 100' %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark placeholder:opacity-30' : 'border-accent-2 bg-primary-bg-light text-text-main-light placeholder:opacity-30'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          </div>
+          <div class="space-y-1">
+            <label class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Recipient account" %}</label>
+            <select name="recipient_account"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+              {% for acct in ledger_accounts %}
+              <option value="{{ acct.pk }}">{{ acct.code }} — {{ acct.name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i>
+          {% trans "Distribute" %}
+        </button>
+      </form>
+      {% else %}
+      <div class="rounded-lg border border-dashed p-8 text-center"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <i class="fa-solid fa-vault text-2xl opacity-20 mb-2"></i>
+        <p class="text-sm opacity-60">{% trans "No reserve account configured for this asset." %}</p>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="grid gap-5 xl:grid-cols-2">
+
+    <!-- Holders -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-users"></i>
+        {% trans "Holders" %}
+      </h3>
+      <div class="mt-4 space-y-2">
+        {% for holding in holders %}
+          <div
+            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="flex items-center justify-between rounded-lg px-4 py-3 text-sm">
+            <a
+              href="{% url 'assets:account_detail' holding.account.pk %}"
+              class="font-semibold underline-offset-4 hover:underline">
+              {{ holding.account.code }}
+            </a>
+            <span class="font-mono font-bold">{{ holding.balance_display }} {{ asset.unit_name }}</span>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No active holders." %}</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Recent transactions -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        {% trans "Recent transactions" %}
+      </h3>
+      <div class="mt-4 space-y-2">
+        {% for tx in recent_txs %}
+          <div
+            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="rounded-lg px-4 py-3 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <a
+                href="{% url 'assets:transaction_detail' tx.pk %}"
+                class="truncate font-semibold underline-offset-4 hover:underline">
+                {{ tx.reference }}
+              </a>
+              <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs">
+                {{ tx.get_transaction_type_display }}
+              </span>
+            </div>
+            <div class="mt-1 text-xs opacity-60">{{ tx.created_at|date:"M d, Y H:i" }}</div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No transactions yet." %}</p>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+
+  {% include "assets/partials/mini_flow.html" with mini_id="asset" mini_fetch_url=asset_flow_url mini_full_url=asset_flow_full_url %}
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+{% include "assets/partials/flow_scripts.html" %}
+<script>window._flowColors = {{ theme.theme.colors|safe }};</script>
+{% endblock %}

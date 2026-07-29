@@ -1,0 +1,88 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Assets" %}{% endblock %}
+{% block tab_assets %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="grid gap-5 lg:grid-cols-[260px_minmax(0,1fr)]">
+
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm space-y-4">
+    <div>
+      <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Overview" %}</h2>
+      <div class="space-y-3">
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold">{{ asset_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Total assets" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold">{{ active_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Active" %}</div>
+        </div>
+      </div>
+    </div>
+    {% if request.user.is_staff %}
+    <div class="border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <a href="{% url 'assets:asset_create' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2.5 text-sm font-semibold transition hover:opacity-90">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Mint new asset" %}
+      </a>
+    </div>
+    {% endif %}
+  </aside>
+
+  <section class="space-y-3">
+    {% for asset in assets %}
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+        class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1">
+            <div class="flex items-center gap-3">
+              <span
+                :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                class="text-xl font-bold">
+                {{ asset.name }}
+              </span>
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+                {{ asset.unit_name }}
+              </span>
+              {% if not asset.active %}
+                <span class="rounded px-2 py-0.5 text-xs font-semibold"
+                    :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">
+                  {% trans "Inactive" %}
+                </span>
+              {% endif %}
+            </div>
+            <div class="flex flex-wrap items-center gap-3 text-xs opacity-70">
+              <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
+              <span><i class="fa-solid fa-database mr-1"></i>{% trans "Supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+              <span>{% blocktrans with date=asset.created_at|date:"M d, Y" %}Created {{ date }}{% endblocktrans %}</span>
+            </div>
+          </div>
+          <a
+            href="{% url 'assets:asset_detail' asset.pk %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+            {% trans "View" %}
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-coins text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No assets yet" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Mint the first asset to get started." %}</p>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

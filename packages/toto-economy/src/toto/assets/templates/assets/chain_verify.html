@@ -1,0 +1,59 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Hash Chain" %}{% endblock %}
+{% block tab_chain %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="mx-auto max-w-2xl space-y-6">
+
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-8 shadow-sm text-center">
+    {% if chain_valid %}
+      <i class="fa-solid fa-circle-check text-6xl" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <h2 class="mt-4 text-2xl font-bold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Chain is valid" %}</h2>
+      <p class="mt-2 text-sm opacity-70">
+        {% blocktrans with count=hash_count %}All {{ count }} hash records verified successfully.{% endblocktrans %}
+      </p>
+    {% else %}
+      <i class="fa-solid fa-circle-exclamation text-6xl" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      <h2 class="mt-4 text-2xl font-bold" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{% trans "Chain integrity failure" %}</h2>
+      <p class="mt-2 text-sm opacity-70">
+        {% trans "One or more hash records do not match. The ledger may have been tampered with." %}
+      </p>
+    {% endif %}
+
+    <div class="mt-6 grid grid-cols-2 gap-4">
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+        <div class="text-3xl font-bold">{{ hash_count }}</div>
+        <div class="text-xs opacity-65">{% trans "Hash records" %}</div>
+      </div>
+      <div
+        :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+        class="rounded-lg p-4">
+        <div class="text-3xl font-bold" :class="{% if chain_valid %}(darkMode ? 'text-success-dark' : 'text-success-light'){% else %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% endif %}">
+          {% if chain_valid %}✓{% else %}✗{% endif %}
+        </div>
+        <div class="text-xs opacity-65">{% trans "Status" %}</div>
+      </div>
+    </div>
+  </section>
+
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <h3 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-circle-info"></i>
+      {% trans "About the hash chain" %}
+    </h3>
+    <ul class="mt-4 space-y-2 text-sm opacity-80 list-disc list-inside">
+      <li>{% trans "Each posted transaction receives a SHA-256 hash record." %}</li>
+      <li>{% trans "Each record includes the previous hash, forming an immutable chain." %}</li>
+      <li>{% trans "Any modification to a transaction or entry breaks the chain." %}</li>
+      <li>{% trans "Verification re-computes every hash from scratch and compares." %}</li>
+    </ul>
+  </section>
+
+</div>
+{% endblock %}

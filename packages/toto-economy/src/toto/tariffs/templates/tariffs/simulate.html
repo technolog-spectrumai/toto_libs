@@ -1,0 +1,125 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Simulate Usage" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="mx-auto max-w-3xl space-y-6">
+
+  <div class="mb-2">
+    <a href="{% url 'tariffs:tariff_detail' tariff.uuid %}"
+       class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {{ tariff.name }}
+    </a>
+  </div>
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <h2 class="mb-1 text-xl font-bold">
+      <i class="fa-solid fa-flask mr-2 opacity-60"></i>
+      {% trans "Simulate Usage" %}
+    </h2>
+    <p class="mb-5 text-sm opacity-60">
+      {% blocktrans with name=tariff.name %}Calculate charges for <strong>{{ name }}</strong> without posting anything.{% endblocktrans %}
+    </p>
+    <form method="post" class="space-y-4">
+      {% csrf_token %}
+      {% for field in form %}
+        <div>
+          <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">
+            {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
+          </label>
+          <div
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="[&>input]:w-full [&>input]:rounded-lg [&>input]:border [&>input]:px-3 [&>input]:py-2 [&>input]:text-sm [&>input]:bg-inherit [&>input]:text-inherit [&>input]:border-inherit [&>input]:outline-none
+                   [&>select]:w-full [&>select]:rounded-lg [&>select]:border [&>select]:px-3 [&>select]:py-2 [&>select]:text-sm [&>select]:bg-inherit [&>select]:text-inherit [&>select]:border-inherit [&>select]:outline-none">
+            {{ field }}
+          </div>
+          {% if field.help_text %}
+            <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
+          {% endif %}
+          {% for error in field.errors %}
+            <p class="mt-1 text-xs text-warn-light">{{ error }}</p>
+          {% endfor %}
+        </div>
+      {% endfor %}
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-calculator"></i>
+        {% trans "Simulate" %}
+      </button>
+    </form>
+  </div>
+
+  {% if result %}
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-6 shadow-sm">
+      <h3 class="mb-4 font-semibold">
+        <i class="fa-solid fa-chart-simple mr-2 opacity-60"></i>
+        {% trans "Simulation Result" %}
+      </h3>
+
+      {% if result.lines %}
+        <div class="mb-5 overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b text-xs font-semibold uppercase opacity-60"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <th class="py-2 pr-4 text-left">{% trans "Metric" %}</th>
+                <th class="py-2 pr-4 text-left">{% trans "Item" %}</th>
+                <th class="py-2 pr-4 text-left">{% trans "Asset" %}</th>
+                <th class="py-2 pr-4 text-right">{% trans "Quantity" %}</th>
+                <th class="py-2 pr-4 text-right">{% trans "Price/unit" %}</th>
+                <th class="py-2 text-right">{% trans "Charge" %}</th>
+              </tr>
+            </thead>
+            <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+              {% for line in result.lines %}
+                <tr>
+                  <td class="py-2 pr-4">
+                    <code class="rounded px-1.5 py-0.5 text-xs"
+                          :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                      {{ line.metric_code }}
+                    </code>
+                  </td>
+                  <td class="py-2 pr-4 text-xs opacity-70">{{ line.item_code }}</td>
+                  <td class="py-2 pr-4">
+                    <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ line.asset }}</span>
+                  </td>
+                  <td class="py-2 pr-4 text-right font-mono text-xs">{{ line.quantity }}</td>
+                  <td class="py-2 pr-4 text-right font-mono text-xs">{{ line.price_per_unit_display }} / {{ line.unit_quantity }}</td>
+                  <td class="py-2 text-right font-mono text-sm font-bold">
+                    {{ line.amount_display }} {{ line.asset }}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <h4 class="mb-3 text-sm font-semibold uppercase opacity-60">{% trans "Totals by Asset" %}</h4>
+          <div class="space-y-2">
+            {% for asset_name, total in result.totals_by_asset.items %}
+              <div class="flex items-center justify-between">
+                <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ asset_name }}</span>
+                <span class="font-mono text-lg font-bold">{{ total.display }} {{ asset_name }}</span>
+              </div>
+            {% endfor %}
+          </div>
+        </div>
+      {% else %}
+        <p class="text-sm opacity-60">
+          {% trans "No matching tariff items for this metric code." %}
+        </p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+</div>
+{% endblock %}

@@ -1,0 +1,137 @@
+{% extends "tariffs/base.html" %}
+{% load i18n %}
+
+{% block tariffs_title %}{% trans "Tariffs" %}{% endblock %}
+
+{% block tariffs_content %}
+<div class="grid gap-5 lg:grid-cols-[280px_minmax(0,1fr)]">
+
+  <aside
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="space-y-5 rounded-lg border p-5 shadow-sm">
+
+    <div>
+      <h2 class="mb-4 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Overview" %}</h2>
+      <div class="space-y-2">
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold">{{ active_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Active tariffs" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold">{{ posted_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Posted usage" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold">{{ pending_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Pending usage" %}</div>
+        </div>
+        <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
+          <div class="text-2xl font-bold text-warn-light">{{ failed_count }}</div>
+          <div class="text-xs opacity-65">{% trans "Failed usage" %}</div>
+        </div>
+      </div>
+    </div>
+
+    <form method="get" class="space-y-3">
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Search" %}</label>
+        <input
+          type="text" name="q" value="{{ q }}"
+          placeholder="{% trans "Name or code…" %}"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+      </div>
+      <div>
+        <label class="mb-1 block text-sm font-semibold">{% trans "Status" %}</label>
+        <select
+          name="status"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+          <option value="">{% trans "All" %}</option>
+          {% for val, label in status_choices %}
+            <option value="{{ val }}" {% if status_filter == val %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button
+        type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-filter"></i>
+        {% trans "Filter" %}
+      </button>
+    </form>
+
+    <div class="pt-2">
+      <a
+        href="{% url 'tariffs:usage_create' %}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-bolt"></i>
+        {% trans "Record Usage" %}
+      </a>
+    </div>
+  </aside>
+
+  <section class="space-y-3">
+    {% for tariff in tariffs %}
+      <article
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:bg-primary-bg-dark' : 'border-accent-2 bg-bubble-bg-light hover:bg-primary-bg-light'"
+        class="rounded-lg border p-5 shadow-sm transition">
+        <div class="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div class="space-y-1 min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              <span :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="font-bold text-lg">
+                {{ tariff.name }}
+              </span>
+              <span class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ tariff.code }}</span>
+              <span class="rounded px-2 py-0.5 text-xs font-semibold
+                {% if tariff.status == 'active' %}
+                  bg-success-light/20 text-success-light
+                {% elif tariff.status == 'draft' %}
+                  bg-accent-light/20 text-accent-light
+                {% elif tariff.status == 'paused' %}
+                  bg-accent-light/20 text-accent-light
+                {% else %}
+                  bg-gray-700 text-gray-300
+                {% endif %}">
+                {{ tariff.get_status_display }}
+              </span>
+            </div>
+            <div class="flex flex-wrap gap-3 text-xs opacity-70">
+              <span><i class="fa-solid fa-table-list mr-1"></i>{{ tariff.items.count }} {% trans "items" %}</span>
+              {% if tariff.source_type %}
+                <span><i class="fa-solid fa-link mr-1"></i>{{ tariff.source_type }}:{{ tariff.source_id }}</span>
+              {% endif %}
+              <span>{{ tariff.created_at|date:"M d, Y" }}</span>
+            </div>
+          </div>
+          <a
+            href="{% url 'tariffs:tariff_detail' tariff.uuid %}"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex shrink-0 items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i>
+            {% trans "View" %}
+          </a>
+        </div>
+      </article>
+    {% empty %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="fa-solid fa-receipt text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "No tariffs yet" %}</h2>
+        <p class="mt-1 text-sm opacity-70">{% trans "Create the first billing tariff." %}</p>
+        <a
+          href="{% url 'tariffs:tariff_create' %}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="mt-4 inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-plus"></i>
+          {% trans "New Tariff" %}
+        </a>
+      </div>
+    {% endfor %}
+  </section>
+
+</div>
+{% endblock %}

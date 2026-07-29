@@ -1,0 +1,88 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{% trans "Wallet PIN" %}{% endblock %}
+{% block tab_wallet %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-sm space-y-6">
+
+    <header>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Wallet" %}</p>
+      <h1 class="mt-1 text-3xl font-bold">{% trans "Wallet PIN" %}</h1>
+      <p class="mt-1 text-sm opacity-50">
+        {% if has_pin %}{% trans "Update your wallet PIN. Your old PIN will be replaced." %}
+        {% else %}{% trans "Set a PIN to protect your wallet. Required before any transaction." %}{% endif %}
+      </p>
+    </header>
+
+    {% if messages %}
+    <div class="space-y-2">
+      {% for message in messages %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border px-4 py-3 text-sm font-semibold shadow-sm">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if has_pin %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4 shadow-sm flex items-center gap-3 text-sm">
+      <i class="fa-solid fa-lock shrink-0" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+      <p>{% trans "Your wallet is currently PIN-protected." %}</p>
+    </div>
+    {% else %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4 shadow-sm flex items-center gap-3 text-sm">
+      <i class="fa-solid fa-lock-open shrink-0" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+      <p>{% trans "No PIN set. Wallet transactions are disabled until you set one." %}</p>
+    </div>
+    {% endif %}
+
+    <form method="post"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="rounded-2xl border p-6 shadow-sm space-y-4">
+      {% csrf_token %}
+
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">
+          {% if has_pin %}{% trans "New PIN" %}{% else %}{% trans "PIN" %}{% endif %}
+        </label>
+        <input type="password" name="pin" inputmode="numeric" autocomplete="new-password" required minlength="4"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+               class="w-full rounded-xl border px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] outline-none transition focus:ring-2 focus:ring-current/20"
+               placeholder="••••">
+      </div>
+
+      <div class="space-y-1">
+        <label class="block text-xs font-semibold opacity-60 uppercase tracking-wide">{% trans "Confirm PIN" %}</label>
+        <input type="password" name="pin_confirm" inputmode="numeric" autocomplete="new-password" required minlength="4"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+               class="w-full rounded-xl border px-4 py-3 text-center text-2xl font-mono tracking-[0.5em] outline-none transition focus:ring-2 focus:ring-current/20"
+               placeholder="••••">
+      </div>
+
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="w-full rounded-xl py-3 font-bold text-sm shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-lock mr-1"></i>
+        {% if has_pin %}{% trans "Update PIN" %}{% else %}{% trans "Set PIN" %}{% endif %}
+      </button>
+    </form>
+
+    <p class="text-xs opacity-40 text-center">
+      <i class="fa-solid fa-shield-halved mr-1"></i>
+      {% trans "Your PIN is encrypted end-to-end using AES-256-GCM and never stored in plaintext." %}
+    </p>
+
+    <a href="{% url 'assets:wallet' %}"
+       class="flex items-center justify-center gap-2 text-sm opacity-50 hover:opacity-80 transition">
+      <i class="fa-solid fa-arrow-left text-xs"></i> {% trans "Back to wallet" %}
+    </a>
+
+  </div>
+</div>
+{% endblock %}

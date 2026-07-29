@@ -1,0 +1,207 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% block assets_title %}{{ account.code }}{% endblock %}
+{% block tab_accounts %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'assets:account_list' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>
+    {% trans "All accounts" %}
+  </a>
+
+  <!-- Account header -->
+  <article
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-6 shadow-sm">
+    <div class="space-y-2">
+      <div class="flex items-center gap-3">
+        <h2 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">
+          {{ account.code }}
+        </h2>
+        <span class="rounded border border-current/20 px-2 py-1 text-sm font-semibold">
+          {{ account.get_account_type_display }}
+        </span>
+        {% if not account.active %}
+          <span class="rounded px-2 py-1 text-sm font-semibold"
+                :class="darkMode ? 'bg-warn-dark/10 text-warn-dark' : 'bg-warn-light/10 text-warn-light'">{% trans "Inactive" %}</span>
+        {% endif %}
+      </div>
+      <p class="text-lg opacity-80">{{ account.name }}</p>
+      {% if account.user %}
+        <p class="text-sm opacity-60"><i class="fa-solid fa-user mr-1"></i>{{ account.user }}</p>
+      {% endif %}
+    </div>
+  </article>
+
+  <div class="grid gap-5 xl:grid-cols-2">
+
+    <!-- Holdings -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-wallet"></i>
+        {% trans "Holdings" %}
+      </h3>
+      <div class="mt-4 space-y-2">
+        {% for holding in holdings %}
+          <div
+            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="flex items-center justify-between rounded-lg px-4 py-3 text-sm">
+            <a
+              href="{% url 'assets:asset_detail' holding.asset.pk %}"
+              class="font-semibold underline-offset-4 hover:underline">
+              {{ holding.asset.unit_name }}
+              <span class="opacity-60">— {{ holding.asset.name }}</span>
+            </a>
+            <span class="font-mono font-bold">{{ holding.balance_display }}</span>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No holdings." %}</p>
+        {% endfor %}
+      </div>
+    </section>
+
+    <!-- Recent movements -->
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-lg border p-5 shadow-sm">
+      <h3 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-clock-rotate-left"></i>
+        {% trans "Recent movements" %}
+      </h3>
+      <div class="mt-4 space-y-2">
+        {% for entry in recent_entries %}
+          <div
+            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+            class="rounded-lg px-4 py-3 text-sm">
+            <div class="flex items-center justify-between gap-2">
+              <a
+                href="{% url 'assets:transaction_detail' entry.transaction.pk %}"
+                class="truncate text-xs opacity-70 underline-offset-4 hover:underline">
+                {{ entry.transaction.reference }}
+              </a>
+              <span
+                :class="{% if entry.amount_base_units >= 0 %}(darkMode ? 'text-success-dark' : 'text-success-light'){% else %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% endif %}"
+                class="shrink-0 font-mono font-bold">
+                {% if entry.amount_base_units >= 0 %}+{% endif %}{{ entry.amount_display }} {{ entry.asset.unit_name }}
+              </span>
+            </div>
+            <div class="mt-1 text-xs opacity-50">{{ entry.created_at|date:"M d, Y H:i" }}</div>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">{% trans "No movements yet." %}</p>
+        {% endfor %}
+      </div>
+    </section>
+
+  </div>
+
+  <!-- Obligations -->
+  {% if obligations %}
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 shadow-sm col-span-2"
+    x-data="{
+      pinOpen: false,
+      pinValue: '',
+      pinError: '',
+      pinLoading: false,
+      pendingForm: null,
+      walletPinReady: {{ has_wallet_pin|yesno:'true,false' }},
+      requirePin(form) {
+        if (!this.walletPinReady) {
+          window.location.href = '{% url 'assets:wallet_pin_set' %}';
+          return;
+        }
+        this.pendingForm = form;
+        this.pinValue = '';
+        this.pinError = '';
+        this.pinOpen = true;
+        this.$nextTick(() => {
+          const input = this.$el.querySelector('input[type=password]');
+          if (input) input.focus();
+        });
+      },
+      async submitPin() {
+        if (!this.pinValue) { this.pinError = 'Enter your PIN.'; return; }
+        this.pinLoading = true;
+        this.pinError = '';
+        try {
+          const res = await fetch('{% url 'assets:wallet_pin_verify' %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+            body: JSON.stringify({ pin: this.pinValue }),
+          });
+          const data = await res.json();
+          if (data.ok) {
+            this.pinOpen = false;
+            if (this.pendingForm) HTMLFormElement.prototype.submit.call(this.pendingForm);
+          } else {
+            this.pinError = data.error || 'Incorrect PIN.';
+          }
+        } catch {
+          this.pinError = 'Network error. Try again.';
+        } finally {
+          this.pinLoading = false;
+        }
+      },
+    }">
+    <h3 class="flex items-center gap-2 text-lg font-bold mb-4">
+      <i class="fa-solid fa-file-contract"></i>
+      {% trans "Outstanding obligations" %}
+    </h3>
+    <div class="space-y-2">
+      {% for ob in obligations %}
+      {% with ob.is_overdue as overdue %}
+      <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+           class="flex flex-col gap-3 rounded-lg px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between {% if overdue %}ring-2{% endif %}"
+           :class="{% if overdue %}(darkMode ? 'ring-warn-dark/60' : 'ring-warn-light/60'){% endif %}">
+        <div class="space-y-0.5">
+          <p class="font-semibold" :class="{% if overdue %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% endif %}">
+            {% if overdue %}<i class="fa-solid fa-circle-exclamation mr-1"></i>{% trans "OVERDUE" %} — {% endif %}
+            {{ ob.amount_display }} {{ ob.asset.unit_name }}
+          </p>
+          <p class="text-xs opacity-60">{% trans "To" %}: {{ ob.creditor_account.code }}</p>
+          {% if ob.order_reference %}<p class="text-xs opacity-50">{% trans "Order" %}: {{ ob.order_reference }}</p>{% endif %}
+        </div>
+        <div class="shrink-0 space-y-2 text-left text-xs sm:text-right">
+          <p class="{% if overdue %}font-semibold{% else %}opacity-60{% endif %}"
+             :class="{% if overdue %}(darkMode ? 'text-warn-dark' : 'text-warn-light'){% endif %}">
+            {% trans "Due" %}: {{ ob.due_at|date:"M d, Y" }}
+          </p>
+          {% if request.user.is_authenticated and account.user_id == request.user.id %}
+          <form method="post" action="{% url 'assets:obligation_fulfill' ob.pk %}" @submit.prevent="requirePin($el)">
+            {% csrf_token %}
+            <input type="hidden" name="next" value="{{ request.get_full_path }}">
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center justify-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-bold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-bolt"></i>
+              {% trans "Transfer now" %}
+            </button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      {% endwith %}
+      {% empty %}
+      <p class="text-sm opacity-60">{% trans "No outstanding obligations." %}</p>
+      {% endfor %}
+    </div>
+    {% include "assets/partials/wallet_pin_modal.html" %}
+  </section>
+  {% endif %}
+
+  {% include "assets/partials/mini_flow.html" with mini_id="account" mini_fetch_url=account_flow_url mini_full_url=account_flow_full_url %}
+
+</div>
+{% endblock %}
+
+{% block end_script %}
+{% include "assets/partials/flow_scripts.html" %}
+<script>window._flowColors = {{ theme.theme.colors|safe }};</script>
+{% endblock %}
