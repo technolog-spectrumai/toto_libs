@@ -1,8 +1,12 @@
+import logging
+
 from django.apps import apps
 from django.core.exceptions import FieldDoesNotExist, ImproperlyConfigured
 from django.db import transaction
 
 from .backup_engine import BackupEngine
+
+logger = logging.getLogger(__name__)
 
 
 class SyncService(BackupEngine):
@@ -21,7 +25,19 @@ class SyncService(BackupEngine):
 
             with transaction.atomic():
                 for model_info in manifest["models"]:
-                    model = apps.get_model(model_info["app"], model_info["model"])
+                    try:
+                        model = apps.get_model(model_info["app"], model_info["model"])
+                    except LookupError:
+                        # A model that has since been removed — kanban.Column,
+                        # for one. Skipping it loses that table's rows; raising
+                        # would abort the entire restore inside this atomic
+                        # block and lose every other table too.
+                        logger.warning(
+                            "Skipping %s.%s from the backup: no such model in this "
+                            "version. Its rows are not restored.",
+                            model_info["app"], model_info["model"],
+                        )
+                        continue
                     if not self.is_backup_model(model):
                         raise ImproperlyConfigured(
                             f"Model is not backup-safe: {model._meta.label}"

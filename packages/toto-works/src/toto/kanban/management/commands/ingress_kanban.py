@@ -5,7 +5,8 @@ from django.contrib.auth import get_user_model
 from django.utils import timezone
 
 from toto.kanban.models import (
-    Campaign, Column, DocumentationPage, DocumentationSection,
+    TaskStatus,
+    Campaign, DocumentationPage, DocumentationSection,
     Mission, Practitioner, Project, ProjectCommitment, Sprint, Task,
 )
 from toto.people.models import Person
@@ -85,13 +86,8 @@ class Command(IngressCommand):
 
         print(f"✔  Practitioners: {prac1}, {prac2}")
 
-        # ── Columns ───────────────────────────────────────────────────────
-        todo = Column.objects.create(project=project, name="To Do", position=1, can_add_task=True)
-        doing = Column.objects.create(project=project, name="In Progress", position=2)
-        done = Column.objects.create(project=project, name="Done", position=3)
-
-        for col in (todo, doing, done):
-            col.auditors.set(practitioners)
+        # ── Who may move cards ────────────────────────────────────────────
+        project.auditors.set(practitioners)
 
         # ── Campaigns ─────────────────────────────────────────────────────
         frontend_campaign = Campaign.objects.create(
@@ -135,12 +131,12 @@ class Command(IngressCommand):
 
         # ── Tasks ─────────────────────────────────────────────────────────
         tasks = [
-            Task.objects.create(column=todo,  title="Set up project repo",      position=1, mission=mission1, assignee=random.choice(practitioners), weight=3, metadata={"demo": True}),
-            Task.objects.create(column=doing, title="Build UI components",       position=2, mission=mission1, assignee=random.choice(practitioners), weight=5, metadata={"demo": True}),
-            Task.objects.create(column=done,  title="Create wireframes",         position=3, mission=mission1, assignee=random.choice(practitioners), weight=2, metadata={"demo": True}),
-            Task.objects.create(column=todo,  title="Design database schema",    position=1, mission=mission2, assignee=random.choice(practitioners), weight=3, metadata={"demo": True}),
-            Task.objects.create(column=doing, title="Implement login endpoint",  position=2, mission=mission2, assignee=random.choice(practitioners), weight=8, metadata={"demo": True}),
-            Task.objects.create(column=done,  title="Unit tests for API",        position=3, mission=mission2, assignee=random.choice(practitioners), weight=1, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.TODO,        title="Set up project repo",     position=1, mission=mission1, assignee=random.choice(practitioners), weight=3, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.IN_PROGRESS, title="Build UI components",     position=2, mission=mission1, assignee=random.choice(practitioners), weight=5, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.DONE,        title="Create wireframes",       position=3, mission=mission1, assignee=random.choice(practitioners), weight=2, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.TODO,        title="Design database schema",  position=1, mission=mission2, assignee=random.choice(practitioners), weight=3, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.IN_PROGRESS, title="Implement login endpoint", position=2, mission=mission2, assignee=random.choice(practitioners), weight=8, metadata={"demo": True}),
+            Task.objects.create(status=TaskStatus.DONE,        title="Unit tests for API",      position=3, mission=mission2, assignee=random.choice(practitioners), weight=1, metadata={"demo": True}),
         ]
 
         # ── Sprints ───────────────────────────────────────────────────────
@@ -155,10 +151,14 @@ class Command(IngressCommand):
             task.sprint = sprint2
             task.save(update_fields=["sprint"])
 
+        # Backdate the two finished tasks so the burndown has something to draw.
+        # Task.save only stamps completed_at when it is unset, so assigning an
+        # explicit time here survives. Both are in the past — the second used to
+        # be three days into the future.
         tasks[2].completed_at = sprint1.end_time - timedelta(days=2)
-        tasks[2].save(update_fields=["completed_at"])
-        tasks[5].completed_at = sprint2.start_time + timedelta(days=3)
-        tasks[5].save(update_fields=["completed_at"])
+        tasks[2].save(update_fields=["status", "completed_at"])
+        tasks[5].completed_at = now - timedelta(days=1)
+        tasks[5].save(update_fields=["status", "completed_at"])
 
         # ── Documentation ─────────────────────────────────────────────────
         doc1, _ = DocumentationPage.objects.update_or_create(

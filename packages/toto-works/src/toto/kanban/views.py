@@ -1,4 +1,5 @@
 import json
+from collections import defaultdict
 
 from django.core.exceptions import ValidationError
 from django.http import HttpResponseForbidden
@@ -14,10 +15,13 @@ from django.utils import timezone
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
-from toto.kanban.forms import TaskCreateForm
-from toto.kanban.metrics import SprintMetricsCalculator, MissionMetricsCalculator
+from toto.kanban.forms import TaskCreateForm, TaskRelationForm
+from toto.kanban.metrics import (
+    SprintMetricsCalculator, MissionMetricsCalculator, summarize_tasks,
+)
 from toto.kanban.models import (
-    Project, Column, Task, Sprint, Mission, DocumentationPage, Practitioner,
+    Project, Task, TaskRelation, TaskStatus, RelationType, STATUS_ORDER,
+    adjacent_status, Sprint, Mission, DocumentationPage, Practitioner,
 )
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.kanban.plugins.mission_tab_plugins import MissionTabPlugin
@@ -82,6 +86,39 @@ class ChartViewMixin:
         }
 
 
+def is_project_auditor(user, project):
+    """May this user move tasks between states?
+
+    Replaces the per-column ``Column.auditors`` gate: with three fixed states
+    there is no row to hang a per-state grant on, so the grant is per project.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return project.auditors.filter(person__user=user).exists()
+
+
+def can_manage_tasks(user, project):
+    """May this user create, edit or delete tasks in this project?
+
+    Replaces ``Column.can_add_task``, which gated create *and* edit *and* delete
+    per column — under fixed states that would have meant only ``todo`` tasks
+    were ever editable. Project membership is the honest reading of what that
+    flag was reaching for.
+    """
+    if not getattr(user, "is_authenticated", False):
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    if is_project_auditor(user, project):
+        return True
+    return Practitioner.objects.filter(
+        person__user=user,
+        is_active=True,
+        commitments__project=project,
+        commitments__is_active=True,
+    ).exists()
+
+
 class ProjectDetailView(LoginRequiredMixin, DetailView):
     model = Project
     template_name = "kanban/board.html"
@@ -102,33 +139,71 @@ class ProjectDetailView(LoginRequiredMixin, DetailView):
             except Sprint.DoesNotExist:
                 selected_sprint = None
 
-        columns = (
-            Column.objects
-            .filter(project=project)
-            .order_by("position")
-            .prefetch_related(
-                "auditors",
-                "tasks",
-                "tasks__mission",
-                "tasks__mission__campaign",
-                "tasks__mission__campaign__zone",
-                "tasks__mission__campaign__zone__territory",
-                "tasks__mission__location",
-                "tasks__mission__route",
-                "tasks__assignee__person",
-                "tasks__reviewer__person",
-                "tasks__sprint",
-                "tasks__column",
+        tasks = (
+            Task.objects
+            .filter(mission__campaign__project=project)
+            .select_related(
+                "mission",
+                "mission__campaign",
+                "mission__campaign__zone",
+                "mission__campaign__zone__territory",
+                "mission__location",
+                "mission__route",
+                "assignee__person",
+                "reviewer__person",
+                "sprint",
             )
+            .prefetch_related(
+                "incoming_relations__from_task",
+                "outgoing_relations__to_task",
+            )
+            .order_by("position", "pk")
         )
 
-        for column in columns:
-            column.is_auditor = column.auditors.filter(person__user=self.request.user).exists()
+        # Group in Python: the states are fixed, so one pass beats a query per
+        # column, and every state renders even when it holds nothing.
+        tasks = list(tasks)
+        grouped = {value: [] for value in STATUS_ORDER}
+        by_campaign = defaultdict(list)
+        for task in tasks:
+            grouped.setdefault(task.status, []).append(task)
+            by_campaign[task.mission.campaign_id].append(task)
+
+        # Both of these come off rows already fetched. Asking the model for them
+        # per card — task.open_blockers, or a sibling queryset — would be a query
+        # per card, which is what the prefetch above exists to avoid.
+        for task in tasks:
+            task.campaign_siblings = [
+                sibling
+                for sibling in by_campaign[task.mission.campaign_id]
+                if sibling.pk != task.pk
+            ]
+            task.blockers = [
+                relation.from_task
+                for relation in task.incoming_relations.all()
+                if relation.relation_type == RelationType.BLOCKS
+                and relation.from_task.status != TaskStatus.DONE
+            ]
+
+        is_auditor = is_project_auditor(self.request.user, project)
+        columns = [
+            {
+                "status": value,
+                "label": TaskStatus(value).label,
+                "tasks": grouped.get(value, []),
+                "count": len(grouped.get(value, [])),
+                "is_auditor": is_auditor,
+            }
+            for value in STATUS_ORDER
+        ]
 
         context.update({
             "columns": columns,
             "sprints": sprints,
             "selected_sprint": selected_sprint,
+            "is_auditor": is_auditor,
+            "can_manage": can_manage_tasks(self.request.user, project),
+            "relation_type_choices": RelationType.choices,
         })
 
         return context
@@ -148,11 +223,16 @@ class ProjectListView(LoginRequiredMixin, ListView):
         if user.is_superuser or user.is_staff:
             return Project.objects.all().distinct()
 
+        # Was Q(owner__user=…) | Q(practitioners__…), naming two relations
+        # Project does not have — so this raised FieldError for every non-staff
+        # user who reached it. The lead is `project_lead`, and membership runs
+        # through ProjectCommitment.
         return (
             Project.objects
             .filter(
-                Q(owner__user=user) |
-                Q(practitioners__person__user=user, practitioners__is_active=True)
+                Q(project_lead__user=user)
+                | Q(commitments__practitioner__person__user=user, commitments__is_active=True)
+                | Q(auditors__person__user=user)
             )
             .distinct()
         )
@@ -244,7 +324,6 @@ class BacklogView(LoginRequiredMixin, DetailView):
             )
             .prefetch_related(
                 "tasks",
-                "tasks__column",
                 "tasks__sprint",
                 "tasks__assignee__person",
             )
@@ -266,17 +345,8 @@ class TaskCreateView(LoginRequiredMixin, CreateView):
     def dispatch(self, request, *args, **kwargs):
         self.project = get_object_or_404(Project, pk=kwargs["pk"])
 
-        column_id = request.GET.get("column")
-
-        if column_id:
-            column = get_object_or_404(
-                Column,
-                pk=column_id,
-                project=self.project,
-            )
-
-            if not column.can_add_task:
-                return HttpResponseForbidden("You cannot add tasks to this column.")
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return HttpResponseForbidden("You cannot add tasks to this project.")
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -287,16 +357,9 @@ class TaskCreateView(LoginRequiredMixin, CreateView):
 
     def form_valid(self, form):
         task = form.save(commit=False)
-
-        column_id = self.request.GET.get("column")
-
-        if column_id:
-            task.column = get_object_or_404(
-                Column,
-                pk=column_id,
-                project=self.project,
-            )
-
+        # Work always starts at the left of the board. There is nothing to pick
+        # and nothing to gate.
+        task.status = TaskStatus.TODO
         task.save()
 
         if hasattr(form, "save_m2m"):
@@ -324,10 +387,9 @@ class TaskUpdateView(LoginRequiredMixin, UpdateView):
 
     def dispatch(self, request, *args, **kwargs):
         self.project = get_object_or_404(Project, pk=kwargs["project_pk"])
-        task = self.get_object()
 
-        if not task.column.can_add_task:
-            return HttpResponseForbidden("You cannot edit tasks in this column.")
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return HttpResponseForbidden("You cannot edit tasks in this project.")
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -335,7 +397,7 @@ class TaskUpdateView(LoginRequiredMixin, UpdateView):
         return (
             Task.objects
             .filter(mission__campaign__project_id=self.kwargs["project_pk"])
-            .select_related("column", "mission", "mission__campaign")
+            .select_related("mission", "mission__campaign")
         )
 
     def get_form_kwargs(self):
@@ -362,10 +424,9 @@ class TaskDeleteView(LoginRequiredMixin, DeleteView):
 
     def dispatch(self, request, *args, **kwargs):
         self.project = get_object_or_404(Project, pk=kwargs["project_pk"])
-        task = self.get_object()
 
-        if not task.column.can_add_task:
-            return HttpResponseForbidden("You cannot delete tasks in this column.")
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return HttpResponseForbidden("You cannot delete tasks in this project.")
 
         return super().dispatch(request, *args, **kwargs)
 
@@ -373,7 +434,7 @@ class TaskDeleteView(LoginRequiredMixin, DeleteView):
         return (
             Task.objects
             .filter(mission__campaign__project_id=self.kwargs["project_pk"])
-            .select_related("column", "mission", "mission__campaign")
+            .select_related("mission", "mission__campaign")
         )
 
     def get_success_url(self):
@@ -388,110 +449,128 @@ class TaskDeleteView(LoginRequiredMixin, DeleteView):
         return PageProcessor().decorate(context, self.request)
 
 
-def _get_adjacent_column(task, direction):
-    current_position = task.column.position
-    project = task.column.project
-
-    if direction == "next":
-        return (
-            Column.objects
-            .filter(
-                project=project,
-                position__gt=current_position,
-            )
-            .order_by("position")
-            .first()
-        )
-
-    return (
-        Column.objects
-        .filter(
-            project=project,
-            position__lt=current_position,
-        )
-        .order_by("-position")
-        .first()
-    )
-
-
 @login_required
+@require_POST
 def promote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("column", "mission", "mission__campaign", "reviewer__person__user"),
+        Task.objects.select_related("mission", "mission__campaign", "reviewer__person__user"),
         id=task_id,
         mission__campaign__project=project,
     )
 
-    next_column = _get_adjacent_column(task, "next")
+    next_status = adjacent_status(task.status, "next")
 
-    if not next_column:
-        messages.warning(request, "Task is already in the last column.")
+    if next_status is None:
+        messages.warning(request, "Task is already done.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    if not next_column.auditors.filter(person__user=request.user).exists():
-        messages.error(
-            request,
-            "You are not allowed to promote tasks into this column.",
+    if not is_project_auditor(request.user, project):
+        messages.error(request, "You are not allowed to move tasks in this project.")
+        return redirect("kanban:project_detail", pk=project_id)
+
+    # Pinned to `done` rather than "the last column by position", which used to
+    # follow any column an admin added after Done.
+    if next_status == TaskStatus.DONE:
+        reviewer_user_id = getattr(
+            getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
         )
-        return redirect("kanban:project_detail", pk=project_id)
+        if reviewer_user_id and reviewer_user_id != request.user.id:
+            messages.error(
+                request,
+                "This task has an assigned reviewer and only that reviewer can complete it.",
+            )
+            return redirect("kanban:project_detail", pk=project_id)
 
-    is_terminal_column = not Column.objects.filter(
-        project=project,
-        position__gt=next_column.position,
-    ).exists()
-    reviewer_user_id = getattr(
-        getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
-    )
-    if is_terminal_column and reviewer_user_id and reviewer_user_id != request.user.id:
-        messages.error(
+    # Blockers advise, they do not refuse: a board that blocks the move gets
+    # worked around by deleting the relation, which loses the information.
+    blockers = list(task.open_blockers().values_list("title", flat=True)[:5])
+
+    task.status = next_status
+    task.save(update_fields=["status"])  # completed_at follows, in Task.save
+
+    if blockers:
+        messages.warning(
             request,
-            "This task has an assigned reviewer and only that reviewer can complete it.",
+            "Moved, but {count} blocker(s) are still open: {titles}.".format(
+                count=len(blockers), titles=", ".join(blockers)
+            ),
         )
-        return redirect("kanban:project_detail", pk=project_id)
-
-    task.column = next_column
-    update_fields = ["column"]
-    if is_terminal_column and not task.completed_at:
-        task.completed_at = timezone.now()
-        update_fields.append("completed_at")
-    task.save(update_fields=update_fields)
-    messages.success(request, f"Task promoted to {next_column.name}.")
+    messages.success(request, f"Task promoted to {task.get_status_display()}.")
     return redirect("kanban:project_detail", pk=project_id)
 
 
 @login_required
+@require_POST
 def demote_task(request, project_id, task_id):
     project = get_object_or_404(Project, id=project_id)
 
     task = get_object_or_404(
-        Task.objects.select_related("column", "mission", "mission__campaign"),
+        Task.objects.select_related("mission", "mission__campaign"),
         id=task_id,
         mission__campaign__project=project,
     )
 
-    previous_column = _get_adjacent_column(task, "prev")
+    previous_status = adjacent_status(task.status, "prev")
 
-    if not previous_column:
-        messages.warning(request, "Task is already in the first column.")
+    if previous_status is None:
+        messages.warning(request, "Task is already at the start of the board.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    if not previous_column.auditors.filter(person__user=request.user).exists():
-        messages.error(
-            request,
-            "You are not allowed to demote tasks into this column.",
-        )
+    if not is_project_auditor(request.user, project):
+        messages.error(request, "You are not allowed to move tasks in this project.")
         return redirect("kanban:project_detail", pk=project_id)
 
-    task.column = previous_column
-    update_fields = ["column"]
-    if task.completed_at:
-        task.completed_at = None
-        update_fields.append("completed_at")
-    task.save(update_fields=update_fields)
+    # No reviewer gate on the way back: gating it would strand finished tasks
+    # that nobody but an absent reviewer could reopen.
+    task.status = previous_status
+    task.save(update_fields=["status"])
 
-    messages.success(request, f"Task moved back to {previous_column.name}.")
+    messages.success(request, f"Task moved back to {task.get_status_display()}.")
+    return redirect("kanban:project_detail", pk=project_id)
+
+
+@login_required
+@require_POST
+def relation_create(request, project_id, task_id):
+    """Link this task to another in the same campaign."""
+    project = get_object_or_404(Project, id=project_id)
+    task = get_object_or_404(
+        Task.objects.select_related("mission"),
+        id=task_id,
+        mission__campaign__project=project,
+    )
+
+    if not can_manage_tasks(request.user, project):
+        return HttpResponseForbidden("You cannot edit tasks in this project.")
+
+    form = TaskRelationForm(request.POST, from_task=task)
+    if form.is_valid():
+        form.save()
+        messages.success(request, "Relation added.")
+    else:
+        for error in form.errors.values():
+            messages.error(request, "; ".join(error))
+
+    return redirect("kanban:project_detail", pk=project_id)
+
+
+@login_required
+@require_POST
+def relation_delete(request, project_id, pk):
+    project = get_object_or_404(Project, id=project_id)
+
+    if not can_manage_tasks(request.user, project):
+        return HttpResponseForbidden("You cannot edit tasks in this project.")
+
+    relation = get_object_or_404(
+        TaskRelation,
+        pk=pk,
+        from_task__mission__campaign__project=project,
+    )
+    relation.delete()
+    messages.success(request, "Relation removed.")
     return redirect("kanban:project_detail", pk=project_id)
 
 
@@ -522,17 +601,11 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
         context = PageProcessor().decorate(context, self.request)
 
         project = self.object
-        calculator = SprintMetricsCalculator(project)
+        calculator = SprintMetricsCalculator(project, sprint_id=self.request.GET.get("sprint"))
+        selected_sprint = calculator.selected_sprint
         metrics = calculator.get_context_data()
 
-        sprints = (
-            Sprint.objects
-            .filter(project=project)
-            .order_by("-start_time")
-        )
-
-        selected_sprint = self.get_selected_sprint(project)
-
+        sprints = calculator.sprints
         sprint_items = metrics["sprint_items"]
         assignee_items = metrics["assignee_items"]
 
@@ -563,15 +636,32 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
             stacked=True,
         )
 
+        burndown = metrics["burndown"]
         burndown_chart = self.line_chart(
-            labels=calculator.get_burndown_labels(selected_sprint),
-            datasets=[{
-                "label": "Remaining Weight",
-                "data": calculator.get_burndown_data(selected_sprint),
-                "borderColor": self.accent_color,
-                "backgroundColor": self.accent_color,
-                "tension": 0.35,
-            }],
+            labels=burndown["labels"],
+            datasets=[
+                {
+                    "label": "Remaining weight",
+                    "data": burndown["actual"],
+                    "borderColor": self.accent_color,
+                    "backgroundColor": self.accent_color,
+                    "tension": 0.35,
+                    # Explicit, though Chart.js already defaults to false: the
+                    # nulls after today are the point, and bridging them would
+                    # redraw the flat tail this replaced.
+                    "spanGaps": False,
+                },
+                {
+                    "label": "Ideal",
+                    "data": burndown["ideal"],
+                    "borderColor": self.accent_alt_color,
+                    "backgroundColor": "transparent",
+                    "borderDash": [6, 4],
+                    "borderWidth": 1,
+                    "pointRadius": 0,
+                    "tension": 0,
+                },
+            ],
         )
 
         velocity_chart = self.bar_chart(
@@ -586,9 +676,19 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
         lead_time_chart = self.bar_chart(
             labels=metrics["lead_labels"],
             datasets=[{
-                "label": "Lead Time Days",
+                "label": "Days from sprint start",
                 "data": metrics["lead_data"],
                 "backgroundColor": self.accent_alt_color,
+            }],
+        )
+
+        status_counts = metrics["status_counts"]
+        status_chart = self.bar_chart(
+            labels=[item["label"] for item in status_counts],
+            datasets=[{
+                "label": "Tasks",
+                "data": [item["tasks"] for item in status_counts],
+                "backgroundColor": self.chart_colors,
             }],
         )
 
@@ -626,67 +726,7 @@ class SprintMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
             "velocity_chart_json": self.chart_json(velocity_chart),
             "lead_time_chart_json": self.chart_json(lead_time_chart),
             "assignee_workload_chart_json": self.chart_json(assignee_workload_chart),
-        })
-
-        return context
-
-
-class MissionMetricsView(LoginRequiredMixin, ChartViewMixin, DetailView):
-    model = Project
-    template_name = "kanban/mission_metrics.html"
-    context_object_name = "project"
-
-    def get_context_data(self, **kwargs):
-        context = super().get_context_data(**kwargs)
-        context = PageProcessor().decorate(context, self.request)
-
-        project = self.object
-        calculator = MissionMetricsCalculator(project)
-        metrics = calculator.get_context_data()
-
-        mission_items = metrics["mission_items"]
-
-        mission_task_chart = self.bar_chart(
-            labels=[item["title"] for item in mission_items],
-            datasets=[
-                {
-                    "label": "Completed",
-                    "data": [item["completed_tasks"] for item in mission_items],
-                    "backgroundColor": self.success_color,
-                },
-                {
-                    "label": "Open",
-                    "data": [item["open_tasks"] for item in mission_items],
-                    "backgroundColor": self.accent_color,
-                },
-            ],
-            stacked=True,
-        )
-
-        mission_completion_chart = self.bar_chart(
-            labels=[item["title"] for item in mission_items],
-            datasets=[{
-                "label": "Completion %",
-                "data": [item["completion_rate"] for item in mission_items],
-                "backgroundColor": self.chart_colors,
-            }],
-            max_y=100,
-        )
-
-        mission_weight_chart = self.bar_chart(
-            labels=[item["title"] for item in mission_items],
-            datasets=[{
-                "label": "Total Weight",
-                "data": [item["total_weight"] for item in mission_items],
-                "backgroundColor": self.accent_alt_color,
-            }],
-        )
-
-        context.update({
-            **metrics,
-            "mission_task_chart_json": self.chart_json(mission_task_chart),
-            "mission_completion_chart_json": self.chart_json(mission_completion_chart),
-            "mission_weight_chart_json": self.chart_json(mission_weight_chart),
+            "status_chart_json": self.chart_json(status_chart),
         })
 
         return context
@@ -719,7 +759,6 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             )
             .prefetch_related(
                 "tasks",
-                "tasks__column",
                 "tasks__sprint",
                 "tasks__assignee__person",
                 "tasks__reviewer__person",
@@ -732,32 +771,9 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
 
         mission = self.object
         project = mission.campaign.project
-        tasks = mission.tasks.all()
-
-        total_tasks = tasks.count()
-        completed_tasks = tasks.filter(completed_at__isnull=False).count()
-        open_tasks = total_tasks - completed_tasks
-
-        total_weight = tasks.aggregate(total=Sum("weight"))["total"] or 0
-
-        completed_weight = (
-            tasks
-            .filter(completed_at__isnull=False)
-            .aggregate(total=Sum("weight"))["total"]
-            or 0
-        )
-
-        completion_rate = (
-            round((completed_tasks / total_tasks) * 100, 1)
-            if total_tasks
-            else 0
-        )
-
-        weight_completion_rate = (
-            round((completed_weight / total_weight) * 100, 1)
-            if total_weight
-            else 0
-        )
+        # get_queryset already prefetched these. Filtering the manager here
+        # would throw that away and re-query for numbers already in memory.
+        tasks = list(mission.tasks.all())
 
         try:
             documentation_page = mission.documentation_page
@@ -768,16 +784,7 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             "project": project,
             "tasks": tasks,
             "documentation_page": documentation_page,
-
-            "total_tasks": total_tasks,
-            "completed_tasks": completed_tasks,
-            "open_tasks": open_tasks,
-
-            "total_weight": total_weight,
-            "completed_weight": completed_weight,
-
-            "completion_rate": completion_rate,
-            "weight_completion_rate": weight_completion_rate,
+            **summarize_tasks(tasks),
         })
         context["mission_plugin_sections"] = MissionPlugin.render_all(
             request=self.request,

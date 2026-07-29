@@ -1,5 +1,9 @@
+from collections import defaultdict
+
 from django.db import models
 from django.core.exceptions import ValidationError
+from django.utils import timezone
+from django.utils.translation import gettext_lazy as _
 from toto.core.domain import DomainEntity
 from toto.people.models import Person
 from toto.verbena.models import AbstractPage, AbstractSection
@@ -20,26 +24,57 @@ FIB_SCALE = [
 ]
 
 
+class TaskStatus(models.TextChoices):
+    """The only three places a task can be.
+
+    These were rows in a ``Column`` table until v1.15, one set per project and
+    seeded differently by every seeder — so "done" meant "the column with the
+    highest position", and adding a column after Done silently moved the
+    reviewer gate with it.
+    """
+
+    TODO = "todo", _("To do")
+    IN_PROGRESS = "in_progress", _("In progress")
+    DONE = "done", _("Done")
+
+
+#: Board order, left to right. Promote and demote are index arithmetic on this.
+STATUS_ORDER = (TaskStatus.TODO, TaskStatus.IN_PROGRESS, TaskStatus.DONE)
+
+
+def adjacent_status(status, direction):
+    """The status one step forward or back, or None at either end."""
+    try:
+        index = STATUS_ORDER.index(status)
+    except ValueError:
+        index = 0
+    target = index + (1 if direction == "next" else -1)
+    return STATUS_ORDER[target] if 0 <= target < len(STATUS_ORDER) else None
+
+
+class TaskQuerySet(models.QuerySet):
+    def in_board_order(self):
+        """Order by board position, not alphabetically.
+
+        ``ORDER BY status`` sorts done < in_progress < todo — exactly backwards.
+        Anything presenting tasks in flow order has to annotate a rank first.
+        """
+        rank = models.Case(
+            *[models.When(status=value, then=index) for index, value in enumerate(STATUS_ORDER)],
+            output_field=models.IntegerField(),
+        )
+        return self.annotate(_status_rank=rank).order_by("_status_rank", "position", "pk")
+
+
 class Project(DomainEntity):
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     project_lead = models.ForeignKey(Person, on_delete=models.CASCADE)
-
-    def __str__(self):
-        return self.name
-
-
-class Column(DomainEntity):
-    graph_node_type = "TaskStatus"
-    project = models.ForeignKey(Project, on_delete=models.CASCADE, db_column="belongs_to_project")
-    name = models.CharField(max_length=100)
-    position = models.PositiveIntegerField()
-    can_add_task = models.BooleanField(default=False)
     auditors = models.ManyToManyField(
         "Practitioner",
-        related_name="audited_columns",
+        related_name="audited_projects",
         blank=True,
-        help_text="Practitioners who can move tasks into this column.",
+        help_text="Practitioners who may move tasks between states.",
     )
 
     def __str__(self):
@@ -173,7 +208,12 @@ class ProjectCommitment(models.Model):
 
 class Task(DomainEntity):
     mission = models.ForeignKey(Mission, on_delete=models.CASCADE, related_name="tasks")
-    column = models.ForeignKey(Column, on_delete=models.CASCADE, related_name="tasks")
+    status = models.CharField(
+        max_length=20,
+        choices=TaskStatus.choices,
+        default=TaskStatus.TODO,
+        db_index=True,
+    )
     sprint = models.ForeignKey(Sprint, on_delete=models.SET_NULL, null=True, blank=True, related_name="tasks")
     title = models.CharField(max_length=200)
     description = models.TextField(blank=True)
@@ -198,12 +238,98 @@ class Task(DomainEntity):
     metadata = models.JSONField(blank=True, null=True)
     completed_at = models.DateTimeField(null=True, blank=True)
 
+    objects = TaskQuerySet.as_manager()
+
+    class Meta:
+        constraints = [
+            # Every metric in this app keys on completed_at while the board reads
+            # status. Before this constraint the two could disagree — and did:
+            # only the HTML promote/demote views maintained the timestamp, so any
+            # task moved through the JSON API was done on the board and open in
+            # every chart. save() below keeps them in step; this is what makes it
+            # true for the paths save() never sees (QuerySet.update, bulk_update,
+            # loaddata, data migrations).
+            models.CheckConstraint(
+                check=(
+                    models.Q(status=TaskStatus.DONE, completed_at__isnull=False)
+                    | (~models.Q(status=TaskStatus.DONE) & models.Q(completed_at__isnull=True))
+                ),
+                name="kanban_task_completed_at_matches_status",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["mission", "status"], name="kanban_task_mission_status"),
+        ]
+
     def __str__(self):
         return self.title
 
     @property
     def weight_label(self):
         return dict(FIB_SCALE).get(self.weight, self.weight)
+
+    @property
+    def is_done(self):
+        return self.status == TaskStatus.DONE
+
+    def open_blockers(self):
+        """Tasks that block this one and are not finished.
+
+        Both conditions belong in one filter() call: split across two they would
+        match different relation rows and over-report.
+        """
+        return Task.objects.filter(
+            outgoing_relations__to_task=self,
+            outgoing_relations__relation_type=RelationType.BLOCKS,
+        ).exclude(status=TaskStatus.DONE)
+
+    def relations(self):
+        """Every relation touching this task, each with the label to show here.
+
+        Two traversals rather than a UNION: a combined queryset cannot
+        select_related a different side per branch, and Django forbids most
+        operations on one afterwards.
+
+        Plain ``.all()`` so a caller listing many tasks can prefetch
+        ``incoming_relations__from_task`` and ``outgoing_relations__to_task``
+        and pay nothing here. Adding select_related would bypass that cache and
+        re-query once per task.
+        """
+        edges = []
+        for relation in self.outgoing_relations.all():
+            edges.append({
+                "relation": relation,
+                "other": relation.to_task,
+                "label": relation.get_relation_type_display(),
+                "is_reverse": False,
+            })
+        for relation in self.incoming_relations.all():
+            edges.append({
+                "relation": relation,
+                "other": relation.from_task,
+                "label": INVERSE_LABELS[relation.relation_type],
+                "is_reverse": True,
+            })
+        return edges
+
+    def save(self, *args, update_fields=None, **kwargs):
+        """Keep completed_at derived from status.
+
+        The update_fields widening is not optional: every caller in this app
+        saves with update_fields, so without it the timestamp would be corrected
+        in memory and never written — which is the exact bug this invariant
+        exists to kill, reintroduced invisibly.
+        """
+        if self.status == TaskStatus.DONE:
+            if self.completed_at is None:
+                self.completed_at = timezone.now()
+        elif self.completed_at is not None:
+            self.completed_at = None
+
+        if update_fields is not None and "status" in set(update_fields):
+            update_fields = {*update_fields, "completed_at"}
+
+        super().save(*args, update_fields=update_fields, **kwargs)
 
     def clean(self):
         if not self.mission_id:
@@ -213,11 +339,153 @@ class Task(DomainEntity):
         except (Mission.DoesNotExist, Campaign.DoesNotExist, Project.DoesNotExist):
             return
 
-        if self.column_id and self.column.project_id != project.pk:
-            raise ValidationError({"column": "Column must belong to the same project as the task."})
-
         if self.sprint_id and self.sprint.project_id != project.pk:
             raise ValidationError({"sprint": "Sprint must belong to the same project as the task."})
+
+
+class RelationType(models.TextChoices):
+    BLOCKS = "blocks", _("blocks")
+    PRECEDES = "precedes", _("precedes")
+    RELATES = "relates", _("relates to")
+    DUPLICATES = "duplicates", _("duplicates")
+    TESTS = "tests", _("tests")
+    IMPLEMENTS = "implements", _("implements")
+
+
+#: What the relation reads as from the other end. One row carries both readings,
+#: so "A blocks B" shows as "is blocked by A" on B without a second row.
+INVERSE_LABELS = {
+    RelationType.BLOCKS: _("is blocked by"),
+    RelationType.PRECEDES: _("follows"),
+    RelationType.RELATES: _("relates to"),
+    RelationType.DUPLICATES: _("is duplicated by"),
+    RelationType.TESTS: _("is tested by"),
+    RelationType.IMPLEMENTS: _("is implemented by"),
+}
+
+#: Reads the same in both directions, so the stored direction is arbitrary.
+SYMMETRIC_RELATIONS = frozenset({RelationType.RELATES})
+
+#: Types that impose an order. A cycle across any mix of these is nonsense.
+BLOCKING_RELATIONS = frozenset({RelationType.BLOCKS, RelationType.PRECEDES})
+
+
+class TaskRelation(DomainEntity):
+    """A typed edge between two tasks in the same campaign.
+
+    Stored once per edge. The forward label renders on ``from_task`` and the
+    inverse on ``to_task``, so a mirrored row would be a second copy of one fact
+    that nothing keeps in step.
+    """
+
+    from_task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="outgoing_relations")
+    to_task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="incoming_relations")
+    relation_type = models.CharField(max_length=20, choices=RelationType.choices)
+    note = models.CharField(max_length=200, blank=True)
+    created_by = models.ForeignKey(
+        Practitioner,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="+",
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("relation_type", "pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["from_task", "to_task", "relation_type"],
+                name="unique_task_relation",
+            ),
+            models.CheckConstraint(
+                check=~models.Q(from_task=models.F("to_task")),
+                name="task_relation_not_self",
+            ),
+        ]
+        indexes = [
+            # The unique constraint's own index already leads with from_task.
+            # This covers the other direction, which is the hot one: the blocker
+            # badge asks "what blocks me?".
+            models.Index(fields=["to_task", "relation_type"], name="taskrel_to_type_idx"),
+        ]
+
+    def __str__(self):
+        return f"{self.from_task} {self.get_relation_type_display()} {self.to_task}"
+
+    def _canonicalize(self):
+        """Order the endpoints of a symmetric relation so the mirror collides.
+
+        With a fixed direction, the unique constraint rejects the reverse
+        duplicate for free — no functional index, no second query.
+        """
+        if self.relation_type not in SYMMETRIC_RELATIONS:
+            return
+        if not (self.from_task_id and self.to_task_id):
+            return
+        if self.from_task_id <= self.to_task_id:
+            return
+        self.from_task_id, self.to_task_id = self.to_task_id, self.from_task_id
+        self._state.fields_cache.pop("from_task", None)
+        self._state.fields_cache.pop("to_task", None)
+
+    def clean(self):
+        if not (self.from_task_id and self.to_task_id):
+            return
+        if self.from_task_id == self.to_task_id:
+            raise ValidationError(_("A task cannot relate to itself."))
+
+        campaigns = dict(
+            Task.objects.filter(pk__in=(self.from_task_id, self.to_task_id))
+            .values_list("pk", "mission__campaign_id")
+        )
+        if len(campaigns) == 2 and len(set(campaigns.values())) != 1:
+            raise ValidationError(_("Tasks can only be related within the same campaign."))
+
+        if self.relation_type in BLOCKING_RELATIONS and campaigns:
+            self._reject_cycle(next(iter(campaigns.values())))
+
+    def _reject_cycle(self, campaign_id):
+        """Refuse an edge that closes an ordering loop.
+
+        Checked across the blocking family as a whole — "A blocks B" plus
+        "B precedes A" is as circular as either type alone. One query, then a
+        walk bounded to the campaign. Without it the blocker badge would read
+        "blocked" forever on every task in the ring, and people stop reading a
+        warning that is always on.
+        """
+        edges = defaultdict(set)
+        pairs = (
+            TaskRelation.objects
+            .filter(
+                relation_type__in=BLOCKING_RELATIONS,
+                from_task__mission__campaign_id=campaign_id,
+            )
+            .exclude(pk=self.pk)
+            .values_list("from_task_id", "to_task_id")
+        )
+        for source, target in pairs:
+            edges[source].add(target)
+        edges[self.from_task_id].add(self.to_task_id)
+
+        seen, stack = set(), [self.to_task_id]
+        while stack:
+            node = stack.pop()
+            if node == self.from_task_id:
+                raise ValidationError(_("This would create a circular blocking chain."))
+            if node in seen:
+                continue
+            seen.add(node)
+            stack.extend(edges[node])
+
+    def save(self, *args, **kwargs):
+        self._canonicalize()
+        if self._state.adding:
+            # Strict on insert only. SyncService restores rows with
+            # update_or_create, and a historical cross-campaign edge must not
+            # abort a whole restore.
+            self.full_clean()
+        super().save(*args, **kwargs)
 
 
 

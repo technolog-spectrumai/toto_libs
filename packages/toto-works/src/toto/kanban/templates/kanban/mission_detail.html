@@ -565,7 +565,7 @@
                 </td>
 
                 <td class="px-4 py-3">
-                  {{ task.column.name }}
+                  {{ task.get_status_display }}
                 </td>
 
                 <td class="px-4 py-3">
@@ -633,7 +633,7 @@
             {% endif %}
 
             <div class="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <p>{% trans "Status:" %} <span class="font-semibold">{{ task.column.name }}</span></p>
+              <p>{% trans "Status:" %} <span class="font-semibold">{{ task.get_status_display }}</span></p>
 
               <p>
                 {% trans "Sprint:" %}

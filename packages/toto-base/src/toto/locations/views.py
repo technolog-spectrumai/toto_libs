@@ -411,7 +411,7 @@ def zone_detail(request, pk):
     # traverse the kanban Mission reverse relations) only exist when the host
     # installs toto.kanban; without it the zone page shows the zone alone.
     if apps.is_installed("toto.kanban"):
-        from toto.kanban.models import Campaign, Mission, Task
+        from toto.kanban.models import Campaign, Mission
 
         campaigns = (
             Campaign.objects
@@ -435,20 +435,6 @@ def zone_detail(request, pk):
             .order_by("campaign__project__name", "campaign__name", "title")
         )
 
-        tasks = (
-            Task.objects
-            .filter(mission__campaign__zone=zone)
-            .select_related(
-                "mission",
-                "mission__campaign",
-                "mission__campaign__project",
-                "column",
-                "sprint",
-                "assignee__person",
-            )
-            .order_by("mission__campaign__name", "mission__title", "position", "title")
-        )
-
         addresses = (
             Address.objects
             .filter(missions__campaign__zone=zone)
@@ -464,7 +450,7 @@ def zone_detail(request, pk):
             .order_by("route_chain__name", "sequence", "name")
         )
     else:
-        campaigns = missions = tasks = []
+        campaigns = missions = []
         addresses = Address.objects.none()
         routes = Route.objects.none()
 
@@ -474,7 +460,6 @@ def zone_detail(request, pk):
 
         "campaigns": campaigns,
         "missions": missions,
-        "tasks": tasks,
         "addresses": addresses,
         "routes": routes,
     }

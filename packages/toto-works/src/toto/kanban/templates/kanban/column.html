@@ -17,17 +17,20 @@
 
     <div class="flex items-center justify-between gap-3">
       <div class="min-w-0">
-        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Column" %}</p>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% blocktrans count counter=column.count %}{{ counter }} task{% plural %}{{ counter }} tasks{% endblocktrans %}
+        </p>
 
         <h3 class="mt-1 flex items-center gap-2 truncate text-lg font-bold">
           <i
             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
             class="fa-solid fa-layer-group text-sm"></i>
-          {{ column.name }}
+          {{ column.label }}
         </h3>
       </div>
 
-      {% if column.can_add_task %}
+      {# Tasks always start in todo, so only that column offers the shortcut. #}
+      {% if can_manage and column.status == "todo" %}
         <a
           href="{% url 'kanban:task_create' project.pk %}"
           :class="darkMode
@@ -44,7 +47,7 @@
 
   <!-- Tasks -->
   <div class="flex-1 space-y-3 p-4">
-    {% for task in column.tasks.all %}
+    {% for task in column.tasks %}
       {% if not selected_sprint or task.sprint_id == selected_sprint.id %}
         {% include "kanban/task.html" with column=column task=task %}
       {% endif %}

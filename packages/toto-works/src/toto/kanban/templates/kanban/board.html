@@ -163,7 +163,7 @@
     <section>
       <div class="grid grid-cols-1 gap-6 md:grid-cols-3">
         {% for column in columns %}
-          {% include "kanban/column.html" with column=column selected_sprint=selected_sprint %}
+          {% include "kanban/column.html" with column=column selected_sprint=selected_sprint can_manage=can_manage %}
         {% endfor %}
       </div>
     </section>

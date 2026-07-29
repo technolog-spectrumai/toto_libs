@@ -8,14 +8,6 @@ nodes:
       name: name
       description: description
 
-  - label: KanbanColumn
-    model: toto.kanban.models.Column
-    uuid_field: uid
-    fields:
-      name: name
-      position: position
-      can_add_task: can_add_task
-
   - label: KanbanCampaign
     model: toto.kanban.models.Campaign
     uuid_field: uid
@@ -58,6 +50,7 @@ nodes:
     fields:
       title: title
       description: description
+      status: status
       due_date:
         source: due_date
         transform: str
@@ -91,13 +84,6 @@ links:
     source: project_lead
     cardinality: one
     nullable: true
-
-  - from_label: KanbanColumn
-    to_label: KanbanProject
-    relation: BELONGS_TO_PROJECT
-    source: project
-    cardinality: one
-    nullable: false
 
   - from_label: KanbanCampaign
     to_label: KanbanProject
@@ -138,13 +124,6 @@ links:
     to_label: KanbanMission
     relation: BELONGS_TO_MISSION
     source: mission
-    cardinality: one
-    nullable: false
-
-  - from_label: KanbanTask
-    to_label: KanbanColumn
-    relation: HAS_STATUS
-    source: column
     cardinality: one
     nullable: false
 

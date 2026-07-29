@@ -264,7 +264,7 @@
           </h2>
 
           <p class="mt-1 text-sm opacity-70">
-            {% trans "Burndown for the selected sprint, plus velocity, lead time, assignee workload, and campaign progress." %}
+            {% trans "Burndown for the selected sprint, plus board state, velocity, days to completion, assignee workload, and campaign progress." %}
           </p>
         </div>
 
@@ -330,13 +330,57 @@
 
           <p class="mb-4 text-sm opacity-70">
             {% if selected_sprint %}
-              {% blocktrans with name=selected_sprint.name %}Remaining weight across {{ name }}.{% endblocktrans %}
+              {% blocktrans with name=selected_sprint.name %}Remaining weight across {{ name }} (solid) against an even burn (dashed). The solid line stops at today. Scope is read as it stands now, so a task added or removed mid-sprint reshapes the whole line.{% endblocktrans %}
             {% else %}
               {% trans "No sprint available." %}
             {% endif %}
           </p>
 
-          {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+          {% if selected_sprint %}
+            {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+          {% else %}
+            <div
+              :class="darkMode
+                ? 'border-accent-1 bg-primary-bg-dark'
+                : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-xl border border-dashed p-8 text-center text-sm opacity-70">
+              <i class="fa-regular fa-chart-bar mb-2 block text-xl"></i>
+              {% trans "Create a sprint to see a burndown." %}
+            </div>
+          {% endif %}
+        </article>
+
+        <!-- Where the work sits -->
+        <article
+          :class="darkMode
+            ? 'border-accent-1 bg-sunken-dark'
+            : 'border-accent-2 bg-sunken-light'"
+          class="rounded-2xl border p-5 shadow-sm">
+
+          <h3 class="mb-1 flex items-center gap-2 text-base font-bold">
+            <i class="fa-solid fa-table-columns"></i>
+            {% trans "Where the work sits" %}
+          </h3>
+
+          <p class="mb-4 text-sm opacity-70">
+            {% trans "Every task in the project, by board state." %}
+          </p>
+
+          {% include "oya/partials/chart.html" with chart_id="statusChart" data=status_chart_json %}
+
+          <dl class="mt-4 grid grid-cols-3 gap-3 text-center">
+            {% for item in status_counts %}
+              <div
+                :class="darkMode
+                  ? 'border-accent-1 bg-primary-bg-dark'
+                  : 'border-accent-2 bg-primary-bg-light'"
+                class="rounded-lg border p-3">
+                <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{{ item.label }}</dt>
+                <dd class="mt-1 text-lg font-bold">{{ item.tasks }}</dd>
+                <dd class="text-xs opacity-70">{% blocktrans with weight=item.weight %}{{ weight }} weight{% endblocktrans %}</dd>
+              </div>
+            {% endfor %}
+          </dl>
         </article>
 
         <!-- Velocity + Lead Time -->
@@ -363,8 +407,12 @@
 
             <h3 class="mb-4 flex items-center gap-2 text-base font-bold">
               <i class="fa-solid fa-hourglass-half"></i>
-              {% trans "Lead time" %}
+              {% trans "Days to completion" %}
             </h3>
+
+            <p class="mb-4 text-xs opacity-60">
+              {% trans "Measured from the sprint start, not from when the work was requested — tasks record no creation time." %}
+            </p>
 
             {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
           </article>

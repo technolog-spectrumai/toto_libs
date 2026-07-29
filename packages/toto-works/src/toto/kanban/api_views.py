@@ -6,7 +6,11 @@ from django.utils.decorators import method_decorator
 from django.db import models as db_models
 
 from toto.api.cors import CorsApiView, MeshGatedApiView
-from toto.kanban.models import Project, Column, Task, Mission, Campaign, Practitioner, ProjectCommitment
+from toto.kanban.models import (
+    Project, Task, Mission, Campaign, Practitioner, ProjectCommitment, Sprint,
+    TaskStatus, STATUS_ORDER, adjacent_status, FIB_SCALE,
+)
+from toto.kanban.views import is_project_auditor
 
 
 def _project_to_dict(p):
@@ -17,8 +21,8 @@ def _project_to_dict(p):
     }
 
 
-def _column_to_dict(c):
-    return {"id": c.id, "name": c.name, "position": c.position, "can_add_task": c.can_add_task}
+def _status_to_dict(value):
+    return {"status": value, "label": str(TaskStatus(value).label), "position": STATUS_ORDER.index(value)}
 
 
 def _task_to_dict(t):
@@ -28,8 +32,11 @@ def _task_to_dict(t):
         "description": t.description,
         "weight": t.weight,
         "weight_label": t.weight_label,
-        "column_id": t.column_id,
-        "column_name": t.column.name if t.column else None,
+        "status": t.status,
+        "status_label": str(t.get_status_display()),
+        # Kept one release for the out-of-tree Enigma client, which reads this
+        # for display. Writes naming column_id are refused, not ignored.
+        "column_name": str(t.get_status_display()),
         "mission_id": t.mission_id,
         "mission_title": t.mission.title if t.mission else None,
         "assignee": t.assignee.person.full_name if t.assignee and t.assignee.person else None,
@@ -76,9 +83,8 @@ class ProjectDetailApiView(MeshGatedApiView):
             project = Project.objects.get(pk=pk)
         except Project.DoesNotExist:
             return JsonResponse({"error": "Project not found."}, status=404)
-        columns = list(Column.objects.filter(project=project).order_by("position"))
         data = _project_to_dict(project)
-        data["columns"] = [_column_to_dict(c) for c in columns]
+        data["columns"] = [_status_to_dict(value) for value in STATUS_ORDER]
         return JsonResponse(data)
 
 
@@ -89,8 +95,8 @@ class TaskListCreateApiView(MeshGatedApiView):
             return JsonResponse({"error": "Not authenticated."}, status=401)
         tasks = (
             Task.objects.filter(mission__campaign__project_id=project_pk)
-            .select_related("column", "assignee__person", "mission", "mission__campaign")
-            .order_by("column__position", "position")
+            .select_related("assignee__person", "mission", "mission__campaign")
+            .in_board_order()
         )
         return JsonResponse({"tasks": [_task_to_dict(t) for t in tasks]})
 
@@ -106,17 +112,18 @@ class TaskListCreateApiView(MeshGatedApiView):
         if not title:
             return JsonResponse({"error": "Title is required."}, status=400)
 
-        column_id = data.get("column_id")
-        if not column_id:
-            return JsonResponse({"error": "column_id is required."}, status=400)
+        if "column_id" in data:
+            return JsonResponse(
+                {"error": "column_id is gone; tasks are created in 'todo'. Use PATCH status to move one."},
+                status=400,
+            )
 
         try:
-            column = Column.objects.get(pk=column_id, project_id=project_pk)
-        except Column.DoesNotExist:
-            return JsonResponse({"error": "Column not found in this project."}, status=404)
+            project = Project.objects.get(pk=project_pk)
+        except Project.DoesNotExist:
+            return JsonResponse({"error": "Project not found."}, status=404)
 
         # Find or create a default mission for tasks created via API
-        project = column.project
         campaign = Campaign.objects.filter(project=project).first()
         if not campaign:
             campaign = Campaign.objects.create(
@@ -131,7 +138,7 @@ class TaskListCreateApiView(MeshGatedApiView):
         task = Task.objects.create(
             title=title,
             description=data.get("description", ""),
-            column=column,
+            status=TaskStatus.TODO,
             mission=mission,
         )
         return JsonResponse(_task_to_dict(task), status=201)
@@ -141,7 +148,9 @@ class TaskListCreateApiView(MeshGatedApiView):
 class TaskDetailApiView(CorsApiView):
     def _get_task(self, pk):
         try:
-            return Task.objects.select_related("column__project", "assignee__person", "mission").get(pk=pk)
+            return Task.objects.select_related(
+                "assignee__person", "mission", "mission__campaign__project",
+            ).get(pk=pk)
         except Task.DoesNotExist:
             return None
 
@@ -164,13 +173,33 @@ class TaskDetailApiView(CorsApiView):
             task.description = data["description"]
             fields.append("description")
         if "column_id" in data:
-            try:
-                task.column = Column.objects.get(pk=data["column_id"])
-            except Column.DoesNotExist:
-                return JsonResponse({"error": "Column not found."}, status=404)
-            fields.append("column")
+            return JsonResponse(
+                {"error": "column_id is gone. Send status: todo | in_progress | done."},
+                status=400,
+            )
+        if "status" in data:
+            if data["status"] not in TaskStatus.values:
+                return JsonResponse(
+                    {"error": f"status must be one of {', '.join(TaskStatus.values)}."},
+                    status=400,
+                )
+            if not is_project_auditor(request.user, task.mission.campaign.project):
+                return JsonResponse({"error": "You cannot move tasks in this project."}, status=403)
+            task.status = data["status"]
+            fields.append("status")
         if "weight" in data:
-            task.weight = int(data["weight"])
+            # int("abc") used to raise straight out of here as a 500, and a
+            # negative weight was accepted and poisoned every weighted metric.
+            try:
+                weight = int(data["weight"])
+            except (TypeError, ValueError):
+                return JsonResponse({"error": "weight must be an integer."}, status=400)
+            if weight not in dict(FIB_SCALE):
+                return JsonResponse(
+                    {"error": f"weight must be one of {sorted(dict(FIB_SCALE))}."},
+                    status=400,
+                )
+            task.weight = weight
             fields.append("weight")
         if "due_date" in data:
             task.due_date = data["due_date"] or None
@@ -190,49 +219,73 @@ class TaskDetailApiView(CorsApiView):
         return JsonResponse({}, status=204)
 
 
+def _load_movable_task(request, pk):
+    """Fetch a task for a move, or return the error response instead.
+
+    These endpoints carried no membership, auditor or reviewer check at all —
+    any authenticated mesh user could move any task by primary key. They now
+    apply the same gates as the board.
+    """
+    if not request.user or not request.user.is_authenticated:
+        return None, JsonResponse({"error": "Not authenticated."}, status=401)
+
+    try:
+        task = Task.objects.select_related(
+            "mission__campaign__project", "reviewer__person__user",
+        ).get(pk=pk)
+    except Task.DoesNotExist:
+        return None, JsonResponse({"error": "Task not found."}, status=404)
+
+    if not is_project_auditor(request.user, task.mission.campaign.project):
+        return None, JsonResponse({"error": "You cannot move tasks in this project."}, status=403)
+
+    return task, None
+
+
 @method_decorator(csrf_exempt, name="dispatch")
 class TaskPromoteApiView(CorsApiView):
     def post(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            task = Task.objects.select_related("column__project").get(pk=pk)
-        except Task.DoesNotExist:
-            return JsonResponse({"error": "Task not found."}, status=404)
+        task, error = _load_movable_task(request, pk)
+        if error:
+            return error
 
-        next_col = (
-            Column.objects.filter(project=task.column.project, position__gt=task.column.position)
-            .order_by("position")
-            .first()
-        )
-        if not next_col:
-            return JsonResponse({"error": "Already in the last column."}, status=400)
+        next_status = adjacent_status(task.status, "next")
+        if next_status is None:
+            return JsonResponse({"error": "Already done."}, status=400)
 
-        task.column = next_col
-        task.save(update_fields=["column"])
-        return JsonResponse(_task_to_dict(task))
+        if next_status == TaskStatus.DONE:
+            reviewer_user_id = getattr(
+                getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
+            )
+            if reviewer_user_id and reviewer_user_id != request.user.id:
+                return JsonResponse(
+                    {"error": "Only the assigned reviewer can complete this task."},
+                    status=403,
+                )
+
+        blockers = list(task.open_blockers().values_list("title", flat=True)[:5])
+
+        task.status = next_status
+        task.save(update_fields=["status"])  # completed_at follows, in Task.save
+
+        payload = _task_to_dict(task)
+        payload["open_blockers"] = blockers
+        return JsonResponse(payload)
 
 
 @method_decorator(csrf_exempt, name="dispatch")
 class TaskDemoteApiView(CorsApiView):
     def post(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-        try:
-            task = Task.objects.select_related("column__project").get(pk=pk)
-        except Task.DoesNotExist:
-            return JsonResponse({"error": "Task not found."}, status=404)
+        task, error = _load_movable_task(request, pk)
+        if error:
+            return error
 
-        prev_col = (
-            Column.objects.filter(project=task.column.project, position__lt=task.column.position)
-            .order_by("-position")
-            .first()
-        )
-        if not prev_col:
-            return JsonResponse({"error": "Already in the first column."}, status=400)
+        previous_status = adjacent_status(task.status, "prev")
+        if previous_status is None:
+            return JsonResponse({"error": "Already at the start of the board."}, status=400)
 
-        task.column = prev_col
-        task.save(update_fields=["column"])
+        task.status = previous_status
+        task.save(update_fields=["status"])
         return JsonResponse(_task_to_dict(task))
 
 
@@ -257,7 +310,7 @@ class MissionDetailApiView(MeshGatedApiView):
             return JsonResponse({"error": "Mission not found."}, status=404)
 
         tasks = list(
-            Task.objects.filter(mission=mission).select_related("column")
+            Task.objects.filter(mission=mission)
         )
         total = len(tasks)
         completed = sum(1 for t in tasks if t.completed_at is not None)
@@ -349,7 +402,7 @@ class SprintMetricsApiView(MeshGatedApiView):
             return JsonResponse({"error": "Project not found."}, status=404)
 
         from toto.kanban.metrics import SprintMetricsCalculator
-        calc = SprintMetricsCalculator(project)
+        calc = SprintMetricsCalculator(project, sprint_id=request.GET.get("sprint"))
         summary = calc.get_summary()
 
         def sprint_to_dict(item):
@@ -368,16 +421,12 @@ class SprintMetricsApiView(MeshGatedApiView):
                 "weight_completion_rate": item["weight_completion_rate"],
             }
 
-        selected_id = request.GET.get("sprint")
-        sprints = list(Sprint.objects.filter(project=project).order_by("-start_time"))
-        selected = next((s for s in sprints if str(s.pk) == str(selected_id)), None) or (sprints[0] if sprints else None)
+        sprints = calc.sprints
+        selected = calc.selected_sprint
 
-        burndown_labels = calc.get_burndown_labels(selected)
-        burndown_data = calc.get_burndown_data(selected)
-        velocity_labels = calc.get_velocity_labels()
-        velocity_data = calc.get_velocity_data()
-        lead_labels = calc.get_lead_labels()
-        lead_data = calc.get_lead_data()
+        burndown = calc.get_burndown(selected)
+        velocity = calc.get_velocity()
+        days_to_completion = calc.get_days_to_completion()
         assignee_items = calc.get_assignee_items()
         campaign_progress = calc.get_campaign_progress()
 
@@ -393,9 +442,15 @@ class SprintMetricsApiView(MeshGatedApiView):
             "overall_weight_completion_rate": summary["overall_weight_completion_rate"],
             "sprint_items": [sprint_to_dict(s) for s in summary["sprint_items"]],
             "selected_sprint_id": selected.pk if selected else None,
-            "burndown": {"labels": burndown_labels, "data": burndown_data},
-            "velocity": {"labels": velocity_labels, "data": velocity_data},
-            "lead_time": {"labels": lead_labels, "data": lead_data},
+            "burndown": {
+                **burndown,
+                # "data" is what the out-of-tree client reads; kept as an alias
+                # of the actual series for one release.
+                "data": burndown["actual"],
+            },
+            "status_counts": calc.get_status_counts(),
+            "velocity": velocity,
+            "lead_time": days_to_completion,
             "assignees": assignee_items,
             "campaign_progress": campaign_progress,
             "sprints": [{"id": s.pk, "name": s.name} for s in sprints],
