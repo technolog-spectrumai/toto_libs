@@ -278,8 +278,8 @@
 
     {% if column.is_auditor or can_manage %}
       <section class="flex flex-wrap gap-2 pt-1">
-        {# Forms, not links: these mutate state, and as GET endpoints they moved
-           a card for anyone whose browser fetched the URL. #}
+        {% comment %}Forms, not links: these mutate state, and as GET endpoints
+           they moved a card for anyone whose browser fetched the URL.{% endcomment %}
         {% if column.is_auditor %}
           <form method="post" action="{% url 'kanban:task_promote' project.pk task.pk %}">
             {% csrf_token %}
