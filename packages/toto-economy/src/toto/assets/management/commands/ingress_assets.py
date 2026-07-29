@@ -1,6 +1,7 @@
 from datetime import timedelta
 from decimal import Decimal
 
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.utils import timezone
 
@@ -23,6 +24,17 @@ from toto.ingress import IngressCommand
 # Supplies are frozen at their historical seed values so re-running ingress
 # against an already-seeded ledger never trips the immutability re-check.
 ASR_SUPPLY = Decimal("6666.666666667")
+
+# The gas asset — what metered work is billed in — is per host. It was ASR
+# everywhere until a second host started running its own economy (see the
+# monorepo's studio.md): two ledgers that cannot exchange must not use one
+# ticker, or a balance means different things depending where you read it.
+# GAS_ASSET/GAS_SUPPLY/GAS_ASSET_NAME default to the historical Assarion, so a
+# host that names none of them seeds exactly what it always did.
+GAS_DEFAULTS = {
+    "ASR": ("Assarion", "Assari",
+            "Assarion — fine-grained unit of account of the platform. 9 decimal places."),
+}
 TPLN_SUPPLY = Decimal("76658.70")
 
 assert ASR_SUPPLY == Decimal("6666.666666667"), ASR_SUPPLY
@@ -107,48 +119,60 @@ class Command(IngressCommand):
         return {"currency_reserve": acc}
 
     # ------------------------------------------------------------------ #
-    # Always-on: ASR, TPLN                                               #
+    # Always-on: the host's gas asset, TPLN                              #
     # ------------------------------------------------------------------ #
 
     def _seed_base_currency_assets(self, accounts: dict) -> dict:
         reserve = accounts["currency_reserve"]
         assets = {}
 
-        # ── ASR ──────────────────────────────────────────────────────────
-        if LedgerTransaction.objects.filter(reference="create-asr").exists():
-            asr = Asset.objects.get(unit_name="ASR")
-            existing_supply = asr.total_supply_display
-            if existing_supply != ASR_SUPPLY:
+        # ── gas (ASR unless this host names another) ─────────────────────
+        ticker = getattr(settings, "GAS_ASSET", "ASR")
+        supply = Decimal(str(getattr(settings, "GAS_SUPPLY", ASR_SUPPLY)))
+        name, plural, description = GAS_DEFAULTS.get(
+            ticker,
+            (getattr(settings, "GAS_ASSET_NAME", ticker), ticker,
+             f"{ticker} — what metered work on this platform is billed in."),
+        )
+        # One reference per ticker: create_asset is one-shot per reference, and
+        # that is the whole immutability guarantee for a fixed supply.
+        reference = f"create-{ticker.lower()}"
+
+        if LedgerTransaction.objects.filter(reference=reference).exists():
+            gas = Asset.objects.get(unit_name=ticker)
+            existing_supply = gas.total_supply_display
+            if existing_supply != supply:
                 self.stdout.write(self.style.WARNING(
-                    f"  ⚠ ASR already exists with supply={existing_supply}; "
-                    f"expected {ASR_SUPPLY}. Ledger immutability preserved — "
+                    f"  ⚠ {ticker} already exists with supply={existing_supply}; "
+                    f"expected {supply}. Ledger immutability preserved — "
                     "update total_supply manually via a formal correction/reversal if needed."
                 ))
         else:
-            asr = create_asset(
-                name="Assarion",
-                unit_name="ASR",
-                total_supply=ASR_SUPPLY,
+            gas = create_asset(
+                name=name,
+                unit_name=ticker,
+                total_supply=supply,
                 decimals=9,
                 reserve_account=reserve,
-                reference="create-asr",
-                description="Assarion — fine-grained unit of account of the platform. 9 decimal places.",
+                reference=reference,
+                description=description,
                 metadata={
                     "kind": "currency",
                     "family": "toto_currency",
-                    "plural": "Assari",
+                    "plural": plural,
                     "seeded_by": "ingress",
                 },
             )
-            asr.reserve_account = reserve
-            asr.save(update_fields=["reserve_account", "updated_at"])
+            gas.reserve_account = reserve
+            gas.save(update_fields=["reserve_account", "updated_at"])
 
-        asr.is_currency = True
-        asr.backing_document = "Issued and held by the platform's Currency Reserve account."
-        asr.minting_authority = "Currency Reserve"
-        asr.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
-        assets["ASR"] = asr
-        self.stdout.write(f"  +/✓ asset ASR supply={ASR_SUPPLY}")
+        gas.is_currency = True
+        gas.backing_document = "Issued and held by the platform's Currency Reserve account."
+        gas.minting_authority = "Currency Reserve"
+        gas.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
+        assets[ticker] = gas
+        assets["GAS"] = gas          # ticker-agnostic handle for the seeder below
+        self.stdout.write(f"  +/✓ asset {ticker} (gas) supply={supply}")
 
         # ── TPLN ─────────────────────────────────────────────────────────
         if LedgerTransaction.objects.filter(reference="create-tpln").exists():
@@ -185,22 +209,24 @@ class Command(IngressCommand):
         assets["TPLN"] = tpln
         self.stdout.write(f"  +/✓ asset TPLN supply={TPLN_SUPPLY}")
 
-        assert Asset.objects.filter(unit_name="ASR").exists()
+        assert Asset.objects.filter(unit_name=ticker).exists()
         assert Asset.objects.filter(unit_name="TPLN").exists()
-        assert asr.decimals == 9
+        assert gas.decimals == 9
         assert tpln.decimals == 2
-        assert asr.is_currency is True
+        assert gas.is_currency is True
         assert tpln.is_currency is True
 
         return assets
 
     # ------------------------------------------------------------------ #
-    # Always-on: Currencies ASR, TPLN                                    #
+    # Always-on: Currencies for the gas asset and TPLN                   #
     # ------------------------------------------------------------------ #
 
     def _seed_base_currencies(self, assets: dict) -> dict:
+        gas = assets["GAS"]
         specs = [
-            dict(code="ASR",  name="Assarion",   symbol="ASR", unit_name="ASR"),
+            dict(code=gas.unit_name, name=gas.name, symbol=gas.unit_name,
+                 unit_name=gas.unit_name),
             dict(code="TPLN", name="Toto Złoty", symbol="tzł", unit_name="TPLN"),
         ]
         currencies = {}
@@ -214,9 +240,9 @@ class Command(IngressCommand):
             currencies[spec["code"]] = cur
             self.stdout.write(f"  +/✓ currency {spec['code']}")
 
-        asr_cur = Currency.objects.select_related("asset").get(code="ASR")
+        gas_cur = Currency.objects.select_related("asset").get(code=gas.unit_name)
         tpln_cur = Currency.objects.select_related("asset").get(code="TPLN")
-        assert asr_cur.asset_id == assets["ASR"].pk
+        assert gas_cur.asset_id == gas.pk
         assert tpln_cur.asset_id == assets["TPLN"].pk
 
         return currencies
