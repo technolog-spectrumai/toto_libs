@@ -43,12 +43,16 @@ FEATURE_APPS = {
     ],
     "chat": ["toto.forum"],
     "weather": ["toto.weather"],
-    "media": [                  # BUILD_MEDIA — the video/media stack
+    "media": [                  # BUILD_MEDIA — the video PROCESSING stack
         "toto.manta",           # media/transcribe command builder
         "toto.transcription",   # Whisper audio/video transcription
-        "toto.vod",             # video-on-demand vault play plugin
         "toto.fileservices",    # ffmpeg/ffprobe run services
     ],
+    # Split out of "media": vod has no models, no tasks and needs no ffmpeg — it
+    # is the vault's play button. BUILD_VOD defaults to media, so a host that
+    # names neither is unaffected; a host that wants playback without the
+    # processing stack sets BUILD_VOD=1 and BUILD_MEDIA=0.
+    "vod": ["toto.vod"],        # video-on-demand vault play plugin
     "graph": [
         "toto.ravioli",         # sole Neo4j boundary
         "toto.sql_neo4j_sync",  # SQL→Neo4j projection/sync layer

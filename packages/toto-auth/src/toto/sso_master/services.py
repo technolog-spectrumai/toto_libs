@@ -173,6 +173,12 @@ def get_user_claims(user, scopes) -> dict:
         else:
             claims["roles"] = ["viewer"]
         claims["is_superuser"] = bool(user.is_superuser)
+        # A federated toto host mirrors this onto its own account, so that
+        # disabling someone here disables them there. It is effectively always
+        # true at /authorize (an inactive user cannot sign in to reach it), but
+        # an access token outlives the session by up to an hour, so /userinfo
+        # can legitimately be asked about a user disabled since.
+        claims["is_active"] = bool(user.is_active)
 
     return claims
 
