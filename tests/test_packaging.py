@@ -90,7 +90,13 @@ def test_templates_are_packaged(all_names, owner):
     templates = [n for n in all_names if "/templates/" in n]
     assert len(templates) >= 204, len(templates)
     # Regression: the old glob (templates/**/*.html) dropped this .txt template.
-    assert owner.get("toto/sso_master/templates/sso/password_reset_subject.txt") == "toto-auth"
+    # It moved sso_master -> sso_core in 1.23 with the rest of the reset flow, so a
+    # consumer host gets it too; still the only non-.html template in the suite,
+    # which is what makes it the right canary for the glob.
+    assert owner.get("toto/sso_core/templates/sso/password_reset_subject.txt") == "toto-auth"
+    # sso_core had no templates directory at all before that move, so this also
+    # pins that a newly-templated app is picked up by the packaging config.
+    assert owner.get("toto/sso_core/templates/sso/password_reset.html") == "toto-auth"
     # The shared base template every app extends.
     assert owner.get("toto/core/templates/oya/base.html") == "toto-base"
 

@@ -146,8 +146,19 @@
             {% endfor %}
           {% endif %}
 
+          {% comment %}Additional ways in, above the password form because where one
+             exists it is usually the primary route. Empty here; the consumer host's
+             hybrid page (sso_client/login.html) fills it with "Sign in with <portal>".
+             A block rather than a second copy of this page, so the two cannot drift.{% endcomment %}
+          {% block extra_signin %}{% endblock %}
+
           {% trans "Log In" as submit_label %}
-          {% url 'core:login' as form_action %}
+          {% comment %}The form posts back to whichever view rendered it: core:login
+             here, sso:login on the hybrid page. Passed in context rather than
+             hardcoded, or the hybrid page would post to a view that does not know
+             about its federated button.{% endcomment %}
+          {% url 'core:login' as core_login_url %}
+          {% firstof login_form_action core_login_url as form_action %}
           {% include "oya/_login_form.html" with form_action=form_action submit_label=submit_label %}
 
           {% comment %}The `as` form swallows NoReverseMatch, so a host that does

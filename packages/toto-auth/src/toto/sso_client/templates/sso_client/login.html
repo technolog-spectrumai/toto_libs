@@ -1,0 +1,40 @@
+{% extends "oya/login.html" %}
+{% load i18n %}
+
+{% comment %}
+The hybrid sign-in page: a local password form AND federated sign-in, for a
+consumer host that has accounts of its own.
+
+Extends the shared login page rather than reimplementing it, so the welcome
+panel, the cooldown countdown, the social buttons, the membership invitation and
+every theme class come from one place and cannot drift. All this file adds is the
+federated button, into the block that page leaves for it.
+
+Rendered by sso_client.views.oidc_login through
+toto.core.auth_views.password_login_view, which supplies `form`, `error`,
+`cooldown_remaining`, `next`, `password_reset_*` and `social_providers`;
+`federated_url` and `federated_label` come from that view's extra_context.
+{% endcomment %}
+
+{% block extra_signin %}
+  {% if federated_url %}
+    <a
+      href="{{ federated_url }}"
+      :class="darkMode
+        ? 'border-accent-1 bg-sunken-dark hover:bg-primary-bg-dark'
+        : 'border-accent-2 bg-sunken-light hover:bg-primary-bg-light'"
+      class="inline-flex w-full items-center justify-center gap-3 rounded-lg border px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+      <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="fa-solid fa-right-to-bracket"></i>
+      {% blocktrans with portal=federated_label %}Sign in with {{ portal }}{% endblocktrans %}
+    </a>
+
+    <div class="flex items-center gap-3 py-1">
+      <span :class="darkMode ? 'bg-accent-1' : 'bg-accent-2'" class="h-px flex-1"></span>
+      <span class="text-xs font-semibold uppercase tracking-wide opacity-60">
+        {% trans "or sign in here" %}
+      </span>
+      <span :class="darkMode ? 'bg-accent-1' : 'bg-accent-2'" class="h-px flex-1"></span>
+    </div>
+  {% endif %}
+{% endblock %}

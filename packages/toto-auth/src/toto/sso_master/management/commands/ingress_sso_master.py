@@ -33,6 +33,7 @@ class Command(IngressCommand):
 
         self._provision_grafana()
         self._provision_gitea()
+        self._provision_declared_parties()
 
     def _ensure_signing_key(self):
         """ID tokens are RS256-signed with the active SSOSigningKey (private half
@@ -142,3 +143,73 @@ class Command(IngressCommand):
         self.stdout.write(self.style.SUCCESS(
             f"Provisioned Gitea OIDC relying party (redirect {redirect_uri})"
         ))
+
+    def _provision_declared_parties(self):
+        """Relying parties the HOST declares, rather than ones this command knows.
+
+        Grafana and Gitea are hardcoded above because they are sidecars this
+        library ships support for. A second toto host is not: which hosts federate
+        with this one is a deployment fact, so the host states it and the library
+        stays ignorant of any particular host's name.
+
+            SSO_RELYING_PARTIES = [
+                {
+                    "name": "Studio",
+                    "client_id": "studio",
+                    "secret_setting": "STUDIO_OIDC_CLIENT_SECRET",
+                    "redirect_uris": ["https://studio.example.org/sso/callback/"],
+                    "scopes": "openid email profile roles",
+                    "trusted": True,
+                },
+            ]
+
+        The secret arrives by SETTING NAME, not by value, so a client secret never
+        appears in a settings literal — the host reads it from its environment like
+        every other credential.
+
+        Idempotent through ``create_relying_party(force_recreate=True)``, which
+        updates the registration in place. That distinction is load-bearing: this
+        command runs from the container entrypoint on EVERY start, and the version
+        that deleted-and-recreated revoked every live token of every seeded party
+        on each restart. ``recreate_relying_party`` is still the deleting path and
+        is deliberately not used here.
+
+        A redirect URI must match EXACTLY at both /authorize and /token, so a
+        wrong one here surfaces as "Invalid redirect_uri" rather than silently.
+        """
+        declared = getattr(settings, "SSO_RELYING_PARTIES", None) or []
+        for spec in declared:
+            name = (spec.get("name") or "").strip()
+            client_id = (spec.get("client_id") or "").strip()
+            uris = [u.strip() for u in (spec.get("redirect_uris") or []) if u.strip()]
+            if not (name and client_id and uris):
+                self.stdout.write(self.style.WARNING(
+                    f"SSO_RELYING_PARTIES entry {spec!r} needs name, client_id and "
+                    "redirect_uris — skipping."
+                ))
+                continue
+
+            secret_setting = spec.get("secret_setting") or ""
+            secret = (getattr(settings, secret_setting, "") or "") if secret_setting else ""
+            if secret_setting and not secret:
+                # Refused rather than provisioned with a blank secret, which would
+                # register a party whose token exchange can never succeed and
+                # whose failure looks like a client bug.
+                self.stdout.write(self.style.WARNING(
+                    f"{name}: {secret_setting} is empty — skipping relying-party "
+                    "provisioning rather than registering an unusable client."
+                ))
+                continue
+
+            create_relying_party(
+                name=name,
+                client_id=client_id,
+                trusted=bool(spec.get("trusted", True)),
+                redirect_uris=uris,
+                scopes=spec.get("scopes") or "openid email profile roles",
+                raw_secret=secret or None,
+                force_recreate=True,   # update in place; see the docstring
+            )
+            self.stdout.write(self.style.SUCCESS(
+                f"Provisioned {name} OIDC relying party (redirect {uris[0]})"
+            ))
