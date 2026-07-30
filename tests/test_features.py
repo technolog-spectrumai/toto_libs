@@ -136,6 +136,25 @@ def test_manta_buys_the_celery_layer_but_not_workflows():
     assert f.workflows is False
 
 
+def test_jess_buys_the_celery_layer_but_not_workflows():
+    # Same shape as manta, one step stronger: jess/tasks.py imports shared_task at
+    # module scope AND its EMAIL_BACKEND calls .delay() on the request path, so a
+    # BUILD_JESS=1 image without the realtime pip layer would not boot. It names
+    # workflows nowhere and has no FK to WorkflowRun, so it is not in that closure.
+    f = resolve(BUILD_JESS=1)
+    assert (f.jess, f.realtime) == (True, True)
+    assert f.workflows is False
+    assert f.chat is False
+
+
+def test_jess_is_opt_in_and_no_tier_turns_it_on():
+    # It must not arrive with the realtime tier: a host that asked for chat has not
+    # asked for its EMAIL_BACKEND to be replaced.
+    assert resolve().jess is False
+    assert resolve(BUILD_REALTIME=1).jess is False
+    assert resolve(BUILD_JESS=0).jess is False
+
+
 def test_fileservices_forces_workflows():
     # The opposite case, and the strongest closure in the file: FileServiceRun has a
     # live FK to workflows.WorkflowRun and predefined_tasks.py imports the workflows

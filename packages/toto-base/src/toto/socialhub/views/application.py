@@ -7,7 +7,8 @@ from toto.ui import PageProcessor
 from django.utils import timezone
 from django.contrib.auth.models import User
 from toto.socialhub.forms import MembershipApplicationForm, CodeVerificationForm, ReferenceRequestForm
-from toto.socialhub.captcha import resolve_email_service, generate_code_captcha
+from toto.socialhub.captcha import generate_code_captcha
+from django.core.mail import EmailMessage
 from toto.core.auth_cooldown import (
     captcha_retry_cooldown_remaining,
     captcha_retry_cooldown_seconds,
@@ -22,6 +23,35 @@ from django.contrib.auth.decorators import login_required
 
 logger = logging.getLogger(__name__)
 User = get_user_model()
+
+# The purpose tag toto.jess reads off the message and pops. On a host without jess the
+# header is simply carried through to SMTP, so this costs nothing there.
+_JESS_PURPOSE_HEADER = "X-Jess-Purpose"
+
+
+def _send_endorsement_mail(subject, body, *, to, community):
+    """Send an endorsement decision email through whatever the platform's backend is.
+
+    This replaces ``api.EmailService.send_email``, which was never able to run: it
+    declared ``smtp_password`` keyword-only and both call sites here omitted it, so every
+    call raised ``TypeError`` into the ``except Exception`` below and was logged as
+    "Failed to send approval email". Endorsement mail has never actually been delivered.
+
+    ``reply_to`` is the community's own address rather than its own SMTP relay — the
+    useful half of the per-community sender identity that went away with EmailService,
+    without a second place to keep a credential.
+
+    ``fail_silently=True`` keeps the promise the old ``except Exception`` was making:
+    accepting a reference must not fail because mail did.
+    """
+    msg = EmailMessage(
+        subject=subject,
+        body=body,
+        to=[to],
+        reply_to=[community.email] if getattr(community, "email", "") else [],
+        headers={_JESS_PURPOSE_HEADER: "socialhub_endorsement"},
+    )
+    msg.send(fail_silently=True)
 
 
 def membership_application_view(request):
@@ -204,22 +234,17 @@ def reference_accept(request, ref_id):
         user = User.objects.get(email=application.email)
         community = application.community
 
-        svc = resolve_email_service(community)
-        if svc is None:
-            logger.info(f"No email service for '{community.name}'; skipping approval email.")
-        else:
-            subject = f"Your Membership in {community.name} Has Been Approved"
-            body = (
-                f"Hello,\n\n"
-                f"Good news! Your reference has been accepted and your membership "
-                f"in {community.name} is now fully approved.\n\n"
-                f"You can now log in using your email address: {user.email}\n\n"
-                f"Welcome aboard!\n"
-                f"{community.name} Team"
-            )
-
-            svc.send_email(subject, body, to=user.email)
-            logger.info(f"Approval email sent to '{user.email}'.")
+        subject = f"Your Membership in {community.name} Has Been Approved"
+        body = (
+            f"Hello,\n\n"
+            f"Good news! Your reference has been accepted and your membership "
+            f"in {community.name} is now fully approved.\n\n"
+            f"You can now log in using your email address: {user.email}\n\n"
+            f"Welcome aboard!\n"
+            f"{community.name} Team"
+        )
+        _send_endorsement_mail(subject, body, to=user.email, community=community)
+        logger.info(f"Approval email queued for '{user.email}'.")
 
     except Exception as e:
         logger.error(f"Failed to send approval email for reference '{ref_id}': {e}")
@@ -249,24 +274,19 @@ def reference_reject(request, ref_id):
         user = User.objects.get(email=application.email)
         community = application.community
 
-        svc = resolve_email_service(community)
-        if svc is None:
-            logger.info(f"No email service for '{community.name}'; skipping rejection email.")
-        else:
-            subject = f"Your Membership Application to {community.name}"
-            body = (
-                f"Hello,\n\n"
-                f"We're sorry to inform you that your reference for joining {community.name} "
-                f"was not approved at this time.\n\n"
-                f"This does not prevent you from applying again in the future.\n"
-                f"If you believe this was a mistake or would like more information, "
-                f"please contact the community leadership.\n\n"
-                f"Best regards,\n"
-                f"{community.name} Team"
-            )
-
-            svc.send_email(subject, body, to=user.email)
-            logger.info(f"Rejection email sent to '{user.email}'.")
+        subject = f"Your Membership Application to {community.name}"
+        body = (
+            f"Hello,\n\n"
+            f"We're sorry to inform you that your reference for joining {community.name} "
+            f"was not approved at this time.\n\n"
+            f"This does not prevent you from applying again in the future.\n"
+            f"If you believe this was a mistake or would like more information, "
+            f"please contact the community leadership.\n\n"
+            f"Best regards,\n"
+            f"{community.name} Team"
+        )
+        _send_endorsement_mail(subject, body, to=user.email, community=community)
+        logger.info(f"Rejection email queued for '{user.email}'.")
 
     except Exception as e:
         logger.error(f"Failed to send rejection email for reference '{ref_id}': {e}")

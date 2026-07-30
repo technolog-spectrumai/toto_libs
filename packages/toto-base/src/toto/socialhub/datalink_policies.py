@@ -13,7 +13,6 @@ since it only checks that two text fields are non-empty. Replicating the row wou
 make the receiver assert an authenticity it cannot check.
 """
 from toto.datalink.registry import (
-    FK_NULL,
     IDENTITY_NATURAL,
     IDENTITY_REFUSE,
     IDENTITY_UID,
@@ -30,19 +29,19 @@ register(SyncPolicy(
     fields=(
         "name", "slug", "org_type", "location", "territory", "established_year",
         "head", "is_autonomous", "email", "is_foreign", "is_federal_tribe",
-        "email_service", "parent", "federation",
+        "parent", "federation",
     ),
     m2m=("senior_members",), m2m_stage=STAGE_MEMBERSHIP,
     parent_field="parent",
     timestamp_field="updated_at",
-    refs={"email_service": FK_NULL},
     notes=(
         "`head` points at people.Person and is nullable, which is what stops "
         "Person<->Community being a cycle: Person has no FK to Community, only the "
         "`communities` M2M, so people -> communities -> membership needs no deferral. "
-        "`email_service` is dropped: api.EmailService is refused because its SMTP "
-        "password is a gervazy row that cannot be decrypted on the receiver, so a "
-        "copied service would be listed and dead. `logo` is omitted (no file bytes). "
+        "There is no `email_service` field any more: api.EmailService was absorbed "
+        "into toto.jess, whose EmailProvider is refused for the same reason its "
+        "predecessor was — the SMTP password is a gervazy row whose AAD binds its own "
+        "pk, so a copied provider is listed and dead. `logo` is omitted (no bytes). "
         "slug is written explicitly so Community.save()'s slug derivation never runs."
     ),
 ))

@@ -74,6 +74,10 @@ FEATURE_APPS = {
     "editor": ["toto.editor"],
     "pyeditor": ["toto.antaresia"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
+    # The mail transport (BUILD_JESS). Flag-gated rather than core because it queues
+    # every send: a host with no celery worker would have an email service whose
+    # messages can never leave. Such a host keeps reading EMAIL_* from its environment.
+    "jess": ["toto.jess"],
 }
 
 
@@ -97,6 +101,7 @@ TASK_MODULES = [
     "toto.connectors",
     "toto.formica",
     "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
+    "toto.jess",        # the mail queue — every email in the platform passes through it
 ]
 
 

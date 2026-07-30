@@ -1,9 +1,6 @@
-import uuid
-
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
-from django.core.mail import EmailMessage, get_connection
 from django.db import models
 from django.utils.text import slugify
 from django_jsonform.models.fields import JSONField
@@ -213,80 +210,3 @@ class Connector(ApiConnector):
     class Meta(ApiConnector.Meta):
         verbose_name = "API connector"
         verbose_name_plural = "API connectors"
-
-
-# ---------------------------------------------------------------------------
-# EmailService (SMTP configuration, secrets live in Gervazy)
-# ---------------------------------------------------------------------------
-
-class EmailService(models.Model):
-    """
-    Stores SMTP configuration for a system component.
-    The SMTP password is stored in a Gervazy EncryptedSecret.
-    """
-
-    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
-
-    name = models.CharField(
-        max_length=128,
-        unique=True,
-        blank=True,
-        help_text="Optional name for this email service. Auto-generated if omitted."
-    )
-    email_address = models.EmailField(help_text="SMTP login email address")
-
-    smtp_secret = models.ForeignKey(
-        "gervazy.EncryptedSecret",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name="email_services",
-        help_text="Gervazy EncryptedSecret holding the SMTP password.",
-    )
-
-    host = models.CharField(max_length=255, help_text="SMTP server hostname")
-    port = models.PositiveIntegerField(default=587)
-    use_tls = models.BooleanField(default=True)
-    use_ssl = models.BooleanField(default=False)
-
-    created_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        db_table = "socialhub_emailservice"
-
-    def save(self, *args, **kwargs):
-        if not self.name:
-            self.name = f"email-service-{uuid.uuid4()}"
-        super().save(*args, **kwargs)
-
-    def __str__(self):
-        return f"EmailService {self.name} ({self.email_address})"
-
-    def send_email(self, subject, body, to, html=None, *, smtp_password: str):
-        """
-        Sends an email using this EmailService's SMTP configuration.
-        Pass smtp_password explicitly — obtain it from the Gervazy vault session.
-        """
-        connection = get_connection(
-            backend=settings.EMAIL_BACKEND,
-            host=self.host,
-            port=self.port,
-            username=self.email_address,
-            password=smtp_password,
-            use_tls=self.use_tls,
-            use_ssl=self.use_ssl,
-        )
-
-        msg = EmailMessage(
-            subject=subject,
-            body=body,
-            from_email=self.email_address,
-            to=[to] if isinstance(to, str) else to,
-            connection=connection,
-        )
-
-        if html:
-            msg.content_subtype = "html"
-            msg.body = html
-
-        return msg.send()

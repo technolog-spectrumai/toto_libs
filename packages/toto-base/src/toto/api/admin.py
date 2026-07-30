@@ -3,7 +3,7 @@ import uuid
 from django import forms
 from django.contrib import admin, messages
 
-from .models import Connector, EmailService
+from .models import Connector
 
 
 def make_connector_secret_form(model_cls):
@@ -137,10 +137,3 @@ class ConnectorAdmin(ApiConnectorSecretAdminMixin, admin.ModelAdmin):
             "classes": ("collapse",),
         }),
     )
-
-
-@admin.register(EmailService)
-class EmailServiceAdmin(admin.ModelAdmin):
-    list_display = ("name", "email_address", "host", "port", "use_tls", "use_ssl", "created_at")
-    search_fields = ("name", "email_address", "host")
-    readonly_fields = ("id", "created_at")

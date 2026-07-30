@@ -74,6 +74,21 @@ echo "==> pytest"
 cd "$REPO_ROOT"
 TOTO_WHEEL_DIR="$DIST" "$VENV/bin/pytest" -q tests/
 
+# The jess suite, against the INSTALLED wheels rather than the source tree. It is the
+# first app suite this gate runs, and it earns that because it is the only place the
+# whole chain is exercised end to end: a real gervazy strongbox (Argon2id and the
+# four-tier envelope), a stored SMTP password read back, the queueing EMAIL_BACKEND,
+# and the 403-not-302 staff gate. Run from /tmp with -I so no source tree can shadow
+# the wheels — this must prove the PACKAGED app works, including its templates,
+# migration and testing/settings.py, which are exactly what a wheel silently drops.
+#
+# sso_master.tests.test_password_reset rides along on the same settings module. It is
+# the suite jess must not regress (it asserts the "Forgot password?" link and
+# mail.outbox under EMAIL_BACKEND overrides) and no other gate runs it.
+echo "==> jess suite + password reset, against the installed wheels"
+( cd /tmp && DJANGO_SETTINGS_MODULE=toto.jess.testing.settings \
+    "$PY" -I -m django test toto.jess.tests toto.sso_master.tests.test_password_reset )
+
 echo "==> tier matrix: each dependency tier must stand on its own"
 # toto-base alone, then each package that only needs base, then the full stack.
 # A hidden import from a lower tier into a higher one fails here and nowhere else.

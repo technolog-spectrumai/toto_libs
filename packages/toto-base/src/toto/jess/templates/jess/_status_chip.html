@@ -1,0 +1,18 @@
+{% comment %}
+One status chip. Include with `status` and `label`, or bind `x-text` from a poller.
+
+    {% include "jess/_status_chip.html" with status=message.status label=message.get_status_display %}
+
+Same shape as connectors/_status_chip.html.
+{% endcomment %}
+<span
+  :class="darkMode
+    ? '{% if status == 'sent' %}border-ok-dark text-ok-dark{% elif status == 'failed' %}border-warn-dark text-warn-dark{% else %}border-accent-1 text-text-main-dark{% endif %} bg-sunken-dark'
+    : '{% if status == 'sent' %}border-ok-light text-ok-light{% elif status == 'failed' %}border-warn-light text-warn-light{% else %}border-accent-2 text-text-main-light{% endif %} bg-sunken-light'"
+  class="inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
+  {% if status == "sent" %}<i class="fa-solid fa-circle-check"></i>
+  {% elif status == "failed" %}<i class="fa-solid fa-circle-exclamation"></i>
+  {% elif status == "sending" %}<i class="fa-solid fa-paper-plane"></i>
+  {% else %}<i class="fa-solid fa-clock"></i>{% endif %}
+  {{ label }}
+</span>

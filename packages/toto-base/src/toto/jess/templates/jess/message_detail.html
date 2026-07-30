@@ -1,0 +1,145 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Message" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8"
+  x-data="jessMessage()" x-init="init()">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div class="flex items-start justify-between gap-4">
+      <div>
+        <h1 class="text-2xl font-bold">{{ message.subject|default:_("(no subject)") }}</h1>
+        <p class="mt-1 text-sm opacity-70">
+          {% trans "to" %} {{ message.to|join:", " }}
+          {% if message.provider_label %} · {% trans "via" %} {{ message.provider_label }}{% endif %}
+        </p>
+      </div>
+      <span
+        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+        class="inline-flex shrink-0 items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold">
+        <i class="fa-solid" :class="icon"></i>
+        <span x-text="statusDisplay">{{ message.get_status_display }}</span>
+      </span>
+    </div>
+
+    {% comment %}The session-expired case. The copied fileservices idiom swallows a
+       non-OK response and polls forever; Jess deliberately answers 403, so it must be
+       shown.{% endcomment %}
+    <template x-if="denied">
+      <div
+        :class="darkMode ? 'border-warn-dark bg-sunken-dark text-warn-dark' : 'border-warn-light bg-sunken-light text-warn-light'"
+        class="rounded-lg border px-4 py-3 text-sm font-medium">
+        {% trans "Your session no longer has staff access, so this page stopped updating. Reload to sign in again." %}
+      </div>
+    </template>
+
+    <template x-if="error">
+      <div
+        :class="darkMode ? 'border-warn-dark bg-sunken-dark' : 'border-warn-light bg-sunken-light'"
+        class="rounded-lg border px-4 py-3">
+        <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm font-bold">
+          {% trans "Delivery failed" %}
+        </p>
+        {# Verbatim, on purpose: diagnosing SMTP is exactly when a paraphrase is useless. #}
+        <pre class="mt-2 overflow-x-auto whitespace-pre-wrap text-xs opacity-80" x-text="error"></pre>
+      </div>
+    </template>
+
+    <div
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-4 rounded-xl border p-5">
+      <dl class="grid grid-cols-2 gap-4 text-sm">
+        <div><dt class="opacity-60">{% trans "Purpose" %}</dt><dd class="font-semibold">{{ message.get_purpose_display }}</dd></div>
+        <div><dt class="opacity-60">{% trans "Attempts" %}</dt><dd class="font-semibold" x-text="attempts">{{ message.attempts }}</dd></div>
+        <div><dt class="opacity-60">{% trans "Queued" %}</dt><dd>{{ message.queued_at }}</dd></div>
+        <div><dt class="opacity-60">{% trans "Finished" %}</dt><dd x-text="finishedAt || '—'">{{ message.finished_at|default:"—" }}</dd></div>
+        {% if message.cc %}<div><dt class="opacity-60">Cc</dt><dd>{{ message.cc|join:", " }}</dd></div>{% endif %}
+        {% if message.bcc %}<div><dt class="opacity-60">Bcc</dt><dd>{{ message.bcc|join:", " }}</dd></div>{% endif %}
+      </dl>
+
+      {% if message.body %}
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Body" %}</p>
+          <pre
+            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+            class="overflow-x-auto whitespace-pre-wrap rounded-lg border p-3 text-xs">{{ message.body }}</pre>
+        </div>
+      {% endif %}
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3">
+      <a href="{% url 'jess:outbox' %}"
+         :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Outbox" %}
+      </a>
+
+      {% comment %}Retry is offered only once the message has stopped moving. There
+         are no automatic retries — see jess/tasks.py for why.{% endcomment %}
+      <template x-if="isTerminal">
+        <form method="POST" action="{{ retry_url }}">
+          {% csrf_token %}
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-rotate-right"></i> {% trans "Send again" %}
+          </button>
+        </form>
+      </template>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block end_script %}
+{{ block.super }}
+{{ payload|json_script:"jess-payload" }}
+<script>
+document.addEventListener("alpine:init", () => {
+  Alpine.data("jessMessage", () => ({
+    ...JSON.parse(document.getElementById("jess-payload").textContent),
+    denied: false,
+    _timer: null,
+
+    get statusDisplay() { return this.status_display; },
+    get isTerminal() { return this.is_terminal; },
+    get finishedAt() { return this.finished_at; },
+    get icon() {
+      if (this.status === "sent") return "fa-circle-check";
+      if (this.status === "failed") return "fa-circle-exclamation";
+      if (this.status === "sending") return "fa-paper-plane";
+      return "fa-clock";
+    },
+
+    init() {
+      if (!this.is_terminal) {
+        this._timer = setInterval(() => this.poll(), 1500);
+      }
+    },
+
+    stop() { clearInterval(this._timer); this._timer = null; },
+
+    async poll() {
+      try {
+        const res = await fetch("{{ status_url }}", { credentials: "same-origin" });
+        // Jess answers 403 for a session that has lost staff access. Without this
+        // check, res.json() throws, the catch below swallows it, and the page polls a
+        // login page forever — which is the trap the redirect-based gate falls into.
+        if (res.status === 403 || res.status === 401) {
+          this.denied = true; this.stop(); return;
+        }
+        if (!res.ok) return;                      // transient: try again next tick
+        const d = await res.json();
+        Object.assign(this, d);
+        if (d.is_terminal) this.stop();
+      } catch (e) { /* transient network error — keep polling */ }
+    },
+  }));
+});
+</script>
+{% endblock %}

@@ -8,11 +8,10 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
-from toto.api.models import EmailService
 from toto.core.auth_cooldown import CAPTCHA_RETRY_COOLDOWN_SESSION_KEY
 from toto.core.models import Platform
 from toto.people.models import Person
-from toto.socialhub.captcha import generate_code_captcha, resolve_email_service
+from toto.socialhub.captcha import generate_code_captcha
 from toto.socialhub.models import Community, MembershipApplication, ReferenceRequest
 
 User = get_user_model()
@@ -30,31 +29,6 @@ class CodeCaptchaTests(TestCase):
         self.assertTrue(generate_code_captcha("123456", spurious_letters=0))
         with override_settings(SOCIALHUB_CAPTCHA_SPURIOUS_LETTERS=12):
             self.assertTrue(generate_code_captcha("123456"))
-
-
-class ResolveEmailServiceTests(TestCase):
-    def setUp(self):
-        self.community = Community.objects.create(name="Riverside Guild")
-
-    def test_none_when_no_service_configured(self):
-        self.assertIsNone(resolve_email_service(self.community))
-
-    def test_falls_back_to_default_service(self):
-        svc = EmailService.objects.create(
-            name="default-email-service", email_address="a@b.com", host="smtp"
-        )
-        self.assertEqual(resolve_email_service(self.community), svc)
-
-    def test_prefers_community_service(self):
-        EmailService.objects.create(
-            name="default-email-service", email_address="a@b.com", host="smtp"
-        )
-        own = EmailService.objects.create(
-            name="guild-mail", email_address="g@b.com", host="smtp"
-        )
-        self.community.email_service = own
-        self.community.save()
-        self.assertEqual(resolve_email_service(self.community), own)
 
 
 class DefaultCommunityIngressTests(TestCase):
@@ -106,12 +80,9 @@ class ApplicationSuccessViewTests(TestCase):
             expires_at=timezone.now() + timezone.timedelta(days=7),
         )
 
-    def test_renders_captcha_flow_copy_even_with_email_service(self):
+    def test_renders_captcha_flow_copy(self):
         # The verification code is never emailed — the page always points the
         # applicant at the code-image (CAPTCHA) verification step.
-        EmailService.objects.create(
-            name="default-email-service", email_address="a@b.com", host="smtp"
-        )
         res = self.client.get(
             reverse("socialhub:application_success", args=[self.application.email])
         )
@@ -136,17 +107,14 @@ class VerifyCaptchaViewTests(TestCase):
             "socialhub:membership_verification", args=[self.application.email]
         )
 
-    def test_shows_captcha_when_no_email_service(self):
+    def test_shows_captcha(self):
         res = self.client.get(self._verify_url())
         self.assertEqual(res.status_code, 200)
         self.assertIn("captcha_image", res.context)
         self.assertTrue(res.context["captcha_image"].startswith("data:image/png;base64,"))
 
-    def test_captcha_shown_even_when_email_service_available(self):
+    def test_captcha_is_the_only_verification_path(self):
         # The code is never emailed — the CAPTCHA is always the verification path.
-        EmailService.objects.create(
-            name="default-email-service", email_address="a@b.com", host="smtp"
-        )
         res = self.client.get(self._verify_url())
         self.assertEqual(res.status_code, 200)
         self.assertTrue(res.context["captcha_image"].startswith("data:image/png;base64,"))
@@ -179,11 +147,8 @@ class VerifyCaptchaViewTests(TestCase):
         res = self.client.post(self._verify_url(), {"code": "246810"})
         self.assertEqual(res.status_code, 302)
 
-    def test_cooldown_applies_even_when_email_service_available(self):
-        # CAPTCHA mode (and its retry cooldown) no longer depends on email config.
-        EmailService.objects.create(
-            name="default-email-service", email_address="a@b.com", host="smtp"
-        )
+    def test_cooldown_applies_in_captcha_mode(self):
+        # CAPTCHA mode (and its retry cooldown) does not depend on email config at all.
         res = self.client.post(self._verify_url(), {"code": "000000"})
         self.assertEqual(res.status_code, 200)
         self.assertGreater(res.context["cooldown_remaining"], 0)

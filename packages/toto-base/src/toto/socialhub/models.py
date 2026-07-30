@@ -13,7 +13,6 @@ from toto.core.domain import DomainEntity
 from toto.core.models import Federation
 from toto.locations.models import Address, Territory
 from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
-from toto.api.models import EmailService as EmailService  # re-exported for backward compat  # noqa: F401
 from toto.verbena.models import AbstractSection, AbstractTag
 from toto.verbena.utils import unique_slug
 
@@ -80,14 +79,6 @@ class Community(DomainEntity):
         default=False,
         help_text="Members of this community are exempt from all poll taxes (federal tax exemption).",
     )
-    email_service = models.ForeignKey(
-        "api.EmailService",
-        on_delete=models.SET_NULL,
-        null=True,
-        blank=True,
-        related_name='community_emails',
-    )
-
     def __str__(self):
         return self.name
 
