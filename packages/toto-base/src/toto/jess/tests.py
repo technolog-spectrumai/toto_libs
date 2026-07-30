@@ -188,9 +188,39 @@ class BackendRecordingTests(JessTestCase):
         row = MailMessage.objects.get()
         self.assertEqual(row.cc, ["c@x.test"])
         self.assertEqual(row.bcc, ["b@x.test"])
-        self.assertEqual(row.reply_to, "r@x.test")
+        self.assertEqual(row.reply_to, ["r@x.test"])
         self.assertEqual(row.html_body, "<p>Rich</p>")
         self.assertEqual(row.headers, {"X-Custom": "keep me"})
+
+    def test_every_reply_to_address_survives_not_just_the_first(self):
+        """RFC 5322 allows several, and Django's EmailMessage.reply_to is already a list.
+
+        This field was a single CharField at first, and the backend took ``[0]`` — the
+        same silent lossiness that makes a comma-joined recipient column wrong. Fixed
+        while the table was still empty everywhere.
+        """
+        email = EmailMessage(
+            subject="S", body="B", to=["a@x.test"],
+            reply_to=["first@x.test", "second@x.test"],
+        )
+        with patch("toto.jess.tasks.send_mail_message.delay"):
+            email.send()
+        self.assertEqual(
+            MailMessage.objects.get().reply_to,
+            ["first@x.test", "second@x.test"],
+        )
+
+    def test_a_reply_to_list_reaches_the_provider_intact(self):
+        self._locmem_provider()
+        mail.outbox = []
+        row = MailMessage.objects.create(
+            to=["a@x.test"], subject="S", body="B",
+            reply_to=["one@x.test", "two@x.test"],
+        )
+        from .tasks import send_mail_message
+
+        send_mail_message(row.pk)
+        self.assertEqual(mail.outbox[0].reply_to, ["one@x.test", "two@x.test"])
 
     def test_the_purpose_header_tags_the_row_and_is_stripped(self):
         email = EmailMessage(
@@ -912,6 +942,16 @@ class StaffPageTests(JessTestCase):
         self.assertEqual(res.context["waiting"], 0)
         self.assertNotContains(res, "still waiting to be sent")
 
+    def test_the_detail_page_shows_the_addresses_the_message_actually_carried(self):
+        """Reply-to and From matter when diagnosing "it arrived but looked wrong"."""
+        row = MailMessage.objects.create(
+            to=["a@x.test"], cc=["c@x.test"], subject="S", body="B",
+            reply_to=["one@x.test", "two@x.test"], from_address="relay@x.test",
+        )
+        res = self.client.get(reverse("jess:message_detail", args=[row.pk]))
+        self.assertContains(res, "one@x.test, two@x.test")
+        self.assertContains(res, "relay@x.test")
+
     def test_no_template_leaks_a_django_comment_as_visible_text(self):
         """A ``{# #}`` comment is single-line only; a multi-line one renders as text.
 
@@ -1121,7 +1161,7 @@ class SocialhubEndorsementMailTests(JessTestCase):
         self.assertIn("Approved", row.subject)
         # The useful half of the per-community sender identity that went away with
         # api.EmailService — without a second place to keep an SMTP credential.
-        self.assertEqual(row.reply_to, "post@greendale.test")
+        self.assertEqual(row.reply_to, ["post@greendale.test"])
 
     def test_rejecting_an_endorsement_queues_a_message(self):
         with patch("toto.jess.tasks.send_mail_message.delay"):

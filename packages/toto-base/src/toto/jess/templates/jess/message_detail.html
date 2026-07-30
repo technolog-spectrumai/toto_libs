@@ -60,6 +60,8 @@
         <div><dt class="opacity-60">{% trans "Finished" %}</dt><dd x-text="finishedAt || '—'">{{ message.finished_at|default:"—" }}</dd></div>
         {% if message.cc %}<div><dt class="opacity-60">Cc</dt><dd>{{ message.cc|join:", " }}</dd></div>{% endif %}
         {% if message.bcc %}<div><dt class="opacity-60">Bcc</dt><dd>{{ message.bcc|join:", " }}</dd></div>{% endif %}
+        {% if message.reply_to %}<div><dt class="opacity-60">{% trans "Reply to" %}</dt><dd>{{ message.reply_to|join:", " }}</dd></div>{% endif %}
+        {% if message.from_address %}<div><dt class="opacity-60">{% trans "From" %}</dt><dd>{{ message.from_address }}</dd></div>{% endif %}
       </dl>
 
       {% if message.body %}

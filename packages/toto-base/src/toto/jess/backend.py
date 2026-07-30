@@ -105,9 +105,8 @@ class JessEmailBackend(BaseEmailBackend):
                 "carry attachments."
             )
 
-        reply_to = ""
-        if getattr(message, "reply_to", None):
-            reply_to = message.reply_to[0]
+        # All of them, in order. Django's EmailMessage.reply_to is already a list.
+        reply_to = list(getattr(message, "reply_to", None) or [])
 
         provider = EmailProvider.active_provider()
 

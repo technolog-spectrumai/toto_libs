@@ -93,7 +93,8 @@ def send_now(message, provider: EmailProvider) -> None:
         to=list(message.to or []),
         cc=list(message.cc or []),
         bcc=list(message.bcc or []),
-        reply_to=[message.reply_to] if message.reply_to else (
+        # The message's own list wins; the provider's single address is the fallback.
+        reply_to=list(message.reply_to or []) or (
             [provider.reply_to] if provider.reply_to else None
         ),
         headers=dict(message.headers or {}) or None,
