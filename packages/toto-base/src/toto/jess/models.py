@@ -208,7 +208,11 @@ class MailMessage(models.Model):
     body = models.TextField(blank=True)
     html_body = models.TextField(blank=True)
     from_address = models.CharField(max_length=255, blank=True)
-    reply_to = models.CharField(max_length=255, blank=True)
+    # A list, like to/cc/bcc and like Django's own EmailMessage.reply_to, rather than one
+    # address. RFC 5322 allows several, and a single column would mean the backend
+    # silently dropped the rest — the same lossiness that made a comma-joined recipient
+    # field wrong.
+    reply_to = models.JSONField(default=list, blank=True)
     headers = models.JSONField(default=dict, blank=True)
 
     # --- routing ---
