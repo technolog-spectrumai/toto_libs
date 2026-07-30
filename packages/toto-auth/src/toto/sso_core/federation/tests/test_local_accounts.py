@@ -61,6 +61,19 @@ class HybridLoginPageTests(TestCase):
         self.assertIn('name="password"', body)
 
     @override_settings(TOTO_SSO_LOCAL_LOGIN=True)
+    def test_the_button_names_the_provider(self):
+        # OIDCProviderConfig.label exists to be displayed, and get_config() did not
+        # pass it through — so the button read "Sign in with the portal" on every
+        # consumer host, which is the fallback, not the intent.
+        # Asserted on the BUTTON TEXT, not merely on the label appearing somewhere:
+        # the fixture also names the Platform "Federation suite", so a looser check
+        # passes on the site name in the header and proves nothing.
+        response = self.client.get(reverse("sso:login"))
+        body = response.content.decode()
+        self.assertIn("Sign in with Federation suite", body)
+        self.assertNotIn("Sign in with the portal", body)
+
+    @override_settings(TOTO_SSO_LOCAL_LOGIN=True)
     def test_a_local_user_signs_in_on_that_page(self):
         User.objects.create_user("localonly", "l@example.org", "pw")
         response = self.client.post(
