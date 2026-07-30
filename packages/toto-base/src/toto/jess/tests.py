@@ -683,6 +683,34 @@ class DeliveryConfiguredTests(JessTestCase):
         jess_status.can_deliver()
         self.assertEqual(UserStrongbox.objects.count(), before)
 
+    @override_settings(EMAIL_BACKEND=JESS_BACKEND)
+    def test_activating_a_provider_is_what_makes_the_reset_link_appear(self):
+        """The whole feature, at the only place a user ever sees it.
+
+        ``core.auth_views`` sets ``password_reset_available`` from
+        ``email_delivery_configured()``, and the login template renders the link only when
+        that is true. Everything else in this class tests the predicate; this tests the
+        consequence — which is the thing studio's local accounts actually depend on, and
+        the reason ``can_deliver()`` had to stop guessing from a settings string.
+        """
+        url = reverse("core:login")
+
+        # Nothing configured: the platform cannot send, so it does not offer.
+        res = self.client.get(url)
+        self.assertFalse(res.context["password_reset_available"])
+
+        # A console provider still cannot send. This is the case a settings-string check
+        # got right by accident and a reachability guess would get wrong.
+        console = self._provider(label="Console", backend="console")
+        self.assertFalse(self.client.get(url).context["password_reset_available"])
+
+        # A delivering provider, and the link appears.
+        console.delete()
+        self._smtp_provider(label="Relay")
+        res = self.client.get(url)
+        self.assertTrue(res.context["password_reset_available"])
+        self.assertContains(res, res.context["password_reset_url"])
+
     def test_describe_names_the_problem_in_each_state(self):
         self.assertIn("No active email provider", jess_status.describe())
         console = self._provider(label="Console", backend="console")
