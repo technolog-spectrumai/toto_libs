@@ -11,11 +11,3 @@ register(SyncPolicy(
         "decrypted on the receiver anyway (its AAD embeds the row's own local pk)."
     ),
 ))
-register(SyncPolicy(
-    "api.EmailService", stage=STAGE_INFRA, identity=IDENTITY_REFUSE,
-    refuse_reason=(
-        "Same shape: the SMTP password is a gervazy EncryptedSecret, so a copied "
-        "service cannot send mail. socialhub.Community.email_service is declared "
-        "FK_NULL against this refusal."
-    ),
-))

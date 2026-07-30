@@ -78,7 +78,7 @@ The package boundaries and what each holds:
 
 | Package | Depends on | Holds (see the package README for app detail) |
 |---|---|---|
-| [`toto-base`](packages/toto-base/README.md) | — | The shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), the `ui` and `ingress` infrastructure, and the app cluster every host installs: `core`, `api`, `backup`, `gervazy`, `vault`, `people`, `socialhub`, `events`, `locations`, `verbena`, `quota` — plus `editor`, which ships here but is host-selected rather than unconditional. |
+| [`toto-base`](packages/toto-base/README.md) | — | The shared host API (`features`, `registry`, `routing`, `schedules`, `conf`, `celery_utils`, `versioning`), the `ui` and `ingress` infrastructure, and the app cluster every host installs: `core`, `api`, `backup`, `gervazy`, `vault`, `people`, `socialhub`, `events`, `locations`, `verbena`, `quota` — plus `editor`, `datalink` and `jess`, which ship here but are host-selected rather than unconditional. |
 | [`toto-auth`](packages/toto-auth/README.md) | base | `sso_core`, `sso_master` (OIDC provider), `sso_client` (OIDC consumer), `social_login` (Google/Facebook sign-in) and the `toto.auth_config` login-strategy resolver: each host picks provider/consumer/local via settings. |
 | [`toto-flow`](packages/toto-flow/README.md) | base | `workflows` (DAG engine) and `mandragora` (WebSocket compute kernels) — one unit; `workflows.LambdaFunction` has a one-to-one key into `mandragora.ComputeKernel`. |
 | [`toto-works`](packages/toto-works/README.md) | base, flow | `antaresia` (sandboxed vault Python), `kanban` (projects → tasks with scheduled allowances), `memo` (`.pml` presentations). |

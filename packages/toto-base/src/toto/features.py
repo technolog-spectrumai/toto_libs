@@ -53,6 +53,7 @@ class Features:
     travels: bool
     gitvault: bool
     monit: bool
+    jess: bool          # toto.jess — the mail transport and outbox
     # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
     # Address carries plain lat/lon floats — a much lighter host. Default on.
     geo: bool
@@ -177,6 +178,10 @@ def resolve_features(get) -> Features:
     # closure: the live panel works everywhere; snapshot HISTORY needs the
     # celery worker+beat stack, which the profiles enabling this already run.
     monit = flag(get, "BUILD_MONIT")                          # toto.monit — monitoring dashboard
+    # toto.jess — email config in the database, sends queued through celery. Opt-in:
+    # it makes EMAIL_BACKEND meaningless unless the host also points that at Jess,
+    # and its sends need a worker.
+    jess = flag(get, "BUILD_JESS")
 
     # GIS toggle. On by default (every legacy host has PostGIS). Set BUILD_GEO=0
     # for a light host: locations stays installed but geometry-less, no GDAL.
@@ -255,7 +260,14 @@ def resolve_features(get) -> Features:
     # run_direct_job.delay(), so a BUILD_MANTA=1 image without this layer would not
     # boot. Note this buys the pip layer only: whether a worker container runs is
     # still services.celery in the profile, and manta jobs queue forever without one.
-    realtime = chat or workflows or weather or needs_channels or manta
+    #
+    # jess is here for the same reason as manta, one step further along: jess/tasks.py
+    # does `from celery import shared_task` at module scope AND its EMAIL_BACKEND calls
+    # .delay() on the request path, so a BUILD_JESS=1 image without this layer would not
+    # boot. It does not join the workflows closure — it has no FK to WorkflowRun and
+    # dispatches its own task. Whether a worker container actually runs is still
+    # services.celery in the profile; without one, mail queues and never leaves.
+    realtime = chat or workflows or weather or needs_channels or manta or jess
     neo4j = graph
 
     # Native binaries, each following the feature that shells out to it. tesseract
@@ -294,6 +306,7 @@ def resolve_features(get) -> Features:
         connectors=connectors,
         formica=formica,
         monit=monit,
+        jess=jess,
         steven=steven,
         sabbia=sabbia,
         travels=travels,

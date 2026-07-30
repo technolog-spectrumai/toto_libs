@@ -6,7 +6,14 @@ it keeps these tests honest about which alias they are touching.
 from django.contrib.auth.models import User
 from django.test import TestCase
 
-from toto.datalink.registry import load_registry, policy_for
+from toto.datalink.registry import (
+    FK_NULL,
+    IDENTITY_UID,
+    STAGE_COMMUNITIES,
+    SyncPolicy,
+    load_registry,
+    policy_for,
+)
 from toto.datalink.services.canonical import (
     canonical_json,
     identity_hash,
@@ -154,16 +161,27 @@ class SerializeRowTests(TestCase):
         self.assertNotIn("ada2", blob)
 
     def test_a_dropped_reference_is_reported_as_omitted(self):
-        # Community.email_service points at a refused model. The field does not travel,
-        # and the row says so, so the receiver can count it rather than the operator
-        # having to know.
+        # An FK declared FK_NULL does not travel, and the row SAYS SO, so the receiver
+        # can count it rather than the operator having to know.
+        #
+        # Exercised against a policy built here rather than a registered one. It used to
+        # use Community.email_service, which pointed at the refused api.EmailService —
+        # then toto.jess absorbed that model and the field went away. Pinning this to
+        # whichever real refused FK happens to survive the next refactor is how the test
+        # died the first time; a local fixture cannot rot that way, and it states the
+        # contract (FK_NULL => an `omitted` entry) directly.
         from toto.socialhub.models import Community
 
+        policy = SyncPolicy(
+            "socialhub.Community", stage=STAGE_COMMUNITIES, identity=IDENTITY_UID,
+            fields=("name", "slug", "head"),
+            refs={"head": FK_NULL},
+        )
         community = Community.objects.create(name="C", slug="c")
-        row = serialize_row(community, policy_for("socialhub.Community"))
+        row = serialize_row(community, policy)
         reasons = {entry["field"]: entry["reason"] for entry in row.get("omitted", [])}
-        self.assertEqual(reasons.get("email_service"), "target_model_not_replicated")
-        self.assertNotIn("email_service", row["fields"])
+        self.assertEqual(reasons.get("head"), "target_model_not_replicated")
+        self.assertNotIn("head", row["fields"])
 
     def test_an_absent_geometry_column_is_reported_as_omitted(self):
         # This suite runs GIS-off, so locations has no geometry column at all — absent,

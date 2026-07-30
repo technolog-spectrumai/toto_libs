@@ -1,0 +1,90 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Send a message" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Send a message" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Goes out through the same path as every other email on this platform — queued, recorded, and delivered by a worker." %}
+      </p>
+    </div>
+
+    {% comment %}The honest warning. A console provider queues and discards; saying
+       so here is cheaper than letting someone conclude the mail system is
+       broken.{% endcomment %}
+    <div
+      :class="darkMode
+        ? '{% if can_deliver %}border-accent-1 bg-sunken-dark{% else %}border-warn-dark bg-sunken-dark text-warn-dark{% endif %}'
+        : '{% if can_deliver %}border-accent-2 bg-sunken-light{% else %}border-warn-light bg-sunken-light text-warn-light{% endif %}'"
+      class="rounded-lg border px-4 py-3 text-sm">
+      <div class="flex items-start gap-3">
+        <i class="fa-solid {% if can_deliver %}fa-circle-info{% else %}fa-triangle-exclamation{% endif %} mt-0.5"></i>
+        <div>
+          <p class="font-semibold">{{ delivery_status }}</p>
+          {% if not can_deliver %}
+            <p class="mt-1 opacity-80">
+              {% trans "The message will still be recorded in the outbox, so you can see what would have been sent." %}
+            </p>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    <form method="POST"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-5 rounded-xl border p-5">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div
+          :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+          class="rounded-lg border px-4 py-3 text-sm font-medium">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div
+        :class="darkMode
+          ? '[&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark [&_textarea]:border-accent-1 [&_textarea]:bg-primary-bg-dark [&_textarea]:text-text-main-dark'
+          : '[&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light [&_textarea]:border-accent-2 [&_textarea]:bg-primary-bg-light [&_textarea]:text-text-main-light'"
+        class="space-y-5
+               [&_label]:mb-2 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+               [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm
+               [&_textarea]:w-full [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:px-3 [&_textarea]:py-2.5 [&_textarea]:text-sm
+               [&_input:focus]:outline-none [&_input:focus]:ring-2 [&_input:focus]:ring-accent-light
+               [&_textarea:focus]:outline-none [&_textarea:focus]:ring-2 [&_textarea:focus]:ring-accent-light">
+        {% for field in form %}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.help_text %}
+              <p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>
+            {% endif %}
+            {% if field.errors %}
+              <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                 class="mt-2 text-xs font-medium">{{ field.errors|striptags }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i> {% trans "Queue it" %}
+        </button>
+        <a href="{% url 'jess:outbox' %}" class="text-sm font-medium opacity-70 hover:opacity-100">
+          {% trans "Outbox" %}
+        </a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

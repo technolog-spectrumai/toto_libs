@@ -21,6 +21,10 @@ _DEV_DEFAULTS = {
     "BACKUP_VAULT_PASSWORD": "",
     # Sabbia agent-credential vault — no default; must be set explicitly
     "SABBIA_VAULT_PASSWORD": "",
+    # Jess email-provider vault — no default; must be set explicitly. NOT in
+    # _PROD_REQUIRED: a PROD host that does not install toto.jess would warn for
+    # nothing. The soft checks are jess's admin vault column and jess_init_vault.
+    "JESS_VAULT_PASSWORD": "",
 }
 
 # Variables required when DJANGO_ENV=PROD

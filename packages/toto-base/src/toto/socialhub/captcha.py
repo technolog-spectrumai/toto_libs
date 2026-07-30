@@ -11,21 +11,6 @@ import string
 
 from django.conf import settings
 
-from toto.api.models import EmailService
-
-
-def resolve_email_service(community):
-    """
-    Return the EmailService that should deliver this community's mail, or
-    ``None`` when none is configured.
-
-    Mirrors the previous ``community.email_service or default`` lookup but
-    never raises: a missing ``default-email-service`` simply means "no email".
-    """
-    if community is not None and community.email_service is not None:
-        return community.email_service
-    return EmailService.objects.filter(name="default-email-service").first()
-
 
 def generate_code_captcha(code, *, height=90, spurious_letters=None):
     """
