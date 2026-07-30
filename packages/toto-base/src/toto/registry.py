@@ -79,10 +79,16 @@ FEATURE_APPS = {
 
 # Celery task modules for explicit autodiscovery (portal celery_app list,
 # minus the long-dangling "toto.bazaar" whose app left the tree).
-# "toto.transcription" and "toto.manta" left in 1.21 for toto-media-ops, which no
-# host pins; nothing in toto-media has a celery task at all now — that is the line
-# between the two packages. A host that pins the ops wheel must add its labels back
-# here, or its jobs are enqueued and never discovered.
+# "toto.transcription" left in 1.21 for toto-media-ops; nothing in toto-media has a
+# celery task at all — that is the line between the two packages. A host that pins
+# the ops wheel and installs transcription must add its label back here, or its jobs
+# are enqueued and never discovered.
+#
+# "toto.manta" IS listed, even though no host pins the wheel yet: the entry is inert
+# where the package is absent (Celery's find_related_module swallows a missing
+# package), and leaving it out is the bug it prevents. Note it only works alongside
+# manta/tasks.py — autodiscovery imports "<label>.tasks" and manta's task lives in
+# tasks_direct, so without that module the worker never registers it.
 TASK_MODULES = [
     "toto.workflows",
     "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
@@ -90,6 +96,7 @@ TASK_MODULES = [
     "toto.ravioli",
     "toto.connectors",
     "toto.formica",
+    "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
 ]
 
 

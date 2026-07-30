@@ -124,10 +124,11 @@ def resolve_features(get) -> Features:
     pyeditor = flag(get, "BUILD_PYEDITOR")                    # toto.antaresia — Python editor
     # latex, sketch, travels and gitvault are host-owned apps (see
     # the suite README): the flags stay here because they are part of the host
-    # contract — needs_channels depends on sketch, `editor`/`texlive` on latex,
+    # contract — needs_channels depends on sketch, `editor` defaults from latex,
     # and the workflows closure on latex/gitvault — but registry.FEATURE_APPS
     # deliberately has no entry for them, since the host supplies the
-    # INSTALLED_APPS line from its own portion.
+    # INSTALLED_APPS line from its own portion. `texlive` used to default from
+    # latex too and no longer does; see where it is resolved below.
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
     # BUILD_MEDIA is the media *tier*: an umbrella default, not an app switch. It is
     # an INPUT only — it must never be OR-ed back out of the per-app flags below, or
@@ -229,7 +230,12 @@ def resolve_features(get) -> Features:
     sabbia_ollama = sabbia and flag(get, "SABBIA_OLLAMA")     # Ollama endpoint (vicuna)
 
     # Derived infrastructure.
-    editor = latex or pyeditor                                # toto.editor — shared ACE editor base
+    # toto.editor — the shared ACE base. Settable on its own, because it carries
+    # EIGHT file-type plugins (text/json/yaml/xml/csv/html/latex/bib) and only two
+    # of them belong to latex. Derived from latex-or-pyeditor alone, a host that
+    # moved LaTeX elsewhere silently lost every vault Edit link:
+    # vault/views.py renders "" for a file type with no plugin.
+    editor = flag(get, "BUILD_EDITOR", latex or pyeditor)
     # Channels/ASGI back every WebSocket consumer.
     needs_channels = chat or latex or pyeditor or sketch or sabbia
     # Ollama/Qwen service layer — scoped to the features that actually use it.
@@ -263,10 +269,14 @@ def resolve_features(get) -> Features:
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
     ffmpeg = fileservices or manta or explicit_ffmpeg
-    # texlive (pdflatex) backs latex compilation in texlab AND notarius
-    # contract→PDF export. Defaults to the latex feature; an explicit
-    # INSTALL_TEXLIVE wins.
-    texlive = flag(get, "INSTALL_TEXLIVE", latex)
+    # texlive (pdflatex) has TWO independent consumers: texlab compilation and
+    # notarius contract→PDF export, which is a separate implementation sharing no
+    # import with texlab and installed unconditionally. So it must NOT default to
+    # either one — deriving it from `latex` meant a host that moved texlab away
+    # silently lost notarius PDF export, and there was nothing to catch that.
+    # Every profile states it; test_latex_profiles_state_whether_they_want_texlive
+    # in the monorepo suite is the enforcement.
+    texlive = flag(get, "INSTALL_TEXLIVE")
 
     return Features(
         chat=chat,

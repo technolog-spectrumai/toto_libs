@@ -1,13 +1,17 @@
+import logging
 import secrets
 from urllib.parse import urlencode
 
 import requests as http_requests
 from django.apps import apps
 from django.conf import settings
+from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
 from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
+
+logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
@@ -22,6 +26,46 @@ ROLE_STAFF = "staff"
 
 def _cfg():
     return apps.get_app_config("sso_client").get_config()
+
+
+# (connect, read) rather than one number. A slow provider is worse than a dead
+# one: this host's worker is held for the whole wait, and with the four workers
+# deploy.py hardcodes, four concurrent logins against a stalled provider take the
+# consumer down with it. Connect fails fast; read allows for the provider
+# re-deriving its signing key on the token endpoint.
+_BACKCHANNEL_TIMEOUT = (2, 5)
+
+
+def _tls_verify():
+    """What to pass as ``requests``' ``verify=``.
+
+    True (the system CA bundle) unless the host names a bundle. Needed because a
+    provider on a self-signed certificate — every local federated pair, and any
+    deployment fronted by an internal CA — otherwise raises SSLError on the token
+    exchange, which is why the shipped local federated preset could never have
+    worked. Set SSO_CLIENT_CA_BUNDLE to a PEM path, or SSO_CLIENT_VERIFY=False to
+    turn verification off (development only; it makes the back-channel forgeable).
+    """
+    bundle = getattr(settings, "SSO_CLIENT_CA_BUNDLE", "")
+    if bundle:
+        return bundle
+    return bool(getattr(settings, "SSO_CLIENT_VERIFY", True))
+
+
+def _provider_unreachable(request, why: str):
+    """Fail a federated sign-in without failing the whole login page.
+
+    Sends the user to the local password form, because on a host that has any
+    local accounts at all that form still works while the provider is down — the
+    federated round trip is one way in, not the only one. Falls back to a plain
+    400 where there is no local form to offer.
+    """
+    try:
+        target = reverse("core:login")
+    except NoReverseMatch:
+        return HttpResponseBadRequest(f"Federated sign-in failed: {why}.")
+    messages.error(request, f"Federated sign-in failed: {why}. You can sign in here instead.")
+    return redirect(target)
 
 
 def auto_provision_enabled():
@@ -102,31 +146,54 @@ def oidc_callback(request):
 
     portal = cfg["portal_url"].rstrip("/")
 
-    token_resp = http_requests.post(
-        f"{portal}/sso/token/",
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": _callback_uri(request),
-            "client_id": cfg["client_id"],
-            "client_secret": cfg["client_secret"],
-        },
-        timeout=10,
-    )
+    try:
+        token_resp = http_requests.post(
+            f"{portal}/sso/token/",
+            data={
+                "grant_type": "authorization_code",
+                "code": code,
+                "redirect_uri": _callback_uri(request),
+                "client_id": cfg["client_id"],
+                "client_secret": cfg["client_secret"],
+            },
+            timeout=_BACKCHANNEL_TIMEOUT,
+            verify=_tls_verify(),
+        )
+    except http_requests.RequestException as exc:
+        # Unreachable, refused, timed out, or a TLS failure. Uncaught this was a
+        # 500 with a traceback and no clue that the *provider* was the problem.
+        logger.warning("SSO token exchange to %s failed: %s", portal, exc)
+        return _provider_unreachable(request, "could not reach the sign-in provider")
+
     if not token_resp.ok:
         return HttpResponseBadRequest(f"Token exchange failed: {token_resp.text}")
 
-    access_token = token_resp.json().get("access_token")
+    try:
+        access_token = token_resp.json().get("access_token")
+    except ValueError:
+        # A 200 that is not JSON — a captive portal or a proxy error page.
+        logger.warning("SSO token endpoint at %s returned non-JSON", portal)
+        return _provider_unreachable(request, "the sign-in provider sent an unreadable reply")
 
-    userinfo_resp = http_requests.get(
-        f"{portal}/sso/userinfo/",
-        headers={"Authorization": f"Bearer {access_token}"},
-        timeout=10,
-    )
+    try:
+        userinfo_resp = http_requests.get(
+            f"{portal}/sso/userinfo/",
+            headers={"Authorization": f"Bearer {access_token}"},
+            timeout=_BACKCHANNEL_TIMEOUT,
+            verify=_tls_verify(),
+        )
+    except http_requests.RequestException as exc:
+        logger.warning("SSO userinfo fetch from %s failed: %s", portal, exc)
+        return _provider_unreachable(request, "could not reach the sign-in provider")
+
     if not userinfo_resp.ok:
         return HttpResponseBadRequest("Userinfo fetch failed.")
 
-    claims = userinfo_resp.json()
+    try:
+        claims = userinfo_resp.json()
+    except ValueError:
+        logger.warning("SSO userinfo endpoint at %s returned non-JSON", portal)
+        return _provider_unreachable(request, "the sign-in provider sent an unreadable reply")
     user = _get_or_sync_user(claims)
     if user is None:
         return HttpResponseBadRequest(
