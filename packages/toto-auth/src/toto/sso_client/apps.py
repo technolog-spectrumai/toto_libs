@@ -17,11 +17,16 @@ class SSOClientConfig(AppConfig):
         record = OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
         if not record:
             return {
-                "portal_url": "", "client_id": "", "client_secret": "",
+                "label": "", "portal_url": "", "client_id": "", "client_secret": "",
                 "scopes": "openid email profile", "app_name": "",
                 "trusted": False, "redirect_uris": [],
             }
         return {
+            # The provider's DISPLAY name. Exposed because the hybrid login page
+            # shows "Sign in with <label>", and without it that button read
+            # "Sign in with the portal" on every consumer — the field existed on
+            # the model for exactly this purpose and simply was not passed through.
+            "label": record.label,
             "portal_url": record.portal_url,
             "client_id": record.client_id,
             "client_secret": os.environ.get("SSO_CLIENT_SECRET") or record.client_secret,
