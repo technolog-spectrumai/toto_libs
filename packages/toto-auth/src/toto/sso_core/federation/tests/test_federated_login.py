@@ -6,11 +6,17 @@ the consent page really renders. Only the socket between the two hosts is
 replaced — see bridge.py.
 
 **One process means one User table.** Real hosts have separate databases, so the
-consumer's account for a person is a different row from the provider's. Here
-they are necessarily the same row: the provider sends ``preferred_username``,
-and ``_find_existing_user_for_claims`` finds the provider's own user by it. That
-is a faithful model of one real case — a consumer that already had a matching
-account — and it is what these tests assert against.
+consumer's account for a person is a different row from the provider's. Here they
+are necessarily the same row, and the consumer is told so explicitly:
+``link_federated_identity`` records the provider's subject against that account,
+which is the real precondition for a federated sign-in now that claims are matched
+only on a recorded ``(provider, sub)``. It models a consumer that already knows
+the account — the case a deliberate ``/sso/link/`` or an earlier provisioning
+produces.
+
+The suite used to rely on ``preferred_username`` matching instead, which needed no
+setup and was precisely the account-takeover path removed in 1.23: any local
+account whose name or email collided with a provider account's was adopted by it.
 
 The other case, provisioning an account that did *not* exist, cannot be staged
 here for the same reason, so it is covered in test_claims_mapping.py by driving
@@ -27,7 +33,7 @@ from django.urls import reverse
 from toto.sso_master.models import SSOAuthorizationCode, SSOSubject
 
 from ..bridge import FederationBrowser, provider_urlconf
-from ..fixtures import federation_fixture
+from ..fixtures import federation_fixture, link_federated_identity
 
 User = get_user_model()
 
@@ -45,6 +51,9 @@ class FederatedLoginTests(TestCase):
         self.portal_user = User.objects.create_user(
             "ada", "ada@example.org", "pw", first_name="Ada", last_name="Lovelace"
         )
+        # The consumer must already know this account answers to that subject —
+        # see the module docstring.
+        link_federated_identity(self.portal_user)
         self.browser = FederationBrowser(portal_url=PORTAL)
 
     def test_happy_path_signs_the_user_in_on_the_consumer(self):
@@ -135,6 +144,7 @@ class UntrustedClientTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user("bob", "bob@example.org", "pw")
+        link_federated_identity(self.user)
         self.browser = FederationBrowser(portal_url=PORTAL)
 
     @override_settings(TOTO_SSO_AUTO_PROVISION=True)
@@ -169,6 +179,7 @@ class ProviderDownTests(TestCase):
 
     def setUp(self):
         self.user = User.objects.create_user("ada", "ada@example.org", "pw")
+        link_federated_identity(self.user)
         self.browser = FederationBrowser(portal_url=PORTAL)
 
     def _callback_with_backchannel(self, **patches):

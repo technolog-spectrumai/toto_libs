@@ -7,9 +7,11 @@ from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import get_user_model, login, logout
+from django.contrib.auth.decorators import login_required
 from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
+from django.utils import timezone
 
 logger = logging.getLogger(__name__)
 
@@ -90,17 +92,81 @@ def oidc_logout(request):
     return redirect(next_url)
 
 
-def oidc_login(request):
-    cfg = _cfg()
+def _federation_configured(cfg) -> bool:
+    return bool(cfg.get("portal_url") and cfg.get("client_id"))
 
-    if not cfg.get("portal_url") or not cfg.get("client_id"):
+
+def local_login_enabled() -> bool:
+    """Does this consumer have accounts of its own?
+
+    Off by default, so a pure consumer host is unchanged: ``sso:login`` keeps
+    redirecting straight to the provider. On, ``sso:login`` becomes a page
+    offering both, which is what a host with studio-only users needs.
+    """
+    return bool(getattr(settings, "TOTO_SSO_LOCAL_LOGIN", False))
+
+
+def oidc_login(request):
+    """The consumer's ``sso:login`` — a page, a redirect, or a fallback.
+
+    ``LOGIN_URL`` is ``"sso:login"`` in every auth mode (``auth_config``), so this
+    is where ``@login_required`` sends everyone. It used to redirect to the
+    provider unconditionally, which meant a host with local accounts bounced its
+    own users to a portal that has never heard of them and answered 400. With
+    ``TOTO_SSO_LOCAL_LOGIN`` on it renders the shared password form instead, with
+    federated sign-in as a button — so both kinds of user have a way in and
+    neither is special-cased in the urlconf.
+
+    Deliberately NOT a fourth auth mode: ``login_url()`` and
+    ``authentication_backends()`` stay identical across the three modes, which
+    three tests in test_auth_config.py assert, and ModelBackend already served
+    every mode.
+    """
+    cfg = _cfg()
+    next_url = request.GET.get("next", "")
+
+    if not _federation_configured(cfg):
         # No OIDC config in DB — fall back to the local username/password login.
         from django.urls import reverse as _reverse
-        next_url = request.GET.get("next", "")
         fallback = _reverse("core:login")
         if next_url:
             fallback += f"?next={next_url}"
         return redirect(fallback)
+
+    if local_login_enabled():
+        from toto.core.auth_views import password_login_view
+
+        federated_url = reverse("sso:federated_login")
+        if next_url:
+            federated_url += f"?next={next_url}"
+        return password_login_view(
+            request,
+            template_name="sso_client/login.html",
+            page_title="Sign in",
+            extra_context={
+                "federated_url": federated_url,
+                "federated_label": cfg.get("label") or "the portal",
+                # The form must post back HERE, not to core:login — this view is
+                # what knows about the federated button.
+                "login_form_action": reverse("sso:login"),
+            },
+        )
+
+    return federated_login(request)
+
+
+def federated_login(request, *, linking=False):
+    """Start the OIDC round trip. Reached directly, or from the hybrid page.
+
+    ``linking`` means "attach the identity that comes back to the already
+    signed-in user" rather than "sign somebody in". Same round trip either way, so
+    there is one implementation of state, PKCE-less redirect and cookie handling
+    to get right rather than two.
+    """
+    cfg = _cfg()
+
+    if not _federation_configured(cfg):
+        return redirect(reverse("core:login"))
 
     state = secrets.token_urlsafe(32)
     next_url = request.GET.get("next", "")
@@ -120,6 +186,75 @@ def oidc_login(request):
     if next_url:
         response.set_cookie("oidc_next", next_url, max_age=_COOKIE_MAX_AGE,
                             httponly=True, samesite="Lax")
+    if linking:
+        # Signed, so the callback cannot be talked into linking by a crafted
+        # request; short-lived like the state it travels with.
+        response.set_signed_cookie("oidc_link", "1", salt=_COOKIE_SALT,
+                                   max_age=_COOKIE_MAX_AGE, httponly=True,
+                                   samesite="Lax")
+    return response
+
+
+@login_required
+def federated_link(request):
+    """Attach a federated identity to the account already signed in here.
+
+    This is the deliberate act that replaces matching on email. Only the
+    account's own authenticated session can start it, which is what makes it safe:
+    a provider cannot claim a local account, and a local user cannot claim someone
+    else's provider identity.
+
+    It is also the answer for a host whose users authenticate by password —
+    linking never calls ``set_unusable_password()``, so an account that a shipped
+    desktop binary signs into keeps working.
+    """
+    return federated_login(request, linking=True)
+
+
+def _complete_link(request, claims):
+    """Finish a linking round trip. Returns a response; never signs anybody in."""
+    from .models import FederatedIdentity
+
+    provider = _active_provider()
+    if provider is None:
+        messages.error(request, "This host has no active sign-in provider configured.")
+        return redirect(reverse("core:dashboard"))
+
+    sub = (claims.get("sub") or "").strip()
+    if not sub:
+        messages.error(request, "The provider did not identify the account.")
+        return redirect(reverse("core:dashboard"))
+
+    existing = FederatedIdentity.objects.filter(provider=provider, sub=sub).first()
+    if existing is not None and existing.user_id != request.user.pk:
+        # Someone else already answers to this subject. Refused rather than
+        # reassigned: silently moving it would hand this user the other account's
+        # federated route in.
+        logger.warning(
+            "Refused to link provider subject already held by user %s", existing.user_id,
+        )
+        messages.error(
+            request,
+            "That provider account is already linked to a different account here.",
+        )
+        return redirect(reverse("core:dashboard"))
+
+    if existing is None:
+        FederatedIdentity.objects.create(
+            provider=provider, sub=sub, user=request.user, provisioned=False,
+        )
+        messages.success(
+            request,
+            f"You can now sign in with {provider.label} as well as with your password.",
+        )
+    else:
+        messages.info(request, f"{provider.label} was already linked to this account.")
+
+    next_url = request.COOKIES.get("oidc_next", "") or reverse("core:dashboard")
+    response = redirect(next_url)
+    response.delete_cookie("oidc_state")
+    response.delete_cookie("oidc_next")
+    response.delete_cookie("oidc_link")
     return response
 
 
@@ -194,6 +329,12 @@ def oidc_callback(request):
     except ValueError:
         logger.warning("SSO userinfo endpoint at %s returned non-JSON", portal)
         return _provider_unreachable(request, "the sign-in provider sent an unreadable reply")
+    # A linking round trip attaches the identity to the session that started it
+    # and never touches account fields — no claim from the provider may rename,
+    # re-email or re-privilege an account a local user already owns.
+    if _is_linking(request) and request.user.is_authenticated:
+        return _complete_link(request, claims)
+
     user = _get_or_sync_user(claims)
     if user is None:
         return HttpResponseBadRequest(
@@ -218,6 +359,16 @@ def oidc_callback(request):
     return response
 
 
+def _is_linking(request) -> bool:
+    """Was this round trip started by federated_link rather than a sign-in?"""
+    try:
+        return request.get_signed_cookie(
+            "oidc_link", salt=_COOKIE_SALT, max_age=_COOKIE_MAX_AGE,
+        ) == "1"
+    except Exception:
+        return False
+
+
 def _callback_uri(request):
     cfg = _cfg()
     for uri in cfg.get("redirect_uris", []):
@@ -233,11 +384,12 @@ def _get_or_sync_user(claims):
     including the privilege flags — so revoking staff there revokes it here on
     the user's next login rather than leaving a stale local grant behind.
     """
-    user = _find_existing_user_for_claims(claims)
+    identity = _find_identity_for_claims(claims)
+    user = identity.user if identity is not None else None
     if user is None:
         if not auto_provision_enabled():
             return None
-        username = f"oidc_{claims['sub']}"
+        username = _provisioned_username(claims)
         user, created = User.objects.get_or_create(username=username)
         if created:
             # get_or_create leaves password="", which has_usable_password()
@@ -247,6 +399,11 @@ def _get_or_sync_user(claims):
             # account is reachable only through the provider.
             user.set_unusable_password()
             user.save(update_fields=["password"])
+        identity = _record_identity(claims, user, provisioned=True)
+
+    if identity is not None:
+        identity.last_login_at = timezone.now()
+        identity.save(update_fields=["last_login_at"])
 
     updates = {
         "email": claims.get("email", ""),
@@ -271,18 +428,65 @@ def _get_or_sync_user(claims):
     return user
 
 
-def _find_existing_user_for_claims(claims):
-    preferred_username = claims.get("preferred_username", "").strip()
-    if preferred_username:
-        user = User.objects.filter(username=preferred_username).first()
-        if user:
-            return user
+def _active_provider():
+    """The OIDCProviderConfig row backing the current config, or None."""
+    from .models import OIDCProviderConfig
 
-    email = claims.get("email", "").strip()
-    if email:
-        return User.objects.filter(email__iexact=email).first()
+    return OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
 
-    return None
+
+def _find_identity_for_claims(claims):
+    """The recorded identity for these claims, or None. Never a guess.
+
+    Matching used to fall back to ``username`` and then ``email__iexact``, with
+    nothing to distinguish a local-only account from a federated one — so a local
+    user whose email matched a provider account was silently absorbed by it and
+    could be handed ``is_staff``/``is_superuser`` by the next claim. See
+    ``FederatedIdentity``. Only an identity this host has been told about matches
+    now; anything else is either a provisioning decision or a refusal.
+    """
+    from .models import FederatedIdentity
+
+    sub = (claims.get("sub") or "").strip()
+    if not sub:
+        return None
+    provider = _active_provider()
+    if provider is None:
+        return None
+    return (
+        FederatedIdentity.objects
+        .select_related("user")
+        .filter(provider=provider, sub=sub)
+        .first()
+    )
+
+
+def _provisioned_username(claims):
+    """The username for a freshly provisioned federated account.
+
+    ``oidc_<sub>`` — deliberately not the provider's ``preferred_username``, which
+    can collide with a local account and is mutable there. Where a human-readable
+    name is wanted, link the accounts instead of guessing they are the same.
+    """
+    return f"oidc_{claims['sub']}"
+
+
+def _record_identity(claims, user, *, provisioned):
+    """Write down that this account answers to this provider subject."""
+    from .models import FederatedIdentity
+
+    provider = _active_provider()
+    if provider is None:
+        # Nothing to key the identity on. The sign-in still completes; it simply
+        # will not be remembered, which fails closed on the next attempt rather
+        # than matching something by coincidence.
+        logger.warning("No active OIDCProviderConfig; not recording a federated identity")
+        return None
+    identity, _created = FederatedIdentity.objects.get_or_create(
+        provider=provider, sub=claims["sub"],
+        defaults={"user": user, "provisioned": provisioned},
+    )
+    return identity
 
 
 def _link_person(user, person_slug, subject=None):

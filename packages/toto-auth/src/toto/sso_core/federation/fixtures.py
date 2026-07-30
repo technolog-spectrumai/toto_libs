@@ -60,6 +60,34 @@ def federation_fixture(
     return provisioned.relying_party, platform
 
 
+def link_federated_identity(user, *, provisioned=False):
+    """Record on the consumer side that ``user`` answers to the provider's subject.
+
+    This is now the *precondition* for a federated sign-in, not a convenience:
+    ``sso_client`` matches incoming claims only on a recorded ``(provider, sub)``,
+    having stopped matching on username and email — which on a host with local
+    accounts was an account-takeover path (see ``FederatedIdentity``).
+
+    The subject comes from the provider's own ``get_subject_for_user``, so the
+    fixture links the same opaque value the provider will really send rather than
+    inventing one. In a real deployment this row is written either by first-login
+    provisioning or by a user deliberately linking at ``/sso/link/``.
+    """
+    from toto.sso_client.models import FederatedIdentity
+    from toto.sso_master.services import get_subject_for_user
+
+    provider = (
+        OIDCProviderConfig.objects.filter(active=True).order_by("-imported_at").first()
+    )
+    assert provider is not None, "call federation_fixture() first"
+    identity, _created = FederatedIdentity.objects.get_or_create(
+        provider=provider,
+        sub=get_subject_for_user(user),
+        defaults={"user": user, "provisioned": provisioned},
+    )
+    return identity
+
+
 def _ensure_platform():
     """An active Platform. get_issuer() raises without one, so every token
     exchange would 500 — the same failure a freshly deployed provider hits."""

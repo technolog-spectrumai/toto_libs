@@ -27,12 +27,14 @@ urlpatterns = [
     path("sso/admin-test/<uuid:pk>/", views.admin_test_login, name="admin_test_login"),
     path("sso/admin-test-callback/", views.admin_test_callback, name="admin_test_callback"),
 
-    # Password reset flow
-    path("sso/password-reset/", views.password_reset_view, name="password_reset"),
-    path("sso/password-reset/done/", views.password_reset_done_view, name="password_reset_done"),
-    path("sso/password-reset/<uidb64>/<token>/", views.password_reset_confirm_view, name="password_reset_confirm"),
-    path("sso/password-reset/complete/", views.password_reset_complete_view, name="password_reset_complete"),
 ]
+
+# Password reset flow — defined in sso_core so the consumer urlconf mounts the
+# same four names from the same code. This urlconf is included at "", so it
+# passes the "sso/" segment; sso_client's is included at "sso/" and passes none.
+from toto.sso_core.password_reset import urlpatterns as _password_reset_urls  # noqa: E402
+
+urlpatterns += _password_reset_urls("sso/")
 
 # Social login rides in the same "sso" namespace, but only when the host
 # installs the app (the include would import its models otherwise).
