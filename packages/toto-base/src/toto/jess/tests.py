@@ -942,6 +942,16 @@ class StaffPageTests(JessTestCase):
         self.assertEqual(res.context["waiting"], 0)
         self.assertNotContains(res, "still waiting to be sent")
 
+    def test_the_detail_page_shows_the_addresses_the_message_actually_carried(self):
+        """Reply-to and From matter when diagnosing "it arrived but looked wrong"."""
+        row = MailMessage.objects.create(
+            to=["a@x.test"], cc=["c@x.test"], subject="S", body="B",
+            reply_to=["one@x.test", "two@x.test"], from_address="relay@x.test",
+        )
+        res = self.client.get(reverse("jess:message_detail", args=[row.pk]))
+        self.assertContains(res, "one@x.test, two@x.test")
+        self.assertContains(res, "relay@x.test")
+
     def test_no_template_leaks_a_django_comment_as_visible_text(self):
         """A ``{# #}`` comment is single-line only; a multi-line one renders as text.
 
