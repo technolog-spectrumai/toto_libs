@@ -182,6 +182,46 @@ def test_tesseract_no_longer_bundles_ffmpeg():
 
 
 # ---------------------------------------------------------------------------
+# pdflatex and the ACE editor: two things latex used to drag along
+# ---------------------------------------------------------------------------
+
+def test_texlive_is_not_implied_by_latex_any_more():
+    # It has two independent consumers — texlab compilation AND notarius
+    # contract→PDF, which is a separate implementation sharing no import with
+    # texlab and installed unconditionally. Defaulting it from `latex` meant a
+    # host that moved texlab away silently lost notarius PDF export.
+    assert resolve(BUILD_LATEX=1).texlive is False
+    assert resolve(BUILD_LATEX=1, INSTALL_TEXLIVE=1).texlive is True
+
+
+def test_texlive_can_be_had_without_latex_at_all():
+    # The notarius-only case: no texlab, but contracts still export to PDF.
+    f = resolve(INSTALL_TEXLIVE=1)
+    assert (f.texlive, f.latex) == (True, False)
+
+
+def test_the_editor_still_follows_latex_when_unnamed():
+    # The default is unchanged, so no existing profile resolves differently.
+    assert resolve(BUILD_LATEX=1).editor is True
+    assert resolve(BUILD_PYEDITOR=1).editor is True
+    assert resolve().editor is False
+
+
+def test_the_editor_survives_latex_leaving():
+    # The whole point of making it settable. toto.editor carries EIGHT file-type
+    # plugins and only two are latex's; without this a host that moved LaTeX
+    # elsewhere lost json/yaml/xml/csv/html/text editing too, and every vault
+    # Edit link rendered as "".
+    f = resolve(BUILD_EDITOR=1)
+    assert f.editor is True
+    assert (f.latex, f.pyeditor) == (False, False)
+
+
+def test_the_editor_can_be_refused_even_with_latex_on():
+    assert resolve(BUILD_LATEX=1, BUILD_EDITOR=0).editor is False
+
+
+# ---------------------------------------------------------------------------
 # The realtime tier, and the BUILD_STUDIO name it used to have
 # ---------------------------------------------------------------------------
 

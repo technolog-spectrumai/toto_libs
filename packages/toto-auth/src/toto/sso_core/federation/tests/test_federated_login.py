@@ -16,6 +16,10 @@ The other case, provisioning an account that did *not* exist, cannot be staged
 here for the same reason, so it is covered in test_claims_mapping.py by driving
 the claim-consumption directly with claims for an unknown subject.
 """
+from unittest import mock
+from urllib.parse import parse_qsl, urlparse
+
+import requests as http_requests
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
 from django.urls import reverse
@@ -146,3 +150,88 @@ class UntrustedClientTests(TestCase):
         response = self.browser.callback(with_consent["Location"])
         self.assertEqual(response.status_code, 302)
         self.assertIn("_auth_user_id", self.browser.consumer.session)
+
+
+class ProviderDownTests(TestCase):
+    """A slow or unreachable provider must not take the consumer down with it.
+
+    The back-channel holds a consumer worker for the whole wait, and with the
+    four workers deploy.py hardcodes, four concurrent logins against a stalled
+    provider are the whole host. These calls were unwrapped, so every one of
+    these cases was a 500 with a traceback and no hint that the *other* host was
+    at fault — and on a host with local accounts the login page still works, so
+    failing the page is strictly worse than failing the button.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        federation_fixture(portal_url=PORTAL, redirect_uri=REDIRECT)
+
+    def setUp(self):
+        self.user = User.objects.create_user("ada", "ada@example.org", "pw")
+        self.browser = FederationBrowser(portal_url=PORTAL)
+
+    def _callback_with_backchannel(self, **patches):
+        """Run the dance, replacing the consumer's socket at the callback."""
+        self.browser.sign_in_at_provider(self.user)
+        started = self.browser.start_login()
+        authorized = self.browser.authorize(started["Location"])
+        parsed = urlparse(authorized["Location"])
+        with self.browser.consumer_urlconf(), self.browser.loopback.patched():
+            with mock.patch.multiple("toto.sso_client.views.http_requests", **patches):
+                return self.browser.consumer.get(
+                    parsed.path, dict(parse_qsl(parsed.query))
+                )
+
+    def test_a_token_endpoint_timeout_lands_on_the_local_login_form(self):
+        response = self._callback_with_backchannel(
+            post=mock.Mock(side_effect=http_requests.ConnectTimeout("too slow"))
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("core:login"))
+        self.assertNotIn("_auth_user_id", self.browser.consumer.session)
+
+    def test_a_tls_failure_is_reported_not_raised(self):
+        # The self-signed-provider case: every local federated pair hits this.
+        response = self._callback_with_backchannel(
+            post=mock.Mock(side_effect=http_requests.exceptions.SSLError("bad cert"))
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("core:login"))
+
+    def test_a_userinfo_timeout_after_a_good_token_exchange_also_recovers(self):
+        # The token call must succeed for this to reach the second call, so only
+        # `get` is replaced and the loopback still serves the POST.
+        response = self._callback_with_backchannel(
+            get=mock.Mock(side_effect=http_requests.ReadTimeout("too slow"))
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("core:login"))
+        self.assertNotIn("_auth_user_id", self.browser.consumer.session)
+
+    def test_a_two_hundred_that_is_not_json_does_not_raise(self):
+        # A proxy error page or captive portal answering 200. `.json()` used to be
+        # called unguarded, so this was a ValueError traceback.
+        not_json = mock.Mock(ok=True)
+        not_json.json.side_effect = ValueError("no json")
+        response = self._callback_with_backchannel(post=mock.Mock(return_value=not_json))
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], reverse("core:login"))
+
+    def test_the_back_channel_bounds_both_connect_and_read(self):
+        # One number cannot express "give up connecting fast, but allow for the
+        # provider re-deriving its signing key on the token endpoint".
+        from toto.sso_client.views import _BACKCHANNEL_TIMEOUT
+
+        connect, read = _BACKCHANNEL_TIMEOUT
+        self.assertLessEqual(connect, 5)
+        self.assertLessEqual(read, 10)
+
+    def test_the_calls_really_carry_the_timeout_and_verify(self):
+        # Asserted on the call itself: a default reintroduced upstream would
+        # otherwise be invisible here.
+        captured = mock.Mock(side_effect=http_requests.ConnectTimeout("x"))
+        self._callback_with_backchannel(post=captured)
+        _args, kwargs = captured.call_args
+        self.assertEqual(kwargs["timeout"], (2, 5))
+        self.assertIn("verify", kwargs)

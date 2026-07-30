@@ -175,6 +175,26 @@ def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
     assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
 
 
+def test_every_task_module_ships_a_tasks_submodule(owner):
+    """Celery autodiscovery imports ``<label>.tasks`` and nothing else.
+
+    A label in TASK_MODULES whose package has no ``tasks.py`` is silently inert:
+    the producer registers the task by importing whatever module defines it, the
+    worker never does, and the job is enqueued and rejected as unregistered with
+    nothing pointing at the cause. ``toto.manta`` was exactly this — its task
+    lives in ``tasks_direct.py`` and is *named* ``toto.manta.tasks.run_direct``,
+    which is where the missing module was written down.
+    """
+    from toto.registry import TASK_MODULES
+
+    for label in TASK_MODULES:
+        app = label.split(".", 1)[1]
+        assert owner.get(f"toto/{app}/tasks.py"), (
+            f"{label} is in TASK_MODULES but no wheel ships toto/{app}/tasks.py — "
+            "autodiscovery will find nothing and its jobs will never run"
+        )
+
+
 def test_datalink_ships_in_toto_base(owner, all_names):
     # It is a toto-base app so every host inherits the code, and whether it is INSTALLED
     # is a per-host BUILD_DATALINK decision. Its tables hold peer credentials, so the
