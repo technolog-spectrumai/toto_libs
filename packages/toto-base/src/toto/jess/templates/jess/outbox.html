@@ -22,6 +22,25 @@
       </a>
     </div>
 
+    {% comment %}The one thing an operator cannot see anywhere else: mail that was
+       accepted and is going nowhere. A host with no celery worker looks completely
+       healthy apart from this number climbing.{% endcomment %}
+    {% if waiting %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+        class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
+        <i class="fa-solid fa-clock mt-0.5 opacity-70"></i>
+        <div>
+          <p class="font-semibold">
+            {% blocktrans count counter=waiting %}{{ counter }} message is still waiting to be sent.{% plural %}{{ counter }} messages are still waiting to be sent.{% endblocktrans %}
+          </p>
+          <p class="mt-1 opacity-70">
+            {% trans "Sends are handed to a background worker. If this number does not fall, no worker is running — every message has been accepted and none of them will leave." %}
+          </p>
+        </div>
+      </div>
+    {% endif %}
+
     {% if messages_list %}
       <div
         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

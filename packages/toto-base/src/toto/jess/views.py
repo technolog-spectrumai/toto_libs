@@ -126,11 +126,19 @@ def outbox(request):
     rows = list(
         MailMessage.objects.select_related("provider")[:OUTBOX_CAP]
     )
+    # Counted across the whole table, not just the capped page. This is the visible face
+    # of the cost Jess accepts by queueing everything: on a host with no celery worker,
+    # mail is accepted and never leaves — and the only symptom is a growing pile of rows
+    # that never reach a terminal status. Nothing else in the platform would say so.
+    stuck = MailMessage.objects.filter(
+        status__in=[MailMessage.QUEUED, MailMessage.SENDING]
+    ).count()
     return _render(request, "jess/outbox.html", {
         "messages_list": rows,
         "page_title": "Outbox",
         "capped": len(rows) >= OUTBOX_CAP,
         "cap": OUTBOX_CAP,
+        "waiting": stuck,
         "delivery_status": jess_status.describe(),
         "compose_url": reverse("jess:compose"),
     })

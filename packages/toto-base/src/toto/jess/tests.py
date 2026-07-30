@@ -806,6 +806,32 @@ class StaffPageTests(JessTestCase):
         self.assertEqual(row.status, MailMessage.SENDING)
         delay.assert_not_called()
 
+    def test_the_outbox_counts_mail_that_is_going_nowhere(self):
+        """The only place a worker-less host shows a symptom.
+
+        With no celery worker every send is accepted and nothing leaves, and this count
+        is the sole visible sign of it — so it is counted across the whole table, not
+        just the capped page.
+        """
+        MailMessage.objects.create(to=["a@x.test"], subject="waiting", body="B")
+        MailMessage.objects.create(to=["b@x.test"], subject="also", body="B",
+                                   status=MailMessage.SENDING)
+        MailMessage.objects.create(to=["c@x.test"], subject="done", body="B",
+                                   status=MailMessage.SENT)
+        MailMessage.objects.create(to=["d@x.test"], subject="dead", body="B",
+                                   status=MailMessage.FAILED)
+
+        res = self.client.get(reverse("jess:outbox"))
+        self.assertEqual(res.context["waiting"], 2)
+        self.assertContains(res, "still waiting to be sent")
+
+    def test_the_outbox_says_nothing_when_the_queue_is_draining(self):
+        MailMessage.objects.create(to=["a@x.test"], subject="done", body="B",
+                                   status=MailMessage.SENT)
+        res = self.client.get(reverse("jess:outbox"))
+        self.assertEqual(res.context["waiting"], 0)
+        self.assertNotContains(res, "still waiting to be sent")
+
     def test_no_template_leaks_a_django_comment_as_visible_text(self):
         """A ``{# #}`` comment is single-line only; a multi-line one renders as text.
 
