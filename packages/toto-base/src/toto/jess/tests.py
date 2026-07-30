@@ -472,7 +472,7 @@ class VaultTests(JessTestCase):
             vault.open_session(create=False)
         self.assertIsNone(vault.system_strongbox())
 
-    def test_the_init_command_reports_that_the_passphrase_actually_opens_the_box(self):
+    def test_the_init_command_creates_the_strongbox(self):
         from io import StringIO
 
         from django.core.management import call_command
@@ -480,6 +480,58 @@ class VaultTests(JessTestCase):
         out = StringIO()
         call_command("jess_init_vault", stdout=out)
         self.assertIsNotNone(vault.system_strongbox())
+        self.assertIn("jess-system", out.getvalue())
+
+    def test_the_init_command_says_so_when_there_is_nothing_to_verify(self):
+        """Honest about the check it did NOT perform.
+
+        With no secret stored, nothing can be unwrapped — and claiming the passphrase is
+        correct on the strength of a successful KDF run would be a lie, because a wrong
+        passphrase derives a different key just as happily.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        out = StringIO()
+        call_command("jess_init_vault", stdout=out)
+        self.assertIn("cannot be verified", out.getvalue())
+
+    def test_the_init_command_confirms_a_stored_password_decrypts(self):
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name())
+        self._smtp_provider(username="mailer", secret=secret)
+
+        out = StringIO()
+        call_command("jess_init_vault", stdout=out)
+        self.assertIn("JESS_VAULT_PASSWORD is correct", out.getvalue())
+
+    def test_the_init_command_detects_a_passphrase_that_does_not_match(self):
+        """The whole reason the command exists, and the reason is_available() is not it.
+
+        Constructing a session only runs the KDF, so a wrong passphrase passes that check
+        and fails much later as an InvalidTag on a send. This asserts the command goes
+        the extra step and actually decrypts.
+        """
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name())
+        self._smtp_provider(username="mailer", secret=secret)
+
+        with override_settings(JESS_VAULT_PASSWORD="a-completely-different-passphrase"):
+            vault.clear_cache()
+            # The weaker check would pass here, which is exactly the point.
+            self.assertTrue(vault.is_available())
+            out = StringIO()
+            call_command("jess_init_vault", stdout=out)
+
+        self.assertIn("Could NOT decrypt", out.getvalue())
+        self.assertIn("unrecoverable", out.getvalue())
 
 
 class VaultBackedSendTests(JessTestCase):

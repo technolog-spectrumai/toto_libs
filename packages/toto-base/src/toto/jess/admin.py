@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from django import forms
 from django.contrib import admin, messages
+from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
 
 from . import status as jess_status
@@ -153,12 +154,24 @@ class EmailProviderAdmin(admin.ModelAdmin):
         from .backend import JessEmailBackend
 
         JessEmailBackend()._dispatch(row)
+
+        # Reversed rather than written as "/jess/messages/<pk>/": the mount prefix is a
+        # per-host decision in each urls.py `_advanced` tuple, so a literal path would be
+        # right on both current hosts and wrong on the next one. Guarded because a host
+        # can install the app without mounting its urls, and a broken admin action is a
+        # worse outcome than a message with no link in it.
+        try:
+            url = reverse("jess:message_detail", args=[row.pk])
+        except NoReverseMatch:
+            messages.success(
+                request,
+                f"Queued a test to {address}. Its outbox row is #{row.pk} "
+                "(Jess's pages are not mounted on this host).",
+            )
+            return
         messages.success(
             request,
-            format_html(
-                'Queued a test to {}. <a href="{}">Watch it</a>.',
-                address, f"/jess/messages/{row.pk}/",
-            ),
+            format_html('Queued a test to {}. <a href="{}">Watch it</a>.', address, url),
         )
 
     @admin.display(description="Password")

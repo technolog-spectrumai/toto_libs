@@ -70,7 +70,7 @@ login page is worse than one that refuses.
 | Page | What it is for |
 |---|---|
 | `/jess/compose/` | send a message by hand: the test page |
-| `/jess/outbox/` | what has been sent, and what has not |
+| `/jess/` | the outbox: what has been sent, what has not, and how much is still waiting on a worker |
 | `/jess/messages/<pk>/` | one message, polled live, with the failure verbatim and a **Retry** |
 
 There are no automatic retries. Nothing else in this suite retries either, and a silent

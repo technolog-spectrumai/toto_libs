@@ -34,16 +34,44 @@ class Command(BaseCommand):
             f"{verb} strongbox '{strongbox.name}' (owner {strongbox.owner.get_username()})"
         ))
 
-        # Prove the passphrase really opens it. A wrong one is NOT detected when the
-        # session is constructed — only the KDF runs there — so it would otherwise
-        # surface much later as an InvalidTag on a send.
-        if vault.is_available():
-            self.stdout.write(self.style.SUCCESS("Vault opens with the configured passphrase."))
+        # Prove the passphrase really unwraps this strongbox's keys.
+        #
+        # `vault.is_available()` is NOT enough and must not be used here: it only
+        # constructs a session, and constructing one just runs the KDF
+        # (gervazy/crypto.py) — a wrong passphrase derives a different UKEK perfectly
+        # happily and is not detected until something tries to unwrap. That is exactly
+        # the failure this command exists to surface, so it has to go one step further
+        # and actually decrypt.
+        #
+        # The strongest available check is reading a secret that is already stored,
+        # because that is the thing a send will do. With none stored there is nothing to
+        # unwrap yet, and saying so is more useful than implying a check that did not
+        # happen.
+        stored = (
+            EmailProvider.objects
+            .exclude(secret__isnull=True)
+            .select_related("secret")
+            .order_by("-active", "-updated_at")
+            .first()
+        )
+        if stored is None:
+            self.stdout.write(
+                "No password is stored yet, so there is nothing to decrypt — the "
+                "passphrase cannot be verified until one is saved in the admin."
+            )
         else:
-            self.stdout.write(self.style.ERROR(
-                "Vault did NOT open. JESS_VAULT_PASSWORD does not match this strongbox; "
-                "stored passwords cannot be decrypted and must be re-entered."
-            ))
+            try:
+                vault.read_secret(stored.secret)
+                self.stdout.write(self.style.SUCCESS(
+                    f"Decrypted the stored password for '{stored.label}' — "
+                    "JESS_VAULT_PASSWORD is correct."
+                ))
+            except Exception as exc:                        # noqa: BLE001
+                self.stdout.write(self.style.ERROR(
+                    f"Could NOT decrypt the stored password for '{stored.label}': {exc}\n"
+                    "JESS_VAULT_PASSWORD does not match the passphrase these secrets "
+                    "were stored under. They are unrecoverable and must be re-entered."
+                ))
 
         total = EmailProvider.objects.count()
         self.stdout.write(f"{total} email provider(s) configured.")
