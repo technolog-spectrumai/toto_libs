@@ -59,14 +59,16 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    # 37 since assets + tariffs were promoted out of the zenobia host into
-    # toto-economy (a second host needed to price its own work). Moving an app
-    # between HOSTS never touches this; moving one into or out of a PACKAGE does.
-    # The 1.21 media split moved four apps between packages and so left the count
-    # alone: manta, fileservices and transcription are packaged in toto-media-ops
-    # and ocr in toto-media, so all four still ship. What WOULD change it is
-    # retiring one to limbo/, which is not a package and never ships.
-    assert len(apps_with_migrations) == 37, sorted(apps_with_migrations)
+    # 38 as of 1.21: 37 plus toto.datalink, a new toto-base app with its own tables
+    # (peer grants, runs, merge bases). Before that it was 37, since assets + tariffs
+    # were promoted out of the zenobia host into toto-economy (a second host needed to
+    # price its own work). Moving an app between HOSTS never touches this; adding one
+    # to a PACKAGE, or moving one into or out of one, does. The 1.21 media split moved
+    # four apps between packages and so left the count alone: manta, fileservices and
+    # transcription are packaged in toto-media-ops and ocr in toto-media, so all four
+    # still ship. What WOULD change it is retiring one to limbo/, which is not a
+    # package and never ships.
+    assert len(apps_with_migrations) == 38, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -171,6 +173,23 @@ def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
     assert owner.get("toto/fileservices/models.py") == "toto-media-ops"
     # Written in 1.21 and never deployed; the app had no run index before it.
     assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
+
+
+def test_datalink_ships_in_toto_base(owner, all_names):
+    # It is a toto-base app so every host inherits the code, and whether it is INSTALLED
+    # is a per-host BUILD_DATALINK decision. Its tables hold peer credentials, so the
+    # migration must travel with it or a host that switches the flag on has no schema.
+    assert owner.get("toto/datalink/migrations/0001_initial.py") == "toto-base"
+    assert owner.get("toto/datalink/registry.py") == "toto-base"
+    assert owner.get("toto/datalink/services/serialize.py") == "toto-base"
+    # The per-app policy modules are what make the registry complete; a missing one is
+    # a model nobody decided about.
+    for app in ("core", "people", "locations", "socialhub", "events",
+                "vault", "api", "gervazy", "backup"):
+        assert owner.get(f"toto/{app}/datalink_policies.py") == "toto-base", app
+    # The two-instance harness ships too — every host's clean-env gate runs it.
+    assert owner.get("toto/datalink/federation/settings.py") == "toto-base"
+    assert [n for n in all_names if n.startswith("toto/datalink/federation/tests/")]
 
 
 def test_the_media_sub_nav_ships_in_toto_base(owner):
