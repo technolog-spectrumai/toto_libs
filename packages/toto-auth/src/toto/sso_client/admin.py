@@ -44,6 +44,22 @@ def _callback_uri(request):
         return ""
 
 
+def _same_platform(stored_url, canonical_target):
+    """Does an already-stored connection point at the platform being federated to?
+
+    Both sides go through pairing.platform_url so the comparison survives a
+    trailing slash or a missing scheme; a stored value that will not normalise
+    (a legacy row) simply reports "not the same", which errs toward showing the
+    new-connection guidance rather than the renewal guidance.
+    """
+    from .pairing import PairingError, platform_url
+
+    try:
+        return platform_url(stored_url) == canonical_target
+    except PairingError:
+        return False
+
+
 @admin.register(OIDCProviderConfig)
 class OIDCProviderConfigAdmin(admin.ModelAdmin):
     list_display = ["label", "client_id", "portal_url", "active", "secret_state", "paired_at"]
@@ -131,6 +147,7 @@ class OIDCProviderConfigAdmin(admin.ModelAdmin):
             "step": 1,
             "error": None,
             "code": "",
+            "label": "",
             "target": (request.GET.get("target") or "").strip(),
             "callback_uri": callback_uri,
             "own_host": urlparse(callback_uri).hostname or "",
@@ -164,17 +181,33 @@ class OIDCProviderConfigAdmin(admin.ModelAdmin):
             f"{target}/admin/sso_master/ssorelyingparty/invite/"
             f"?host={quote(context['own_host'])}"
         )
+        # Is this a renewal of the connection this host already has, or a new one?
+        # It changes the instruction: a renewal must go through the provider's
+        # "Mint a re-pairing code" on the EXISTING registration, because only that
+        # keeps the relying-party UUID stable — and the consumer matches on that
+        # UUID, so a brand-new invite would instead create a second connection and
+        # strand every linked account behind the old one. The consumer cannot
+        # deep-link the re-pair page (it does not know the provider-side pk), so it
+        # links the registrations list and says what to click.
+        current = context["current"]
+        context["renewal"] = bool(current and _same_platform(current.portal_url, target))
+        context["registrations_url"] = f"{target}/admin/sso_master/ssorelyingparty/"
 
         if request.POST.get("action") != "pair":
             return render(request, "admin/sso_client/federate.html", context)
 
         # -- step 2: the code --------------------------------------------------
+        context["label"] = request.POST.get("label") or ""
         code = (request.POST.get("code") or "").strip()
         upload = request.FILES.get("image")
 
-        # A photograph is just another way of typing the code; both converge here
-        # so there is one pairing path to get right.
-        if upload and not code:
+        # A photograph is just another way of typing the code. When a picture is
+        # supplied it WINS over whatever is in the textarea, rather than being
+        # ignored unless the textarea is empty: a failed attempt re-fills the box
+        # with the code that just failed, so if the operator's fix is to upload a
+        # fresh QR, the stale text must not silently beat it. The decoded value
+        # replaces the box contents so it shows what was actually used.
+        if upload:
             try:
                 code = qr.read(upload.read())
             except qr.QRError as exc:

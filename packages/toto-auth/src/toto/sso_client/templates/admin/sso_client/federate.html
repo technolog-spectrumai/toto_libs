@@ -25,7 +25,7 @@
 
     {% if current %}
       <p style="padding:.9rem 1rem;background:#fffbeb;border:1px solid #fcd34d;border-radius:6px;">
-        {% blocktrans with label=current.label url=current.portal_url %}This platform is already federated to <strong>{{ label }}</strong> ({{ url }}). Federating again to the same address renews the connection and keeps every linked account. Federating to a <em>different</em> address retires this one.{% endblocktrans %}
+        {% blocktrans with label=current.label url=current.portal_url %}This platform is already federated to <strong>{{ label }}</strong> ({{ url }}). To renew that connection — keeping every linked account — federate to the same address; the next step tells you exactly what to ask for so the link is renewed rather than replaced. Federating to a <em>different</em> address retires this one.{% endblocktrans %}
       </p>
     {% endif %}
 
@@ -69,6 +69,27 @@
     </p>
 
     <div style="padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
+    {% if renewal %}
+      {# Renewing an existing connection: it MUST go through the provider's
+         re-pairing action on the existing registration, so the relying-party
+         identity stays put and this host's linked accounts survive. A fresh
+         invite would mint a new identity and strand them. #}
+      <p style="margin:0 0 .5rem;font-weight:600;">
+        {% trans "This renews your existing connection — ask for a re-pairing code" %}
+      </p>
+      <p style="margin:0 0 .6rem;color:#555;font-size:.92rem;">
+        {% trans "So your linked accounts are kept, their administrator must renew your existing registration rather than add a new one. Send them this:" %}
+      </p>
+      <code style="display:block;user-select:all;padding:.7rem;background:#fff;border:1px solid #ddd;
+                   border-radius:4px;font-size:.85rem;line-height:1.5;">{% blocktrans %}Please re-pair {{ own_host }} — in your admin, open our existing registration under SSO relying parties and use "Mint a re-pairing code". Please do not create a new invite: that would unlink every account.{% endblocktrans %}</code>
+      {% if registrations_url %}
+        <p style="margin:.7rem 0 0;font-size:.9rem;">
+          {% trans "Their registrations list:" %}
+          <a href="{{ registrations_url }}" target="_blank" rel="noopener noreferrer"
+             style="word-break:break-all;">{{ registrations_url }}</a>
+        </p>
+      {% endif %}
+    {% else %}
       <p style="margin:0 0 .5rem;font-weight:600;">
         {% trans "First, ask their administrator for a pairing code" %}
       </p>
@@ -84,6 +105,7 @@
              style="word-break:break-all;">{{ invite_url }}</a>
         </p>
       {% endif %}
+    {% endif %}
       <p style="margin:.6rem 0 0;color:#555;font-size:.9rem;">
         {% trans "Codes last five minutes and work once, so ask for it when you are ready to paste it." %}
       </p>
@@ -111,7 +133,7 @@
         <div class="form-row">
           <label for="label">{% trans "Name for this connection" %}</label>
           <input type="text" name="label" id="label" class="vTextField"
-                 placeholder="{% trans 'e.g. Head office' %}">
+                 value="{{ label }}" placeholder="{% trans 'e.g. Head office' %}">
           <p class="help">{% trans "Optional. Shown on the sign-in button as \"Sign in with …\"." %}</p>
         </div>
       </fieldset>

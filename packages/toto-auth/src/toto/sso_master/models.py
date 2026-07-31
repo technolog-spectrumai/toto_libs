@@ -20,6 +20,12 @@ SECRET_GRACE_WINDOW = timedelta(hours=24)
 # box", and short enough that a code captured in a proxy log or an error report is
 # already dead by the time anyone reads it. Bounds are enforced in the admin form.
 DEFAULT_INVITE_TTL = timedelta(minutes=5)
+# The admin form offers this many minutes by default. Kept in step with
+# DEFAULT_INVITE_TTL so the number an admin sees pre-filled is the five minutes
+# every operator-facing text promises — the form always passes an explicit ttl to
+# mint(), so DEFAULT_INVITE_TTL itself never reaches that path and the form is
+# where the default has to live.
+DEFAULT_INVITE_TTL_MINUTES = int(DEFAULT_INVITE_TTL.total_seconds() // 60)
 MIN_INVITE_TTL_MINUTES = 1
 MAX_INVITE_TTL_MINUTES = 120
 

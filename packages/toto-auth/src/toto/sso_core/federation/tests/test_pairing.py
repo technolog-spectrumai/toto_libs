@@ -648,6 +648,34 @@ class AdminPageTests(TestCase):
         self.assertIn("data:image/png;base64,", body)
         self.assertIn(invite.ticket_prefix, body)
 
+    def test_the_invite_form_defaults_to_the_advertised_five_minutes(self):
+        """Every operator-facing text promises five minutes; the form must agree.
+
+        The form always passes an explicit ttl to mint(), so the model's
+        DEFAULT_INVITE_TTL never reaches that path — the default has to be the
+        one the form pre-fills, or a defaults-minted code is dead in 60 seconds
+        while the consumer-side operator is told they have five minutes.
+        """
+        from django.urls import reverse
+
+        from toto.sso_master.models import DEFAULT_INVITE_TTL_MINUTES
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        self.assertEqual(DEFAULT_INVITE_TTL_MINUTES, 5)
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            body = self.client.get(url).content.decode()
+            # The number input is pre-filled with five, not the one-minute floor.
+            self.assertIn('name="ttl_minutes"', body)
+            self.assertIn('value="5"', body)
+
+            # And a submission that leaves the field blank still mints five minutes.
+            self.client.post(url, {"expected_host": CONSUMER_HOST, "trusted": "on",
+                                   "ttl_minutes": ""})
+        invite = SSOFederationInvite.objects.latest("id")
+        window = (invite.expires_at - invite.created_at).total_seconds()
+        self.assertGreater(window, 4 * 60 + 30)
+
     def test_the_invite_page_takes_a_suggested_hostname_from_the_link(self):
         """The other platform links here carrying the hostname it will present.
 
@@ -792,6 +820,30 @@ class PlatformUrlTests(TestCase):
                     platform_url(junk)
                 self.assertEqual(caught.exception.code, "bad_url")
 
+    def test_it_refuses_a_host_an_http_client_reads_differently(self):
+        """urlparse and requests/urllib3 disagree on userinfo and backslash URLs.
+
+        urlparse reads 'https://evil.test\\@good.test' as host good.test (the part
+        before the backslash is userinfo to it), while requests connects to
+        evil.test. If platform_url canonicalised such an input to good.test, the
+        host this function returns — used both to compare against the operator's
+        declared platform and to build the POST endpoint — would not be the host
+        actually contacted, and the whole "which platform?" check would be a
+        no-op. So these are refused outright.
+        """
+        from toto.sso_client.pairing import PairingError, platform_url
+
+        for hostile in (
+            "https://evil.test\\@good.test",
+            "https://user@good.test",
+            "https://user:pass@good.test",
+            "https://good.test\\evil.test",
+        ):
+            with self.subTest(hostile=hostile):
+                with self.assertRaises(PairingError) as caught:
+                    platform_url(hostile)
+                self.assertEqual(caught.exception.code, "bad_url")
+
 
 class WrongPlatformTests(TestCase):
     """A pairing code names its own provider, so the operator must name it too.
@@ -835,6 +887,39 @@ class WrongPlatformTests(TestCase):
 
         self.assertEqual(loopback.calls, [])
         self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
+    def test_a_code_whose_address_lies_to_the_check_is_refused_before_the_call(self):
+        """The host-differential exploit.
+
+        A pairing code carries its own provider address, decoded with no URL
+        validation. An attacker mints one whose address is
+        'https://evil.test\\@good.test': urlparse (and so the check) reads the host
+        as good.test, but requests/urllib3 connect to evil.test. If pair() built
+        the endpoint from the raw address, an operator naming the trusted good.test
+        would pass the check and yet hand the exchange to evil.test, which could
+        return a grant of its choosing and take over every federated login. pair()
+        must canonicalise the address through the SAME function the check uses and
+        refuse anything that does not survive it — before any network call, and
+        whether or not a destination was declared.
+        """
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_client.pairing import PairingError, pair
+
+        crafted = wire.encode_ticket("https://evil.test\\@good.test", wire.new_secret())
+
+        # Even with the operator naming the host the address pretends to be.
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            with self.assertRaises(PairingError) as caught:
+                pair(crafted, callback_uri=CALLBACK, expect_url="https://good.test")
+        self.assertEqual(caught.exception.code, "bad_ticket")
+        self.assertEqual(loopback.calls, [])
+
+        # And with no declared destination at all: the canonicalisation is not
+        # gated on expect_url, so the malformed address is refused regardless.
+        with self.assertRaises(PairingError) as caught:
+            pair(crafted, callback_uri=CALLBACK)
+        self.assertEqual(caught.exception.code, "bad_ticket")
 
     def test_the_declared_platform_does_not_have_to_be_written_identically(self):
         from toto.sso_core.federation.bridge import ProviderLoopback
@@ -988,6 +1073,77 @@ class GuidedFederationPageTests(TestCase):
 
         self.assertEqual(response.status_code, 302)
         self.assertTrue(OIDCProviderConfig.objects.get().active)
+
+    def test_a_fresh_upload_beats_a_stale_pasted_code(self):
+        """A failed attempt re-fills the textarea, so a later QR upload must win.
+
+        Otherwise the operator, told to fetch a fresh code and handed a QR photo,
+        uploads it while the dead code still sits in the box — and the dead code
+        is silently used again.
+        """
+        import base64
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from toto.sso_client.models import OIDCProviderConfig
+        from toto.sso_core.federation.bridge import ProviderLoopback
+
+        minted = _mint()
+        png = base64.b64decode(qr.render_data_uri(minted.ticket).split(",", 1)[1])
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            response = self.client.post(self.url, {
+                "target": "provider.test",
+                "action": "pair",
+                "code": "STALE-DEAD-CODE-STILL-IN-THE-BOX",
+                "image": SimpleUploadedFile("qr.png", png, "image/png"),
+            }, secure=True)
+
+        # The upload was used, not the stale text — so pairing succeeded.
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(OIDCProviderConfig.objects.get().active)
+
+    def test_the_connection_name_survives_a_step_two_error(self):
+        """target and code are echoed back on a failed step 2; the name must be too.
+
+        Otherwise the operator retypes the code after a failure and submits with a
+        silently-emptied name, and the connection is named after the wrong host.
+        """
+        minted = _mint()
+        response = self.client.post(self.url, {
+            "target": "https://somewhere-else.test",   # forces a step-2 refusal
+            "action": "pair",
+            "code": minted.ticket,
+            "label": "Head office",
+        }, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('value="Head office"', response.content.decode())
+
+    def test_renewing_an_existing_connection_asks_for_a_re_pairing_code(self):
+        """A renewal must go through re-pair, not a fresh invite, or accounts orphan."""
+        from toto.sso_client.models import OIDCProviderConfig
+
+        OIDCProviderConfig.objects.create(
+            label="Head office", portal_url=PROVIDER, client_id="consumer",
+            active=True,
+        )
+        response = self.client.post(self.url, {"target": "provider.test"}, secure=True)
+        body = response.content.decode()
+        self.assertIn("re-pairing code", body)
+        # It must NOT tell them to add a fresh invite, which would strand accounts.
+        self.assertNotIn("Invite a platform", body)
+
+    def test_federating_to_a_different_platform_asks_for_a_plain_invite(self):
+        from toto.sso_client.models import OIDCProviderConfig
+
+        OIDCProviderConfig.objects.create(
+            label="Head office", portal_url="https://elsewhere.test",
+            client_id="consumer", active=True,
+        )
+        response = self.client.post(self.url, {"target": "provider.test"}, secure=True)
+        body = response.content.decode()
+        self.assertIn("Invite a platform", body)
+        self.assertNotIn("re-pairing code", body)
 
     def test_a_staff_user_without_rights_cannot_federate_the_host(self):
         """admin_view() checks is_staff, not per-model permissions."""
