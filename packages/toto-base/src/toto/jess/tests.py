@@ -764,6 +764,7 @@ class StaffGateTests(JessTestCase):
         )
         self.urls = [
             reverse("jess:outbox"),
+            reverse("jess:account"),
             reverse("jess:compose"),
             reverse("jess:message_detail", args=[self.message.pk]),
             reverse("jess:message_status", args=[self.message.pk]),
@@ -971,6 +972,117 @@ class StaffPageTests(JessTestCase):
 # ---------------------------------------------------------------------------
 
 @override_settings(EMAIL_BACKEND=JESS_BACKEND)
+@override_settings(EMAIL_BACKEND=JESS_BACKEND)
+class AccountPageTests(JessTestCase):
+    """The staff account-setup page: create/edit a provider, store its password, test it —
+    the simpler in-UI alternative to the Django admin, in the default (ambient) vault mode.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.staff)
+        self.url = reverse("jess:account")
+
+    def _save(self, **fields):
+        data = {
+            "action": "save", "label": "Relay", "backend": "smtp",
+            "host": "smtp.example.org", "port": "587", "use_tls": "on", "timeout": "10",
+            "username": "", "from_address": "", "reply_to": "",
+        }
+        data.update(fields)
+        return self.client.post(self.url, data)
+
+    def test_create_a_provider(self):
+        res = self._save(label="Fastmail", host="smtp.fastmail.com", username="me@fastmail.com")
+        provider = EmailProvider.objects.get(label="Fastmail")
+        self.assertEqual(provider.host, "smtp.fastmail.com")
+        self.assertRedirects(res, f"{self.url}?edit={provider.pk}", fetch_redirect_response=False)
+
+    def test_edit_a_provider(self):
+        p = self._smtp_provider(label="Old")
+        self._save(pk=str(p.pk), label="New name", active="on")
+        p.refresh_from_db()
+        self.assertEqual(p.label, "New name")
+
+    def test_smtp_without_a_host_is_a_form_error_and_writes_nothing(self):
+        res = self._save(label="Broken", host="")
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(EmailProvider.objects.filter(label="Broken").exists())
+
+    def test_setting_a_password_stores_it_encrypted(self):
+        p = self._smtp_provider(label="Relay", username="me")
+        self._save(pk=str(p.pk), username="me", active="on", new_password="relay-secret")
+        p.refresh_from_db()
+        self.assertIsNotNone(p.secret)
+        # A worker (ambient session) can read back exactly what was stored.
+        self.assertEqual(vault.read_secret(p.secret), "relay-secret")
+
+    def test_send_test_delivers_and_records_a_sent_row(self):
+        self._locmem_provider(label="Loop")
+        self.client.post(self.url, {"action": "test", "test_address": "probe@x.test"})
+        self.assertEqual(len(mail.outbox), 1)
+        row = MailMessage.objects.get(purpose=MailMessage.PURPOSE_TEST)
+        self.assertEqual(row.status, MailMessage.SENT)
+        self.assertEqual(row.to, ["probe@x.test"])
+
+    def test_send_test_with_no_provider_is_a_clean_error(self):
+        res = self.client.post(self.url, {"action": "test", "test_address": "probe@x.test"})
+        self.assertEqual(res.status_code, 302)          # redirects back, no crash
+        self.assertEqual(MailMessage.objects.count(), 0)
+
+
+@override_settings(EMAIL_BACKEND=JESS_BACKEND, JESS_MANUAL_RELEASE=True)
+class AccountPageManualTests(JessTestCase):
+    """Under manual-release the account page still works, but the vault passphrase is
+    required to store a password or send a test — mirroring how release/compose behave.
+    """
+
+    TYPED = "an-admin-typed-passphrase"
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.staff)
+        self.url = reverse("jess:account")
+        from toto.gervazy.crypto import GervazyCryptoSession
+        owner = vault._get_or_create_owner()
+        GervazyCryptoSession.initialize_strongbox(owner, vault.SYSTEM_STRONGBOX_NAME, self.TYPED)
+
+    def _save(self, p, **fields):
+        data = {
+            "action": "save", "pk": str(p.pk), "label": p.label, "backend": "smtp",
+            "host": "smtp.example.org", "port": "587", "use_tls": "on", "timeout": "10",
+            "username": "me", "from_address": "", "reply_to": "", "active": "on",
+        }
+        data.update(fields)
+        return self.client.post(self.url, data)
+
+    def test_setting_a_password_without_the_passphrase_is_refused(self):
+        p = self._smtp_provider(label="Relay", username="me")
+        self._save(p, new_password="relay-secret")          # no passphrase
+        p.refresh_from_db()
+        self.assertIsNone(p.secret)
+
+    def test_setting_a_password_with_the_passphrase_stores_it(self):
+        p = self._smtp_provider(label="Relay", username="me")
+        self._save(p, new_password="relay-secret", passphrase=self.TYPED)
+        p.refresh_from_db()
+        self.assertIsNotNone(p.secret)
+        got = vault.read_secret(p.secret, session=vault.open_manual_session(self.TYPED))
+        self.assertEqual(got, "relay-secret")
+
+    def test_a_test_send_with_the_wrong_passphrase_fails_cleanly(self):
+        p = self._smtp_provider(label="Relay", username="me")
+        session = vault.open_manual_session(self.TYPED)
+        p.secret = vault.store_secret("relay-secret", name=vault.unique_secret_name(), session=session)
+        p.save(update_fields=["secret"])
+        self.client.post(self.url, {
+            "action": "test", "pk": str(p.pk),
+            "test_address": "probe@x.test", "passphrase": "WRONG",
+        })
+        row = MailMessage.objects.get(purpose=MailMessage.PURPOSE_TEST)
+        self.assertEqual(row.status, MailMessage.FAILED)
+
+
 class AdminTests(JessTestCase):
     def setUp(self):
         super().setUp()

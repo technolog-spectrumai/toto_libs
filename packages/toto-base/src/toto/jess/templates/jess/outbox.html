@@ -15,11 +15,18 @@
         <h1 class="text-2xl font-bold">{% trans "Outbox" %}</h1>
         <p class="mt-1 text-sm opacity-70">{{ delivery_status }}</p>
       </div>
-      <a href="{{ compose_url }}"
-        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-        class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-paper-plane"></i> {% trans "Send a message" %}
-      </a>
+      <div class="flex flex-wrap items-center gap-2">
+        <a href="{{ account_url }}"
+          :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+          class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-gear"></i> {% trans "Email setup" %}
+        </a>
+        <a href="{{ compose_url }}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-paper-plane"></i> {% trans "Send a message" %}
+        </a>
+      </div>
     </div>
 
     {% comment %}Manual-release custody: mail sits held until an admin types the

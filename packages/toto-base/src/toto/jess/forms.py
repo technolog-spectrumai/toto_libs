@@ -1,6 +1,8 @@
 """The compose form — the staff send page, and the thing that grows into a campaign."""
 from django import forms
 
+from .models import EmailProvider
+
 
 class ComposeForm(forms.Form):
     """One message, typed by a human.
@@ -55,3 +57,20 @@ class ComposeForm(forms.Form):
             except forms.ValidationError:
                 raise forms.ValidationError(f"{address!r} is not a valid email address.")
         return addresses
+
+
+class AccountForm(forms.ModelForm):
+    """Set up the email account from the staff UI instead of the Django admin.
+
+    A ModelForm so ``EmailProvider.clean()`` (SMTP needs a host; STARTTLS and implicit TLS
+    are mutually exclusive) and the one-active-row invariant in ``save()`` both apply
+    unchanged. The password is deliberately NOT a field here — it goes through the vault in
+    the view, exactly as the admin does it, so the plaintext never rides on the form.
+    """
+
+    class Meta:
+        model = EmailProvider
+        fields = [
+            "label", "backend", "host", "port", "use_tls", "use_ssl", "timeout",
+            "username", "from_address", "reply_to", "active",
+        ]
