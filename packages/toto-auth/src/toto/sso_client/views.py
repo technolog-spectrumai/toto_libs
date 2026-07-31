@@ -556,3 +556,140 @@ def _link_person(user, person_slug, subject=None):
         )
     except Exception:
         return None
+
+
+# ---------------------------------------------------------------------------
+# The child's federation console — the consumer mirror of sso_master's.
+# ---------------------------------------------------------------------------
+
+
+def _redeem_code(request, context):
+    """Redeem a pairing code from the console form. Returns the config on success, else
+    ``None`` with ``context["error"]`` set (and the form values preserved for re-render).
+
+    The single-page form of the admin's two-step ``federate_view``: canonicalise the
+    named platform, refuse plaintext, accept a pasted code or an uploaded QR image, then
+    ``pairing.pair`` — which checks the code names the platform we asked for BEFORE it
+    transmits anything.
+    """
+    from toto.sso_core import qr
+
+    from .pairing import PairingError, pair, platform_url
+
+    raw_target = (request.POST.get("target") or "").strip()
+    context["target"] = raw_target
+    context["code"] = (request.POST.get("code") or "").strip()
+    try:
+        target = platform_url(raw_target)
+    except PairingError as exc:
+        context["error"] = exc.message
+        return None
+    if target.startswith("http://") and not settings.DEBUG:
+        context["error"] = (
+            f"{target} is not secure — a platform will not accept a pairing code over "
+            "plain HTTP. Use https://."
+        )
+        return None
+    context["target"] = target
+
+    code = context["code"]
+    upload = request.FILES.get("image")
+    if upload:
+        try:
+            code = qr.read(upload.read())
+            context["code"] = code
+        except qr.QRError as exc:
+            context["error"] = str(exc)
+            return None
+    if not code:
+        context["error"] = "Paste the pairing code, or upload a picture of it."
+        return None
+
+    try:
+        return pair(
+            code,
+            callback_uri=context["callback_uri"],
+            label=(request.POST.get("label") or ""),
+            expect_url=target,
+        )
+    except PairingError as exc:
+        context["error"] = exc.message
+        return None
+
+
+@login_required
+def federation_console(request):
+    """Who this host is federated with, and how to (re)pair — the child's console.
+
+    Staff-only, and 403 (via ``PermissionDenied``) for a signed-in non-staff user rather
+    than a redirect, matching the provider's console and the jess pages. When paired it
+    shows the parent's live identity (name/domain/logo) from the platform-info API — which
+    also proves the secret works — and hides the code box behind an explicit control. When
+    not paired it shows the redeem form directly.
+    """
+    from django.core.exceptions import PermissionDenied
+    from django.shortcuts import render
+
+    from toto.ui import PageProcessor
+
+    from . import parent_info
+    from .models import OIDCProviderConfig
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied
+
+    config = OIDCProviderConfig.objects.filter(active=True).first()
+    cfg = apps.get_app_config("sso_client").get_config()
+    paired = bool(config and config.paired_at and cfg.get("portal_url") and cfg.get("client_id"))
+
+    try:
+        callback_uri = request.build_absolute_uri(reverse("sso:callback"))
+    except NoReverseMatch:
+        callback_uri = ""
+
+    context = {
+        "page_title": "Federation",
+        "config": config,
+        "paired": paired,
+        "parent": None,
+        "parent_unreachable": False,
+        "error": None,
+        "code": "",
+        "target": (request.GET.get("target") or (config.portal_url if config else "") or "").strip(),
+        "callback_uri": callback_uri,
+    }
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        if action == "test":
+            info = parent_info.fetch_platform_info(cfg)
+            if info:
+                messages.success(
+                    request,
+                    "Connection OK — reached %s." % (info.get("site_name") or cfg.get("portal_url")),
+                )
+            else:
+                messages.error(
+                    request,
+                    "Could not reach the parent with the stored credentials. Check it is "
+                    "running, or re-pair.",
+                )
+            return redirect(reverse("sso:federation_console"))
+        if action == "redeem":
+            result = _redeem_code(request, context)
+            if result is not None:
+                messages.success(request, "Federated with %s." % result.label)
+                return redirect(reverse("sso:federation_console"))
+            # else: fall through and re-render with context["error"] + the typed values
+
+    if paired and context["error"] is None:
+        info = parent_info.fetch_platform_info(cfg)
+        if info:
+            context["parent"] = info
+        else:
+            context["parent_unreachable"] = True
+
+    return render(
+        request, "sso_client/federation_console.html",
+        PageProcessor().decorate(context, request),
+    )

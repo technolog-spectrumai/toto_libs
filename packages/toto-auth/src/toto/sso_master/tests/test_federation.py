@@ -130,3 +130,29 @@ class FederationConsoleTests(TestCase):
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, 302)
         self.assertIn("login", res["Location"])
+
+    def test_an_invited_platform_still_shows_the_qr_button(self):
+        # The setUp party has no paired_at -> status "invited": QR is the point.
+        self.client.force_login(self.staff)
+        self.assertIn("Generate QR", self.client.get(self.url).content.decode())
+
+    def test_a_paired_platform_hides_the_qr_and_offers_re_pair(self):
+        from django.utils import timezone
+
+        self.party.paired_at = timezone.now()
+        self.party.save(update_fields=["paired_at"])
+        self.client.force_login(self.staff)
+        body = self.client.get(self.url).content.decode()
+        self.assertIn("Paired", body)
+        self.assertNotIn("Generate QR", body)   # the loud button is gone once paired
+        self.assertIn("Re-pair", body)          # replaced by a discreet control
+
+    def test_re_pairing_a_paired_platform_still_works(self):
+        from django.utils import timezone
+
+        self.party.paired_at = timezone.now()
+        self.party.save(update_fields=["paired_at"])
+        self.client.force_login(self.staff)
+        res = self.client.post(self.url, {"action": "repair", "pk": str(self.party.pk)})
+        self.assertEqual(res.status_code, 200)
+        self.assertIn("data:image/png;base64,", res.content.decode())
