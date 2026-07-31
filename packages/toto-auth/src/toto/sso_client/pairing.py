@@ -82,6 +82,21 @@ def platform_url(raw: str) -> str:
             code="bad_url",
         )
 
+    # Refuse anything an HTTP client would resolve to a different host than
+    # urlparse reports. urlparse reads "https://evil.com\@good.com" as host
+    # good.com (treating "evil.com\" as userinfo), but requests/urllib3 terminate
+    # the authority at the backslash and connect to evil.com. A real platform
+    # address carries neither userinfo nor a backslash, so refuse them outright:
+    # otherwise the host this function returns — the one compared against the
+    # operator's declared platform — is not the host the code is then POSTed to,
+    # and the whole "which platform?" check is bypassable. (adversarial review)
+    if parsed.username is not None or parsed.password is not None or "\\" in text:
+        raise PairingError(
+            f"{raw.strip()!r} is not a platform address: it must be a plain "
+            "https:// address, with no username, password or backslash in it.",
+            code="bad_url",
+        )
+
     host = parsed.hostname.lower()
     # urlparse is permissive enough to call "not a url" a hostname, so the shape
     # has to be checked here — otherwise prose typed into the field comes back as
@@ -142,14 +157,30 @@ def pair(
     except wire.TicketError as exc:
         raise PairingError(str(exc), code="bad_ticket") from exc
 
-    # 2. Is this the platform the operator meant? Before anything leaves the host:
+    # 2. Canonicalise the address the code carries through the SAME function used
+    #    for everything else, so the host we validate, compare against and finally
+    #    connect to is one and the same string. Building the network endpoint from
+    #    the raw ticket.url instead would reopen the differential the wrong_platform
+    #    check exists to close: urlparse and requests disagree on userinfo/backslash
+    #    URLs, so a crafted address could pass the check yet POST somewhere else.
+    #    A code whose address does not survive this is refused here, before any
+    #    network call.
+    try:
+        provider = platform_url(ticket.url)
+    except PairingError as exc:
+        raise PairingError(
+            f"This pairing code carries an address this host will not use: "
+            f"{exc.message}",
+            code="bad_ticket",
+        ) from exc
+
+    # 3. Is this the platform the operator meant? Before anything leaves the host:
     #    sending the code to the server it names is itself the disclosure.
     if expect_url:
         wanted = platform_url(expect_url)
-        offered = platform_url(ticket.url)
-        if wanted != offered:
+        if wanted != provider:
             raise PairingError(
-                f"This code is for {offered}, but you asked to federate to "
+                f"This code is for {provider}, but you asked to federate to "
                 f"{wanted}. Nothing has been sent to either. Check you were given "
                 "the right code, or go back and correct the address.",
                 code="wrong_platform",
@@ -162,7 +193,7 @@ def pair(
             code="bad_callback",
         )
 
-    # 3. The vault must be openable BEFORE the code is spent. A pairing code is
+    # 4. The vault must be openable BEFORE the code is spent. A pairing code is
     #    single-use: redeeming it and only then discovering the vault is locked
     #    would burn it and force the operator back to the other platform for a new
     #    one. Fail early instead.
@@ -171,27 +202,27 @@ def pair(
     except vault.VaultUnavailable as exc:
         raise PairingError(str(exc), code="vault_locked") from exc
 
-    endpoint = f"{ticket.url.rstrip('/')}/sso/enroll/"
+    endpoint = f"{provider}/sso/enroll/"
     payload = wire.EnrollmentRequest(
         ticket=ticket_text.strip(),
         callback_uri=callback_uri,
         label=label or _own_host(callback_uri),
     ).to_dict()
 
-    grant = _post(endpoint, payload, portal=ticket.url)
+    grant = _post(endpoint, payload, portal=provider)
 
-    # 4. Store the secret encrypted, then activate — in one transaction, so a
+    # 5. Store the secret encrypted, then activate — in one transaction, so a
     #    half-paired row can never be left active with no secret.
     with transaction.atomic():
-        config = _config_for(grant, portal_url=ticket.url)
+        config = _config_for(grant, portal_url=provider)
         old_secret = config.secret
 
         secret = vault.store_secret(
             grant.client_secret, name=vault.unique_secret_name(),
         )
         config.secret = secret
-        config.label = grant.label or config.label or _own_host(ticket.url)
-        config.portal_url = ticket.url
+        config.label = grant.label or config.label or _own_host(provider)
+        config.portal_url = provider
         config.client_id = grant.client_id
         config.scopes = grant.scopes
         config.issuer = grant.issuer
@@ -217,7 +248,7 @@ def pair(
             vault.retire_secret(old_secret)
 
     logger.info("Federation pairing complete with %s (client_id=%s)",
-                ticket.url, grant.client_id)
+                provider, grant.client_id)
     return config
 
 

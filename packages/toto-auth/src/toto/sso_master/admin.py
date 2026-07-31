@@ -25,6 +25,7 @@ from django.shortcuts import render
 from django.urls import path, reverse
 
 from .models import (
+    DEFAULT_INVITE_TTL_MINUTES,
     MAX_INVITE_TTL_MINUTES,
     MIN_INVITE_TTL_MINUTES,
     SSOAccessToken,
@@ -174,7 +175,7 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
             "expected_host": "",
             "roles": False,
             "trusted": True,
-            "ttl_minutes": MIN_INVITE_TTL_MINUTES,
+            "ttl_minutes": DEFAULT_INVITE_TTL_MINUTES,
         }
         if relying_party is not None:
             # Re-pairing: whatever this registration already has is the default.
@@ -210,9 +211,9 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
             form["roles"] = bool(request.POST.get("roles"))
             form["trusted"] = bool(request.POST.get("trusted"))
             try:
-                minutes = int(request.POST.get("ttl_minutes") or MIN_INVITE_TTL_MINUTES)
+                minutes = int(request.POST.get("ttl_minutes") or DEFAULT_INVITE_TTL_MINUTES)
             except ValueError:
-                minutes = MIN_INVITE_TTL_MINUTES
+                minutes = DEFAULT_INVITE_TTL_MINUTES
             form["ttl_minutes"] = max(
                 MIN_INVITE_TTL_MINUTES, min(MAX_INVITE_TTL_MINUTES, minutes),
             )
