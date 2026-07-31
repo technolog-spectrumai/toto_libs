@@ -42,12 +42,18 @@ from toto.ui import PageProcessor
 
 
 def password_reset_view(request):
-    # Without a delivering email backend the reset email would silently go
-    # nowhere — don't offer the flow at all.
-    if not email_delivery_configured():
-        return redirect(reverse("sso:login"))
-
     processor = PageProcessor()
+
+    # Without a delivering email backend the reset email would silently go nowhere.
+    # Don't accept the request and drop the mail, and don't bounce to login with no
+    # explanation either: render the page in its unavailable state — no form, a plain
+    # apology, and nothing is sent. The "Forgot password?" link is already hidden in
+    # this case (see auth_views.password_reset_available), so this is reached only by
+    # a direct URL or a stale bookmark, which is exactly when the apology helps.
+    if not email_delivery_configured():
+        context = {"unavailable": True, "page_title": "Password Reset Unavailable"}
+        return render(request, "sso/password_reset.html", processor.decorate(context, request))
+
     form = PasswordResetForm(request.POST or None)
     context = {"form": form, "page_title": "Reset Password"}
 
