@@ -32,7 +32,7 @@ from toto.ui import PageProcessor
 from . import delivery
 from . import status as jess_status
 from . import vault
-from .forms import ComposeForm
+from .forms import AccountForm, ComposeForm
 from .models import EmailProvider, MailMessage
 
 # The outbox is a diagnostic surface, not an archive browser. Same cap idea as
@@ -142,6 +142,153 @@ def compose(request):
     })
 
 
+# -- the email account: set it up here instead of the Django admin ---------------
+
+
+def _store_password(request, provider, new_password, *, manual, passphrase):
+    """Store/replace the provider's SMTP password through the vault.
+
+    Returns None on success, or an error string. Mirrors ``provider_secret`` and the
+    admin's ``save_model``: the ambient session in the default mode, the admin-typed
+    passphrase under manual release. Proves the passphrase against the old secret first
+    (manual mode) so a wrong one changes nothing.
+    """
+    try:
+        session = vault.open_manual_session(passphrase) if manual else None
+        old = provider.secret
+        if old is not None and session is not None:
+            vault.read_secret(old, session=session)
+        secret = vault.store_secret(
+            new_password,
+            name=vault.unique_secret_name(f"jess-{provider.pk}"),
+            session=session,
+        )
+        provider.secret = secret
+        provider.save(update_fields=["secret"])
+        vault.retire_secret(old)
+        vault.log_secret_event(
+            request.user, "set_email_password", secret,
+            reason=f"set via the account page for provider #{provider.pk}",
+        )
+        return None
+    except vault.VaultUnavailable as exc:
+        return f"{exc} The password was NOT changed."
+    except Exception as exc:                    # noqa: BLE001 — surface, never echo the value
+        return f"Could not store the password: {exc}"
+
+
+def _send_test(request, *, manual, passphrase):
+    """Send a test message through a provider, inline, and record it in the outbox.
+
+    Inline (not queued) on purpose: the point is an immediate pass/fail for "does this
+    account actually work?", independent of whether a Celery worker is running. Reuses
+    ``delivery.release_message`` so the outbox tells the same story as any other send.
+    Returns None on success (a success message is posted) or an error string.
+    """
+    from django.utils import timezone
+
+    address = (request.POST.get("test_address") or request.user.email or "").strip()
+    if not address:
+        return "Enter an address to send the test to."
+    test_pk = request.POST.get("pk")
+    provider = (
+        (EmailProvider.objects.filter(pk=test_pk).first() if test_pk else None)
+        or EmailProvider.active_provider()
+    )
+    if provider is None:
+        return "No provider to test yet — save one (and tick 'active'), then test."
+
+    row = MailMessage.objects.create(
+        to=[address],
+        subject=f"Jess test — {provider.label}",
+        body=(
+            "This is a test message from Jess.\n\n"
+            f"Provider: {provider.label} ({provider.get_backend_display()})\n"
+            f"Requested by: {request.user.get_username()}\n"
+        ),
+        provider=provider,
+        provider_label=provider.label,
+        purpose=MailMessage.PURPOSE_TEST,
+        created_by=request.user,
+    )
+    try:
+        session = vault.open_manual_session(passphrase) if manual else None
+        connection = delivery.build_connection(provider, session=session)
+    except (vault.VaultUnavailable, delivery.NoProvider, ValueError) as exc:
+        MailMessage.objects.filter(pk=row.pk).update(
+            status=MailMessage.FAILED, finished_at=timezone.now(),
+            error=f"{type(exc).__name__}: {exc}",
+        )
+        return f"Test not sent: {exc}"
+
+    ok = delivery.release_message(row, session=session, connection=connection,
+                                  released_by=request.user)
+    try:
+        connection.close()
+    except Exception:                           # noqa: BLE001 — best-effort cleanup
+        pass
+    if ok:
+        messages.success(request, f"Test sent to {address} — see it in the outbox.")
+        return None
+    return "The test send failed — open its outbox row for the provider's own error."
+
+
+@sensitive_post_parameters("passphrase", "new_password")
+def account(request):
+    """Set up the email account here rather than in the Django admin — simpler, and it
+    works in both vault modes.
+
+    One staff page does what the admin's provider page does: create or edit the provider,
+    store its SMTP password in the vault, and send a test to prove it works. The password
+    and the test both go through the vault the same way sending does — the ambient session
+    in the default mode, an admin-typed passphrase under manual release.
+    """
+    _staff_only(request)
+    manual = vault.manual_release_enabled()
+
+    edit_pk = request.POST.get("pk") or request.GET.get("edit")
+    editing = EmailProvider.objects.filter(pk=edit_pk).first() if edit_pk else None
+    form = AccountForm(instance=editing)
+
+    if request.method == "POST":
+        passphrase = (request.POST.get("passphrase") or "").strip()
+
+        if request.POST.get("action") == "test":
+            error = _send_test(request, manual=manual, passphrase=passphrase)
+            if error:
+                messages.error(request, error)
+            back = f"?edit={editing.pk}" if editing else ""
+            return redirect(f"{reverse('jess:account')}{back}")
+
+        # Save (create or update) the provider.
+        form = AccountForm(request.POST, instance=editing)
+        if form.is_valid():
+            provider = form.save()
+            new_password = (request.POST.get("new_password") or "").strip()
+            if new_password:
+                error = _store_password(request, provider, new_password,
+                                        manual=manual, passphrase=passphrase)
+                if error:
+                    messages.error(request, error)
+                else:
+                    messages.success(request, f"Saved '{provider.label}' and stored its password.")
+            else:
+                messages.success(request, f"Saved '{provider.label}'.")
+            return redirect(f"{reverse('jess:account')}?edit={provider.pk}")
+
+    return _render(request, "jess/account.html", {
+        "form": form,
+        "providers": list(EmailProvider.objects.all()),
+        "editing": editing,
+        "page_title": "Email setup",
+        "manual": manual,
+        "delivery_status": jess_status.describe(),
+        "can_deliver": jess_status.can_deliver(),
+        "default_test_address": (request.user.email or ""),
+        "outbox_url": reverse("jess:outbox"),
+    })
+
+
 def outbox(request):
     """What has been sent, and what has not."""
     _staff_only(request)
@@ -166,6 +313,7 @@ def outbox(request):
         "manual": vault.manual_release_enabled(),
         "delivery_status": jess_status.describe(),
         "compose_url": reverse("jess:compose"),
+        "account_url": reverse("jess:account"),
         "release_url": reverse("jess:release"),
     })
 

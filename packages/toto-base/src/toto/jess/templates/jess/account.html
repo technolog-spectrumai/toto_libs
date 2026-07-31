@@ -1,0 +1,169 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Email setup" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Email setup" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Set up the account this platform sends from — SMTP host, sign-in and password — here rather than in the Django admin. The password is stored encrypted in Jess's vault and is never shown again." %}
+      </p>
+    </div>
+
+    {% comment %}One honest line about what the platform will actually do right now.{% endcomment %}
+    <div
+      :class="darkMode
+        ? '{% if can_deliver %}border-accent-1 bg-sunken-dark{% else %}border-warn-dark bg-sunken-dark text-warn-dark{% endif %}'
+        : '{% if can_deliver %}border-accent-2 bg-sunken-light{% else %}border-warn-light bg-sunken-light text-warn-light{% endif %}'"
+      class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
+      <i class="fa-solid {% if can_deliver %}fa-circle-info{% else %}fa-triangle-exclamation{% endif %} mt-0.5"></i>
+      <p class="font-semibold">{{ delivery_status }}</p>
+    </div>
+
+    {% if providers %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="overflow-x-auto rounded-xl border">
+        <table class="w-full text-left text-sm">
+          <thead :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'">
+            <tr class="text-xs font-semibold uppercase tracking-wide opacity-70">
+              <th class="px-4 py-3">{% trans "Account" %}</th>
+              <th class="px-4 py-3">{% trans "Backend" %}</th>
+              <th class="px-4 py-3">{% trans "Active" %}</th>
+              <th class="px-4 py-3">{% trans "Can deliver?" %}</th>
+              <th class="px-4 py-3">{% trans "Password" %}</th>
+              <th class="px-4 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for p in providers %}
+              <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <td class="px-4 py-3 font-semibold">{{ p.label }}</td>
+                <td class="px-4 py-3 opacity-80">{{ p.get_backend_display }}</td>
+                <td class="px-4 py-3">{% if p.active %}<i class="fa-solid fa-check text-accent-light"></i>{% else %}<span class="opacity-40">—</span>{% endif %}</td>
+                <td class="px-4 py-3 opacity-80">
+                  {% if not p.delivers %}{% trans "no — backend does not send" %}
+                  {% elif p.needs_secret and not p.secret_id %}{% trans "no — sign-in with no password" %}
+                  {% else %}{% trans "yes" %}{% endif %}
+                </td>
+                <td class="px-4 py-3 opacity-70">{% if p.secret_id %}{% trans "set" %}{% else %}{% trans "— none" %}{% endif %}</td>
+                <td class="px-4 py-3 text-right">
+                  <a href="?edit={{ p.pk }}"
+                     :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+                     class="text-xs font-semibold hover:underline">{% trans "Edit" %}</a>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+
+    <!-- Create / edit -->
+    <form method="POST"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-5 rounded-xl border p-5">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="save">
+      {% if editing %}<input type="hidden" name="pk" value="{{ editing.pk }}">{% endif %}
+
+      <div class="flex items-center justify-between">
+        <h2 class="text-lg font-bold">
+          {% if editing %}{% blocktrans with label=editing.label %}Edit “{{ label }}”{% endblocktrans %}{% else %}{% trans "Add an account" %}{% endif %}
+        </h2>
+        {% if editing %}
+          <a href="{% url 'jess:account' %}" class="text-sm font-medium opacity-70 hover:opacity-100">{% trans "+ New account" %}</a>
+        {% endif %}
+      </div>
+
+      {% if form.non_field_errors %}
+        <div :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+             class="rounded-lg border px-4 py-3 text-sm font-medium">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div
+        :class="darkMode
+          ? '[&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark [&_select]:border-accent-1 [&_select]:bg-primary-bg-dark [&_select]:text-text-main-dark'
+          : '[&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light [&_select]:border-accent-2 [&_select]:bg-primary-bg-light [&_select]:text-text-main-light'"
+        class="space-y-5
+               [&_label]:mb-2 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+               [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm
+               [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:px-3 [&_select]:py-2.5 [&_select]:text-sm
+               [&_input[type=checkbox]]:w-auto">
+        {% for field in form %}
+          <div>
+            {{ field.label_tag }}
+            {{ field }}
+            {% if field.help_text %}<p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+            {% if field.errors %}<p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="mt-2 text-xs font-medium">{{ field.errors|striptags }}</p>{% endif %}
+          </div>
+        {% endfor %}
+
+        <div>
+          <label for="new_password">{% trans "Set / replace SMTP password" %}</label>
+          <input type="password" name="new_password" id="new_password" autocomplete="new-password">
+          <p class="mt-1 text-xs opacity-60">{% trans "Leave blank to keep the current one. Stored encrypted, never displayed again." %}</p>
+        </div>
+
+        {% if manual %}
+          <div>
+            <label for="passphrase">{% trans "Vault passphrase" %}</label>
+            <input type="password" name="passphrase" id="passphrase" autocomplete="off">
+            <p class="mt-1 text-xs opacity-60">{% trans "The same passphrase you use to release mail — needed to store a password on this host." %}</p>
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="flex items-center gap-3">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i> {% trans "Save account" %}
+        </button>
+        <a href="{{ outbox_url }}" class="text-sm font-medium opacity-70 hover:opacity-100">{% trans "Outbox" %}</a>
+      </div>
+    </form>
+
+    <!-- Does it work? -->
+    <form method="POST"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark [&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light [&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light'"
+      class="space-y-4 rounded-xl border p-5
+             [&_label]:mb-1 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+             [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="test">
+      {% if editing %}<input type="hidden" name="pk" value="{{ editing.pk }}">{% endif %}
+
+      <h2 class="text-lg font-bold">{% trans "Check it works" %}</h2>
+      <p class="text-sm opacity-70">
+        {% if editing %}{% blocktrans with label=editing.label %}Send a test message now through “{{ label }}” and see whether it actually goes out.{% endblocktrans %}
+        {% else %}{% trans "Send a test message now through the active account and see whether it actually goes out." %}{% endif %}
+      </p>
+      <div>
+        <label for="test_address">{% trans "Send test to" %}</label>
+        <input type="email" name="test_address" id="test_address" value="{{ default_test_address }}" placeholder="you@example.org">
+      </div>
+      {% if manual %}
+        <div>
+          <label for="test_passphrase">{% trans "Vault passphrase" %}</label>
+          <input type="password" name="passphrase" id="test_passphrase" autocomplete="off">
+        </div>
+      {% endif %}
+      <button type="submit"
+        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+        class="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-paper-plane"></i> {% trans "Send a test" %}
+      </button>
+    </form>
+
+  </div>
+</section>
+{% endblock %}
