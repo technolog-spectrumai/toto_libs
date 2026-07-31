@@ -138,10 +138,14 @@ class ConsumerPasswordResetTests(TestCase):
     @override_settings(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend")
     def test_a_non_delivering_backend_declines_rather_than_dropping_mail(self):
         # console/dummy print or discard; accepting a reset request against one
-        # tells the user mail is coming when it never is.
+        # tells the user mail is coming when it never is. So the page renders in its
+        # unavailable state — an apology, no form — rather than silently taking a
+        # request it cannot honour.
         response = self.client.get(reverse("sso:password_reset"))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn(reverse("sso:login"), response["Location"])
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "sso/password_reset.html")
+        self.assertContains(response, "Password reset is unavailable")
+        self.assertNotContains(response, "Send Reset Link")
 
     @override_settings(
         EMAIL_BACKEND="django.core.mail.backends.locmem.EmailBackend",

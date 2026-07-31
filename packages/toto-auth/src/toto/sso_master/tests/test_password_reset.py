@@ -198,15 +198,30 @@ class PasswordResetConfirmTests(TestCase):
 
 @override_settings(EMAIL_BACKEND="django.core.mail.backends.console.EmailBackend")
 class PasswordResetUnavailableTests(TestCase):
-    """Without a delivering email backend the reset flow is hidden entirely."""
+    """Without a delivering email backend the reset flow is not offered: the
+    "Forgot password?" link is hidden, and the reset page itself renders an apology
+    and sends nothing rather than accepting a request it cannot honour."""
 
     def setUp(self):
         _platform()
         self.client = Client()
 
-    def test_reset_view_redirects_to_login(self):
+    def test_reset_view_shows_a_sorry_message_not_the_form(self):
         response = self.client.get(reverse("sso:password_reset"))
-        self.assertRedirects(response, reverse("sso:login"))
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "sso/password_reset.html")
+        self.assertContains(response, "Password reset is unavailable")
+        self.assertNotContains(response, "Send Reset Link")
+
+    def test_reset_post_sends_nothing_and_still_shows_the_message(self):
+        # A direct POST (stale bookmark) is short-circuited before the form is even
+        # built, so no mail is attempted and the apology is shown, not the done page.
+        response = self.client.post(
+            reverse("sso:password_reset"), {"email": "alice@example.com"}
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Password reset is unavailable")
+        self.assertEqual(len(mail.outbox), 0)
 
     def test_sso_login_page_hides_forgot_password_link(self):
         response = self.client.get(reverse("sso:login"))
