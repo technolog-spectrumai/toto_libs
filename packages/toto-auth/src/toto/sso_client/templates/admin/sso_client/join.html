@@ -1,0 +1,60 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div style="max-width:620px">
+
+  {% if error %}
+    <p style="padding:1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;">
+      {{ error }}
+    </p>
+  {% endif %}
+
+  <p style="color:#555;">
+    {% trans "Ask the other platform's administrator to mint a pairing code for this host, then paste it here — or upload a photograph of the QR code they show you. The two servers do the rest; you will never see or handle a password." %}
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <fieldset class="module aligned">
+      <div class="form-row">
+        <label for="code">{% trans "Pairing code" %}</label>
+        <textarea name="code" id="code" rows="3" class="vLargeTextField"
+                  style="width:100%;font-family:monospace;">{{ code }}</textarea>
+      </div>
+
+      <div class="form-row">
+        <label for="image">{% trans "…or a picture of the QR code" %}</label>
+        <input type="file" name="image" id="image" accept="image/*">
+        <p class="help">{% trans "A screenshot or a phone photo both work." %}</p>
+      </div>
+
+      <div class="form-row">
+        <label for="label">{% trans "Name for this connection" %}</label>
+        <input type="text" name="label" id="label" class="vTextField"
+               placeholder="{% trans 'e.g. Head office' %}">
+        <p class="help">{% trans "Optional. Shown on the sign-in button as \"Sign in with …\"." %}</p>
+      </div>
+    </fieldset>
+
+    {% if callback_uri %}
+      <p style="color:#555;font-size:.9rem;">
+        {% blocktrans %}This host will register <code>{{ callback_uri }}</code> as its callback.{% endblocktrans %}
+      </p>
+    {% else %}
+      <p style="color:#b91c1c;">
+        {% trans "This host cannot work out its own callback URL, so pairing will fail. Check that the SSO urls are mounted." %}
+      </p>
+    {% endif %}
+
+    <div class="submit-row">
+      <input type="submit" value="{% trans 'Pair' %}" class="default">
+      <a href="{% url 'admin:sso_client_oidcproviderconfig_changelist' %}" class="button cancel-link">
+        {% trans "Cancel" %}
+      </a>
+    </div>
+  </form>
+</div>
+{% endblock %}

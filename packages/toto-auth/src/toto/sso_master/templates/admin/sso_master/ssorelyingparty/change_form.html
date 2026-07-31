@@ -3,9 +3,11 @@
 
 {% block object-tools-items %}
   {{ block.super }}
+  {% if repair_url %}
+    {# Re-pairing keeps this registration's identity; minting a fresh invite would not. #}
+    <li><a href="{{ repair_url }}" class="historylink">{% trans "Mint a re-pairing code" %}</a></li>
+  {% endif %}
   {% if test_login_url %}
-    <li>
-      <a href="{{ test_login_url }}" class="historylink">{% trans "Test Login" %}</a>
-    </li>
+    <li><a href="{{ test_login_url }}" class="historylink">{% trans "Test Login" %}</a></li>
   {% endif %}
 {% endblock %}

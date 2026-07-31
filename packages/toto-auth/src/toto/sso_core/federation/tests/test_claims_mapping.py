@@ -45,9 +45,12 @@ def provider():
     existing = OIDCProviderConfig.objects.filter(active=True).first()
     if existing is not None:
         return existing
+    # No secret: these tests exercise claim mapping, which never reaches the
+    # token exchange, so storing one through the vault would only cost an Argon2id
+    # derivation per test class.
     return OIDCProviderConfig.objects.create(
         label="Portal", portal_url="http://provider.test", client_id="studio",
-        client_secret="s", active=True,
+        active=True,
     )
 
 

@@ -59,24 +59,16 @@ def get_active_signing_key() -> SSOSigningKey:
 
 
 def _load_vault_password() -> str:
-    password = getattr(settings, "SSO_VAULT_PASSWORD", "").strip()
-    if password:
-        return password
-    # Dev fallback: read from run/sso_*.json bundle written by portal reset.
-    import json
-    from toto.conf import run_dir as _run_dir
-    run_dir = _run_dir()
-    for bundle_path in run_dir.glob("sso_*.json"):
-        try:
-            vp = json.loads(bundle_path.read_text()).get("vault_password", "")
-            if vp:
-                return vp
-        except Exception:
-            pass
-    raise RuntimeError(
-        "SSO_VAULT_PASSWORD is not set. "
-        "Configure this environment variable with the SSO system vault password."
-    )
+    """The SSO vault passphrase.
+
+    The implementation moved to ``sso_core.vault`` so a CONSUMER host can use it
+    too — ``sso_master`` is not installed there, and the consumer needs the same
+    strongbox for its client secret. This stays as the name the rest of this
+    module calls.
+    """
+    from toto.sso_core.vault import load_vault_password
+
+    return load_vault_password()
 
 
 def _open_sso_vault(epk) -> GervazyCryptoSession:

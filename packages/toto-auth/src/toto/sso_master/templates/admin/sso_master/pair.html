@@ -1,0 +1,123 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div style="max-width:640px">
+
+  {% if error %}
+    <p style="padding:1rem;background:#fef2f2;border:1px solid #fca5a5;border-radius:6px;color:#b91c1c;">
+      {{ error }}
+    </p>
+  {% endif %}
+
+  {% if minted %}
+    {% comment %}Shown once. The code is not stored — only its hash — so there is
+       no way to display it again, which is why the copy field sits next to the QR
+       rather than behind a second click.{% endcomment %}
+    <p style="padding:1rem;background:#f0fdf4;border:1px solid #86efac;border-radius:6px;">
+      {% blocktrans with host=minted.host %}Pairing code for <strong>{{ host }}</strong>. Show this to that platform's administrator.{% endblocktrans %}
+    </p>
+
+    <div style="display:flex;gap:1.5rem;align-items:flex-start;flex-wrap:wrap;">
+      <img src="{{ minted.qr }}" alt="{% trans 'Pairing QR code' %}"
+           style="width:260px;height:260px;background:#fff;padding:8px;border:1px solid #ddd;border-radius:6px;">
+
+      <div style="flex:1;min-width:260px;">
+        <p style="margin:0 0 .35rem;font-weight:600;">{% trans "Or paste this code" %}</p>
+        <code id="pairing-code"
+              style="display:block;user-select:all;word-break:break-all;padding:.6rem;
+                     background:#f8f8f8;border:1px solid #ddd;border-radius:4px;font-size:.85rem;">{{ minted.ticket }}</code>
+
+        <p style="margin:.9rem 0 .25rem;">
+          <strong id="pairing-countdown">{% blocktrans with seconds=minted.seconds %}Expires in {{ seconds }} seconds.{% endblocktrans %}</strong>
+        </p>
+        <p style="margin:0;color:#555;font-size:.9rem;">
+          {% trans "One use only. Grants:" %} <code>{{ minted.scopes }}</code>
+        </p>
+        {% if "roles" in minted.scopes %}
+          <p style="margin:.5rem 0 0;color:#92400e;font-size:.9rem;">
+            {% trans "This code grants the roles scope, so staff and superuser status on this platform will propagate to the other one." %}
+          </p>
+        {% endif %}
+      </div>
+    </div>
+
+    <p style="margin-top:1.5rem;">
+      <a href="{% url 'admin:sso_master_ssorelyingparty_changelist' %}" class="button">
+        {% trans "Done" %}
+      </a>
+    </p>
+
+    <script>
+      // A live countdown, because the code is short-lived on purpose and an
+      // operator carrying it to another machine needs to know how long they have.
+      (function () {
+        var left = {{ minted.seconds }};
+        var el = document.getElementById("pairing-countdown");
+        var tick = setInterval(function () {
+          left -= 1;
+          if (left <= 0) {
+            clearInterval(tick);
+            el.textContent = "{% trans 'This code has expired. Mint another.' %}";
+            el.style.color = "#b91c1c";
+            return;
+          }
+          el.textContent = "{% trans 'Expires in' %} " + left + " {% trans 'seconds.' %}";
+        }, 1000);
+      })();
+    </script>
+
+  {% else %}
+    <p style="color:#555;">
+      {% if relying_party %}
+        {% blocktrans with name=relying_party.name %}Mint a fresh code for <strong>{{ name }}</strong>. Its registration keeps its identity, and its current secret keeps working for 24 hours after the new one is used — so re-pairing does not sign anybody out.{% endblocktrans %}
+      {% else %}
+        {% trans "Invite another platform to federate with this one. You will get a QR code to show its administrator; their server does the rest." %}
+      {% endif %}
+    </p>
+
+    <form method="post">
+      {% csrf_token %}
+      <fieldset class="module aligned">
+        <div class="form-row">
+          <label for="expected_host" class="required">{% trans "Platform hostname" %}</label>
+          <input type="text" name="expected_host" id="expected_host" class="vTextField"
+                 value="{{ form.expected_host }}" placeholder="studio.example.com" required>
+          <p class="help">
+            {% trans "The hostname of the platform you are inviting. The code only works from there, so a copy that goes astray is useless." %}
+          </p>
+        </div>
+
+        <div class="form-row">
+          <label for="ttl_minutes">{% trans "Valid for (minutes)" %}</label>
+          <input type="number" name="ttl_minutes" id="ttl_minutes" value="{{ form.ttl_minutes }}"
+                 min="{{ min_ttl }}" max="{{ max_ttl }}" style="width:6rem;">
+        </div>
+
+        <div class="form-row">
+          <label for="trusted">{% trans "Skip the consent screen" %}</label>
+          <input type="checkbox" name="trusted" id="trusted" {% if form.trusted %}checked{% endif %}>
+          <p class="help">{% trans "Normal between your own platforms — nobody should be asked to approve their own organisation's server on every sign-in." %}</p>
+        </div>
+
+        <div class="form-row">
+          <label for="roles">{% trans "Share staff and superuser status" %}</label>
+          <input type="checkbox" name="roles" id="roles" {% if form.roles %}checked{% endif %}>
+          <p class="help">
+            {% trans "Off by default. With it on, anyone who is staff or superuser here becomes staff or superuser there too, and stays in step on every sign-in." %}
+          </p>
+        </div>
+      </fieldset>
+
+      <div class="submit-row">
+        <input type="submit" value="{% trans 'Mint QR code' %}" class="default">
+        <a href="{% url 'admin:sso_master_ssorelyingparty_changelist' %}" class="button cancel-link">
+          {% trans "Cancel" %}
+        </a>
+      </div>
+    </form>
+  {% endif %}
+</div>
+{% endblock %}
