@@ -182,6 +182,3 @@ class PinVerifyApiView(CorsApiView):
             return JsonResponse({"ok": True, "pin_token": token})
 
         return JsonResponse({"ok": False, "error": "Incorrect PIN."})
-
-
-@method_decorator(csrf_exempt, name="dispatch")
