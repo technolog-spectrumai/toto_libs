@@ -5,8 +5,14 @@ from django.db import models
 class OIDCProviderConfig(models.Model):
     """
     Single source of truth for OIDC consumer configuration.
-    Only one record should be active at a time.
-    Populated via admin (import connection bundle) or ingress_sso_client (dev).
+
+    Written by pairing (``sso_client.pairing.pair``) and by nothing else. There is
+    no management command and no environment path: a row is only useful with a
+    client secret, and the only way to obtain one is for this host's server to
+    redeem a pairing code against the provider.
+
+    Exactly one row is active. ``pair()`` enforces it, which the previous version
+    of this docstring asserted while nothing did.
     """
     label = models.CharField(max_length=100, default="Portal")
     portal_url = models.URLField()

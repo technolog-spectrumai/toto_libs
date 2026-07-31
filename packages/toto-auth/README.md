@@ -78,7 +78,7 @@ it by adding `toto.social_login` to `INSTALLED_APPS` (part of
 
 ### sso_core
 
-Shared, Django-free dataclass schemas for exchanging OIDC configuration between platforms: `OIDCClientSpec` and `ManifestBundle` (consumer → provider: "what I need"), `ConnectionBundle` (provider → consumer: "your issued credentials"). No models, no views.
+Shared, Django-free helpers both federation modes install. `enrollment.py` is the pairing wire format: a `Ticket` (a tagged base32 string carrying the provider URL and a 32-byte one-shot secret — this is what the QR encodes), the two request and grant messages, and the deployment/sidecar MACs. `qr.py` renders and reads QR codes on the OpenCV every host already installs. `vault.py` is the SSO strongbox, used by the provider for its signing key and by the consumer for its client secret. No models, no views.
 
 ### sso_master — OIDC provider
 
@@ -93,7 +93,7 @@ Shared, Django-free dataclass schemas for exchanging OIDC configuration between 
 - Model: `OIDCProviderConfig` — the single active upstream provider (portal url, client id/secret, scopes); `SSO_CLIENT_SECRET` env overrides the stored secret.
 - Views: `oidc_login` (forwards to the provider's authorize endpoint; falls back to the local login page when no provider is configured), `oidc_callback` (state check, token exchange, userinfo, user provisioning + `people.Person` linking), `oidc_logout`.
 - Its urlconf deliberately uses `app_name = "sso"`, mirroring `sso_master`, so `LOGIN_URL = "sso:login"` resolves identically on providers and consumers.
-- Provisioning: `export_oidc_manifest`, `ingress_sso_client`.
+- Pairing: from the Django admin — the provider mints a QR code ("Invite a platform"), the consumer redeems it ("Join a platform") and the two servers exchange credentials over TLS. See each host's `federation.md`.
 
 ## Key couplings
 
