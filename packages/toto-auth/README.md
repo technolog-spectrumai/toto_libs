@@ -93,7 +93,7 @@ Shared, Django-free helpers both federation modes install. `enrollment.py` is th
 - Model: `OIDCProviderConfig` — the single active upstream provider (portal url, client id/secret, scopes); `SSO_CLIENT_SECRET` env overrides the stored secret.
 - Views: `oidc_login` (forwards to the provider's authorize endpoint; falls back to the local login page when no provider is configured), `oidc_callback` (state check, token exchange, userinfo, user provisioning + `people.Person` linking), `oidc_logout`.
 - Its urlconf deliberately uses `app_name = "sso"`, mirroring `sso_master`, so `LOGIN_URL = "sso:login"` resolves identically on providers and consumers.
-- Pairing: from the Django admin — the provider mints a QR code ("Invite a platform"), the consumer redeems it ("Join a platform") and the two servers exchange credentials over TLS. See each host's `federation.md`.
+- Pairing: from the Django admin — the provider mints a QR code ("Invite a platform"), the consumer redeems it ("Federate to a platform") and the two servers exchange credentials over TLS. See each host's `federation.md`.
 
 ## Key couplings
 
