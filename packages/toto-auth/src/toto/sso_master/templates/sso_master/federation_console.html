@@ -1,0 +1,159 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Federation" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Federation" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "The platforms federated with this one. Generate a QR code to invite a new platform, or to re-pair an existing one." %}
+      </p>
+    </div>
+
+    {% if error %}
+      <p :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-medium">{{ error }}</p>
+    {% endif %}
+
+    {% if minted %}
+      {% comment %}Shown once — only the hash of the code is stored, so it can never be
+         shown again; the copy field sits beside the QR for that reason.{% endcomment %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5 space-y-4">
+        <p class="text-sm">
+          {% blocktrans with host=minted.host %}Pairing code for <strong>{{ host }}</strong>. Show it to that platform's administrator — their server does the rest.{% endblocktrans %}
+        </p>
+        <div class="flex flex-wrap items-start gap-6">
+          <img src="{{ minted.qr }}" alt="{% trans 'Pairing QR code' %}"
+               style="width:240px;height:240px;background:#fff;padding:8px;border-radius:8px;">
+          <div class="min-w-[240px] flex-1 space-y-2">
+            <p class="text-sm font-semibold">{% trans "Or paste this code" %}</p>
+            <code id="pairing-code" style="user-select:all;word-break:break-all;"
+                  :class="darkMode ? 'bg-sunken-dark border-accent-1' : 'bg-sunken-light border-accent-2'"
+                  class="block rounded border p-2 text-xs">{{ minted.ticket }}</code>
+            <p class="text-sm font-semibold" id="pairing-countdown">
+              {% blocktrans with seconds=minted.seconds %}Expires in {{ seconds }} seconds.{% endblocktrans %}
+            </p>
+            <p class="text-xs opacity-70">{% trans "One use only. Grants:" %} <code>{{ minted.scopes }}</code></p>
+            {% if "roles" in minted.scopes %}
+              <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-xs">
+                {% trans "This code grants the roles scope, so staff and superuser status here propagates to the other platform." %}
+              </p>
+            {% endif %}
+          </div>
+        </div>
+        <a href="{% url 'sso:federation_console' %}"
+           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Back to the list" %}
+        </a>
+      </div>
+      <script>
+        (function () {
+          var left = {{ minted.seconds }};
+          var el = document.getElementById("pairing-countdown");
+          var tick = setInterval(function () {
+            left -= 1;
+            if (left <= 0) { clearInterval(tick); el.textContent = "{% trans 'This code has expired. Generate another.' %}"; return; }
+            el.textContent = "{% trans 'Expires in' %} " + left + " {% trans 'seconds.' %}";
+          }, 1000);
+        })();
+      </script>
+    {% else %}
+
+      {% if platforms %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="overflow-x-auto rounded-xl border">
+          <table class="w-full text-left text-sm">
+            <thead :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'">
+              <tr class="text-xs font-semibold uppercase tracking-wide opacity-70">
+                <th class="px-4 py-3">{% trans "Platform" %}</th>
+                <th class="px-4 py-3">{% trans "Host" %}</th>
+                <th class="px-4 py-3">{% trans "Status" %}</th>
+                <th class="px-4 py-3">{% trans "Last sign-in" %}</th>
+                <th class="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for p in platforms %}
+                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                  <td class="px-4 py-3">
+                    <div class="font-semibold">{{ p.name }}</div>
+                    <div class="text-xs opacity-60">{{ p.client_id }}{% if p.trusted %} · {% trans "trusted" %}{% endif %}</div>
+                  </td>
+                  <td class="px-4 py-3 opacity-80">{{ p.host|default:"—" }}</td>
+                  <td class="px-4 py-3">
+                    {% if p.status == "paired" %}<span class="opacity-80">{% trans "Paired" %}{% if not p.active %} · {% trans "inactive" %}{% endif %}</span>
+                    {% elif p.status == "invited" %}<span class="opacity-70">{% trans "Invited — not yet redeemed" %}</span>
+                    {% else %}<span class="opacity-50">{% trans "Sidecar (host config)" %}</span>{% endif %}
+                  </td>
+                  <td class="px-4 py-3 opacity-70">{{ p.last_token|default:"—" }}</td>
+                  <td class="px-4 py-3 text-right">
+                    {% if p.pairing_managed %}
+                      <form method="post">
+                        {% csrf_token %}
+                        <input type="hidden" name="action" value="repair">
+                        <input type="hidden" name="pk" value="{{ p.pk }}">
+                        <button type="submit"
+                          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                          class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
+                          <i class="fa-solid fa-qrcode"></i> {% trans "Generate QR" %}
+                        </button>
+                      </form>
+                    {% endif %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="text-sm opacity-70">{% trans "No platforms are federated with this one yet. Invite one below." %}</p>
+      {% endif %}
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5">
+        <h2 class="mb-3 text-lg font-bold">{% trans "Invite a platform" %}</h2>
+        <form method="post"
+          :class="darkMode
+            ? '[&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark'
+            : '[&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light'"
+          class="space-y-4
+                 [&_label]:mb-1 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+                 [&_input[type=text]]:w-full [&_input[type=text]]:max-w-md [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="invite">
+          <div>
+            <label for="expected_host">{% trans "Platform hostname" %}</label>
+            <input type="text" name="expected_host" id="expected_host" placeholder="studio.example.com" required>
+            <p class="mt-1 text-xs opacity-60">{% trans "The code only works from this host, so a copy that goes astray is useless." %}</p>
+          </div>
+          <div>
+            <label for="ttl_minutes">{% trans "Valid for (minutes)" %}</label>
+            <input type="number" name="ttl_minutes" id="ttl_minutes" value="{{ default_ttl }}"
+                   min="{{ min_ttl }}" max="{{ max_ttl }}" style="width:6rem;">
+          </div>
+          <label class="flex items-center gap-2 text-sm font-normal">
+            <input type="checkbox" name="trusted" checked> {% trans "Skip the consent screen (normal between your own platforms)" %}
+          </label>
+          <label class="flex items-center gap-2 text-sm font-normal">
+            <input type="checkbox" name="roles"> {% trans "Share staff and superuser status (off by default)" %}
+          </label>
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-qrcode"></i> {% trans "Mint QR code" %}
+          </button>
+        </form>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
