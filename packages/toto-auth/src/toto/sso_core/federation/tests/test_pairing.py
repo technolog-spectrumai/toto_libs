@@ -602,3 +602,94 @@ class EndToEndPairingTests(TestCase):
                 pair(minted.ticket, callback_uri="https://wrong.test/sso/callback/")
         # The provider's own sentence, not a status code.
         self.assertIn(CONSUMER_HOST, caught.exception.message)
+
+
+class AdminPageTests(TestCase):
+    """The admin pages must render, and must not leak.
+
+    Nothing else covers them: the boot smoke does not sign in, and a 500 on the
+    invite page would only be found by an operator trying to use the feature.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.test import Client
+
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        User = get_user_model()
+        self.admin = User.objects.create_superuser("root", "root@x.test", "pw")
+        self.client = Client(headers={"host": "provider.test"})
+        self.client.force_login(self.admin)
+
+    def test_the_invite_page_renders_and_mints(self):
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            self.assertEqual(self.client.get(url).status_code, 200)
+
+            response = self.client.post(url, {
+                "expected_host": CONSUMER_HOST,
+                "trusted": "on",
+                "ttl_minutes": "5",
+            })
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+
+        invite = SSOFederationInvite.objects.get()
+        self.assertEqual(invite.expected_host, CONSUMER_HOST)
+        # roles was not ticked, so it must not have been granted.
+        self.assertNotIn("roles", invite.granted_scopes)
+        # The QR and the copyable code are both on the page.
+        self.assertIn("data:image/png;base64,", body)
+        self.assertIn(invite.ticket_prefix, body)
+
+    def test_the_relying_party_form_cannot_reach_the_secret_hash(self):
+        """It is a PBKDF2 hash; any hand-typed value is a silent, total outage."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSORelyingParty as RP
+
+        model_admin = site._registry[RP]
+        self.assertIn("client_secret_hash", model_admin.exclude)
+        rendered = model_admin.get_form(None)().fields
+        self.assertNotIn("client_secret_hash", rendered)
+
+    def test_a_staff_user_cannot_mint_an_authorization_code(self):
+        """The impersonation primitive: add a code, read it, exchange it."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOAccessToken as AT
+        from toto.sso_master.models import SSOAuthorizationCode as AC
+
+        for model in (AC, AT):
+            with self.subTest(model=model.__name__):
+                model_admin = site._registry[model]
+                self.assertFalse(model_admin.has_add_permission(None))
+                self.assertFalse(model_admin.has_change_permission(None))
+
+    def test_the_admin_never_renders_a_live_code_or_token(self):
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOAccessToken as AT
+        from toto.sso_master.models import SSOAuthorizationCode as AC
+
+        self.assertIn("code", site._registry[AC].exclude)
+        self.assertNotIn("code", site._registry[AC].readonly_fields)
+        self.assertIn("token", site._registry[AT].exclude)
+        self.assertNotIn("token", site._registry[AT].readonly_fields)
+
+    def test_the_subject_cannot_be_reassigned(self):
+        """Reassigning it is cross-host account takeover."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOSubject
+
+        model_admin = site._registry[SSOSubject]
+        self.assertIn("user", model_admin.readonly_fields)
+        self.assertFalse(model_admin.has_add_permission(None))
+        self.assertFalse(model_admin.has_delete_permission(None))
