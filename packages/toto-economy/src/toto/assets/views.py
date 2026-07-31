@@ -12,7 +12,6 @@ from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
 
-from .forms import AgreementForm, ContractForm
 from .hashing import verify_hash_chain
 from .models import (
     AccountType,
@@ -175,7 +174,6 @@ def account_list(request):
 
 def account_detail(request, pk):
     from django.utils import timezone
-    from .models import Obligation, ObligationStatus
     from toto.assets.wallet_pin import has_wallet_pin
     account = get_object_or_404(LedgerAccount, pk=pk)
     holdings = AssetHolding.objects.filter(account=account).select_related("asset")
@@ -184,19 +182,12 @@ def account_detail(request, pk):
         .select_related("transaction", "asset")
         .order_by("-created_at")[:30]
     )
-    obligations = (
-        Obligation.objects
-        .filter(debtor_account=account, status=ObligationStatus.PENDING)
-        .select_related('creditor_account', 'asset')
-        .order_by('due_at')
-    )
     flow_data_url = reverse("assets:ledger_flow_data") + f"?account={account.code}"
     flow_full_url = reverse("assets:ledger_flow") + f"?account={account.code}"
     return assets_render(request, "assets/account_detail.html", {
         "account": account,
         "holdings": holdings,
         "recent_entries": recent_entries,
-        "obligations": obligations,
         "now": timezone.now(),
         "account_flow_url": flow_data_url,
         "account_flow_full_url": flow_full_url,
@@ -307,7 +298,7 @@ def ledger_flow(request):
 @login_required
 def wallet(request):
     from django.utils import timezone
-    from .models import Currency, AssetHolding, Obligation, ObligationStatus
+    from .models import Currency, AssetHolding
     accounts = (
         LedgerAccount.objects.filter(user=request.user, active=True)
         .order_by("-user_priority", "code")
@@ -328,20 +319,12 @@ def wallet(request):
                 total_holdings.append(h)
 
     now = timezone.now()
-    obligations = (
-        Obligation.objects
-        .filter(debtor_account__in=account_pks, status=ObligationStatus.PENDING)
-        .select_related('debtor_account', 'creditor_account', 'asset')
-        .order_by('due_at')
-    )
-    # Mark overdue in Python so template can use is_overdue property
     from toto.assets.wallet_pin import has_wallet_pin
     return assets_render(request, 'assets/wallet.html', {
         'wallet_accounts': accounts,
         'total_holdings': total_holdings,
         'recent_entries': recent_entries,
         'currencies': currencies,
-        'obligations': obligations,
         'now': now,
         'has_wallet_pin': has_wallet_pin(request.user),
     })
@@ -359,51 +342,6 @@ def set_account_priority(request, pk):
     account.save(update_fields=["user_priority", "updated_at"])
     messages.success(request, f'Priority for "{account.name or account.code}" set to {priority}.')
     return redirect("assets:wallet")
-
-
-@require_POST
-@login_required
-def obligation_fulfill(request, pk):
-    from .models import Obligation, ObligationStatus
-    from .services.assets import fulfill_obligation
-    from toto.assets.wallet_pin import has_wallet_pin, session_is_verified
-
-    obligation = get_object_or_404(
-        Obligation.objects.select_related('debtor_account', 'creditor_account', 'asset'),
-        pk=pk,
-        status=ObligationStatus.PENDING,
-    )
-
-    if obligation.debtor_account.user_id != request.user.id:
-        messages.error(request, _("You can only fulfill obligations from your own wallet."))
-        return redirect('assets:wallet')
-
-    if not has_wallet_pin(request.user):
-        messages.error(request, _("Set a wallet PIN before fulfilling obligations."))
-        return redirect('assets:wallet_pin_set')
-
-    next_url = request.POST.get("next") or reverse("assets:wallet")
-    if not url_has_allowed_host_and_scheme(next_url, allowed_hosts={request.get_host()}):
-        next_url = reverse("assets:wallet")
-
-    if not session_is_verified(request.session):
-        messages.error(request, _("Verify your wallet PIN before fulfilling obligations."))
-        return redirect(next_url)
-
-    try:
-        tx = fulfill_obligation(
-            obligation=obligation,
-            reference=f"fulfill-obligation-{obligation.pk}",
-            description=f"Fulfilling obligation {obligation.reference}",
-        )
-        messages.success(
-            request,
-            _("Obligation fulfilled. Transfer %(reference)s posted.") % {"reference": tx.reference},
-        )
-    except ValidationError as exc:
-        messages.error(request, "; ".join(exc.messages))
-
-    return redirect(next_url)
 
 
 def ledger_flow_data(request):
@@ -510,147 +448,6 @@ def wallet_pin_set(request):
             except Exception:
                 messages.error(request, 'Could not save PIN. Please try again.')
     return assets_render(request, 'assets/wallet_pin_set.html', {'has_pin': has_pin})
-
-
-@login_required
-def agreement_list(request):
-    from .models import Agreement
-    agreements = Agreement.objects.select_related("source_account", "target_account", "contract").order_by("-created_at")
-    return assets_render(request, "assets/agreement_list.html", {"agreements": agreements})
-
-
-@login_required
-def agreement_detail(request, pk):
-    from .models import Agreement
-    from .lapis.loader import loads_contract
-    from .lapis.compiler import ContractFlowValidator
-    agreement = get_object_or_404(
-        Agreement.objects.select_related("source_account", "target_account", "contract"),
-        pk=pk,
-    )
-    flow_steps = []
-    if agreement.contract and agreement.contract.code:
-        try:
-            tree = loads_contract(agreement.contract.code, fmt="yaml")
-            flow_steps = ContractFlowValidator().get_steps(tree)
-        except Exception:
-            pass
-    return assets_render(request, "assets/agreement_detail.html", {
-        "agreement": agreement,
-        "flow_steps": flow_steps,
-    })
-
-
-@login_required
-def agreement_create(request):
-    import json as _json
-    from .models import Contract
-    if request.method == "POST":
-        form = AgreementForm(request.POST)
-        if form.is_valid():
-            try:
-                with transaction.atomic():
-                    code = form.cleaned_data.get("code", "").strip()
-                    contract = form.cleaned_data.get("contract")
-                    if code and not contract:
-                        name = f"Inline contract for {form.cleaned_data['source_account'].code}→{form.cleaned_data['target_account'].code}"
-                        contract = Contract.objects.create(name=name, code=code)
-                    agreement = form.save(commit=False)
-                    agreement.contract = contract
-                    agreement.save()
-                messages.success(request, f"Agreement {agreement.uuid} created.")
-                return redirect("assets:agreement_detail", pk=agreement.pk)
-            except ValidationError as exc:
-                messages.error(request, "; ".join(exc.messages))
-    else:
-        form = AgreementForm()
-    contracts_data = {
-        str(c.pk): {"name": c.name, "code": c.code}
-        for c in Contract.objects.all()
-    }
-    return assets_render(request, "assets/agreement_form.html", {
-        "form": form,
-        "contract_codes_json": _json.dumps(contracts_data),
-    })
-
-
-
-
-@login_required
-def contract_list(request):
-    from .models import Contract
-    contracts = Contract.objects.order_by("name")
-    return assets_render(request, "assets/contract_list.html", {"contracts": contracts})
-
-
-@login_required
-def contract_detail(request, uuid):
-    from .models import Contract
-    from .lapis.loader import loads_contract
-    from .lapis.compiler import ContractFlowValidator
-    contract = get_object_or_404(Contract, uuid=uuid)
-    flow_steps = []
-    if contract.code:
-        try:
-            tree = loads_contract(contract.code, fmt="yaml")
-            flow_steps = ContractFlowValidator().get_steps(tree)
-        except Exception:
-            pass
-    try:
-        instrument = contract.financial_instrument
-    except Exception:
-        instrument = None
-    return assets_render(request, "assets/contract_detail.html", {
-        "contract": contract,
-        "flow_steps": flow_steps,
-        "instrument": instrument,
-    })
-
-
-@login_required
-def contract_create(request):
-    if request.method == "POST":
-        form = ContractForm(request.POST)
-        if form.is_valid():
-            contract = form.save()
-            messages.success(request, f"Contract '{contract.name}' created.")
-            return redirect("assets:contract_detail", uuid=contract.uuid)
-    else:
-        form = ContractForm()
-    return assets_render(request, "assets/contract_form.html", {"form": form, "is_create": True})
-
-
-@login_required
-def contract_update(request, uuid):
-    from .models import Contract
-    contract = get_object_or_404(Contract, uuid=uuid)
-    if request.method == "POST":
-        form = ContractForm(request.POST, instance=contract)
-        if form.is_valid():
-            form.save()
-            messages.success(request, f"Contract '{contract.name}' updated.")
-            return redirect("assets:contract_detail", uuid=contract.uuid)
-    else:
-        form = ContractForm(instance=contract)
-    return assets_render(request, "assets/contract_form.html", {"form": form, "contract": contract, "is_create": False})
-
-
-
-
-@login_required
-def contract_cytoscape_json(request, uuid):
-    from .models import Contract
-    from .lapis.loader import loads_contract
-    from .lapis.cytoscape import flow_to_cytoscape
-    contract = get_object_or_404(Contract, uuid=uuid)
-    if not contract.code:
-        return JsonResponse({"nodes": [], "edges": []})
-    try:
-        tree = loads_contract(contract.code, fmt="yaml")
-        data = flow_to_cytoscape(tree)
-    except Exception as exc:
-        return JsonResponse({"ok": False, "error": str(exc)}, status=400)
-    return JsonResponse(data)
 
 
 @login_required

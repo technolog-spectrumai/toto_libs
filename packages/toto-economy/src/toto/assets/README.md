@@ -5,7 +5,11 @@ No blockchain libraries, no Algorand SDK, no smart contracts.
 
 ## Purpose
 
-An admin mints an `Asset` (ticker, decimals, total supply). Users hold balances as `AssetHolding` records. Every transfer, mint, or burn posts an immutable `LedgerEntry` pair (debit + credit) under a `LedgerTransaction`. Once posted, the transaction is sealed; corrections go through an explicit reversal. A SHA-256 `LedgerHash` chain links every posted transaction — tampering with any entry breaks the chain and can be detected by `verify_hash_chain()`. `Obligation` records model debts that will be settled via future transactions. `Contract` / `Agreement` are the runtime layer for Lapis smart contracts executed by financial instruments.
+An admin mints an `Asset` (ticker, decimals, total supply). Users hold balances as `AssetHolding` records. Every transfer, mint, or burn posts an immutable `LedgerEntry` pair (debit + credit) under a `LedgerTransaction`. Once posted, the transaction is sealed; corrections go through an explicit reversal. A SHA-256 `LedgerHash` chain links every posted transaction — tampering with any entry breaks the chain and can be detected by `verify_hash_chain()`.
+
+> The Lapis smart-contract layer (`Contract`/`Agreement` + the YAML VM) and the
+> `Obligation` debt model were pulled out on 2026-07-31 as immature — see
+> `toto_libs/limbo/lapis/`. This app is now the ledger core only.
 
 ## Concepts
 

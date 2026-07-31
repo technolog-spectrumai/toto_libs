@@ -131,43 +131,6 @@ class WalletSummaryApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ObligationsApiView(CorsApiView):
-    def get(self, request):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-
-        from toto.assets.models import Obligation, ObligationStatus
-        from django.utils import timezone
-
-        account_pks = list(
-            LedgerAccount.objects.filter(user=request.user, active=True).values_list("pk", flat=True)
-        )
-        obligations = (
-            Obligation.objects
-            .filter(debtor_account__in=account_pks, status=ObligationStatus.PENDING)
-            .select_related("debtor_account", "creditor_account", "asset")
-            .order_by("due_at")
-        )
-        result = []
-        for ob in obligations:
-            result.append({
-                "id": ob.pk,
-                "reference": ob.reference,
-                "order_reference": ob.order_reference or "",
-                "amount_display": str(ob.amount_display),
-                "asset_unit": ob.asset.unit_name,
-                "asset_name": ob.asset.name,
-                "creditor_code": ob.creditor_account.code,
-                "creditor_name": ob.creditor_account.name or ob.creditor_account.code,
-                "debtor_code": ob.debtor_account.code,
-                "due_at": ob.due_at.isoformat(),
-                "is_overdue": ob.is_overdue,
-                "status": ob.status,
-            })
-        return JsonResponse({"obligations": result})
-
-
-@method_decorator(csrf_exempt, name="dispatch")
 class MovementsApiView(CorsApiView):
     def get(self, request):
         if not request.user or not request.user.is_authenticated:
@@ -222,49 +185,3 @@ class PinVerifyApiView(CorsApiView):
 
 
 @method_decorator(csrf_exempt, name="dispatch")
-class ObligationFulfillApiView(CorsApiView):
-    def post(self, request, pk):
-        if not request.user or not request.user.is_authenticated:
-            return JsonResponse({"error": "Not authenticated."}, status=401)
-
-        from toto.assets.models import Obligation, ObligationStatus
-        from toto.assets.services.assets import fulfill_obligation
-        from toto.assets.wallet_pin import has_wallet_pin, session_is_verified, verify_pin_token
-        from django.core.exceptions import ValidationError
-
-        try:
-            body = json.loads(request.body) if request.body else {}
-        except (json.JSONDecodeError, ValueError):
-            body = {}
-
-        try:
-            obligation = (
-                Obligation.objects
-                .select_related("debtor_account", "creditor_account", "asset")
-                .get(pk=pk, status=ObligationStatus.PENDING)
-            )
-        except Obligation.DoesNotExist:
-            return JsonResponse({"error": "Obligation not found."}, status=404)
-
-        if obligation.debtor_account.user_id != request.user.id:
-            return JsonResponse({"error": "You can only fulfill your own obligations."}, status=403)
-
-        if not has_wallet_pin(request.user):
-            return JsonResponse({"error": "Set a wallet PIN first.", "no_pin": True}, status=400)
-
-        pin_token = body.get("pin_token", "")
-        token_ok = pin_token and verify_pin_token(pin_token, request.user)
-        if not token_ok and not session_is_verified(request.session):
-            return JsonResponse({"error": "PIN verification required.", "pin_required": True}, status=403)
-
-        try:
-            tx = fulfill_obligation(
-                obligation=obligation,
-                reference=f"fulfill-obligation-{obligation.pk}",
-                description=f"Fulfilling obligation {obligation.reference}",
-            )
-            return JsonResponse({"ok": True, "transaction_reference": tx.reference})
-        except ValidationError as exc:
-            return JsonResponse({"error": "; ".join(exc.messages)}, status=400)
-        except Exception as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
