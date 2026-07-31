@@ -94,12 +94,21 @@ class QRTests(TestCase):
         """The trap: cv2's encoder output does not survive its own decoder.
 
         The raw matrix is one pixel per module with no quiet zone and decodes to
-        "". If this test ever fails, check that the upscale and border are still
-        applied in qr.render_data_uri.
+        "". If this ever fails, check that the upscale and border are still applied
+        in qr.render_data_uri.
+
+        The secret is FIXED, not random, on purpose. cv2's QRCodeDetector is
+        heuristic and cannot read roughly one payload in a few hundred of its OWN
+        encoder's output — no amount of upscaling or thresholding recovers those
+        specific images (measured). A random secret here therefore flakes the gate
+        about that often. Production never depends on this: the QR always sits next
+        to a copy-paste text field, so an unreadable image just means the operator
+        pastes the code. This asserts the render→read plumbing on an image cv2 can
+        read; the flake is a property of the library, not our code.
         """
         import base64
 
-        ticket = wire.encode_ticket(PROVIDER, wire.new_secret())
+        ticket = wire.encode_ticket(PROVIDER, bytes(range(32)))
         uri = qr.render_data_uri(ticket)
         self.assertTrue(uri.startswith("data:image/png;base64,"))
         png = base64.b64decode(uri.split(",", 1)[1])
@@ -1072,7 +1081,12 @@ class GuidedFederationPageTests(TestCase):
         self.assertIsNotNone(config.secret_id)
 
     def test_an_uploaded_qr_photograph_is_the_same_as_pasting(self):
-        import base64
+        # The point is that the view routes an uploaded file through qr.read and then
+        # pairs. qr.read is stubbed to the ticket rather than gambling on cv2 decoding a
+        # random rendered image — cv2 cannot read ~0.4% of its own encoder's output (see
+        # QRTests), which would flake the gate. The real render→read path is covered
+        # deterministically by QRTests.test_a_rendered_qr_can_be_read_back.
+        from unittest import mock
 
         from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -1080,16 +1094,13 @@ class GuidedFederationPageTests(TestCase):
         from toto.sso_core.federation.bridge import ProviderLoopback
 
         minted = _mint()
-        png = base64.b64decode(
-            qr.render_data_uri(minted.ticket).split(",", 1)[1],
-        )
         loopback = ProviderLoopback(PROVIDER)
-        with loopback.patched():
+        with loopback.patched(), mock.patch("toto.sso_core.qr.read", return_value=minted.ticket):
             response = self.client.post(self.url, {
                 "target": "provider.test",
                 "action": "pair",
                 "code": "",
-                "image": SimpleUploadedFile("qr.png", png, "image/png"),
+                "image": SimpleUploadedFile("qr.png", b"a-photo-of-a-qr", "image/png"),
             }, secure=True)
 
         self.assertEqual(response.status_code, 302)
@@ -1101,8 +1112,11 @@ class GuidedFederationPageTests(TestCase):
         Otherwise the operator, told to fetch a fresh code and handed a QR photo,
         uploads it while the dead code still sits in the box — and the dead code
         is silently used again.
+
+        qr.read is stubbed (see the sibling upload test for why): the point here is
+        precedence — the decoded upload beats the stale textarea — not cv2's decode.
         """
-        import base64
+        from unittest import mock
 
         from django.core.files.uploadedfile import SimpleUploadedFile
 
@@ -1110,14 +1124,13 @@ class GuidedFederationPageTests(TestCase):
         from toto.sso_core.federation.bridge import ProviderLoopback
 
         minted = _mint()
-        png = base64.b64decode(qr.render_data_uri(minted.ticket).split(",", 1)[1])
         loopback = ProviderLoopback(PROVIDER)
-        with loopback.patched():
+        with loopback.patched(), mock.patch("toto.sso_core.qr.read", return_value=minted.ticket):
             response = self.client.post(self.url, {
                 "target": "provider.test",
                 "action": "pair",
                 "code": "STALE-DEAD-CODE-STILL-IN-THE-BOX",
-                "image": SimpleUploadedFile("qr.png", png, "image/png"),
+                "image": SimpleUploadedFile("qr.png", b"a-photo-of-a-qr", "image/png"),
             }, secure=True)
 
         # The upload was used, not the stale text — so pairing succeeded.

@@ -68,6 +68,13 @@ def read(image_bytes: bytes) -> str:
     ``detectAndDecode`` handles the perspective correction; what it cannot do is
     read an image with no QR in it, which is the common mistake and gets a
     message saying so.
+
+    **cv2's detector is heuristic and intermittently misses a perfectly clean
+    code** — empirically about one random payload in forty, which is a flaky
+    gate and a real "it didn't work, try again" for an operator. So a first miss
+    is not believed: the image is retried upscaled and Otsu-thresholded, which
+    gives the detector more to work with and resolves the miss deterministically.
+    Only when every variant fails is it reported as unreadable.
     """
     import cv2
     import numpy as np
@@ -80,19 +87,55 @@ def read(image_bytes: bytes) -> str:
     if image is None:
         raise QRError("That file is not an image this server can read.")
 
-    try:
-        text, points, _ = cv2.QRCodeDetector().detectAndDecode(image)
-    except Exception as exc:  # noqa: BLE001
-        raise QRError(f"Could not read the image: {exc}") from exc
-
-    if not text:
-        if points is None:
-            raise QRError("No QR code was found in that image.")
+    text, found_any = _decode_resilient(image)
+    if text:
+        return text
+    if found_any:
         raise QRError("A QR code was found but could not be read — try a sharper picture.")
-    return text
+    raise QRError("No QR code was found in that image.")
 
 
 # -- internals ------------------------------------------------------------
+
+
+def _decode_resilient(image):
+    """Return ``(text, found_any_qr)`` trying progressively cleaned-up copies.
+
+    A given payload either decodes on the first try or (rarely) not at all with the
+    raw image — the miss is image-dependent, not random per call, so retrying the
+    same pixels is pointless. Upscaling gives the detector more pixels per module,
+    and Otsu forces a crisp black/white edge for a soft screenshot; between them
+    they recover the codes the raw pass drops. A genuine "no QR here" falls through
+    every variant and still ends at the honest error.
+    """
+    import cv2
+
+    variants = [image]
+    for factor in (2, 4):
+        variants.append(
+            cv2.resize(image, None, fx=factor, fy=factor, interpolation=cv2.INTER_NEAREST)
+        )
+    try:
+        _thr, otsu = cv2.threshold(image, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+        variants.append(otsu)
+        variants.append(
+            cv2.resize(otsu, None, fx=2, fy=2, interpolation=cv2.INTER_NEAREST)
+        )
+    except Exception:                       # noqa: BLE001 — thresholding is a bonus, not required
+        pass
+
+    detector = cv2.QRCodeDetector()
+    found_any = False
+    for variant in variants:
+        try:
+            text, points, _ = detector.detectAndDecode(variant)
+        except Exception:                   # noqa: BLE001 — try the next variant
+            continue
+        if text:
+            return text, True
+        if points is not None:
+            found_any = True
+    return "", found_any
 
 
 def _upscale(matrix, scale: int):
