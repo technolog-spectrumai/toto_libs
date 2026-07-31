@@ -1,5 +1,5 @@
 import base64
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
@@ -467,5 +467,200 @@ def my_profile(request):
         except NoReverseMatch:
             pass
     return redirect("core:dashboard")
+
+
+# ---------------------------------------------------------------------------
+# Federation: the platform-info API (for a federated patron) and the staff console.
+# ---------------------------------------------------------------------------
+
+
+@csrf_exempt
+def platform_info(request):
+    """This platform's public identity — name and logo — for a FEDERATED PATRON.
+
+    A paired relying party authenticates exactly as at ``/sso/token/``:
+    ``client_id`` + ``client_secret``, HTTP Basic (natural for GET) or POST body
+    (``client_secret_post``), via the shared :func:`get_client_credentials`. This is
+    the one durable credential pairing produces, so it is the right gate for "only a
+    platform we are federated with may read this."
+
+    A **public** client is refused: it holds no secret at all (``check_client_secret``
+    returns ``"current"`` for it by design, to make PKCE-only OIDC correct), so it is
+    not a patron in the "holds the shared secret" sense this endpoint means.
+    """
+    if request.method not in ("GET", "POST"):
+        return HttpResponseBadRequest("Use GET or POST.")
+
+    client_id, client_secret = get_client_credentials(request)
+    if not client_id:
+        return JsonResponse({"error": "invalid_client"}, status=401)
+    try:
+        client = SSORelyingParty.objects.get(client_id=client_id, active=True)
+    except SSORelyingParty.DoesNotExist:
+        return JsonResponse({"error": "invalid_client"}, status=401)
+    if client.client_type == SSORelyingParty.PUBLIC:
+        return JsonResponse({"error": "invalid_client"}, status=401)
+    if client.check_client_secret(client_secret) not in ("current", "previous"):
+        return JsonResponse({"error": "invalid_client"}, status=401)
+
+    from toto.core.models import Platform
+
+    platform = Platform.objects.filter(active=True).order_by("id").first()
+    if platform is None:
+        return JsonResponse({"error": "no_active_platform"}, status=404)
+
+    def _abs(image_field):
+        # Absolute so a remote patron can fetch it; None when unset. .url raises if
+        # the field has no file, so guard it.
+        try:
+            return request.build_absolute_uri(image_field.url) if image_field else None
+        except Exception:                       # noqa: BLE001
+            return None
+
+    fed = platform.federation
+    return JsonResponse({
+        "site_name": platform.site_name,
+        "domain": platform.domain or "",
+        "author": platform.author or "",
+        "publication_year": platform.publication_year,
+        "logo_url": _abs(platform.logo),
+        "federation": (
+            {"name": fed.name, "logo_url": _abs(fed.logo)} if fed else None
+        ),
+    })
+
+
+def _minted_context(minted):
+    """The QR panel context, matching the admin pair page's `minted` shape."""
+    from toto.sso_core import qr
+
+    return {
+        "ticket": minted.ticket,
+        "qr": qr.render_data_uri(minted.ticket),
+        "seconds": minted.invite.seconds_remaining(),
+        "host": minted.invite.expected_host,
+        "scopes": minted.invite.granted_scopes,
+    }
+
+
+def _federation_rows():
+    """The platforms federated with us, for the console list — local data only."""
+    rows = []
+    for party in SSORelyingParty.objects.order_by("-pairing_managed", "name"):
+        host = ""
+        for uri in party.redirect_uri_list():
+            candidate = urlparse(uri).hostname or ""
+            if candidate:
+                host = candidate
+                break
+        last_token = (
+            party.access_tokens.order_by("-created_at")
+            .values_list("created_at", flat=True)
+            .first()
+        )
+        if not party.pairing_managed:
+            status = "sidecar"                  # Gitea/Grafana — not a pairing
+        elif party.paired_at:
+            status = "paired"
+        else:
+            status = "invited"
+        rows.append({
+            "pk": party.pk,
+            "name": party.name,
+            "client_id": party.client_id,
+            "host": host,
+            "active": party.active,
+            "trusted": party.trusted,
+            "status": status,
+            "pairing_managed": party.pairing_managed,
+            "last_token": last_token,
+        })
+    return rows
+
+
+@login_required
+def federation_console(request):
+    """Staff page: the platforms federated with us, with a QR to (re-)pair one.
+
+    A dedicated list surface for what the relying-party admin only exposes through
+    object-tools. Local data only — it never calls a peer. Reuses ``enrollment.mint``
+    (fresh invite, or re-pair in place via ``relying_party=``) and the same QR the
+    admin pairing page renders.
+    """
+    from datetime import timedelta
+
+    from django.core.exceptions import PermissionDenied
+
+    from toto.ui import PageProcessor
+
+    from .enrollment import EnrollmentError, mint
+    from .models import (
+        DEFAULT_INVITE_TTL_MINUTES,
+        MAX_INVITE_TTL_MINUTES,
+        MIN_INVITE_TTL_MINUTES,
+    )
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied
+
+    minted = None
+    error = None
+
+    if request.method == "POST":
+        action = request.POST.get("action")
+        try:
+            if action == "repair":
+                party = SSORelyingParty.objects.filter(
+                    pk=request.POST.get("pk"), pairing_managed=True,
+                ).first()
+                if party is None:
+                    error = "No such federated platform to re-pair."
+                else:
+                    host = ""
+                    for uri in party.redirect_uri_list():
+                        candidate = urlparse(uri).hostname or ""
+                        if candidate:
+                            host = candidate
+                            break
+                    minted = _minted_context(mint(
+                        expected_host=host or party.name,
+                        provider_url=get_public_base_url(),
+                        label=party.name,
+                        scopes=party.allowed_scopes,
+                        trusted=party.trusted,
+                        created_by=request.user,
+                        relying_party=party,
+                    ))
+            elif action == "invite":
+                roles = bool(request.POST.get("roles"))
+                trusted = bool(request.POST.get("trusted"))
+                try:
+                    minutes = int(request.POST.get("ttl_minutes") or DEFAULT_INVITE_TTL_MINUTES)
+                except (TypeError, ValueError):
+                    minutes = DEFAULT_INVITE_TTL_MINUTES
+                minutes = max(MIN_INVITE_TTL_MINUTES, min(MAX_INVITE_TTL_MINUTES, minutes))
+                scopes = "openid email profile" + (" roles" if roles else "")
+                minted = _minted_context(mint(
+                    expected_host=(request.POST.get("expected_host") or "").strip(),
+                    provider_url=get_public_base_url(),
+                    label=(request.POST.get("expected_host") or "").strip(),
+                    scopes=scopes,
+                    trusted=trusted,
+                    ttl=timedelta(minutes=minutes),
+                    created_by=request.user,
+                ))
+        except EnrollmentError as exc:
+            error = exc.message
+
+    context = PageProcessor().decorate({
+        "page_title": "Federation",
+        "platforms": _federation_rows(),
+        "minted": minted,
+        "error": error,
+        "min_ttl": MIN_INVITE_TTL_MINUTES,
+        "max_ttl": MAX_INVITE_TTL_MINUTES,
+        "default_ttl": DEFAULT_INVITE_TTL_MINUTES,
+    }, request)
+    return render(request, "sso_master/federation_console.html", context)
 
 

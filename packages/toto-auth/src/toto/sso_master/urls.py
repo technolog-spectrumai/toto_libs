@@ -22,6 +22,10 @@ urlpatterns = [
     path("sso/token/", views.token, name="token"),
     # The act of federation. Under sso/ so it inherits the nginx rate limit.
     path("sso/enroll/", views.enroll, name="enroll"),
+    # This platform's public identity (name + logo) for a federated patron, and the
+    # staff console that lists federated platforms and mints their QR codes.
+    path("sso/platform-info/", views.platform_info, name="platform_info"),
+    path("sso/federation/", views.federation_console, name="federation_console"),
     path("sso/userinfo/", views.userinfo, name="userinfo"),
     path("sso/login/", views.login_view, name="login"),
     path("sso/logout/", views.logout_view, name="logout"),
