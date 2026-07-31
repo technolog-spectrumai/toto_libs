@@ -20,6 +20,8 @@ urlpatterns = [
     path("sso/authorize/", views.authorize, name="authorize"),
     path("sso/consent/", views.consent, name="consent"),
     path("sso/token/", views.token, name="token"),
+    # The act of federation. Under sso/ so it inherits the nginx rate limit.
+    path("sso/enroll/", views.enroll, name="enroll"),
     path("sso/userinfo/", views.userinfo, name="userinfo"),
     path("sso/login/", views.login_view, name="login"),
     path("sso/logout/", views.logout_view, name="logout"),

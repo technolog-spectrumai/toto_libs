@@ -181,6 +181,75 @@ def get_client_credentials(request):
     return request.POST.get("client_id"), request.POST.get("client_secret")
 
 
+@csrf_exempt
+@require_POST
+def enroll(request):
+    """The act of federation: a platform redeems a pairing code for credentials.
+
+    The only endpoint in this feature, and the only new network surface on either
+    host — the consumer exposes nothing, because both legs run consumer→provider.
+
+    Unauthenticated by construction: the pairing code IS the authentication, the
+    same way ``/sso/token/`` is authenticated by the authorization code. It sits
+    under ``/sso/`` so it inherits nginx's ``limit_req zone=sso_auth burst=20``
+    rather than needing a rate limiter of its own; the tree's only other throttle
+    is session-based and useless to a machine caller.
+
+    Refuses plaintext outside DEBUG, and is deliberately NOT added to
+    ``SECURE_REDIRECT_EXEMPT`` — unlike ``/sso/token/``, which sidecars call over
+    the internal plaintext port, nothing legitimate reaches this from inside the
+    compose network.
+    """
+    import json
+
+    from .enrollment import EnrollmentError, redeem
+
+    if not request.is_secure():
+        from django.conf import settings
+
+        if not settings.DEBUG:
+            return JsonResponse(
+                {"error": "insecure_transport",
+                 "detail": "Federation pairing requires HTTPS."},
+                status=400,
+            )
+
+    try:
+        payload = json.loads(request.body or b"{}")
+    except (ValueError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "bad_request", "detail": "Expected a JSON body."}, status=400,
+        )
+    if not isinstance(payload, dict):
+        return JsonResponse(
+            {"error": "bad_request", "detail": "Expected a JSON object."}, status=400,
+        )
+
+    try:
+        grant = redeem(payload, source_ip=_client_ip(request))
+    except EnrollmentError as exc:
+        # 401 for "your code is no good", 400 for "your request is malformed".
+        # Never echoes the ticket back, and the detail is written for the operator
+        # reading it on the other platform's screen.
+        status = 400 if exc.code == "bad_request" else 401
+        return JsonResponse({"error": exc.code, "detail": exc.message}, status=status)
+
+    return JsonResponse(grant.to_dict())
+
+
+def _client_ip(request):
+    """Best-effort source IP for the audit row.
+
+    Behind nginx the peer is always the proxy, so the forwarded header is the only
+    thing with the real address in it. Recorded for after-the-fact review only —
+    nothing authorises on it, so a spoofed header misleads a reader rather than
+    granting anything.
+    """
+    forwarded = (request.META.get("HTTP_X_FORWARDED_FOR") or "").split(",")
+    candidate = (forwarded[0] if forwarded else "").strip()
+    return candidate or request.META.get("REMOTE_ADDR") or None
+
+
 def _note_secret_proven(client, outcome):
     """Close the rotation grace window the first time the new secret is used.
 
