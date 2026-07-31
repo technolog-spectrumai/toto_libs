@@ -1,0 +1,55 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Change the vault passphrase" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-xl space-y-6">
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Change the vault passphrase" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Re-keys the vault to a new passphrase. The stored SMTP password is not changed or exposed — only the key that protects it. The old passphrase stops working immediately." %}
+      </p>
+    </div>
+
+    {% if error %}
+      <p :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-medium">{{ error }}</p>
+    {% endif %}
+
+    <form method="POST"
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark [&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark'
+        : 'border-accent-2 bg-bubble-bg-light [&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light'"
+      class="space-y-5 rounded-xl border p-5
+             [&_label]:mb-1 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+             [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2.5 [&_input]:text-sm">
+      {% csrf_token %}
+      <div>
+        <label for="old_passphrase">{% trans "Current passphrase" %}</label>
+        <input type="password" name="old_passphrase" id="old_passphrase" autocomplete="off" autofocus>
+      </div>
+      <div>
+        <label for="new_passphrase">{% trans "New passphrase" %}</label>
+        <input type="password" name="new_passphrase" id="new_passphrase" autocomplete="new-password">
+      </div>
+      <div>
+        <label for="new_passphrase2">{% trans "New passphrase again" %}</label>
+        <input type="password" name="new_passphrase2" id="new_passphrase2" autocomplete="new-password">
+      </div>
+      <div class="flex items-center gap-3">
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-3 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-rotate"></i> {% trans "Change passphrase" %}
+        </button>
+        <a href="{% url 'jess:outbox' %}" class="text-sm font-medium opacity-70 hover:opacity-100">{% trans "Cancel" %}</a>
+      </div>
+    </form>
+  </div>
+</section>
+{% endblock %}

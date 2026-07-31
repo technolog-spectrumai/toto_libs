@@ -1,0 +1,93 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Release held mail" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div>
+      <h1 class="text-2xl font-bold">{% trans "Release held mail" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Type the vault passphrase to send held messages. It is used only for this send and is never stored. Message contents are not shown here — a held password-reset link is sent without anyone reading it." %}
+      </p>
+    </div>
+
+    {% if error %}
+      <p :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
+         class="rounded-lg border px-4 py-3 text-sm font-medium">{{ error }}</p>
+    {% endif %}
+
+    {% if held %}
+      <form method="POST"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="space-y-4 rounded-xl border p-5">
+        {% csrf_token %}
+        <p class="text-sm">
+          {% blocktrans count counter=held_count %}{{ counter }} message is held.{% plural %}{{ counter }} messages are held.{% endblocktrans %}
+          {% if held_count > cap %}
+            <span class="opacity-70">{% blocktrans %}Releasing sends the oldest {{ cap }}; press again for the rest.{% endblocktrans %}</span>
+          {% endif %}
+        </p>
+
+        <div class="overflow-x-auto rounded-lg border"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <table class="w-full text-left text-sm">
+            <thead :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'">
+              <tr class="text-xs font-semibold uppercase tracking-wide opacity-70">
+                <th class="px-3 py-2">{% trans "Subject" %}</th>
+                <th class="px-3 py-2">{% trans "To" %}</th>
+                <th class="px-3 py-2">{% trans "Purpose" %}</th>
+                <th class="px-3 py-2">{% trans "Queued" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for m in held %}
+                <tr class="border-t" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                  {# Subject and recipient only — never the body. #}
+                  <td class="px-3 py-2">{{ m.subject|default:_("(no subject)")|truncatechars:50 }}</td>
+                  <td class="px-3 py-2 opacity-80">{{ m.to|join:", "|truncatechars:36 }}</td>
+                  <td class="px-3 py-2 opacity-70">{{ m.get_purpose_display }}</td>
+                  <td class="px-3 py-2 opacity-70">{{ m.queued_at }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-3">
+          <div class="grow">
+            <label for="passphrase" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              {% trans "Vault passphrase" %}
+            </label>
+            <input type="password" name="passphrase" id="passphrase" autocomplete="off" autofocus
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+              class="w-full max-w-sm rounded-lg border px-3 py-2.5 text-sm">
+          </div>
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-unlock"></i> {% trans "Release" %}
+          </button>
+          <a href="{% url 'jess:outbox' %}" class="text-sm font-medium opacity-70 hover:opacity-100">
+            {% trans "Outbox" %}
+          </a>
+        </div>
+      </form>
+    {% else %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="rounded-xl border p-8 text-center">
+        <i class="fa-solid fa-inbox text-3xl opacity-40"></i>
+        <p class="mt-3 font-semibold">{% trans "Nothing is held." %}</p>
+        <p class="mt-1 text-sm opacity-70">
+          <a href="{% url 'jess:outbox' %}" class="underline">{% trans "Back to the outbox" %}</a>
+        </p>
+      </div>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

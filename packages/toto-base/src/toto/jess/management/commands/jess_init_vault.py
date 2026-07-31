@@ -19,6 +19,9 @@ class Command(BaseCommand):
     help = "Initialise Jess's encryption strongbox and report the mail configuration."
 
     def handle(self, *args, **options):
+        if vault.manual_release_enabled():
+            return self._handle_manual()
+
         try:
             vault.load_vault_password()
         except vault.VaultUnavailable as exc:
@@ -76,3 +79,53 @@ class Command(BaseCommand):
         total = EmailProvider.objects.count()
         self.stdout.write(f"{total} email provider(s) configured.")
         self.stdout.write(jess_status.describe())
+
+    def _handle_manual(self):
+        """Manual-release bootstrap: prompt for the passphrase, never read it from env.
+
+        There is no ambient passphrase on a manual host, so the admin types it here (via
+        getpass, so it is never echoed and never in argv) and it is used only to create
+        the strongbox or to verify a stored secret. The same job the ``vault_setup``
+        page does, for a shell.
+        """
+        import getpass
+
+        from toto.gervazy.crypto import GervazyCryptoSession
+
+        self.stdout.write("Manual-release mode: the passphrase is not stored on the server.")
+        strongbox = vault.system_strongbox()
+
+        if strongbox is None:
+            passphrase = getpass.getpass("Choose a vault passphrase: ")
+            again = getpass.getpass("Repeat it: ")
+            if not passphrase or passphrase != again:
+                self.stdout.write(self.style.ERROR("Passphrases empty or did not match — nothing was created."))
+                return
+            owner = vault._get_or_create_owner()
+            GervazyCryptoSession.initialize_strongbox(owner, vault.SYSTEM_STRONGBOX_NAME, passphrase)
+            vault.clear_cache()
+            self.stdout.write(self.style.SUCCESS(
+                "Created the strongbox. Keep the passphrase safe — it is stored nowhere "
+                "and cannot be recovered."
+            ))
+            return
+
+        # Strongbox exists — offer to verify the passphrase against a stored secret.
+        self.stdout.write(f"Found strongbox '{strongbox.name}'.")
+        stored = (
+            EmailProvider.objects.exclude(secret__isnull=True)
+            .select_related("secret").order_by("-active", "-updated_at").first()
+        )
+        if stored is None:
+            self.stdout.write("No password is stored yet, so there is nothing to verify.")
+            return
+        passphrase = getpass.getpass("Passphrase to verify (blank to skip): ")
+        if not passphrase:
+            return
+        try:
+            vault.read_secret(stored.secret, session=vault.open_manual_session(passphrase))
+            self.stdout.write(self.style.SUCCESS(
+                f"Decrypted the stored password for '{stored.label}' — the passphrase is correct."
+            ))
+        except Exception as exc:                            # noqa: BLE001
+            self.stdout.write(self.style.ERROR(f"That passphrase did not decrypt '{stored.label}': {exc}"))

@@ -22,6 +22,31 @@
       </a>
     </div>
 
+    {% comment %}Manual-release custody: mail sits held until an admin types the
+       passphrase. Impossible to miss, with the count and a way to act on it.{% endcomment %}
+    {% if held %}
+      <div
+        :class="darkMode ? 'border-warn-dark bg-sunken-dark' : 'border-warn-light bg-sunken-light'"
+        class="flex flex-wrap items-start justify-between gap-3 rounded-lg border px-4 py-3 text-sm">
+        <div class="flex items-start gap-3">
+          <i class="fa-solid fa-lock mt-0.5 opacity-80"></i>
+          <div>
+            <p class="font-semibold">
+              {% blocktrans count counter=held %}{{ counter }} message is held, waiting to be released.{% plural %}{{ counter }} messages are held, waiting to be released.{% endblocktrans %}
+            </p>
+            <p class="mt-1 opacity-70">
+              {% trans "Nothing sends on this platform until an administrator types the vault passphrase." %}
+            </p>
+          </div>
+        </div>
+        <a href="{{ release_url }}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-unlock"></i> {% trans "Release held mail" %}
+        </a>
+      </div>
+    {% endif %}
+
     {% comment %}The one thing an operator cannot see anywhere else: mail that was
        accepted and is going nowhere. A host with no celery worker looks completely
        healthy apart from this number climbing.{% endcomment %}

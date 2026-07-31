@@ -12,4 +12,10 @@ urlpatterns = [
     # that follows a 302 gets an HTML page and loops forever. See views.py's docstring.
     path("messages/<int:pk>/status/", views.message_status, name="message_status"),
     path("messages/<int:pk>/retry/", views.message_retry, name="message_retry"),
+    # Manual-release custody: type the passphrase to send held mail, and manage the
+    # vault. The passphrase never leaves the request that carries it.
+    path("release/", views.release, name="release"),
+    path("vault/set-up/", views.vault_setup, name="vault_setup"),
+    path("vault/password/", views.provider_secret, name="provider_secret"),
+    path("vault/passphrase/", views.vault_rotate_passphrase, name="rotate_passphrase"),
 ]

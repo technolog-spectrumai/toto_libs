@@ -49,14 +49,36 @@ class VaultUnavailable(RuntimeError):
     """Jess's vault cannot be used: no passphrase configured, or not initialised."""
 
 
+def manual_release_enabled() -> bool:
+    """Is this host in manual-release custody mode?
+
+    The one source of truth for the whole app. In manual mode there is NO ambient
+    passphrase: nothing decrypts without an admin typing it, and mail queues as
+    ``held`` rather than being dispatched. Read from settings so a host opts in with
+    ``JESS_MANUAL_RELEASE`` in its env and tests can ``override_settings``.
+    """
+    return bool(getattr(settings, "JESS_MANUAL_RELEASE", False))
+
+
 def load_vault_password() -> str:
-    """The passphrase, or ``VaultUnavailable``.
+    """The ambient passphrase, or ``VaultUnavailable``.
+
+    **Fails closed in manual-release mode.** There is deliberately no server-side
+    passphrase then — an admin types it per operation and it is discarded — so every
+    caller that would reach for an ambient one (``open_session``, ``ensure_strongbox``,
+    ``is_available``) fails closed here rather than silently reading a key that, by
+    design, is not supposed to exist on the box.
 
     No dev fallback to a ``run/*.json`` bundle, unlike ``gervazy/vault.py:33-45`` and
     ``sso_master/services.py:65-75``. Those exist because their strongboxes predate
     ``deploy.py`` minting anything; Jess's passphrase is minted from the start, so a
     second provenance would only be a second thing to get out of step.
     """
+    if manual_release_enabled():
+        raise VaultUnavailable(
+            "Jess is in manual-release mode: there is no passphrase on this server. "
+            "An admin must type it to send or to read a stored secret."
+        )
     password = (getattr(settings, "JESS_VAULT_PASSWORD", "") or "").strip()
     if not password:
         raise VaultUnavailable(
@@ -89,6 +111,27 @@ def clear_cache() -> None:
         _session_cache.clear()
 
 
+def _get_or_create_owner():
+    """The service account that owns Jess's strongbox.
+
+    Not a login: it exists only to own a strongbox, so its password is unusable even
+    if ``is_active`` were ever flipped. Factored out so the manual-mode setup flow
+    (``views.vault_setup``) can create the strongbox itself, since ``ensure_strongbox``
+    refuses to auto-provision when there is no ambient passphrase.
+    """
+    from django.contrib.auth import get_user_model
+
+    User = get_user_model()
+    owner, created = User.objects.get_or_create(
+        username=SYSTEM_OWNER_USERNAME,
+        defaults={"is_active": False},
+    )
+    if created:
+        owner.set_unusable_password()
+        owner.save(update_fields=["password"])
+    return owner
+
+
 def ensure_strongbox():
     """The strongbox, created on first use if absent.
 
@@ -98,11 +141,13 @@ def ensure_strongbox():
     (``ingress_sso_master.py:37-43``). ``manage.py jess_init_vault`` exists to do it
     explicitly and to report the result, not because it is required.
 
+    **Refuses in manual-release mode** — ``load_vault_password()`` raises there, because
+    auto-provisioning needs an ambient passphrase and manual mode has none. A manual host
+    initialises its strongbox through ``views.vault_setup`` with an admin-typed passphrase.
+
     Idempotent and racy-safe: the owner is fetched-or-created and the strongbox is
     re-read inside the transaction, so two workers starting at once cannot make two.
     """
-    from django.contrib.auth import get_user_model
-
     password = load_vault_password()
 
     with transaction.atomic():
@@ -110,17 +155,7 @@ def ensure_strongbox():
         if existing is not None:
             return existing
 
-        User = get_user_model()
-        owner, created = User.objects.get_or_create(
-            username=SYSTEM_OWNER_USERNAME,
-            defaults={"is_active": False},
-        )
-        if created:
-            # Not a login: this account exists only to own a strongbox. An unusable
-            # password means it cannot authenticate even if is_active were flipped.
-            owner.set_unusable_password()
-            owner.save(update_fields=["password"])
-
+        owner = _get_or_create_owner()
         _session, _wrapped = GervazyCryptoSession.initialize_strongbox(
             owner, SYSTEM_STRONGBOX_NAME, password
         )
@@ -151,6 +186,50 @@ def open_session(*, create: bool = True) -> GervazyCryptoSession:
         return session
 
 
+def open_manual_session(passphrase: str) -> GervazyCryptoSession:
+    """An unlocked session from an admin-TYPED passphrase, against the existing strongbox.
+
+    The manual-release counterpart to ``open_session``. It builds a **fresh session on
+    every call and never touches ``_session_cache``**, so the passphrase and the derived
+    key live only for the duration of the caller's operation and are dropped when the
+    session is garbage-collected (or ``.close()``d). This is the property the whole model
+    rests on — there must be no long-lived unlocked session anywhere.
+
+    Does not create the strongbox: a release must not provision as a side effect, and a
+    host with no strongbox has nothing to read. Setup goes through ``views.vault_setup``.
+    """
+    if not passphrase:
+        raise VaultUnavailable("A passphrase is required.")
+    sb = system_strongbox()
+    if sb is None:
+        raise VaultUnavailable(
+            "Jess's vault has not been set up yet. Initialise it first (Jess → set up "
+            "the vault, or manage.py jess_init_vault)."
+        )
+    return GervazyCryptoSession(sb, passphrase)
+
+
+def rotate_passphrase(old_password: str, new_password: str, *, actor=None) -> None:
+    """Change the passphrase that unlocks Jess's strongbox.
+
+    Re-derives the UKEK under a fresh salt and re-wraps only the master key(s); the data
+    keys and every stored secret are untouched, so no SMTP password is re-encrypted and
+    none is exposed. The old passphrase is verified first — a wrong one changes nothing.
+    """
+    if not new_password:
+        raise VaultUnavailable("The new passphrase cannot be empty.")
+    sb = system_strongbox()
+    if sb is None:
+        raise VaultUnavailable("Jess's vault has not been set up yet.")
+
+    GervazyCryptoSession.rewrap_master_keys(sb, old_password, new_password)
+    clear_cache()          # a non-manual host may hold a session under the old passphrase
+    log_secret_event(
+        actor, "rotate_vault_passphrase", None,
+        reason="rotated the jess vault passphrase",
+    )
+
+
 def is_available() -> bool:
     """Can the vault be opened at all? Never raises.
 
@@ -167,13 +246,18 @@ def is_available() -> bool:
         return False
 
 
-def store_secret(plaintext: str, *, name: str, purpose: str = PURPOSE_SMTP_PASSWORD):
+def store_secret(plaintext: str, *, name: str, purpose: str = PURPOSE_SMTP_PASSWORD,
+                 session: GervazyCryptoSession | None = None):
     """Encrypt ``plaintext`` into Jess's strongbox and return the EncryptedSecret.
 
     ``name`` must be unique within the strongbox (``gervazy/models.py:319-328``), so
     callers append a uuid suffix — see ``unique_secret_name`` below.
+
+    ``session`` lets a manual-mode caller inject a session built from a typed passphrase
+    (``open_manual_session``); without it the ambient env session is used, which is the
+    non-manual path and raises ``VaultUnavailable`` in manual mode.
     """
-    session = open_session()
+    session = session or open_session()
     sb = system_strongbox()
     wrapped_key = sb.data_keys.filter(state="active").order_by("id").first()
     if wrapped_key is None:
@@ -181,36 +265,40 @@ def store_secret(plaintext: str, *, name: str, purpose: str = PURPOSE_SMTP_PASSW
     return session.encrypt_secret(wrapped_key, plaintext, name=name, purpose=purpose)
 
 
-def read_secret(secret, *, create: bool = True) -> str:
+def read_secret(secret, *, session: GervazyCryptoSession | None = None,
+                create: bool = True) -> str:
     """Decrypt a stored secret. Raises ``VaultUnavailable`` if the vault will not open.
 
     An ``InvalidTag`` from a wrong passphrase or a secret copied from another instance
     is translated too, because the caller's job is to record a legible failure rather
-    than to know about AEAD.
+    than to know about AEAD — and in manual mode this is exactly how a wrong TYPED
+    passphrase surfaces (the session builds fine; the unwrap fails here).
 
+    ``session`` injects a typed-passphrase session (manual mode). Without it,
     ``create=False`` forwards to ``open_session`` — see its docstring for the one caller
     that needs it.
     """
     if secret is None:
         raise VaultUnavailable("No secret is stored for this provider.")
     try:
-        return open_session(create=create).decrypt_secret(secret)
+        return (session or open_session(create=create)).decrypt_secret(secret)
     except VaultUnavailable:
         raise
     except Exception as exc:
         raise VaultUnavailable(
             f"Jess could not decrypt the stored password ({type(exc).__name__}). "
-            "A changed JESS_VAULT_PASSWORD, or a secret copied from another instance, "
-            "both look like this. Re-save the password in the admin."
+            "A wrong passphrase, a changed JESS_VAULT_PASSWORD, or a secret copied from "
+            "another instance all look like this."
         ) from exc
 
 
-def reencrypt_secret(secret, *, name: str):
+def reencrypt_secret(secret, *, name: str, session: GervazyCryptoSession | None = None):
     """Re-wrap the SAME value under a freshly minted data key — per-secret rotation.
 
     Returns the new EncryptedSecret; the caller repoints its row and retires the old one.
+    ``session`` injects a typed-passphrase session (manual mode).
     """
-    session = open_session()
+    session = session or open_session()
     plaintext = session.decrypt_secret(secret)
     new_dek = session.create_data_key()
     return session.encrypt_secret(new_dek, plaintext, name=name, purpose=secret.purpose)

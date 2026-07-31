@@ -5,9 +5,13 @@ from django import forms
 class ComposeForm(forms.Form):
     """One message, typed by a human.
 
-    Recipients are a comma-separated field rather than a formset because this is a test
-    and diagnostic surface: the point is to get a message out quickly and see what
-    happened, not to manage an audience.
+    Recipients are a comma-separated field rather than a formset because this is a send
+    surface for the odd message by hand: the point is to get one out quickly and see
+    what happened, not to manage an audience.
+
+    ``manual=True`` adds an optional passphrase field: on a manual-release host the
+    composer can type the vault passphrase to send their own message immediately, rather
+    than leaving it held for the release page. Left blank, the message is simply held.
     """
 
     to = forms.CharField(
@@ -25,6 +29,19 @@ class ComposeForm(forms.Form):
         widget=forms.Textarea(attrs={"rows": 6}),
         help_text="Attached as an alternative part, not a replacement.",
     )
+    passphrase = forms.CharField(
+        label="Vault passphrase (to send now)", required=False,
+        widget=forms.PasswordInput(render_value=False),
+        help_text="Manual-release host: type it to send this message immediately. "
+                  "Leave blank to hold it for release later.",
+    )
+
+    def __init__(self, *args, manual: bool = False, **kwargs):
+        super().__init__(*args, **kwargs)
+        if not manual:
+            # The passphrase field is meaningless on a non-manual host, so it is not
+            # even rendered there — no ambient/typed distinction exists.
+            del self.fields["passphrase"]
 
     def clean_to(self):
         raw = self.cleaned_data["to"]

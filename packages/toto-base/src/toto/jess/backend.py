@@ -27,6 +27,8 @@ import logging
 
 from django.core.mail.backends.base import BaseEmailBackend
 
+from . import vault
+
 logger = logging.getLogger(__name__)
 
 # Recognised on an EmailMessage to tag the outbox row, e.g.
@@ -69,7 +71,11 @@ class JessEmailBackend(BaseEmailBackend):
                     raise
                 continue
             self.recorded_ids.append(row.pk)
-            self._dispatch(row)
+            # In manual-release mode the row is HELD and there is no ambient passphrase,
+            # so nothing can be dispatched — it waits for an admin to release it. In the
+            # normal mode the row is handed to Celery exactly as before.
+            if not vault.manual_release_enabled():
+                self._dispatch(row)
             accepted += 1
         return accepted
 
@@ -110,6 +116,10 @@ class JessEmailBackend(BaseEmailBackend):
 
         provider = EmailProvider.active_provider()
 
+        # Manual-release hosts hold every message until an admin types the passphrase;
+        # everyone else queues for the worker. The status is the whole difference.
+        status = MailMessage.HELD if vault.manual_release_enabled() else MailMessage.QUEUED
+
         return MailMessage.objects.create(
             to=list(message.to or []),
             cc=list(getattr(message, "cc", None) or []),
@@ -125,7 +135,7 @@ class JessEmailBackend(BaseEmailBackend):
             provider=provider,
             provider_label=(provider.label if provider else ""),
             purpose=purpose,
-            status=MailMessage.QUEUED,
+            status=status,
             error=note,
         )
 
