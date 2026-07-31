@@ -17,6 +17,7 @@ Two halves:
 from __future__ import annotations
 
 import hashlib
+import re
 
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
@@ -44,6 +45,26 @@ def _fingerprint(value: str) -> str:
     if not value:
         return "—"
     return f"{hashlib.sha256(value.encode()).hexdigest()[:8]}…"
+
+
+def _suggested_host(raw: str | None) -> str:
+    """A hostname offered by a link, or "".
+
+    Only ever a *suggestion*: it is shown in an editable field, restated on the
+    minted page, and the code that comes out is useless anywhere but the host that
+    ends up here. Shape-checked so a crafted link cannot prefill the form with
+    prose that an operator might not read all of.
+    """
+    # Deferred like every other enrollment import here: this module is imported
+    # while the admin registry is being built, before the app registry is ready.
+    from .enrollment import normalise_host
+
+    host = normalise_host(raw or "")
+    if not host or len(host) > 253:
+        return ""
+    if not re.fullmatch(r"[a-z0-9]([a-z0-9.\-]*[a-z0-9])?", host):
+        return ""
+    return host
 
 
 @admin.register(SSORelyingParty)
@@ -164,6 +185,13 @@ class SSORelyingPartyAdmin(admin.ModelAdmin):
                     break
             form["roles"] = "roles" in relying_party.scope_list()
             form["trusted"] = relying_party.trusted
+        elif request.method == "GET":
+            # The other platform's "Federate to" page links here carrying the
+            # hostname it will really present, which saves the one value that has
+            # to be exact. Only the hostname is taken from the URL: `roles` and
+            # `trusted` are grants of authority and are decided on this side, by
+            # the person reading the page.
+            form["expected_host"] = _suggested_host(request.GET.get("host"))
 
         context = {
             **self.admin_site.each_context(request),

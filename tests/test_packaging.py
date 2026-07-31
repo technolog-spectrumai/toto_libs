@@ -235,7 +235,7 @@ def test_federation_pairing_ships_in_toto_auth(owner, all_names):
     # The QR page and the join page are templates, which is the thing a wheel
     # silently drops.
     assert owner.get("toto/sso_master/templates/admin/sso_master/pair.html") == "toto-auth"
-    assert owner.get("toto/sso_client/templates/admin/sso_client/join.html") == "toto-auth"
+    assert owner.get("toto/sso_client/templates/admin/sso_client/federate.html") == "toto-auth"
 
     # The provider suite's runnable settings, so a host's gate can run it at all.
     assert owner.get("toto/sso_master/testing/settings.py") == "toto-auth"
