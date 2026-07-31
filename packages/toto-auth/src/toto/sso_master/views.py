@@ -52,7 +52,9 @@ def _openid_configuration_payload(request, authorization_endpoint: str) -> dict:
             "given_name", "family_name", "display_name", "person_slug",
             "roles", "is_superuser",
         ],
-        "code_challenge_methods_supported": ["plain", "S256"],
+        # S256 only: plain gives a public client no protection, because the
+        # challenge travels in the /authorize URL. See services.verify_pkce.
+        "code_challenge_methods_supported": ["S256"],
     }
 
 

@@ -468,3 +468,66 @@ class ProvisioningIsolationTests(TestCase):
         gitea.refresh_from_db()
         self.assertEqual(gitea.client_id, "gitea")
         self.assertTrue(gitea.verify_client_secret("the-deployment-secret"))
+
+
+class PKCETests(TestCase):
+    """`plain` is refused; S256 still works.
+
+    A public client's challenge travels in the /authorize query string, so a
+    "verifier" equal to it is known to anyone who saw that URL. S256 is the only
+    method advertised and the only one accepted.
+    """
+
+    def test_s256_verifies(self):
+        import base64
+        import hashlib
+
+        from toto.sso_master.services import verify_pkce
+
+        verifier = "a" * 64
+        challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode()).digest()
+        ).rstrip(b"=").decode()
+        self.assertTrue(verify_pkce(verifier, challenge, "S256"))
+        self.assertFalse(verify_pkce("wrong" * 13, challenge, "S256"))
+
+    def test_a_missing_method_is_treated_as_s256_not_plain(self):
+        """OIDC defaults an absent method to plain, which is the weak one."""
+        import base64
+        import hashlib
+
+        from toto.sso_master.services import verify_pkce
+
+        verifier = "b" * 64
+        challenge = base64.urlsafe_b64encode(
+            hashlib.sha256(verifier.encode()).digest()
+        ).rstrip(b"=").decode()
+        self.assertTrue(verify_pkce(verifier, challenge, None))
+        # ...and the plain interpretation must NOT work.
+        self.assertFalse(verify_pkce(challenge, challenge, None))
+
+    def test_plain_is_refused(self):
+        from toto.sso_master.services import verify_pkce
+
+        self.assertFalse(verify_pkce("same-value", "same-value", "plain"))
+
+    def test_no_challenge_still_means_no_pkce(self):
+        """Confidential clients send none and authenticate with a secret."""
+        from toto.sso_master.services import verify_pkce
+
+        self.assertTrue(verify_pkce(None, None, None))
+
+    def test_only_s256_is_advertised(self):
+        """A client reads the discovery document to decide what to send."""
+        from django.test import Client
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()          # get_issuer needs one, or discovery 500s
+        with provider_urlconf():
+            body = Client(headers={"host": "provider.test"}).get(
+                reverse("sso:openid_configuration"),
+            ).json()
+        self.assertEqual(body["code_challenge_methods_supported"], ["S256"])
