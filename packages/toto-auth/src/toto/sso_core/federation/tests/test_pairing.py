@@ -531,3 +531,74 @@ class PKCETests(TestCase):
                 reverse("sso:openid_configuration"),
             ).json()
         self.assertEqual(body["code_challenge_methods_supported"], ["S256"])
+
+
+class EndToEndPairingTests(TestCase):
+    """The whole act of federation, both servers, in one process.
+
+    Everything above tests one side. This drives the consumer's real pairing
+    client against the provider's real endpoint through the same loopback the
+    token exchange uses — which is the only way to catch the seams, like the two
+    sides disagreeing about how a request body is encoded.
+    """
+
+    def test_a_consumer_can_pair_and_then_sign_somebody_in(self):
+        from toto.sso_client.models import OIDCProviderConfig
+        from toto.sso_client.pairing import pair
+        from toto.sso_core import vault
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        minted = _mint()
+
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            config = pair(minted.ticket, callback_uri=CALLBACK, label="Consumer")
+
+        # The consumer stored what the provider issued...
+        self.assertTrue(config.active)
+        self.assertEqual(config.client_id, minted.relying_party.client_id)
+        self.assertTrue(config.token_endpoint.endswith("/sso/token/"))
+
+        # ...the secret is in the vault, not in a column...
+        self.assertIsNotNone(config.secret_id)
+        secret = vault.read_secret(config.secret)
+        self.assertTrue(secret)
+        blob = " ".join(
+            str(getattr(config, f.name, "")) for f in OIDCProviderConfig._meta.fields
+        )
+        self.assertNotIn(secret, blob)
+
+        # ...and it is the secret the provider will actually accept.
+        rp = SSORelyingParty.objects.get(pk=minted.relying_party.pk)
+        self.assertEqual(rp.check_client_secret(secret), "current")
+        self.assertIn(CALLBACK, rp.redirect_uri_list())
+
+    def test_pairing_refuses_while_the_stale_env_var_is_set(self):
+        """It used to silently beat the stored value, so pairing would 'succeed'
+        and every login would then fail with invalid_client."""
+        import os
+        from unittest import mock
+
+        from toto.sso_client.pairing import PairingError, pair
+
+        minted = _mint()
+        with mock.patch.dict(os.environ, {"SSO_CLIENT_SECRET": "stale"}):
+            with self.assertRaises(PairingError) as caught:
+                pair(minted.ticket, callback_uri=CALLBACK)
+        self.assertEqual(caught.exception.code, "stale_env")
+        # And it refused BEFORE spending the code.
+        self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
+    def test_a_provider_refusal_reaches_the_operator_intact(self):
+        from toto.sso_client.pairing import PairingError, pair
+        from toto.sso_core.federation.bridge import ProviderLoopback
+
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            with self.assertRaises(PairingError) as caught:
+                pair(minted.ticket, callback_uri="https://wrong.test/sso/callback/")
+        # The provider's own sentence, not a status code.
+        self.assertIn(CONSUMER_HOST, caught.exception.message)

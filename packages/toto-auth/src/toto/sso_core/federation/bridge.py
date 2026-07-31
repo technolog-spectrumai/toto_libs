@@ -100,16 +100,36 @@ class ProviderLoopback:
             )
         return url[len(self.portal_url):]
 
-    def _dispatch(self, method, path, payload, headers):
-        self.calls.append((method, path, dict(payload or {})))
+    def _dispatch(self, method, path, payload, headers, *, content_type=None):
+        self.calls.append((method, path, payload if isinstance(payload, str) else dict(payload or {})))
         hook = self._hooks.pop(path, None)
         if hook:
             hook()
         with provider_urlconf():
             fn = getattr(self.client, method.lower())
-            return LoopbackResponse(fn(path, payload or {}, headers=headers or {}))
+            kwargs = {"headers": headers or {}}
+            if content_type:
+                kwargs["content_type"] = content_type
+            # secure=True because the real back-channel is https:// — the consumer
+            # will not call a provider over plaintext, and the provider refuses it.
+            # Without this the harness cannot reach any view that checks
+            # request.is_secure(), which /sso/enroll/ does.
+            return LoopbackResponse(fn(path, payload or {}, secure=True, **kwargs))
 
-    def post(self, url, data=None, headers=None, timeout=None, **_):
+    def post(self, url, data=None, json=None, headers=None, timeout=None, **_):
+        """``requests.post`` accepts either ``data=`` or ``json=``.
+
+        Both are used in this codebase — the token exchange posts form data, the
+        pairing call posts JSON — so the loopback has to honour the distinction or
+        one of them silently arrives with an empty body.
+        """
+        if json is not None:
+            import json as _json
+
+            return self._dispatch(
+                "POST", self._split(url), _json.dumps(json), headers,
+                content_type="application/json",
+            )
         return self._dispatch("POST", self._split(url), data, headers)
 
     def get(self, url, params=None, headers=None, timeout=None, **_):
