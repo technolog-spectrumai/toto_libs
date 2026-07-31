@@ -181,6 +181,43 @@ def get_client_credentials(request):
     return request.POST.get("client_id"), request.POST.get("client_secret")
 
 
+def _note_secret_proven(client, outcome):
+    """Close the rotation grace window the first time the new secret is used.
+
+    Called only from inside ``token()``'s transaction, and only after every other
+    check has passed, so a failed exchange never moves it.
+
+    ``"current"`` means the far side has demonstrably picked up the new secret, so
+    the old one is no longer needed and is dropped immediately rather than waiting
+    out its 24 hours — a rotation is only exposed for as long as it actually takes
+    the peer to notice.
+
+    ``"previous"`` means the peer is still presenting the old secret. Nothing is
+    stamped: the window must stay open, and ``previous_secret_used_at`` is what
+    lets the admin say "the other side has not picked up the new secret yet"
+    instead of the operator having to guess.
+    """
+    from django.utils import timezone
+
+    fields = []
+    if outcome == "current":
+        if client.secret_proven_at is None:
+            client.secret_proven_at = timezone.now()
+            fields.append("secret_proven_at")
+        if client.previous_secret_hash or client.previous_secret_expires_at:
+            client.previous_secret_hash = ""
+            client.previous_secret_expires_at = None
+            fields += ["previous_secret_hash", "previous_secret_expires_at"]
+    elif outcome == "previous":
+        client.previous_secret_used_at = timezone.now()
+        fields.append("previous_secret_used_at")
+
+    if fields:
+        # update_fields so this can never clobber a concurrent write to an
+        # unrelated column on the same row.
+        client.save(update_fields=fields)
+
+
 @csrf_exempt
 @require_POST
 def token(request):
@@ -218,7 +255,13 @@ def token(request):
     if auth_code.client_id != client.id:
         return JsonResponse({"error": "invalid_grant"}, status=400)
 
-    if not client.verify_client_secret(client_secret):
+    # "current", "previous" or None. This is the ONLY writer of secret_proven_at,
+    # and without it the whole rotation grace window is dead code: nothing else
+    # ever sets that field, so rotate_client_secret's guard never fires,
+    # previous_secret_hash is never populated, and re-pairing a live federation
+    # kills every session the instant the new secret is hashed.
+    secret_outcome = client.check_client_secret(client_secret)
+    if secret_outcome is None:
         return JsonResponse({"error": "invalid_client"}, status=401)
 
     if auth_code.redirect_uri != redirect_uri:
@@ -235,6 +278,7 @@ def token(request):
     # instead so a retry can succeed once the cause is fixed.
     with transaction.atomic():
         auth_code.mark_used()
+        _note_secret_proven(client, secret_outcome)
         access_token = SSOAccessToken.objects.create(client=client, user=auth_code.user, scope=auth_code.scope)
         id_token = build_id_token(
             request,
