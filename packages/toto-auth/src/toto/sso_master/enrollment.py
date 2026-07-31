@@ -82,7 +82,7 @@ def mint(
 
     from toto.sso_core import enrollment as core
 
-    expected_host = _normalise_host(expected_host)
+    expected_host = normalise_host(expected_host)
     if not expected_host:
         raise EnrollmentError("bad_request", "An expected hostname is required.")
     if not (provider_url or "").strip():
@@ -145,7 +145,7 @@ def redeem(request_data: dict, *, source_ip=None) -> wire.EnrollmentGrant:
     except wire.TicketError as exc:
         raise EnrollmentError("invalid_ticket", str(exc)) from exc
 
-    callback_host = _normalise_host(payload.callback_uri)
+    callback_host = normalise_host(payload.callback_uri)
     if not callback_host:
         raise EnrollmentError("bad_request", "The callback URI is not a valid absolute URL.")
 
@@ -298,7 +298,7 @@ def _grant(relying_party, client_secret: str, provider_url: str) -> wire.Enrollm
     )
 
 
-def _normalise_host(value: str) -> str:
+def normalise_host(value: str) -> str:
     """The hostname of a URL, or of a bare host. Lowercased, port stripped.
 
     Accepts both because an admin types ``studio.example.com`` while the consumer

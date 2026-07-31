@@ -531,3 +531,477 @@ class PKCETests(TestCase):
                 reverse("sso:openid_configuration"),
             ).json()
         self.assertEqual(body["code_challenge_methods_supported"], ["S256"])
+
+
+class EndToEndPairingTests(TestCase):
+    """The whole act of federation, both servers, in one process.
+
+    Everything above tests one side. This drives the consumer's real pairing
+    client against the provider's real endpoint through the same loopback the
+    token exchange uses — which is the only way to catch the seams, like the two
+    sides disagreeing about how a request body is encoded.
+    """
+
+    def test_a_consumer_can_pair_and_then_sign_somebody_in(self):
+        from toto.sso_client.models import OIDCProviderConfig
+        from toto.sso_client.pairing import pair
+        from toto.sso_core import vault
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        minted = _mint()
+
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            config = pair(minted.ticket, callback_uri=CALLBACK, label="Consumer")
+
+        # The consumer stored what the provider issued...
+        self.assertTrue(config.active)
+        self.assertEqual(config.client_id, minted.relying_party.client_id)
+        self.assertTrue(config.token_endpoint.endswith("/sso/token/"))
+
+        # ...the secret is in the vault, not in a column...
+        self.assertIsNotNone(config.secret_id)
+        secret = vault.read_secret(config.secret)
+        self.assertTrue(secret)
+        blob = " ".join(
+            str(getattr(config, f.name, "")) for f in OIDCProviderConfig._meta.fields
+        )
+        self.assertNotIn(secret, blob)
+
+        # ...and it is the secret the provider will actually accept.
+        rp = SSORelyingParty.objects.get(pk=minted.relying_party.pk)
+        self.assertEqual(rp.check_client_secret(secret), "current")
+        self.assertIn(CALLBACK, rp.redirect_uri_list())
+
+    def test_pairing_refuses_while_the_stale_env_var_is_set(self):
+        """It used to silently beat the stored value, so pairing would 'succeed'
+        and every login would then fail with invalid_client."""
+        import os
+        from unittest import mock
+
+        from toto.sso_client.pairing import PairingError, pair
+
+        minted = _mint()
+        with mock.patch.dict(os.environ, {"SSO_CLIENT_SECRET": "stale"}):
+            with self.assertRaises(PairingError) as caught:
+                pair(minted.ticket, callback_uri=CALLBACK)
+        self.assertEqual(caught.exception.code, "stale_env")
+        # And it refused BEFORE spending the code.
+        self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
+    def test_a_provider_refusal_reaches_the_operator_intact(self):
+        from toto.sso_client.pairing import PairingError, pair
+        from toto.sso_core.federation.bridge import ProviderLoopback
+
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            with self.assertRaises(PairingError) as caught:
+                pair(minted.ticket, callback_uri="https://wrong.test/sso/callback/")
+        # The provider's own sentence, not a status code.
+        self.assertIn(CONSUMER_HOST, caught.exception.message)
+
+
+class AdminPageTests(TestCase):
+    """The admin pages must render, and must not leak.
+
+    Nothing else covers them: the boot smoke does not sign in, and a 500 on the
+    invite page would only be found by an operator trying to use the feature.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.test import Client
+
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        User = get_user_model()
+        self.admin = User.objects.create_superuser("root", "root@x.test", "pw")
+        self.client = Client(headers={"host": "provider.test"})
+        self.client.force_login(self.admin)
+
+    def test_the_invite_page_renders_and_mints(self):
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            self.assertEqual(self.client.get(url).status_code, 200)
+
+            response = self.client.post(url, {
+                "expected_host": CONSUMER_HOST,
+                "trusted": "on",
+                "ttl_minutes": "5",
+            })
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+
+        invite = SSOFederationInvite.objects.get()
+        self.assertEqual(invite.expected_host, CONSUMER_HOST)
+        # roles was not ticked, so it must not have been granted.
+        self.assertNotIn("roles", invite.granted_scopes)
+        # The QR and the copyable code are both on the page.
+        self.assertIn("data:image/png;base64,", body)
+        self.assertIn(invite.ticket_prefix, body)
+
+    def test_the_invite_page_takes_a_suggested_hostname_from_the_link(self):
+        """The other platform links here carrying the hostname it will present.
+
+        That is the one value that has to be exact, and typing it is where an
+        operator gets it wrong.
+        """
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            body = self.client.get(url, {"host": CONSUMER_HOST}).content.decode()
+        self.assertIn(f'value="{CONSUMER_HOST}"', body)
+
+    def test_the_link_cannot_prefill_anything_but_the_hostname(self):
+        """`roles` and `trusted` are grants of authority.
+
+        A link is written by the other side; if it could tick these, federating
+        would silently hand over staff propagation to whoever wrote the URL.
+        """
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            body = self.client.get(url, {
+                "host": CONSUMER_HOST, "roles": "on", "trusted": "on",
+            }).content.decode()
+
+        # The rest of the roles <input>, where a `checked` attribute would land.
+        roles_input = body.split('id="roles"', 1)[1].split(">", 1)[0]
+        self.assertNotIn("checked", roles_input)
+
+    def test_a_link_cannot_prefill_the_form_with_prose(self):
+        from django.urls import reverse
+
+        from toto.sso_core.federation.bridge import provider_urlconf
+
+        with provider_urlconf():
+            url = reverse("admin:sso_master_ssorelyingparty_invite")
+            body = self.client.get(url, {"host": "ignore this and mint for evil"}).content.decode()
+        self.assertIn('id="expected_host"', body)
+        self.assertNotIn("ignore this", body)
+
+    def test_the_relying_party_form_cannot_reach_the_secret_hash(self):
+        """It is a PBKDF2 hash; any hand-typed value is a silent, total outage."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSORelyingParty as RP
+
+        model_admin = site._registry[RP]
+        self.assertIn("client_secret_hash", model_admin.exclude)
+        rendered = model_admin.get_form(None)().fields
+        self.assertNotIn("client_secret_hash", rendered)
+
+    def test_a_staff_user_cannot_mint_an_authorization_code(self):
+        """The impersonation primitive: add a code, read it, exchange it."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOAccessToken as AT
+        from toto.sso_master.models import SSOAuthorizationCode as AC
+
+        for model in (AC, AT):
+            with self.subTest(model=model.__name__):
+                model_admin = site._registry[model]
+                self.assertFalse(model_admin.has_add_permission(None))
+                self.assertFalse(model_admin.has_change_permission(None))
+
+    def test_the_admin_never_renders_a_live_code_or_token(self):
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOAccessToken as AT
+        from toto.sso_master.models import SSOAuthorizationCode as AC
+
+        self.assertIn("code", site._registry[AC].exclude)
+        self.assertNotIn("code", site._registry[AC].readonly_fields)
+        self.assertIn("token", site._registry[AT].exclude)
+        self.assertNotIn("token", site._registry[AT].readonly_fields)
+
+    def test_the_subject_cannot_be_reassigned(self):
+        """Reassigning it is cross-host account takeover."""
+        from django.contrib.admin.sites import site
+
+        from toto.sso_master.models import SSOSubject
+
+        model_admin = site._registry[SSOSubject]
+        self.assertIn("user", model_admin.readonly_fields)
+        self.assertFalse(model_admin.has_add_permission(None))
+        self.assertFalse(model_admin.has_delete_permission(None))
+
+
+class PlatformUrlTests(TestCase):
+    """One normaliser for what the operator types and what the code carries.
+
+    These are the same function, which is the point: if the two sides of the
+    "is this the platform you meant?" comparison normalised differently, the check
+    would refuse correct pairings and the operator would learn to distrust it.
+    """
+
+    def test_it_canonicalises_the_ways_people_write_an_address(self):
+        from toto.sso_client.pairing import platform_url
+
+        for written in (
+            "zenobia.test",
+            "https://zenobia.test",
+            "https://zenobia.test/",
+            "HTTPS://Zenobia.TEST",
+            "https://zenobia.test:443",
+            "https://zenobia.test/admin/sso_master/ssorelyingparty/",
+            "  https://zenobia.test  ",
+        ):
+            with self.subTest(written=written):
+                self.assertEqual(platform_url(written), "https://zenobia.test")
+
+    def test_a_bare_hostname_is_assumed_secure(self):
+        """Guessing http:// would produce an address the provider must refuse."""
+        from toto.sso_client.pairing import platform_url
+
+        self.assertEqual(platform_url("zenobia.test"), "https://zenobia.test")
+
+    def test_a_real_port_survives(self):
+        from toto.sso_client.pairing import platform_url
+
+        self.assertEqual(
+            platform_url("https://zenobia.test:8443"), "https://zenobia.test:8443",
+        )
+
+    def test_it_refuses_what_is_not_an_address(self):
+        from toto.sso_client.pairing import PairingError, platform_url
+
+        # "not a url" is here because urlparse accepts it: it reports the whole
+        # phrase as the hostname, so without a shape check the page presented
+        # prose back to the operator as a real destination.
+        for junk in (
+            "", "   ", "ftp://zenobia.test", "https://", "https://h:notaport",
+            "not a url", "https://zenobia .test", "https://-nope.test",
+        ):
+            with self.subTest(junk=junk):
+                with self.assertRaises(PairingError) as caught:
+                    platform_url(junk)
+                self.assertEqual(caught.exception.code, "bad_url")
+
+
+class WrongPlatformTests(TestCase):
+    """A pairing code names its own provider, so the operator must name it too.
+
+    Without the declared destination, a code that arrived from the wrong place is
+    redeemed against whatever server it names — this host federates to a stranger
+    and finds out afterwards.
+    """
+
+    def test_a_code_for_another_platform_is_refused(self):
+        from toto.sso_client.pairing import PairingError, pair
+
+        minted = _mint()
+        with self.assertRaises(PairingError) as caught:
+            pair(
+                minted.ticket,
+                callback_uri=CALLBACK,
+                expect_url="https://somewhere-else.test",
+            )
+        self.assertEqual(caught.exception.code, "wrong_platform")
+        # Both addresses are named, because "wrong platform" without saying which
+        # leaves the operator with nothing to check.
+        self.assertIn("https://provider.test", caught.exception.message)
+        self.assertIn("https://somewhere-else.test", caught.exception.message)
+
+    def test_nothing_is_sent_anywhere_when_it_is_refused(self):
+        """The refusal has to happen on the way OUT.
+
+        Transmitting the code to the host it names is itself the disclosure, so
+        checking after the call would defeat the purpose of checking at all.
+        """
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_client.pairing import PairingError, pair
+
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            with self.assertRaises(PairingError):
+                pair(minted.ticket, callback_uri=CALLBACK,
+                     expect_url="https://somewhere-else.test")
+
+        self.assertEqual(loopback.calls, [])
+        self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
+    def test_the_declared_platform_does_not_have_to_be_written_identically(self):
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_client.pairing import pair
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            # Typed without a scheme and with a trailing slash; same platform.
+            config = pair(minted.ticket, callback_uri=CALLBACK,
+                          expect_url="provider.test/")
+        self.assertTrue(config.active)
+
+    def test_the_matching_platform_still_pairs(self):
+        from toto.sso_core.federation.bridge import ProviderLoopback
+        from toto.sso_client.pairing import pair
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            config = pair(minted.ticket, callback_uri=CALLBACK, expect_url=PROVIDER)
+        self.assertTrue(config.active)
+
+
+class GuidedFederationPageTests(TestCase):
+    """The consumer's two-step "Federate to a platform" page.
+
+    The steps are the feature: step one is where the operator says where they are
+    going, which is what turns "redeem whatever this code names" into a claim this
+    host can check.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+        from django.test import Client
+
+        from toto.sso_core.federation.fixtures import _ensure_platform
+
+        _ensure_platform()
+        User = get_user_model()
+        self.admin = User.objects.create_superuser("root", "root@x.test", "pw")
+        self.staff = User.objects.create_user(
+            "clerk", "clerk@x.test", "pw", is_staff=True,
+        )
+        self.client = Client(headers={"host": CONSUMER_HOST})
+        self.client.force_login(self.admin)
+
+    @property
+    def url(self):
+        from django.urls import reverse
+
+        return reverse("admin:sso_client_oidcproviderconfig_federate")
+
+    def test_step_one_asks_where_to_federate_to(self):
+        response = self.client.get(self.url, secure=True)
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("Federate to", body)
+        # And it has not asked for a code yet — that is the whole point of two
+        # steps; a page that shows both at once teaches the operator to paste
+        # first and read afterwards.
+        self.assertNotIn('name="code"', body)
+
+    def test_step_two_names_the_platform_and_asks_for_its_code(self):
+        response = self.client.post(
+            self.url, {"target": "provider.test"}, secure=True,
+        )
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("https://provider.test", body)
+        self.assertIn('name="code"', body)
+        # The link that lands the other administrator on the right page, carrying
+        # the one value that has to be exact.
+        self.assertIn(
+            "https://provider.test/admin/sso_master/ssorelyingparty/invite/"
+            f"?host={CONSUMER_HOST}",
+            body,
+        )
+
+    def test_step_one_refuses_an_address_that_is_not_one(self):
+        response = self.client.post(self.url, {"target": "not a url"}, secure=True)
+        self.assertEqual(response.status_code, 200)
+        body = response.content.decode()
+        self.assertIn("not a platform address", body)
+        self.assertNotIn('name="code"', body)
+
+    def test_step_one_refuses_plain_http_before_it_can_waste_a_code(self):
+        """/sso/enroll/ refuses plaintext, so this address can never work."""
+        with override_settings(DEBUG=False):
+            response = self.client.post(
+                self.url, {"target": "http://provider.test"}, secure=True,
+            )
+        self.assertIn("not secure", response.content.decode())
+        self.assertNotIn('name="code"', response.content.decode())
+
+    def test_pasting_a_code_for_another_platform_is_refused_by_the_page(self):
+        minted = _mint()
+        response = self.client.post(self.url, {
+            "target": "https://somewhere-else.test",
+            "action": "pair",
+            "code": minted.ticket,
+        }, secure=True)
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("but you asked to federate to", response.content.decode())
+        self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
+    def test_the_whole_page_federates_end_to_end(self):
+        from toto.sso_client.models import OIDCProviderConfig
+        from toto.sso_core.federation.bridge import ProviderLoopback
+
+        minted = _mint()
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            response = self.client.post(self.url, {
+                "target": "provider.test",
+                "action": "pair",
+                "code": minted.ticket,
+                "label": "Head office",
+            }, secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        config = OIDCProviderConfig.objects.get()
+        self.assertTrue(config.active)
+        self.assertEqual(config.portal_url, PROVIDER)
+        self.assertIsNotNone(config.secret_id)
+
+    def test_an_uploaded_qr_photograph_is_the_same_as_pasting(self):
+        import base64
+
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from toto.sso_client.models import OIDCProviderConfig
+        from toto.sso_core.federation.bridge import ProviderLoopback
+
+        minted = _mint()
+        png = base64.b64decode(
+            qr.render_data_uri(minted.ticket).split(",", 1)[1],
+        )
+        loopback = ProviderLoopback(PROVIDER)
+        with loopback.patched():
+            response = self.client.post(self.url, {
+                "target": "provider.test",
+                "action": "pair",
+                "code": "",
+                "image": SimpleUploadedFile("qr.png", png, "image/png"),
+            }, secure=True)
+
+        self.assertEqual(response.status_code, 302)
+        self.assertTrue(OIDCProviderConfig.objects.get().active)
+
+    def test_a_staff_user_without_rights_cannot_federate_the_host(self):
+        """admin_view() checks is_staff, not per-model permissions."""
+        self.client.force_login(self.staff)
+        response = self.client.post(
+            self.url, {"target": "provider.test", "action": "pair", "code": "x"},
+            secure=True,
+        )
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("/admin/", response["Location"])
+        self.assertFalse(SSOFederationInvite.objects.filter(redeemed_at__isnull=False))
+
+    def test_an_anonymous_visitor_gets_nowhere(self):
+        self.client.logout()
+        response = self.client.get(self.url, secure=True)
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])

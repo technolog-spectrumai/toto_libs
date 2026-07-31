@@ -1,18 +1,28 @@
-"""The consumer's federation surface: join a platform, and see who is linked.
+"""The consumer's federation surface: federate to a platform, and see who is linked.
 
 Two things here are new rather than moved:
 
-* **"Join a platform"** replaces the connection-bundle paste. That bundle carried
-  a client secret through a downloaded file and a human's clipboard; this takes a
-  pairing code — useless to anyone who is not this host — and lets the two servers
-  exchange the secret directly.
+* **"Federate to a platform"** replaces the connection-bundle paste. That bundle
+  carried a client secret through a downloaded file and a human's clipboard; this
+  takes a pairing code — useless to anyone who is not this host — and lets the two
+  servers exchange the secret directly.
 * **``FederatedIdentity`` is registered at all.** It had no admin, while being the
   precondition for every federated login: claims are matched only on a recorded
   ``(provider, sub)``. An operator could not see who was linked, audit it, or
   revoke it.
+
+**Why the page has two steps rather than one.** Naming the platform first is not
+decoration. A pairing code carries its own provider's address, so a single paste
+box redeems whatever the code names — an operator handed the wrong code federates
+this host to a stranger and finds out afterwards. Declaring the destination first
+turns that into a comparison this host can make, and the step exists on the way
+*out* so it happens before the code is transmitted anywhere.
 """
 from __future__ import annotations
 
+from urllib.parse import quote, urlparse
+
+from django.conf import settings
 from django.contrib import admin, messages
 from django.http import HttpResponseRedirect
 from django.shortcuts import render
@@ -79,76 +89,124 @@ class OIDCProviderConfigAdmin(admin.ModelAdmin):
     def get_urls(self):
         return [
             path(
-                "join/",
-                self.admin_site.admin_view(self.join_view),
-                name="sso_client_oidcproviderconfig_join",
+                "federate/",
+                self.admin_site.admin_view(self.federate_view),
+                name="sso_client_oidcproviderconfig_federate",
             ),
         ] + super().get_urls()
 
     def changelist_view(self, request, extra_context=None):
         extra_context = extra_context or {}
-        extra_context["join_url"] = reverse("admin:sso_client_oidcproviderconfig_join")
+        extra_context["federate_url"] = reverse(
+            "admin:sso_client_oidcproviderconfig_federate",
+        )
         return super().changelist_view(request, extra_context=extra_context)
 
-    def join_view(self, request):
-        """Paste a pairing code, or upload a photograph of one."""
+    def federate_view(self, request):
+        """Two steps: name the platform, then hand over its code.
+
+        Step one is where the operator says what they are trying to do; step two
+        is where they do it. The gap between the two is what lets this host check
+        that the code it was given comes from the platform that was asked for.
+        """
         from toto.sso_core import qr
 
-        from .pairing import PairingError, pair
+        from .pairing import PairingError, pair, platform_url
 
-        # admin_view() checks is_active and is_staff but not per-model rights.
+        # admin_view() checks is_active and is_staff but not per-model rights, so
+        # without this a staff user with no rights on this model reaches a page
+        # that federates the whole host.
         if not self.has_change_permission(request):
             self.message_user(
-                request, "You do not have permission to pair with a platform.",
+                request, "You do not have permission to federate with a platform.",
                 level=messages.ERROR,
             )
             return HttpResponseRedirect(reverse("admin:index"))
 
+        callback_uri = _callback_uri(request)
         context = {
             **self.admin_site.each_context(request),
-            "title": "Join a platform",
+            "title": "Federate to a platform",
             "opts": self.model._meta,
+            "step": 1,
             "error": None,
             "code": "",
-            "callback_uri": _callback_uri(request),
+            "target": (request.GET.get("target") or "").strip(),
+            "callback_uri": callback_uri,
+            "own_host": urlparse(callback_uri).hostname or "",
+            "current": OIDCProviderConfig.objects.filter(active=True).first(),
         }
 
-        if request.method == "POST":
-            code = (request.POST.get("code") or "").strip()
-            upload = request.FILES.get("image")
+        if request.method != "POST":
+            return render(request, "admin/sso_client/federate.html", context)
 
-            # A photograph is just another way of typing the code; both converge
-            # here so there is one pairing path to get right.
-            if upload and not code:
-                try:
-                    code = qr.read(upload.read())
-                except qr.QRError as exc:
-                    context["error"] = str(exc)
-            context["code"] = code
+        # -- step 1: which platform? ------------------------------------------
+        raw_target = (request.POST.get("target") or "").strip()
+        context["target"] = raw_target
+        try:
+            target = platform_url(raw_target)
+        except PairingError as exc:
+            context["error"] = exc.message
+            return render(request, "admin/sso_client/federate.html", context)
 
-            if not context["error"]:
-                if not code:
-                    context["error"] = "Paste a pairing code, or upload a picture of one."
-                else:
-                    try:
-                        config = pair(
-                            code,
-                            callback_uri=context["callback_uri"],
-                            label=request.POST.get("label") or "",
-                        )
-                    except PairingError as exc:
-                        context["error"] = exc.message
-                    else:
-                        self.message_user(
-                            request,
-                            f"Paired with {config.label}. Federated sign-in is live.",
-                            level=messages.SUCCESS,
-                        )
-                        return HttpResponseRedirect(reverse(
-                            "admin:sso_client_oidcproviderconfig_change", args=[config.pk],
-                        ))
+        if target.startswith("http://") and not settings.DEBUG:
+            # Say it here rather than let it fail at the far end: /sso/enroll/
+            # refuses plaintext, so this address cannot work whatever they paste.
+            context["error"] = (
+                f"{target} is not secure, and a platform will not accept a pairing "
+                "code over plain HTTP. Use https://."
+            )
+            return render(request, "admin/sso_client/federate.html", context)
 
-        return render(request, "admin/sso_client/join.html", context)
+        context["target"] = target
+        context["step"] = 2
+        context["invite_url"] = (
+            f"{target}/admin/sso_master/ssorelyingparty/invite/"
+            f"?host={quote(context['own_host'])}"
+        )
+
+        if request.POST.get("action") != "pair":
+            return render(request, "admin/sso_client/federate.html", context)
+
+        # -- step 2: the code --------------------------------------------------
+        code = (request.POST.get("code") or "").strip()
+        upload = request.FILES.get("image")
+
+        # A photograph is just another way of typing the code; both converge here
+        # so there is one pairing path to get right.
+        if upload and not code:
+            try:
+                code = qr.read(upload.read())
+            except qr.QRError as exc:
+                context["error"] = str(exc)
+        context["code"] = code
+
+        if context["error"]:
+            return render(request, "admin/sso_client/federate.html", context)
+        if not code:
+            context["error"] = "Paste the pairing code, or upload a picture of it."
+            return render(request, "admin/sso_client/federate.html", context)
+
+        try:
+            config = pair(
+                code,
+                callback_uri=callback_uri,
+                label=request.POST.get("label") or "",
+                expect_url=target,
+            )
+        except PairingError as exc:
+            context["error"] = exc.message
+            return render(request, "admin/sso_client/federate.html", context)
+
+        self.message_user(
+            request,
+            f"Federated with {config.label}. People can now sign in here with "
+            f"their {urlparse(config.portal_url).hostname} account.",
+            level=messages.SUCCESS,
+        )
+        return HttpResponseRedirect(reverse(
+            "admin:sso_client_oidcproviderconfig_change", args=[config.pk],
+        ))
 
     @admin.display(description="Client secret")
     def secret_state(self, obj):

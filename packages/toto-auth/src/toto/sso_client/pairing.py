@@ -17,6 +17,7 @@ without a network.
 from __future__ import annotations
 
 import logging
+import re
 from urllib.parse import urlparse
 
 from django.db import transaction
@@ -31,6 +32,11 @@ logger = logging.getLogger(__name__)
 # than a dead one, because the worker is held for the whole wait.
 PAIR_TIMEOUT = (5, 15)
 
+# Dotted labels, so "localhost", "zenobia.example.com" and an IPv4 literal all
+# pass. A bracketed IPv6 literal does not, deliberately: it cannot carry an
+# ordinary TLS certificate, and the provider refuses a plaintext pairing.
+_HOSTNAME = re.compile(r"[a-z0-9]([a-z0-9\-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9\-]*[a-z0-9])?)*")
+
 
 class PairingError(Exception):
     """Pairing failed. ``message`` is written to be read by an operator."""
@@ -41,13 +47,77 @@ class PairingError(Exception):
         self.code = code
 
 
-def pair(ticket_text: str, *, callback_uri: str, label: str = "") -> "OIDCProviderConfig":  # noqa: F821
+def platform_url(raw: str) -> str:
+    """A platform address in one canonical shape: ``scheme://host[:port]``.
+
+    Both the address an operator types and the one a pairing code carries go
+    through this, so the two can never disagree about what counts as the same
+    platform — a bare hostname, a trailing slash, a copied ``/admin/`` URL and an
+    explicit ``:443`` all land on the same string.
+    """
+    text = (raw or "").strip()
+    if not text:
+        raise PairingError(
+            "Enter the address of the platform you want to federate to.",
+            code="bad_url",
+        )
+    if "://" not in text:
+        # Somebody who types a bare hostname means the secure one; the provider
+        # refuses plaintext anyway, so guessing http:// would only fail later.
+        text = "https://" + text
+    try:
+        parsed = urlparse(text)
+        port = parsed.port
+    except ValueError as exc:                   # e.g. "https://host:notaport"
+        raise PairingError(
+            f"{raw.strip()!r} is not a platform address — {exc}. "
+            "It should look like https://zenobia.example.com.",
+            code="bad_url",
+        ) from exc
+
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        raise PairingError(
+            f"{raw.strip()!r} is not a platform address. It should look like "
+            "https://zenobia.example.com.",
+            code="bad_url",
+        )
+
+    host = parsed.hostname.lower()
+    # urlparse is permissive enough to call "not a url" a hostname, so the shape
+    # has to be checked here — otherwise prose typed into the field comes back as
+    # a destination the page then presents as real.
+    if not _HOSTNAME.fullmatch(host):
+        raise PairingError(
+            f"{raw.strip()!r} is not a platform address: {host!r} is not a "
+            "hostname. It should look like https://zenobia.example.com.",
+            code="bad_url",
+        )
+
+    if port and port not in ((443 if parsed.scheme == "https" else 80),):
+        host = f"{host}:{port}"
+    return f"{parsed.scheme}://{host}"
+
+
+def pair(
+    ticket_text: str,
+    *,
+    callback_uri: str,
+    label: str = "",
+    expect_url: str | None = None,
+) -> "OIDCProviderConfig":  # noqa: F821
     """Redeem a pairing code and store the resulting credentials.
 
     ``callback_uri`` must be the absolute URL this host will really send at
     ``/authorize``, because the provider registers it verbatim and then compares
     it as an exact string. The caller derives it from the live request rather than
     from configuration, so it cannot drift.
+
+    ``expect_url`` is the platform the operator said they were federating to. A
+    pairing code names its own provider, so without this a code that arrived from
+    the wrong place — substituted, or simply the wrong one of two — is redeemed
+    against whatever server it names, and this host ends up federated to a
+    stranger. Checked **before** the network call, so a misdirected code is never
+    transmitted to the host it names.
     """
     from django.conf import settings
 
@@ -72,6 +142,19 @@ def pair(ticket_text: str, *, callback_uri: str, label: str = "") -> "OIDCProvid
     except wire.TicketError as exc:
         raise PairingError(str(exc), code="bad_ticket") from exc
 
+    # 2. Is this the platform the operator meant? Before anything leaves the host:
+    #    sending the code to the server it names is itself the disclosure.
+    if expect_url:
+        wanted = platform_url(expect_url)
+        offered = platform_url(ticket.url)
+        if wanted != offered:
+            raise PairingError(
+                f"This code is for {offered}, but you asked to federate to "
+                f"{wanted}. Nothing has been sent to either. Check you were given "
+                "the right code, or go back and correct the address.",
+                code="wrong_platform",
+            )
+
     if not _is_absolute(callback_uri):
         raise PairingError(
             "This host does not know its own public URL, so it cannot tell the "
@@ -79,7 +162,7 @@ def pair(ticket_text: str, *, callback_uri: str, label: str = "") -> "OIDCProvid
             code="bad_callback",
         )
 
-    # 2. The vault must be openable BEFORE the code is spent. A pairing code is
+    # 3. The vault must be openable BEFORE the code is spent. A pairing code is
     #    single-use: redeeming it and only then discovering the vault is locked
     #    would burn it and force the operator back to the other platform for a new
     #    one. Fail early instead.
@@ -97,7 +180,7 @@ def pair(ticket_text: str, *, callback_uri: str, label: str = "") -> "OIDCProvid
 
     grant = _post(endpoint, payload, portal=ticket.url)
 
-    # 3. Store the secret encrypted, then activate — in one transaction, so a
+    # 4. Store the secret encrypted, then activate — in one transaction, so a
     #    half-paired row can never be left active with no secret.
     with transaction.atomic():
         config = _config_for(grant, portal_url=ticket.url)
