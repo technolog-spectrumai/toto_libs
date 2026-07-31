@@ -72,5 +72,9 @@ class AccountForm(forms.ModelForm):
         model = EmailProvider
         fields = [
             "label", "backend", "host", "port", "use_tls", "use_ssl", "timeout",
-            "username", "from_address", "reply_to", "active",
+            "username", "from_address", "reply_to",
+            # Inbound (optional): fill these in and the account can receive as well as
+            # send — the inbox fetches from here. Username + password are shared.
+            "imap_host", "imap_port", "imap_use_ssl", "mailbox",
+            "active",
         ]

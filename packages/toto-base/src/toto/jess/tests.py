@@ -25,10 +25,11 @@ from django.urls import reverse
 from toto.core.email_config import email_delivery_configured
 from toto.core.models import Platform
 
+from . import receive
 from . import status as jess_status
 from . import vault
 from .backend import PURPOSE_HEADER, JessEmailBackend
-from .models import EmailProvider, MailMessage
+from .models import EmailProvider, InboundMessage, MailMessage
 
 User = get_user_model()
 
@@ -765,6 +766,7 @@ class StaffGateTests(JessTestCase):
         self.urls = [
             reverse("jess:outbox"),
             reverse("jess:account"),
+            reverse("jess:inbox"),
             reverse("jess:compose"),
             reverse("jess:message_detail", args=[self.message.pk]),
             reverse("jess:message_status", args=[self.message.pk]),
@@ -1083,6 +1085,157 @@ class AccountPageManualTests(JessTestCase):
         self.assertEqual(row.status, MailMessage.FAILED)
 
 
+RAW_PLAIN = (
+    b"From: Alice <alice@example.org>\r\n"
+    b"To: platform@example.org\r\n"
+    b"Subject: Hello there\r\n"
+    b"Message-ID: <msg-1@example.org>\r\n"
+    b"Date: Mon, 01 Jan 2026 10:00:00 +0000\r\n"
+    b"\r\n"
+    b"This is the plain body.\r\n"
+)
+
+RAW_MULTIPART = (
+    b"From: Bob <bob@example.org>\r\n"
+    b"To: platform@example.org\r\n"
+    b"Subject: A multipart note\r\n"
+    b"Message-ID: <msg-2@example.org>\r\n"
+    b"In-Reply-To: <earlier@example.org>\r\n"
+    b"References: <root@example.org> <earlier@example.org>\r\n"
+    b'Content-Type: multipart/alternative; boundary="B"\r\n'
+    b"\r\n"
+    b"--B\r\n"
+    b"Content-Type: text/plain; charset=utf-8\r\n\r\n"
+    b"plain part\r\n"
+    b"--B\r\n"
+    b"Content-Type: text/html; charset=utf-8\r\n\r\n"
+    b"<p>html part</p>\r\n"
+    b"--B--\r\n"
+)
+
+
+class _FakeIMAP:
+    """The slice of imaplib a fetch touches, backed by a list of raw messages."""
+
+    def __init__(self, raws):
+        self._raws = list(raws)
+
+    def select(self, mailbox):
+        return ("OK", [str(len(self._raws)).encode()])
+
+    def search(self, charset, criteria):
+        return ("OK", [b" ".join(str(i + 1).encode() for i in range(len(self._raws)))])
+
+    def fetch(self, num, spec):
+        raw = self._raws[int(num) - 1]
+        return ("OK", [(b"%b (RFC822 {%d}" % (num, len(raw)), raw)])
+
+    def logout(self):
+        return ("BYE", [b"logging out"])
+
+
+class InboxReceiveTests(TestCase):
+    """Parsing and storing received mail — no HTTP, no live server."""
+
+    def test_parse_extracts_the_key_fields(self):
+        fields = receive.parse_message(RAW_MULTIPART)
+        self.assertEqual(fields["from_address"], "bob@example.org")
+        self.assertEqual(fields["to"], ["platform@example.org"])
+        self.assertEqual(fields["subject"], "A multipart note")
+        self.assertEqual(fields["body"].strip(), "plain part")
+        self.assertIn("html part", fields["html_body"])
+        self.assertEqual(fields["message_id"], "<msg-2@example.org>")
+        self.assertEqual(fields["in_reply_to"], "<earlier@example.org>")
+        self.assertEqual(fields["references"], ["<root@example.org>", "<earlier@example.org>"])
+
+    def test_store_is_idempotent_by_message_id(self):
+        provider = EmailProvider.objects.create(label="Acct", backend="smtp",
+                                                host="smtp.x", imap_host="imap.x")
+        first = receive.store_message(RAW_PLAIN, provider=provider)
+        self.assertIsNotNone(first)
+        again = receive.store_message(RAW_PLAIN, provider=provider)
+        self.assertIsNone(again)                        # same Message-ID → skipped
+        self.assertEqual(InboundMessage.objects.count(), 1)
+
+    def test_fetch_new_stores_new_messages_and_dedupes_on_a_refetch(self):
+        provider = EmailProvider.objects.create(label="Acct", backend="smtp",
+                                                host="smtp.x", imap_host="imap.x")
+        fake = _FakeIMAP([RAW_PLAIN, RAW_MULTIPART])
+        with patch("toto.jess.receive.build_imap_connection", return_value=fake):
+            stored = receive.fetch_new(provider)
+            self.assertEqual(stored, 2)
+            self.assertEqual(receive.fetch_new(provider), 0)   # idempotent
+        self.assertEqual(InboundMessage.objects.count(), 2)
+
+
+@override_settings(EMAIL_BACKEND=JESS_BACKEND)
+class InboxViewTests(JessTestCase):
+    """The staff inbox: list, on-demand fetch, read, and a threaded reply."""
+
+    def setUp(self):
+        super().setUp()
+        self.client.force_login(self.staff)
+
+    def _receiving_provider(self):
+        p = self._smtp_provider(label="Acct", username="me", imap_host="imap.example.org")
+        p.secret = vault.store_secret("pw", name=vault.unique_secret_name())
+        p.save(update_fields=["secret"])
+        return p
+
+    def _inbound(self, **kw):
+        defaults = {
+            "from_address": "alice@example.org", "to": ["platform@example.org"],
+            "subject": "Hi", "body": "hello", "message_id": "<in-1@example.org>",
+        }
+        defaults.update(kw)
+        return InboundMessage.objects.create(**defaults)
+
+    def test_inbox_lists_received_mail(self):
+        self._inbound(subject="Look at this")
+        res = self.client.get(reverse("jess:inbox"))
+        self.assertEqual(res.status_code, 200)
+        self.assertContains(res, "Look at this")
+
+    def test_fetch_stores_messages(self):
+        self._receiving_provider()
+        fake = _FakeIMAP([RAW_PLAIN, RAW_MULTIPART])
+        with patch("toto.jess.receive.build_imap_connection", return_value=fake):
+            res = self.client.post(reverse("jess:inbox_fetch"))
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(InboundMessage.objects.count(), 2)
+
+    def test_fetch_without_a_receiving_account_is_a_clean_error(self):
+        self._provider(label="Send only")               # console, no imap_host
+        res = self.client.post(reverse("jess:inbox_fetch"))
+        self.assertEqual(res.status_code, 302)
+        self.assertEqual(InboundMessage.objects.count(), 0)
+
+    def test_opening_a_message_marks_it_read(self):
+        msg = self._inbound()
+        self.assertFalse(msg.read)
+        self.client.get(reverse("jess:inbound_detail", args=[msg.pk]))
+        msg.refresh_from_db()
+        self.assertTrue(msg.read)
+        self.assertEqual(msg.read_by, self.staff)
+
+    def test_reply_sends_a_threaded_outbound_message(self):
+        self._provider(label="Console")                 # something to send through
+        msg = self._inbound(message_id="<orig@example.org>", references=["<root@example.org>"])
+        with patch("toto.jess.tasks.send_mail_message.delay"):
+            res = self.client.post(reverse("jess:inbox_reply", args=[msg.pk]), {
+                "to": "alice@example.org", "subject": "Re: Hi", "body": "my reply",
+                "html_body": "",
+            })
+        reply = MailMessage.objects.get(purpose=MailMessage.PURPOSE_OTHER)
+        self.assertEqual(reply.headers.get("In-Reply-To"), "<orig@example.org>")
+        self.assertIn("<orig@example.org>", reply.headers.get("References", ""))
+        self.assertIn("<root@example.org>", reply.headers.get("References", ""))
+        msg.refresh_from_db()
+        self.assertEqual(msg.replied_with, reply)
+        self.assertRedirects(res, reverse("jess:message_detail", args=[reply.pk]),
+                             fetch_redirect_response=False)
+
+
 class AdminTests(JessTestCase):
     def setUp(self):
         super().setUp()
@@ -1303,12 +1456,12 @@ class SocialhubEndorsementMailTests(JessTestCase):
 # ---------------------------------------------------------------------------
 
 class DatalinkPolicyTests(TestCase):
-    def test_both_jess_models_are_refused(self):
-        """A provider holds a credential; an outbox holds who was emailed what."""
+    def test_every_jess_model_is_refused(self):
+        """A provider holds a credential; the outbox and inbox hold private mail."""
         from toto.datalink.registry import IDENTITY_REFUSE, load_registry, policy_for
 
         load_registry()
-        for label in ("jess.EmailProvider", "jess.MailMessage"):
+        for label in ("jess.EmailProvider", "jess.MailMessage", "jess.InboundMessage"):
             with self.subTest(label=label):
                 policy = policy_for(label)
                 self.assertEqual(policy.identity, IDENTITY_REFUSE)

@@ -17,7 +17,7 @@ from django.utils.html import format_html
 
 from . import status as jess_status
 from . import vault
-from .models import EmailProvider, MailMessage
+from .models import EmailProvider, InboundMessage, MailMessage
 
 
 class EmailProviderForm(forms.ModelForm):
@@ -62,6 +62,12 @@ class EmailProviderAdmin(admin.ModelAdmin):
                            "hang on an unresponsive server.",
         }),
         ("Identity", {"fields": ("from_address", "reply_to")}),
+        ("IMAP (inbound)", {
+            "fields": ("imap_host", "imap_port", "imap_use_ssl", "mailbox"),
+            "description": "Optional. Fill these in and the staff inbox can fetch mail "
+                           "this account has received; the username and password above "
+                           "are reused. Leave the host blank for a send-only account.",
+        }),
         ("Bookkeeping", {"fields": ("created_at", "updated_at")}),
     )
 
@@ -262,3 +268,24 @@ class MailMessageAdmin(admin.ModelAdmin):
             "🔒 Hidden — a password-reset link is a one-time credential and is never "
             "shown to staff. It is released (sent) without being read."
         )
+
+
+@admin.register(InboundMessage)
+class InboundMessageAdmin(admin.ModelAdmin):
+    """The inbox, read-only. Received mail is an audit trail; fetching happens on the
+    staff inbox page, not here."""
+
+    list_display = ["received_at", "from_address", "subject", "read", "provider_label"]
+    list_filter = ["read"]
+    search_fields = ["from_address", "subject", "message_id"]
+    date_hierarchy = "received_at"
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    @admin.display(description="Account")
+    def provider_label(self, obj):
+        return obj.provider.label if obj.provider else "—"

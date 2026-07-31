@@ -30,10 +30,11 @@ from django.views.decorators.http import require_GET, require_POST
 from toto.ui import PageProcessor
 
 from . import delivery
+from . import receive
 from . import status as jess_status
 from . import vault
 from .forms import AccountForm, ComposeForm
-from .models import EmailProvider, MailMessage
+from .models import EmailProvider, InboundMessage, MailMessage
 
 # The outbox is a diagnostic surface, not an archive browser. Same cap idea as
 # fileservices' RUN_LIST_CAP.
@@ -314,6 +315,7 @@ def outbox(request):
         "delivery_status": jess_status.describe(),
         "compose_url": reverse("jess:compose"),
         "account_url": reverse("jess:account"),
+        "inbox_url": reverse("jess:inbox"),
         "release_url": reverse("jess:release"),
     })
 
@@ -380,6 +382,170 @@ def message_retry(request, pk):
     JessEmailBackend()._dispatch(message)
     messages.success(request, "Queued again.")
     return redirect(reverse("jess:message_detail", args=[message.pk]))
+
+
+# -- the inbox: mail this account has received ------------------------------------
+
+INBOX_CAP = 200
+
+
+def _quote(inbound) -> str:
+    """A quoted copy of the received message, for a reply body."""
+    quoted = "\n".join(f"> {line}" for line in (inbound.body or "").splitlines())
+    when = inbound.date_header or inbound.received_at
+    who = inbound.from_address or "someone"
+    return f"\n\nOn {when:%Y-%m-%d}, {who} wrote:\n{quoted}\n"
+
+
+def inbox(request):
+    """What has arrived. Fetched on demand — nothing polls in the background."""
+    _staff_only(request)
+    rows = list(InboundMessage.objects.select_related("provider")[:INBOX_CAP])
+    provider = EmailProvider.active_provider()
+    return _render(request, "jess/inbox.html", {
+        "messages_list": rows,
+        "page_title": "Inbox",
+        "unread": InboundMessage.objects.filter(read=False).count(),
+        "capped": len(rows) >= INBOX_CAP,
+        "cap": INBOX_CAP,
+        "can_receive": bool(provider and provider.can_receive),
+        "manual": vault.manual_release_enabled(),
+        "provider": provider,
+        "fetch_url": reverse("jess:inbox_fetch"),
+        "outbox_url": reverse("jess:outbox"),
+        "account_url": reverse("jess:account"),
+    })
+
+
+@require_POST
+@sensitive_post_parameters("passphrase")
+def inbox_fetch(request):
+    """Pull new mail from the account's mailbox, now. Inline, bounded, human-triggered.
+
+    On a manual-release host the admin types the passphrase here, exactly as they do to
+    release outbound mail — which is the whole reason the inbox is on-demand rather than a
+    background poll: there is no server-side passphrase for an unattended job to use.
+    """
+    _staff_only(request)
+    provider = EmailProvider.active_provider()
+    if provider is None or not provider.can_receive:
+        messages.error(
+            request,
+            "No account is set up to receive mail — add an IMAP host and a password on "
+            "the email-setup page first.",
+        )
+        return redirect(reverse("jess:inbox"))
+    try:
+        session = (
+            vault.open_manual_session((request.POST.get("passphrase") or "").strip())
+            if vault.manual_release_enabled() else None
+        )
+        count = receive.fetch_new(provider, session=session)
+    except vault.VaultUnavailable as exc:
+        messages.error(request, str(exc))
+        return redirect(reverse("jess:inbox"))
+    except Exception as exc:                    # noqa: BLE001 — legible failure, never a 500
+        messages.error(request, f"Could not fetch mail: {type(exc).__name__}: {exc}")
+        return redirect(reverse("jess:inbox"))
+
+    if count:
+        messages.success(request, f"Fetched {count} new message(s).")
+    else:
+        messages.info(request, "No new mail.")
+    return redirect(reverse("jess:inbox"))
+
+
+def inbound_detail(request, pk):
+    """Read one received message. Marks it read on first open."""
+    _staff_only(request)
+    message = get_object_or_404(InboundMessage, pk=pk)
+    if not message.read:
+        from django.utils import timezone
+
+        InboundMessage.objects.filter(pk=pk).update(
+            read=True, read_at=timezone.now(), read_by=request.user,
+        )
+        message.read = True
+    return _render(request, "jess/inbound_detail.html", {
+        "message": message,
+        "page_title": "Message",
+        "reply_url": reverse("jess:inbox_reply", args=[message.pk]),
+        "inbox_url": reverse("jess:inbox"),
+    })
+
+
+@sensitive_post_parameters("passphrase")
+def inbox_reply(request, pk):
+    """Reply to a received message. Goes out through the same path as ``compose`` — a
+    normal outbound ``MailMessage`` — with the threading headers set and a link back here.
+    """
+    _staff_only(request)
+    inbound = get_object_or_404(InboundMessage, pk=pk)
+    manual = vault.manual_release_enabled()
+
+    if request.method != "POST":
+        subject = inbound.subject or ""
+        if not subject.lower().startswith("re:"):
+            subject = f"Re: {subject}".strip()
+        form = ComposeForm(
+            initial={"to": inbound.from_address, "subject": subject, "body": _quote(inbound)},
+            manual=manual,
+        )
+        return _render(request, "jess/reply.html", {
+            "form": form, "inbound": inbound, "page_title": "Reply", "manual": manual,
+            "delivery_status": jess_status.describe(),
+        })
+
+    form = ComposeForm(request.POST, manual=manual)
+    if not form.is_valid():
+        return _render(request, "jess/reply.html", {
+            "form": form, "inbound": inbound, "page_title": "Reply", "manual": manual,
+            "delivery_status": jess_status.describe(),
+        })
+
+    from django.core.mail import EmailMultiAlternatives, get_connection
+
+    from .backend import PURPOSE_HEADER
+
+    references = list(inbound.references or [])
+    if inbound.message_id and inbound.message_id not in references:
+        references.append(inbound.message_id)
+    headers = {PURPOSE_HEADER: MailMessage.PURPOSE_OTHER}
+    if inbound.message_id:
+        headers["In-Reply-To"] = inbound.message_id
+    if references:
+        headers["References"] = " ".join(references)
+
+    connection = get_connection()
+    email = EmailMultiAlternatives(
+        subject=form.cleaned_data["subject"],
+        body=form.cleaned_data["body"],
+        to=form.cleaned_data["to"],
+        headers=headers,
+        connection=connection,
+    )
+    if form.cleaned_data["html_body"]:
+        email.attach_alternative(form.cleaned_data["html_body"], "text/html")
+    email.send(fail_silently=False)
+
+    recorded = list(getattr(connection, "recorded_ids", []))
+    if recorded:
+        MailMessage.objects.filter(pk__in=recorded).update(created_by=request.user)
+        InboundMessage.objects.filter(pk=inbound.pk).update(replied_with_id=recorded[0])
+        passphrase = (request.POST.get("passphrase") or "").strip()
+        if manual and passphrase:
+            error = _release_ids(request, recorded, passphrase)
+            if error:
+                messages.error(request, error)
+        messages.success(request, "Reply sent.")
+        return redirect(reverse("jess:message_detail", args=[recorded[0]]))
+
+    messages.warning(
+        request,
+        "The reply was handed to Django, but EMAIL_BACKEND is not Jess — so there is no "
+        "outbox row for it.",
+    )
+    return redirect(reverse("jess:inbox"))
 
 
 # -- manual release: the passphrase never outlives the request -------------------
