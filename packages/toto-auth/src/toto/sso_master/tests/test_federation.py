@@ -47,10 +47,14 @@ class PlatformInfoApiTests(TestCase):
         self.assertEqual(res.json()["site_name"], "Zenobia")
 
     def test_the_logo_is_exposed_as_an_absolute_url(self):
-        self.platform.logo.save("logo.png", ContentFile(_PNG), save=True)
+        # Set the stored name only — never write a file. `.url` is built from the name
+        # + MEDIA_URL, and writing into the source tree's MEDIA_ROOT would leave a
+        # gitignored artifact (see test_no_source_file_under_packages_is_gitignored).
+        self.platform.logo = "federation_logos/logo.png"
+        self.platform.save(update_fields=["logo"])
         body = self._basic("studio", self.secret).json()
         self.assertTrue(body["logo_url"].startswith("http"))
-        self.assertIn("federation_logos", body["logo_url"])
+        self.assertIn("federation_logos/logo.png", body["logo_url"])
 
     def test_no_logo_is_null_not_an_error(self):
         body = self._basic("studio", self.secret).json()
