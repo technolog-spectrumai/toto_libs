@@ -15,6 +15,9 @@ urlpatterns = [
     path("link/", views.federated_link, name="federated_link"),
     path("logout/", views.oidc_logout, name="logout"),
     path("callback/", views.oidc_callback, name="callback"),
+    # The child's federation console (staff): show the parent, redeem a pairing code,
+    # test the link. Same name as the provider's so a dashboard card links either host.
+    path("federation/", views.federation_console, name="federation_console"),
 ]
 
 # Password reset, from the same sso_core definitions the provider mounts — so a
