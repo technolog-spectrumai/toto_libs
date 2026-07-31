@@ -101,6 +101,18 @@ class EmailProvider(models.Model):
     )
     reply_to = models.EmailField(blank=True)
 
+    # --- IMAP (inbound): the same account, read as well as written ---
+    # Optional. Fill these in and the staff inbox can fetch mail this account has
+    # received, on demand. The `username` and the stored `secret` above are reused —
+    # one account, both directions — so there is nothing else to configure.
+    imap_host = models.CharField(
+        max_length=255, blank=True,
+        help_text="e.g. imap.fastmail.com. Leave blank if this account is send-only.",
+    )
+    imap_port = models.PositiveIntegerField(default=993, blank=True)
+    imap_use_ssl = models.BooleanField(default=True, help_text="Implicit TLS on port 993.")
+    mailbox = models.CharField(max_length=255, default="INBOX", blank=True)
+
     active = models.BooleanField(
         default=False,
         help_text="Exactly one provider is active; activating this one deactivates "
@@ -153,6 +165,11 @@ class EmailProvider(models.Model):
     def needs_secret(self) -> bool:
         """Is a password required for this provider to authenticate?"""
         return self.backend == BACKEND_SMTP and bool((self.username or "").strip())
+
+    @property
+    def can_receive(self) -> bool:
+        """Configured to fetch inbound mail? Needs an IMAP host and a stored password."""
+        return bool((self.imap_host or "").strip()) and bool(self.secret_id)
 
     @classmethod
     def active_provider(cls):
@@ -303,3 +320,63 @@ class MailMessage(models.Model):
         release is still auditable.
         """
         return self.purpose == self.PURPOSE_PASSWORD_RESET
+
+
+class InboundMessage(models.Model):
+    """One received message — the inbox, the mirror of ``MailMessage``.
+
+    Fetched on demand from the account's IMAP mailbox (``jess/receive.py``), never by a
+    background poller: on a manual-release host there is no server-side passphrase for an
+    unattended job to log in with, so a human triggers the fetch and — under manual
+    release — types the passphrase, exactly as they do to release outbound mail.
+
+    Deduplicated by ``message_id`` so a re-fetch is idempotent. Threading is by
+    ``message_id`` / ``in_reply_to``; a reply is an ordinary outbound ``MailMessage``
+    linked back here through ``replied_with``.
+    """
+
+    from_address = models.CharField(max_length=255, blank=True)
+    to = models.JSONField(default=list, blank=True)
+    subject = models.TextField(blank=True)
+    body = models.TextField(blank=True)
+    html_body = models.TextField(blank=True)
+    headers = models.JSONField(default=dict, blank=True)
+
+    # The RFC Message-ID, unique so a re-fetch cannot duplicate a row. A (rare,
+    # non-conformant) message with no Message-ID gets a synthesised one at fetch time.
+    message_id = models.CharField(max_length=998, unique=True)
+    in_reply_to = models.CharField(max_length=998, blank=True)
+    references = models.JSONField(default=list, blank=True)
+
+    # The account it was fetched through. SET_NULL like MailMessage.provider — received
+    # mail outlives the provider being reconfigured or removed.
+    provider = models.ForeignKey(
+        EmailProvider, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="inbound",
+    )
+
+    received_at = models.DateTimeField(auto_now_add=True)
+    # The message's own Date: header — not the same as when we fetched it.
+    date_header = models.DateTimeField(null=True, blank=True)
+
+    read = models.BooleanField(default=False, db_index=True)
+    read_at = models.DateTimeField(null=True, blank=True)
+    read_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="jess_read",
+    )
+
+    # The outbound reply sent from here, if any — a plain link into the outbox.
+    replied_with = models.ForeignKey(
+        MailMessage, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="reply_to_inbound",
+    )
+
+    class Meta:
+        ordering = ["-received_at"]
+        indexes = [models.Index(fields=["read", "received_at"])]
+        verbose_name = "Inbound message"
+        verbose_name_plural = "Inbound messages"
+
+    def __str__(self):
+        return f"{self.subject or '(no subject)'} ← {self.from_address or '(unknown)'}"

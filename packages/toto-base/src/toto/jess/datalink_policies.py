@@ -30,3 +30,13 @@ register(SyncPolicy(
         "already failed, on the sender."
     ),
 ))
+register(SyncPolicy(
+    "jess.InboundMessage", stage=STAGE_INFRA, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "An inbox is private received mail — senders, subjects and bodies addressed to "
+        "this platform, fetched from its own mailbox. It is the received counterpart of "
+        "the outbox and refused for the same reason: replicating it would hand a peer "
+        "correspondence it has no business holding, and the peer could not act on it in "
+        "any case."
+    ),
+))

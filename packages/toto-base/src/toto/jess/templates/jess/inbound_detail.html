@@ -1,0 +1,60 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ message.subject|default:_("Message") }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <a href="{{ inbox_url }}" class="inline-flex items-center gap-2 text-sm font-medium opacity-70 hover:opacity-100">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Inbox" %}
+    </a>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="space-y-4 rounded-xl border p-5">
+      <div class="flex flex-wrap items-start justify-between gap-3">
+        <h1 class="text-xl font-bold">{{ message.subject|default:_("(no subject)") }}</h1>
+        <a href="{{ reply_url }}"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex shrink-0 items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-reply"></i> {% trans "Reply" %}
+        </a>
+      </div>
+
+      <dl class="grid grid-cols-[auto,1fr] gap-x-4 gap-y-1 text-sm">
+        <dt class="font-semibold opacity-70">{% trans "From" %}</dt><dd>{{ message.from_address|default:"—" }}</dd>
+        <dt class="font-semibold opacity-70">{% trans "To" %}</dt><dd class="opacity-80">{{ message.to|join:", "|default:"—" }}</dd>
+        <dt class="font-semibold opacity-70">{% trans "Received" %}</dt><dd class="opacity-80">{{ message.received_at }}</dd>
+        {% if message.date_header %}<dt class="font-semibold opacity-70">{% trans "Date" %}</dt><dd class="opacity-80">{{ message.date_header }}</dd>{% endif %}
+      </dl>
+
+      {% if message.replied_with %}
+        <p class="text-sm opacity-80">
+          <i class="fa-solid fa-reply"></i> {% trans "Replied." %}
+          <a href="{% url 'jess:message_detail' message.replied_with.pk %}"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="font-semibold hover:underline">{% trans "See the reply" %}</a>
+        </p>
+      {% endif %}
+    </div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+         class="rounded-xl border p-5">
+      {% if message.body %}
+        <p class="whitespace-pre-wrap break-words text-sm leading-6">{{ message.body }}</p>
+      {% elif message.html_body %}
+        <p class="text-sm opacity-70">{% trans "This message is HTML-only; its text is not shown here. Open it in a mail client if you need the formatted version." %}</p>
+      {% else %}
+        <p class="text-sm opacity-60">{% trans "(empty body)" %}</p>
+      {% endif %}
+      {% if message.body and message.html_body %}
+        <p class="mt-3 text-xs opacity-60">{% trans "This message also has an HTML part, not shown." %}</p>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

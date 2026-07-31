@@ -94,11 +94,28 @@ login page is worse than one that refuses.
 
 | Page | What it is for |
 |---|---|
+| `/jess/account/` | set up the email account — SMTP (and optional IMAP) host, sign-in, password — and send a test to prove it works, without the Django admin |
 | `/jess/compose/` | send a message by hand (manual mode: type the passphrase to send now, or leave it held) |
 | `/jess/` | the outbox: what has been sent, what has not, and — in manual mode — how much is held |
 | `/jess/messages/<pk>/` | one message, polled live, with the failure verbatim and a **Retry** (or **Release** if held) |
+| `/jess/inbox/` · `/jess/inbox/<pk>/` | received mail, fetched on demand, and one message read (with a **Reply**) |
 | `/jess/release/` | manual mode: type the passphrase to release held mail |
 | `/jess/vault/set-up/` · `/jess/vault/password/` · `/jess/vault/passphrase/` | manual mode: initialise the vault, set the SMTP password, change the passphrase |
+
+## Receiving (the inbox)
+
+The same account can be read as well as written: give an `EmailProvider` an IMAP host on
+the account page and `/jess/inbox/` can **fetch** the mail it has received into an
+`InboundMessage` row, list it, and let a staff member **reply** — the reply goes out
+through the ordinary outbox path, threaded with `In-Reply-To`/`References`.
+
+Fetching is **on demand, never a background poll**, and that is a deliberate consequence
+of manual-release custody: a scheduled job would have to decrypt the IMAP password with no
+human present, and in manual-release mode there is no server-side passphrase for it to use.
+So a person triggers the fetch — and under manual release types the passphrase — exactly
+as they do to release outbound mail. It also means the inbox works on a host with no Celery
+worker (the fetch runs in the request), and is bounded per fetch so the request stays short.
+Dedup is by `Message-ID`, so fetching twice is safe.
 
 There are no automatic retries. Nothing else in this suite retries either, and a silent
 exponential backoff hides a misconfigured server for hours. A failed row keeps its error
@@ -112,7 +129,9 @@ debug log. `MailMessage.purpose` already separates the streams — `test`, `manu
 limiting will need.
 
 What is **not** built yet, and is not pretended to be: templates, schedules, recipient
-lists, bounce handling, unsubscribe. Those arrive when something actually needs them.
+lists, unsubscribe. Bounce handling is the natural next thing, and now cheap: a bounce is
+just an `InboundMessage` the inbox already fetches, correlated back to its outbound
+`MailMessage` through `headers`/`purpose`. Those arrive when something actually needs them.
 
 ---
 
