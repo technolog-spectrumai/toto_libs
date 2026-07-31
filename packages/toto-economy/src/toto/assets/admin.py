@@ -1,13 +1,9 @@
-from django import forms as django_forms
 from django.contrib import admin
-from django.utils.safestring import mark_safe
 
 from .hashing import verify_hash_chain
 from .models import (
-    Agreement,
     Asset,
     AssetHolding,
-    Contract,
     Currency,
     LedgerAccount,
     LedgerAccountKey,
@@ -15,7 +11,6 @@ from .models import (
     LedgerEntry,
     LedgerHash,
     LedgerTransaction,
-    Obligation,
     WalletAuthorization,
     WalletPin,
 )
@@ -166,106 +161,6 @@ class CurrencyAdmin(admin.ModelAdmin):
     list_filter = ('is_active',)
     search_fields = ('code', 'name')
     raw_id_fields = ('asset',)
-
-
-class _AceYamlWidget(django_forms.Textarea):
-    """Textarea replaced by an Ace editor (YAML mode) in the admin."""
-
-    class Media:
-        js = ["https://cdnjs.cloudflare.com/ajax/libs/ace/1.36.4/ace.js"]
-
-    def render(self, name, value, attrs=None, renderer=None):
-        if attrs is None:
-            attrs = {}
-        field_id = attrs.get("id", f"id_{name}")
-        ace_div_id = f"ace_editor_{field_id}"
-        attrs["style"] = "display:none"
-        textarea_html = super().render(name, value, attrs, renderer)
-        init_value = (value or "").replace("\\", "\\\\").replace("`", "\\`")
-        script = mark_safe(f"""
-<div id="{ace_div_id}" style="height:500px;border:1px solid #ccc;border-radius:4px"></div>
-{textarea_html}
-<script>
-(function() {{
-  function initAce() {{
-    if (typeof ace === 'undefined') {{ setTimeout(initAce, 50); return; }}
-    var editor = ace.edit("{ace_div_id}");
-    editor.setTheme("ace/theme/monokai");
-    editor.session.setMode("ace/mode/yaml");
-    editor.setFontSize(13);
-    editor.setValue(`{init_value}`, -1);
-    var ta = document.getElementById("{field_id}");
-    editor.session.on('change', function() {{ ta.value = editor.getValue(); }});
-  }}
-  if (document.readyState === 'loading') {{
-    document.addEventListener('DOMContentLoaded', initAce);
-  }} else {{
-    initAce();
-  }}
-}})();
-</script>
-""")
-        return script
-
-
-class _ContractAdminForm(django_forms.ModelForm):
-    class Meta:
-        from .models import Contract as _Contract
-        model = _Contract
-        fields = "__all__"
-        widgets = {"code": _AceYamlWidget(attrs={"rows": 30})}
-
-
-@admin.register(Contract)
-class ContractAdmin(admin.ModelAdmin):
-    form = _ContractAdminForm
-    list_display = ("name", "has_code", "created_at")
-    search_fields = ("name", "code")
-    readonly_fields = ("created_at",)
-
-    @staticmethod
-    def has_code(obj):
-        return bool(obj.code)
-    has_code.boolean = True
-    has_code.short_description = "Has code"
-
-
-@admin.register(Agreement)
-class AgreementAdmin(admin.ModelAdmin):
-    list_display = ("uuid", "source_account", "target_account", "contract", "created_at")
-    search_fields = (
-        "uuid",
-        "source_account__code",
-        "source_account__name",
-        "target_account__code",
-        "target_account__name",
-        "contract__name",
-    )
-    readonly_fields = ("uuid", "created_at")
-    raw_id_fields = ("source_account", "target_account", "contract")
-
-
-@admin.register(Obligation)
-class ObligationAdmin(admin.ModelAdmin):
-    list_display = ('reference', 'debtor_account', 'creditor_account', 'asset', 'amount_display', 'due_at', 'status')
-    list_filter = ('status', 'asset')
-    search_fields = ('reference', 'order_reference', 'debtor_account__code', 'creditor_account__code')
-    readonly_fields = ('created_at', 'updated_at', 'fulfilled_at', 'amount_display', 'collateral_display')
-    raw_id_fields = ('debtor_account', 'creditor_account', 'asset', 'collateral_account', 'collateral_asset')
-
-    @staticmethod
-    def amount_display(obj):
-        return f"{obj.amount_display} {obj.asset.unit_name}"
-    amount_display.short_description = "Amount"
-
-    @staticmethod
-    def collateral_display(obj):
-        if obj.collateral_asset:
-            return f"{obj.collateral_display} {obj.collateral_asset.unit_name}"
-        return "—"
-    collateral_display.short_description = "Collateral"
-
-
 
 
 @admin.register(LedgerAccountKey)

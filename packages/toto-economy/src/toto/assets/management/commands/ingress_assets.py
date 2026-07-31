@@ -14,7 +14,6 @@ from toto.assets.models import (
 )
 from toto.assets.services.assets import (
     create_asset,
-    create_obligation,
     reverse_transaction,
     transfer_asset,
 )
@@ -62,18 +61,14 @@ class Command(IngressCommand):
             return
 
         # Everything below this point is full-only:
-        # demo tokens, demo accounts, SPC/GGM/WUT, transfers, wallets,
-        # agreements, founder obligations, contracts.
+        # demo tokens, demo accounts, SPC/GGM/WUT, transfers, wallets.
         demo_tokens = self._seed_demo_platform_assets()
         demo_accounts = self._seed_accounts()
         demo_assets = self._seed_assets(demo_accounts)
-        contracts = self._seed_contracts()
 
         combined_assets = {**currency_assets, **demo_tokens, **demo_assets}
         self._seed_transfers(demo_assets, demo_accounts)
         self._seed_user_wallets(demo_accounts, combined_assets)
-        self._seed_sample_agreements(demo_accounts, contracts)
-        self._seed_founder_obligations(demo_accounts, combined_assets)
 
         self.stdout.write(self.style.SUCCESS("✅  Asset ledger ingress complete."))
 
@@ -570,215 +565,5 @@ class Command(IngressCommand):
             try:
                 transfer_asset(**spec)
                 self.stdout.write(f"  + distribution {ref}")
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
-
-    # ------------------------------------------------------------------ #
-    # Full-only: Contracts                                                #
-    # ------------------------------------------------------------------ #
-
-    _CONTRACT_SPECS = [
-        dict(
-            name="Noop",
-            code=(
-                "language: lapis\n"
-                "version: 1\n"
-                "name: Noop\n"
-                "actions:\n"
-                "  execute:\n"
-                "    body:\n"
-                "      type: seq\n"
-                "      steps:\n"
-                "        - type: approve\n"
-            ),
-            metadata={"description": "Does nothing — useful for testing wiring."},
-        ),
-        dict(
-            name="Log Event",
-            code=(
-                "language: lapis\n"
-                "version: 1\n"
-                "name: LogEvent\n"
-                "actions:\n"
-                "  execute:\n"
-                "    body:\n"
-                "      type: seq\n"
-                "      steps:\n"
-                "        - type: log\n"
-                "          value:\n"
-                "            type: bytes\n"
-                "            value: agreement_executed\n"
-                "        - type: approve\n"
-            ),
-            metadata={"description": "Logs an agreement_executed message on every execution."},
-        ),
-        dict(
-            name="Assert State",
-            code=(
-                "language: lapis\n"
-                "version: 1\n"
-                "name: AssertState\n"
-                "actions:\n"
-                "  execute:\n"
-                "    body:\n"
-                "      type: seq\n"
-                "      steps:\n"
-                "        - type: assert\n"
-                "          condition:\n"
-                "            type: eq\n"
-                "            left:\n"
-                "              type: app_global_get\n"
-                "              key:\n"
-                "                type: bytes\n"
-                "                value: status\n"
-                "            right:\n"
-                "              type: bytes\n"
-                "              value: active\n"
-                "        - type: log\n"
-                "          value:\n"
-                "            type: bytes\n"
-                "            value: state_checked\n"
-                "        - type: approve\n"
-            ),
-            metadata={"description": "Asserts global state 'status' equals 'active', then logs and approves."},
-        ),
-    ]
-
-    def _seed_contracts(self) -> dict:
-        from toto.assets.models import Contract
-
-        contracts = {}
-        for spec in self._CONTRACT_SPECS:
-            name = spec["name"]
-            contract, created = Contract.objects.get_or_create(
-                name=name,
-                defaults={"code": spec["code"], "metadata": spec.get("metadata", {})},
-            )
-            contracts[name] = contract
-            if created:
-                self.stdout.write(f"  + contract '{name}'")
-            else:
-                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing contract '{name}'"))
-        return contracts
-
-    def _seed_sample_agreements(self, accounts: dict, contracts: dict):
-        from toto.assets.models import Agreement
-
-        noop = contracts.get("Noop")
-        record = contracts.get("Log Event")
-
-        specs = []
-        if noop and "alice" in accounts and "bob" in accounts:
-            specs.append(dict(
-                source_account=accounts["alice"],
-                target_account=accounts["bob"],
-                contract=noop,
-                metadata={"note": "Demo noop agreement between Alice and Bob."},
-            ))
-        if record and "bob" in accounts and "carol" in accounts:
-            specs.append(dict(
-                source_account=accounts["bob"],
-                target_account=accounts["carol"],
-                contract=record,
-                metadata={"note": "Demo record-event agreement between Bob and Carol."},
-            ))
-
-        for spec in specs:
-            src = spec["source_account"].code
-            tgt = spec["target_account"].code
-            if Agreement.objects.filter(
-                source_account=spec["source_account"],
-                target_account=spec["target_account"],
-            ).exists():
-                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing agreement {src}→{tgt}"))
-                continue
-            try:
-                Agreement.objects.create(**spec)
-                self.stdout.write(f"  + agreement {src}→{tgt}")
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(f"  ✗ agreement {src}→{tgt}: {exc}"))
-
-    # ------------------------------------------------------------------ #
-    # Full-only: Founder obligations                                      #
-    # ------------------------------------------------------------------ #
-
-    def _seed_founder_obligations(self, accounts: dict, assets: dict):
-        from django.contrib.auth import get_user_model
-        from toto.assets.models import Obligation
-
-        User = get_user_model()
-        admin = User.objects.filter(is_superuser=True).order_by("id").first()
-        if not admin:
-            self.stdout.write(self.style.WARNING("  ⚠ No superuser found — skipping founder obligations."))
-            return
-
-        founder_account, created = LedgerAccount.objects.get_or_create(
-            code="founder",
-            defaults={
-                "name": f"Founder — {admin.get_full_name() or admin.username}",
-                "account_type": "user",
-                "active": True,
-                "user": admin,
-            },
-        )
-        if not created and founder_account.user_id != admin.pk:
-            founder_account.user = admin
-            founder_account.save(update_fields=["user"])
-        if created:
-            self.stdout.write(f"  + account founder (linked to {admin})")
-
-        treasury = accounts.get("treasury")
-        tpln = assets.get("TPLN")
-
-        funding = []
-        if tpln and tpln.reserve_account:
-            funding.append(dict(
-                asset=tpln, sender_account=tpln.reserve_account,
-                receiver_account=founder_account,
-                amount=Decimal("8000.00"),
-                reference="dist-tpln-founder-001",
-                description="TPLN allocation to Founder",
-            ))
-
-        for spec in funding:
-            ref = spec["reference"]
-            if LedgerTransaction.objects.filter(reference=ref).exists():
-                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing funding {ref}"))
-                continue
-            try:
-                transfer_asset(**spec)
-                self.stdout.write(f"  + funding {ref}")
-            except Exception as exc:
-                self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))
-
-        obligation_specs = []
-        if tpln and treasury:
-            obligation_specs.append(dict(
-                reference="test-obligation-founder-tpln-001",
-                debtor_account=founder_account,
-                creditor_account=treasury,
-                asset=tpln,
-                amount=Decimal("250.00"),
-                due_at=timezone.now() + timedelta(days=14),
-                order_reference="test-fine-001",
-            ))
-            obligation_specs.append(dict(
-                reference="test-obligation-founder-tpln-overdue-001",
-                debtor_account=founder_account,
-                creditor_account=treasury,
-                asset=tpln,
-                amount=Decimal("75.00"),
-                due_at=timezone.now() - timedelta(days=3),
-                order_reference="test-fine-003",
-            ))
-
-        for spec in obligation_specs:
-            ref = spec["reference"]
-            if Obligation.objects.filter(reference=ref).exists():
-                self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing obligation {ref}"))
-                continue
-            try:
-                create_obligation(**spec)
-                self.stdout.write(f"  + obligation {ref}")
             except Exception as exc:
                 self.stdout.write(self.style.ERROR(f"  ✗ {ref}: {exc}"))

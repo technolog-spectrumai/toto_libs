@@ -31,14 +31,21 @@ The foundation. Everything else settles here.
   Tamper evidence at the DB level. `verify_hash_chain()` re-verifies the whole chain.
 - **Obligation** — a recorded debt between two accounts, to be settled by future
   transactions. Used by magistrate fines, payroll, loans.
+  *(Pulled back out of the live app on 2026-07-31 — see `lapis/` below.)*
 - **Contract + Agreement** — the runtime layer for Lapis smart contracts. A YAML-based
   VM validates state transitions before they hit the ledger.
+  *(Pulled back out of the live app on 2026-07-31 — see `lapis/` below.)*
 - **Currency** — a display/exchange denomination separate from the ledger asset.
 - **Tokenization** — a OneToOne link between a physical `inventory.RealWorldObject` and
   an on-ledger `Asset`. Enables collateralisation of real property.
 
 **Backend swap point:** the ledger has an abstract `LedgerBackend`. Swap Django/Postgres
 for Algorand or Solana by subclassing and setting `ASSETS_BACKEND` in settings.
+
+> **2026-07-31 — Lapis + Obligation pulled back to limbo.** The live `assets` app kept
+> its ledger core but shed the immature smart-contract layer (the Lapis VM, `Contract`,
+> `Agreement`) and `Obligation`. That code now sits in `limbo/lapis/` — see its README.
+> The live `assets` migration `0002` drops the three tables.
 
 ---
 
