@@ -53,14 +53,39 @@ already here: it is the same envelope that protects the SSO signing key.
 Jess unlocks its own strongbox, `jess-system`, with `JESS_VAULT_PASSWORD`.
 
 > **If that passphrase is lost or regenerated, every stored secret is permanently
-> unreadable.** `deploy.py` mints it once and preserves it across redeploys for exactly
-> this reason. Nothing can recover a secret without it — that is the point of encryption
-> at rest, and it is worth knowing before you rotate anything.
+> unreadable.** In the default mode `deploy.py` mints it once and preserves it across
+> redeploys for exactly this reason. Nothing can recover a secret without it — that is the
+> point of encryption at rest, and it is worth knowing before you rotate anything.
 
 When the vault is unavailable Jess does not crash: a send is recorded as `failed` with a
 message naming the passphrase, and `email_delivery_configured()` reports that mail cannot
 go out — so the "Forgot password?" link hides itself instead of promising a reset email
 that could never arrive.
+
+## Manual-release custody (`JESS_MANUAL_RELEASE=1`)
+
+Encryption at rest only helps against someone who has the database but **not** the key. In
+the default mode the key (`JESS_VAULT_PASSWORD`) is in `.env` and the worker decrypts
+unattended — so anyone who can read both the database and the environment has both halves.
+Manual-release mode closes that: **no passphrase lives on the server at all.**
+
+* `deploy.py` writes **no** `JESS_VAULT_PASSWORD`. An admin sets it once through
+  **`/jess/vault/set-up/`**, choosing it — it is never stored, and cannot be recovered.
+* Every outgoing message — password resets included — is recorded **`held`**, not
+  dispatched. Nothing sends on its own.
+* An admin **releases** held mail at **`/jess/release/`** by typing the passphrase, which
+  decrypts the SMTP password in memory for that one send and is then dropped. The
+  passphrase is never handed to Celery (it would sit in the broker); the release sends
+  inline, one connection for the batch, capped per request.
+* The passphrase and the SMTP password are both rotatable — **`/jess/vault/passphrase/`**
+  re-keys the vault (re-wrapping only the master key, so no stored secret is re-encrypted
+  or exposed) and **`/jess/vault/password/`** replaces the SMTP password.
+
+The honest cost: **password resets are no longer self-service.** A reset requested at 3am
+sits held until an admin releases it. The outbox shows the held count so the backlog is
+impossible to miss. A held **password-reset link is a one-time credential**, so its body
+is never shown on any staff page — an admin releases it (sends it) without being able to
+read it.
 
 ## The staff pages
 
@@ -69,9 +94,11 @@ login page is worse than one that refuses.
 
 | Page | What it is for |
 |---|---|
-| `/jess/compose/` | send a message by hand: the test page |
-| `/jess/` | the outbox: what has been sent, what has not, and how much is still waiting on a worker |
-| `/jess/messages/<pk>/` | one message, polled live, with the failure verbatim and a **Retry** |
+| `/jess/compose/` | send a message by hand (manual mode: type the passphrase to send now, or leave it held) |
+| `/jess/` | the outbox: what has been sent, what has not, and — in manual mode — how much is held |
+| `/jess/messages/<pk>/` | one message, polled live, with the failure verbatim and a **Retry** (or **Release** if held) |
+| `/jess/release/` | manual mode: type the passphrase to release held mail |
+| `/jess/vault/set-up/` · `/jess/vault/password/` · `/jess/vault/passphrase/` | manual mode: initialise the vault, set the SMTP password, change the passphrase |
 
 There are no automatic retries. Nothing else in this suite retries either, and a silent
 exponential backoff hides a misconfigured server for hours. A failed row keeps its error
@@ -80,7 +107,7 @@ and waits for a human to press the button.
 ## Where this is going
 
 The outbox is deliberately the foundation of a managed auto-email service rather than a
-debug log. `MailMessage.purpose` already separates the streams — `test`,
+debug log. `MailMessage.purpose` already separates the streams — `test`, `manual`,
 `password_reset`, `socialhub_endorsement` — which is what per-stream reporting and rate
 limiting will need.
 

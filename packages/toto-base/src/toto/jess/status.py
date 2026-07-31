@@ -16,11 +16,35 @@ from . import vault
 from .models import EmailProvider
 
 
+def can_queue() -> bool:
+    """Could a message queued now eventually reach a person? **Configuration only.**
+
+    Never opens a session and never reads a secret, so it is safe on an anonymous login
+    render even in manual-release mode, where there is no ambient passphrase to read one
+    with. This is the weaker question ``can_deliver`` falls back to under manual release:
+    a queued message becomes a HELD demand that an admin can later release.
+    """
+    try:
+        provider = EmailProvider.active_provider()
+        if provider is None or not provider.delivers:
+            return False
+        if provider.needs_secret and not provider.secret_id:
+            return False
+        return True
+    except Exception:
+        return False
+
+
 def can_deliver() -> bool:
     """True only when a message queued right now could actually reach a person.
 
     Deliberately strict, and deliberately never raising — it is called while rendering a
     login page.
+
+    **In manual-release mode this returns ``can_queue()``**: there is no passphrase on
+    the server to prove the secret decrypts, and a reset requested now legitimately
+    queues as a HELD demand for an admin to release — so the login page keeps offering
+    "Forgot password?". The stricter secret-reading check below is the non-manual path.
 
     | state                                   | result | why                                     |
     |-----------------------------------------|--------|-----------------------------------------|
@@ -36,6 +60,8 @@ def can_deliver() -> bool:
     "could" here means "is configured to", and an unreachable server still surfaces as a
     failed MailMessage with the error kept verbatim.
     """
+    if vault.manual_release_enabled():
+        return can_queue()
     try:
         provider = EmailProvider.active_provider()
         if provider is None or not provider.delivers:
@@ -67,6 +93,16 @@ def describe() -> str:
             )
         if provider.needs_secret and not provider.secret_id:
             return f"'{provider.label}' has a username but no stored password."
+        if vault.manual_release_enabled():
+            # Never read the secret here — there is no ambient passphrase. Report the
+            # custody state and the backlog an admin has to release.
+            from .models import MailMessage
+
+            held = MailMessage.objects.filter(status=MailMessage.HELD).count()
+            return (
+                f"Manual release — sending through '{provider.label}'. "
+                f"{held} message(s) held; an admin must type the passphrase to send."
+            )
         if provider.needs_secret:
             try:
                 vault.read_secret(provider.secret, create=False)

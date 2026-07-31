@@ -173,26 +173,35 @@ class MailMessage(models.Model):
     SENDING = "sending"
     SENT = "sent"
     FAILED = "failed"
+    # Recorded but deliberately not dispatched: manual-release custody
+    # (JESS_MANUAL_RELEASE) holds every message until an admin types the passphrase.
+    # Non-terminal — it is a resting state waiting on a human, not a failure.
+    HELD = "held"
 
     STATUS_CHOICES = [
         (QUEUED, "Queued"),
         (SENDING, "Sending"),
         (SENT, "Sent"),
         (FAILED, "Failed"),
+        (HELD, "Held"),
     ]
-    # What the poller stops on.
+    # What the poller stops on. HELD is intentionally absent: a held row is not going
+    # anywhere until a human releases it, so the detail page shows a release control
+    # rather than a live spinner.
     TERMINAL = {SENT, FAILED}
 
     # Which stream this belongs to. The one piece of future-proofing paid for now: a
     # managed service needs to report and rate-limit per stream, and adding this later
     # would be a migration over a table that by then has history.
     PURPOSE_TEST = "test"
+    PURPOSE_MANUAL = "manual"
     PURPOSE_PASSWORD_RESET = "password_reset"
     PURPOSE_SOCIALHUB_ENDORSEMENT = "socialhub_endorsement"
     PURPOSE_OTHER = "other"
 
     PURPOSE_CHOICES = [
         (PURPOSE_TEST, "Test"),
+        (PURPOSE_MANUAL, "Sent by hand"),
         (PURPOSE_PASSWORD_RESET, "Password reset"),
         (PURPOSE_SOCIALHUB_ENDORSEMENT, "Endorsement"),
         (PURPOSE_OTHER, "Other"),
@@ -255,6 +264,14 @@ class MailMessage(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.SET_NULL, related_name="jess_messages",
     )
+    # Who typed the passphrase that released this message, and when. Distinct from
+    # created_by: under manual release a password-reset is composed by nobody
+    # (created_by is null) and released later by an admin — the audit trail needs both.
+    released_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="jess_released",
+    )
+    released_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-queued_at"]
@@ -274,3 +291,15 @@ class MailMessage(models.Model):
     def recipients(self) -> list[str]:
         """Everyone this goes to, for display. Includes bcc — this page is staff-only."""
         return [*(self.to or []), *(self.cc or []), *(self.bcc or [])]
+
+    @property
+    def body_is_sensitive(self) -> bool:
+        """Is the body a bearer credential that staff must never read?
+
+        A password-reset email contains a one-time reset link: anyone who reads it can
+        take over that account. Under manual release an admin *releases* such a message
+        (causes it to send) but must never *see* it, so every staff-facing surface hides
+        the body and html of these rows. The recipient and status stay visible so the
+        release is still auditable.
+        """
+        return self.purpose == self.PURPOSE_PASSWORD_RESET

@@ -68,6 +68,27 @@ class EmailProviderAdmin(admin.ModelAdmin):
     def _new_secret_name(self, obj) -> str:
         return vault.unique_secret_name(f"jess-{obj.pk or 'new'}")
 
+    def get_fieldsets(self, request, obj=None):
+        # In manual-release mode the SMTP password is set on the release console, which
+        # takes the typed passphrase — so the write-only field here would only ever fail.
+        # Dropping it from the layout also drops it from the submitted form (it is a
+        # declared, non-model field, so it simply stops being rendered).
+        if not vault.manual_release_enabled():
+            return self.fieldsets
+        out = []
+        for name, opts in self.fieldsets:
+            opts = {**opts, "fields": tuple(f for f in opts["fields"] if f != "new_password")}
+            out.append((name, opts))
+        return out
+
+    def get_actions(self, request):
+        actions = super().get_actions(request)
+        if vault.manual_release_enabled():
+            # Both need the passphrase; both live on the release console instead.
+            for name in ("reencrypt_password", "send_test_message"):
+                actions.pop(name, None)
+        return actions
+
     def save_model(self, request, obj, form, change):
         super().save_model(request, obj, form, change)
         new_value = (form.cleaned_data.get("new_password") or "").strip()
@@ -213,8 +234,17 @@ class MailMessageAdmin(admin.ModelAdmin):
     search_fields = ["subject", "to", "error", "provider_label"]
     date_hierarchy = "queued_at"
 
+    def get_fields(self, request, obj=None):
+        names = [f.name for f in self.model._meta.fields]
+        # A password-reset body is a one-time credential; swap it (and its html) for a
+        # notice so no staff member can read the link out of the audit trail.
+        if obj is not None and obj.body_is_sensitive:
+            names = [n for n in names if n not in ("body", "html_body")]
+            names.append("redacted_body")
+        return names
+
     def get_readonly_fields(self, request, obj=None):
-        return [f.name for f in self.model._meta.fields]
+        return self.get_fields(request, obj)
 
     def has_add_permission(self, request):
         return False
@@ -225,3 +255,10 @@ class MailMessageAdmin(admin.ModelAdmin):
     @admin.display(description="To")
     def recipient_summary(self, obj):
         return ", ".join(obj.to or []) or "—"
+
+    @admin.display(description="Body")
+    def redacted_body(self, obj):
+        return (
+            "🔒 Hidden — a password-reset link is a one-time credential and is never "
+            "shown to staff. It is released (sent) without being read."
+        )

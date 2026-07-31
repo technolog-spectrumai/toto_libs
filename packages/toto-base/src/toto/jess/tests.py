@@ -853,7 +853,7 @@ class StaffPageTests(JessTestCase):
         row = MailMessage.objects.get()
         self.assertEqual(row.to, ["a@x.test", "b@x.test"])
         self.assertEqual(row.created_by, self.staff)
-        self.assertEqual(row.purpose, MailMessage.PURPOSE_TEST)
+        self.assertEqual(row.purpose, MailMessage.PURPOSE_MANUAL)
         self.assertRedirects(
             res, reverse("jess:message_detail", args=[row.pk]),
             fetch_redirect_response=False,
@@ -1201,3 +1201,327 @@ class DatalinkPolicyTests(TestCase):
                 policy = policy_for(label)
                 self.assertEqual(policy.identity, IDENTITY_REFUSE)
                 self.assertTrue(policy.refuse_reason)
+
+
+# ---------------------------------------------------------------------------
+# Manual-release custody: the vault, and passphrase rotation
+# ---------------------------------------------------------------------------
+
+class ManualVaultTests(JessTestCase):
+    """The passphrase-parameterised, cache-free vault, and the re-wrap primitive."""
+
+    TYPED = "an-admin-typed-passphrase"
+
+    def _init_typed_vault(self, passphrase=TYPED):
+        """Create the strongbox with a KNOWN typed passphrase (no env dependence)."""
+        from toto.gervazy.crypto import GervazyCryptoSession
+
+        owner = vault._get_or_create_owner()
+        session, _dek = GervazyCryptoSession.initialize_strongbox(
+            owner, vault.SYSTEM_STRONGBOX_NAME, passphrase,
+        )
+        return session
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_load_vault_password_fails_closed_in_manual_mode(self):
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.load_vault_password()
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_open_session_and_is_available_fail_closed_in_manual_mode(self):
+        self._init_typed_vault()
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.open_session()
+        self.assertFalse(vault.is_available())
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_a_typed_session_stores_and_reads_without_touching_the_cache(self):
+        self._init_typed_vault()
+        session = vault.open_manual_session(self.TYPED)
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name(), session=session)
+        # The cache must stay empty — no long-lived unlocked session anywhere.
+        self.assertEqual(vault._session_cache, {})
+        got = vault.read_secret(secret, session=vault.open_manual_session(self.TYPED))
+        self.assertEqual(got, "hunter2")
+        self.assertEqual(vault._session_cache, {})
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_a_wrong_typed_passphrase_is_a_legible_failure(self):
+        self._init_typed_vault()
+        session = vault.open_manual_session(self.TYPED)
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name(), session=session)
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.read_secret(secret, session=vault.open_manual_session("WRONG"))
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_open_manual_session_refuses_when_no_strongbox(self):
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.open_manual_session(self.TYPED)
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_rotating_the_passphrase_keeps_every_secret_readable(self):
+        self._init_typed_vault()
+        session = vault.open_manual_session(self.TYPED)
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name(), session=session)
+
+        vault.rotate_passphrase(self.TYPED, "a-brand-new-passphrase")
+
+        # Re-fetch the secret the way a fresh request would: the pre-rotation object
+        # has the old VMK ciphertext cached on its relations.
+        from toto.gervazy.models import EncryptedSecret
+
+        fresh = EncryptedSecret.objects.get(pk=secret.pk)
+        # Old passphrase no longer decrypts; new one reads the SAME secret unchanged.
+        with self.assertRaises(vault.VaultUnavailable):
+            vault.read_secret(EncryptedSecret.objects.get(pk=secret.pk),
+                              session=vault.open_manual_session(self.TYPED))
+        got = vault.read_secret(fresh, session=vault.open_manual_session("a-brand-new-passphrase"))
+        self.assertEqual(got, "hunter2")
+
+    @override_settings(JESS_MANUAL_RELEASE=True)
+    def test_rotating_with_a_wrong_old_passphrase_changes_nothing(self):
+        self._init_typed_vault()
+        session = vault.open_manual_session(self.TYPED)
+        secret = vault.store_secret("hunter2", name=vault.unique_secret_name(), session=session)
+
+        with self.assertRaises(Exception):
+            vault.rotate_passphrase("WRONG-OLD", "a-brand-new-passphrase")
+
+        # The original passphrase still works — nothing was mutated.
+        got = vault.read_secret(secret, session=vault.open_manual_session(self.TYPED))
+        self.assertEqual(got, "hunter2")
+
+
+# ---------------------------------------------------------------------------
+# Manual-release custody: the held queue, release, and redaction
+# ---------------------------------------------------------------------------
+
+@override_settings(EMAIL_BACKEND=JESS_BACKEND, JESS_MANUAL_RELEASE=True)
+class ManualReleaseTests(JessTestCase):
+    """Held instead of dispatched; released only by a typed passphrase."""
+
+    TYPED = "the-typed-passphrase"
+
+    def _init_vault(self, passphrase=TYPED):
+        from toto.gervazy.crypto import GervazyCryptoSession
+
+        owner = vault._get_or_create_owner()
+        return GervazyCryptoSession.initialize_strongbox(
+            owner, vault.SYSTEM_STRONGBOX_NAME, passphrase,
+        )[0]
+
+    def test_a_send_is_held_and_never_dispatched(self):
+        self._locmem_provider()
+        with patch("toto.jess.tasks.send_mail_message.delay") as delay:
+            send_mail("Hi", "body", None, ["a@b.test"])
+        delay.assert_not_called()
+        row = MailMessage.objects.get()
+        self.assertEqual(row.status, MailMessage.HELD)
+
+    @override_settings(EMAIL_BACKEND=JESS_BACKEND, JESS_MANUAL_RELEASE=False)
+    def test_a_send_is_queued_and_dispatched_when_not_manual(self):
+        self._locmem_provider()
+        with patch("toto.jess.tasks.send_mail_message.delay") as delay:
+            send_mail("Hi", "body", None, ["a@b.test"])
+        delay.assert_called_once()
+        self.assertEqual(MailMessage.objects.get().status, MailMessage.QUEUED)
+
+    def test_releasing_sends_a_held_message(self):
+        self._init_vault()
+        self._locmem_provider()
+        send_mail("Hi", "body", None, ["a@b.test"])
+        row = MailMessage.objects.get()
+        self.assertEqual(row.status, MailMessage.HELD)
+
+        mail.outbox = []
+        self.client.force_login(self.staff)
+        res = self.client.post(reverse("jess:release"), {"passphrase": self.TYPED})
+        self.assertEqual(res.status_code, 302)
+        row.refresh_from_db()
+        self.assertEqual(row.status, MailMessage.SENT)
+        self.assertEqual(row.released_by, self.staff)
+        self.assertEqual(len(mail.outbox), 1)
+
+    def test_release_batches_are_capped(self):
+        from toto.jess import views
+
+        self._init_vault()
+        self._locmem_provider()
+        for i in range(views.RELEASE_BATCH_CAP + 3):
+            send_mail(f"m{i}", "body", None, [f"a{i}@b.test"])
+
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:release"), {"passphrase": self.TYPED})
+        remaining = MailMessage.objects.filter(status=MailMessage.HELD).count()
+        self.assertEqual(remaining, 3)   # cap sent, the rest still held
+
+    def test_a_wrong_passphrase_sends_nothing_and_holds_everything(self):
+        # An smtp provider with a stored secret, so the wrong passphrase actually fails
+        # at the decrypt rather than sailing through a no-secret backend.
+        self._init_vault()
+        provider = self._smtp_provider(username="u")
+        session = vault.open_manual_session(self.TYPED)
+        provider.secret = vault.store_secret("smtp-pw", name=vault.unique_secret_name(), session=session)
+        provider.save(update_fields=["secret"])
+
+        send_mail("Hi", "body", None, ["a@b.test"])
+        mail.outbox = []
+        self.client.force_login(self.staff)
+        res = self.client.post(reverse("jess:release"), {"passphrase": "WRONG"})
+        self.assertEqual(res.status_code, 200)   # re-rendered with the error, no redirect
+        self.assertEqual(MailMessage.objects.get().status, MailMessage.HELD)
+        self.assertEqual(len(mail.outbox), 0)
+
+    def test_retry_returns_a_failed_message_to_held(self):
+        self._locmem_provider()
+        row = MailMessage.objects.create(to=["a@b.test"], subject="x", status=MailMessage.FAILED)
+        self.client.force_login(self.staff)
+        with patch("toto.jess.tasks.send_mail_message.delay") as delay:
+            self.client.post(reverse("jess:message_retry", args=[row.pk]))
+        delay.assert_not_called()
+        row.refresh_from_db()
+        self.assertEqual(row.status, MailMessage.HELD)
+
+    def test_the_task_holds_a_stray_queued_row_instead_of_failing(self):
+        from toto.jess import tasks
+
+        self._locmem_provider()
+        row = MailMessage.objects.create(to=["a@b.test"], subject="x", status=MailMessage.QUEUED)
+        tasks.send_mail_message(row.pk)
+        row.refresh_from_db()
+        self.assertEqual(row.status, MailMessage.HELD)
+
+    # -- password-reset redaction --------------------------------------------
+
+    def _reset_row(self):
+        return MailMessage.objects.create(
+            to=["victim@b.test"], subject="Reset your password",
+            body="Click https://host/reset/SECRET-TOKEN/ to reset.",
+            purpose=MailMessage.PURPOSE_PASSWORD_RESET, status=MailMessage.HELD,
+        )
+
+    def test_a_reset_link_is_never_shown_on_the_detail_page(self):
+        row = self._reset_row()
+        self.client.force_login(self.staff)
+        body = self.client.get(reverse("jess:message_detail", args=[row.pk])).content.decode()
+        self.assertNotIn("SECRET-TOKEN", body)
+        self.assertIn("never shown to staff", body)
+        # But it can still be released from that page — the affordance is present.
+        self.assertIn(reverse("jess:release"), body)
+
+    def test_a_reset_link_is_never_shown_in_the_admin(self):
+        from django.contrib.admin.sites import site
+
+        row = self._reset_row()
+        model_admin = site._registry[MailMessage]
+        fields = model_admin.get_fields(None, row)
+        self.assertNotIn("body", fields)
+        self.assertNotIn("html_body", fields)
+        self.assertIn("redacted_body", fields)
+        self.assertNotIn("SECRET-TOKEN", model_admin.redacted_body(row))
+
+    def test_a_non_sensitive_body_is_still_shown(self):
+        row = MailMessage.objects.create(
+            to=["a@b.test"], subject="Hello", body="a plain message",
+            purpose=MailMessage.PURPOSE_MANUAL, status=MailMessage.HELD,
+        )
+        self.client.force_login(self.staff)
+        body = self.client.get(reverse("jess:message_detail", args=[row.pk])).content.decode()
+        self.assertIn("a plain message", body)
+
+    # -- status decoupling ---------------------------------------------------
+
+    def test_can_deliver_is_config_only_and_opens_no_session(self):
+        provider = self._smtp_provider(username="u")
+        # A secret is "set" but the vault cannot be opened (no ambient passphrase).
+        provider.secret = None
+        provider.save(update_fields=["secret"])
+        # needs_secret with no secret_id → cannot queue.
+        self.assertFalse(jess_status.can_deliver())
+
+        # With a locmem provider (no secret needed) it can queue, and must never open a
+        # session to decide so.
+        self._locmem_provider(label="lm")
+        with patch("toto.jess.vault.open_session", side_effect=AssertionError("must not open")):
+            self.assertTrue(jess_status.can_deliver())
+
+    def test_describe_reports_the_held_count(self):
+        self._locmem_provider()
+        MailMessage.objects.create(to=["a@b.test"], subject="x", status=MailMessage.HELD)
+        text = jess_status.describe()
+        self.assertIn("Manual release", text)
+        self.assertIn("held", text)
+
+    # -- compose inline release ----------------------------------------------
+
+    def test_compose_holds_without_a_passphrase(self):
+        self._locmem_provider()
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:compose"), {
+            "to": "a@b.test", "subject": "Hi", "body": "hello", "html_body": "",
+        })
+        self.assertEqual(MailMessage.objects.get().status, MailMessage.HELD)
+
+    def test_compose_sends_inline_with_a_passphrase(self):
+        self._init_vault()
+        self._locmem_provider()
+        mail.outbox = []
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:compose"), {
+            "to": "a@b.test", "subject": "Hi", "body": "hello", "html_body": "",
+            "passphrase": self.TYPED,
+        })
+        self.assertEqual(MailMessage.objects.get().status, MailMessage.SENT)
+        self.assertEqual(len(mail.outbox), 1)
+
+    # -- vault management views ----------------------------------------------
+
+    def test_vault_setup_creates_the_strongbox_and_stores_a_secret(self):
+        provider = self._smtp_provider(username="u")
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:vault_setup"), {
+            "passphrase": "chosen-pass", "passphrase2": "chosen-pass",
+            "provider": str(provider.pk), "smtp_password": "smtp-pw",
+        })
+        self.assertIsNotNone(vault.system_strongbox())
+        provider.refresh_from_db()
+        self.assertIsNotNone(provider.secret_id)
+        got = vault.read_secret(provider.secret, session=vault.open_manual_session("chosen-pass"))
+        self.assertEqual(got, "smtp-pw")
+
+    def test_provider_secret_stores_under_a_typed_passphrase(self):
+        self._init_vault()
+        provider = self._smtp_provider(username="u")
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:provider_secret"), {
+            "provider": str(provider.pk), "smtp_password": "new-smtp-pw",
+            "passphrase": self.TYPED,
+        })
+        provider.refresh_from_db()
+        got = vault.read_secret(provider.secret, session=vault.open_manual_session(self.TYPED))
+        self.assertEqual(got, "new-smtp-pw")
+
+    def test_rotate_passphrase_view_changes_the_passphrase(self):
+        self._init_vault()
+        provider = self._smtp_provider(username="u")
+        session = vault.open_manual_session(self.TYPED)
+        provider.secret = vault.store_secret("smtp-pw", name=vault.unique_secret_name(), session=session)
+        provider.save(update_fields=["secret"])
+
+        self.client.force_login(self.staff)
+        self.client.post(reverse("jess:rotate_passphrase"), {
+            "old_passphrase": self.TYPED,
+            "new_passphrase": "new-one", "new_passphrase2": "new-one",
+        })
+        from toto.gervazy.models import EncryptedSecret
+
+        fresh = EncryptedSecret.objects.get(pk=provider.secret_id)
+        got = vault.read_secret(fresh, session=vault.open_manual_session("new-one"))
+        self.assertEqual(got, "smtp-pw")
+
+    def test_the_staff_views_are_staff_only(self):
+        for name in ("release", "vault_setup", "provider_secret", "rotate_passphrase"):
+            with self.subTest(view=name):
+                self.client.force_login(self.plain)   # authenticated, not staff
+                res = self.client.get(reverse(f"jess:{name}"))
+                self.assertEqual(res.status_code, 403)

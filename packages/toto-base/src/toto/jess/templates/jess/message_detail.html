@@ -64,7 +64,20 @@
         {% if message.from_address %}<div><dt class="opacity-60">{% trans "From" %}</dt><dd>{{ message.from_address }}</dd></div>{% endif %}
       </dl>
 
-      {% if message.body %}
+      {% if message.body_is_sensitive %}
+        {% comment %}A password-reset link is a one-time credential: a staff member who
+           could read it here could take over the account. It is released blind — sent
+           without ever being shown.{% endcomment %}
+        <div>
+          <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Body" %}</p>
+          <p
+            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+            class="rounded-lg border p-3 text-xs opacity-70">
+            <i class="fa-solid fa-lock"></i>
+            {% trans "Hidden. This is a password-reset link — a one-time credential — so it is never shown to staff. You can release it without seeing it." %}
+          </p>
+        </div>
+      {% elif message.body %}
         <div>
           <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Body" %}</p>
           <pre
@@ -94,6 +107,32 @@
         </form>
       </template>
     </div>
+
+    {% comment %}A held message is released by typing the passphrase. Server-rendered,
+       not Alpine, because whether it is held does not change while this page is open —
+       releasing it navigates away.{% endcomment %}
+    {% if is_held %}
+      <form method="POST" action="{{ release_url }}"
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="flex flex-wrap items-end gap-3 rounded-xl border p-5">
+        {% csrf_token %}
+        <input type="hidden" name="pk" value="{{ message.pk }}">
+        <div class="grow">
+          <label for="passphrase" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Vault passphrase" %}
+          </label>
+          <input type="password" name="passphrase" id="passphrase" autocomplete="off"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full max-w-sm rounded-lg border px-3 py-2.5 text-sm">
+          <p class="mt-1 text-xs opacity-60">{% trans "Held until released. Typing the passphrase sends it now." %}</p>
+        </div>
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-unlock"></i> {% trans "Release (send now)" %}
+        </button>
+      </form>
+    {% endif %}
   </div>
 </section>
 {% endblock %}
@@ -119,7 +158,9 @@ document.addEventListener("alpine:init", () => {
     },
 
     init() {
-      if (!this.is_terminal) {
+      // Held is a resting state waiting on a human, not a transition — do not poll it,
+      // or the page spins forever on a row that will never move on its own.
+      if (!this.is_terminal && this.status !== "held") {
         this._timer = setInterval(() => this.poll(), 1500);
       }
     },

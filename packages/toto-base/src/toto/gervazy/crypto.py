@@ -548,6 +548,72 @@ class GervazyCryptoSession:
     initialize_vault = initialize_strongbox
 
     # ------------------------------------------------------------------
+    # Passphrase rotation
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def rewrap_master_keys(cls, strongbox, old_password: str, new_password: str) -> None:
+        """Re-key a strongbox to a new passphrase without touching the data below the VMK.
+
+        The passphrase derives the UKEK, which wraps the VMK(s); the VMK wraps the DEKs,
+        which wrap the secrets/keys/files. So changing the passphrase only requires
+        re-deriving the UKEK under a fresh salt and re-wrapping the VMK(s): every DEK,
+        secret, private key and file is left byte-for-byte unchanged, and nothing below
+        the VMK is decrypted.
+
+        Verify-first and atomic. The old passphrase is proven by unwrapping the VMK(s)
+        *before* anything is written, so a wrong one raises ``ValueError`` and changes
+        nothing. The new salt and the re-wrapped VMK(s) are then committed together in
+        one transaction — a salt persisted without a matching VMK would brick the
+        strongbox.
+        """
+        from django.db import transaction as _txn
+
+        from toto.gervazy.models import VaultMasterKey
+
+        if not old_password or not new_password:
+            raise ValueError("Both the current and the new passphrase are required.")
+
+        # A destroyed VMK may have had its ciphertext cleared; every other VMK must be
+        # re-wrapped or it becomes permanently unreadable under the new passphrase.
+        vmks = list(
+            VaultMasterKey.objects.filter(strongbox=strongbox).exclude(state="destroyed")
+        )
+        if not vmks:
+            raise RuntimeError("Strongbox has no master key to re-wrap.")
+
+        old_ukek = decode_derived_key(strongbox.derive_key(old_password))
+
+        # Unwrap with the OLD key first — a wrong current passphrase is an InvalidTag
+        # here, before any write happens.
+        raw_vmks: dict[object, bytes] = {}
+        for vmk in vmks:
+            try:
+                raw = aes_gcm_decrypt(old_ukek, bytes(vmk.encrypted_vmk), bytes(vmk.nonce))
+            except Exception as exc:
+                raise ValueError("The current passphrase is incorrect.") from exc
+            if len(raw) != AES_GCM_KEY_SIZE:
+                raise RuntimeError("Unwrapped VMK is not a valid AES-256 key.")
+            raw_vmks[vmk.pk] = raw
+
+        # New salt → new UKEK. derive_key reads strongbox.salt, so set it first.
+        strongbox.salt = os.urandom(16)
+        new_ukek = decode_derived_key(strongbox.derive_key(new_password))
+        rewrapped = {
+            vmk.pk: aes_gcm_encrypt(new_ukek, raw_vmks[vmk.pk]) for vmk in vmks
+        }
+
+        # jess-system has exactly one VMK; the loop is correct for any count because the
+        # (strongbox, nonce) uniqueness is over fresh random 12-byte nonces.
+        with _txn.atomic():
+            strongbox.save()
+            for vmk in vmks:
+                ciphertext, nonce = rewrapped[vmk.pk]
+                vmk.encrypted_vmk = ciphertext
+                vmk.nonce = nonce
+                vmk.save(update_fields=["encrypted_vmk", "nonce"])
+
+    # ------------------------------------------------------------------
     # File decryption
     # ------------------------------------------------------------------
 

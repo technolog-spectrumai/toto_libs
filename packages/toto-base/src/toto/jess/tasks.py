@@ -44,6 +44,15 @@ def send_mail_message(self, message_id):
         logger.info("Jess: message %s no longer exists", message_id)
         return {"message_id": message_id, "status": "missing"}
 
+    if vault.manual_release_enabled():
+        # Manual release never enqueues, so this is a stray row from a mode flip. There
+        # is no ambient passphrase to send with, so hold it for an admin to release
+        # rather than fail it with the misleading "set JESS_VAULT_PASSWORD" error.
+        if not row.is_terminal:
+            MailMessage.objects.filter(pk=row.pk).update(status=MailMessage.HELD)
+        logger.info("Jess: manual-release mode — holding message %s for release", row.pk)
+        return {"message_id": row.pk, "status": MailMessage.HELD}
+
     MailMessage.objects.filter(pk=row.pk).update(
         status=MailMessage.SENDING,
         started_at=timezone.now(),
