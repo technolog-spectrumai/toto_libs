@@ -277,6 +277,27 @@ class RedeemRefusalTests(TestCase):
         # And it names the host, because this is usually a typo not an attack.
         self.assertIn(CONSUMER_HOST, caught.exception.message)
 
+    def test_a_callback_whose_host_is_ambiguous_is_refused(self):
+        """Defence in depth on the pin: refuse a callback urlparse and an HTTP
+        client would read as different hosts, rather than pin against one of them.
+
+        'https://consumer.test\\@evil.test' is host consumer.test to urlparse — so
+        it would satisfy a pin for consumer.test — but an HTTP client connects to
+        evil.test. A real consumer's callback (built from get_host()) can carry
+        neither userinfo nor a backslash, so this is always hostile.
+        """
+        minted = _mint()
+        for bad in (
+            f"https://{CONSUMER_HOST}\\@evil.test/sso/callback/",
+            f"https://user@{CONSUMER_HOST}/sso/callback/",
+        ):
+            with self.subTest(bad=bad):
+                with self.assertRaises(EnrollmentError) as caught:
+                    redeem(_request(minted.ticket, callback=bad))
+                self.assertEqual(caught.exception.code, "bad_request")
+                # Refused before the code is spent, so a fixed callback can retry.
+                self.assertTrue(SSOFederationInvite.objects.get().is_redeemable)
+
     def test_a_subdomain_does_not_satisfy_the_pin(self):
         minted = _mint()
         with self.assertRaises(EnrollmentError):

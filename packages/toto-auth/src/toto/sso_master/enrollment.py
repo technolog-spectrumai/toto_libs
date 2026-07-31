@@ -149,6 +149,25 @@ def redeem(request_data: dict, *, source_ip=None) -> wire.EnrollmentGrant:
     if not callback_host:
         raise EnrollmentError("bad_request", "The callback URI is not a valid absolute URL.")
 
+    # Defence in depth on the host pin. normalise_host reads the host with
+    # urlparse, but a browser and urlparse disagree on a URL carrying userinfo or
+    # a backslash ("https://evil.test\\@good.test" is host good.test to urlparse,
+    # evil.test to an HTTP client). The stored redirect happens to survive this
+    # today because Django percent-encodes the backslash before a browser sees it
+    # — but that is an implementation detail to depend on for a security property.
+    # A real consumer builds its callback from get_host(), which cannot contain
+    # either, so refuse them here rather than pin against an ambiguous host. The
+    # enroll endpoint is code-authenticated and unauthenticated otherwise, so this
+    # is exactly where a hand-crafted callback would arrive.
+    parsed_callback = urlparse(payload.callback_uri)
+    if parsed_callback.username is not None or parsed_callback.password is not None \
+            or "\\" in payload.callback_uri:
+        raise EnrollmentError(
+            "bad_request",
+            "The callback URI must be a plain https:// URL, with no username, "
+            "password or backslash in it.",
+        )
+
     try:
         return _redeem(payload, ticket, callback_host, source_ip)
     except EnrollmentError as exc:
