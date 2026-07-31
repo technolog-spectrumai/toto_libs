@@ -59,24 +59,16 @@ def get_active_signing_key() -> SSOSigningKey:
 
 
 def _load_vault_password() -> str:
-    password = getattr(settings, "SSO_VAULT_PASSWORD", "").strip()
-    if password:
-        return password
-    # Dev fallback: read from run/sso_*.json bundle written by portal reset.
-    import json
-    from toto.conf import run_dir as _run_dir
-    run_dir = _run_dir()
-    for bundle_path in run_dir.glob("sso_*.json"):
-        try:
-            vp = json.loads(bundle_path.read_text()).get("vault_password", "")
-            if vp:
-                return vp
-        except Exception:
-            pass
-    raise RuntimeError(
-        "SSO_VAULT_PASSWORD is not set. "
-        "Configure this environment variable with the SSO system vault password."
-    )
+    """The SSO vault passphrase.
+
+    The implementation moved to ``sso_core.vault`` so a CONSUMER host can use it
+    too — ``sso_master`` is not installed there, and the consumer needs the same
+    strongbox for its client secret. This stays as the name the rest of this
+    module calls.
+    """
+    from toto.sso_core.vault import load_vault_password
+
+    return load_vault_password()
 
 
 def _open_sso_vault(epk) -> GervazyCryptoSession:
@@ -219,14 +211,26 @@ def build_id_token(request, *, user, client, scope, nonce=None, auth_time=None) 
 # ---------------------------------------------------------------------------
 
 def verify_pkce(code_verifier, code_challenge, method) -> bool:
+    """Check a PKCE verifier against the stored challenge.
+
+    ``plain`` is refused. For a public client the challenge travels in the query
+    string of the /authorize request, so a "verifier" that equals the challenge is
+    known to anyone who saw that URL — a browser history, a Referer header, a proxy
+    log — and the exchange is protected by nothing at all. RFC 7636 wants S256 for
+    exactly this reason, and it is advertised as the only supported method.
+
+    A challenge sent with **no** method is treated as S256 rather than defaulting
+    to plain: the OIDC default is plain, which means a client that simply omitted
+    the parameter used to get the useless variant silently. Confidential clients
+    are unaffected either way — they authenticate with a secret and send no
+    challenge at all.
+    """
     if not code_challenge:
         return True
     if not code_verifier:
         return False
-    if method == "S256":
+    if method in ("S256", "", None):
         digest = hashlib.sha256(code_verifier.encode("ascii")).digest()
         computed = base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
         return computed == code_challenge
-    if method in ("plain", "", None):
-        return code_verifier == code_challenge
     return False

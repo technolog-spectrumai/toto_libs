@@ -2,8 +2,8 @@
 {% load i18n %}
 
 {% block object-tools-items %}
-  {% if join_url %}
-    <li><a href="{{ join_url }}" class="addlink">{% trans "Join a platform" %}</a></li>
+  {% if invite_url %}
+    <li><a href="{{ invite_url }}" class="addlink">{% trans "Invite a platform" %}</a></li>
   {% endif %}
   {{ block.super }}
 {% endblock %}

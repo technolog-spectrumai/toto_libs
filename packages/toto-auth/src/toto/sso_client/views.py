@@ -86,6 +86,17 @@ def auto_provision_enabled():
     return bool(getattr(settings, "TOTO_SSO_AUTO_PROVISION", False))
 
 
+def _endpoint(cfg, key, portal, fallback_path):
+    """A provider endpoint: learned at pairing, or built the old way.
+
+    A paired connection carries the provider's own endpoints, so a provider
+    mounted at anything other than the default prefix works. A row that predates
+    pairing has them blank and falls back to string concatenation, which is what
+    this always did.
+    """
+    return (cfg.get(key) or "").strip() or f"{portal}{fallback_path}"
+
+
 def oidc_logout(request):
     logout(request)
     next_url = request.GET.get("next", "") or reverse("core:welcome")
@@ -178,7 +189,10 @@ def federated_login(request, *, linking=False):
         "scope": cfg["scopes"],
         "state": state,
     }
-    response = redirect(f"{cfg['portal_url'].rstrip('/')}/sso/authorize/?{urlencode(params)}")
+    authorize = _endpoint(
+        cfg, "authorization_endpoint", cfg["portal_url"].rstrip("/"), "/sso/authorize/",
+    )
+    response = redirect(f"{authorize}?{urlencode(params)}")
     # Store state in a signed cookie — survives the browser round-trip to the
     # portal without depending on the session being saved before the redirect.
     response.set_signed_cookie("oidc_state", state, salt=_COOKIE_SALT,
@@ -283,7 +297,7 @@ def oidc_callback(request):
 
     try:
         token_resp = http_requests.post(
-            f"{portal}/sso/token/",
+            _endpoint(cfg, "token_endpoint", portal, "/sso/token/"),
             data={
                 "grant_type": "authorization_code",
                 "code": code,
@@ -312,7 +326,7 @@ def oidc_callback(request):
 
     try:
         userinfo_resp = http_requests.get(
-            f"{portal}/sso/userinfo/",
+            _endpoint(cfg, "userinfo_endpoint", portal, "/sso/userinfo/"),
             headers={"Authorization": f"Bearer {access_token}"},
             timeout=_BACKCHANNEL_TIMEOUT,
             verify=_tls_verify(),

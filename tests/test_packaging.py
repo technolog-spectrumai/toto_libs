@@ -138,7 +138,10 @@ def test_repackaged_apps_ship_in_their_new_homes(owner):
 
 def test_auth_apps_ship_in_toto_auth(owner):
     # sso_core, sso_master, sso_client -> toto-auth (v1.8).
-    assert owner.get("toto/sso_core/manifest.py") == "toto-auth"
+    # manifest.py went in 1.26 with the connection-bundle flow it served; the
+    # pairing modules that replaced it are asserted in
+    # test_federation_pairing_ships_in_toto_auth.
+    assert owner.get("toto/sso_core/enrollment.py") == "toto-auth"
     assert owner.get("toto/sso_master/migrations/0001_initial.py") == "toto-auth"
     assert owner.get("toto/sso_client/models.py") == "toto-auth"
     # The strategy resolver + local-mode url aliases ride with the apps.
@@ -216,6 +219,32 @@ def test_datalink_ships_in_toto_base(owner, all_names):
     # The two-instance harness ships too — every host's clean-env gate runs it.
     assert owner.get("toto/datalink/federation/settings.py") == "toto-base"
     assert [n for n in all_names if n.startswith("toto/datalink/federation/tests/")]
+
+
+def test_federation_pairing_ships_in_toto_auth(owner, all_names):
+    """Pairing spans both federation modes, so its pieces sit in sso_core.
+
+    sso_core is the only auth app installed in BOTH provider and consumer mode, so
+    it is the one place code both sides need can live without either app importing
+    the other. It still ships no migrations — the models stay in sso_master and
+    sso_client — which test_migrations_are_packaged asserts by app count.
+    """
+    for module in ("enrollment", "qr", "vault"):
+        assert owner.get(f"toto/sso_core/{module}.py") == "toto-auth", module
+
+    # The QR page and the join page are templates, which is the thing a wheel
+    # silently drops.
+    assert owner.get("toto/sso_master/templates/admin/sso_master/pair.html") == "toto-auth"
+    assert owner.get("toto/sso_client/templates/admin/sso_client/join.html") == "toto-auth"
+
+    # The provider suite's runnable settings, so a host's gate can run it at all.
+    assert owner.get("toto/sso_master/testing/settings.py") == "toto-auth"
+    assert owner.get("toto/sso_master/testing/urls.py") == "toto-auth"
+
+    # And the manifest path this replaced is gone from the wheel, not merely
+    # unreferenced.
+    assert not owner.get("toto/sso_core/manifest.py")
+    assert not [n for n in all_names if n.endswith("ingress_sso_client.py")]
 
 
 def test_jess_ships_in_toto_base(owner, all_names):

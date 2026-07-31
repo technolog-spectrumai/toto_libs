@@ -46,15 +46,20 @@ def federation_fixture(
     )
 
     OIDCProviderConfig.objects.update(active=False)
+    # The client secret goes through the vault, the same path pairing uses — a
+    # fixture that stashed a plaintext column would stop exercising the code that
+    # actually resolves the secret at request time.
+    from toto.sso_core import vault
+
     OIDCProviderConfig.objects.create(
         label="Federation suite",
         portal_url=portal_url,
         client_id=client_id,
-        client_secret=secret,
+        secret=vault.store_secret(secret, name=vault.unique_secret_name()),
         scopes=scopes,
-        app_name="Studio",
         trusted=trusted,
         redirect_uris=redirect_uri,
+        callback_uri=redirect_uri,
         active=True,
     )
     return provisioned.relying_party, platform
