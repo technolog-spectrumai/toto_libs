@@ -1,0 +1,115 @@
+{% extends "oya/base.html" %}
+{% load static %}
+{% load i18n %}
+
+{% block title %}{{ sheet.title }} | {% trans "Primula" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+  <link rel="stylesheet" href="{% static 'vendor/univer/preset-sheets-core.css' %}">
+  <style>
+    /* Univer needs a sized container; keep the grid below the app chrome. */
+    #univer-container { width: 100%; height: calc(100vh - 6.5rem); }
+    #univer-container * { box-sizing: content-box; }
+  </style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex flex-col transition-colors duration-300">
+
+  <header class="flex flex-wrap items-center justify-between gap-3 px-5 py-3 border-b border-current/10">
+    <div class="flex items-center gap-3 min-w-0">
+      <a href="{{ index_url }}" class="opacity-70 hover:opacity-100 transition" title="{% trans 'All sheets' %}">
+        <i class="fa-solid fa-arrow-left"></i></a>
+      <h1 class="flex items-center gap-2 text-lg font-bold truncate">
+        <i class="fa-solid fa-table-cells opacity-70"></i>
+        <span class="truncate">{{ sheet.title }}</span>
+      </h1>
+    </div>
+    <div class="flex items-center gap-3">
+      <a href="{{ versions_url }}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}</a>
+      {% if can_edit %}
+        <span id="save-status" class="text-xs opacity-60"></span>
+        <button type="button" id="save-btn"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
+          <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+      {% else %}
+        <span class="text-xs opacity-60"><i class="fa-solid fa-eye"></i> {% trans "Read only" %}</span>
+      {% endif %}
+    </div>
+  </header>
+
+  <div id="univer-container"></div>
+</section>
+
+{{ snapshot_json|json_script:"primula-data" }}
+{% endblock %}
+
+{% block end_script %}
+<script src="{% static 'vendor/univer/react.production.min.js' %}"></script>
+<script src="{% static 'vendor/univer/react-dom.production.min.js' %}"></script>
+<script src="{% static 'vendor/univer/rxjs.umd.min.js' %}"></script>
+<script src="{% static 'vendor/univer/univer-presets.js' %}"></script>
+<script src="{% static 'vendor/univer/preset-sheets-core.js' %}"></script>
+<script src="{% static 'vendor/univer/preset-sheets-core.en-US.js' %}"></script>
+<script>
+(function () {
+  var snapshot = JSON.parse(document.getElementById("primula-data").textContent);
+  var canEdit = {{ can_edit|yesno:"true,false" }};
+  var saveUrl = "{{ save_url }}";
+
+  var createUniver = UniverPresets.createUniver;
+  var LocaleType = UniverPresets.LocaleType;
+  var mergeLocales = UniverPresets.mergeLocales;
+  var UniverSheetsCorePreset = UniverPresetSheetsCore.UniverSheetsCorePreset;
+  var enUS = UniverPresetSheetsCoreEnUS.default || UniverPresetSheetsCoreEnUS;
+
+  var univer = createUniver({
+    locale: LocaleType.EN_US,
+    locales: { "enUS": mergeLocales(enUS) },
+    presets: [ UniverSheetsCorePreset({ container: "univer-container" }) ],
+  });
+  var univerAPI = univer.univerAPI;
+  univerAPI.createWorkbook(snapshot);
+
+  if (!canEdit) return;
+
+  var btn = document.getElementById("save-btn");
+  var status = document.getElementById("save-status");
+  function setStatus(msg) { if (status) status.textContent = msg; }
+
+  btn.addEventListener("click", function () {
+    var wb = univerAPI.getActiveWorkbook();
+    var snap = wb.save();
+    btn.disabled = true;
+    setStatus("{% trans 'Saving…' %}");
+    fetch(saveUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(snap),
+    })
+      .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, d: d }; }); })
+      .then(function (res) {
+        if (res.ok && res.d.status === "ok") {
+          setStatus("{% trans 'Saved' %} · " + res.d.versions + " {% trans 'versions' %}");
+        } else {
+          setStatus((res.d && res.d.error) || "{% trans 'Save failed' %}");
+        }
+      })
+      .catch(function () { setStatus("{% trans 'Save failed' %}"); })
+      .finally(function () { btn.disabled = false; });
+  });
+
+  // Ctrl/Cmd+S saves instead of triggering the browser dialog.
+  window.addEventListener("keydown", function (e) {
+    if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+      e.preventDefault();
+      btn.click();
+    }
+  });
+})();
+</script>
+{% endblock %}
