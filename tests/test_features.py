@@ -219,6 +219,15 @@ def test_texlive_can_be_had_without_latex_at_all():
     assert (f.texlive, f.latex) == (True, False)
 
 
+def test_weasyprint_is_its_own_explicit_flag():
+    # HTML→PDF is a pip layer whose native libs already ship in every base image, so it
+    # gates only the wheel and the feature. Off by default, on with BUILD_WEASYPRINT=1,
+    # and implied by nothing else (notarius contract→PDF now, the invoice generator later).
+    assert resolve().weasyprint is False
+    assert resolve(BUILD_WEASYPRINT=1).weasyprint is True
+    assert resolve(INSTALL_TEXLIVE=1).weasyprint is False
+
+
 def test_the_editor_still_follows_latex_when_unnamed():
     # The default is unchanged, so no existing profile resolves differently.
     assert resolve(BUILD_LATEX=1).editor is True

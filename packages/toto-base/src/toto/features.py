@@ -77,6 +77,7 @@ class Features:
     tesseract: bool
     ffmpeg: bool
     texlive: bool
+    weasyprint: bool
 
     @property
     def studio(self) -> bool:
@@ -289,6 +290,12 @@ def resolve_features(get) -> Features:
     # Every profile states it; test_latex_profiles_state_whether_they_want_texlive
     # in the monorepo suite is the enforcement.
     texlive = flag(get, "INSTALL_TEXLIVE")
+    # WeasyPrint (HTML→PDF) is a PIP layer, not an apt one: its native libraries
+    # (cairo/pango/gdk-pixbuf/libffi) already ship in every host's base image, so all
+    # that is gated is the wheel and the feature. Its own explicit flag, like texlive:
+    # notarius contract→PDF is the first consumer and the invoice generator is the
+    # planned second, so it must not derive from either.
+    weasyprint = flag(get, "BUILD_WEASYPRINT")
 
     return Features(
         chat=chat,
@@ -323,4 +330,5 @@ def resolve_features(get) -> Features:
         tesseract=tesseract,
         ffmpeg=ffmpeg,
         texlive=texlive,
+        weasyprint=weasyprint,
     )
