@@ -171,6 +171,7 @@ class VaultFile(models.Model):
         ('video', 'Video'),
         ('python', 'Python'),
         ('neojson', 'NeoJSON'),
+        ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
         ('zip', 'Archive'),
     ]
     # Retired doc types (presentation/.pml, notebook/.tpy, contract/.contract) are

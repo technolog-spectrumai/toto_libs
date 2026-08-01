@@ -155,6 +155,17 @@ def test_jess_is_opt_in_and_no_tier_turns_it_on():
     assert resolve(BUILD_JESS=0).jess is False
 
 
+def test_primula_is_opt_in_and_buys_nothing_else():
+    # Sheets save over a plain POST — no celery, no channels — so BUILD_PRIMULA must
+    # not pull the realtime layer in, and nothing else may switch it on: what it
+    # actually costs a host is the vendored Univer JS baked into the image.
+    assert resolve().primula is False
+    assert resolve(BUILD_PRIMULA=0).primula is False
+    f = resolve(BUILD_PRIMULA=1)
+    assert f.primula is True
+    assert (f.realtime, f.workflows, f.editor) == (False, False, False)
+
+
 def test_fileservices_forces_workflows():
     # The opposite case, and the strongest closure in the file: FileServiceRun has a
     # live FK to workflows.WorkflowRun and predefined_tasks.py imports the workflows

@@ -59,8 +59,9 @@ def test_migrations_are_packaged(all_names, owner):
         for name in all_names
         if name.startswith("toto/") and name.endswith("/migrations/__init__.py")
     }
-    # 39 as of 1.25: 38 plus toto.jess, a new toto-base app with its own tables (the
-    # provider config and the outbox). 38 came in 1.21 with toto.datalink, and 37 before
+    # 40 as of 1.29: 39 plus toto.primula, a toto-works app with its own table (the
+    # sheet version history). 39 came in 1.25 with toto.jess, a new toto-base app with
+    # its own tables (the provider config and the outbox). 38 came in 1.21 with toto.datalink, and 37 before
     # that, when assets + tariffs were promoted out of the zenobia host into
     # toto-economy (a second host needed to price its own work). Moving an app between
     # HOSTS never touches this; adding one to a PACKAGE, or moving one into or out of
@@ -68,7 +69,7 @@ def test_migrations_are_packaged(all_names, owner):
     # count alone: manta, fileservices and transcription are packaged in toto-media-ops
     # and ocr in toto-media, so all four still ship. What WOULD change it is retiring
     # one to limbo/, which is not a package and never ships.
-    assert len(apps_with_migrations) == 39, sorted(apps_with_migrations)
+    assert len(apps_with_migrations) == 40, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -275,6 +276,28 @@ def test_jess_ships_in_toto_base(owner, all_names):
     ) == "toto-base"
     # And the model it replaced is gone from the wheel, not merely unreferenced.
     assert not [n for n in all_names if n.endswith("toto/api/email_service.py")]
+
+
+def test_primula_ships_in_toto_works(owner):
+    """Primula is a toto-works app on a per-host BUILD_PRIMULA flag, beside memo.
+
+    In toto-works because it is the same shape as memo — a standalone UI over a vault
+    file type — and its only model FKs into ``vault.VaultFile``, which every host
+    already installs. The Univer JS itself is NOT in any wheel: it is downloaded into
+    ``core/static/vendor/univer/`` by each host's download_vendor.py at image build.
+    """
+    assert owner.get("toto/primula/models.py") == "toto-works"
+    # The two things a wheel silently drops.
+    assert owner.get("toto/primula/migrations/0001_initial.py") == "toto-works"
+    assert owner.get("toto/primula/templates/primula/edit.html") == "toto-works"
+    # The vault "open" routing and the seeder.
+    assert owner.get("toto/primula/plugins/vault_editor_plugins.py") == "toto-works"
+    assert owner.get("toto/primula/management/commands/ingress_primula.py") == "toto-works"
+    # The suite's own runnable settings, so a host's clean-env gate can run it.
+    assert owner.get("toto/primula/testing/settings.py") == "toto-works"
+    assert owner.get("toto/primula/tests.py") == "toto-works"
+    # The 'sheet' choice lives in vault (toto-base) — its migration must ride there.
+    assert owner.get("toto/vault/migrations/0010_alter_vaultfile_file_type.py") == "toto-base"
 
 
 def test_the_media_sub_nav_ships_in_toto_base(owner):

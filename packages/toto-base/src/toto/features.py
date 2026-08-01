@@ -52,6 +52,7 @@ class Features:
     sabbia: bool
     travels: bool
     gitvault: bool
+    primula: bool
     monit: bool
     jess: bool          # toto.jess — the mail transport and outbox
     # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
@@ -175,6 +176,7 @@ def resolve_features(get) -> Features:
     sabbia = steven or flag(get, "BUILD_SABBIA")              # headless chat-agent backend (WebSocket)
     travels = flag(get, "BUILD_TRAVELS")                      # toto.travels — travel & visit log
     gitvault = flag(get, "BUILD_GITVAULT")                    # toto.gitvault — git repos over vault dirs
+    primula = flag(get, "BUILD_PRIMULA")                      # toto.primula — Univer spreadsheets (vault-backed)
     # Lightweight read-only monitoring dashboard (grafana alternative). No
     # closure: the live panel works everywhere; snapshot HISTORY needs the
     # celery worker+beat stack, which the profiles enabling this already run.
@@ -318,6 +320,7 @@ def resolve_features(get) -> Features:
         sabbia=sabbia,
         travels=travels,
         gitvault=gitvault,
+        primula=primula,
         geo=geo,
         kanban=kanban,
         editor=editor,
