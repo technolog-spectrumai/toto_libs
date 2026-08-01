@@ -61,15 +61,17 @@
   var canEdit = {{ can_edit|yesno:"true,false" }};
   var saveUrl = "{{ save_url }}";
 
-  var createUniver = UniverPresets.createUniver;
-  var LocaleType = UniverPresets.LocaleType;
-  var mergeLocales = UniverPresets.mergeLocales;
+  // The presets UMD does not re-export LocaleType/mergeLocales (they live on the
+  // UniverCore chunk), so use the literal enum value — LocaleType.EN_US === "enUS" —
+  // and the locale bundle, which ships already merged (its own factory calls
+  // UniverCore.mergeLocales over every sub-locale).
+  var createUniver = UniverPresets.createUniver || window.createUniver;
   var UniverSheetsCorePreset = UniverPresetSheetsCore.UniverSheetsCorePreset;
   var enUS = UniverPresetSheetsCoreEnUS.default || UniverPresetSheetsCoreEnUS;
 
   var univer = createUniver({
-    locale: LocaleType.EN_US,
-    locales: { "enUS": mergeLocales(enUS) },
+    locale: "enUS",
+    locales: { "enUS": enUS },
     presets: [ UniverSheetsCorePreset({ container: "univer-container" }) ],
   });
   var univerAPI = univer.univerAPI;
