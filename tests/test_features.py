@@ -282,6 +282,20 @@ def test_realtime_is_derived_not_merely_echoed():
     assert resolve().realtime is False
 
 
+def test_canasta_buys_channels_and_nothing_else():
+    # zenobia owns toto.canasta in its own portion, so this flag installs no app
+    # here — it exists to put the game's table socket into the needs_channels
+    # closure, and through it into `realtime`, which is what decides whether the
+    # image installs requirements.realtime.txt. Get that wrong and the host names
+    # daphne/channels in INSTALLED_APPS while the image ships neither.
+    f = resolve(BUILD_CANASTA=1)
+    assert (f.canasta, f.needs_channels, f.realtime) == (True, True, True)
+    # It must NOT drag in the realtime tier's own apps: canasta has no chat by
+    # design (the game forbids player-to-player talk), no workflows, no weather.
+    assert (f.chat, f.workflows, f.weather) == (False, False, False)
+    assert resolve().canasta is False
+
+
 def test_build_studio_is_still_honoured_as_the_old_tier_name():
     # The sibling hosts (delta, faros) vendor their own copy of this module at
     # their own pins and still say BUILD_STUDIO in their configs. Their next
