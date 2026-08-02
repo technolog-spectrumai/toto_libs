@@ -244,3 +244,143 @@ class ClearingHold(models.Model):
 
     def __str__(self):
         return f"{self.purpose} hold {self.uuid} ({self.state})"
+
+
+class ClearingOutbox(models.Model):
+    """Messages we owe the peer. The row is written in the SAME database
+    transaction as the ledger movement it announces, so a crash between "money
+    moved" and "peer told" is impossible: either both are durable or neither is.
+
+    ``seq`` is a per-peer monotonic counter assigned under the peer row lock —
+    the receiver uses it to detect gaps, which is what turns a bag of webhooks
+    into an ordered stream. No automatic retries: a send that fails keeps the
+    error verbatim and waits for the redrive sweep, then for a human (the mail
+    outbox discipline).
+    """
+
+    QUEUED = "queued"
+    SENDING = "sending"
+    ACKED = "acked"
+    FAILED = "failed"
+    HELD = "held"
+    STATES = [(QUEUED, "Queued"), (SENDING, "Sending"), (ACKED, "Acked"),
+              (FAILED, "Failed"), (HELD, "Held")]
+    TERMINAL = {ACKED, HELD}
+
+    uuid = models.UUIDField(default=uuid_lib.uuid4, unique=True, editable=False)
+    peer = models.ForeignKey(LedgerPeer, on_delete=models.PROTECT,
+                             related_name="outbox")
+    seq = models.BigIntegerField()
+    kind = models.CharField(max_length=40)
+    payload = models.JSONField()
+    payload_hash = models.CharField(max_length=64)
+    signature = models.TextField()
+    state = models.CharField(max_length=10, choices=STATES, default=QUEUED)
+    attempts = models.IntegerField(default=0)
+    last_error = models.TextField(blank=True, default="")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("peer", "seq")]
+        indexes = [models.Index(fields=["state", "created_at"])]
+        ordering = ["seq"]
+
+    def __str__(self):
+        return f"→{self.peer.platform_id} #{self.seq} {self.kind} ({self.state})"
+
+    def envelope(self) -> dict:
+        return {
+            "kind": self.kind,
+            "payload": self.payload,
+            "payload_hash": self.payload_hash,
+            "signature": self.signature,
+            "uuid": str(self.uuid),
+            "seq": self.seq,
+        }
+
+
+class ClearingInbox(models.Model):
+    """Messages the peer sent us. ``(peer, uuid)`` is unique — the replay
+    shield — and the stored response is returned verbatim for a duplicate, so a
+    retrying sender always sees the original outcome. A message whose
+    idempotency key was used with DIFFERENT parameters is refused rather than
+    applied: that is a caller bug, not a retry.
+    """
+
+    RECEIVED = "received"
+    APPLIED = "applied"
+    REJECTED = "rejected"
+    STATES = [(RECEIVED, "Received"), (APPLIED, "Applied"), (REJECTED, "Rejected")]
+
+    peer = models.ForeignKey(LedgerPeer, on_delete=models.PROTECT,
+                             related_name="inbox")
+    uuid = models.UUIDField(editable=False)
+    seq = models.BigIntegerField()
+    kind = models.CharField(max_length=40)
+    payload = models.JSONField()
+    param_hash = models.CharField(max_length=64)
+    state = models.CharField(max_length=10, choices=STATES, default=RECEIVED)
+    response = models.JSONField(default=dict)
+    received_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = [("peer", "uuid")]
+        indexes = [models.Index(fields=["peer", "seq"])]
+
+    def __str__(self):
+        return f"←{self.peer.platform_id} #{self.seq} {self.kind} ({self.state})"
+
+
+class ClearingTransfer(models.Model):
+    """One inter-platform value movement, from either side's point of view.
+
+    Sender rows carry the hold; receiver rows carry the credit transaction. The
+    uuid is shared by both platforms — it is the name in every message about
+    this transfer and the idempotency key for applying it.
+    """
+
+    PREPARED = "prepared"
+    FULFILLED = "fulfilled"
+    REJECTED = "rejected"
+    EXPIRED = "expired"
+    STATES = [(PREPARED, "Prepared"), (FULFILLED, "Fulfilled"),
+              (REJECTED, "Rejected"), (EXPIRED, "Expired")]
+
+    DIRECTION_OUT = "out"
+    DIRECTION_IN = "in"
+    DIRECTIONS = [(DIRECTION_OUT, "Outbound"), (DIRECTION_IN, "Inbound")]
+
+    uuid = models.UUIDField(default=uuid_lib.uuid4, unique=True, editable=False)
+    peer = models.ForeignKey(LedgerPeer, on_delete=models.PROTECT,
+                             related_name="transfers")
+    direction = models.CharField(max_length=3, choices=DIRECTIONS)
+    shared_asset = models.ForeignKey(SharedAsset, on_delete=models.PROTECT,
+                                     related_name="transfers")
+    amount_base_units = models.BigIntegerField()
+    state = models.CharField(max_length=10, choices=STATES, default=PREPARED)
+    reason = models.CharField(max_length=200, blank=True, default="")
+
+    # Who it is for, in terms both platforms can resolve: the peer-side account
+    # code. No user PII crosses the wire.
+    remote_account_code = models.CharField(max_length=100)
+    local_account = models.ForeignKey("assets.LedgerAccount", null=True,
+                                      blank=True, on_delete=models.PROTECT,
+                                      related_name="+")
+
+    hold = models.ForeignKey(ClearingHold, null=True, blank=True,
+                             on_delete=models.PROTECT, related_name="transfers")
+    ledger_txn = models.ForeignKey("assets.LedgerTransaction", null=True,
+                                   blank=True, on_delete=models.PROTECT,
+                                   related_name="+")
+    receipt_signature = models.TextField(blank=True, default="")
+    deadline = models.DateTimeField()
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["state", "deadline"])]
+
+    def __str__(self):
+        return f"{self.direction} {self.uuid} ({self.state})"
