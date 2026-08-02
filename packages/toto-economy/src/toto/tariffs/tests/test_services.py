@@ -284,6 +284,38 @@ class PostingTests(TestCase):
         self.assertEqual(tx1.reference, tx2.reference)
         self.assertEqual(LedgerTransaction.objects.filter(reference=tx1.reference).count(), 1)
 
+    def test_charge_joins_the_hash_chain(self):
+        # A metered host's ledger is mostly charges; a chain that skips them
+        # verifies nothing. Every posted charge must carry a LedgerHash and
+        # leave the whole chain verifiable.
+        from toto.assets.hashing import verify_hash_chain
+        from toto.assets.models import LedgerHash
+
+        record = self._make_record("1000")
+        tx = post_usage_record(record)
+        self.assertTrue(LedgerHash.objects.filter(transaction=tx).exists())
+        self.assertTrue(verify_hash_chain())
+
+    def test_charge_rolls_back_whole_when_any_write_fails(self):
+        # The locked balance check is only an authority while the locks are
+        # held and the writes ride the same transaction. A failure at the very
+        # END of the posting (the hash attach) must roll back the transaction
+        # row, the entries AND both holding mutations.
+        from unittest import mock
+
+        record = self._make_record("1000")
+        with mock.patch("toto.tariffs.services.attach_hash",
+                        side_effect=RuntimeError("boom")):
+            with self.assertRaises(RuntimeError):
+                post_usage_record(record)
+        self.assertFalse(
+            LedgerTransaction.objects.filter(source_id=str(record.uuid)).exists())
+        payer_holding = AssetHolding.objects.get(account=self.payer, asset=self.asset)
+        self.assertEqual(payer_holding.balance_display, Decimal("10.0"))
+        self.assertFalse(
+            AssetHolding.objects.filter(account=self.recv, asset=self.asset,
+                                        balance_base_units__gt=0).exists())
+
     def test_insufficient_funds_fails_and_no_ledger(self):
         # Fund only 0.5 PTOK, but charge will be 1.0
         fund_account(self.payer, self.asset, "0.5")

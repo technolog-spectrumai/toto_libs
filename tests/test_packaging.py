@@ -69,7 +69,10 @@ def test_migrations_are_packaged(all_names, owner):
     # count alone: manta, fileservices and transcription are packaged in toto-media-ops
     # and ocr in toto-media, so all four still ship. What WOULD change it is retiring
     # one to limbo/, which is not a package and never ships.
-    assert len(apps_with_migrations) == 40, sorted(apps_with_migrations)
+    # 41 as of 1.29: 40 plus toto.clearing, the toto-economy app that federates
+    # selected assets with a paired platform (its own tables: the peer, and the
+    # bridge state that follows in later stages).
+    assert len(apps_with_migrations) == 41, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -77,6 +80,10 @@ def test_migrations_are_packaged(all_names, owner):
     # assets', and splitting them across packages would be unbuildable.
     assert owner.get("toto/assets/migrations/0001_initial.py") == "toto-economy"
     assert owner.get("toto/tariffs/migrations/0001_initial.py") == "toto-economy"
+    # Clearing rides the same wheel: it imports the ledger directly and the
+    # partition must keep the pair together.
+    assert owner.get("toto/clearing/migrations/0001_initial.py") == "toto-economy"
+    assert owner.get("toto/clearing/testing/settings.py") == "toto-economy"
 
 
 def test_gis_off_migration_graph_is_packaged(owner):

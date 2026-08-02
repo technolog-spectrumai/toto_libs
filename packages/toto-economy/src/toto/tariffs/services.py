@@ -20,6 +20,7 @@ from django.db import transaction
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
+from toto.assets.hashing import attach_hash
 from toto.assets.models import (
     AssetHolding,
     LedgerEntry,
@@ -273,6 +274,12 @@ def post_usage_record(
     _insufficient_error: str | None = None
 
     try:
+        # ONE atomic block from lock acquisition through posting: the locked
+        # balance check is only an authority while the locks are still held, and
+        # the debit/credit pair plus both holding mutations must land together
+        # or not at all — the transfer_asset discipline. (This block used to
+        # close after the balance check, releasing the locks before a single
+        # unit moved; gas.md promised otherwise.)
         with transaction.atomic():
             # Lock holdings for update to prevent race conditions
             holding_map: dict[tuple[int, int], AssetHolding] = {}
@@ -300,81 +307,86 @@ def post_usage_record(
                     )
                     raise ValueError(_insufficient_error)
 
-        # Build metadata for the transaction
-        tx_metadata = {
-            "usage_record_uuid": str(usage_record.uuid),
-            "tariff_id": usage_record.tariff_id,
-            "tariff_code": usage_record.tariff.code,
-            "metric_code": usage_record.metric_code,
-            "quantity": str(usage_record.quantity),
-            "unit": usage_record.unit,
-            "charge_count": len(charges),
-        }
+            # Build metadata for the transaction
+            tx_metadata = {
+                "usage_record_uuid": str(usage_record.uuid),
+                "tariff_id": usage_record.tariff_id,
+                "tariff_code": usage_record.tariff.code,
+                "metric_code": usage_record.metric_code,
+                "quantity": str(usage_record.quantity),
+                "unit": usage_record.unit,
+                "charge_count": len(charges),
+            }
 
-        tx = LedgerTransaction.objects.create(
-            reference=ref,
-            transaction_type=TransactionType.ASSET_TRANSFER,
-            description=desc,
-            source_type="tariff_usage",
-            source_id=str(usage_record.uuid),
-            metadata=tx_metadata,
-        )
-
-        # Write ledger entries and update holdings
-        for (account_id, asset_id), needed in debit_totals.items():
-            LedgerEntry.objects.create(
-                transaction=tx,
-                account_id=account_id,
-                asset_id=asset_id,
-                amount_base_units=-needed,
+            tx = LedgerTransaction.objects.create(
+                reference=ref,
+                transaction_type=TransactionType.ASSET_TRANSFER,
+                description=desc,
+                source_type="tariff_usage",
+                source_id=str(usage_record.uuid),
+                metadata=tx_metadata,
             )
-            holding = holding_map[(account_id, asset_id)]
-            holding.balance_base_units -= needed
-            holding.save(update_fields=["balance_base_units", "updated_at"])
 
-        # Credit receiving accounts
-        credit_totals: dict[tuple[int, int], int] = {}
-        for charge in charges:
-            key = (charge.receiving_account_id, charge.charged_asset_id)
-            credit_totals[key] = credit_totals.get(key, 0) + charge.amount_base_units
+            # Write ledger entries and update holdings
+            for (account_id, asset_id), needed in debit_totals.items():
+                LedgerEntry.objects.create(
+                    transaction=tx,
+                    account_id=account_id,
+                    asset_id=asset_id,
+                    amount_base_units=-needed,
+                )
+                holding = holding_map[(account_id, asset_id)]
+                holding.balance_base_units -= needed
+                holding.save(update_fields=["balance_base_units", "updated_at"])
 
-        for (account_id, asset_id), amount in credit_totals.items():
-            LedgerEntry.objects.create(
-                transaction=tx,
-                account_id=account_id,
-                asset_id=asset_id,
-                amount_base_units=amount,
-            )
-            recv_holding, _ = AssetHolding.objects.select_for_update().get_or_create(
-                account_id=account_id,
-                asset_id=asset_id,
-                defaults={"balance_base_units": 0},
-            )
-            recv_holding.balance_base_units += amount
-            recv_holding.save(update_fields=["balance_base_units", "updated_at"])
+            # Credit receiving accounts
+            credit_totals: dict[tuple[int, int], int] = {}
+            for charge in charges:
+                key = (charge.receiving_account_id, charge.charged_asset_id)
+                credit_totals[key] = credit_totals.get(key, 0) + charge.amount_base_units
 
-        # Allow a caller to attach signing metadata before the tx is frozen.
-        if pre_post_hook:
-            try:
-                pre_post_hook(tx)
-            except Exception as _hook_exc:
-                import logging as _log
-                _log.getLogger(__name__).warning("billing: pre_post_hook failed: %s", _hook_exc)
+            for (account_id, asset_id), amount in credit_totals.items():
+                LedgerEntry.objects.create(
+                    transaction=tx,
+                    account_id=account_id,
+                    asset_id=asset_id,
+                    amount_base_units=amount,
+                )
+                recv_holding, _ = AssetHolding.objects.select_for_update().get_or_create(
+                    account_id=account_id,
+                    asset_id=asset_id,
+                    defaults={"balance_base_units": 0},
+                )
+                recv_holding.balance_base_units += amount
+                recv_holding.save(update_fields=["balance_base_units", "updated_at"])
 
-        post_fields = ["posted"]
-        if tx.signature:
-            post_fields += ["signature", "payload_hash", "nonce", "idempotency_key", "signed_at"]
-        if tx.signed_by_key_id:
-            post_fields.append("signed_by_key")
-        if tx.authorization_id:
-            post_fields.append("authorization")
+            # Allow a caller to attach signing metadata before the tx is frozen.
+            if pre_post_hook:
+                try:
+                    pre_post_hook(tx)
+                except Exception as _hook_exc:
+                    import logging as _log
+                    _log.getLogger(__name__).warning("billing: pre_post_hook failed: %s", _hook_exc)
 
-        tx.posted = True
-        tx.save(update_fields=post_fields)
+            post_fields = ["posted"]
+            if tx.signature:
+                post_fields += ["signature", "payload_hash", "nonce", "idempotency_key", "signed_at"]
+            if tx.signed_by_key_id:
+                post_fields.append("signed_by_key")
+            if tx.authorization_id:
+                post_fields.append("authorization")
 
-        usage_record.status = UsageStatus.POSTED
-        usage_record.ledger_transaction = tx
-        usage_record.save(update_fields=["status", "ledger_transaction", "updated_at"])
+            tx.posted = True
+            tx.save(update_fields=post_fields)
+
+            # Into the audit chain like every other posted transaction — a
+            # metered host's ledger is mostly charges, and a chain that skips
+            # them verifies nothing.
+            attach_hash(tx)
+
+            usage_record.status = UsageStatus.POSTED
+            usage_record.ledger_transaction = tx
+            usage_record.save(update_fields=["status", "ledger_transaction", "updated_at"])
 
     except ValueError:
         # Atomic block rolled back; persist FAILED status outside it so the save is not lost

@@ -1,5 +1,6 @@
 import base64
 import hashlib
+import uuid as uuid_lib
 from decimal import Decimal, ROUND_DOWN
 
 from django.conf import settings
@@ -307,6 +308,16 @@ class LedgerAuthorization(models.Model):
 
 class LedgerTransaction(models.Model):
     reference = models.CharField(max_length=255, unique=True)
+    # ── Global identity (cross-platform) ──────────────────────────────────
+    # Host-local integer ids mean two platforms' ledgers cannot be compared;
+    # the uuid is the portable name of this transaction everywhere. On a row
+    # applied FROM a peer, origin_platform names that peer and origin_uuid the
+    # peer-side transaction this one mirrors or settles; both blank/null on
+    # ordinary local activity. The local hash chain stays host-local by design
+    # — cross-platform verifiability lives in the clearing checkpoints.
+    uuid = models.UUIDField(default=uuid_lib.uuid4, unique=True, editable=False, db_index=True)
+    origin_platform = models.CharField(max_length=100, blank=True, default="")
+    origin_uuid = models.UUIDField(null=True, blank=True)
     transaction_type = models.CharField(max_length=30, choices=TransactionType.choices)
     description = models.TextField(blank=True)
     source_type = models.CharField(max_length=100, blank=True)

@@ -105,6 +105,7 @@ TASK_MODULES = [
     "toto.formica",
     "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
     "toto.jess",        # the mail queue — every email in the platform passes through it
+    "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
 ]
 
 
