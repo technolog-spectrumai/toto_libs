@@ -251,16 +251,55 @@ class AssetTransferTests(TestCase):
                 amount=Decimal("-1"), reference="txfr-09",
             )
 
-    def test_duplicate_reference_raises(self):
-        transfer_asset(
+    def test_duplicate_reference_is_idempotent_for_identical_params(self):
+        # Stripe semantics: replaying the SAME transfer is a retry and returns
+        # the original transaction — no second movement, no error. This is what
+        # makes crash-recovery re-runs and replayed clearing messages safe.
+        first = transfer_asset(
             asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
             amount=Decimal("1.00"), reference="dup-txfr",
         )
-        with self.assertRaises(Exception):
+        again = transfer_asset(
+            asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
+            amount=Decimal("1.00"), reference="dup-txfr",
+        )
+        self.assertEqual(first.pk, again.pk)
+        self.assertEqual(
+            LedgerTransaction.objects.filter(reference="dup-txfr").count(), 1)
+        # And the balance moved exactly once.
+        self.assertEqual(get_asset_balance(self.asset, self.alice),
+                         to_base_units(Decimal("1.00"), self.asset.decimals))
+
+    def test_duplicate_reference_with_different_params_is_refused(self):
+        # The same key naming a DIFFERENT movement is a reference collision —
+        # the dangerous bug — and must never silently do either thing.
+        from .services.assets import IdempotencyConflict
+
+        transfer_asset(
+            asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
+            amount=Decimal("1.00"), reference="dup-txfr-2",
+        )
+        with self.assertRaises(IdempotencyConflict):
             transfer_asset(
                 asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
-                amount=Decimal("1.00"), reference="dup-txfr",
+                amount=Decimal("2.00"), reference="dup-txfr-2",
             )
+
+    def test_transactions_carry_portable_identity(self):
+        # The uuid is the cross-platform name of a transaction; origin fields
+        # are blank on ordinary local activity and set only by clearing.
+        a = transfer_asset(
+            asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
+            amount=Decimal("1.00"), reference="uuid-a",
+        )
+        b = transfer_asset(
+            asset=self.asset, sender_account=self.reserve, receiver_account=self.alice,
+            amount=Decimal("1.00"), reference="uuid-b",
+        )
+        self.assertIsNotNone(a.uuid)
+        self.assertNotEqual(a.uuid, b.uuid)
+        self.assertEqual(a.origin_platform, "")
+        self.assertIsNone(a.origin_uuid)
 
     def test_entries_balanced_after_transfer(self):
         transfer_asset(

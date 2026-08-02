@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from decimal import Decimal, ROUND_UP
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
 
 from toto.assets.hashing import attach_hash
 from toto.assets.models import (
@@ -125,7 +125,89 @@ def distribute_asset(
     )
 
 
+class IdempotencyConflict(ValidationError):
+    """The same reference was replayed with DIFFERENT parameters.
+
+    A replay with identical parameters is a retry and returns the original
+    transaction; the same key naming a different movement is the dangerous bug
+    (a caller recycling references), and it must never silently do either thing.
+    """
+
+
+def _transfer_fingerprint(tx: LedgerTransaction) -> tuple:
+    """The identity of a transfer, recomputed from its own entries.
+
+    (asset id, sender account id, receiver account id, base amount) — enough to
+    tell a retry from a reference collision without storing anything new.
+    """
+    debit = credit = None
+    for entry in tx.entries.all():
+        if entry.amount_base_units < 0:
+            debit = entry
+        elif entry.amount_base_units > 0:
+            credit = entry
+    return (
+        tx.asset_id,
+        debit.account_id if debit else None,
+        credit.account_id if credit else None,
+        credit.amount_base_units if credit else None,
+    )
+
+
 def transfer_asset(
+    *,
+    asset: Asset,
+    sender_account: LedgerAccount,
+    receiver_account: LedgerAccount,
+    amount: Decimal,
+    reference: str,
+    description: str = "",
+    metadata=None,
+    pre_post_hook=None,
+) -> LedgerTransaction:
+    # Idempotent-return front door (Stripe semantics): a duplicate reference
+    # with identical parameters is a retry — hand back the original instead of
+    # an IntegrityError, which is what makes replayed bridge messages and
+    # crash-recovery re-runs safe to apply blindly. The cheap lookup runs
+    # before any locking or validation.
+    existing = LedgerTransaction.objects.filter(reference=reference).first()
+    if existing is not None:
+        wanted = (asset.pk, sender_account.pk, receiver_account.pk,
+                  to_base_units(amount, asset.decimals))
+        if _transfer_fingerprint(existing) == wanted and existing.posted:
+            return existing
+        raise IdempotencyConflict(
+            f"Reference '{reference}' already names a different transfer."
+        )
+
+    try:
+        return _transfer_asset_locked(
+            asset=asset,
+            sender_account=sender_account,
+            receiver_account=receiver_account,
+            amount=amount,
+            reference=reference,
+            description=description,
+            metadata=metadata,
+            pre_post_hook=pre_post_hook,
+        )
+    except IntegrityError:
+        # Two identical calls raced past the front door; one inserted, this one
+        # hit the unique reference. Resolve it the same way a sequential
+        # duplicate resolves.
+        existing = LedgerTransaction.objects.filter(reference=reference).first()
+        if existing is not None:
+            wanted = (asset.pk, sender_account.pk, receiver_account.pk,
+                      to_base_units(amount, asset.decimals))
+            if _transfer_fingerprint(existing) == wanted and existing.posted:
+                return existing
+            raise IdempotencyConflict(
+                f"Reference '{reference}' already names a different transfer."
+            )
+        raise
+
+
+def _transfer_asset_locked(
     *,
     asset: Asset,
     sender_account: LedgerAccount,
