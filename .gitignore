@@ -52,3 +52,4 @@ Cargo.lock
 *.d
 
 *.wasm
+tests/check_nogis.sqlite3

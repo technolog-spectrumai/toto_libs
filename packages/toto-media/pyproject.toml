@@ -27,7 +27,7 @@ build-backend = "setuptools.build_meta"
 # Keep it that way. The line is a worker or a heavy wheel, not a native binary:
 # anything needing celery, ffmpeg or torch belongs in toto-media-ops.
 name = "toto-media"
-version = "1.29"
+version = "1.30"
 description = "toto media over the vault: video/audio playback and OCR"
 readme = "README.md"
 license = { text = "MIT" }
@@ -35,7 +35,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.29",
+    "toto-base==1.30",
 ]
 
 [tool.setuptools.packages.find]

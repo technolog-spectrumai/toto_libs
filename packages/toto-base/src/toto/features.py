@@ -33,6 +33,7 @@ class Features:
     latex: bool
     pyeditor: bool
     sketch: bool
+    canasta: bool
     media: bool
     vod: bool
     # The toto-media-ops tier — the apps that want a celery worker. No host pins that
@@ -125,14 +126,22 @@ def resolve_features(get) -> Features:
     # Editing features (standalone — each enabled on its own; no labs tier).
     latex = flag(get, "BUILD_LATEX")                          # toto.texlab
     pyeditor = flag(get, "BUILD_PYEDITOR")                    # toto.antaresia — Python editor
-    # latex, sketch, travels and gitvault are host-owned apps (see
+    # latex, sketch, canasta, travels and gitvault are host-owned apps (see
     # the suite README): the flags stay here because they are part of the host
-    # contract — needs_channels depends on sketch, `editor` defaults from latex,
-    # and the workflows closure on latex/gitvault — but registry.FEATURE_APPS
-    # deliberately has no entry for them, since the host supplies the
-    # INSTALLED_APPS line from its own portion. `texlive` used to default from
-    # latex too and no longer does; see where it is resolved below.
+    # contract — needs_channels depends on sketch and canasta, `editor` defaults
+    # from latex, and the workflows closure on latex/gitvault — but
+    # registry.FEATURE_APPS deliberately has no entry for them, since the host
+    # supplies the INSTALLED_APPS line from its own portion. `texlive` used to
+    # default from latex too and no longer does; see where it is resolved below.
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
+    # toto.canasta lives in zenobia's own portion (zenobia/toto/canasta). Its
+    # table is a websocket, so it belongs in the needs_channels closure below —
+    # and through it in `realtime`, which is what decides whether the image
+    # installs requirements.realtime.txt at all. Without this line a host can set
+    # BUILD_CANASTA=1, have settings name daphne/channels in INSTALLED_APPS, and
+    # still get an image with neither installed: the container then dies on
+    # ModuleNotFoundError from a config that looks entirely correct.
+    canasta = flag(get, "BUILD_CANASTA")                      # toto.canasta — four-player team Canasta
     # BUILD_MEDIA is the media *tier*: an umbrella default, not an app switch. It is
     # an INPUT only — it must never be OR-ed back out of the per-app flags below, or
     # naming one app would silently enable the others.
@@ -245,7 +254,7 @@ def resolve_features(get) -> Features:
     # vault/views.py renders "" for a file type with no plugin.
     editor = flag(get, "BUILD_EDITOR", latex or pyeditor)
     # Channels/ASGI back every WebSocket consumer.
-    needs_channels = chat or latex or pyeditor or sketch or sabbia
+    needs_channels = chat or latex or pyeditor or sketch or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
     vicuna = graph or sabbia_ollama
 
@@ -306,6 +315,7 @@ def resolve_features(get) -> Features:
         latex=latex,
         pyeditor=pyeditor,
         sketch=sketch,
+        canasta=canasta,
         media=media,
         vod=vod,
         manta=manta,
