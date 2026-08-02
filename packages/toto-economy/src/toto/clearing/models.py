@@ -158,3 +158,89 @@ class LedgerPeer(models.Model):
             return True
         except (InvalidSignature, ValueError):
             return False
+
+
+class SharedAsset(models.Model):
+    """A trustline: THIS asset crosses the wire to THIS peer, nothing else does.
+
+    ``issued_here`` marks the authoritative home — the issuer is the notary for
+    its own asset, and a shared asset deliberately carries the SAME unit_name on
+    both platforms (the old separate-ticker doctrine assumed the ledgers could
+    not exchange; for shared assets that premise is gone — private assets keep
+    it). ``max_owed`` bounds the peer's exposure in base units; a transfer that
+    would push the bilateral position past it is refused with a signed reject.
+    """
+
+    asset = models.ForeignKey("assets.Asset", on_delete=models.PROTECT,
+                              related_name="shared_with")
+    peer = models.ForeignKey(LedgerPeer, on_delete=models.PROTECT,
+                             related_name="shared_assets")
+    issued_here = models.BooleanField()
+    enabled = models.BooleanField(default=True)
+    max_owed_base_units = models.BigIntegerField(default=0)
+    settlement_threshold_base_units = models.BigIntegerField(default=0)
+    mirror_cursor = models.BigIntegerField(default=0)
+
+    vostro_account = models.ForeignKey(
+        "assets.LedgerAccount", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="+",
+        help_text="Home side only: the peer platform's aggregate position here.")
+    escrow_account = models.ForeignKey(
+        "assets.LedgerAccount", on_delete=models.PROTECT, null=True, blank=True,
+        related_name="+",
+        help_text="Both sides: where pending holds park value.")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        unique_together = [("asset", "peer")]
+
+    def __str__(self):
+        home = "home" if self.issued_here else "mirror"
+        return f"{self.asset.unit_name} ↔ {self.peer.platform_id} ({home})"
+
+
+class ClearingHold(models.Model):
+    """A local two-phase reservation: value parked in escrow until the remote
+    outcome is known. hold/post/void are each ONE transfer_asset call, so every
+    state of a hold is ordinary, hash-chained ledger history; the state column
+    is driven by compare-and-swap so a replayed decision cannot double-apply.
+    """
+
+    PENDING = "pending"
+    POSTED = "posted"
+    VOIDED = "voided"
+    EXPIRED = "expired"
+    STATES = [(PENDING, "Pending"), (POSTED, "Posted"),
+              (VOIDED, "Voided"), (EXPIRED, "Expired")]
+
+    PURPOSE_TRANSFER = "transfer"
+    PURPOSE_SWAP = "swap"
+    PURPOSES = [(PURPOSE_TRANSFER, "Transfer"), (PURPOSE_SWAP, "Swap")]
+
+    uuid = models.UUIDField(default=uuid_lib.uuid4, unique=True, editable=False)
+    purpose = models.CharField(max_length=10, choices=PURPOSES)
+    shared_asset = models.ForeignKey(SharedAsset, on_delete=models.PROTECT,
+                                     related_name="holds")
+    origin_account = models.ForeignKey("assets.LedgerAccount",
+                                       on_delete=models.PROTECT, related_name="+")
+    amount_base_units = models.BigIntegerField()
+    state = models.CharField(max_length=10, choices=STATES, default=PENDING)
+    expires_at = models.DateTimeField()
+    remote_ref = models.UUIDField(null=True, blank=True)
+
+    hold_txn = models.ForeignKey("assets.LedgerTransaction",
+                                 on_delete=models.PROTECT, related_name="+")
+    settle_txn = models.ForeignKey("assets.LedgerTransaction", null=True,
+                                   blank=True, on_delete=models.PROTECT,
+                                   related_name="+")
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        indexes = [models.Index(fields=["state", "expires_at"])]
+
+    def __str__(self):
+        return f"{self.purpose} hold {self.uuid} ({self.state})"
