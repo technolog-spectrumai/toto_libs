@@ -173,6 +173,7 @@ class VaultFile(models.Model):
         ('neojson', 'NeoJSON'),
         ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
         ('presentation', 'Presentation'),  # a slide deck (XML), edited in toto.memo
+        ('document', 'Document'),     # a written document (XML), edited in toto.cyprian
         ('zip', 'Archive'),
     ]
     # The retired doc types (notebook/.tpy, contract/.contract) are ordinary 'xml'
