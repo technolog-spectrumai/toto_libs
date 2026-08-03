@@ -47,10 +47,40 @@
     if (line && line.parentNode) line.parentNode.removeChild(line);
   }
 
+  /* Strip everything that makes a node PARTICIPATE, so a clone is only a
+   * picture of one.
+   *
+   * Two bugs live here, and both were found by users rather than by us:
+   *
+   *   * Alpine initialises any node added to the document. A clone of a row
+   *     inside an `x-for` is outside that loop's scope, so every binding on it
+   *     throws "block is not defined" — a console full of errors on every drag.
+   *   * `zoneAt()` scans the whole document for drop zones and the LAST match
+   *     wins. A dragged section carries its own zone, and the clone is appended
+   *     to <body>, so the ghost would out-rank the real zones and the drop
+   *     would land nowhere.
+   */
+  function neutralise(root) {
+    var nodes = [root].concat(Array.prototype.slice.call(root.querySelectorAll("*")));
+    nodes.forEach(function (node) {
+      var attrs = Array.prototype.slice.call(node.attributes || []);
+      attrs.forEach(function (attr) {
+        var name = attr.name;
+        if (name.charAt(0) === ":" || name.charAt(0) === "@"
+            || name.indexOf("x-") === 0
+            || name === "id" || name === "contenteditable"
+            || name === "data-drop-kind" || name === "data-drag-id"
+            || name === "data-drag-handle" || name === "data-drag-kind") {
+          node.removeAttribute(name);
+        }
+      });
+    });
+    return root;
+  }
+
   function makeProxy(el) {
     var rect = el.getBoundingClientRect();
-    var proxy = el.cloneNode(true);
-    proxy.removeAttribute("id");
+    var proxy = neutralise(el.cloneNode(true));
     proxy.classList.add("memo-drag-proxy");
     proxy.style.position = "fixed";
     proxy.style.left = "0";
@@ -127,15 +157,57 @@
     moveProxy(state.proxy, event.clientX - state.startX, event.clientY - state.startY);
   }
 
+  /* Undo everything `begin` did. Safe to call at any time, including twice.
+   *
+   * The body class is removed FIRST and unconditionally, before the early
+   * return. `.memo-dragging` carries `user-select: none`, and in Firefox a
+   * contenteditable inside an unselectable subtree cannot be clicked into at
+   * all — so a drag that failed to clean up did not leave a cosmetic cursor
+   * behind, it left an editor nobody could type in until the page was
+   * reloaded. That is worth being paranoid about.
+   */
   function teardown() {
+    document.body.classList.remove("memo-dragging");
+    clearLine();
     if (!state) return;
     if (state.proxy && state.proxy.el.parentNode) {
       state.proxy.el.parentNode.removeChild(state.proxy.el);
     }
     if (state.source) state.source.style.opacity = "";
-    document.body.classList.remove("memo-dragging");
-    clearLine();
     state = null;
+  }
+
+  /* Every way a drag can end without the pointerup we are listening for.
+   *
+   * `setPointerCapture` normally guarantees the release comes back to us — but
+   * capture is lost the moment the captured element is removed from the DOM,
+   * and Alpine replaces these nodes on every render. Add a window that loses
+   * focus, a tab that is hidden, a release outside the browser entirely, and
+   * "the pointerup always arrives" is simply not true.
+   *
+   * Note the phases. These are BUBBLE-phase listeners on purpose: a
+   * capture-phase pointerup on window would run before `finish` and cancel
+   * every drop in the app. By the time these see it, `finish` has already
+   * cleared the state and they do nothing.
+   */
+  function armFailsafes() {
+    if (armFailsafes.armed) return;
+    armFailsafes.armed = true;
+
+    global.addEventListener("pointercancel", function () { teardown(); });
+    global.addEventListener("blur", function () { teardown(); });
+    document.addEventListener("visibilitychange", function () {
+      if (document.hidden) teardown();
+    });
+    global.addEventListener("keydown", function (event) {
+      if (event.key === "Escape" && state) teardown();
+    });
+    // The net under the net: whatever happened, the next press anywhere clears
+    // it. A stuck drag then costs one click rather than a page reload.
+    global.addEventListener("pointerdown", function () {
+      if (state) teardown();
+      else document.body.classList.remove("memo-dragging");
+    }, true);
   }
 
   /* `options.onDrop(kind, id, zoneEl, beforeId)` — the one place a drag turns
@@ -143,6 +215,7 @@
    * never became drags, so a tap still selects. */
   function init(root, options) {
     options = options || {};
+    armFailsafes();
 
     root.addEventListener("pointerdown", function (event) {
       if (event.button !== 0 && event.pointerType === "mouse") return;

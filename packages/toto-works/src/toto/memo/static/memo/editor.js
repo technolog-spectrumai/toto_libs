@@ -47,6 +47,9 @@
         activeId: "",
         focusedId: "",
         nonce: 0,
+        // Reactive mirrors of MemoHistory's state — see canUndo.
+        canUndo: false,
+        canRedo: false,
         filmstrip: true,
         saving: false,
         dirty: false,
@@ -78,6 +81,7 @@
         var self = this;
         this.ui.activeId = this.state.slides[0].id;
         history.seed(this.state);
+        this.syncHistory();
 
         this._stopCanvas = global.MemoCanvas.observe(this.$refs.stage);
         this._stopStrip = global.MemoCanvas.watchFilmstrip(
@@ -129,8 +133,16 @@
       },
       get activeIndex() { return M.indexOfId(this.state.slides, this.ui.activeId); },
       get columns() { return M.columns(this.activeSlide); },
-      get canUndo() { return history.canUndo(); },
-      get canRedo() { return history.canRedo(); },
+      /* Read from `ui`, NOT from the history object.
+       *
+       * `history` is a plain object Alpine knows nothing about, so a getter
+       * calling into it has no reactive dependency: the effect behind
+       * `:disabled="!canUndo"` ran once at boot, when there was nothing to
+       * undo, and never ran again. Both buttons were therefore disabled for
+       * the whole session — the bug reported as "undo and redo do not work".
+       * `syncHistory()` pushes the answer into reactive state instead. */
+      get canUndo() { return this.ui.canUndo; },
+      get canRedo() { return this.ui.canRedo; },
       get filteredMedia() {
         var q = (this.ui.mediaSearch || "").toLowerCase();
         if (!q) return this.media;
@@ -146,8 +158,17 @@
       mutate: function (fn, coalesceKey) {
         fn(this.state);
         history.commit(this.state, coalesceKey);
+        this.syncHistory();
         this.ui.dirty = true;
         this.scheduleSave();
+      },
+
+      /* Publish the history's state into `ui` so the toolbar can see it. Called
+       * after everything that can change it — a mutation, an undo, a redo — and
+       * once at boot. */
+      syncHistory: function () {
+        this.ui.canUndo = history.canUndo();
+        this.ui.canRedo = history.canRedo();
       },
 
       /* Redraw the editable DOM from the model. Only for changes the DOM did
@@ -550,6 +571,7 @@
         }
         this.ui.dirty = true;
         this.ui.status = message;
+        this.syncHistory();
         this.refresh();
         this.scheduleSave();
       },
