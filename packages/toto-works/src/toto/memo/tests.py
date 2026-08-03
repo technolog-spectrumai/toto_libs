@@ -5,6 +5,7 @@ from __future__ import annotations
 import base64
 import io
 import pathlib
+import re
 import json
 import zipfile
 import tempfile
@@ -437,10 +438,49 @@ class EditorPageTests(TestCase):
     def test_the_logic_lives_in_static_files(self):
         body = self._page()
         for module in ("model.js", "history.js", "sanitize.js",
-                       "canvas.js", "drag.js", "editor.js"):
+                       "canvas.js", "editor.js"):
             self.assertIn("memo/" + module, body)
         self.assertNotIn("function presentationEditor", body,
                          "inline component logic is back")
+
+    def test_nothing_on_a_slide_is_dragged(self):
+        # The layout owns the geometry. Dragging was the only way to end up
+        # with a deck whose boxes disagreed with its layout, and every drag it
+        # offered has a button now: box toolbars for content, the filmstrip
+        # arrows for order.
+        body = self._page()
+        self.assertNotIn("memo/drag.js", body)
+        for attribute in ("data-drag-handle", "data-drag-kind", "data-drop-kind"):
+            self.assertNotIn(attribute, body, f"{attribute} is still on the page")
+
+    def test_a_box_carries_its_own_content_controls(self):
+        body = self._page()
+        self.assertIn("memo-box-bar", body)
+        self.assertIn("setBoxType(", body)
+        self.assertIn("openBoxDialog(", body)
+        self.assertIn("clearBox(", body)
+
+    def test_the_dialog_brings_its_editors(self):
+        # Trix writes the prose, ACE the SVG and the code listings; both are
+        # vendored, and a 404 here would leave a dialog that cannot type.
+        body = self._page()
+        self.assertIn("vendor/trix/trix.umd.min.js", body)
+        self.assertIn("vendor/ace/ace.js", body)
+        self.assertIn("vendor/trix/trix.css", body)
+
+    def test_layout_names_are_geometry_not_content(self):
+        # "Picture, then text" decides for you what goes where. A box takes any
+        # kind of content, so the layout may only describe the shape.
+        model = (pathlib.Path(pf.__file__).parent
+                 / "static" / "memo" / "model.js").read_text()
+        # The LAYOUTS array only — BLOCK_TYPES is content and says so.
+        block = model.split("var LAYOUTS = [", 1)[1].split("];", 1)[0]
+        labels = re.findall(r'label: "([^"]+)"', block)
+        self.assertTrue(labels, "no layout labels found")
+        for word in ("Picture", "Text", "Image", "Quote", "Statement"):
+            for label in labels:
+                self.assertNotIn(word, label,
+                                 f"layout label {label!r} names content")
 
     def test_the_floating_widgets_are_suppressed(self):
         self.assertNotIn("render_floating_plugins", self._page())

@@ -22,35 +22,39 @@
    * would show as a block that moves when you press Present.
    */
   var LAYOUTS = [
-    { id: "title-content", label: "Title and content", icon: "fa-align-left",
+    { id: "title-content", label: "One box",              icon: "fa-square",
       slots: [""] },
-    { id: "two-column",    label: "Two columns",       icon: "fa-table-columns",
+    { id: "two-column",    label: "Two equal columns",    icon: "fa-table-columns",
       slots: ["left", "right"] },
-    { id: "three-column",  label: "Three columns",     icon: "fa-grip-lines-vertical",
-      slots: ["left", "middle", "right"] },
-    { id: "image-left",    label: "Picture, then text", icon: "fa-image",
+    { id: "image-left",    label: "Two columns, wide left",  icon: "fa-table-columns",
       slots: ["media", "body"] },
-    { id: "image-right",   label: "Text, then picture", icon: "fa-image",
+    { id: "image-right",   label: "Two columns, wide right", icon: "fa-table-columns",
       slots: ["body", "media"] },
-    { id: "two-row",       label: "Two rows",          icon: "fa-grip-lines",
+    { id: "three-column",  label: "Three columns",        icon: "fa-grip-lines-vertical",
+      slots: ["left", "middle", "right"] },
+    { id: "two-row",       label: "Two rows",             icon: "fa-grip-lines",
       slots: ["top", "bottom"] },
-    { id: "grid",          label: "Four boxes",        icon: "fa-table-cells-large",
+    { id: "grid",          label: "Four boxes",           icon: "fa-table-cells-large",
       slots: ["a", "b", "c", "d"] },
-    { id: "lead",          label: "Big statement",     icon: "fa-bolt",
+    { id: "lead",          label: "Tall box over a short one", icon: "fa-window-maximize",
       slots: ["lead", "body"] },
-    { id: "full-bleed",    label: "Full-bleed image",  icon: "fa-panorama",
+    { id: "full-bleed",    label: "One box, edge to edge", icon: "fa-panorama",
       slots: [""] },
-    { id: "section",       label: "Section divider",   icon: "fa-minus",
+    { id: "section",       label: "One box, centred",     icon: "fa-align-center",
       slots: [""] },
-    { id: "quote",         label: "Quote",             icon: "fa-quote-left",
+    { id: "quote",         label: "One box, large text",  icon: "fa-quote-left",
       slots: [""] }
   ];
 
+  /* Box names are POSITIONS, never content. A layout called "picture and text"
+   * decides for you what goes where; "two columns, wide left" leaves that to
+   * the person writing the deck, which is the whole point of a box taking any
+   * kind of content. The ids stay as they were so older files still load. */
   var SLOT_LABEL = {
-    "": "Content", left: "Left", right: "Right", middle: "Middle",
-    media: "Picture", body: "Text", top: "Top", bottom: "Bottom",
+    "": "Box", left: "Left", right: "Right", middle: "Middle",
+    media: "Wide side", body: "Narrow side", top: "Top", bottom: "Bottom",
     a: "Top left", b: "Top right", c: "Bottom left", d: "Bottom right",
-    lead: "The big thing"
+    lead: "Tall box"
   };
 
   function slotsFor(layout) {
@@ -260,6 +264,11 @@
     return -1;
   }
 
+  function findSlide(state, id) {
+    var at = indexOfId(state.slides, id);
+    return at === -1 ? null : state.slides[at];
+  }
+
   function findBlock(state, id) {
     for (var i = 0; i < state.slides.length; i++) {
       var at = indexOfId(state.slides[i].blocks, id);
@@ -392,6 +401,7 @@
     fromServer: fromServer,
     columns: columns,
     indexOfId: indexOfId,
+    findSlide: findSlide,
     findBlock: findBlock,
     moveSlide: moveSlide,
     moveBlock: moveBlock,

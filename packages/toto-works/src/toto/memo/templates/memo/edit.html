@@ -21,6 +21,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% block start_script %}
   <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
+  {# Trix writes the prose in the box dialog; editor.css strips its chrome. #}
+  <link rel="stylesheet" href="{% static 'vendor/trix/trix.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
   <style>[x-cloak] { display: none !important; }</style>
@@ -171,16 +173,15 @@ old one carried 210 lines of inline Alpine that no test could reach.
           </button>
         </div>
 
-        <ol x-ref="filmstrip" data-drop-kind="slide"
+        <ol x-ref="filmstrip"
             class="max-h-[64vh] space-y-2 overflow-y-auto p-2">
           <template x-for="(slide, index) in state.slides" :key="slide.id">
-            <li data-drag-kind="slide" :data-drag-id="slide.id" data-drag-handle
-                @click="select(slide.id)"
+            <li @click="select(slide.id)"
                 @contextmenu.prevent="openMenu($event, 'slide', slide.id)"
                 :class="slide.id === ui.activeId
                   ? (darkMode ? 'border-accent-dark' : 'border-accent-light')
                   : (darkMode ? 'border-accent-1' : 'border-accent-2')"
-                class="memo-handle group relative rounded-lg border p-1 transition">
+                class="group relative cursor-pointer rounded-lg border p-1 transition">
               <div class="flex items-center gap-2">
                 <span class="w-4 shrink-0 text-right text-[0.65rem] opacity-40" x-text="index + 1"></span>
                 <span x-show="!ui.filmstrip" class="truncate text-xs" x-text="slide.title"></span>
@@ -293,101 +294,77 @@ old one carried 210 lines of inline Alpine that no test could reach.
                 x-init="$el.textContent = activeSlide.title"></h2>
 
             <template x-for="pair in columns" :key="pair[0] + '-' + activeSlide.id + '-' + ui.nonce">
-              <div class="memo-flow" :data-slot="pair[0]" data-drop-kind="block media"
+              <div class="memo-flow" :data-slot="pair[0]"
                    :data-empty="pair[1].length ? null : '1'"
                    :data-box-label="boxes.length > 1 ? slotLabel(pair[0]) : null"
-                   @click="ui.targetSlot = pair[0]"
-                   @dragover.prevent @drop.prevent="onFileDrop($event, pair[0])">
+                   :data-selected="ui.targetSlot === pair[0] ? '1' : null"
+                   @click="selectBox(pair[0])">
+
+                {% comment %}The box's own toolbar, on the box being worked on.
+
+                Content type first, then Edit. A box is a place; what goes in it
+                is a choice made here, and changing it is one click rather than
+                delete-then-add. Clear empties the box without asking which of
+                several things to remove, because a box holds one thing.
+                {% endcomment %}
+                <div class="memo-box-bar" x-show="ui.targetSlot === pair[0]" x-cloak>
+                  <template x-for="type in blockTypes" :key="pair[0] + '-t-' + type.id">
+                    <button type="button" @click.stop="setBoxType(pair[0], type.id)"
+                            :title="type.label"
+                            :data-on="(boxBlock(pair[0]) || {}).type === type.id ? '1' : null"
+                            class="memo-box-chip">
+                      <i class="fa-solid" :class="type.icon"></i>
+                    </button>
+                  </template>
+
+                  <span class="memo-box-sep"></span>
+
+                  <button type="button" @click.stop="openBoxDialog(pair[0])"
+                          :disabled="!boxBlock(pair[0])"
+                          class="memo-box-chip memo-box-wide">
+                    <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+                  </button>
+                  <button type="button" @click.stop="clearBox(pair[0])"
+                          :disabled="!pair[1].length"
+                          class="memo-box-chip memo-box-wide">
+                    <i class="fa-solid fa-eraser"></i> {% trans "Clear" %}
+                  </button>
+                </div>
+
                 <template x-for="block in pair[1]" :key="block.id + '-' + ui.nonce">
                   <div class="memo-block group relative" :data-type="block.type"
                        :data-fit="block.attrs.fit || 'contain'"
                        :data-autofit="isAutoScaled(block) ? '1' : null"
                        :style="`--memo-block-scale: ${blockScale(block)}`"
-                       data-drag-kind="block" :data-drag-id="block.id"
                        :data-focused="isFocused(block.id) ? '1' : null"
                        @click="focusBlock(block.id)"
-                       @contextmenu.prevent="openMenu($event, 'block', block.id)">
+                       @dblclick="openBoxDialog(pair[0])">
 
-                    {% comment %} The grip. Handles own the pointer (touch-action: none in
-                       slide.css) so the page still scrolls everywhere else.{% endcomment %}
-                    <span data-drag-handle
-                          class="memo-handle absolute -left-9 top-1 opacity-0 transition group-hover:opacity-60">
-                      <i class="fa-solid fa-grip-vertical text-xs"></i>
-                    </span>
-
-                    {% comment %} Size, on the focused block only. Auto-fit already shrank
-                       it to fit; this is the override for when you disagree.{% endcomment %}
-                    <span x-show="isFocused(block.id)" x-cloak data-no-drag
-                          class="absolute -top-9 right-0 z-10 flex items-center gap-0.5 rounded-lg border border-current/20 bg-black/70 px-1 py-0.5 text-white"
-                          style="font-size: 11px">
-                      <button type="button" @click.stop="nudgeScale(block, -0.05)"
-                              title="{% trans 'Smaller' %}" class="px-1.5 hover:opacity-70">&minus;</button>
-                      <button type="button" @click.stop="resetScale(block)"
-                              :title="isAutoScaled(block) ? '{% trans "Fits automatically" %}' : '{% trans "Back to automatic" %}'"
-                              class="min-w-[3rem] px-1 hover:opacity-70">
-                        <span x-text="scaleLabel(block)"></span>
-                        <i class="fa-solid fa-wand-magic-sparkles ml-0.5 text-[0.6rem]"
-                           x-show="isAutoScaled(block)"></i>
-                      </button>
-                      <button type="button" @click.stop="nudgeScale(block, 0.05)"
-                              title="{% trans 'Larger' %}" class="px-1.5 hover:opacity-70">+</button>
-                    </span>
-
-                    <template x-if="block.type === 'heading' || block.type === 'quote'">
-                      <div data-rich :data-block="block.id" contenteditable="true"
-                           :data-placeholder="placeholderFor(block)"
-                           @input="onInput(block, $event.target, false)"
-                           @focus="focusBlock(block.id)"
-                           x-init="$el.innerHTML = block.payload"></div>
-                    </template>
-
-                    <template x-if="block.type === 'text'">
-                      <div data-rich :data-block="block.id" contenteditable="true"
-                           :data-placeholder="placeholderFor(block)"
-                           @input="onInput(block, $event.target, true)"
-                           @focus="focusBlock(block.id)"
-                           x-init="$el.innerHTML = block.payload"></div>
+                    {% comment %}Everything here RENDERS. Nothing here is edited in
+                    place — the dialog is the one way in, so what the canvas shows is
+                    always what the deck holds, and a slide cannot be half-edited.
+                    {% endcomment %}
+                    <template x-if="block.type === 'heading' || block.type === 'quote'
+                                    || block.type === 'text'">
+                      <div x-init="$el.innerHTML = block.payload || ''"
+                           :data-placeholder="placeholderFor(block)"></div>
                     </template>
 
                     <template x-if="block.type === 'list'">
                       <ul>
                         <template x-for="(item, i) in block.items" :key="block.id + '-i' + i">
-                          <li data-rich contenteditable="true"
-                              data-placeholder="{% trans 'List item' %}"
-                              @input="onItemInput(block, i, $event.target)"
-                              @keydown="onItemKey($event, block, i)"
-                              @focus="focusBlock(block.id)"
-                              x-init="$el.innerHTML = item"></li>
+                          <li x-init="$el.innerHTML = item"></li>
                         </template>
                       </ul>
                     </template>
 
-                    {% comment %} You write LaTeX. No equation builder, no symbol palette
-                       — a textarea holding the source, rendered live above it,
-                       and a cheatsheet you can fold away.{% endcomment %}
                     <template x-if="block.type === 'formula'">
-                      <div class="w-full">
-                        <div x-init="renderFormula(block, $el)"
-                             class="min-h-[1.6em] w-full text-center"></div>
-                        <div x-show="isFocused(block.id)" x-cloak class="mt-2" data-no-drag>
-                          <textarea data-formula-source :data-block="block.id"
-                                    spellcheck="false" rows="2"
-                                    placeholder="{% trans 'e.g. \frac{a}{b} or E = mc^2' %}"
-                                    @input="onFormulaInput(block, $event.target, $event.target.closest('.memo-block').querySelector('[x-init]'))"
-                                    @focus="focusBlock(block.id)"
-                                    x-init="$el.value = block.payload"
-                                    class="w-full resize-y rounded border border-current/25 bg-black/10 px-2 py-1 text-center font-mono"
-                                    style="font-size: 13px"></textarea>
-                          {% include "memo/_formula_help.html" %}
-                        </div>
-                      </div>
+                      <div x-init="renderFormula(block, $el)"
+                           class="min-h-[1.6em] w-full text-center"></div>
                     </template>
 
                     <template x-if="block.type === 'code'">
-                      <pre contenteditable="true" spellcheck="false"
-                           @input="onCodeInput(block, $event.target)"
-                           @focus="focusBlock(block.id)"
-                           x-init="$el.textContent = block.payload"></pre>
+                      <pre x-init="$el.textContent = block.payload"></pre>
                     </template>
 
                     <template x-if="block.type === 'image'">
@@ -398,18 +375,22 @@ old one carried 210 lines of inline Alpine that no test could reach.
                       <div x-html="block.payload"></div>
                     </template>
 
-                    {% comment %} The v1 escape hatch. Shown as it will present, but not
-                       editable: there is no block UI for arbitrary markup, and
-                       silently rewriting somebody's hand-written slide would be
-                       worse than leaving it alone.{% endcomment %}
+                    {% comment %}The v1 escape hatch. Shown as it will present, and
+                    edited only in the dialog's source view: silently rewriting
+                    somebody's hand-written slide would be worse than leaving it.
+                    {% endcomment %}
                     <template x-if="block.type === 'html'">
                       <div x-html="block.payload"></div>
                     </template>
                   </div>
                 </template>
+
+                <p x-show="!pair[1].length" x-cloak class="memo-box-hint">
+                  <span x-show="ui.targetSlot !== pair[0]">{% trans "Empty — click to fill" %}</span>
+                  <span x-show="ui.targetSlot === pair[0]">{% trans "Pick what goes here" %}</span>
+                </p>
               </div>
             </template>
-          </div>
 
           <div x-show="ui.mediaBusy" x-cloak
                class="absolute inset-0 flex items-center justify-center bg-black/30">
@@ -417,65 +398,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
           </div>
         </div>
 
-        {% comment %}---- add a block ----
-
-        Which BOX it goes into is picked first, and only when the layout has
-        more than one. A layout is a fixed set of boxes and every box takes
-        every kind of block, so "where" and "what" are two separate questions
-        and asking them in that order is what stops a picture landing in the
-        text column.
-        {% endcomment %}
-        <div x-show="boxes.length > 1" x-cloak
-             class="flex flex-wrap items-center justify-center gap-1.5 text-xs">
-          <span class="opacity-45">{% trans "Put it in" %}</span>
-          <template x-for="slot in boxes" :key="'target-' + slot">
-            <button type="button" @click="ui.targetSlot = slot"
-                    :class="ui.targetSlot === slot
-                      ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
-                      : (darkMode ? 'border-accent-1 border' : 'border-accent-2 border')"
-                    class="rounded-lg px-2.5 py-1 font-semibold transition"
-                    x-text="slotLabel(slot)"></button>
-          </template>
-        </div>
-
-        <div class="flex flex-wrap items-center justify-center gap-2">
-          <template x-for="type in blockTypes" :key="type.id">
-            <button type="button" @click="addBlock(type.id, targetSlot)"
-                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                    class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
-              <i class="fa-solid" :class="type.icon"></i><span x-text="type.label"></span>
-            </button>
-          </template>
-          <button type="button" @click="ui.showMedia = true"
-                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                  class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
-            <i class="fa-solid fa-photo-film"></i> {% trans "From vault" %}
-          </button>
-          <label :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                 class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
-            <i class="fa-solid fa-upload"></i> {% trans "Upload" %}
-            <input type="file" class="hidden" multiple
-                   accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-                   @change="onFiles($event.target.files, targetSlot, null); $event.target.value = ''">
-          </label>
-        </div>
       </div>
     </div>
-  </div>
-
-  {# ---- selection popover ---------------------------------------------- #}
-  <div x-show="ui.popover.open" x-cloak
-       :style="`left: ${ui.popover.x}px; top: ${ui.popover.y}px;`"
-       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="memo-popover flex items-center gap-0.5 rounded-lg border px-1 py-1 shadow-lg">
-    <button type="button" @mousedown.prevent="mark('bold')" title="{% trans 'Bold' %}"
-            class="rounded px-2 py-1 text-xs font-bold hover:opacity-70">B</button>
-    <button type="button" @mousedown.prevent="mark('italic')" title="{% trans 'Italic' %}"
-            class="rounded px-2 py-1 text-xs italic hover:opacity-70">I</button>
-    <button type="button" @mousedown.prevent="link()" title="{% trans 'Link' %}"
-            class="rounded px-2 py-1 text-xs hover:opacity-70"><i class="fa-solid fa-link"></i></button>
-    <button type="button" @mousedown.prevent="mark('removeFormat')" title="{% trans 'Clear formatting' %}"
-            class="rounded px-2 py-1 text-xs hover:opacity-70"><i class="fa-solid fa-eraser"></i></button>
   </div>
 
   {# ---- context menu ---------------------------------------------------- #}
@@ -484,34 +408,6 @@ old one carried 210 lines of inline Alpine that no test could reach.
        :style="`position: fixed; left: ${ui.menu.x}px; top: ${ui.menu.y}px; z-index: 9100;`"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
-    <template x-if="ui.menu.kind === 'block'">
-      <div>
-        <button type="button" @click="nudgeBlock(ui.menu.id, -1); ui.menu.open = false"
-                class="block w-full px-3 py-1.5 text-left hover:opacity-70">
-          <i class="fa-solid fa-arrow-up w-4 opacity-60"></i> {% trans "Move up" %}
-        </button>
-        <button type="button" @click="nudgeBlock(ui.menu.id, 1); ui.menu.open = false"
-                class="block w-full px-3 py-1.5 text-left hover:opacity-70">
-          <i class="fa-solid fa-arrow-down w-4 opacity-60"></i> {% trans "Move down" %}
-        </button>
-        <template x-if="activeSlide.layout === 'two-column'">
-          <div>
-            <button type="button" @click="moveBlockToSlot(ui.menu.id, 'left'); ui.menu.open = false"
-                    class="block w-full px-3 py-1.5 text-left hover:opacity-70">
-              <i class="fa-solid fa-arrow-left w-4 opacity-60"></i> {% trans "To left column" %}
-            </button>
-            <button type="button" @click="moveBlockToSlot(ui.menu.id, 'right'); ui.menu.open = false"
-                    class="block w-full px-3 py-1.5 text-left hover:opacity-70">
-              <i class="fa-solid fa-arrow-right w-4 opacity-60"></i> {% trans "To right column" %}
-            </button>
-          </div>
-        </template>
-        <button type="button" @click="removeBlock(ui.menu.id); ui.menu.open = false"
-                class="block w-full px-3 py-1.5 text-left text-red-500 hover:opacity-70">
-          <i class="fa-solid fa-trash w-4 opacity-60"></i> {% trans "Delete block" %}
-        </button>
-      </div>
-    </template>
     <template x-if="ui.menu.kind === 'slide'">
       <div>
         <button type="button" @click="duplicateSlide(ui.menu.id); ui.menu.open = false"
@@ -526,55 +422,179 @@ old one carried 210 lines of inline Alpine that no test could reach.
     </template>
   </div>
 
-  {# ---- vault media picker ---------------------------------------------- #}
-  <div x-show="ui.showMedia" x-cloak
-       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="ui.showMedia = false"></div>
+  {% comment %}---- the box dialog ----
+
+  One modal, per content type, opened from the box's Edit button. Everything a
+  kind of content needs to be written — LaTeX, an SVG, a listing, a picture —
+  is a small form, and four small forms scattered across a 1280x720 slide is
+  what made the canvas unusable at the size it is actually shown.
+
+  The canvas shows the slide. This writes it.
+  {% endcomment %}
+  <div x-show="ui.dialog.open" x-cloak
+       @keydown.escape.window="closeDialog()"
+       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/55 backdrop-blur-sm" @click="closeDialog()"></div>
     <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl">
+         class="relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border shadow-2xl">
+
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-photo-film"></i> {% trans "From the vault" %}
+          <i class="fa-solid" :class="(blockTypes.find(function (t) { return t.id === ui.dialog.type; }) || {}).icon"></i>
+          <span x-text="(blockTypes.find(function (t) { return t.id === ui.dialog.type; }) || {}).label"></span>
+          <span class="text-sm font-normal opacity-45" x-show="boxes.length > 1"
+                x-text="'· ' + slotLabel(ui.dialog.slot)"></span>
         </h2>
-        <button @click="ui.showMedia = false" class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+        <button @click="closeDialog()" class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
       </div>
-      <div class="border-b border-current/10 px-5 py-3">
-        <input type="search" x-model="ui.mediaSearch"
-               placeholder="{% trans 'Search images and SVGs' %}"
-               class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-sm">
-        <p class="mt-2 text-xs opacity-55">
-          {% trans "Click to add it to this slide, or drag it exactly where you want it." %}
-        </p>
-      </div>
-      <div class="min-h-0 flex-1 overflow-y-auto p-2">
-        <template x-for="m in filteredMedia" :key="m.pk">
-          <div data-drag-kind="media" :data-drag-id="m.pk" data-drag-handle
-               @click="insertMedia(m.pk, '', null)"
-               class="memo-handle flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:opacity-75">
-            <i class="fa-solid shrink-0 opacity-70"
-               :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
-            <span class="min-w-0 flex-1">
-              <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
-              <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
-            </span>
+
+      <div class="min-h-0 flex-1 overflow-y-auto p-5">
+
+        {# heading, text, quote — one rich field #}
+        <template x-if="['heading', 'text', 'quote'].indexOf(ui.dialog.type) !== -1">
+          <div class="space-y-3">
+            <div class="rounded-lg border border-current/20 p-2">
+              <trix-editor class="memo-trix"
+                           x-init="loadTrix($el)"
+                           @trix-initialize="loadTrix($event.target)"
+                           @trix-change="ui.dialog.payload = $event.target.value"
+                           @trix-file-accept.prevent="ui.status = 'Pictures are their own box.'"></trix-editor>
+            </div>
+            <label x-show="ui.dialog.type === 'heading'" class="flex items-center gap-2 text-sm">
+              {% trans "Size" %}
+              <select x-model="ui.dialog.attrs.level"
+                      class="rounded-lg border border-current/30 bg-transparent px-2 py-1 text-sm">
+                <option value="1">{% trans "Big" %}</option>
+                <option value="2">{% trans "Medium" %}</option>
+                <option value="3">{% trans "Small" %}</option>
+              </select>
+            </label>
           </div>
         </template>
-        <p x-show="!filteredMedia.length" class="px-3 py-8 text-center text-sm opacity-50">
-          {% trans "Nothing here yet. Upload an image to a vault bucket first." %}
-        </p>
+
+        {# list — one line per item, which is how people type a list #}
+        <template x-if="ui.dialog.type === 'list'">
+          <div class="space-y-2">
+            <textarea x-model="ui.dialog.items" rows="10" spellcheck="false"
+                      placeholder="{% trans 'One item per line' %}"
+                      class="w-full resize-y rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm"></textarea>
+            <p class="text-xs opacity-55">{% trans "One item per line. Blank lines are dropped." %}</p>
+          </div>
+        </template>
+
+        {# svg and code — ACE, the editor this platform already uses for text #}
+        <template x-if="ui.dialog.type === 'svg' || ui.dialog.type === 'code'">
+          <div class="space-y-2">
+            <input x-show="ui.dialog.type === 'code'" type="text"
+                   x-model="ui.dialog.attrs.language"
+                   placeholder="{% trans 'Language (optional) — python, sql, …' %}"
+                   class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+            <div id="memo-source" class="h-[46vh] w-full rounded-lg border border-current/20"></div>
+            <p class="text-xs opacity-55" x-show="ui.dialog.type === 'svg'">
+              {% blocktrans %}Paste an &lt;svg&gt; element. Scripts, event handlers and
+              external references are stripped when the deck is saved.{% endblocktrans %}
+            </p>
+          </div>
+        </template>
+
+        {# formula — LaTeX, rendered as you type, with the cheatsheet #}
+        <template x-if="ui.dialog.type === 'formula'">
+          <div class="space-y-2">
+            <div class="rounded-lg border border-current/15 p-3 text-center" x-ref="formulaPreview"></div>
+            <textarea id="memo-formula-source" x-model="ui.dialog.payload" rows="3"
+                      spellcheck="false" @input="previewFormula()"
+                      placeholder="{% trans 'e.g. \frac{a}{b} or E = mc^2' %}"
+                      class="w-full resize-y rounded-lg border border-current/30 bg-transparent px-3 py-2 text-center font-mono text-sm"></textarea>
+            {% include "memo/_formula_help.html" %}
+          </div>
+        </template>
+
+        {# image — from the vault or from your machine, never a URL box #}
+        <template x-if="ui.dialog.type === 'image'">
+          <div class="space-y-3">
+            <div x-show="ui.dialog.payload" class="rounded-lg border border-current/15 p-2 text-center">
+              <img :src="ui.dialog.payload" alt="" class="mx-auto max-h-56">
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <input type="text" x-model="ui.dialog.attrs.alt"
+                     placeholder="{% trans 'Describe the picture (alt text)' %}"
+                     class="min-w-0 flex-1 rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+              <select x-model="ui.dialog.attrs.fit"
+                      class="rounded-lg border border-current/30 bg-transparent px-2 py-2 text-sm">
+                <option value="contain">{% trans "Fit inside the box" %}</option>
+                <option value="cover">{% trans "Fill the box" %}</option>
+              </select>
+              <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm">
+                <i class="fa-solid fa-upload"></i> {% trans "Upload" %}
+                <input type="file" class="hidden"
+                       accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                       @change="uploadForDialog($event.target.files); $event.target.value = ''">
+              </label>
+            </div>
+            <input type="search" x-model="ui.mediaSearch"
+                   placeholder="{% trans 'Search images and SVGs in your buckets' %}"
+                   class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+            <div class="max-h-56 overflow-y-auto rounded-lg border border-current/10">
+              <template x-for="m in filteredMedia" :key="m.pk">
+                <button type="button" @click="pickMedia(m.pk)"
+                        class="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:opacity-75">
+                  <i class="fa-solid shrink-0 opacity-70"
+                     :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
+                    <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
+                  </span>
+                </button>
+              </template>
+              <p x-show="!filteredMedia.length" class="px-3 py-6 text-center text-sm opacity-50">
+                {% trans "Nothing here yet. Upload an image to a vault bucket first." %}
+              </p>
+            </div>
+          </div>
+        </template>
+
+        {# html — the v1 escape hatch, shown as source and left alone otherwise #}
+        <template x-if="ui.dialog.type === 'html'">
+          <div class="space-y-2">
+            <div id="memo-source" class="h-[46vh] w-full rounded-lg border border-current/20"></div>
+            <p class="text-xs opacity-55">
+              {% trans "Hand-written markup from an older deck. It is sanitised on save." %}
+            </p>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-between gap-2 border-t border-current/10 px-5 py-3">
+        <button type="button" @click="clearBox(ui.dialog.slot); closeDialog()"
+                class="rounded-lg border border-red-500/50 px-3 py-2 text-sm text-red-500">
+          <i class="fa-solid fa-eraser"></i> {% trans "Clear this box" %}
+        </button>
+        <span class="flex gap-2">
+          <button type="button" @click="closeDialog()"
+                  class="rounded-lg border border-current/30 px-3 py-2 text-sm">{% trans "Cancel" %}</button>
+          <button type="button" @click="applyDialog()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-check"></i> {% trans "Done" %}
+          </button>
+        </span>
       </div>
     </div>
   </div>
+
 </section>
 {% endblock %}
 
 {% block end_script %}
   {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
+  {% comment %} Trix for prose, ACE for SVG and code — both vendored under
+     core/static/vendor and listed in every host's download_vendor.py.{% endcomment %}
+  <script src="{% static 'vendor/trix/trix.umd.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/ace.js' %}"></script>
   <script src="{% static 'memo/model.js' %}"></script>
   <script src="{% static 'memo/history.js' %}"></script>
   <script src="{% static 'memo/sanitize.js' %}"></script>
   <script src="{% static 'memo/canvas.js' %}"></script>
-  <script src="{% static 'memo/drag.js' %}"></script>
   <script src="{% static 'memo/editor.js' %}"></script>
 {% endblock %}
 

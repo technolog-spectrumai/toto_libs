@@ -221,42 +221,73 @@ SVG attribute case is preserved explicitly — `html.parser` lowercases names, a
 a `viewBox` that becomes `viewbox` silently loses the graphic's coordinate
 system.
 
-## Drag and drop
+## Nothing on a slide is dragged
 
-Four targets, one engine (`static/memo/drag.js`), hand-rolled on pointer events
-because no DnD library is vendored and adding one means editing three hosts'
-`download_vendor.py` manifests:
+Dragging is gone from the presentation editor, deliberately and entirely: no
+block handles, no drop zones, no proxy, no drag.js on the page. A test asserts
+the attributes are absent, because half-removed dragging is worse than either
+state.
 
-| Drag | Zone |
+It was the only way to end up with a deck whose boxes disagreed with its
+layout — and every gesture it offered already had a button:
+
+| Was a drag | Is now |
 |---|---|
-| a slide, to reorder | the filmstrip |
-| a block, to reorder **or to move between columns** | each `.memo-flow` |
-| an image from the vault picker | each `.memo-flow` |
-| a file from the desktop | each `.memo-flow` (native drop) |
+| move a block between columns | pick the box, pick the content type |
+| reorder blocks in a box | a box holds one thing |
+| reorder slides | the filmstrip's ↑ ↓ |
+| drop a picture onto a slide | the box's Image dialog: vault or upload |
 
-Moving a block between the columns of a two-column layout is the *same*
-operation as reordering it — `slot` is just another property — rather than a
-special case to keep in step separately.
+## A box owns its content
 
-Shape lifted from `canasta/drag.js`: an 8px/400ms tap-vs-drag threshold (without
-it every touch tap becomes a one-pixel drag and a block can never be selected),
-a single `pointerId` lock, `setPointerCapture`, and a proxy on a top layer so the
-list does not reflow under the pointer. **Every drag has a click or keyboard
-equivalent calling the same `MemoModel` function** — the house rule, and what
-makes the editor usable without a pointing device.
+Selecting a box puts a small toolbar on it: the seven content types, then
+**Edit** and **Clear**. Choosing a type is one click — it does not delete and
+re-add, and switching between heading, text and quote KEEPS the words, because
+those three are the same thing with different type. Switching to a formula or a
+picture does not, because pretending LaTeX is a sentence would put
+`\frac{a}{b}` on the slide as prose.
+
+**A box holds one thing.** The format still reads several blocks in one slot and
+still renders them, but the editor works one-per-box: it is what makes "what
+kind of content is this" a property of the box rather than a list to manage, and
+it is why there is no add, remove or reorder inside a box at all.
+
+**Clear empties the box; the box stays** — the layout says it exists.
+
+## Everything is written in the dialog
+
+The canvas is 1280×720 scaled to fit a browser window. That is a fine place to
+*see* a slide and a hopeless place to write LaTeX into or paste an SVG into, so
+the canvas renders and the dialog writes:
+
+| Content | The dialog gives you |
+|---|---|
+| heading, text, quote | Trix — bold, italics, links, lists |
+| list | one item per line, which is how people type a list |
+| svg, code, the v1 `html` | ACE, XML or plain-text mode |
+| formula | LaTeX with a live KaTeX preview and the cheatsheet |
+| image | your vault, or an upload, with alt text and fit |
+
+Because nothing is edited in place, what the canvas shows is always exactly what
+the file holds — a slide can no longer be half-edited, and the autofit
+measurement never races a caret.
 
 ## Editing text
 
-`contenteditable`, on the text-bearing blocks only, with a selection popover.
-The rule that makes it work:
+Two `contenteditable` fields are left on the page — the slide title, and Trix
+inside the dialog — and the rule that makes both work is unchanged:
 
 > the DOM is written **once**, when the element is created, and after that the
 > model is updated from the DOM and never the reverse.
 
-Writing back into a focused `contenteditable` moves the caret to the start on
-every keystroke. When the model does change underneath — undo, redo, an import —
-the elements are recreated instead, by bumping a nonce that is part of every
-`:key`.
+Writing back into a focused field moves the caret to the start on every
+keystroke. When the model does change underneath — undo, redo, an import, a
+dialog being applied — the elements are recreated instead, by bumping a nonce
+that is part of every `:key`.
+
+The selection popover is gone with the inline editing it belonged to: Trix has
+its own toolbar, and the `execCommand` calls the popover was built on are
+deprecated with no replacement that can edit content.
 
 ## Undo, and saving
 

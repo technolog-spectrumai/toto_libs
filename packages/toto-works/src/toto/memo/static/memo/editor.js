@@ -47,8 +47,11 @@
         activeId: "",
         focusedId: "",
         nonce: 0,
-        // Which box the next block lands in — see `boxes`.
+        // The box being worked on. A slide is a set of boxes; this is which of
+        // them the toolbar belongs to.
         targetSlot: "",
+        dialog: { open: false, slot: "", type: "text", payload: "",
+                  items: "", attrs: {} },
         // Reactive mirrors of MemoHistory's state — see canUndo.
         canUndo: false,
         canRedo: false,
@@ -57,7 +60,6 @@
         dirty: false,
         status: "",
         conflict: false,
-        showMedia: false,
         mediaSearch: "",
         mediaBusy: false,
         // Slide ids whose thumbnail is near the viewport. Reactive, so Alpine
@@ -93,17 +95,11 @@
             else delete self.ui.live[id];
           });
         this.scheduleAutofit();
-        global.MemoDrag.init(this.$el, {
-          onDrop: function (kind, id, zone, before) { self.onDrop(kind, id, zone, before); },
-          onClick: function (kind, id) {
-            if (kind === "slide") self.select(id);
-            else self.focusBlock(id);
-          }
-        });
 
-        document.addEventListener("selectionchange", function () {
-          self.syncPopover();
-        });
+        // No MemoDrag. Nothing on a slide is dragged any more: the layout owns
+        // the geometry, a box is filled from its own toolbar, and slides are
+        // reordered with the arrows the filmstrip already had. Dragging was the
+        // only way to end up with a deck whose boxes disagreed with its layout.
 
         global.addEventListener("beforeunload", function (e) {
           if (self.ui.dirty || self._inflight) { e.preventDefault(); e.returnValue = ""; }
@@ -165,6 +161,91 @@
       },
 
       placeholderFor: function (block) { return M.PLACEHOLDER[block.type] || ""; },
+
+      /* A box holds ONE thing.
+       *
+       * The format allows several blocks in a slot and still reads them, but the
+       * editor works one-per-box: it is what makes "what kind of content is
+       * this" a property of the box rather than a list to manage, and it is why
+       * there is no add/remove/reorder inside a box at all. A deck from an
+       * older build with two blocks in one box shows both and edits the first.
+       */
+      boxBlock: function (slot) {
+        var slide = this.activeSlide;
+        if (!slide) return null;
+        var slots = M.slotsFor(slide.layout);
+        for (var i = 0; i < slide.blocks.length; i++) {
+          var block = slide.blocks[i];
+          var where = slots.indexOf(block.slot) !== -1 ? block.slot : slots[0];
+          if (where === slot) return block;
+        }
+        return null;
+      },
+
+      selectBox: function (slot) {
+        this.ui.targetSlot = slot;
+        var block = this.boxBlock(slot);
+        this.ui.focusedId = block ? block.id : "";
+      },
+
+      /* Set what kind of content this box holds.
+       *
+       * Switching keeps the words where that means anything — heading, text and
+       * quote are all prose — and starts clean where it does not: a formula is
+       * not a paragraph, and pretending its LaTeX is a sentence would put
+       * `\frac{a}{b}` on the slide as text.
+       */
+      setBoxType: function (slot, type) {
+        var self = this;
+        var block = this.boxBlock(slot);
+        var PROSE = ["heading", "text", "quote"];
+        if (!block) {
+          var made = M.newBlock(type);
+          made.slot = slot;
+          this.mutate(function (s) {
+            var slide = M.findSlide(s, self.ui.activeId);
+            if (slide) slide.blocks.push(made);
+          });
+          this.ui.focusedId = made.id;
+          this.refresh();
+          this.openBoxDialog(slot);
+          return;
+        }
+        if (block.type === type) { this.openBoxDialog(slot); return; }
+        var keep = PROSE.indexOf(block.type) !== -1 && PROSE.indexOf(type) !== -1;
+        this.mutate(function () {
+          block.type = type;
+          if (!keep) { block.payload = ""; block.items = []; block.render = ""; }
+          if (type === "list" && !block.items.length) block.items = [""];
+          if (type === "heading" && !block.attrs.level) block.attrs.level = "2";
+          if (type === "image" && !block.attrs.fit) block.attrs.fit = "contain";
+        });
+        this.refresh();
+        this.openBoxDialog(slot);
+      },
+
+      /* Empty a box. Not "delete the block" — the box stays, because the layout
+       * says it exists; only what is in it goes. */
+      clearBox: function (slot) {
+        var self = this;
+        var slide = this.activeSlide;
+        if (!slide) return;
+        var slots = M.slotsFor(slide.layout);
+        var doomed = slide.blocks.filter(function (block) {
+          var where = slots.indexOf(block.slot) !== -1 ? block.slot : slots[0];
+          return where === slot;
+        }).map(function (block) { return block.id; });
+        if (!doomed.length) return;
+        this.mutate(function (s) {
+          var target = M.findSlide(s, self.ui.activeId);
+          if (!target) return;
+          target.blocks = target.blocks.filter(function (block) {
+            return doomed.indexOf(block.id) === -1;
+          });
+        });
+        this.ui.focusedId = "";
+        this.refresh();
+      },
       isFocused: function (id) { return this.ui.focusedId === id; },
 
       // ---- the one mutation path -------------------------------------------
@@ -220,25 +301,7 @@
       blockScale: function (block) { return M.blockScale(block); },
       isAutoScaled: function (block) { return M.isAutoScaled(block); },
 
-      /* The manual override pins a number and stops auto-fitting that block. */
-      nudgeScale: function (block, delta) {
-        var C = global.MemoCanvas;
-        var current = M.blockScale(block);
-        var next = Math.min(C.MAX_SCALE, Math.max(C.MIN_SCALE,
-                            +(current + delta).toFixed(2)));
-        this.mutate(function () { block.attrs.scale = next.toFixed(2); },
-                    "scale:" + block.id);
-        this.refresh();
-      },
 
-      resetScale: function (block) {
-        this.mutate(function () { block.attrs.scale = "auto"; });
-        this.refresh();
-      },
-
-      scaleLabel: function (block) {
-        return Math.round(M.blockScale(block) * 100) + "%";
-      },
 
       // ---- slides ----------------------------------------------------------
       select: function (id) { this.ui.activeId = id; this.ui.focusedId = ""; },
@@ -310,45 +373,10 @@
       // ---- blocks ----------------------------------------------------------
       focusBlock: function (id) { this.ui.focusedId = id; },
 
-      addBlock: function (type, slot) {
-        var slideId = this.activeSlide.id;
-        var block = M.newBlock(type);
-        this.mutate(function (s) { M.insertBlock(s, slideId, block, slot || "", null); });
-        this.ui.focusedId = block.id;
-        this.refresh();
-      },
 
-      removeBlock: function (id) {
-        this.mutate(function (s) { M.deleteBlock(s, id); });
-        if (this.ui.focusedId === id) this.ui.focusedId = "";
-        this.refresh();
-      },
 
-      nudgeBlock: function (id, delta) {
-        // The keyboard equivalent of dragging, calling the same model function.
-        var slide = this.activeSlide;
-        this.mutate(function () { M.nudge(slide.blocks, id, delta); });
-        this.refresh();
-      },
 
-      moveBlockToSlot: function (id, slot) {
-        this.mutate(function (s) { M.moveBlock(s, id, slot, null); });
-        this.refresh();
-      },
 
-      setBlockAttr: function (block, name, value) {
-        this.mutate(function () { block.attrs[name] = String(value); },
-                    "attr:" + block.id + ":" + name);
-      },
-
-      // ---- text ------------------------------------------------------------
-      /* Called on input from a contenteditable. Reads the DOM into the model
-       * and does NOT write back — see the header. */
-      onInput: function (block, el, rich) {
-        var html = rich ? global.MemoSanitize.rich(el.innerHTML)
-                        : global.MemoSanitize.inline(el.innerHTML);
-        this.mutate(function () { block.payload = html; }, "text:" + block.id);
-      },
 
       onTitleInput: function (el) {
         var slide = this.activeSlide;
@@ -356,93 +384,174 @@
         this.mutate(function () { slide.title = text; }, "title:" + slide.id);
       },
 
-      onCodeInput: function (block, el) {
-        // textContent, not innerHTML: a code block is literal text, and the
-        // server keeps it literal for the same reason.
-        var text = el.textContent || "";
-        this.mutate(function () { block.payload = text; }, "code:" + block.id);
-      },
 
-      onItemInput: function (block, index, el) {
-        var html = global.MemoSanitize.inline(el.innerHTML);
-        this.mutate(function () { block.items[index] = html; },
-                    "item:" + block.id + ":" + index);
-      },
 
-      onItemKey: function (event, block, index) {
-        if (event.key === "Enter" && !event.shiftKey) {
-          event.preventDefault();
-          this.mutate(function () { block.items.splice(index + 1, 0, ""); });
-          this.refresh();
-        } else if (event.key === "Backspace" && !(event.target.textContent || "").length
-                   && block.items.length > 1) {
-          event.preventDefault();
-          this.mutate(function () { block.items.splice(index, 1); });
-          this.refresh();
-        }
-      },
-
-      // ---- the selection popover -------------------------------------------
-      syncPopover: function () {
-        var sel = document.getSelection();
-        if (!sel || sel.isCollapsed || !sel.rangeCount) {
-          this.ui.popover.open = false;
-          return;
-        }
-        var node = sel.anchorNode;
-        var host = node && (node.nodeType === 1 ? node : node.parentNode);
-        if (!host || !host.closest || !host.closest("[data-rich]")) {
-          this.ui.popover.open = false;
-          return;
-        }
-        var rect = sel.getRangeAt(0).getBoundingClientRect();
-        this.ui.popover.x = rect.left + rect.width / 2;
-        this.ui.popover.y = rect.top;
-        this.ui.popover.open = true;
-      },
-
-      /* execCommand is deprecated and still the only thing that applies a mark
-       * to a selection inside contenteditable without hand-writing range
-       * surgery. Every browser this platform supports implements it; the
-       * replacement (the Highlight API) cannot edit content at all. */
-      mark: function (command) {
-        document.execCommand(command, false, null);
-        this.commitFocused();
-      },
-
-      link: function () {
-        var href = prompt("Link to");
-        if (href === null) return;
-        document.execCommand(href ? "createLink" : "unlink", false, href || null);
-        this.commitFocused();
-      },
-
-      commitFocused: function () {
-        var el = document.querySelector('[data-rich][data-block="' + this.ui.focusedId + '"]');
-        if (!el) return;
-        var found = M.findBlock(this.state, this.ui.focusedId);
-        if (found) this.onInput(found.block, el, found.block.type === "text");
-      },
-
-      // ---- drag ------------------------------------------------------------
-      onDrop: function (kind, id, zone, before) {
+      // ---- the box dialog --------------------------------------------------
+      /* One modal per kind of content, opened from the box's Edit button.
+       *
+       * The canvas is 1280x720 scaled to fit a browser window, which is a fine
+       * place to SEE a slide and a hopeless place to write LaTeX or paste an
+       * SVG into. So the canvas renders and the dialog writes — and because
+       * nothing is edited in place any more, what you see on the slide is
+       * always exactly what the file holds.
+       */
+      openBoxDialog: function (slot) {
+        var block = this.boxBlock(slot);
+        if (!block) return;
+        this.ui.targetSlot = slot;
+        this.ui.focusedId = block.id;
+        this.ui.dialog = {
+          open: true, slot: slot, type: block.type,
+          payload: block.payload || "",
+          items: (block.items || []).join("\n"),
+          attrs: Object.assign({}, block.attrs || {})
+        };
         var self = this;
-        if (kind === "slide") {
-          var to = before ? M.indexOfId(this.state.slides, before)
-                          : this.state.slides.length;
-          this.mutate(function (s) { M.moveSlide(s, id, to); });
-          this.select(id);
-          return;
+        this.$nextTick(function () {
+          self.mountSource();
+          self.previewFormula();
+        });
+      },
+
+      closeDialog: function () {
+        this.teardownSource();
+        this.ui.dialog.open = false;
+      },
+
+      /* ACE for SVG, code and the v1 html escape hatch. Mounted when the dialog
+       * opens and destroyed when it closes: Alpine rebuilds this subtree, and an
+       * ACE bound to a detached div is a silent no-op that looks like a broken
+       * editor. */
+      mountSource: function () {
+        var type = this.ui.dialog.type;
+        if (["svg", "code", "html"].indexOf(type) === -1) return;
+        if (typeof ace === "undefined") return;
+        var host = document.getElementById("memo-source");
+        if (!host) return;
+        var dark = this.darkMode;
+        if (dark === undefined) {
+          try { dark = localStorage.getItem("darkMode") === "true"; } catch (e) {}
         }
-        if (kind === "block") {
-          var slot = zone.getAttribute("data-slot") || "";
-          this.mutate(function (s) { M.moveBlock(s, id, slot, before); });
-          this.refresh();
-          return;
+        this.teardownSource();
+        this._ace = ace.edit(host);
+        this._ace.setTheme(dark ? "ace/theme/twilight" : "ace/theme/textmate");
+        // Only five modes are vendored; anything else would 404 and leave the
+        // editor with no highlighting at all. Text is the honest fallback.
+        var mode = type === "svg" || type === "html" ? "ace/mode/xml" : "ace/mode/text";
+        var language = (this.ui.dialog.attrs.language || "").toLowerCase();
+        if (type === "code" && ["python", "html", "xml", "latex"].indexOf(language) !== -1) {
+          mode = "ace/mode/" + language;
         }
-        if (kind === "media") {
-          this.insertMedia(id, zone.getAttribute("data-slot") || "", before);
+        this._ace.session.setMode(mode);
+        this._ace.setOptions({ fontSize: "13px", showPrintMargin: false,
+                               useSoftTabs: true, tabSize: 2, wrap: true });
+        this._ace.setValue(this.ui.dialog.payload || "", -1);
+      },
+
+      teardownSource: function () {
+        if (this._ace) { this._ace.destroy(); this._ace = null; }
+      },
+
+      /* Trix, for the three prose kinds. Loaded once per open — see cyprian's
+       * loadTrix for why both x-init and trix-initialize call this. */
+      loadTrix: function (el) {
+        if (!el || !el.editor || el.__memoLoaded) return;
+        el.__memoLoaded = true;
+        el.editor.loadHTML(this.ui.dialog.payload || "");
+      },
+
+      previewFormula: function () {
+        var target = this.$refs.formulaPreview;
+        if (!target || this.ui.dialog.type !== "formula") return;
+        this.renderFormula({ payload: this.ui.dialog.payload, render: "" }, target);
+      },
+
+      pickMedia: function (pk) {
+        var self = this;
+        this.ui.mediaBusy = true;
+        fetch(this.config.urls.embed + "?file_pk=" + encodeURIComponent(pk))
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.ui.mediaBusy = false;
+            if (!data || data.error) {
+              self.ui.status = (data && data.error) || "Could not embed that.";
+              return;
+            }
+            // An SVG picked into an image box becomes an SVG box: the payload
+            // decides what it is, and rendering markup through <img src> would
+            // simply show nothing.
+            if (data.type === "svg") self.ui.dialog.type = "svg";
+            self.ui.dialog.payload = data.payload;
+            if (!self.ui.dialog.attrs.alt) self.ui.dialog.attrs.alt = data.alt || "";
+            self.$nextTick(function () { self.mountSource(); });
+          })
+          .catch(function () {
+            self.ui.mediaBusy = false;
+            self.ui.status = "Could not embed that.";
+          });
+      },
+
+      /* Upload straight into the box being edited. The server resizes and
+       * sanitises; this only has to put the payload where the dialog can see
+       * it. */
+      uploadForDialog: function (files) {
+        var self = this;
+        var file = (files || [])[0];
+        if (!file) return;
+        var form = new FormData();
+        form.append("file", file);
+        this.ui.mediaBusy = true;
+        fetch(this.config.urls.upload, {
+          method: "POST", headers: { "X-CSRFToken": csrf() }, body: form
+        })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.ui.mediaBusy = false;
+            if (!data || data.error) {
+              self.ui.status = (data && data.error) || "Upload failed.";
+              return;
+            }
+            if (data.type === "svg") self.ui.dialog.type = "svg";
+            self.ui.dialog.payload = data.payload;
+            if (!self.ui.dialog.attrs.alt) self.ui.dialog.attrs.alt = data.alt || "";
+            self.$nextTick(function () { self.mountSource(); });
+          })
+          .catch(function () {
+            self.ui.mediaBusy = false;
+            self.ui.status = "Upload failed.";
+          });
+      },
+
+      applyDialog: function () {
+        var d = this.ui.dialog;
+        var block = this.boxBlock(d.slot);
+        if (!block) { this.closeDialog(); return; }
+        var payload = this._ace ? this._ace.getValue() : d.payload;
+        var items = d.type === "list"
+          ? (d.items || "").split("\n").map(function (line) { return line.trim(); })
+              .filter(function (line) { return line.length; })
+          : [];
+        var attrs = {};
+        Object.keys(d.attrs || {}).forEach(function (key) {
+          if (d.attrs[key] !== "" && d.attrs[key] !== undefined) {
+            attrs[key] = String(d.attrs[key]);
+          }
+        });
+        var sanitize = global.MemoSanitize;
+        if (["heading", "quote"].indexOf(d.type) !== -1) payload = sanitize.inline(payload);
+        else if (d.type === "text") payload = sanitize.rich(payload);
+        if (d.type === "list") {
+          items = items.map(function (item) { return sanitize.inline(item); });
         }
+        this.mutate(function () {
+          block.type = d.type;
+          block.payload = payload;
+          block.items = items;
+          block.attrs = attrs;
+          block.render = "";                  // re-rendered from the source
+        });
+        this.closeDialog();
+        this.refresh();
       },
 
       // ---- formulas --------------------------------------------------------
@@ -479,12 +588,6 @@
         }
       },
 
-      onFormulaInput: function (block, el, target) {
-        var self = this;
-        this.mutate(function () { block.payload = el.value; },
-                    "formula:" + block.id);
-        this.renderFormula(block, target);
-      },
 
       /* The cheatsheet's previews, rendered from the same source they show. */
       renderHelp: function (el, source) {
@@ -495,77 +598,22 @@
       },
 
       insertFormulaSnippet: function (snippet) {
-        var area = document.querySelector(
-          '[data-formula-source][data-block="' + this.ui.focusedId + '"]');
+        /* Through the model, not the DOM: x-model owns that textarea's value,
+         * and writing round it is undone on the next render. */
+        var area = document.getElementById("memo-formula-source");
+        var value = this.ui.dialog.payload || "";
+        var start = area ? (area.selectionStart || 0) : value.length;
+        var end = area ? (area.selectionEnd || 0) : value.length;
+        this.ui.dialog.payload = value.slice(0, start) + snippet + value.slice(end);
+        this.previewFormula();
         if (!area) return;
-        var start = area.selectionStart || 0;
-        var end = area.selectionEnd || 0;
-        var value = area.value || "";
-        area.value = value.slice(0, start) + snippet + value.slice(end);
-        area.selectionStart = area.selectionEnd = start + snippet.length;
-        area.focus();
-        area.dispatchEvent(new Event("input", { bubbles: true }));
-      },
-
-      // ---- media -----------------------------------------------------------
-      insertMedia: function (pk, slot, before) {
-        var self = this;
-        this.ui.mediaBusy = true;
-        fetch(this.config.urls.embed + "?file_pk=" + encodeURIComponent(pk))
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            self.ui.mediaBusy = false;
-            if (!data || data.error) { self.ui.status = (data && data.error) || "Could not embed that."; return; }
-            var kind = data.kind === "svg" ? "svg" : "image";
-            var block = M.newBlock(kind);
-            block.payload = data.kind === "svg" ? (data.markup || data.payload)
-                                                : (data.data_uri || data.payload);
-            block.attrs.alt = data.alt || "";
-            var slideId = self.activeSlide.id;
-            self.mutate(function (s) { M.insertBlock(s, slideId, block, slot, before); });
-            self.ui.showMedia = false;
-            self.refresh();
-          })
-          .catch(function () { self.ui.mediaBusy = false; self.ui.status = "Could not embed that."; });
-      },
-
-      /* Files dropped from the desktop, or picked with the file input.
-       *
-       * The browser owns this gesture, so it is a native drop rather than the
-       * pointer-event engine above — what the two share is the insertion path,
-       * not the interaction. Bytes go to the server, which resizes and
-       * sanitises them: doing it in a canvas here would mean two resize
-       * policies that drift, and an SVG sanitiser that can be skipped.
-       */
-      onFiles: function (files, slot, before) {
-        var self = this;
-        Array.prototype.slice.call(files || []).forEach(function (file) {
-          var form = new FormData();
-          form.append("file", file);
-          self.ui.mediaBusy = true;
-          fetch(self.config.urls.upload, {
-            method: "POST", headers: { "X-CSRFToken": csrf() }, body: form
-          })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-              self.ui.mediaBusy = false;
-              if (!data || data.error) { self.ui.status = (data && data.error) || "Upload failed."; return; }
-              var kind = data.kind === "svg" ? "svg" : "image";
-              var block = M.newBlock(kind);
-              block.payload = data.payload;
-              block.attrs.alt = data.alt || "";
-              var slideId = self.activeSlide.id;
-              self.mutate(function (s) { M.insertBlock(s, slideId, block, slot || "", before || null); });
-              self.refresh();
-            })
-            .catch(function () { self.ui.mediaBusy = false; self.ui.status = "Upload failed."; });
+        var caret = start + snippet.length;
+        this.$nextTick(function () {
+          area.focus();
+          area.selectionStart = area.selectionEnd = caret;
         });
       },
 
-      onFileDrop: function (event, slot) {
-        var files = event.dataTransfer && event.dataTransfer.files;
-        if (files && files.length) this.onFiles(files, slot, null);
-      },
 
       // ---- undo ------------------------------------------------------------
       undo: function () {

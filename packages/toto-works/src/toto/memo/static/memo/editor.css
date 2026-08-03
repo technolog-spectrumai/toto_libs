@@ -101,3 +101,76 @@
   pointer-events: none;
 }
 .memo-editing .memo-flow[data-box-label] { position: relative; }
+
+/* --------------------------------------------------------------------------
+ * The box toolbar.
+ *
+ * A box is a place; what is in it is chosen here, on the box, and written in
+ * the dialog. Nothing on a slide is dragged, resized or nested any more, so
+ * this row plus Edit and Clear is the entire per-box vocabulary.
+ *
+ * It sits ON the box rather than in a side panel because "which box" was the
+ * question a floating panel could never answer without being told, and being
+ * told is what the old drag-and-drop was for.
+ * ------------------------------------------------------------------------ */
+
+.memo-editing .memo-flow[data-selected] {
+  outline: 2px solid rgba(120, 160, 255, 0.55);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.memo-box-bar {
+  position: absolute;
+  transform: translateY(-2.35rem);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  /* The slide is scaled by a CSS transform to fit the window; the toolbar must
+     not shrink with it or it becomes unusable on a laptop. */
+  transform-origin: top left;
+  font-size: 12px;
+}
+.memo-box-chip {
+  min-width: 1.6rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 5px;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.memo-box-chip:hover:not(:disabled) { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+.memo-box-chip[data-on] { opacity: 1; background: rgba(255, 255, 255, 0.26); }
+.memo-box-chip:disabled { opacity: 0.28; }
+.memo-box-wide { padding: 0.2rem 0.55rem; }
+.memo-box-sep {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.2rem;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.memo-box-hint {
+  align-self: center;
+  margin: auto;
+  font-size: 0.5em;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* Trix inside the dialog is a plain field: the dialog is a form, not a page. */
+trix-editor.memo-trix {
+  border: 0;
+  padding: 0;
+  min-height: 8rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  outline: none;
+}
+trix-toolbar .trix-button--icon-attach { display: none; }
