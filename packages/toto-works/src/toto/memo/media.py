@@ -54,13 +54,20 @@ def image_bytes_to_data_uri(raw: bytes, content_type: str = "", max_dim: int = M
 
 
 def clean_svg_markup(text: str) -> str:
-    """Strip the XML prolog/doctype and any ``<script>`` blocks from SVG markup.
+    """Inline SVG with everything executable removed.
 
-    Mirrors the editor's client-side prolog/doctype stripping, and additionally
-    removes scripts — a vault SVG may originate from a shared/public file, and the
-    inlined markup is rendered live in the viewer.
+    This used to be four regexes that stripped the XML prolog, the doctype and
+    ``<script>``. A regex cannot see attributes, so ``<svg onload="...">`` went
+    straight through into the player — as did ``<a href="javascript:...">`` and
+    an external ``<use href="//host/x#y">``, which is a script-injection vector
+    in its own right. The editor's client-side path did not even strip
+    ``<script>``.
+
+    It now delegates to :mod:`toto.memo.sanitize`, which walks the markup with a
+    real parser. Kept as a function here because the vault picker, the upload
+    endpoint and the format layer all call it, and one name is easier to keep
+    right than three.
     """
-    text = re.sub(r"<\?xml[\s\S]*?\?>", "", text or "", flags=re.IGNORECASE)
-    text = re.sub(r"<!DOCTYPE[\s\S]*?>", "", text, flags=re.IGNORECASE)
-    text = re.sub(r"<script[\s\S]*?</script\s*>", "", text, flags=re.IGNORECASE)
-    return text.strip()
+    from .sanitize import sanitize_svg
+
+    return sanitize_svg(text)

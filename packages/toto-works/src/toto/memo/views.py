@@ -290,14 +290,25 @@ class PresentationEditView(LoginRequiredMixin, View):
         context = PageProcessor().decorate(
             {
                 "vault_file": vault_file,
-                # Hydration payload — the template emits this via {{ ...|json_script }},
-                # which JSON-encodes the dict, so pass the dict (not a string).
+                # Hydration payloads — the template emits these via
+                # {{ ...|json_script }}, which JSON-encodes what it is given, so
+                # these must be plain Python. Handing it an already-serialised
+                # string produces an island that parses back into a *string* and
+                # every property on it is undefined.
                 "presentation_json": presentation.to_dict(),
-                "save_url": reverse("memo:save", args=[file_pk]),
-                "present_url": reverse("memo:present", args=[file_pk]),
-                # "Insert from vault" picker: the user's embeddable image/SVG files.
                 "vault_media_json": _media_list(request.user),
-                "embed_url": reverse("memo:media_embed"),
+                "config_json": {
+                    "canEdit": True,
+                    # The editor sends this back with every save; the endpoint
+                    # answers 409 if the file moved on underneath it.
+                    "contentHash": vault_file.content_hash or "",
+                    "urls": {
+                        "save": reverse("memo:save", args=[file_pk]),
+                        "embed": reverse("memo:media_embed"),
+                        "upload": reverse("memo:media_upload"),
+                    },
+                },
+                "present_url": reverse("memo:present", args=[file_pk]),
             },
             request,
         )
@@ -337,6 +348,44 @@ def presentation_media_embed(request):
     mime, _ = mimetypes.guess_type(vf.title or vf.key or "")
     data_uri = image_bytes_to_data_uri(raw, mime or "")
     return JsonResponse({"kind": "image", "data_uri": data_uri, "alt": alt})
+
+
+@login_required
+@require_POST
+def presentation_media_upload(request):
+    """Embed a file dropped onto a slide, or picked with the file input.
+
+    The bytes go through the server rather than a canvas in the browser, and
+    that is deliberate on two counts. The resize policy stays in one place —
+    `media.image_bytes_to_data_uri`, which the vault picker already uses — so
+    the two paths cannot drift. And an SVG gets sanitised by code that cannot be
+    skipped by posting here directly.
+    """
+    upload = request.FILES.get("file")
+    if upload is None:
+        return JsonResponse({"error": "No file."}, status=400)
+    if upload.size > getattr(settings, "MEMO_MAX_UPLOAD_BYTES", 20 * 1024 * 1024):
+        return JsonResponse({"error": "That file is too large to embed."}, status=413)
+
+    raw = upload.read()
+    name = upload.name or "image"
+    alt = name.rsplit(".", 1)[0]
+
+    mime, _ = mimetypes.guess_type(name)
+    if (mime or "") == "image/svg+xml" or name.lower().endswith(".svg"):
+        return JsonResponse({
+            "kind": "svg",
+            "payload": clean_svg_markup(raw.decode("utf-8", errors="replace")),
+            "alt": alt,
+        })
+    if not (mime or "").startswith("image/"):
+        return JsonResponse({"error": "Only images and SVGs can be embedded."},
+                            status=400)
+    return JsonResponse({
+        "kind": "image",
+        "payload": image_bytes_to_data_uri(raw, mime or ""),
+        "alt": alt,
+    })
 
 
 def _read_json_body(request, limit: int):

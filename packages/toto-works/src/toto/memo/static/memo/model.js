@@ -1,0 +1,245 @@
+/* The deck, as data. No DOM, no Alpine, no fetch.
+ *
+ * Everything that changes a deck is a function here, so there is exactly one
+ * definition of what "move a block" means — shared by the drag handlers, the
+ * keyboard equivalents and the context menu. That is not tidiness for its own
+ * sake: the house rule is that every drag has a click equivalent calling the
+ * SAME code path, and the only way to keep that true is to have one path.
+ */
+(function (global) {
+  "use strict";
+
+  var LAYOUTS = [
+    { id: "title-content", label: "Title and content", icon: "fa-align-left" },
+    { id: "two-column",    label: "Two columns",       icon: "fa-table-columns" },
+    { id: "full-bleed",    label: "Full-bleed image",  icon: "fa-image" },
+    { id: "section",       label: "Section divider",   icon: "fa-minus" },
+    { id: "quote",         label: "Quote",             icon: "fa-quote-left" }
+  ];
+
+  /* What the "add block" menu offers. `html` is deliberately absent: it exists
+   * only as the shape a v1 slide upgrades into, and offering it would invite
+   * people back into hand-writing HTML — the thing this editor replaces. */
+  var BLOCK_TYPES = [
+    { id: "heading", label: "Heading", icon: "fa-heading" },
+    { id: "text",    label: "Text",    icon: "fa-paragraph" },
+    { id: "list",    label: "List",    icon: "fa-list-ul" },
+    { id: "image",   label: "Image",   icon: "fa-image" },
+    { id: "svg",     label: "SVG",     icon: "fa-bezier-curve" },
+    { id: "code",    label: "Code",    icon: "fa-code" },
+    { id: "quote",   label: "Quote",   icon: "fa-quote-left" }
+  ];
+
+  var PLACEHOLDER = {
+    heading: "Heading",
+    text: "Say something",
+    list: "List item",
+    code: "code",
+    quote: "Quote",
+    image: "",
+    svg: "",
+    html: ""
+  };
+
+  function newId(prefix) {
+    var rand;
+    try {
+      rand = global.crypto.randomUUID().replace(/-/g, "").slice(0, 8);
+    } catch (e) {
+      rand = Math.random().toString(16).slice(2, 10);
+    }
+    return prefix + "-" + rand;
+  }
+
+  function newBlock(type) {
+    var block = {
+      id: newId("b"), type: type || "text", payload: "", items: [],
+      slot: "", attrs: {}
+    };
+    if (type === "list") block.items = [""];
+    if (type === "heading") block.attrs.level = "2";
+    if (type === "image") block.attrs.fit = "contain";
+    return block;
+  }
+
+  function newSlide(layout) {
+    var slide = {
+      id: newId("s"), title: "", layout: layout || "title-content",
+      blocks: [], attrs: {}, extra: []
+    };
+    if (slide.layout === "quote") slide.blocks.push(newBlock("quote"));
+    else if (slide.layout === "section") slide.blocks.push(newBlock("heading"));
+    else if (slide.layout === "full-bleed") slide.blocks.push(newBlock("image"));
+    else slide.blocks.push(newBlock("text"));
+    return slide;
+  }
+
+  /* Server dict -> editor state. Coerces every field, so a hand-edited file or
+   * an older build cannot put the editor into a shape its templates cannot
+   * render. Unknown block types and unknown attributes survive untouched —
+   * matching what presentation_format.py guarantees on the Python side. */
+  function fromServer(data) {
+    data = data || {};
+    var slides = (data.slides || []).map(function (s) {
+      return {
+        id: s.id || newId("s"),
+        title: s.title || "",
+        layout: s.layout || "title-content",
+        blocks: (s.blocks || []).map(function (b) {
+          return {
+            id: b.id || newId("b"),
+            type: b.type || "text",
+            payload: b.payload || "",
+            items: (b.items || []).slice(),
+            slot: b.slot || "",
+            attrs: Object.assign({}, b.attrs || {})
+          };
+        }),
+        attrs: Object.assign({}, s.attrs || {}),
+        extra: (s.extra || []).slice()
+      };
+    });
+    if (!slides.length) slides = [newSlide("title-content")];
+    return {
+      title: data.title || "",
+      theme: data.theme === "white" ? "white" : "black",
+      slides: slides,
+      attrs: Object.assign({}, data.attrs || {}),
+      extra: (data.extra || []).slice()
+    };
+  }
+
+  /* Which flow regions a layout renders, as [slot, blocks] pairs. Mirrors
+   * Slide.columns in presentation_format.py — the two must agree or the editor
+   * shows a different arrangement from the player. */
+  function columns(slide) {
+    if (!slide) return [];
+    if (slide.layout !== "two-column") return [["", slide.blocks]];
+    return [
+      ["left",  slide.blocks.filter(function (b) { return b.slot !== "right"; })],
+      ["right", slide.blocks.filter(function (b) { return b.slot === "right"; })]
+    ];
+  }
+
+  function indexOfId(list, id) {
+    for (var i = 0; i < list.length; i++) if (list[i].id === id) return i;
+    return -1;
+  }
+
+  function findBlock(state, id) {
+    for (var i = 0; i < state.slides.length; i++) {
+      var at = indexOfId(state.slides[i].blocks, id);
+      if (at !== -1) return { slide: state.slides[i], block: state.slides[i].blocks[at], at: at };
+    }
+    return null;
+  }
+
+  // ---- mutations -----------------------------------------------------------
+
+  function moveSlide(state, id, to) {
+    var from = indexOfId(state.slides, id);
+    if (from === -1) return false;
+    if (to > from) to -= 1;                       // removing shifts the target
+    to = Math.max(0, Math.min(to, state.slides.length - 1));
+    if (to === from) return false;
+    state.slides.splice(to, 0, state.slides.splice(from, 1)[0]);
+    return true;
+  }
+
+  /* Reorder a block, and move it between the columns of a two-column layout.
+   *
+   * Those are the SAME operation on purpose. `slot` is just another property,
+   * so dropping into the right-hand column is a normal move rather than a
+   * special case that has to be written, tested and kept in step separately.
+   *
+   * `before` is the id of the block to land in front of, or null for the end.
+   */
+  function moveBlock(state, id, slot, before) {
+    var found = findBlock(state, id);
+    if (!found) return false;
+    var blocks = found.slide.blocks;
+    var block = blocks.splice(found.at, 1)[0];
+    block.slot = slot || "";
+    var at = before ? indexOfId(blocks, before) : -1;
+    if (at === -1) blocks.push(block); else blocks.splice(at, 0, block);
+    return true;
+  }
+
+  function insertBlock(state, slideId, block, slot, before) {
+    var at = indexOfId(state.slides, slideId);
+    if (at === -1) return null;
+    var blocks = state.slides[at].blocks;
+    block.slot = slot || "";
+    var to = before ? indexOfId(blocks, before) : -1;
+    if (to === -1) blocks.push(block); else blocks.splice(to, 0, block);
+    return block;
+  }
+
+  function deleteBlock(state, id) {
+    var found = findBlock(state, id);
+    if (!found) return false;
+    found.slide.blocks.splice(found.at, 1);
+    return true;
+  }
+
+  function nudge(list, id, delta) {
+    var from = indexOfId(list, id);
+    if (from === -1) return false;
+    var to = from + delta;
+    if (to < 0 || to >= list.length) return false;
+    var moved = list.splice(from, 1)[0];
+    list.splice(to, 0, moved);
+    return true;
+  }
+
+  /* Changing layout never destroys a block. Slots that the new layout has no
+   * region for are kept in the data and simply not laid out — so switching to
+   * two-column and back leaves the arrangement intact. */
+  function setLayout(state, slideId, layout) {
+    var at = indexOfId(state.slides, slideId);
+    if (at === -1) return false;
+    state.slides[at].layout = layout;
+    return true;
+  }
+
+  function toPayload(state) {
+    return {
+      title: state.title,
+      theme: state.theme,
+      slides: state.slides.map(function (s) {
+        return {
+          id: s.id, title: s.title, layout: s.layout,
+          attrs: s.attrs, extra: s.extra,
+          blocks: s.blocks.map(function (b) {
+            return {
+              id: b.id, type: b.type, payload: b.payload,
+              items: b.items, slot: b.slot, attrs: b.attrs
+            };
+          })
+        };
+      }),
+      attrs: state.attrs,
+      extra: state.extra
+    };
+  }
+
+  global.MemoModel = {
+    LAYOUTS: LAYOUTS,
+    BLOCK_TYPES: BLOCK_TYPES,
+    PLACEHOLDER: PLACEHOLDER,
+    newId: newId,
+    newBlock: newBlock,
+    newSlide: newSlide,
+    fromServer: fromServer,
+    columns: columns,
+    indexOfId: indexOfId,
+    findBlock: findBlock,
+    moveSlide: moveSlide,
+    moveBlock: moveBlock,
+    insertBlock: insertBlock,
+    deleteBlock: deleteBlock,
+    nudge: nudge,
+    setLayout: setLayout,
+    toPayload: toPayload
+  };
+})(window);

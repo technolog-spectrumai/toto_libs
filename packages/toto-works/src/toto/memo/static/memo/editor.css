@@ -1,0 +1,77 @@
+/* Editor chrome — the parts Tailwind cannot express.
+ *
+ * Everything about how a SLIDE looks lives in slide.css, which the player and
+ * the PDF load too. This file is only the furniture around it, and it is loaded
+ * by the editor alone.
+ */
+
+/* The filmstrip thumbnail: a real slide, scaled. Not a screenshot and not an
+ * approximation — the same markup and the same stylesheet as the canvas, so a
+ * slide that is too full looks too full here as well.
+ *
+ * A fixed scale rather than a ResizeObserver per thumbnail: the strip is a
+ * fixed width, and a deck of eighty slides should not cost eighty observers.
+ * 180 / 1280 = 0.140625, and 720 x that is 101.25.
+ */
+.memo-thumb {
+  --memo-scale: 0.140625;
+  width: 180px;
+  height: 101.25px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  pointer-events: none;   /* the wrapper handles the click, not the slide */
+}
+.memo-thumb > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale));
+  transform-origin: top left;
+}
+
+/* The block toolbar and the selection popover are positioned in viewport
+ * coordinates by JS, so they cannot be Tailwind utilities. */
+.memo-popover {
+  position: fixed;
+  z-index: 9100;
+  transform: translate(-50%, -115%);
+}
+
+.memo-drag-proxy {
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: none;
+}
+
+/* The gallery card thumbnail — same trick, smaller. 240 / 1280 = 0.1875. */
+.memo-card-thumb {
+  --memo-scale: 0.1875;
+  width: 240px;
+  height: 135px;
+  position: relative;
+  overflow: hidden;
+}
+.memo-card-thumb > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale));
+  transform-origin: top left;
+}
+
+/* A legacy v1 slide in a thumbnail renders as an inert chip rather than live
+ * HTML — see _slide.html. Give it something to look like. */
+.memo-legacy {
+  display: inline-block;
+  font-size: 0.5em;
+  opacity: 0.6;
+  border: 1px dashed currentColor;
+  border-radius: 6px;
+  padding: 0.3em 0.6em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memo-editing .memo-block,
+  .memo-editing .memo-title { transition: none; }
+}

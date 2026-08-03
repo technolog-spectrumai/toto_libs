@@ -1,396 +1,482 @@
 {% extends "oya/base.html" %}
-{% load static %}
-{% load i18n %}
+{% load static i18n %}
 
-{% block title %}{% trans "Edit Presentation" %} | {{ platform.site_name }}{% endblock %}
+{% comment %}The block-canvas editor.
+
+The slide in the middle is the real thing: the same markup as the player, the
+same slide.css, laid out at 1280x720 and scaled to fit. Where a line breaks here
+is where it breaks when presenting.
+
+Progressive disclosure is the layout rule. The old editor put a slide list, a
+form and a preview on screen at once, with every control visible at all times
+and no way to put any of them away. Here the block toolbar appears only on the
+block being edited, slide actions appear on hover, and the filmstrip folds to a
+rail.
+
+All logic is in static/memo/*.js. Nothing but markup lives in this file — the
+old one carried 210 lines of inline Alpine that no test could reach.
+{% endcomment %}
+
+{% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+  <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
+  <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
+  <style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
 
 {% block content %}
-{{ presentation_json|json_script:"presentation-data" }}
-{{ vault_media_json|json_script:"vault-media-data" }}
+{{ presentation_json|json_script:"memo-data" }}
+{{ config_json|json_script:"memo-config" }}
+{{ vault_media_json|json_script:"memo-media" }}
 
-<section
-  x-data="presentationEditor()"
-  x-init="init()"
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-6 transition-colors duration-300">
+<section x-data="memoEditor()" x-init="boot()" @keydown.window="onKey($event)"
+         :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-4 py-5 sm:px-6">
+  <div class="mx-auto max-w-[100rem] space-y-4">
 
-  <div class="max-w-7xl mx-auto space-y-5">
+    {# ---- header ------------------------------------------------------- #}
+    <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="flex flex-wrap items-center gap-3 rounded-2xl border p-3 shadow-sm">
+      <a href="{% url 'memo:index' %}" title="{% trans 'All presentations' %}"
+         class="opacity-60 transition hover:opacity-100">
+        <i class="fa-solid fa-arrow-left"></i>
+      </a>
 
-    <!-- Header -->
-    <div class="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div class="flex-1 min-w-0">
-        <label class="block text-xs opacity-60 mb-1">{% trans "Presentation title" %}</label>
-        <input
-          type="text" x-model="title" @input="dirty = true"
-          :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-          class="w-full rounded border px-3 py-2 font-semibold">
-      </div>
-      <div class="flex items-center gap-2 shrink-0">
-        <span class="text-sm opacity-70" x-text="status"></span>
-        <a :href="presentUrl" target="_blank"
-           class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold hover:opacity-80">
-          <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
-        <button @click="save()" :disabled="saving"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 disabled:opacity-50">
-          <i class="fa-solid fa-floppy-disk"></i>
-          <span x-text="saving ? '{% trans "Saving…" %}' : '{% trans "Save" %}'"></span>
+      <input type="text" x-model="state.title"
+             @input="mutate(function () {}, 'deck-title')"
+             placeholder="{% trans 'Untitled presentation' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-base font-semibold">
+
+      <span class="flex items-center gap-1">
+        <button type="button" @click="undo()" :disabled="!canUndo" title="{% trans 'Undo' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+          <i class="fa-solid fa-rotate-left text-sm"></i>
         </button>
+        <button type="button" @click="redo()" :disabled="!canRedo" title="{% trans 'Redo' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+          <i class="fa-solid fa-rotate-right text-sm"></i>
+        </button>
+      </span>
+
+      {# The theme belongs to the deck, so it presents the same anywhere. #}
+      <span class="flex items-center gap-1">
+        <button type="button" @click="setTheme('black')" title="{% trans 'Dark deck' %}"
+                :class="state.theme === 'black' ? 'ring-2 ring-offset-1' : 'opacity-40'"
+                class="h-6 w-6 rounded-full border border-current bg-[#191919]"></button>
+        <button type="button" @click="setTheme('white')" title="{% trans 'Light deck' %}"
+                :class="state.theme === 'white' ? 'ring-2 ring-offset-1' : 'opacity-40'"
+                class="h-6 w-6 rounded-full border border-current bg-white"></button>
+      </span>
+
+      <span class="min-w-[4.5rem] text-xs opacity-55" x-text="ui.status"></span>
+
+      <button type="button" @click="save(true)" :disabled="ui.saving"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+        <i class="fa-solid" :class="ui.saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+        {% trans "Save" %}
+      </button>
+
+      <a href="{{ present_url }}" target="_blank" rel="noopener"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-play"></i> {% trans "Present" %}
+      </a>
+
+      {# Exports and git behind one menu — three more buttons in the bar would
+         be exactly the clutter this rework exists to remove. #}
+      <div x-data="{ open: false }" class="relative">
+        <button type="button" @click="open = !open" title="{% trans 'More' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100">
+          <i class="fa-solid fa-ellipsis-vertical"></i>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="absolute right-0 z-[9100] mt-1 min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+          {% if export_pdf_url %}
+            <a href="{{ export_pdf_url }}" class="block px-3 py-1.5 hover:opacity-70">
+              <i class="fa-solid fa-file-pdf w-4 opacity-60"></i> {% trans "Export PDF" %}
+            </a>
+          {% endif %}
+          {% if export_zip_url %}
+            <a href="{{ export_zip_url }}" class="block px-3 py-1.5 hover:opacity-70">
+              <i class="fa-solid fa-file-zipper w-4 opacity-60"></i> {% trans "Export archive" %}
+            </a>
+          {% endif %}
+        </div>
       </div>
+    </header>
+
+    {# The one thing the user must not be allowed to miss. #}
+    <div x-show="ui.conflict" x-cloak
+         class="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm">
+      <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+      <p class="flex-1">
+        {% blocktrans %}This deck changed somewhere else since you opened it —
+        another tab, or another device. Reload to take that version, or overwrite
+        it with what is on screen.{% endblocktrans %}
+      </p>
+      <button type="button" @click="window.location.reload()"
+              class="rounded-lg border border-current px-3 py-1.5 text-xs font-semibold">
+        {% trans "Reload" %}
+      </button>
+      <button type="button" @click="saveOverwriting()"
+              class="rounded-lg border border-red-500/60 px-3 py-1.5 text-xs font-semibold text-red-500">
+        {% trans "Overwrite" %}
+      </button>
     </div>
 
-    <div class="grid gap-5 lg:grid-cols-12">
+    {# ---- filmstrip + canvas -------------------------------------------- #}
+    <div class="grid grid-cols-1 gap-4"
+         :class="ui.filmstrip ? 'lg:grid-cols-[13rem_1fr]' : 'lg:grid-cols-[3.5rem_1fr]'">
 
-      <!-- Slide list -->
-      <aside class="lg:col-span-3 space-y-3">
-        <div class="flex items-center justify-between">
-          <h2 class="font-bold">{% trans "Slides" %}</h2>
-          <button @click="addSlide()" class="text-sm underline hover:opacity-80">
-            <i class="fa-solid fa-plus"></i> {% trans "Add" %}</button>
+      <aside :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="overflow-hidden rounded-2xl border shadow-sm">
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="flex items-center justify-between border-b px-2 py-2">
+          <span x-show="ui.filmstrip" class="px-1 text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Slides" %}
+          </span>
+          <button type="button" @click="ui.filmstrip = !ui.filmstrip"
+                  class="rounded p-1 opacity-50 transition hover:opacity-100">
+            <i class="fa-solid text-xs" :class="ui.filmstrip ? 'fa-chevron-left' : 'fa-chevron-right'"></i>
+          </button>
         </div>
-        <ul class="space-y-2">
-          <template x-for="(slide, idx) in slides" :key="idx">
-            <li
-              @click="activeIndex = idx"
-              :class="idx === activeIndex
-                ? (darkMode ? 'border-accent-dark bg-bubble-bg-dark' : 'border-accent-light bg-bubble-bg-light')
-                : (darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light')"
-              class="cursor-pointer rounded border p-2 flex items-center gap-2">
-              <span class="text-xs opacity-50 w-5 text-right" x-text="idx + 1"></span>
-              <span class="flex-1 truncate text-sm" x-text="slide.title || '{% trans "Untitled slide" %}'"></span>
-              <span class="flex items-center gap-1 shrink-0">
-                <button @click.stop="moveUp(idx)" :disabled="idx === 0"
-                        class="opacity-60 hover:opacity-100 disabled:opacity-20" title="{% trans 'Move up' %}">
-                  <i class="fa-solid fa-arrow-up text-xs"></i></button>
-                <button @click.stop="moveDown(idx)" :disabled="idx === slides.length - 1"
-                        class="opacity-60 hover:opacity-100 disabled:opacity-20" title="{% trans 'Move down' %}">
-                  <i class="fa-solid fa-arrow-down text-xs"></i></button>
-                <button @click.stop="removeSlide(idx)"
-                        class="opacity-60 hover:opacity-100 text-red-500" title="{% trans 'Delete' %}">
-                  <i class="fa-solid fa-trash text-xs"></i></button>
+
+        <ol data-drop-kind="slide" class="max-h-[64vh] space-y-2 overflow-y-auto p-2">
+          <template x-for="(slide, index) in state.slides" :key="slide.id">
+            <li data-drag-kind="slide" :data-drag-id="slide.id" data-drag-handle
+                @click="select(slide.id)"
+                @contextmenu.prevent="openMenu($event, 'slide', slide.id)"
+                :class="slide.id === ui.activeId
+                  ? (darkMode ? 'border-accent-dark' : 'border-accent-light')
+                  : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                class="memo-handle group relative rounded-lg border p-1 transition">
+              <div class="flex items-center gap-2">
+                <span class="w-4 shrink-0 text-right text-[0.65rem] opacity-40" x-text="index + 1"></span>
+                <span x-show="!ui.filmstrip" class="truncate text-xs" x-text="slide.title"></span>
+                <div x-show="ui.filmstrip" class="memo-thumb"
+                     :class="'memo-theme-' + state.theme">
+                  <div class="memo-slide" :class="'memo-theme-' + state.theme"
+                       :data-layout="slide.layout">
+                    <h2 class="memo-title" x-text="slide.title"></h2>
+                    <div class="memo-flow">
+                      <template x-for="b in slide.blocks.slice(0, 4)" :key="b.id">
+                        <div class="memo-block" :data-type="b.type">
+                          <template x-if="b.type === 'image'">
+                            <img :src="b.payload" alt="">
+                          </template>
+                          <template x-if="b.type !== 'image' && b.type !== 'svg'">
+                            <div x-text="b.payload ? b.payload.replace(/<[^>]*>/g, '').slice(0, 90) : ''"></div>
+                          </template>
+                        </div>
+                      </template>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {# Slide actions: hidden until the row is hovered. #}
+              <span x-show="ui.filmstrip"
+                    class="absolute right-1 top-1 flex gap-0.5 opacity-0 transition group-hover:opacity-95">
+                <button type="button" @click.stop="nudgeSlide(slide.id, -1)" title="{% trans 'Move up' %}"
+                        class="rounded bg-black/60 p-1 text-white"><i class="fa-solid fa-arrow-up text-[0.6rem]"></i></button>
+                <button type="button" @click.stop="nudgeSlide(slide.id, 1)" title="{% trans 'Move down' %}"
+                        class="rounded bg-black/60 p-1 text-white"><i class="fa-solid fa-arrow-down text-[0.6rem]"></i></button>
+                <button type="button" @click.stop="duplicateSlide(slide.id)" title="{% trans 'Duplicate' %}"
+                        class="rounded bg-black/60 p-1 text-white"><i class="fa-solid fa-clone text-[0.6rem]"></i></button>
+                <button type="button" @click.stop="removeSlide(slide.id)" title="{% trans 'Delete slide' %}"
+                        class="rounded bg-black/60 p-1 text-red-300"><i class="fa-solid fa-trash text-[0.6rem]"></i></button>
               </span>
             </li>
           </template>
-        </ul>
+        </ol>
+
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t p-2">
+          <div x-data="{ open: false }" class="relative">
+            <button type="button" @click="open = !open"
+                    class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-current/40 px-2 py-2 text-xs opacity-70 transition hover:opacity-100">
+              <i class="fa-solid fa-plus"></i><span x-show="ui.filmstrip">{% trans "New slide" %}</span>
+            </button>
+            <div x-show="open" x-cloak @click.outside="open = false"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="absolute bottom-full left-0 z-[9100] mb-1 min-w-[12rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+              <template x-for="layout in layouts" :key="layout.id">
+                <button type="button" @click="addSlide(layout.id); open = false"
+                        class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+                  <i class="fa-solid w-4 opacity-60" :class="layout.icon"></i>
+                  <span x-text="layout.label"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+        </div>
       </aside>
 
-      <!-- Editor -->
-      <div class="lg:col-span-5 space-y-3" x-show="activeSlide">
-        <div>
-          <label class="block text-xs opacity-60 mb-1">{% trans "Slide title" %}</label>
-          <input
-            type="text" x-model="activeSlide.title" @input="dirty = true"
-            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-            class="w-full rounded border px-3 py-2">
+      {# ---- the canvas -------------------------------------------------- #}
+      <div class="min-w-0 space-y-3">
+
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="flex flex-wrap items-center gap-2 rounded-2xl border px-3 py-2 shadow-sm">
+          <div x-data="{ open: false }" class="relative">
+            <button type="button" @click="open = !open"
+                    class="inline-flex items-center gap-2 rounded-lg px-2 py-1.5 text-xs opacity-75 transition hover:opacity-100">
+              <i class="fa-solid fa-table-columns"></i>
+              <span x-text="(layouts.find(function (l) { return l.id === activeSlide.layout; }) || {}).label"></span>
+              <i class="fa-solid fa-chevron-down text-[0.55rem] opacity-60"></i>
+            </button>
+            <div x-show="open" x-cloak @click.outside="open = false"
+                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="absolute left-0 z-[9100] mt-1 min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+              <template x-for="layout in layouts" :key="layout.id">
+                <button type="button" @click="setLayout(layout.id); open = false"
+                        class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+                  <i class="fa-solid w-4 opacity-60" :class="layout.icon"></i>
+                  <span x-text="layout.label"></span>
+                </button>
+              </template>
+            </div>
+          </div>
+          <span class="flex-1"></span>
+          <span class="text-xs opacity-45">
+            <span x-text="activeIndex + 1"></span> / <span x-text="state.slides.length"></span>
+          </span>
         </div>
 
-        <div class="flex flex-wrap items-center gap-2">
-          <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
-            <i class="fa-solid fa-image"></i> {% trans "Insert image" %}
-            <input type="file" accept="image/png,image/jpeg,image/gif,image/webp" class="hidden" @change="insertImage($event)">
-          </label>
-          <label class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
-            <i class="fa-solid fa-bezier-curve"></i> {% trans "Insert SVG" %}
-            <input type="file" accept="image/svg+xml,.svg" class="hidden" @change="insertSvg($event)">
-          </label>
-          <button type="button" @click="showVaultPicker = true"
-            class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold cursor-pointer hover:opacity-80">
-            <i class="fa-solid fa-photo-film"></i> {% trans "From vault" %}</button>
-          <span class="text-xs opacity-50">{% trans "Images are resized to ≤640px and embedded; SVGs are inlined." %}</span>
+        <div x-ref="stage" class="memo-stage mx-auto w-full max-w-[72rem] shadow-lg">
+          <div class="memo-slide memo-editing" :class="'memo-theme-' + state.theme"
+               :data-layout="activeSlide.layout">
+
+            <h2 class="memo-title" contenteditable="true"
+                data-placeholder="{% trans 'Slide title' %}"
+                :data-focused="ui.focusedId === 'title' ? '1' : null"
+                @focus="ui.focusedId = 'title'"
+                @input="onTitleInput($event.target)"
+                x-init="$el.textContent = activeSlide.title"></h2>
+
+            <template x-for="pair in columns" :key="pair[0] + '-' + activeSlide.id + '-' + ui.nonce">
+              <div class="memo-flow" :data-slot="pair[0]" data-drop-kind="block media"
+                   @dragover.prevent @drop.prevent="onFileDrop($event, pair[0])">
+                <template x-for="block in pair[1]" :key="block.id + '-' + ui.nonce">
+                  <div class="memo-block group relative" :data-type="block.type"
+                       :data-fit="block.attrs.fit || 'contain'"
+                       data-drag-kind="block" :data-drag-id="block.id"
+                       :data-focused="isFocused(block.id) ? '1' : null"
+                       @click="focusBlock(block.id)"
+                       @contextmenu.prevent="openMenu($event, 'block', block.id)">
+
+                    {# The grip. Handles own the pointer (touch-action: none in
+                       slide.css) so the page still scrolls everywhere else. #}
+                    <span data-drag-handle
+                          class="memo-handle absolute -left-9 top-1 opacity-0 transition group-hover:opacity-60">
+                      <i class="fa-solid fa-grip-vertical text-xs"></i>
+                    </span>
+
+                    <template x-if="block.type === 'heading' || block.type === 'quote'">
+                      <div data-rich :data-block="block.id" contenteditable="true"
+                           :data-placeholder="placeholderFor(block)"
+                           @input="onInput(block, $event.target, false)"
+                           @focus="focusBlock(block.id)"
+                           x-init="$el.innerHTML = block.payload"></div>
+                    </template>
+
+                    <template x-if="block.type === 'text'">
+                      <div data-rich :data-block="block.id" contenteditable="true"
+                           :data-placeholder="placeholderFor(block)"
+                           @input="onInput(block, $event.target, true)"
+                           @focus="focusBlock(block.id)"
+                           x-init="$el.innerHTML = block.payload"></div>
+                    </template>
+
+                    <template x-if="block.type === 'list'">
+                      <ul>
+                        <template x-for="(item, i) in block.items" :key="block.id + '-i' + i">
+                          <li data-rich contenteditable="true"
+                              data-placeholder="{% trans 'List item' %}"
+                              @input="onItemInput(block, i, $event.target)"
+                              @keydown="onItemKey($event, block, i)"
+                              @focus="focusBlock(block.id)"
+                              x-init="$el.innerHTML = item"></li>
+                        </template>
+                      </ul>
+                    </template>
+
+                    <template x-if="block.type === 'code'">
+                      <pre contenteditable="true" spellcheck="false"
+                           @input="onCodeInput(block, $event.target)"
+                           @focus="focusBlock(block.id)"
+                           x-init="$el.textContent = block.payload"></pre>
+                    </template>
+
+                    <template x-if="block.type === 'image'">
+                      <img :src="block.payload" :alt="block.attrs.alt || ''" draggable="false">
+                    </template>
+
+                    <template x-if="block.type === 'svg'">
+                      <div x-html="block.payload"></div>
+                    </template>
+
+                    {# The v1 escape hatch. Shown as it will present, but not
+                       editable: there is no block UI for arbitrary markup, and
+                       silently rewriting somebody's hand-written slide would be
+                       worse than leaving it alone. #}
+                    <template x-if="block.type === 'html'">
+                      <div x-html="block.payload"></div>
+                    </template>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </div>
+
+          <div x-show="ui.mediaBusy" x-cloak
+               class="absolute inset-0 flex items-center justify-center bg-black/30">
+            <i class="fa-solid fa-spinner fa-spin text-2xl text-white"></i>
+          </div>
         </div>
 
-        <div>
-          <label class="block text-xs opacity-60 mb-1">{% trans "Slide body (HTML)" %}</label>
-          <textarea
-            x-ref="body" x-model="activeSlide.body" @input="dirty = true"
-            rows="16" spellcheck="false"
-            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-            class="w-full rounded border px-3 py-2 font-mono text-sm"></textarea>
+        {# ---- add a block ----------------------------------------------- #}
+        <div class="flex flex-wrap items-center justify-center gap-2">
+          <template x-for="type in blockTypes" :key="type.id">
+            <button type="button" @click="addBlock(type.id, '')"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                    class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
+              <i class="fa-solid" :class="type.icon"></i><span x-text="type.label"></span>
+            </button>
+          </template>
+          <button type="button" @click="ui.showMedia = true"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
+            <i class="fa-solid fa-photo-film"></i> {% trans "From vault" %}
+          </button>
+          <label :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
+            <i class="fa-solid fa-upload"></i> {% trans "Upload" %}
+            <input type="file" class="hidden" multiple
+                   accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                   @change="onFiles($event.target.files, '', null); $event.target.value = ''">
+          </label>
         </div>
       </div>
-
-      <!-- Live preview -->
-      <div class="lg:col-span-4 space-y-2" x-show="activeSlide">
-        <h2 class="font-bold">{% trans "Preview" %}</h2>
-        <!-- Mirrors the reveal.js theme used by the viewer: white in light mode,
-             #191919 in dark mode — so the preview matches how it will present. -->
-        <div
-          :class="darkMode ? 'bg-[#191919] text-white border-accent-1' : 'bg-white text-[#222] border-accent-2'"
-          class="rounded border p-4 min-h-[300px] overflow-auto">
-          <h3 class="text-lg font-bold mb-2" x-text="activeSlide ? activeSlide.title : ''"></h3>
-          <div class="memo-preview" x-html="activeSlide ? activeSlide.body : ''"></div>
-        </div>
-      </div>
-
     </div>
   </div>
 
-  <!-- Insert-from-vault picker -->
-  <div x-show="showVaultPicker" x-cloak
+  {# ---- selection popover ---------------------------------------------- #}
+  <div x-show="ui.popover.open" x-cloak
+       :style="`left: ${ui.popover.x}px; top: ${ui.popover.y}px;`"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="memo-popover flex items-center gap-0.5 rounded-lg border px-1 py-1 shadow-lg">
+    <button type="button" @mousedown.prevent="mark('bold')" title="{% trans 'Bold' %}"
+            class="rounded px-2 py-1 text-xs font-bold hover:opacity-70">B</button>
+    <button type="button" @mousedown.prevent="mark('italic')" title="{% trans 'Italic' %}"
+            class="rounded px-2 py-1 text-xs italic hover:opacity-70">I</button>
+    <button type="button" @mousedown.prevent="link()" title="{% trans 'Link' %}"
+            class="rounded px-2 py-1 text-xs hover:opacity-70"><i class="fa-solid fa-link"></i></button>
+    <button type="button" @mousedown.prevent="mark('removeFormat')" title="{% trans 'Clear formatting' %}"
+            class="rounded px-2 py-1 text-xs hover:opacity-70"><i class="fa-solid fa-eraser"></i></button>
+  </div>
+
+  {# ---- context menu ---------------------------------------------------- #}
+  <div x-show="ui.menu.open" x-cloak @click.outside="ui.menu.open = false"
+       @keydown.escape.window="ui.menu.open = false"
+       :style="`position: fixed; left: ${ui.menu.x}px; top: ${ui.menu.y}px; z-index: 9100;`"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+    <template x-if="ui.menu.kind === 'block'">
+      <div>
+        <button type="button" @click="nudgeBlock(ui.menu.id, -1); ui.menu.open = false"
+                class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+          <i class="fa-solid fa-arrow-up w-4 opacity-60"></i> {% trans "Move up" %}
+        </button>
+        <button type="button" @click="nudgeBlock(ui.menu.id, 1); ui.menu.open = false"
+                class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+          <i class="fa-solid fa-arrow-down w-4 opacity-60"></i> {% trans "Move down" %}
+        </button>
+        <template x-if="activeSlide.layout === 'two-column'">
+          <div>
+            <button type="button" @click="moveBlockToSlot(ui.menu.id, 'left'); ui.menu.open = false"
+                    class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+              <i class="fa-solid fa-arrow-left w-4 opacity-60"></i> {% trans "To left column" %}
+            </button>
+            <button type="button" @click="moveBlockToSlot(ui.menu.id, 'right'); ui.menu.open = false"
+                    class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+              <i class="fa-solid fa-arrow-right w-4 opacity-60"></i> {% trans "To right column" %}
+            </button>
+          </div>
+        </template>
+        <button type="button" @click="removeBlock(ui.menu.id); ui.menu.open = false"
+                class="block w-full px-3 py-1.5 text-left text-red-500 hover:opacity-70">
+          <i class="fa-solid fa-trash w-4 opacity-60"></i> {% trans "Delete block" %}
+        </button>
+      </div>
+    </template>
+    <template x-if="ui.menu.kind === 'slide'">
+      <div>
+        <button type="button" @click="duplicateSlide(ui.menu.id); ui.menu.open = false"
+                class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+          <i class="fa-solid fa-clone w-4 opacity-60"></i> {% trans "Duplicate slide" %}
+        </button>
+        <button type="button" @click="removeSlide(ui.menu.id); ui.menu.open = false"
+                class="block w-full px-3 py-1.5 text-left text-red-500 hover:opacity-70">
+          <i class="fa-solid fa-trash w-4 opacity-60"></i> {% trans "Delete slide" %}
+        </button>
+      </div>
+    </template>
+  </div>
+
+  {# ---- vault media picker ---------------------------------------------- #}
+  <div x-show="ui.showMedia" x-cloak
        class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showVaultPicker = false"></div>
-
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="ui.showMedia = false"></div>
     <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
-
+         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl">
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-photo-film"></i>{% trans "Insert image / SVG from vault" %}</h2>
-        <button type="button" @click="showVaultPicker = false"
-                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+          <i class="fa-solid fa-photo-film"></i> {% trans "From the vault" %}
+        </h2>
+        <button @click="ui.showMedia = false" class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
       </div>
-
-      <div class="border-b border-current/10 p-4">
-        <input type="text" x-model="vaultSearch"
-               placeholder="{% trans 'Search by name or location…' %}"
-               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-               class="w-full rounded-lg border px-3 py-2 text-sm">
+      <div class="border-b border-current/10 px-5 py-3">
+        <input type="search" x-model="ui.mediaSearch"
+               placeholder="{% trans 'Search images and SVGs' %}"
+               class="w-full rounded-lg border border-current bg-transparent px-3 py-2 text-sm">
+        <p class="mt-2 text-xs opacity-55">
+          {% trans "Click to add it to this slide, or drag it exactly where you want it." %}
+        </p>
       </div>
-
-      <div class="overflow-y-auto p-2">
-        <template x-if="filteredVaultMedia.length === 0">
-          <p class="p-6 text-center text-sm opacity-60">
-            {% trans "No image or SVG files in your vault." %}</p>
-        </template>
-        <template x-for="m in filteredVaultMedia" :key="m.pk">
-          <button type="button" @click="insertFromVault(m)" :disabled="vaultBusy"
-                  class="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:bg-current/5 disabled:opacity-40">
+      <div class="min-h-0 flex-1 overflow-y-auto p-2">
+        <template x-for="m in filteredMedia" :key="m.pk">
+          <div data-drag-kind="media" :data-drag-id="m.pk" data-drag-handle
+               @click="insertMedia(m.pk, '', null)"
+               class="memo-handle flex w-full items-center gap-3 rounded-lg px-3 py-2 text-left transition hover:opacity-75">
             <i class="fa-solid shrink-0 opacity-70"
                :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
             <span class="min-w-0 flex-1">
               <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
               <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
             </span>
-            <span class="shrink-0 text-[10px] uppercase tracking-wide opacity-50" x-text="m.file_type"></span>
-          </button>
+          </div>
         </template>
-      </div>
-
-      <div class="flex items-center justify-between border-t border-current/10 px-5 py-3 text-xs opacity-60">
-        <span x-show="vaultBusy"><i class="fa-solid fa-spinner fa-spin mr-1"></i>{% trans "Embedding…" %}</span>
-        <span x-show="!vaultBusy">{% trans "Picked files are embedded into the presentation." %}</span>
+        <p x-show="!filteredMedia.length" class="px-3 py-8 text-center text-sm opacity-50">
+          {% trans "Nothing here yet. Upload an image to a vault bucket first." %}
+        </p>
       </div>
     </div>
   </div>
 </section>
-
-<style>
-  .memo-preview img, .memo-preview svg { max-width: 100%; height: auto; }
-</style>
 {% endblock %}
 
 {% block end_script %}
-<script>
-  function presentationEditor() {
-    return {
-      title: "",
-      slides: [],
-      activeIndex: 0,
-      saving: false,
-      dirty: false,
-      status: "",
-      saveUrl: "{{ save_url }}",
-      presentUrl: "{{ present_url }}",
-      embedUrl: "{{ embed_url }}",
-
-      // Insert-from-vault picker state.
-      vaultMedia: [],
-      showVaultPicker: false,
-      vaultSearch: "",
-      vaultBusy: false,
-
-      get activeSlide() {
-        return this.slides[this.activeIndex] || null;
-      },
-
-      get filteredVaultMedia() {
-        const q = this.vaultSearch.trim().toLowerCase();
-        if (!q) return this.vaultMedia;
-        return this.vaultMedia.filter(m =>
-          (m.title || "").toLowerCase().includes(q) ||
-          (m.location || "").toLowerCase().includes(q));
-      },
-
-      init() {
-        try {
-          const data = JSON.parse(document.getElementById("presentation-data").textContent);
-          this.title = data.title || "";
-          this.slides = (data.slides || []).map(s => ({ title: s.title || "", body: s.body || "" }));
-        } catch (e) {
-          this.slides = [];
-        }
-        if (this.slides.length === 0) {
-          this.slides = [{ title: "", body: "" }];
-        }
-        this.activeIndex = 0;
-
-        try {
-          this.vaultMedia = JSON.parse(
-            document.getElementById("vault-media-data").textContent) || [];
-        } catch (e) {
-          this.vaultMedia = [];
-        }
-
-        window.addEventListener("beforeunload", (e) => {
-          if (this.dirty) { e.preventDefault(); e.returnValue = ""; }
-        });
-      },
-
-      addSlide() {
-        this.slides.push({ title: "", body: "" });
-        this.activeIndex = this.slides.length - 1;
-        this.dirty = true;
-      },
-      removeSlide(idx) {
-        if (this.slides.length === 1) {
-          this.slides = [{ title: "", body: "" }];
-        } else {
-          this.slides.splice(idx, 1);
-        }
-        if (this.activeIndex >= this.slides.length) {
-          this.activeIndex = this.slides.length - 1;
-        }
-        this.dirty = true;
-      },
-      moveUp(idx) {
-        if (idx === 0) return;
-        [this.slides[idx - 1], this.slides[idx]] = [this.slides[idx], this.slides[idx - 1]];
-        if (this.activeIndex === idx) this.activeIndex = idx - 1;
-        else if (this.activeIndex === idx - 1) this.activeIndex = idx;
-        this.dirty = true;
-      },
-      moveDown(idx) {
-        if (idx === this.slides.length - 1) return;
-        [this.slides[idx + 1], this.slides[idx]] = [this.slides[idx], this.slides[idx + 1]];
-        if (this.activeIndex === idx) this.activeIndex = idx + 1;
-        else if (this.activeIndex === idx + 1) this.activeIndex = idx;
-        this.dirty = true;
-      },
-
-      // Insert a snippet into the body textarea at the cursor (or append).
-      insertSnippet(snippet) {
-        const slide = this.activeSlide;
-        if (!slide) return;
-        const ta = this.$refs.body;
-        const body = slide.body || "";
-        if (ta && typeof ta.selectionStart === "number") {
-          const start = ta.selectionStart, end = ta.selectionEnd;
-          const sep = (start > 0 && body[start - 1] !== "\n") ? "\n" : "";
-          slide.body = body.slice(0, start) + sep + snippet + "\n" + body.slice(end);
-        } else {
-          slide.body = body + (body && !body.endsWith("\n") ? "\n" : "") + snippet + "\n";
-        }
-        this.dirty = true;
-      },
-
-      async insertImage(event) {
-        const file = event.target.files && event.target.files[0];
-        event.target.value = "";
-        if (!file) return;
-        try {
-          const dataUrl = await this.resizeToDataURL(file, 640);
-          const alt = (file.name || "image").replace(/"/g, "");
-          this.insertSnippet(`<img src="${dataUrl}" alt="${alt}">`);
-        } catch (e) {
-          this.status = "{% trans 'Could not embed image.' %}";
-        }
-      },
-
-      async insertSvg(event) {
-        const file = event.target.files && event.target.files[0];
-        event.target.value = "";
-        if (!file) return;
-        try {
-          let text = await file.text();
-          // Strip XML prolog / doctype so only the <svg> element is inlined.
-          text = text.replace(/<\?xml[\s\S]*?\?>/i, "").replace(/<!DOCTYPE[\s\S]*?>/i, "").trim();
-          this.insertSnippet(text);
-        } catch (e) {
-          this.status = "{% trans 'Could not read SVG.' %}";
-        }
-      },
-
-      // Embed an image/SVG that already lives in a vault bucket. The server
-      // returns a data URI (raster) or cleaned inline markup (SVG); we drop the
-      // same snippet the local-file path produces into the slide body.
-      async insertFromVault(item) {
-        if (this.vaultBusy) return;
-        this.vaultBusy = true; this.status = "";
-        try {
-          const res = await fetch(this.embedUrl + "?file_pk=" + encodeURIComponent(item.pk));
-          const data = await res.json();
-          if (!res.ok) {
-            this.status = data.error || "{% trans 'Could not embed file.' %}";
-            return;
-          }
-          if (data.kind === "svg") {
-            this.insertSnippet(data.markup);
-          } else {
-            const alt = (data.alt || "image").replace(/"/g, "");
-            this.insertSnippet(`<img src="${data.data_uri}" alt="${alt}">`);
-          }
-          this.showVaultPicker = false;
-        } catch (e) {
-          this.status = String(e);
-        } finally {
-          this.vaultBusy = false;
-        }
-      },
-
-      resizeToDataURL(file, maxDim) {
-        return new Promise((resolve, reject) => {
-          const reader = new FileReader();
-          reader.onerror = reject;
-          reader.onload = () => {
-            const img = new Image();
-            img.onerror = reject;
-            img.onload = () => {
-              let { width, height } = img;
-              if (width > maxDim || height > maxDim) {
-                const scale = Math.min(maxDim / width, maxDim / height);
-                width = Math.round(width * scale);
-                height = Math.round(height * scale);
-              }
-              const canvas = document.createElement("canvas");
-              canvas.width = width; canvas.height = height;
-              canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-              const mime = file.type === "image/png" ? "image/png" : "image/jpeg";
-              resolve(canvas.toDataURL(mime, 0.85));
-            };
-            img.src = reader.result;
-          };
-          reader.readAsDataURL(file);
-        });
-      },
-
-      async save() {
-        this.saving = true; this.status = "";
-        const payload = {
-          title: this.title,
-          slides: this.slides.map(s => ({ title: s.title, body: s.body })),
-        };
-        try {
-          const res = await fetch(this.saveUrl, {
-            method: "POST",
-            headers: {
-            "Content-Type": "application/json",
-            "X-CSRFToken": (document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/) || [])[2] || ""
-          },
-            body: JSON.stringify(payload),
-          });
-          const data = await res.json();
-          if (res.ok && data.status === "ok") {
-            this.status = "{% trans 'Saved' %}";
-            this.dirty = false;
-          } else {
-            this.status = data.error || "{% trans 'Save failed' %}";
-          }
-        } catch (e) {
-          this.status = String(e);
-        }
-        this.saving = false;
-      },
-    };
-  }
-</script>
+  <script src="{% static 'memo/model.js' %}"></script>
+  <script src="{% static 'memo/history.js' %}"></script>
+  <script src="{% static 'memo/sanitize.js' %}"></script>
+  <script src="{% static 'memo/canvas.js' %}"></script>
+  <script src="{% static 'memo/drag.js' %}"></script>
+  <script src="{% static 'memo/editor.js' %}"></script>
 {% endblock %}
+
+{# An editor is a place to concentrate; the floating plugin widgets are not part
+   of that. The same choice the ACE file editor already makes. #}
+{% block floating_widgets %}{% endblock %}

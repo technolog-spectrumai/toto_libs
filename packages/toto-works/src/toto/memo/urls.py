@@ -9,6 +9,7 @@ from .views import (
     presentation_save,
     presentation_source_save,
     presentation_media_embed,
+    presentation_media_upload,
 )
 
 app_name = 'memo'
@@ -22,4 +23,5 @@ urlpatterns = [
     path('source/<int:file_pk>/', PresentationSourceView.as_view(), name='source'),
     path('source/<int:file_pk>/save/', presentation_source_save, name='source_save'),
     path('media/embed/', presentation_media_embed, name='media_embed'),
+    path('media/upload/', presentation_media_upload, name='media_upload'),
 ]

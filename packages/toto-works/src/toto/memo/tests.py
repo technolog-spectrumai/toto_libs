@@ -358,6 +358,128 @@ class SaveEndpointTests(TestCase):
         self.assertEqual(pf.loads(self.deck.file.read().decode()).title, "Bare")
 
 
+class EditorPageTests(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+        self.deck = VaultFile.objects.create(
+            owner=self.alice, title="talk.xml", file_type="presentation",
+            bucket=self.bucket,
+            file=SimpleUploadedFile("talk.xml", pf.dumps(_deck()).encode()))
+        self.deck.content_hash = self.deck.create_hash()
+        self.deck.save(update_fields=["content_hash"])
+        self.client.force_login(self.alice)
+
+    def _page(self):
+        return self.client.get(
+            reverse("memo:edit", args=[self.deck.pk])).content.decode()
+
+    def _island(self, body, element_id):
+        chunk = body.split(f'id="{element_id}"')[1].split("</script>")[0]
+        value = json.loads(chunk.split(">", 1)[1])
+        self.assertIsInstance(value, (dict, list),
+                              "json_script was handed an already-encoded string")
+        return value
+
+    def test_the_deck_hydrates_as_structured_blocks(self):
+        data = self._island(self._page(), "memo-data")
+        self.assertEqual(data["theme"], "white")
+        self.assertEqual([b["type"] for b in data["slides"][0]["blocks"]],
+                         ["heading", "text", "list"])
+        self.assertEqual(data["slides"][1]["layout"], "two-column")
+
+    def test_every_block_carries_a_stable_id(self):
+        # The :key for every x-for. Without ids Alpine reuses DOM nodes by
+        # position, so a reorder leaves the text in the wrong block — which is
+        # what makes drag-and-drop and index keys mutually exclusive.
+        data = self._island(self._page(), "memo-data")
+        ids = [b["id"] for s in data["slides"] for b in s["blocks"]]
+        self.assertTrue(all(ids))
+        self.assertEqual(len(ids), len(set(ids)))
+
+    def test_the_config_island_carries_the_hash_and_the_urls(self):
+        config = self._island(self._page(), "memo-config")
+        self.assertEqual(config["contentHash"], self.deck.content_hash)
+        for key in ("save", "embed", "upload"):
+            self.assertIn(key, config["urls"])
+
+    def test_the_page_loads_the_shared_slide_stylesheet(self):
+        # Not a lookalike: the same file the player and the export use.
+        body = self._page()
+        self.assertIn("memo/slide.css", body)
+        self.assertIn("memo-slide", body)
+
+    def test_the_logic_lives_in_static_files(self):
+        body = self._page()
+        for module in ("model.js", "history.js", "sanitize.js",
+                       "canvas.js", "drag.js", "editor.js"):
+            self.assertIn("memo/" + module, body)
+        self.assertNotIn("function presentationEditor", body,
+                         "inline component logic is back")
+
+    def test_the_floating_widgets_are_suppressed(self):
+        self.assertNotIn("render_floating_plugins", self._page())
+
+    def test_a_stranger_cannot_open_the_editor(self):
+        self.client.force_login(User.objects.create_user("bob", password="p"))
+        self.assertEqual(
+            self.client.get(reverse("memo:edit", args=[self.deck.pk])).status_code, 404)
+
+
+class MediaUploadTests(TestCase):
+    """Files dropped onto a slide are embedded by the server, not the browser."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.client.force_login(self.alice)
+        self.url = reverse("memo:media_upload")
+
+    def test_an_svg_is_sanitised_on_the_way_in(self):
+        evil = b'<svg onload="alert(1)"><script>x()</script><rect/></svg>'
+        data = self.client.post(self.url, {
+            "file": SimpleUploadedFile("d.svg", evil, content_type="image/svg+xml")
+        }).json()
+        self.assertEqual(data["kind"], "svg")
+        self.assertNotIn("onload", data["payload"])
+        self.assertNotIn("script", data["payload"])
+
+    def test_a_png_comes_back_as_a_self_contained_data_uri(self):
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
+        data = self.client.post(self.url, {
+            "file": SimpleUploadedFile("d.png", png, content_type="image/png")
+        }).json()
+        self.assertEqual(data["kind"], "image")
+        self.assertTrue(data["payload"].startswith("data:image/"))
+
+    def test_a_non_image_is_refused(self):
+        res = self.client.post(self.url, {
+            "file": SimpleUploadedFile("d.exe", b"MZ", content_type="application/octet-stream")
+        })
+        self.assertEqual(res.status_code, 400)
+
+    def test_it_needs_a_login(self):
+        self.client.logout()
+        res = self.client.post(self.url, {
+            "file": SimpleUploadedFile("d.png", b"x", content_type="image/png")})
+        self.assertIn(res.status_code, (302, 401, 403))
+
+    def test_a_get_is_refused(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+
 class PlayerTests(TestCase):
     """The player is a standalone document with no site chrome."""
 
@@ -557,8 +679,8 @@ class PresentationVaultIntegrationTests(TestCase):
         res = self.client.get(reverse("memo:edit", args=[vf.pk]))
         self.assertEqual(res.status_code, 200)
         body = res.content.decode()
-        self.assertIn('id="presentation-data"', body)
-        start = body.index('id="presentation-data"')
+        self.assertIn('id="memo-data"', body)
+        start = body.index('id="memo-data"')
         snippet = body[start:body.index("</script>", start)]
         payload = json.loads(snippet[snippet.index(">") + 1:])
         self.assertEqual(payload["slides"][0]["title"], "S1")
@@ -820,7 +942,7 @@ class PresentationMediaEmbedTests(TestCase):
         self.assertEqual(res.status_code, 200)
         body = res.content.decode()
         # The vault-media picker payload + its "location" path are hydrated.
-        self.assertIn('id="vault-media-data"', body)
+        self.assertIn('id="memo-media"', body)
         self.assertIn("pic.png", body)
         self.assertIn("logo.svg", body)
         self.assertIn("Lab / Assets", body)
