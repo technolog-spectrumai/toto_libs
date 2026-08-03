@@ -61,6 +61,7 @@
 
       layouts: M.LAYOUTS,
       fonts: M.FONTS,
+      formulaHelp: M.FORMULA_HELP,
       blockTypes: M.BLOCK_TYPES,
       media: readJson("memo-media", []),
 
@@ -380,6 +381,68 @@
         if (kind === "media") {
           this.insertMedia(id, zone.getAttribute("data-slot") || "", before);
         }
+      },
+
+      // ---- formulas --------------------------------------------------------
+      /* You write LaTeX. There is no equation builder — a textarea holds the
+       * source and KaTeX renders it above, live.
+       *
+       * The render is also CACHED into the document, because WeasyPrint runs no
+       * JavaScript: without a stored rendering an exported deck would lose every
+       * formula. The source stays the truth; this is derived from it, and the
+       * server re-sanitises it on save because it comes from a browser.
+       */
+      renderFormula: function (block, target) {
+        if (!target) return;
+        var katex = global.katex;
+        if (!katex) {
+          // The vendored asset is missing (download_vendor.py has not run).
+          // Show the source rather than an empty box, and cache nothing.
+          target.textContent = block.payload || "";
+          block.render = "";
+          return;
+        }
+        try {
+          katex.render(block.payload || "", target, {
+            displayMode: true,
+            // A half-typed formula shows the broken fragment in red instead of
+            // blanking, so you can see where you are while typing.
+            throwOnError: false,
+            errorColor: "#ef4444"
+          });
+          block.render = target.innerHTML;
+        } catch (e) {
+          target.textContent = block.payload || "";
+          block.render = "";
+        }
+      },
+
+      onFormulaInput: function (block, el, target) {
+        var self = this;
+        this.mutate(function () { block.payload = el.value; },
+                    "formula:" + block.id);
+        this.renderFormula(block, target);
+      },
+
+      /* The cheatsheet's previews, rendered from the same source they show. */
+      renderHelp: function (el, source) {
+        if (!global.katex) { el.textContent = source; return; }
+        try {
+          global.katex.render(source, el, { throwOnError: false, displayMode: false });
+        } catch (e) { el.textContent = source; }
+      },
+
+      insertFormulaSnippet: function (snippet) {
+        var area = document.querySelector(
+          '[data-formula-source][data-block="' + this.ui.focusedId + '"]');
+        if (!area) return;
+        var start = area.selectionStart || 0;
+        var end = area.selectionEnd || 0;
+        var value = area.value || "";
+        area.value = value.slice(0, start) + snippet + value.slice(end);
+        area.selectionStart = area.selectionEnd = start + snippet.length;
+        area.focus();
+        area.dispatchEvent(new Event("input", { bubbles: true }));
       },
 
       // ---- media -----------------------------------------------------------

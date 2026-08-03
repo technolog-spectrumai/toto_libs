@@ -59,7 +59,8 @@ from . import sanitize
 FORMAT_VERSION = "2"
 
 LAYOUTS = ("title-content", "two-column", "full-bleed", "section", "quote")
-BLOCK_TYPES = ("heading", "text", "list", "image", "svg", "code", "quote", "html")
+BLOCK_TYPES = ("heading", "text", "list", "image", "svg", "code", "quote",
+               "formula", "html")
 SLOTS = ("", "left", "right")
 THEMES = ("black", "white")
 # System stacks only, and every one ends in a generic. No webfont is vendored,
@@ -119,6 +120,13 @@ class Block:
     payload: str = ""                                   # unused for type="list"
     items: list[str] = field(default_factory=list)      # type="list" only
     slot: str = ""
+    # type="formula" only: the KaTeX markup for `payload`, cached at save time.
+    #
+    # WeasyPrint runs no JavaScript, so without this an exported deck loses
+    # every formula. The LaTeX source stays the truth — this is derived, and if
+    # it fails sanitisation the block falls back to showing the source rather
+    # than a blank.
+    render: str = ""
     attrs: dict[str, str] = field(default_factory=dict)
 
     def __post_init__(self):
@@ -150,7 +158,8 @@ class Block:
     def to_dict(self) -> dict:
         return {
             "id": self.id, "type": self.type, "payload": self.payload,
-            "items": list(self.items), "slot": self.slot, "attrs": dict(self.attrs),
+            "items": list(self.items), "slot": self.slot,
+            "render": self.render, "attrs": dict(self.attrs),
         }
 
     @classmethod
@@ -163,6 +172,7 @@ class Block:
             payload=str(raw.get("payload") or "")[:MAX_PAYLOAD_BYTES],
             items=[str(i or "") for i in (raw.get("items") or [])][:MAX_ITEMS],
             slot=str(raw.get("slot") or ""),
+            render=str(raw.get("render") or "")[:MAX_PAYLOAD_BYTES],
             attrs={str(k): str(v) for k, v in (attrs or {}).items()},
         )
 
@@ -368,6 +378,11 @@ def _sanitize_block(block: Block) -> None:
             block.payload = ""
     elif kind == "svg":
         block.payload = sanitize.sanitize_svg(block.payload)
+    elif kind == "formula":
+        # The source is plain LaTeX and is escaped wherever it is shown, so it
+        # needs no HTML sanitising — same reasoning as `code`. The cached render
+        # came from a browser and does.
+        block.render = sanitize.sanitize_katex(block.render)
     elif kind == "html":
         # The escape hatch, and the only thing a v1 upgrade produces. Left
         # verbatim on purpose: its trust model is exactly what v1's
@@ -486,6 +501,16 @@ def dumps(presentation: Presentation) -> str:
                 lines.append(head + ">")
                 for item in block.items:
                     lines.append(f"      <item>{_wrap_cdata(item)}</item>")
+                lines.append("    </block>")
+            elif block.type == "formula":
+                # Both parts as CHILDREN, never as element text beside a child.
+                # Mixed content means the payload silently absorbs the
+                # indentation whitespace around its sibling — the same reason
+                # `list` puts every item in its own element.
+                lines.append(head + ">")
+                lines.append(f"      <source>{_wrap_cdata(block.payload)}</source>")
+                if block.render:
+                    lines.append(f"      <render>{_wrap_cdata(block.render)}</render>")
                 lines.append("    </block>")
             else:
                 lines.append(head + f">{_wrap_cdata(block.payload)}</block>")
@@ -624,7 +649,14 @@ def _parse_block(el, seen: set[str]) -> Block:
             if len(block.items) < MAX_ITEMS:
                 block.items.append((item.text or "")[:MAX_PAYLOAD_BYTES])
     else:
-        block.payload = (el.text or "")[:MAX_PAYLOAD_BYTES]
+        source = el.find("source")
+        # `<source>` when present, element text otherwise — so a hand-written
+        # `<block type="formula">x^2</block>` still opens.
+        block.payload = ((source.text if source is not None else el.text) or "")[
+            :MAX_PAYLOAD_BYTES]
+        rendered = el.find("render")
+        if rendered is not None:
+            block.render = (rendered.text or "")[:MAX_PAYLOAD_BYTES]
     return block
 
 

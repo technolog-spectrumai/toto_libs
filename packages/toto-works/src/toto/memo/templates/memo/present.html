@@ -27,6 +27,8 @@ gone. A deck looks the same on whatever machine you present it from.
   <title>{{ presentation.title|default:vault_file.title }} | {{ platform.site_name }}</title>
 
   <link rel="stylesheet" href="{% static 'vendor/reveal/reveal.css' %}">
+  {# Before slide.css, so our rules win where they overlap. #}
+  <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'vendor/fontawesome/6.7.2/css/all.min.css' %}">
 

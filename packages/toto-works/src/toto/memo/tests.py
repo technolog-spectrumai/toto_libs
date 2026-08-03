@@ -812,6 +812,116 @@ class SlideGeometryTests(TestCase):
                       " [contenteditable], [data-no-drag]", js)
 
 
+class FormulaTests(TestCase):
+    """You write LaTeX; the render is cached so the PDF can show it too."""
+
+    def _block(self, source, render=""):
+        deck = pf.Presentation.from_dict({"slides": [{"title": "t", "blocks": [
+            {"type": "formula", "payload": source, "render": render}]}]})
+        return deck.slides[0].blocks[0]
+
+    def test_a_formula_round_trips_source_and_render(self):
+        deck = pf.Presentation(title="T", slides=[pf.Slide(title="a", blocks=[
+            pf.Block(type="formula", payload="E = mc^2",
+                     render='<span class="katex"><span class="mord">E</span></span>')])])
+        back = pf.loads(pf.dumps(deck))
+        block = back.slides[0].blocks[0]
+        self.assertEqual(block.payload, "E = mc^2")
+        self.assertIn("katex", block.render)
+
+    def test_the_source_is_kept_exactly(self):
+        # Backslashes and braces are the whole language; escaping them would be
+        # the same mistake as sanitising a code block.
+        source = r"\frac{-b \pm \sqrt{b^{2}-4ac}}{2a}"
+        self.assertEqual(self._block(source).payload, source)
+
+    def test_a_formula_with_no_render_still_round_trips(self):
+        deck = pf.loads(pf.dumps(pf.Presentation(slides=[pf.Slide(blocks=[
+            pf.Block(type="formula", payload="x^2")])])))
+        self.assertEqual(deck.slides[0].blocks[0].payload, "x^2")
+        self.assertEqual(deck.slides[0].blocks[0].render, "")
+
+    # -- the cached render is untrusted markup from a browser ---------------
+    def test_katex_output_survives_sanitising(self):
+        render = ('<span class="katex"><span class="katex-html">'
+                  '<span class="mord" style="height:0.8em">E</span></span></span>')
+        cleaned = self._block("E", render).render
+        self.assertIn("katex-html", cleaned)
+        self.assertIn("height:0.8em", cleaned)
+
+    def test_event_handlers_and_foreign_classes_are_stripped(self):
+        cleaned = self._block("E", '<span class="katex evil" onclick="x()">E</span>').render
+        self.assertNotIn("onclick", cleaned)
+        self.assertNotIn("evil", cleaned)
+        self.assertIn("katex", cleaned)
+
+    def test_a_script_in_the_render_is_dropped_with_its_contents(self):
+        cleaned = self._block("E", '<span class="katex"><script>alert(1)</script>E</span>').render
+        self.assertNotIn("script", cleaned)
+        self.assertNotIn("alert", cleaned)
+
+    def test_positioning_that_could_escape_the_slide_is_dropped(self):
+        cleaned = self._block("E", '<span style="position:fixed;top:0;height:1em">E</span>').render
+        self.assertNotIn("fixed", cleaned)
+        self.assertIn("height:1em", cleaned)
+
+    def test_a_url_in_a_style_is_dropped(self):
+        cleaned = self._block("E", '<span style="background:url(javascript:1)">E</span>').render
+        self.assertNotIn("javascript", cleaned)
+
+    def test_mathml_survives(self):
+        # KaTeX emits it alongside the visual output, for screen readers.
+        cleaned = self._block("E", "<math><mrow><mi>E</mi></mrow></math>").render
+        self.assertIn("<mi>E</mi>", cleaned)
+
+    # -- what the surfaces show ---------------------------------------------
+    def test_the_player_shows_the_cached_render(self):
+        from django.template.loader import render_to_string
+
+        deck = pf.Presentation(title="T", slides=[pf.Slide(title="a", blocks=[
+            pf.Block(type="formula", payload="E = mc^2",
+                     render='<span class="katex">RENDERED</span>')])])
+        html = render_to_string("memo/print.html", {
+            "presentation": deck, "theme": "black", "font": "sans",
+            "slide_css": "", "katex_css": ""})
+        self.assertIn("RENDERED", html)
+
+    def test_without_a_render_the_source_is_shown_not_a_blank(self):
+        """A formula you can read as source beats an empty space.
+
+        This is the path taken when the render failed sanitising, or when KaTeX
+        was never vendored on this host.
+        """
+        from django.template.loader import render_to_string
+
+        deck = pf.Presentation(title="T", slides=[pf.Slide(title="a", blocks=[
+            pf.Block(type="formula", payload="E = mc^2")])])
+        html = render_to_string("memo/print.html", {
+            "presentation": deck, "theme": "black", "font": "sans",
+            "slide_css": "", "katex_css": ""})
+        self.assertIn("memo-formula-source", html)
+        self.assertIn("E = mc^2", html)
+
+    def test_a_render_that_is_entirely_rejected_falls_back_to_source(self):
+        block = self._block("E = mc^2", '<iframe src="//evil"></iframe>')
+        self.assertEqual(block.render, "")
+        self.assertEqual(block.payload, "E = mc^2")
+
+    def test_the_pdf_degrades_when_katex_was_never_vendored(self):
+        """The vendor directory is gitignored and fetched at image build.
+
+        Its absence is a normal state, not an error — but a stylesheet without
+        its fonts would render every glyph as a box, which is worse than the
+        source, so both have to be present or neither is used.
+        """
+        from toto.memo import render_pdf
+
+        with mock.patch("django.contrib.staticfiles.finders.find", return_value=None):
+            css, base = render_pdf._katex_assets()
+        self.assertEqual(css, "")
+        self.assertIsNone(base)
+
+
 class ScaleTests(TestCase):
     """Auto-fit, the manual override, and how they reach the other surfaces."""
 

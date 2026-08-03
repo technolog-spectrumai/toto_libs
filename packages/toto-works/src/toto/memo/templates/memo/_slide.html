@@ -64,6 +64,14 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
           <pre class="memo-block" data-type="code" data-block-id="{{ block.id }}"
                data-language="{{ block.attrs.language|default:'' }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload }}</pre>
 
+        {% elif block.type == "formula" %}
+          {# The cached KaTeX markup if it survived sanitising, otherwise the
+             LaTeX source, escaped. Never a blank: a formula you can read as
+             source beats an empty space where one used to be. #}
+          <div class="memo-block" data-type="formula" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
+            {% if block.render %}{{ block.render|safe }}{% else %}<code class="memo-formula-source">{{ block.payload }}</code>{% endif %}
+          </div>
+
         {% elif block.type == "quote" %}
           <blockquote class="memo-block" data-type="quote" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
             {{ block.payload|safe }}

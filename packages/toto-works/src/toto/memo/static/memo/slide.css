@@ -308,6 +308,27 @@
   tab-size: 4;
 }
 
+.memo-block[data-type="formula"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-width: 0;
+}
+/* The fallback when there is no cached render — a readable source line rather
+ * than an empty space. */
+.memo-formula-source {
+  font-family: var(--r-code-font);
+  font-size: 0.7em;
+  opacity: 0.75;
+  background: var(--memo-code-bg);
+  border-radius: 6px;
+  padding: 0.25em 0.5em;
+}
+/* KaTeX sizes itself from the inherited font-size, so auto-fit scales a formula
+ * exactly as it scales prose. */
+.memo-block[data-type="formula"] .katex { font-size: 1.1em; }
+
 .memo-block[data-type="quote"] {
   font-size: 1.15em;
   font-style: italic;

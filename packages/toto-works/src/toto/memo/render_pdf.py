@@ -20,6 +20,37 @@ from django.template.loader import render_to_string
 SLIDE_CSS = Path(__file__).resolve().parent / "static" / "memo" / "slide.css"
 
 
+def _katex_assets():
+    """KaTeX's stylesheet, and the directory its fonts sit in.
+
+    Returns ``(css, base_dir)`` or ``("", None)``.
+
+    KaTeX lives in ``core/static/vendor/``, which is gitignored and downloaded
+    at image build — so on a machine where ``download_vendor.py`` has not run it
+    is simply absent. That is a normal state, not an error: the formula blocks
+    fall back to their LaTeX source, which is readable, rather than to boxes.
+
+    The base directory matters as much as the CSS. `katex.min.css` references
+    its fonts with relative ``url(fonts/…)``, and WeasyPrint resolves those
+    against the document's base_url — point it anywhere else and every glyph in
+    every formula comes out as a blank box.
+    """
+    from django.contrib.staticfiles import finders
+
+    found = finders.find("vendor/katex/katex.min.css")
+    if not found:
+        return "", None
+    path = Path(found)
+    if not (path.parent / "fonts").is_dir():
+        # Stylesheet without its fonts is worse than neither: it would render
+        # every glyph as a box rather than falling back to the source.
+        return "", None
+    try:
+        return path.read_text(encoding="utf-8"), path.parent
+    except OSError:
+        return "", None
+
+
 class PdfUnavailable(RuntimeError):
     """WeasyPrint is not installed on this deployment."""
 
@@ -51,10 +82,15 @@ def render(presentation) -> bytes:
     except OSError:
         css = ""
 
+    katex_css, katex_dir = _katex_assets()
     html = render_to_string("memo/print.html", {
         "presentation": presentation,
         "theme": presentation.theme,
         "font": presentation.font,
         "slide_css": css,
+        "katex_css": katex_css,
     })
-    return HTML(string=html).write_pdf()
+    # base_url is what lets katex.min.css find its fonts; there is nothing else
+    # relative in the document, so pointing it at the katex directory is safe.
+    base_url = str(katex_dir) + "/" if katex_dir else None
+    return HTML(string=html, base_url=base_url).write_pdf()

@@ -20,6 +20,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
+  <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
   <style>[x-cloak] { display: none !important; }</style>
@@ -348,6 +349,27 @@ old one carried 210 lines of inline Alpine that no test could reach.
                               x-init="$el.innerHTML = item"></li>
                         </template>
                       </ul>
+                    </template>
+
+                    {# You write LaTeX. No equation builder, no symbol palette
+                       — a textarea holding the source, rendered live above it,
+                       and a cheatsheet you can fold away. #}
+                    <template x-if="block.type === 'formula'">
+                      <div class="w-full">
+                        <div x-init="renderFormula(block, $el)"
+                             class="min-h-[1.6em] w-full text-center"></div>
+                        <div x-show="isFocused(block.id)" x-cloak class="mt-2" data-no-drag>
+                          <textarea data-formula-source :data-block="block.id"
+                                    spellcheck="false" rows="2"
+                                    placeholder="{% trans 'e.g. \frac{a}{b} or E = mc^2' %}"
+                                    @input="onFormulaInput(block, $event.target, $event.target.closest('.memo-block').querySelector('[x-init]'))"
+                                    @focus="focusBlock(block.id)"
+                                    x-init="$el.value = block.payload"
+                                    class="w-full resize-y rounded border border-current/25 bg-black/10 px-2 py-1 text-center font-mono"
+                                    style="font-size: 13px"></textarea>
+                          {% include "memo/_formula_help.html" %}
+                        </div>
+                      </div>
                     </template>
 
                     <template x-if="block.type === 'code'">

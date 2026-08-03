@@ -14,6 +14,7 @@ the deck.
 <head>
   <meta charset="utf-8">
   <title>{{ presentation.title }}</title>
+  {% if katex_css %}<style>{{ katex_css|safe }}</style>{% endif %}
   <style>{{ slide_css|safe }}</style>
   <style>
     /* WeasyPrint honours @page from slide.css; this only removes the page's

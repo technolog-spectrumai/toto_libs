@@ -336,3 +336,168 @@ def sanitize_svg(markup: str) -> str:
     cleaner.feed(markup or "")
     cleaner.close()
     return cleaner.value()
+
+
+# ---------------------------------------------------------------------------
+# KaTeX
+# ---------------------------------------------------------------------------
+
+# The rendered markup for a formula is cached in the document so the PDF — which
+# runs no JavaScript — can show it. It is produced by KaTeX in a browser, which
+# means it arrives from the client and is exactly as untrusted as anything else
+# a browser sends.
+#
+# KaTeX's output is spans with `katex-` classes and a handful of inline metrics,
+# plus an accessible MathML tree. Nothing in it needs a URL, an event handler or
+# a positioning property, so the allowlist can be tight.
+
+KATEX_TAGS = {
+    "span", "svg", "path", "line", "g",
+    # MathML, which KaTeX emits alongside the visual output for screen readers.
+    "math", "semantics", "annotation", "mrow", "mi", "mo", "mn", "ms", "mtext",
+    "msup", "msub", "msubsup", "mfrac", "msqrt", "mroot", "munder", "mover",
+    "munderover", "mtable", "mtr", "mtd", "mspace", "mpadded", "mphantom",
+    "mstyle", "menclose", "mmultiscripts", "none", "mprescripts",
+}
+
+# Only the metrics KaTeX actually sets. No position, no transform beyond the
+# SVG stretchy glyphs, and nothing that can move content out of its block.
+KATEX_STYLE_PROPS = {
+    "height", "width", "min-width", "vertical-align", "top", "bottom", "left",
+    "margin", "margin-left", "margin-right", "margin-top", "margin-bottom",
+    "padding-left", "padding-right", "border-bottom-width", "border-top-width",
+    "font-size", "font-family", "line-height", "color", "position",
+}
+
+# `position` is allowed only for the two values KaTeX uses to stack glyphs.
+_KATEX_POSITION_OK = {"relative", "absolute"}
+
+_STYLE_VALUE = re.compile(r"^[-+.,\s0-9a-zA-Z%()#]*$")
+
+
+def _katex_style(value: str) -> str:
+    """Keep the metric declarations, drop everything else."""
+    kept = []
+    for declaration in (value or "").split(";"):
+        if ":" not in declaration:
+            continue
+        name, _, raw = declaration.partition(":")
+        name, raw = name.strip().lower(), raw.strip()
+        if name not in KATEX_STYLE_PROPS or not raw:
+            continue
+        if not _STYLE_VALUE.match(raw):
+            continue                          # url(), expression(), anything odd
+        if name == "position" and raw.lower() not in _KATEX_POSITION_OK:
+            continue
+        kept.append(f"{name}:{raw}")
+    return ";".join(kept)
+
+
+class _KatexCleaner(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=False)
+        self.out: list[str] = []
+        self._skip_tag: str | None = None
+        self._skip_depth = 0
+
+    @property
+    def _suppress(self) -> bool:
+        return self._skip_tag is not None
+
+    def _attrs(self, attrs) -> str:
+        parts = []
+        for name, value in attrs:
+            name = (name or "").lower()
+            value = value or ""
+            if name == "class":
+                # KaTeX's own classes only. A class from anywhere else could
+                # borrow styling from the surrounding page.
+                keep = [c for c in value.split()
+                        if c == "katex" or c.startswith("katex-")
+                        or c in ("base", "strut", "mord", "mrel", "mbin", "mopen",
+                                 "mclose", "mpunct", "minner", "mop", "vlist",
+                                 "vlist-r", "vlist-s", "vlist-t", "vlist-t2",
+                                 "frac-line", "sizing", "delimsizing", "mfrac",
+                                 "sqrt", "accent", "op-symbol", "mspace",
+                                 "hide-tail", "stretchy", "svg-align",
+                                 "mathnormal", "mathdefault", "mathrm", "mathit",
+                                 "mathbf", "mathsf", "mathtt", "mathcal",
+                                 "mathfrak", "mathbb", "mathscr", "text",
+                                 "textbf", "textit", "boxpad", "fbox", "cancel-pad")
+                        or c.startswith(("size", "delim-size", "reset-size",
+                                         "col-align", "arraycolsep", "mtight"))]
+                if keep:
+                    parts.append(f' class="{escape(" ".join(keep), quote=True)}"')
+            elif name == "style":
+                cleaned = _katex_style(value)
+                if cleaned:
+                    parts.append(f' style="{escape(cleaned, quote=True)}"')
+            elif name in ("aria-hidden", "aria-label", "role", "viewbox",
+                          "preserveaspectratio", "d", "xmlns", "encoding",
+                          "displaystyle", "scriptlevel", "mathvariant",
+                          "stretchy", "fence", "separator", "width", "height",
+                          "x", "y", "x1", "x2", "y1", "y2", "fill", "stroke"):
+                parts.append(f' {_canon(name)}="{escape(value, quote=True)}"')
+            # everything else — every on*, every href, every id — is dropped
+        return "".join(parts)
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if self._suppress:
+            if tag == self._skip_tag:
+                self._skip_depth += 1
+            return
+        if tag not in KATEX_TAGS:
+            self._skip_tag, self._skip_depth = tag, 1
+            return
+        self.out.append(f"<{_canon(tag)}{self._attrs(attrs)}>")
+
+    def handle_startendtag(self, tag, attrs):
+        tag = tag.lower()
+        if self._suppress or tag not in KATEX_TAGS:
+            return
+        self.out.append(f"<{_canon(tag)}{self._attrs(attrs)}/>")
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if self._suppress:
+            if tag == self._skip_tag:
+                self._skip_depth -= 1
+                if self._skip_depth <= 0:
+                    self._skip_tag, self._skip_depth = None, 0
+            return
+        if tag not in KATEX_TAGS:
+            return
+        self.out.append(f"</{_canon(tag)}>")
+
+    def handle_data(self, data):
+        if not self._suppress:
+            self.out.append(_esc_text(data))
+
+    def handle_entityref(self, name):
+        if not self._suppress:
+            self.out.append(f"&{name};")
+
+    def handle_charref(self, name):
+        if not self._suppress:
+            self.out.append(f"&#{name};")
+
+    def handle_comment(self, data):
+        pass
+
+    def value(self) -> str:
+        return "".join(self.out).strip()
+
+
+def sanitize_katex(markup: str) -> str:
+    """A cached KaTeX rendering, with everything it does not need removed.
+
+    Returns "" if nothing survives, which the renderer treats as "no cached
+    render" and falls back to showing the LaTeX source — never a blank.
+    """
+    if not (markup or "").strip():
+        return ""
+    cleaner = _KatexCleaner()
+    cleaner.feed(markup)
+    cleaner.close()
+    return cleaner.value()

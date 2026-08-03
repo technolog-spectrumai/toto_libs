@@ -46,7 +46,65 @@
     { id: "image",   label: "Image",   icon: "fa-image" },
     { id: "svg",     label: "SVG",     icon: "fa-bezier-curve" },
     { id: "code",    label: "Code",    icon: "fa-code" },
-    { id: "quote",   label: "Quote",   icon: "fa-quote-left" }
+    { id: "quote",   label: "Quote",   icon: "fa-quote-left" },
+    { id: "formula", label: "Formula", icon: "fa-square-root-variable" }
+  ];
+
+  /* The cheatsheet. Source and a short label; the preview beside each row is
+   * rendered by KaTeX from the source itself, so it can never drift from what
+   * you would actually get. */
+  var FORMULA_HELP = [
+    { id: "basics", label: "Basics", entries: [
+      ["x^{2}", "power"],
+      ["x_{i}", "index"],
+      ["x_{i}^{2}", "both"],
+      ["\\frac{a}{b}", "fraction"],
+      ["\\sqrt{x}", "root"],
+      ["\\sqrt[3]{x}", "nth root"],
+      ["\\left( \\frac{a}{b} \\right)", "sized brackets"],
+      ["|x|", "absolute"]
+    ]},
+    { id: "greek", label: "Greek", entries: [
+      ["\\alpha \\beta \\gamma", "lower"],
+      ["\\Gamma \\Delta \\Omega", "upper"],
+      ["\\theta \\lambda \\mu", "more"],
+      ["\\pi \\sigma \\phi", "more"],
+      ["\\epsilon \\varepsilon", "two epsilons"]
+    ]},
+    { id: "bigops", label: "Sums", entries: [
+      ["\\sum_{i=1}^{n} i", "sum"],
+      ["\\prod_{i=1}^{n} i", "product"],
+      ["\\int_{a}^{b} f(x)\\,dx", "integral"],
+      ["\\iint_{D} f\\,dA", "double"],
+      ["\\lim_{x \\to 0} \\frac{\\sin x}{x}", "limit"],
+      ["\\frac{d}{dx} f(x)", "derivative"],
+      ["\\partial_{x} f", "partial"]
+    ]},
+    { id: "relations", label: "Relations", entries: [
+      ["a \\le b \\ge c", "inequalities"],
+      ["a \\neq b", "not equal"],
+      ["a \\approx b", "approximately"],
+      ["a \\equiv b", "equivalent"],
+      ["x \\in A \\subset B", "sets"],
+      ["a \\to b", "arrow"],
+      ["a \\Rightarrow b", "implies"],
+      ["\\pm \\times \\cdot \\div", "operators"]
+    ]},
+    { id: "structures", label: "Structures", entries: [
+      ["\\begin{matrix} a & b \\\\ c & d \\end{matrix}", "matrix"],
+      ["\\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}", "bracketed"],
+      ["\\begin{cases} a & x < 0 \\\\ b & x \\ge 0 \\end{cases}", "cases"],
+      ["\\vec{v} \\hat{n} \\bar{x}", "accents"],
+      ["\\overline{AB}", "overline"],
+      ["\\text{if } x > 0", "words in maths"]
+    ]},
+    { id: "examples", label: "Examples", entries: [
+      ["E = mc^{2}", "mass-energy"],
+      ["\\frac{-b \\pm \\sqrt{b^{2}-4ac}}{2a}", "quadratic"],
+      ["e^{i\\pi} + 1 = 0", "Euler"],
+      ["\\nabla \\cdot \\mathbf{E} = \\frac{\\rho}{\\varepsilon_0}", "Gauss"],
+      ["P(A \\mid B) = \\frac{P(B \\mid A)P(A)}{P(B)}", "Bayes"]
+    ]}
   ];
 
   var PLACEHOLDER = {
@@ -55,6 +113,7 @@
     list: "List item",
     code: "code",
     quote: "Quote",
+    formula: "E = mc^2",
     image: "",
     svg: "",
     html: ""
@@ -73,7 +132,7 @@
   function newBlock(type) {
     var block = {
       id: newId("b"), type: type || "text", payload: "", items: [],
-      slot: "", attrs: {}
+      slot: "", render: "", attrs: {}
     };
     if (type === "list") block.items = [""];
     if (type === "heading") block.attrs.level = "2";
@@ -112,6 +171,7 @@
             payload: b.payload || "",
             items: (b.items || []).slice(),
             slot: b.slot || "",
+            render: b.render || "",
             attrs: Object.assign({}, b.attrs || {})
           };
         }),
@@ -235,7 +295,7 @@
           blocks: s.blocks.map(function (b) {
             return {
               id: b.id, type: b.type, payload: b.payload,
-              items: b.items, slot: b.slot, attrs: b.attrs
+              items: b.items, slot: b.slot, render: b.render, attrs: b.attrs
             };
           })
         };
@@ -268,6 +328,7 @@
     isAutoScaled: isAutoScaled,
     FONTS: FONTS,
     FONT_CLASS: FONT_CLASS,
+    FORMULA_HELP: FORMULA_HELP,
     BLOCK_TYPES: BLOCK_TYPES,
     PLACEHOLDER: PLACEHOLDER,
     newId: newId,

@@ -1,0 +1,60 @@
+{% load i18n %}{% comment %}The LaTeX cheatsheet, click-to-insert.
+
+It ships in the app rather than linking out, so it works on a host with no
+internet, and it doubles as a live check that the vendored KaTeX is actually
+loading: if these render, formulas render.
+
+Entries are `[source, label]`. The rendered preview is produced by KaTeX at
+runtime from the source itself, so nothing here can drift out of step with what
+you would actually get.
+{% endcomment %}
+<div x-data="{ open: false, group: 'basics' }" class="mt-2">
+  <button type="button" @click.stop="open = !open" data-no-drag
+          class="inline-flex items-center gap-1.5 text-[11px] underline opacity-55 transition hover:opacity-100">
+    <i class="fa-solid fa-circle-question"></i>
+    <span x-show="!open">{% trans "How do I write this?" %}</span>
+    <span x-show="open" x-cloak>{% trans "Hide the reference" %}</span>
+  </button>
+
+  <div x-show="open" x-cloak data-no-drag
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="mt-2 overflow-hidden rounded-xl border text-left shadow-sm">
+
+    <div class="flex flex-wrap gap-1 border-b border-current/10 p-2">
+      <template x-for="g in formulaHelp" :key="g.id">
+        <button type="button" @click.stop="group = g.id" data-no-drag
+                :class="group === g.id
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-55 hover:opacity-100'"
+                class="rounded px-2 py-1 text-[11px] font-semibold transition">
+          <span x-text="g.label"></span>
+        </button>
+      </template>
+    </div>
+
+    <div class="max-h-56 overflow-y-auto p-1">
+      <template x-for="g in formulaHelp" :key="'g-' + g.id">
+        <div x-show="group === g.id">
+          <template x-for="entry in g.entries" :key="entry[0]">
+            <button type="button" data-no-drag
+                    @click.stop="insertFormulaSnippet(entry[0])"
+                    :title="'{% trans "Insert" %} ' + entry[0]"
+                    class="flex w-full items-center gap-3 rounded px-2 py-1.5 text-left transition hover:opacity-70">
+              {# Rendered by KaTeX on x-init, from the very source beside it. #}
+              <span class="w-24 shrink-0 text-center"
+                    x-init="renderHelp($el, entry[0])"></span>
+              <code class="min-w-0 flex-1 truncate font-mono text-[11px] opacity-65"
+                    x-text="entry[0]"></code>
+              <span class="shrink-0 text-[10px] opacity-45" x-text="entry[1]"></span>
+            </button>
+          </template>
+        </div>
+      </template>
+    </div>
+
+    <p class="border-t border-current/10 px-3 py-2 text-[10px] opacity-50">
+      {% blocktrans %}Click any row to drop it in at the cursor. This is ordinary
+      LaTeX maths — anything KaTeX understands will work.{% endblocktrans %}
+    </p>
+  </div>
+</div>
