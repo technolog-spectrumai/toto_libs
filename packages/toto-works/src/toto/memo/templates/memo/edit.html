@@ -372,7 +372,10 @@
         try {
           const res = await fetch(this.saveUrl, {
             method: "POST",
-            headers: { "Content-Type": "application/json" },
+            headers: {
+            "Content-Type": "application/json",
+            "X-CSRFToken": (document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/) || [])[2] || ""
+          },
             body: JSON.stringify(payload),
           });
           const data = await res.json();

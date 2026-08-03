@@ -22,7 +22,9 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
 from django.views import View
+from django.conf import settings
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from toto.editor.views import BaseFileDisplayView
@@ -337,11 +339,28 @@ def presentation_media_embed(request):
     return JsonResponse({"kind": "image", "data_uri": data_uri, "alt": alt})
 
 
-@csrf_exempt
+def _read_json_body(request, limit: int):
+    """The request body, without Django's 2.5 MB form ceiling.
+
+    `request.body` is checked against DATA_UPLOAD_MAX_MEMORY_SIZE, which no host
+    sets and therefore defaults to 2.5 MB. A deck with about twenty embedded
+    640px images is already past that, so saving one raised RequestDataTooBig
+    before this view ever ran — and autosave would turn a rare failure into a
+    constant one. `request.read()` is not size-checked, so the limit becomes
+    ours to state, and it is stated here.
+
+    Safe to call after the CSRF middleware: for `application/json` Django's
+    `request.POST` never touches the stream, so it is still unread.
+    """
+    raw = request.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError("too-big")
+    return json.loads(raw or b"{}")
+
+
+@require_POST
 def presentation_save(request, file_pk):
     """Persist edited slides back to the vault file as presentation XML."""
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
@@ -349,26 +368,42 @@ def presentation_save(request, file_pk):
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
+    limit = getattr(settings, "MEMO_MAX_DECK_BYTES", 32 * 1024 * 1024)
     try:
-        payload = json.loads(request.body or b"{}")
-    except (ValueError, TypeError) as exc:
+        payload = _read_json_body(request, limit)
+    except ValueError as exc:
+        if str(exc) == "too-big":
+            return JsonResponse(
+                {"error": f"That deck is larger than {limit // (1024 * 1024)} MB. "
+                          "Remove or shrink an image and try again."}, status=413)
         return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
 
-    presentation = presentation_format.Presentation.from_dict(payload)
+    # Optimistic concurrency. Autosave fires on a timer, and the same deck can
+    # be open in two tabs — without this the slower one silently wins and the
+    # other's work is gone with no error anywhere.
+    base_hash = payload.get("base_hash")
+    if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
+        return JsonResponse(
+            {"error": "This deck changed somewhere else since you opened it.",
+             "content_hash": vault_file.content_hash}, status=409)
+
+    document = payload.get("presentation") or payload
+    presentation = presentation_format.Presentation.from_dict(document)
     xml = presentation_format.dumps(presentation)
     xml_bytes = xml.encode("utf-8")
 
     try:
         with vault_file.file.open("w") as f:
             f.write(xml)
-        # Hash/size from the bytes we just wrote — the FieldFile is closed once
-        # the write-context exits, so we can't re-read it here.
+        # Hash and size from the bytes just written — the FieldFile is closed
+        # once the write-context exits, so it cannot be re-read here.
         vault_file.content_hash = hashlib.sha256(xml_bytes).hexdigest()
         vault_file.file_size_bytes = len(xml_bytes)
         vault_file.save(update_fields=["content_hash", "file_size_bytes"])
-        return JsonResponse({"status": "ok"})
-    except Exception as exc:
+    except Exception as exc:                       # noqa: BLE001
         return JsonResponse({"error": str(exc)}, status=500)
+
+    return JsonResponse({"status": "ok", "content_hash": vault_file.content_hash})
 
 
 # ---------------------------------------------------------------------------

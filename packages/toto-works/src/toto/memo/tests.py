@@ -284,6 +284,80 @@ class SanitisationTests(TestCase):
         self.assertNotIn("onload", deck.slides[0].blocks[0].payload)
 
 
+class SaveEndpointTests(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+        self.deck = VaultFile.objects.create(
+            owner=self.alice, title="talk.xml", file_type="presentation",
+            bucket=self.bucket,
+            file=SimpleUploadedFile("talk.xml",
+                                    pf.dumps(pf.new_presentation("T")).encode()))
+        self.deck.content_hash = self.deck.create_hash()
+        self.deck.save(update_fields=["content_hash"])
+        self.client.force_login(self.alice)
+        self.url = reverse("memo:save", args=[self.deck.pk])
+
+    def _post(self, payload):
+        return self.client.post(self.url, data=json.dumps(payload),
+                                content_type="application/json")
+
+    def test_a_deck_bigger_than_django_s_form_limit_still_saves(self):
+        """The regression this endpoint was written for.
+
+        `request.body` is checked against DATA_UPLOAD_MAX_MEMORY_SIZE, which no
+        host sets — so it defaults to 2.5 MB and saving a deck with about twenty
+        embedded images raised RequestDataTooBig before the view ran. Autosave
+        would have made that constant rather than occasional.
+        """
+        big = "data:image/png;base64," + ("A" * 4 * 1024 * 1024)
+        res = self._post({"presentation": {"title": "Big", "slides": [
+            {"title": "s", "blocks": [{"type": "image", "payload": big}]}]}})
+        self.assertEqual(res.status_code, 200, res.content[:200])
+        self.deck.refresh_from_db()
+        self.assertGreater(self.deck.file_size_bytes, 4 * 1024 * 1024)
+
+    def test_past_the_explicit_ceiling_it_is_a_413(self):
+        with override_settings(MEMO_MAX_DECK_BYTES=1024):
+            res = self._post({"presentation": {"title": "x" * 4000, "slides": []}})
+        self.assertEqual(res.status_code, 413)
+
+    def test_a_stale_base_hash_is_refused(self):
+        # Two tabs, or autosave racing a manual save. Without this the slower
+        # writer silently wins and the other's work is gone with no error.
+        res = self._post({"base_hash": "not-the-current-one",
+                          "presentation": {"title": "T", "slides": []}})
+        self.assertEqual(res.status_code, 409)
+        self.assertEqual(res.json()["content_hash"], self.deck.content_hash)
+
+    def test_the_matching_base_hash_goes_through_and_returns_the_new_one(self):
+        res = self._post({"base_hash": self.deck.content_hash,
+                          "presentation": {"title": "T2", "slides": [{"title": "a"}]}})
+        self.assertEqual(res.status_code, 200)
+        self.deck.refresh_from_db()
+        self.assertEqual(res.json()["content_hash"], self.deck.content_hash)
+
+    def test_saving_without_a_base_hash_still_works(self):
+        self.assertEqual(self._post(
+            {"presentation": {"title": "T", "slides": [{"title": "a"}]}}).status_code, 200)
+
+    def test_a_get_is_refused(self):
+        self.assertEqual(self.client.get(self.url).status_code, 405)
+
+    def test_the_bare_document_shape_is_still_accepted(self):
+        # An editor page cached across the deploy posts the document itself
+        # rather than {"presentation": ...}.
+        res = self._post({"title": "Bare", "slides": [{"title": "a"}]})
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(pf.loads(self.deck.file.read().decode()).title, "Bare")
+
+
 class PlayerTests(TestCase):
     """The player is a standalone document with no site chrome."""
 
