@@ -52,6 +52,34 @@ def _read_raw(vault_file: VaultFile) -> str:
         return fh.read().decode("utf-8")
 
 
+def _read_head(vault_file: VaultFile, size: int = 2048) -> bytes:
+    """The first bytes of a file, for the identity sniff.
+
+    A fresh storage handle, so it never disturbs the `FieldFile` cursor, and a
+    bounded read — the gallery does this for every candidate file on the page,
+    and a full read there means pulling every deck's embedded images off disk
+    just to look at one tag.
+    """
+    with vault_file.file.storage.open(vault_file.file.name, "rb") as fh:
+        return fh.read(size)
+
+
+def _adopt(vault_file: VaultFile) -> None:
+    """Retype a legacy deck that is still filed as generic XML.
+
+    Decks were briefly stored as ``file_type="xml"`` and identified purely by
+    sniffing their content. That left them with no Play button at all and an
+    Edit button that opened the generic XML editor — because a vault plugin only
+    fires when its `key` equals a file_type, and `xml` belongs to `toto.editor`.
+    Rather than migrate every host's vault, memo repairs a row the first time it
+    touches one: the fix arrives with the deck being opened, and costs nothing
+    for anyone who has none.
+    """
+    if vault_file.file_type != "presentation":
+        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="presentation")
+        vault_file.file_type = "presentation"
+
+
 def _is_presentation_file(vault_file: VaultFile) -> bool:
     try:
         return presentation_format.is_presentation(_read_raw(vault_file))
@@ -62,9 +90,10 @@ def _is_presentation_file(vault_file: VaultFile) -> bool:
 def _get_owned_file(request, file_pk) -> VaultFile:
     """Fetch a presentation vault file owned by the user and validate its content.
 
-    Presentations are ordinary ``.xml`` files now (``file_type="xml"``); the legacy
-    ``presentation`` type is still accepted. Only files whose content is a
-    ``<presentation>`` open here, so other XML can't reach the slide editor.
+    Both types are accepted on the way in: ``presentation`` is what memo writes
+    today, and ``xml`` is what the brief content-sniffing era left behind. Only
+    files whose content really is a ``<presentation>`` open here, so other XML
+    cannot reach the slide editor.
     """
     vf = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner"),
@@ -74,6 +103,7 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     )
     if not _is_presentation_file(vf):
         raise Http404("Not a presentation.")
+    _adopt(vf)
     return vf
 
 
@@ -135,6 +165,7 @@ class PresentationView(View):
             return HttpResponseForbidden("Cannot display an encrypted file.")
         if not _is_presentation_file(vault_file):
             raise Http404("Not a presentation.")
+        _adopt(vault_file)
 
         # Visibility check mirrors toto.vod.views.vault_file_play.
         if not vault_file.is_public:
@@ -372,7 +403,7 @@ class PresentationCreateView(LoginRequiredMixin, View):
             owner=request.user,
             title=title,
             key=key,
-            file_type="xml",
+            file_type="presentation",
             bucket=bucket,
             directory=directory,
             is_public=False,
@@ -416,13 +447,19 @@ class PresentationIndexView(View):
             return loc
 
         presentations = []
+        stale = []
         for f in qs:
             try:
-                raw = _read_raw(f)
+                # The cheap sniff, not a full parse: this loop runs over every
+                # candidate XML file, and `is_presentation` would parse each
+                # deck's embedded images end to end just to read one tag.
+                raw = _read_head(f)
             except Exception:
                 continue
-            if not presentation_format.is_presentation(raw):
+            if not presentation_format.sniff_is_presentation(raw):
                 continue
+            if f.file_type != "presentation":
+                stale.append(f.pk)
             presentations.append({
                 "title": f.title,
                 "owner": f.owner.username,
@@ -431,8 +468,11 @@ class PresentationIndexView(View):
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "present_url": reverse("memo:present", args=[f.pk]),
                 "edit_url": reverse("memo:edit", args=[f.pk]),
-                "source_url": reverse("memo:source", args=[f.pk]),
             })
+
+        # One query, not one per row — see _adopt.
+        if stale:
+            VaultFile.objects.filter(pk__in=stale).update(file_type="presentation")
 
         buckets_json, directories_json = new_file_picker_json(request.user)
         context = PageProcessor().decorate(

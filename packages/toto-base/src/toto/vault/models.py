@@ -172,11 +172,21 @@ class VaultFile(models.Model):
         ('python', 'Python'),
         ('neojson', 'NeoJSON'),
         ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
+        ('presentation', 'Presentation'),  # a slide deck (XML), edited in toto.memo
         ('zip', 'Archive'),
     ]
-    # Retired doc types (presentation/.pml, notebook/.tpy, contract/.contract) are
-    # ordinary 'xml' now, content-sniffed by memo/mandragora/notarius. Existing rows
-    # keep their old file_type string (choices aren't DB-enforced) and still open.
+    # The retired doc types (notebook/.tpy, contract/.contract) are ordinary 'xml'
+    # now, content-sniffed by mandragora/notarius. Existing rows keep their old
+    # file_type string (choices aren't DB-enforced) and still open.
+    #
+    # 'presentation' came BACK, and the reason is worth knowing before removing it
+    # again. The plugin registries are dict[key -> plugin] and `for_file_type` is
+    # `registry.get(file_type)`, so a plugin only ever fires when its `key` equals
+    # a file_type — and `key="xml"` is already taken by toto.editor, with
+    # BasePlugin.register raising on a duplicate. With decks typed 'xml' there was
+    # therefore no way to give them a Play button at all, and Edit opened the
+    # generic XML editor. What is retired is the '.pml' EXTENSION, not the type:
+    # deck files are still named .xml and _EXT_MAP still has no .pml entry.
 
     _EXT_MAP = {
         ".tex": "latex", ".sty": "latex", ".cls": "latex", ".dtx": "latex", ".ins": "latex",

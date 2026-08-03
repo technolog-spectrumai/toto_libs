@@ -414,9 +414,40 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertIsNotNone(editor)
         vf = self._make_presentation()
         self.assertEqual(play.get_play_url(vf), reverse("memo:present", args=[vf.pk]))
-        # The vault Edit button opens the plain-text XML source editor; the
-        # structured slide editor stays reachable from the memo app itself.
-        self.assertEqual(editor.get_editor_url(vf), reverse("memo:source", args=[vf.pk]))
+        # Edit opens the slide editor. It used to open the raw XML, which made
+        # the vault's most obvious entry point the least useful one.
+        self.assertEqual(editor.get_editor_url(vf), reverse("memo:edit", args=[vf.pk]))
+
+    def test_a_legacy_xml_deck_is_adopted_on_open(self):
+        """A deck filed as generic XML gets its type repaired when memo sees it.
+
+        While decks were typed `xml` they had no Play button at all and Edit
+        opened the generic XML editor, because a plugin only fires when its
+        `key` equals a file_type and `xml` belongs to toto.editor. Repairing the
+        row on first touch beats migrating every host's vault.
+        """
+        vf = self._make_presentation()
+        VaultFile.objects.filter(pk=vf.pk).update(file_type="xml")
+
+        self.client.force_login(self.alice)
+        self.client.get(reverse("memo:present", args=[vf.pk]))
+
+        vf.refresh_from_db()
+        self.assertEqual(vf.file_type, "presentation")
+        self.assertIsNotNone(VaultPlayPlugin.for_file_type(vf.file_type))
+
+    def test_a_plain_xml_file_still_belongs_to_the_generic_editor(self):
+        """The assertion that stops memo hijacking every XML file in the vault."""
+        vf = VaultFile.objects.create(
+            owner=self.alice, title="data.xml", file_type="xml",
+            bucket=self.bucket, directory=self.directory,
+            file=SimpleUploadedFile("data.xml", b"<rows><row/></rows>"))
+        self.assertIsNone(VaultPlayPlugin.for_file_type(vf.file_type))
+        self.assertEqual(VaultEditorPlugin.for_file_type(vf.file_type).get_key(), "xml")
+        # And it cannot be opened as a deck.
+        self.client.force_login(self.alice)
+        self.assertEqual(
+            self.client.get(reverse("memo:present", args=[vf.pk])).status_code, 404)
 
     def test_view_public_ok_for_anon(self):
         vf = self._make_presentation(is_public=True)
@@ -521,7 +552,8 @@ class PresentationVaultIntegrationTests(TestCase):
         self.client.force_login(self.alice)
         res = self.client.post(reverse("memo:create"))
         self.assertEqual(res.status_code, 302)
-        vf = VaultFile.objects.filter(owner=self.alice, file_type="xml").latest("pk")
+        vf = VaultFile.objects.filter(owner=self.alice,
+                                      file_type="presentation").latest("pk")
         self.assertEqual(res.url, reverse("memo:edit", args=[vf.pk]))
         # Created in the user's personal bucket with a valid blank deck.
         self.assertEqual(vf.bucket.slug, f"personal-{self.alice.username}")
@@ -545,7 +577,8 @@ class PresentationVaultIntegrationTests(TestCase):
             "directory_id": str(self.directory.pk),
         })
         self.assertEqual(res.status_code, 302)
-        vf = VaultFile.objects.filter(owner=self.alice, file_type="xml").latest("pk")
+        vf = VaultFile.objects.filter(owner=self.alice,
+                                      file_type="presentation").latest("pk")
         self.assertEqual(res.url, reverse("memo:edit", args=[vf.pk]))
         self.assertEqual(vf.bucket, self.bucket)
         self.assertEqual(vf.directory, self.directory)
