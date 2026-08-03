@@ -19,45 +19,158 @@ from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 User = get_user_model()
 
 
+V1_DOC = (
+    '<?xml version="1.0" encoding="utf-8"?>\n'
+    '<presentation version="1" title="Old talk">\n'
+    "  <slide>\n"
+    "    <title>Legacy</title>\n"
+    '    <body><![CDATA[<div style="display:flex"><p>hand written</p></div>]]></body>\n'
+    "  </slide>\n"
+    "</presentation>\n"
+)
+
+
+def _deck() -> pf.Presentation:
+    """One deck exercising every block type and two layouts."""
+    return pf.Presentation(
+        title="My Talk", theme="white",
+        slides=[
+            pf.Slide(id="s-1", title="Welcome", layout="title-content", blocks=[
+                pf.Block(id="b-1", type="heading", payload="Where we landed",
+                         attrs={"level": "2"}),
+                pf.Block(id="b-2", type="text",
+                         payload="<p>Hello &amp; <b>world</b></p>"),
+                pf.Block(id="b-3", type="list", items=["one", "two"]),
+            ]),
+            pf.Slide(id="s-2", title="Detail", layout="two-column", blocks=[
+                pf.Block(id="b-4", type="image", slot="left", attrs={"alt": "pic"},
+                         payload="data:image/png;base64,iVBORw0KGgo="),
+                pf.Block(id="b-5", type="svg", slot="right",
+                         payload='<svg viewBox="0 0 10 10"><rect/></svg>'),
+                pf.Block(id="b-6", type="code", attrs={"language": "python"},
+                         payload='print("hi")'),
+                pf.Block(id="b-7", type="quote", attrs={"cite": "Ada"},
+                         payload="Patterns."),
+            ]),
+        ],
+    )
+
+
 class PresentationFormatTests(TestCase):
-    def test_round_trip_preserves_everything(self):
-        p = pf.Presentation(
-            title="My Talk",
-            slides=[
-                pf.Slide(
-                    title="Welcome",
-                    body=(
-                        '<p>Hello & <b>world</b></p>\n'
-                        '<img src="data:image/png;base64,iVBORw0KGgo=" alt="pic">\n'
-                        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10">'
-                        '<rect width="10" height="10"/></svg>'
-                    ),
-                ),
-                pf.Slide(title="Edge case", body="contains ]]> a CDATA terminator"),
-            ],
-        )
-        xml = pf.dumps(p)
-        back = pf.loads(xml)
+    def test_round_trip_preserves_every_block_type(self):
+        back = pf.loads(pf.dumps(_deck()))
 
         self.assertEqual(back.title, "My Talk")
-        self.assertEqual(len(back.slides), 2)
-        self.assertEqual(back.slides[0].title, "Welcome")
-        self.assertIn("data:image/png;base64,iVBORw0KGgo=", back.slides[0].body)
-        self.assertIn("<svg", back.slides[0].body)
-        # The literal "]]>" survives the CDATA split/round-trip.
-        self.assertEqual(back.slides[1].body, "contains ]]> a CDATA terminator")
+        self.assertEqual(back.theme, "white")
+        self.assertEqual([s.layout for s in back.slides],
+                         ["title-content", "two-column"])
+        self.assertEqual(
+            [b.type for b in back.slides[0].blocks], ["heading", "text", "list"])
+        self.assertEqual(back.slides[0].blocks[2].items, ["one", "two"])
+        self.assertIn("data:image/png;base64,", back.slides[1].blocks[0].payload)
+        self.assertIn("<svg", back.slides[1].blocks[1].payload)
+        self.assertEqual(back.slides[1].blocks[0].slot, "left")
+        self.assertEqual(back.slides[1].blocks[2].attrs["language"], "python")
 
-    def test_idempotent(self):
-        p = pf.new_presentation("Hello")
-        p.slides[0].title = "Intro"
-        p.slides[0].body = "<p>hi</p>"
-        xml = pf.dumps(p)
-        self.assertEqual(pf.dumps(pf.loads(xml)), xml)
+    def test_a_cdata_terminator_survives(self):
+        p = pf.Presentation(slides=[pf.Slide(id="s-1", blocks=[
+            pf.Block(id="b-1", type="text", payload="contains ]]> a terminator")])])
+        self.assertEqual(pf.loads(pf.dumps(p)).slides[0].blocks[0].payload,
+                         "contains ]]> a terminator")
 
+    def test_dumps_is_stable_from_the_second_serialisation(self):
+        # NOT dumps(loads(x)) == x for arbitrary x: parsing backfills missing
+        # ids, so the first serialisation of a document that had none is
+        # legitimately different. From then on it must never drift.
+        once = pf.dumps(_deck())
+        self.assertEqual(pf.dumps(pf.loads(once)), once)
+
+    # -- v1 compatibility ------------------------------------------------
+    def test_a_v1_slide_becomes_one_html_block(self):
+        back = pf.loads(V1_DOC)
+        self.assertEqual(back.title, "Old talk")
+        self.assertEqual(back.slides[0].title, "Legacy")
+        self.assertEqual([b.type for b in back.slides[0].blocks], ["html"])
+
+    def test_a_v1_body_is_preserved_verbatim(self):
+        # The escape hatch is deliberately not sanitised: its trust model is
+        # exactly what v1's `{{ slide.body|safe }}` already was, and rewriting
+        # somebody's hand-written slide would be the worse bargain.
+        back = pf.loads(V1_DOC)
+        self.assertEqual(back.slides[0].blocks[0].payload,
+                         '<div style="display:flex"><p>hand written</p></div>')
+
+    def test_the_body_shim_still_answers(self):
+        self.assertEqual(pf.loads(V1_DOC).slides[0].body,
+                         '<div style="display:flex"><p>hand written</p></div>')
+
+    def test_v2_is_detected_from_blocks_without_a_version_attribute(self):
+        # A hand-edit that added blocks and forgot the attribute must not be
+        # silently flattened back into one HTML blob.
+        back = pf.loads(
+            '<presentation title="t"><slide><title>T</title>'
+            '<block type="text"><![CDATA[hi]]></block></slide></presentation>')
+        self.assertEqual([b.type for b in back.slides[0].blocks], ["text"])
+
+    # -- the anti-trap contract -------------------------------------------
+    def test_unknown_markup_round_trips(self):
+        """Anything the parser does not understand is preserved, not dropped.
+
+        v1 read four fields and threw the rest of the tree away, so the format
+        could not be extended by hand and a newer document lost data the moment
+        an older build saved it.
+        """
+        doc = (
+            '<presentation version="2" title="t" data-x="keep">'
+            '<slide id="s-1" layout="section" data-note="keep">'
+            "<title>T</title>"
+            '<block id="b-1" type="sparkline" wobble="3"><![CDATA[1,2,3]]></block>'
+            "<notes>from a future version</notes>"
+            "</slide></presentation>"
+        )
+        out = pf.dumps(pf.loads(doc))
+        self.assertIn('data-x="keep"', out, "unknown root attribute dropped")
+        self.assertIn('data-note="keep"', out, "unknown slide attribute dropped")
+        self.assertIn('type="sparkline"', out, "unknown block type dropped")
+        self.assertIn('wobble="3"', out, "unknown block attribute dropped")
+        self.assertIn("<notes>", out, "unknown child element dropped")
+
+    # -- identity ---------------------------------------------------------
+    def test_ids_are_backfilled(self):
+        back = pf.loads(V1_DOC)
+        self.assertTrue(back.slides[0].id)
+        self.assertTrue(back.slides[0].blocks[0].id)
+
+    def test_duplicate_ids_are_made_unique(self):
+        # Ids are the :key for every x-for in the editor. Two rows sharing one
+        # makes Alpine reuse the wrong DOM node on a reorder.
+        back = pf.loads('<presentation version="2">'
+                        '<slide id="x"><title/></slide>'
+                        '<slide id="x"><title/></slide></presentation>')
+        self.assertNotEqual(back.slides[0].id, back.slides[1].id)
+
+    # -- clamping ---------------------------------------------------------
+    def test_an_unknown_layout_falls_back_rather_than_raising(self):
+        back = pf.loads('<presentation version="2"><slide layout="hexagonal">'
+                        "<title>t</title></slide></presentation>")
+        self.assertEqual(back.slides[0].layout, pf.DEFAULT_LAYOUT)
+
+    def test_an_unknown_theme_falls_back(self):
+        self.assertEqual(
+            pf.loads('<presentation version="2" theme="chartreuse"/>').theme,
+            pf.DEFAULT_THEME)
+
+    def test_too_many_slides_are_truncated_not_rejected(self):
+        # A corrupt file must still open.
+        doc = ('<presentation version="2">'
+               + "<slide><title>x</title></slide>" * (pf.MAX_SLIDES + 10)
+               + "</presentation>")
+        self.assertEqual(len(pf.loads(doc).slides), pf.MAX_SLIDES)
+
+    # -- unchanged behaviour ----------------------------------------------
     def test_empty_input_yields_default(self):
         for raw in ("", "   \n  "):
-            p = pf.loads(raw)
-            self.assertEqual(len(p.slides), 1)
+            self.assertEqual(len(pf.loads(raw).slides), 1)
 
     def test_invalid_xml_raises(self):
         with self.assertRaises(pf.PresentationParseError):
@@ -71,21 +184,96 @@ class PresentationFormatTests(TestCase):
         self.assertTrue(pf.is_presentation(pf.dumps(pf.new_presentation("x"))))
         self.assertTrue(pf.is_presentation(b'<presentation version="1"></presentation>'))
         self.assertFalse(pf.is_presentation("<notebook></notebook>"))
-        self.assertFalse(pf.is_presentation("<other/>"))
         self.assertFalse(pf.is_presentation(""))
 
-    def test_blank_template_matches_dumps(self):
-        # The vault CreateEmptyFileView seeds a literal that must round-trip.
+    def test_the_cheap_sniff_agrees_with_the_full_parse(self):
+        # The gallery filters a few hundred XML files; a full parse there means
+        # parsing every embedded image just to read one tag.
+        for raw in (pf.dumps(pf.new_presentation("x")),
+                    '<?xml version="1.0"?>\n<presentation version="2">',
+                    "<!-- a note --><presentation/>"):
+            self.assertTrue(pf.sniff_is_presentation(raw), raw[:40])
+        for raw in ('<?xml version="1.0"?><notebook/>', "<other/>", ""):
+            self.assertFalse(pf.sniff_is_presentation(raw), raw[:40])
+
+    def test_a_blank_deck_has_one_slide_with_one_text_block(self):
+        blank = pf.loads(pf.dumps(pf.new_presentation("New")))
+        self.assertEqual(len(blank.slides), 1)
+        self.assertEqual([b.type for b in blank.slides[0].blocks], ["text"])
+        self.assertEqual(blank.slides[0].layout, pf.DEFAULT_LAYOUT)
+
+
+class SanitisationTests(TestCase):
+    """The server allowlist. The client mirror is for tidiness, not safety."""
+
+    def _block(self, kind, payload="", **attrs):
+        deck = pf.Presentation.from_dict({"slides": [{"title": "t", "blocks": [
+            {"type": kind, "payload": payload, "attrs": attrs}]}]})
+        return deck.slides[0].blocks[0]
+
+    def test_a_script_tag_is_dropped_with_its_contents(self):
         self.assertEqual(
-            pf.dumps(pf.new_presentation()),
-            '<?xml version="1.0" encoding="utf-8"?>\n'
-            '<presentation version="1" title="">\n'
-            "  <slide>\n"
-            "    <title></title>\n"
-            "    <body><![CDATA[]]></body>\n"
-            "  </slide>\n"
-            "</presentation>\n",
-        )
+            self._block("text", "<p>ok</p><script>alert(1)</script>").payload,
+            "<p>ok</p>")
+
+    def test_event_handlers_are_stripped(self):
+        self.assertEqual(self._block("text", '<p onclick="x()">hi</p>').payload,
+                         "<p>hi</p>")
+
+    def test_a_disallowed_tag_is_unwrapped_not_dropped(self):
+        # Pasting from a word processor must lose the styling, not the words.
+        self.assertEqual(self._block("text", "<div><font>words</font></div>").payload,
+                         "words")
+
+    def test_javascript_hrefs_are_removed(self):
+        for href in ("javascript:alert(1)", "java\tscript:alert(1)",
+                     "data:text/html;base64,x"):
+            self.assertEqual(self._block("text", f'<a href="{href}">x</a>').payload,
+                             "<a>x</a>", href)
+
+    def test_ordinary_links_survive(self):
+        for href in ("https://example.com", "mailto:a@b.c", "/decks", "#3"):
+            self.assertIn(href, self._block("text", f'<a href="{href}">x</a>').payload)
+
+    def test_a_heading_keeps_only_inline_marks(self):
+        self.assertEqual(self._block("heading", "<p>A <b>bold</b> idea</p>").payload,
+                         "A <b>bold</b> idea")
+
+    def test_code_is_reduced_to_text(self):
+        self.assertEqual(self._block("code", "<b>print</b>(1)").payload, "print(1)")
+
+    def test_an_image_must_be_a_self_contained_data_uri(self):
+        # An external src would stop the deck being self-contained and turn
+        # every viewer into a tracked hit.
+        self.assertEqual(self._block("image", "https://evil.example/x.png").payload, "")
+        self.assertTrue(self._block("image", "data:image/png;base64,iVBOR=").payload)
+
+    def test_svg_scripting_vectors_are_stripped(self):
+        for markup, banned in (
+            ('<svg onload="alert(1)"><rect/></svg>', "onload"),
+            ("<svg><script>alert(1)</script></svg>", "script"),
+            ("<svg><foreignObject><b>x</b></foreignObject></svg>", "foreignObject"),
+            ('<svg><use href="//evil/x#y"/></svg>', "evil"),
+        ):
+            self.assertNotIn(banned, self._block("svg", markup).payload, markup)
+
+    def test_an_internal_svg_reference_survives(self):
+        self.assertIn('href="#local"',
+                      self._block("svg", '<svg><use href="#local"/></svg>').payload)
+
+    def test_the_html_escape_hatch_is_left_alone(self):
+        # Asserted deliberately so nobody "fixes" it later without deciding to.
+        raw = '<div style="display:flex" onclick="x">hi</div>'
+        self.assertEqual(self._block("html", raw).payload, raw)
+
+    def test_content_is_sanitised_on_open_not_only_on_save(self):
+        # A deck is not only ever written by this editor — anyone can upload an
+        # XML file to the vault and open it, and a public one renders in every
+        # visitor's gallery.
+        deck = pf.loads('<presentation version="2"><slide><title>t</title>'
+                        '<block type="svg"><![CDATA[<svg onload="x"><rect/></svg>]]>'
+                        "</block></slide></presentation>")
+        self.assertNotIn("onload", deck.slides[0].blocks[0].payload)
 
 
 class VaultDetectionTests(TestCase):
@@ -154,7 +342,7 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertEqual(res.status_code, 302)
 
     def test_view_private_ok_for_owner(self):
-        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", body="<p>body one</p>")])
+        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", blocks=[pf.Block(type="html", payload="<p>body one</p>")])])
         vf = self._make_presentation(p=p)
         self.client.force_login(self.alice)
         res = self.client.get(reverse("memo:present", args=[vf.pk]))
@@ -162,7 +350,7 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertContains(res, "body one")
 
     def test_edit_hydration_and_owner_only(self):
-        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", body="<p>x</p>")])
+        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", blocks=[pf.Block(type="html", payload="<p>x</p>")])])
         vf = self._make_presentation(p=p)
 
         # non-owner → 404
@@ -297,7 +485,7 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertContains(res, "Lab / Talks")
 
     def test_source_view_owner_only(self):
-        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", body="<p>x</p>")])
+        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", blocks=[pf.Block(type="html", payload="<p>x</p>")])])
         vf = self._make_presentation(p=p)
 
         # non-owner → 404
@@ -323,7 +511,7 @@ class PresentationVaultIntegrationTests(TestCase):
         vf = self._make_presentation()
         self.client.force_login(self.alice)
         xml = pf.dumps(
-            pf.Presentation(title="Raw", slides=[pf.Slide(title="One", body="<p>hi</p>")])
+            pf.Presentation(title="Raw", slides=[pf.Slide(title="One", blocks=[pf.Block(type="html", payload="<p>hi</p>")])])
         )
         res = self.client.post(
             reverse("memo:source_save", args=[vf.pk]), data={"content": xml}

@@ -1,62 +1,185 @@
-"""
-Presentation Markup Language (``.pml``) serialization — self-contained XML format.
+"""Presentation document format — self-contained XML, version 2.
 
-A presentation ``.pml`` file is a single self-contained XML document that stores
-an entire slideshow: an ordered list of slides, each with a title and an HTML
-body.  Raster images are embedded as base64 ``data:`` URIs and SVGs are inlined
-verbatim, so the file has no external dependencies — it is the whole
-presentation.  Nothing about it lives in the database.
+A presentation is one XML document holding an entire slideshow. Raster images
+are embedded as base64 ``data:`` URIs and SVGs are inlined verbatim, so the file
+has no external dependencies: it *is* the presentation. Nothing about it lives
+in the database.
 
-``.pml`` is just XML internally; the dedicated extension is what marks a file as a
-presentation in the vault (``VaultFile._EXT_MAP``), the same way ``.tpy`` marks a
-notebook — generic ``.xml`` files stay typed ``xml``.
-
-The file is the single source of truth: it is parsed into the in-memory
-:class:`Presentation` structure when the viewer/editor opens, and serialized
-back when the user presses Save.
-
-Document shape::
+Version 2 gives a slide **structure**. A v1 slide was a title and one opaque
+blob of hand-written HTML, which is why the old editor was a ``<textarea>`` and
+why nothing could be dragged, restyled or laid out. A v2 slide is a *layout* and
+an ordered list of typed *blocks*::
 
     <?xml version="1.0" encoding="utf-8"?>
-    <presentation version="1" title="My Talk">
-      <slide>
+    <presentation version="2" title="Quarterly review" theme="black">
+      <slide id="s-a1b2c3d4" layout="title-content">
         <title>Welcome</title>
-        <body><![CDATA[
-          <p>Some HTML</p>
-          <img src="data:image/png;base64,iVBORw0KGgo..." alt="Embedded image">
-          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">...</svg>
-        ]]></body>
+        <block id="b-11aa" type="heading" level="2"><![CDATA[Where we landed]]></block>
+        <block id="b-11ab" type="text"><![CDATA[<p>Revenue is <strong>up</strong>.</p>]]></block>
+        <block id="b-11ac" type="list"><item><![CDATA[EMEA grew]]></item></block>
+      </slide>
+      <slide id="s-a1b2c3d5" layout="two-column">
+        <title>Before and after</title>
+        <block id="b-22aa" type="image" slot="left" alt="Render"><![CDATA[data:image/png;base64,...]]></block>
+        <block id="b-22ab" type="code" slot="right" language="python"><![CDATA[print(1)]]></block>
       </slide>
     </presentation>
 
-Slide bodies are wrapped in ``<![CDATA[ ... ]]>`` so pasted HTML, ``<img>`` data
-URIs and inline ``<svg>`` stay literal and human-readable in the file.  Each
-``<slide>`` maps to one reveal.js ``<section>`` in the viewer.
+**Every payload is CDATA-wrapped, with no per-type exceptions.** It reads a
+little noisier than escaped text, but it is the only rule that cannot lose a
+byte, and it reuses the ``]]>``-splitting trick that already made v1 bodies
+round-trip exactly.
+
+``<title>`` stays a slide *element* rather than becoming a block: it is what the
+filmstrip, the gallery card and the deck outline read, and making it a block
+would force every one of those to go hunting through the block list for "the
+heading that is really the title".
+
+**v1 files are upgraded in memory and never rewritten on open.** A v1 slide
+becomes one ``type="html"`` block, which the player renders through the same
+path the old ``{{ slide.body|safe }}`` used — so an old deck presents
+byte-identically. The file on disk stays v1 until the user saves.
+
+**Nothing unknown is discarded.** v1's parser read four fields and dropped the
+rest of the tree on the floor, so the format could not be extended by hand and a
+newer document lost data the moment an older build saved it. Here, unknown
+attributes, unknown block types and unknown child elements are all carried
+through ``dumps`` unchanged.
 """
 
 from __future__ import annotations
 
+import re
+import secrets
 from dataclasses import dataclass, field
 from xml.etree import ElementTree as ET
 
-FORMAT_VERSION = "1"
+from . import sanitize
+
+FORMAT_VERSION = "2"
+
+LAYOUTS = ("title-content", "two-column", "full-bleed", "section", "quote")
+BLOCK_TYPES = ("heading", "text", "list", "image", "svg", "code", "quote", "html")
+SLOTS = ("", "left", "right")
+THEMES = ("black", "white")
+
+DEFAULT_LAYOUT = "title-content"
+DEFAULT_THEME = "black"
+
+# A corrupt or hostile document must still open, so these truncate rather than
+# raise. They exist so one file cannot exhaust memory on the way in.
+MAX_SLIDES = 500
+MAX_BLOCKS_PER_SLIDE = 40
+MAX_ITEMS = 60
+MAX_PAYLOAD_BYTES = 8 * 1024 * 1024
+
+_ID_RE = re.compile(r"^[A-Za-z0-9_-]{1,32}$")
+_LANGUAGE_RE = re.compile(r"^[A-Za-z0-9+#._-]{1,20}$")
+
+# Attributes the schema names. Everything else on an element is preserved but
+# not interpreted — see the module docstring.
+_BLOCK_OWN_ATTRS = {"id", "type", "slot"}
+_SLIDE_OWN_ATTRS = {"id", "layout"}
+_ROOT_OWN_ATTRS = {"version", "title", "theme"}
+
+# Order matters only for deterministic output.
+_BLOCK_ATTR_ORDER = ("level", "ordered", "alt", "fit", "language", "cite")
 
 
 class PresentationParseError(ValueError):
     """Raised when a presentation document cannot be parsed."""
 
 
+def _new_id(prefix: str) -> str:
+    return f"{prefix}-{secrets.token_hex(4)}"
+
+
+# ---------------------------------------------------------------------------
+# Structure
+# ---------------------------------------------------------------------------
+
 @dataclass
-class Slide:
-    title: str = ""
-    body: str = ""
+class Block:
+    id: str = ""
+    type: str = "text"
+    payload: str = ""                                   # unused for type="list"
+    items: list[str] = field(default_factory=list)      # type="list" only
+    slot: str = ""
+    attrs: dict[str, str] = field(default_factory=dict)
+
+    def __post_init__(self):
+        # Minted here rather than only in the parser, so a deck built in Python
+        # — the seeder, a test — also serialises with ids and is stable from its
+        # FIRST dump rather than its second.
+        self.id = self.id or _new_id("b")
 
     def to_dict(self) -> dict:
-        return {"title": self.title, "body": self.body}
+        return {
+            "id": self.id, "type": self.type, "payload": self.payload,
+            "items": list(self.items), "slot": self.slot, "attrs": dict(self.attrs),
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict) -> "Block":
+        raw = data if isinstance(data, dict) else {}
+        attrs = raw.get("attrs")
+        return cls(
+            id=_clean_id(raw.get("id"), "b"),
+            type=str(raw.get("type") or "text"),
+            payload=str(raw.get("payload") or "")[:MAX_PAYLOAD_BYTES],
+            items=[str(i or "") for i in (raw.get("items") or [])][:MAX_ITEMS],
+            slot=str(raw.get("slot") or ""),
+            attrs={str(k): str(v) for k, v in (attrs or {}).items()},
+        )
+
+
+@dataclass
+class Slide:
+    id: str = ""
+    title: str = ""
+    layout: str = DEFAULT_LAYOUT
+    blocks: list[Block] = field(default_factory=list)
+    attrs: dict[str, str] = field(default_factory=dict)
+    extra: list[str] = field(default_factory=list)      # unknown child elements
+
+    def __post_init__(self):
+        self.id = self.id or _new_id("s")
+
+    @property
+    def body(self) -> str:
+        """What v1 called the body — the concatenated raw-HTML blocks.
+
+        Kept as a read-only shim so the player's fallback and the parts of the
+        suite that assert on rendered v1 text keep working unchanged.
+        """
+        return "".join(b.payload for b in self.blocks if b.type == "html")
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id, "title": self.title, "layout": self.layout,
+            "blocks": [b.to_dict() for b in self.blocks],
+            "attrs": dict(self.attrs), "extra": list(self.extra),
+        }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Slide":
-        return cls(title=data.get("title") or "", body=data.get("body") or "")
+        raw = data if isinstance(data, dict) else {}
+        blocks = raw.get("blocks")
+        if not blocks and raw.get("body"):
+            # A v1-shaped payload: `{"title": ..., "body": "<p>…</p>"}`. Only an
+            # editor page cached across the deploy sends this, but accepting it
+            # costs one branch and the alternative is that person's next save
+            # silently emptying their deck.
+            blocks = [{"type": "html", "payload": raw["body"]}]
+        return cls(
+            id=_clean_id(raw.get("id"), "s"),
+            title=str(raw.get("title") or ""),
+            layout=str(raw.get("layout") or DEFAULT_LAYOUT),
+            blocks=[Block.from_dict(b)
+                    for b in (blocks or [])][:MAX_BLOCKS_PER_SLIDE],
+            attrs={str(k): str(v) for k, v in (raw.get("attrs") or {}).items()},
+            extra=[str(e) for e in (raw.get("extra") or [])],
+        )
 
 
 @dataclass
@@ -64,31 +187,152 @@ class Presentation:
     title: str = ""
     slides: list[Slide] = field(default_factory=list)
     version: str = FORMAT_VERSION
+    theme: str = DEFAULT_THEME
+    attrs: dict[str, str] = field(default_factory=dict)
+    extra: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
-            "title": self.title,
-            "version": self.version,
+            "title": self.title, "version": self.version, "theme": self.theme,
             "slides": [s.to_dict() for s in self.slides],
+            "attrs": dict(self.attrs), "extra": list(self.extra),
         }
 
     @classmethod
     def from_dict(cls, data: dict) -> "Presentation":
-        slides = [Slide.from_dict(raw) for raw in data.get("slides") or []]
-        return cls(
-            title=data.get("title") or "",
-            slides=slides,
-            version=str(data.get("version") or FORMAT_VERSION),
+        """Build from untrusted JSON — **the sanitisation choke point**.
+
+        Every document that arrives from a browser passes through here, so this
+        is where the allowlists run. Putting it in the view instead would mean
+        the next endpoint someone adds forgets to call it.
+        """
+        raw = data if isinstance(data, dict) else {}
+        presentation = cls(
+            title=str(raw.get("title") or ""),
+            theme=str(raw.get("theme") or DEFAULT_THEME),
+            version=FORMAT_VERSION,       # we always write the current version
+            slides=[Slide.from_dict(s)
+                    for s in (raw.get("slides") or [])][:MAX_SLIDES],
+            attrs={str(k): str(v) for k, v in (raw.get("attrs") or {}).items()},
+            extra=[str(e) for e in (raw.get("extra") or [])],
         )
+        _validate(presentation, prune=True)
+        return presentation
 
 
-def new_presentation(title: str = "") -> Presentation:
-    """A blank presentation with a single empty slide — used for new files."""
-    return Presentation(title=title, slides=[Slide(title="", body="")])
+def new_presentation(title: str = "", theme: str = DEFAULT_THEME) -> Presentation:
+    """A blank deck with a single empty slide — used for new files."""
+    return Presentation(
+        title=title, theme=theme,
+        slides=[Slide(id=_new_id("s"), layout=DEFAULT_LAYOUT,
+                      blocks=[Block(id=_new_id("b"), type="text")])],
+    )
+
+
+def _clean_id(value, prefix: str) -> str:
+    value = str(value or "")
+    return value if _ID_RE.match(value) else _new_id(prefix)
 
 
 # ---------------------------------------------------------------------------
-# Serialization
+# Validation and sanitisation
+# ---------------------------------------------------------------------------
+
+def _validate(presentation: Presentation, *, prune: bool = False) -> None:
+    """Clamp every value to the schema and sanitise every payload, in place.
+
+    Out-of-range values fall back to the default rather than raising: a save
+    must never fail because a stale browser tab sent an attribute this build
+    stopped recognising.
+
+    Runs on BOTH paths — the save path (`from_dict`) and the open path
+    (`loads`). Sanitising on open matters because a deck is not only ever
+    written by this editor: anyone can upload an XML file to the vault and open
+    it as a presentation, and a public one is then rendered in every visitor's
+    gallery. `prune` is the one difference — dropping empty slides is right for
+    a document a browser just sent, and wrong for a file on disk, where it would
+    silently delete a slide somebody left blank on purpose.
+    """
+    if presentation.theme not in THEMES:
+        presentation.theme = DEFAULT_THEME
+
+    seen: set[str] = set()
+    for slide in presentation.slides:
+        if slide.layout not in LAYOUTS:
+            slide.layout = DEFAULT_LAYOUT
+        slide.title = sanitize.plain_text(slide.title)
+        slide.id = _unique(slide.id, "s", seen)
+        for block in slide.blocks:
+            block.id = _unique(block.id, "b", seen)
+            if block.slot not in SLOTS:
+                block.slot = ""
+            _sanitize_block(block)
+
+    if prune:
+        presentation.slides = [s for s in presentation.slides
+                               if s.title or s.blocks or s.extra]
+
+
+def _unique(value: str, prefix: str, seen: set[str]) -> str:
+    while not value or value in seen:
+        value = _new_id(prefix)
+    seen.add(value)
+    return value
+
+
+_DATA_URI_RE = re.compile(
+    r"^data:image/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$", re.IGNORECASE)
+
+
+def _sanitize_block(block: Block) -> None:
+    kind = block.type
+
+    if kind == "text":
+        block.payload = sanitize.sanitize_rich(block.payload)
+    elif kind in ("heading", "quote"):
+        block.payload = sanitize.sanitize_inline(block.payload)
+    elif kind == "code":
+        block.payload = sanitize.plain_text(block.payload)
+    elif kind == "list":
+        block.items = [sanitize.sanitize_inline(i) for i in block.items][:MAX_ITEMS]
+        block.payload = ""
+    elif kind == "image":
+        # Only a self-contained data: URI. An external src would make the deck
+        # stop being self-contained and turn every viewer into a tracked hit.
+        if not _DATA_URI_RE.match(block.payload.strip()):
+            block.payload = ""
+    elif kind == "svg":
+        block.payload = sanitize.sanitize_svg(block.payload)
+    elif kind == "html":
+        # The escape hatch, and the only thing a v1 upgrade produces. Left
+        # verbatim on purpose: its trust model is exactly what v1's
+        # `{{ slide.body|safe }}` already was, and rewriting people's existing
+        # hand-written slides would be a worse bargain than leaving it. It is
+        # never offered in the editor's "add block" menu, and the gallery
+        # renders it escaped rather than live — see the index view.
+        pass
+    # An unrecognised type keeps its payload untouched and unrendered.
+
+    _clamp_attrs(block)
+
+
+def _clamp_attrs(block: Block) -> None:
+    attrs = block.attrs
+    if "level" in attrs and attrs["level"] not in ("1", "2", "3", "4"):
+        attrs["level"] = "2"
+    if "fit" in attrs and attrs["fit"] not in ("contain", "cover"):
+        attrs["fit"] = "contain"
+    if "ordered" in attrs:
+        attrs["ordered"] = "true" if attrs["ordered"] == "true" else "false"
+    if "language" in attrs and not _LANGUAGE_RE.match(attrs["language"]):
+        del attrs["language"]
+    for key in ("alt", "cite"):
+        if key in attrs:
+            attrs[key] = sanitize.plain_text(attrs[key])[:200]
+
+
+# ---------------------------------------------------------------------------
+# Serialisation
 # ---------------------------------------------------------------------------
 
 def _esc_attr(text: str) -> str:
@@ -112,27 +356,70 @@ def _wrap_cdata(body: str) -> str:
     return f"<![CDATA[{safe}]]>"
 
 
+def _attr_string(own: list[tuple[str, str]], extra: dict[str, str]) -> str:
+    """Known attributes in declared order, then unknown ones sorted.
+
+    Deterministic output is what lets the round-trip test compare strings, and
+    what keeps a save from producing a spurious git diff.
+    """
+    parts = [f' {k}="{_esc_attr(v)}"' for k, v in own if v not in ("", None)]
+    parts += [f' {k}="{_esc_attr(extra[k])}"' for k in sorted(extra)]
+    return "".join(parts)
+
+
 def dumps(presentation: Presentation) -> str:
+    root_extra = {k: v for k, v in presentation.attrs.items()
+                  if k not in _ROOT_OWN_ATTRS}
     lines = ['<?xml version="1.0" encoding="utf-8"?>']
-    lines.append(
-        f'<presentation version="{_esc_attr(presentation.version or FORMAT_VERSION)}" '
-        f'title="{_esc_attr(presentation.title)}">'
-    )
+    lines.append("<presentation" + _attr_string(
+        [("version", FORMAT_VERSION),
+         ("title", presentation.title),
+         ("theme", presentation.theme or DEFAULT_THEME)], root_extra) + ">")
+
     for slide in presentation.slides:
-        lines.append("  <slide>")
+        slide_extra = {k: v for k, v in slide.attrs.items()
+                       if k not in _SLIDE_OWN_ATTRS}
+        lines.append("  <slide" + _attr_string(
+            [("id", slide.id), ("layout", slide.layout or DEFAULT_LAYOUT)],
+            slide_extra) + ">")
         lines.append(f"    <title>{_esc_text(slide.title)}</title>")
-        lines.append(f"    <body>{_wrap_cdata(slide.body)}</body>")
+
+        for block in slide.blocks:
+            block_extra = {k: v for k, v in block.attrs.items()
+                           if k not in _BLOCK_OWN_ATTRS
+                           and k not in _BLOCK_ATTR_ORDER}
+            known = [("id", block.id), ("type", block.type), ("slot", block.slot)]
+            known += [(k, block.attrs[k]) for k in _BLOCK_ATTR_ORDER
+                      if k in block.attrs]
+            head = "    <block" + _attr_string(known, block_extra)
+            if block.type == "list":
+                lines.append(head + ">")
+                for item in block.items:
+                    lines.append(f"      <item>{_wrap_cdata(item)}</item>")
+                lines.append("    </block>")
+            else:
+                lines.append(head + f">{_wrap_cdata(block.payload)}</block>")
+
+        for raw in slide.extra:
+            lines.append("    " + raw.strip())
         lines.append("  </slide>")
+
+    for raw in presentation.extra:
+        lines.append("  " + raw.strip())
     lines.append("</presentation>")
     return "\n".join(lines) + "\n"
 
 
+# ---------------------------------------------------------------------------
+# Identity
+# ---------------------------------------------------------------------------
+
 def is_presentation(xml: "str | bytes") -> bool:
     """True if ``xml`` is a presentation document (root ``<presentation>``).
 
-    Cheap identity check for "is this ordinary XML vault file a presentation?" —
-    used to filter the memo index and gate the viewer/editor now that presentations
-    are stored as plain ``.xml`` (``file_type="xml"``) rather than a dedicated type.
+    A full parse. Correct, and the right thing for a view that is about to
+    render the document anyway — but see ``sniff_is_presentation`` for the
+    listing path, where this would parse megabytes of base64 to read one tag.
     """
     try:
         if isinstance(xml, bytes):
@@ -141,6 +428,27 @@ def is_presentation(xml: "str | bytes") -> bool:
     except Exception:
         return False
 
+
+_SNIFF_RE = re.compile(rb"<\s*presentation\s*[/>]|<\s*presentation\s", re.IGNORECASE)
+_SNIFF_SKIP = re.compile(rb"<\?xml[^>]*\?>|<!--.*?-->|<!DOCTYPE[^>]*>", re.DOTALL)
+
+
+def sniff_is_presentation(head: "str | bytes") -> bool:
+    """Cheap identity check over the first bytes of a file.
+
+    The gallery lists up to a few hundred XML files and has to know which are
+    decks. Doing that with a full parse means reading and parsing every embedded
+    image in every candidate, which is most of what makes the index slow.
+    """
+    if isinstance(head, str):
+        head = head.encode("utf-8", errors="ignore")
+    head = _SNIFF_SKIP.sub(b"", head[:2048]).lstrip()
+    return bool(_SNIFF_RE.match(head))
+
+
+# ---------------------------------------------------------------------------
+# Parsing
+# ---------------------------------------------------------------------------
 
 def loads(text: str) -> Presentation:
     text = (text or "").strip()
@@ -154,22 +462,101 @@ def loads(text: str) -> Presentation:
 
     if root.tag != "presentation":
         raise PresentationParseError(
-            f"Expected root <presentation>, found <{root.tag}>"
-        )
+            f"Expected root <presentation>, found <{root.tag}>")
+
+    version = root.get("version") or "1"
+    # A hand-edit that added blocks but forgot to bump `version` should not be
+    # silently flattened back to one HTML blob.
+    v2 = version == "2" or root.find(".//block") is not None
 
     presentation = Presentation(
         title=root.get("title") or "",
-        version=root.get("version") or FORMAT_VERSION,
+        theme=root.get("theme") or DEFAULT_THEME,
+        version=FORMAT_VERSION,
+        attrs={k: v for k, v in root.attrib.items() if k not in _ROOT_OWN_ATTRS},
     )
+    if presentation.theme not in THEMES:
+        presentation.theme = DEFAULT_THEME
 
-    for slide_el in root.findall("slide"):
-        title_el = slide_el.find("title")
-        body_el = slide_el.find("body")
+    seen: set[str] = set()
+    for child in list(root):
+        if child.tag != "slide":
+            presentation.extra.append(_serialise(child))
+            continue
+        if len(presentation.slides) >= MAX_SLIDES:
+            break
         presentation.slides.append(
-            Slide(
-                title=(title_el.text or "") if title_el is not None else "",
-                body=(body_el.text or "") if body_el is not None else "",
-            )
-        )
+            _parse_slide(child, seen) if v2 else _upgrade_slide(child, seen))
 
+    _validate(presentation)
     return presentation
+
+
+def _serialise(element) -> str:
+    return ET.tostring(element, encoding="unicode").strip()
+
+
+def _parse_slide(el, seen: set[str]) -> Slide:
+    slide = Slide(
+        id=_unique(_clean_id(el.get("id"), "s"), "s", seen),
+        layout=el.get("layout") or DEFAULT_LAYOUT,
+        attrs={k: v for k, v in el.attrib.items() if k not in _SLIDE_OWN_ATTRS},
+    )
+    if slide.layout not in LAYOUTS:
+        slide.layout = DEFAULT_LAYOUT
+
+    for child in list(el):
+        if child.tag == "title":
+            slide.title = child.text or ""
+        elif child.tag == "block":
+            if len(slide.blocks) < MAX_BLOCKS_PER_SLIDE:
+                slide.blocks.append(_parse_block(child, seen))
+        else:
+            slide.extra.append(_serialise(child))
+    return slide
+
+
+def _parse_block(el, seen: set[str]) -> Block:
+    block = Block(
+        id=_unique(_clean_id(el.get("id"), "b"), "b", seen),
+        type=el.get("type") or "text",
+        slot=el.get("slot") or "",
+        attrs={k: v for k, v in el.attrib.items() if k not in _BLOCK_OWN_ATTRS},
+    )
+    if block.slot not in SLOTS:
+        block.slot = ""
+
+    if block.type == "list":
+        for item in el.findall("item"):
+            if len(block.items) < MAX_ITEMS:
+                block.items.append((item.text or "")[:MAX_PAYLOAD_BYTES])
+    else:
+        block.payload = (el.text or "")[:MAX_PAYLOAD_BYTES]
+    return block
+
+
+def _upgrade_slide(el, seen: set[str]) -> Slide:
+    """A v1 ``<slide><title/><body/></slide>`` as a v2 slide, in memory only.
+
+    The body becomes exactly one ``html`` block, which the player renders
+    through the same unescaped path v1 used — so an upgraded deck presents
+    byte-identically to the original. Nothing is written back: the file stays v1
+    until the user saves from the editor.
+    """
+    title_el = el.find("title")
+    body_el = el.find("body")
+    body = (body_el.text or "") if body_el is not None else ""
+
+    slide = Slide(
+        id=_unique(_clean_id(el.get("id"), "s"), "s", seen),
+        title=(title_el.text or "") if title_el is not None else "",
+        layout=DEFAULT_LAYOUT,
+        attrs={k: v for k, v in el.attrib.items() if k not in _SLIDE_OWN_ATTRS},
+    )
+    if body.strip():
+        slide.blocks.append(
+            Block(id=_unique("", "b", seen), type="html", payload=body))
+    for child in list(el):
+        if child.tag not in ("title", "body"):
+            slide.extra.append(_serialise(child))
+    return slide

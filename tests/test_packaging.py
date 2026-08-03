@@ -285,6 +285,24 @@ def test_jess_ships_in_toto_base(owner, all_names):
     assert not [n for n in all_names if n.endswith("toto/api/email_service.py")]
 
 
+def test_memo_ships_in_toto_works(owner):
+    """memo is the first app in this package to ship static files.
+
+    Its `static/memo/*.css` and `*.js` reach a wheel through the
+    ``package-data`` glob and the MANIFEST.in extension allowlist — and since
+    ``build_wheels.py --sdist`` builds the wheel FROM the sdist, an extension
+    missing from that allowlist would work locally and vanish only in a host's
+    clean-env gate. Pin them here so the failure is one line instead.
+    """
+    assert owner.get("toto/memo/presentation_format.py") == "toto-works"
+    assert owner.get("toto/memo/sanitize.py") == "toto-works"
+    # The three things a wheel silently drops: templates, static, and the
+    # settings module the gate needs to run the suite at all.
+    assert owner.get("toto/memo/templates/memo/edit.html") == "toto-works"
+    assert owner.get("toto/memo/testing/settings.py") == "toto-works"
+    assert owner.get("toto/memo/tests.py") == "toto-works"
+
+
 def test_primula_ships_in_toto_works(owner):
     """Primula is a toto-works app on a per-host BUILD_PRIMULA flag, beside memo.
 

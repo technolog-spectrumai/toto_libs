@@ -1,5 +1,5 @@
 """
-Seed a demo presentation as a self-contained ``.pml`` vault file.
+Seed a demo presentation as a self-contained XML vault file.
 
 Mirrors the file-based model of the memo app: the presentation lives entirely in
 the vault (``file_type="presentation"``), with a raster image embedded as a
@@ -23,7 +23,7 @@ MAX_DIM = 640
 
 
 class Command(IngressCommand):
-    help = "Seed a demo self-contained presentation .pml (image + svg) into the vault."
+    help = "Seed a demo self-contained presentation (blocks, layouts, image, svg)."
 
     def process(self):
         # Demo content only — like the other *full* ingress fixtures.
@@ -59,49 +59,83 @@ class Command(IngressCommand):
             self.stdout.write(self.style.WARNING(f"⚠️ Skipped existing presentation: {title}"))
             return
 
+        # A v2 deck, so the demo shows off the layouts rather than four
+        # identical stacks of hand-written HTML — which is what the old seed was,
+        # and the reason its last slide had to fake two columns with an inline
+        # flexbox.
         presentation = pf.Presentation(
             title=title,
+            theme="black",
             slides=[
                 pf.Slide(
                     title="Welcome to Toto Presentations",
-                    body=(
-                        "<p>Self-contained slideshows stored as a single "
-                        "<code>.pml</code> vault file.</p>\n"
-                        "<ul>\n"
-                        "  <li>HTML slide bodies</li>\n"
-                        "  <li>Images embedded as base64 (≤640px)</li>\n"
-                        "  <li>SVGs inlined verbatim</li>\n"
-                        "</ul>"
-                    ),
+                    layout="title-content",
+                    blocks=[
+                        pf.Block(type="text", payload=(
+                            "<p>Self-contained slideshows, stored as a single "
+                            "XML file in your vault.</p>")),
+                        pf.Block(type="list", items=[
+                            "Blocks you arrange by dragging",
+                            "Images embedded as base64 (≤640px)",
+                            "SVGs inlined verbatim",
+                        ]),
+                    ],
                 ),
                 pf.Slide(
                     title="Embedded image",
-                    body=(
-                        "<p>This PNG is base64-embedded directly in the file — "
-                        "no external reference:</p>\n"
-                        f'<img src="{self._demo_png_data_uri()}" '
-                        'alt="Embedded gradient image">'
-                    ),
+                    layout="title-content",
+                    blocks=[
+                        pf.Block(type="text", payload=(
+                            "<p>This PNG lives inside the file — no external "
+                            "reference, nothing to lose.</p>")),
+                        pf.Block(type="image", attrs={"alt": "Embedded gradient"},
+                                 payload=self._demo_png_data_uri()),
+                    ],
                 ),
                 pf.Slide(
                     title="Inline SVG",
-                    body=(
-                        "<p>Vector graphics are pasted straight into the XML:</p>\n"
-                        + self._demo_svg()
-                    ),
+                    layout="title-content",
+                    blocks=[
+                        pf.Block(type="text", payload=(
+                            "<p>Vector graphics are pasted straight into the "
+                            "XML:</p>")),
+                        pf.Block(type="svg", attrs={"alt": "Pipeline"},
+                                 payload=self._demo_svg()),
+                    ],
                 ),
                 pf.Slide(
-                    title="Everything together",
-                    body=(
-                        "<p>A slide can mix text, an embedded raster image, and an "
-                        "inline SVG side by side.</p>\n"
-                        '<div style="display:flex; gap:24px; align-items:center; '
-                        'justify-content:center;">\n'
-                        f'  <img src="{self._demo_png_data_uri(size=(320, 200))}" '
-                        'alt="thumbnail" style="max-width:45%;">\n'
-                        f"  {self._demo_svg(width=220)}\n"
-                        "</div>"
-                    ),
+                    title="Two columns",
+                    layout="two-column",
+                    blocks=[
+                        pf.Block(type="text", slot="left", payload=(
+                            "<p>The layout does the arranging. Drag a block from "
+                            "one column to the other and it stays aligned.</p>")),
+                        pf.Block(type="list", slot="left", items=[
+                            "No inline styles",
+                            "No guessing at widths",
+                        ]),
+                        pf.Block(type="image", slot="right",
+                                 attrs={"alt": "Thumbnail", "fit": "contain"},
+                                 payload=self._demo_png_data_uri(size=(320, 200))),
+                    ],
+                ),
+                pf.Slide(
+                    title="Part two",
+                    layout="section",
+                    blocks=[
+                        pf.Block(type="heading", attrs={"level": "1"},
+                                 payload="Part two"),
+                    ],
+                ),
+                pf.Slide(
+                    title="A quote",
+                    layout="quote",
+                    blocks=[
+                        pf.Block(type="quote", attrs={"cite": "Ada Lovelace"},
+                                 payload=("The Analytical Engine weaves algebraic "
+                                          "patterns, just as the Jacquard loom "
+                                          "weaves flowers and leaves.")),
+                    ],
                 ),
             ],
         )
