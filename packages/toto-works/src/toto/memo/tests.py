@@ -226,8 +226,22 @@ class SanitisationTests(TestCase):
 
     def test_a_disallowed_tag_is_unwrapped_not_dropped(self):
         # Pasting from a word processor must lose the styling, not the words.
-        self.assertEqual(self._block("text", "<div><font>words</font></div>").payload,
+        self.assertEqual(self._block("text", "<font><big>words</big></font>").payload,
                          "words")
+
+    def test_the_trix_block_vocabulary_survives(self):
+        # <div> is how Trix writes a line, and a heading and a quote are two of
+        # its toolbar buttons. Unwrapping them would not lose words but WOULD
+        # reflow every paragraph on save, which reads as the editor eating your
+        # formatting. Attributes still go.
+        payload = self._block(
+            "text",
+            '<div style="color:red">one</div><h1>Title</h1>'
+            '<blockquote><div>quoted</div></blockquote><del>gone</del>').payload
+        self.assertEqual(
+            payload,
+            "<div>one</div><h1>Title</h1><blockquote><div>quoted</div>"
+            "</blockquote><del>gone</del>")
 
     def test_javascript_hrefs_are_removed(self):
         for href in ("javascript:alert(1)", "java\tscript:alert(1)",

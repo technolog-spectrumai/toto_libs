@@ -14,9 +14,12 @@
 (function (global) {
   "use strict";
 
-  var INLINE = ["B", "STRONG", "I", "EM", "U", "S", "CODE", "A", "BR",
-                "SPAN", "SUB", "SUP", "MARK", "SMALL"];
-  var BLOCK = ["P", "UL", "OL", "LI"];
+  var INLINE = ["B", "STRONG", "I", "EM", "U", "S", "DEL", "INS", "CODE", "A",
+                "BR", "SPAN", "SUB", "SUP", "MARK", "SMALL"];
+  // Kept identical to sanitize.py's BLOCK_TAGS — see the note there about Trix
+  // writing lines as <div> and offering headings and quotes in its toolbar.
+  var BLOCK = ["P", "DIV", "H1", "H2", "H3", "BLOCKQUOTE", "PRE",
+               "UL", "OL", "LI"];
   var SAFE_SCHEME = /^(https?:|mailto:|[#/])/i;
 
   function clean(html, allowed) {
