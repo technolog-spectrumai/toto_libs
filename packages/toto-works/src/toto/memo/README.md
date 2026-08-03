@@ -59,6 +59,43 @@ two scoped classes, copied from reveal's files. That is the only duplication in
 the design, it is about twenty lines, and it buys per-element theming. Reveal
 keeps what it is good at: transitions, controls, progress and hash navigation.
 
+## Layouts are boxes, and boxes are the whole geometry model
+
+A slide's `layout` names a fixed set of **boxes**, in reading order. Nothing in
+a deck resizes, moves or nests one: you pick a layout, you get its boxes, and
+any box takes any kind of block — text, a picture, an SVG, code, a formula, a
+quote.
+
+| Layout | Boxes |
+|---|---|
+| `title-content`, `section`, `quote`, `full-bleed` | one |
+| `two-column` | left, right |
+| `three-column` | left, middle, right |
+| `image-left` / `image-right` | media, body (the picture box is the wider one) |
+| `two-row` | top, bottom |
+| `grid` | a, b, c, d |
+| `lead` | lead, body — one big thing and the sentence explaining it |
+
+That is a deliberate trade against free geometry. Draggable, resizable boxes
+make every slide a small layout project, and a deck of thirty ends up with
+thirty slightly different margins — the thing that makes homemade decks look
+homemade. **More layouts is the answer to "I need another shape", not draggable
+corners.** Adding one is a `LAYOUT_SLOTS` entry and a grid definition in
+`slide.css`; a test asserts every named box has a `grid-area`, because a box the
+stylesheet does not place lands wherever the browser feels like.
+
+A block whose `slot` this layout does not have still appears — in the FIRST box,
+never nowhere — and keeps its own slot in the file. So trying two columns, going
+back to one, and returning puts every block where it was. `Slide.columns` in
+`presentation_format.py` and `columns()` in `model.js` are the two
+implementations of that rule, and `test_the_javascript_agrees_about_the_boxes`
+is what keeps them the same.
+
+What the editor adds on top is only *which box* — asked once, above the block
+buttons, and only when there is more than one. Empty boxes are drawn dashed
+while editing (never when presenting), because a layout whose second column is
+invisible until something is in it looks like a layout that did not apply.
+
 ## Fonts, sizing and formulas
 
 **Font** is a deck property, like the theme: five CSS system stacks

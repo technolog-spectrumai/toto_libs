@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import io
+import pathlib
 import json
 import zipfile
 import tempfile
@@ -1550,3 +1551,79 @@ class PresentationMediaEmbedTests(TestCase):
         self.client.force_login(self.alice)
         res = self.client.get(reverse("memo:media_embed"), {"file_pk": "abc"})
         self.assertEqual(res.status_code, 400)
+
+
+class LayoutBoxTests(TestCase):
+    """A layout is a fixed set of boxes, and every box takes every block type."""
+
+    def test_every_layout_names_its_boxes(self):
+        for layout in pf.LAYOUTS:
+            with self.subTest(layout=layout):
+                slots = pf.slots_for(layout)
+                self.assertTrue(slots, f"{layout} has no boxes")
+                self.assertEqual(len(slots), len(set(slots)), "duplicate box")
+
+    def test_the_stylesheet_places_every_box(self):
+        # A box with no grid-area lands wherever the browser feels like, which
+        # is the one failure mode nothing else here would catch.
+        css = (pathlib.Path(pf.__file__).parent
+               / "static" / "memo" / "slide.css").read_text()
+        for layout, slots in pf.LAYOUT_SLOTS.items():
+            for slot in slots:
+                if not slot:
+                    continue
+                with self.subTest(layout=layout, slot=slot):
+                    self.assertIn(f'[data-layout="{layout}"] .memo-flow[data-slot="{slot}"]',
+                                  css)
+
+    def test_the_javascript_agrees_about_the_boxes(self):
+        # The Python side groups blocks for the player, the thumbnail and the
+        # PDF; the JS groups them for the editor. A disagreement shows as a
+        # block that moves when you press Present.
+        js = (pathlib.Path(pf.__file__).parent
+              / "static" / "memo" / "model.js").read_text()
+        for layout, slots in pf.LAYOUT_SLOTS.items():
+            with self.subTest(layout=layout):
+                self.assertIn(f'id: "{layout}"', js)
+                for slot in slots:
+                    if slot:
+                        self.assertIn(f'"{slot}"', js)
+
+    def test_a_block_lands_in_the_box_its_slot_names(self):
+        slide = pf.Slide(id="s1", layout="grid", blocks=[
+            pf.Block(id="b1", type="text", slot="c"),
+            pf.Block(id="b2", type="image", slot="a"),
+        ])
+        boxes = {slot: [b.id for b in blocks] for slot, blocks in slide.columns}
+        self.assertEqual(boxes, {"a": ["b2"], "b": [], "c": ["b1"], "d": []})
+
+    def test_a_block_whose_box_this_layout_lacks_shows_in_the_first_one(self):
+        slide = pf.Slide(id="s1", layout="title-content", blocks=[
+            pf.Block(id="b1", type="text", slot="right"),
+        ])
+        self.assertEqual([(s, [b.id for b in bs]) for s, bs in slide.columns],
+                         [("", ["b1"])])
+
+    def test_switching_layout_and_back_puts_everything_where_it_was(self):
+        # The block keeps its own slot in the file even while it renders
+        # elsewhere — losing it would shuffle the deck on every layout try.
+        deck = pf.new_presentation("Boxes")
+        slide = deck.slides[0]
+        slide.layout = "two-column"
+        slide.blocks = [pf.Block(id="b1", type="text", slot="right")]
+        slide.layout = "quote"
+        deck = pf.loads(pf.dumps(deck))
+        deck.slides[0].layout = "two-column"
+        self.assertEqual(deck.slides[0].columns[1][1][0].id, "b1")
+
+    def test_every_block_type_is_allowed_in_every_box(self):
+        # The point of the rework: a box is a place, not a type.
+        for block_type in pf.BLOCK_TYPES:
+            with self.subTest(block_type=block_type):
+                deck = pf.new_presentation("Any")
+                deck.slides[0].layout = "grid"
+                deck.slides[0].blocks = [
+                    pf.Block(id="b1", type=block_type, slot="d", payload="x")]
+                back = pf.loads(pf.dumps(deck))
+                self.assertEqual(back.slides[0].blocks[0].slot, "d")
+                self.assertEqual(back.slides[0].blocks[0].type, block_type)

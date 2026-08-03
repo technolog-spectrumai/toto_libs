@@ -221,6 +221,93 @@
  * is what switching a title-content slide to two-column produces. */
 .memo-slide[data-layout="two-column"] .memo-flow[data-slot=""] { grid-area: left; }
 
+/* Three columns. Past three the text is too narrow to read at 1280px, which is
+ * why there is no four-column layout and a grid is offered instead. */
+.memo-slide[data-layout="three-column"] {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-areas: "title title title" "left middle right";
+  column-gap: 40px;
+}
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="left"]   { grid-area: left; }
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="middle"] { grid-area: middle; }
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="right"]  { grid-area: right; }
+
+/* A picture beside prose, in both directions. The media box is the wider one
+ * and centres its contents, so a portrait photo and a landscape one both sit
+ * sensibly without anybody choosing a size. */
+.memo-slide[data-layout="image-left"] {
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-areas: "title title" "media body";
+  column-gap: 48px;
+}
+.memo-slide[data-layout="image-right"] {
+  grid-template-columns: 1fr 1.15fr;
+  grid-template-areas: "title title" "body media";
+  column-gap: 48px;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="media"],
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="media"] {
+  grid-area: media;
+  justify-content: center;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="body"],
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="body"] {
+  grid-area: body;
+  justify-content: center;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="media"] img,
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="media"] img {
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Two stacked bands — a before and an after, a claim and its evidence. */
+.memo-slide[data-layout="two-row"] {
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "title" "top" "bottom";
+  row-gap: 28px;
+}
+.memo-slide[data-layout="two-row"] .memo-flow[data-slot="top"]    { grid-area: top; }
+.memo-slide[data-layout="two-row"] .memo-flow[data-slot="bottom"] { grid-area: bottom; }
+
+/* Four quadrants. The one layout where an empty box is normal — a 2x2 with
+ * three things in it reads as deliberate. */
+.memo-slide[data-layout="grid"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "title title" "a b" "c d";
+  gap: 28px 40px;
+}
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="a"] { grid-area: a; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="b"] { grid-area: b; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="c"] { grid-area: c; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="d"] { grid-area: d; }
+
+/* One big thing, and the sentence that explains it: a number, a logo, a result.
+ * The lead box types large by rule rather than by anyone choosing a size. */
+.memo-slide[data-layout="lead"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-areas: "title" "lead" "body";
+  row-gap: 20px;
+  text-align: center;
+}
+.memo-slide[data-layout="lead"] .memo-flow[data-slot="lead"] {
+  grid-area: lead;
+  justify-content: flex-end;
+  font-size: 2.6em;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.memo-slide[data-layout="lead"] .memo-flow[data-slot="body"] {
+  grid-area: body;
+  justify-content: flex-start;
+}
+
+/* A block whose slot this layout does not name still shows — in the first box,
+ * never nowhere. Switching layouts must not look like losing content. */
+.memo-slide .memo-flow[data-slot=""] { grid-area: main; }
+
 .memo-slide[data-layout="section"] {
   grid-template-rows: minmax(0, 1fr);
   grid-template-areas: "main";

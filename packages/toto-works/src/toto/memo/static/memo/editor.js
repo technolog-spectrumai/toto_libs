@@ -47,6 +47,8 @@
         activeId: "",
         focusedId: "",
         nonce: 0,
+        // Which box the next block lands in — see `boxes`.
+        targetSlot: "",
         // Reactive mirrors of MemoHistory's state — see canUndo.
         canUndo: false,
         canRedo: false,
@@ -133,6 +135,17 @@
       },
       get activeIndex() { return M.indexOfId(this.state.slides, this.ui.activeId); },
       get columns() { return M.columns(this.activeSlide); },
+
+      /* The boxes this slide's layout has, and which of them a new block goes
+       * into. A layout is a fixed set of boxes — nothing here resizes one — so
+       * "which box" is the only placement question there is, and it is asked
+       * once rather than guessed per block. */
+      get boxes() { return M.slotsFor(this.activeSlide ? this.activeSlide.layout : ""); },
+      slotLabel: function (slot) { return M.slotLabel(slot); },
+      get targetSlot() {
+        var boxes = this.boxes;
+        return boxes.indexOf(this.ui.targetSlot) !== -1 ? this.ui.targetSlot : boxes[0];
+      },
       /* Read from `ui`, NOT from the history object.
        *
        * `history` is a plain object Alpine knows nothing about, so a getter
@@ -274,6 +287,9 @@
       setLayout: function (layout) {
         var id = this.activeSlide.id;
         this.mutate(function (s) { M.setLayout(s, id, layout); });
+        // The chosen box may not exist on the new layout; `targetSlot` falls
+        // back to the first one, and the blocks fall with it (see columns).
+        this.ui.targetSlot = M.slotsFor(layout)[0];
         this.refresh();
       },
 

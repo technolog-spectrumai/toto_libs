@@ -75,3 +75,29 @@
   .memo-editing .memo-block,
   .memo-editing .memo-title { transition: none; }
 }
+
+/* --------------------------------------------------------------------------
+ * The boxes a layout defines.
+ *
+ * Only in the editor — the player and the PDF must show the slide, not the
+ * scaffolding. An empty box is DRAWN rather than collapsed, because a layout
+ * whose second column is invisible until something is in it looks like a
+ * layout that did not apply.
+ * ------------------------------------------------------------------------ */
+
+.memo-editing .memo-flow[data-empty] {
+  border: 1px dashed rgba(127, 127, 127, 0.45);
+  border-radius: 8px;
+  min-height: 64px;
+}
+.memo-editing .memo-flow[data-box-label]::before {
+  content: attr(data-box-label);
+  position: absolute;
+  transform: translateY(-1.35em);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.memo-editing .memo-flow[data-box-label] { position: relative; }

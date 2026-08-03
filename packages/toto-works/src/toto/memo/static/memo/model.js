@@ -9,13 +9,58 @@
 (function (global) {
   "use strict";
 
+  /* A layout is a fixed set of BOXES, and that is the whole geometry model.
+   *
+   * Nothing here resizes or moves a box: you pick a layout, you get its boxes,
+   * and any box takes any kind of block — text, a picture, an SVG, code, a
+   * formula. Free geometry turns every slide into a small layout project and a
+   * deck of thirty into thirty slightly different margins; more layouts is the
+   * answer to "I need another shape".
+   *
+   * `slots` must match LAYOUT_SLOTS in presentation_format.py — the Python side
+   * groups blocks for the player, the thumbnail and the PDF, and a disagreement
+   * would show as a block that moves when you press Present.
+   */
   var LAYOUTS = [
-    { id: "title-content", label: "Title and content", icon: "fa-align-left" },
-    { id: "two-column",    label: "Two columns",       icon: "fa-table-columns" },
-    { id: "full-bleed",    label: "Full-bleed image",  icon: "fa-image" },
-    { id: "section",       label: "Section divider",   icon: "fa-minus" },
-    { id: "quote",         label: "Quote",             icon: "fa-quote-left" }
+    { id: "title-content", label: "Title and content", icon: "fa-align-left",
+      slots: [""] },
+    { id: "two-column",    label: "Two columns",       icon: "fa-table-columns",
+      slots: ["left", "right"] },
+    { id: "three-column",  label: "Three columns",     icon: "fa-grip-lines-vertical",
+      slots: ["left", "middle", "right"] },
+    { id: "image-left",    label: "Picture, then text", icon: "fa-image",
+      slots: ["media", "body"] },
+    { id: "image-right",   label: "Text, then picture", icon: "fa-image",
+      slots: ["body", "media"] },
+    { id: "two-row",       label: "Two rows",          icon: "fa-grip-lines",
+      slots: ["top", "bottom"] },
+    { id: "grid",          label: "Four boxes",        icon: "fa-table-cells-large",
+      slots: ["a", "b", "c", "d"] },
+    { id: "lead",          label: "Big statement",     icon: "fa-bolt",
+      slots: ["lead", "body"] },
+    { id: "full-bleed",    label: "Full-bleed image",  icon: "fa-panorama",
+      slots: [""] },
+    { id: "section",       label: "Section divider",   icon: "fa-minus",
+      slots: [""] },
+    { id: "quote",         label: "Quote",             icon: "fa-quote-left",
+      slots: [""] }
   ];
+
+  var SLOT_LABEL = {
+    "": "Content", left: "Left", right: "Right", middle: "Middle",
+    media: "Picture", body: "Text", top: "Top", bottom: "Bottom",
+    a: "Top left", b: "Top right", c: "Bottom left", d: "Bottom right",
+    lead: "The big thing"
+  };
+
+  function slotsFor(layout) {
+    for (var i = 0; i < LAYOUTS.length; i++) {
+      if (LAYOUTS[i].id === layout) return LAYOUTS[i].slots;
+    }
+    return [""];
+  }
+
+  function slotLabel(slot) { return SLOT_LABEL[slot] || slot; }
 
   /* Labels only — the applied class comes from a literal map below, never a
    * template string, because a JS-assembled class does not exist under the
@@ -193,13 +238,21 @@
   /* Which flow regions a layout renders, as [slot, blocks] pairs. Mirrors
    * Slide.columns in presentation_format.py — the two must agree or the editor
    * shows a different arrangement from the player. */
+  /* The slide's boxes, as [slot, blocks] pairs, in reading order.
+   *
+   * A block whose slot this layout does not have falls into the FIRST box and
+   * keeps its own slot in the file — so switching layout and back puts every
+   * block where it was. Mirrors Slide.columns in presentation_format.py. */
   function columns(slide) {
     if (!slide) return [];
-    if (slide.layout !== "two-column") return [["", slide.blocks]];
-    return [
-      ["left",  slide.blocks.filter(function (b) { return b.slot !== "right"; })],
-      ["right", slide.blocks.filter(function (b) { return b.slot === "right"; })]
-    ];
+    var slots = slotsFor(slide.layout);
+    var buckets = {};
+    slots.forEach(function (slot) { buckets[slot] = []; });
+    slide.blocks.forEach(function (block) {
+      var slot = slots.indexOf(block.slot) !== -1 ? block.slot : slots[0];
+      buckets[slot].push(block);
+    });
+    return slots.map(function (slot) { return [slot, buckets[slot]]; });
   }
 
   function indexOfId(list, id) {
@@ -324,6 +377,8 @@
 
   global.MemoModel = {
     LAYOUTS: LAYOUTS,
+    slotsFor: slotsFor,
+    slotLabel: slotLabel,
     blockScale: blockScale,
     isAutoScaled: isAutoScaled,
     FONTS: FONTS,

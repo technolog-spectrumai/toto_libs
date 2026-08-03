@@ -294,6 +294,9 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
             <template x-for="pair in columns" :key="pair[0] + '-' + activeSlide.id + '-' + ui.nonce">
               <div class="memo-flow" :data-slot="pair[0]" data-drop-kind="block media"
+                   :data-empty="pair[1].length ? null : '1'"
+                   :data-box-label="boxes.length > 1 ? slotLabel(pair[0]) : null"
+                   @click="ui.targetSlot = pair[0]"
                    @dragover.prevent @drop.prevent="onFileDrop($event, pair[0])">
                 <template x-for="block in pair[1]" :key="block.id + '-' + ui.nonce">
                   <div class="memo-block group relative" :data-type="block.type"
@@ -414,10 +417,30 @@ old one carried 210 lines of inline Alpine that no test could reach.
           </div>
         </div>
 
-        {# ---- add a block ----------------------------------------------- #}
+        {% comment %}---- add a block ----
+
+        Which BOX it goes into is picked first, and only when the layout has
+        more than one. A layout is a fixed set of boxes and every box takes
+        every kind of block, so "where" and "what" are two separate questions
+        and asking them in that order is what stops a picture landing in the
+        text column.
+        {% endcomment %}
+        <div x-show="boxes.length > 1" x-cloak
+             class="flex flex-wrap items-center justify-center gap-1.5 text-xs">
+          <span class="opacity-45">{% trans "Put it in" %}</span>
+          <template x-for="slot in boxes" :key="'target-' + slot">
+            <button type="button" @click="ui.targetSlot = slot"
+                    :class="ui.targetSlot === slot
+                      ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                      : (darkMode ? 'border-accent-1 border' : 'border-accent-2 border')"
+                    class="rounded-lg px-2.5 py-1 font-semibold transition"
+                    x-text="slotLabel(slot)"></button>
+          </template>
+        </div>
+
         <div class="flex flex-wrap items-center justify-center gap-2">
           <template x-for="type in blockTypes" :key="type.id">
-            <button type="button" @click="addBlock(type.id, '')"
+            <button type="button" @click="addBlock(type.id, targetSlot)"
                     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                     class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs opacity-70 transition hover:opacity-100">
               <i class="fa-solid" :class="type.icon"></i><span x-text="type.label"></span>
@@ -433,7 +456,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
             <i class="fa-solid fa-upload"></i> {% trans "Upload" %}
             <input type="file" class="hidden" multiple
                    accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
-                   @change="onFiles($event.target.files, '', null); $event.target.value = ''">
+                   @change="onFiles($event.target.files, targetSlot, null); $event.target.value = ''">
           </label>
         </div>
       </div>

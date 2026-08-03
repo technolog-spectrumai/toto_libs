@@ -58,10 +58,52 @@ from . import sanitize
 
 FORMAT_VERSION = "2"
 
-LAYOUTS = ("title-content", "two-column", "full-bleed", "section", "quote")
+# A layout is a fixed set of BOXES, and that is the whole geometry model.
+#
+# Nothing in a deck resizes or repositions a box: you pick a layout, you get its
+# boxes, and you put a block in one. That is the trade this format makes on
+# purpose — free geometry means every slide is a small layout project, and a
+# deck of thirty ends up with thirty slightly different margins. More layouts is
+# the answer to "I need a different shape", not draggable corners.
+#
+# The value is the ordered list of slot names. `""` is a layout's single
+# unnamed box, which keeps every one-box layout identical to what v1 wrote.
+LAYOUT_SLOTS = {
+    "title-content": ("",),
+    "section":       ("",),
+    "quote":         ("",),
+    "full-bleed":    ("",),
+    "two-column":    ("left", "right"),
+    "three-column":  ("left", "middle", "right"),
+    "image-left":    ("media", "body"),
+    "image-right":   ("body", "media"),
+    "two-row":       ("top", "bottom"),
+    "grid":          ("a", "b", "c", "d"),
+    "lead":          ("lead", "body"),
+}
+LAYOUTS = tuple(LAYOUT_SLOTS)
 BLOCK_TYPES = ("heading", "text", "list", "image", "svg", "code", "quote",
                "formula", "html")
-SLOTS = ("", "left", "right")
+# Every slot any layout names. A block keeps a slot the current layout does not
+# have — changing layout and changing back must not shuffle the deck — but it
+# RENDERS in the first box until it does; see slots_for().
+SLOTS = tuple(sorted({slot for slots in LAYOUT_SLOTS.values() for slot in slots}))
+
+
+def slots_for(layout: str) -> tuple[str, ...]:
+    """The boxes this layout has, in reading order."""
+    return LAYOUT_SLOTS.get(layout, LAYOUT_SLOTS[DEFAULT_LAYOUT])
+
+
+def resolve_slot(layout: str, slot: str) -> str:
+    """Which box a block actually lands in on this layout.
+
+    A block carrying `right` on a one-box layout is not an error and is not
+    dropped: it shows in the only box there is, and still says `right` in the
+    file, so switching back to two columns puts it where it was.
+    """
+    slots = slots_for(layout)
+    return slot if slot in slots else slots[0]
 THEMES = ("black", "white")
 # System stacks only, and every one ends in a generic. No webfont is vendored,
 # slide.css may not use url() under the hashed-manifest storage, and the PDF is
@@ -208,14 +250,15 @@ class Slide:
         than three that drift.
 
         A block whose slot does not exist in this layout still appears: it falls
-        into the first region rather than vanishing, which is what happens when
-        a two-column slide is switched back to a single-column layout.
+        into the FIRST region rather than vanishing, and keeps its own slot in
+        the file — so switching a two-column slide to one column and back puts
+        every block where it was.
         """
-        if self.layout != "two-column":
-            return [("", list(self.blocks))]
-        left = [b for b in self.blocks if b.slot != "right"]
-        right = [b for b in self.blocks if b.slot == "right"]
-        return [("left", left), ("right", right)]
+        slots = slots_for(self.layout)
+        buckets = {slot: [] for slot in slots}
+        for block in self.blocks:
+            buckets[resolve_slot(self.layout, block.slot)].append(block)
+        return [(slot, buckets[slot]) for slot in slots]
 
     def to_dict(self) -> dict:
         return {
@@ -333,6 +376,9 @@ def _validate(presentation: Presentation, *, prune: bool = False) -> None:
         slide.id = _unique(slide.id, "s", seen)
         for block in slide.blocks:
             block.id = _unique(block.id, "b", seen)
+            # A slot no layout names is meaningless and would strand the block
+            # in a box that does not exist. One this layout lacks is KEPT — see
+            # Slide.columns for why.
             if block.slot not in SLOTS:
                 block.slot = ""
             _sanitize_block(block)
