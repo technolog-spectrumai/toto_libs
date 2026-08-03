@@ -3,13 +3,14 @@
 from datetime import timedelta
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 from django.utils import timezone
 
 from toto.core.models import Platform
 
 from .models import Snapshot
+from . import tasks
 from .tasks import monit_prune, monit_sample
 
 
@@ -89,3 +90,27 @@ class TaskTests(TestCase):
         monit_prune()
         remaining = list(Snapshot.objects.values_list("pk", flat=True))
         self.assertEqual(remaining, [fresh.pk])
+
+
+class TaskRegistrationTests(SimpleTestCase):
+    """Beat schedules these; the worker has to be able to find them."""
+
+    def test_the_worker_discovers_monit_tasks(self):
+        # Without the registry entry, beat enqueued monit_prune once an hour and
+        # the worker answered KeyError every time — a stack trace that looks
+        # like a broken worker and buries the ones that matter.
+        from toto.registry import TASK_MODULES
+
+        self.assertIn("toto.monit", TASK_MODULES)
+
+    def test_every_scheduled_monit_task_exists(self):
+        from toto import schedules
+
+        scheduled = {entry["task"] for entry in
+                     schedules.beat_schedule(monit=True).values()
+                     if entry["task"].startswith("toto.monit.")}
+        self.assertTrue(scheduled, "nothing scheduled to check")
+        for name in scheduled:
+            with self.subTest(task=name):
+                self.assertTrue(hasattr(tasks, name.rsplit(".", 1)[1]),
+                                f"{name} is scheduled but not defined")

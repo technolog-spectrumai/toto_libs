@@ -106,6 +106,15 @@ TASK_MODULES = [
     "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
+    # toto.monit's sampler and pruner are SCHEDULED by toto/schedules.py whenever
+    # BUILD_MONIT is on, so the worker has to be able to find them. Without the
+    # entry beat kept enqueueing `toto.monit.tasks.monit_prune` and the worker
+    # kept answering KeyError, once an hour, forever — a stack trace in the log
+    # that looks like a broken worker and buries the ones that matter.
+    #
+    # Inert where the ops wheel is absent: Celery's find_related_module swallows
+    # a missing package, which is the same reasoning as toto.manta above.
+    "toto.monit",
 ]
 
 
