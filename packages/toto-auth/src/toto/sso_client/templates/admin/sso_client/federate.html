@@ -70,10 +70,10 @@
 
     <div style="padding:1rem;background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;">
     {% if renewal %}
-      {# Renewing an existing connection: it MUST go through the provider's
+      {% comment %} Renewing an existing connection: it MUST go through the provider's
          re-pairing action on the existing registration, so the relying-party
          identity stays put and this host's linked accounts survive. A fresh
-         invite would mint a new identity and strand them. #}
+         invite would mint a new identity and strand them.{% endcomment %}
       <p style="margin:0 0 .5rem;font-weight:600;">
         {% trans "This renews your existing connection — ask for a re-pairing code" %}
       </p>

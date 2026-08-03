@@ -55,10 +55,10 @@
           <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                    class="group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
 
-            {# A real slide, scaled — the same partial and the same stylesheet
+            {% comment %} A real slide, scaled — the same partial and the same stylesheet
                the player uses. trust_html=False: this page lists OTHER PEOPLE'S
                public decks, so a legacy html block renders as an inert chip
-               rather than live markup. #}
+               rather than live markup.{% endcomment %}
             <a href="{{ p.present_url }}" class="block">
               <div class="memo-card-thumb mx-auto my-3">
                 {% if p.cover %}

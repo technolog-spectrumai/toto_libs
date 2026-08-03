@@ -107,8 +107,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
         <i class="fa-solid fa-play"></i> {% trans "Present" %}
       </a>
 
-      {# Exports and git behind one menu — three more buttons in the bar would
-         be exactly the clutter this rework exists to remove. #}
+      {% comment %} Exports and git behind one menu — three more buttons in the bar would
+         be exactly the clutter this rework exists to remove.{% endcomment %}
       <div x-data="{ open: false }" class="relative">
         <button type="button" @click="open = !open" title="{% trans 'More' %}"
                 class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100">
@@ -184,11 +184,11 @@ old one carried 210 lines of inline Alpine that no test could reach.
               <div class="flex items-center gap-2">
                 <span class="w-4 shrink-0 text-right text-[0.65rem] opacity-40" x-text="index + 1"></span>
                 <span x-show="!ui.filmstrip" class="truncate text-xs" x-text="slide.title"></span>
-                {# A real slide, scaled — but only for rows near the viewport.
+                {% comment %} A real slide, scaled — but only for rows near the viewport.
                    `data-live` is set by one IntersectionObserver on the list;
                    off-screen rows keep their number and title and build no
                    slide DOM at all. Nothing in here is focusable or editable:
-                   the open slide is the only live surface. #}
+                   the open slide is the only live surface.{% endcomment %}
                 <div x-show="ui.filmstrip" class="memo-thumb"
                      :class="'memo-theme-' + state.theme" aria-hidden="true">
                   <template x-if="ui.live[slide.id]">
@@ -305,15 +305,15 @@ old one carried 210 lines of inline Alpine that no test could reach.
                        @click="focusBlock(block.id)"
                        @contextmenu.prevent="openMenu($event, 'block', block.id)">
 
-                    {# The grip. Handles own the pointer (touch-action: none in
-                       slide.css) so the page still scrolls everywhere else. #}
+                    {% comment %} The grip. Handles own the pointer (touch-action: none in
+                       slide.css) so the page still scrolls everywhere else.{% endcomment %}
                     <span data-drag-handle
                           class="memo-handle absolute -left-9 top-1 opacity-0 transition group-hover:opacity-60">
                       <i class="fa-solid fa-grip-vertical text-xs"></i>
                     </span>
 
-                    {# Size, on the focused block only. Auto-fit already shrank
-                       it to fit; this is the override for when you disagree. #}
+                    {% comment %} Size, on the focused block only. Auto-fit already shrank
+                       it to fit; this is the override for when you disagree.{% endcomment %}
                     <span x-show="isFocused(block.id)" x-cloak data-no-drag
                           class="absolute -top-9 right-0 z-10 flex items-center gap-0.5 rounded-lg border border-current/20 bg-black/70 px-1 py-0.5 text-white"
                           style="font-size: 11px">
@@ -359,9 +359,9 @@ old one carried 210 lines of inline Alpine that no test could reach.
                       </ul>
                     </template>
 
-                    {# You write LaTeX. No equation builder, no symbol palette
+                    {% comment %} You write LaTeX. No equation builder, no symbol palette
                        — a textarea holding the source, rendered live above it,
-                       and a cheatsheet you can fold away. #}
+                       and a cheatsheet you can fold away.{% endcomment %}
                     <template x-if="block.type === 'formula'">
                       <div class="w-full">
                         <div x-init="renderFormula(block, $el)"
@@ -395,10 +395,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
                       <div x-html="block.payload"></div>
                     </template>
 
-                    {# The v1 escape hatch. Shown as it will present, but not
+                    {% comment %} The v1 escape hatch. Shown as it will present, but not
                        editable: there is no block UI for arbitrary markup, and
                        silently rewriting somebody's hand-written slide would be
-                       worse than leaving it alone. #}
+                       worse than leaving it alone.{% endcomment %}
                     <template x-if="block.type === 'html'">
                       <div x-html="block.payload"></div>
                     </template>
@@ -555,6 +555,6 @@ old one carried 210 lines of inline Alpine that no test could reach.
   <script src="{% static 'memo/editor.js' %}"></script>
 {% endblock %}
 
-{# An editor is a place to concentrate; the floating plugin widgets are not part
-   of that. The same choice the ACE file editor already makes. #}
+{% comment %} An editor is a place to concentrate; the floating plugin widgets are not part
+   of that. The same choice the ACE file editor already makes.{% endcomment %}
 {% block floating_widgets %}{% endblock %}

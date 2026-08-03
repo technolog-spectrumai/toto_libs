@@ -59,15 +59,15 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
                role="img" aria-label="{{ block.attrs.alt|default:'' }}">{{ block.payload|safe }}</div>
 
         {% elif block.type == "code" %}
-          {# Escaped, not |safe: a code block is plain text by definition, and
-             showing the markup is the entire point of it. #}
+          {% comment %} Escaped, not |safe: a code block is plain text by definition, and
+             showing the markup is the entire point of it.{% endcomment %}
           <pre class="memo-block" data-type="code" data-block-id="{{ block.id }}"
                data-language="{{ block.attrs.language|default:'' }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload }}</pre>
 
         {% elif block.type == "formula" %}
-          {# The cached KaTeX markup if it survived sanitising, otherwise the
+          {% comment %} The cached KaTeX markup if it survived sanitising, otherwise the
              LaTeX source, escaped. Never a blank: a formula you can read as
-             source beats an empty space where one used to be. #}
+             source beats an empty space where one used to be.{% endcomment %}
           <div class="memo-block" data-type="formula" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
             {% if block.render %}{{ block.render|safe }}{% else %}<code class="memo-formula-source">{{ block.payload }}</code>{% endif %}
           </div>
@@ -86,8 +86,8 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
           </div>
 
         {% else %}
-          {# A block from a newer build. It round-trips through the file
-             untouched; rendering a guess at it would be worse than nothing. #}
+          {% comment %} A block from a newer build. It round-trips through the file
+             untouched; rendering a guess at it would be worse than nothing.{% endcomment %}
           <div class="memo-block" data-type="{{ block.type }}" data-unknown="1"
                data-block-id="{{ block.id }}">{{ block.type }}</div>
         {% endif %}
