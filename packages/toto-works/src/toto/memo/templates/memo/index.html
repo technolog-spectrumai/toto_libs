@@ -62,9 +62,9 @@
             <a href="{{ p.present_url }}" class="block">
               <div class="memo-card-thumb mx-auto my-3">
                 {% if p.cover %}
-                  {% include "memo/_slide.html" with slide=p.cover theme=p.theme trust_html=False %}
+                  {% include "memo/_slide.html" with slide=p.cover theme=p.theme font=p.font trust_html=False %}
                 {% else %}
-                  <div class="memo-slide memo-theme-{{ p.theme }}" data-layout="section">
+                  <div class="memo-slide memo-theme-{{ p.theme }} memo-font-{{ p.font }}" data-layout="section">
                     <div class="memo-flow"><p>{% trans "Empty" %}</p></div>
                   </div>
                 {% endif %}

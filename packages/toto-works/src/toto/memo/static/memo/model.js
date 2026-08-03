@@ -17,6 +17,25 @@
     { id: "quote",         label: "Quote",             icon: "fa-quote-left" }
   ];
 
+  /* Labels only — the applied class comes from a literal map below, never a
+   * template string, because a JS-assembled class does not exist under the
+   * Tailwind JIT build. */
+  var FONTS = [
+    { id: "sans",      label: "Sans" },
+    { id: "serif",     label: "Serif" },
+    { id: "mono",      label: "Mono" },
+    { id: "rounded",   label: "Rounded" },
+    { id: "condensed", label: "Condensed" }
+  ];
+
+  var FONT_CLASS = {
+    sans: "memo-font-sans",
+    serif: "memo-font-serif",
+    mono: "memo-font-mono",
+    rounded: "memo-font-rounded",
+    condensed: "memo-font-condensed"
+  };
+
   /* What the "add block" menu offers. `html` is deliberately absent: it exists
    * only as the shape a v1 slide upgrades into, and offering it would invite
    * people back into hand-writing HTML — the thing this editor replaces. */
@@ -103,6 +122,7 @@
     return {
       title: data.title || "",
       theme: data.theme === "white" ? "white" : "black",
+      font: FONT_CLASS[data.font] ? data.font : "sans",
       slides: slides,
       attrs: Object.assign({}, data.attrs || {}),
       extra: (data.extra || []).slice()
@@ -206,6 +226,7 @@
     return {
       title: state.title,
       theme: state.theme,
+      font: state.font,
       slides: state.slides.map(function (s) {
         return {
           id: s.id, title: s.title, layout: s.layout,
@@ -225,6 +246,8 @@
 
   global.MemoModel = {
     LAYOUTS: LAYOUTS,
+    FONTS: FONTS,
+    FONT_CLASS: FONT_CLASS,
     BLOCK_TYPES: BLOCK_TYPES,
     PLACEHOLDER: PLACEHOLDER,
     newId: newId,

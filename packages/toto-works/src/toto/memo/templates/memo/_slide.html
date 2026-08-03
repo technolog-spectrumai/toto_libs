@@ -7,6 +7,7 @@ definition of what one looks like.
 Context:
   slide       a presentation_format.Slide
   theme       "black" | "white"
+  font        "sans" | "serif" | "mono" | "rounded" | "condensed"
   trust_html  whether a legacy `html` block is rendered live or escaped
 
 `trust_html` is the one thing a caller must think about. Every block type is
@@ -17,7 +18,7 @@ have navigated to one deck. It is not defensible in the gallery, which lists
 *other people's public decks*: one hostile deck would then run script on every
 visitor. So the gallery passes trust_html=False and gets an inert placeholder.
 {% endcomment %}
-<div class="memo-slide memo-theme-{{ theme|default:"black" }}"
+<div class="memo-slide memo-theme-{{ theme|default:"black" }} memo-font-{{ font|default:"sans" }}"
      data-layout="{{ slide.layout }}" data-slide-id="{{ slide.id }}">
 
   <h2 class="memo-title" data-placeholder="{% trans 'Slide title' %}">{{ slide.title }}</h2>

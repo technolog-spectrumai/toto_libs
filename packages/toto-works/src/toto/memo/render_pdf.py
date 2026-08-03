@@ -54,6 +54,7 @@ def render(presentation) -> bytes:
     html = render_to_string("memo/print.html", {
         "presentation": presentation,
         "theme": presentation.theme,
+        "font": presentation.font,
         "slide_css": css,
     })
     return HTML(string=html).write_pdf()

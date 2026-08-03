@@ -62,9 +62,17 @@ LAYOUTS = ("title-content", "two-column", "full-bleed", "section", "quote")
 BLOCK_TYPES = ("heading", "text", "list", "image", "svg", "code", "quote", "html")
 SLOTS = ("", "left", "right")
 THEMES = ("black", "white")
+# System stacks only, and every one ends in a generic. No webfont is vendored,
+# slide.css may not use url() under the hashed-manifest storage, and the PDF is
+# rendered by WeasyPrint inside a container — so a family that is not installed
+# there would silently fall back to something else and the PDF would stop
+# matching the screen. `notarius/render.py` already relies on DejaVu being in the
+# image, which is the precedent for naming it.
+FONTS = ("sans", "serif", "mono", "rounded", "condensed")
 
 DEFAULT_LAYOUT = "title-content"
 DEFAULT_THEME = "black"
+DEFAULT_FONT = "sans"
 
 # A corrupt or hostile document must still open, so these truncate rather than
 # raise. They exist so one file cannot exhaust memory on the way in.
@@ -80,7 +88,7 @@ _LANGUAGE_RE = re.compile(r"^[A-Za-z0-9+#._-]{1,20}$")
 # not interpreted — see the module docstring.
 _BLOCK_OWN_ATTRS = {"id", "type", "slot"}
 _SLIDE_OWN_ATTRS = {"id", "layout"}
-_ROOT_OWN_ATTRS = {"version", "title", "theme"}
+_ROOT_OWN_ATTRS = {"version", "title", "theme", "font"}
 
 # Order matters only for deterministic output.
 _BLOCK_ATTR_ORDER = ("level", "ordered", "alt", "fit", "language", "cite")
@@ -207,12 +215,14 @@ class Presentation:
     slides: list[Slide] = field(default_factory=list)
     version: str = FORMAT_VERSION
     theme: str = DEFAULT_THEME
+    font: str = DEFAULT_FONT
     attrs: dict[str, str] = field(default_factory=dict)
     extra: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict:
         return {
             "title": self.title, "version": self.version, "theme": self.theme,
+            "font": self.font,
             "slides": [s.to_dict() for s in self.slides],
             "attrs": dict(self.attrs), "extra": list(self.extra),
         }
@@ -229,6 +239,7 @@ class Presentation:
         presentation = cls(
             title=str(raw.get("title") or ""),
             theme=str(raw.get("theme") or DEFAULT_THEME),
+            font=str(raw.get("font") or DEFAULT_FONT),
             version=FORMAT_VERSION,       # we always write the current version
             slides=[Slide.from_dict(s)
                     for s in (raw.get("slides") or [])][:MAX_SLIDES],
@@ -239,10 +250,11 @@ class Presentation:
         return presentation
 
 
-def new_presentation(title: str = "", theme: str = DEFAULT_THEME) -> Presentation:
+def new_presentation(title: str = "", theme: str = DEFAULT_THEME,
+                     font: str = DEFAULT_FONT) -> Presentation:
     """A blank deck with a single empty slide — used for new files."""
     return Presentation(
-        title=title, theme=theme,
+        title=title, theme=theme, font=font,
         slides=[Slide(id=_new_id("s"), layout=DEFAULT_LAYOUT,
                       blocks=[Block(id=_new_id("b"), type="text")])],
     )
@@ -274,6 +286,8 @@ def _validate(presentation: Presentation, *, prune: bool = False) -> None:
     """
     if presentation.theme not in THEMES:
         presentation.theme = DEFAULT_THEME
+    if presentation.font not in FONTS:
+        presentation.font = DEFAULT_FONT
 
     seen: set[str] = set()
     for slide in presentation.slides:
@@ -399,7 +413,8 @@ def dumps(presentation: Presentation) -> str:
     lines.append("<presentation" + _attr_string(
         [("version", FORMAT_VERSION),
          ("title", presentation.title),
-         ("theme", presentation.theme or DEFAULT_THEME)], root_extra) + ">")
+         ("theme", presentation.theme or DEFAULT_THEME),
+         ("font", presentation.font or DEFAULT_FONT)], root_extra) + ">")
 
     for slide in presentation.slides:
         slide_extra = {k: v for k, v in slide.attrs.items()
@@ -497,11 +512,14 @@ def loads(text: str) -> Presentation:
     presentation = Presentation(
         title=root.get("title") or "",
         theme=root.get("theme") or DEFAULT_THEME,
+        font=root.get("font") or DEFAULT_FONT,
         version=FORMAT_VERSION,
         attrs={k: v for k, v in root.attrib.items() if k not in _ROOT_OWN_ATTRS},
     )
     if presentation.theme not in THEMES:
         presentation.theme = DEFAULT_THEME
+    if presentation.font not in FONTS:
+        presentation.font = DEFAULT_FONT
 
     seen: set[str] = set()
     for child in list(root):

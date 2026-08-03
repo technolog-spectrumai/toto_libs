@@ -57,9 +57,47 @@
   --memo-code-bg: rgba(0, 0, 0, 0.06);
 }
 
+/* --------------------------------------------------------------------------
+ * Fonts. Per deck, and system stacks only.
+ *
+ * No webfont is vendored, this file may not use url() under the hashed-manifest
+ * storage, and the PDF is rendered by WeasyPrint inside a container — so every
+ * stack ends in a generic, and the named fallbacks include the DejaVu families
+ * that notarius/render.py already relies on being in the image. A family the
+ * container lacks would silently substitute and the PDF would stop matching the
+ * screen, which is the one thing this stylesheet exists to prevent.
+ *
+ * Qualified with `.memo-slide` on purpose. The theme class below also declares
+ * --r-main-font and sits on the SAME element, so two bare single-class rules
+ * would be decided by source order alone — and the theme block comes later.
+ * (0,2,0) beats (0,1,0) whatever the order, which is one less thing to break
+ * when somebody moves a block of this file.
+ * ------------------------------------------------------------------------ */
+
+.memo-slide.memo-font-sans {
+  --r-main-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+                 "DejaVu Sans", Arial, sans-serif;
+}
+.memo-slide.memo-font-serif {
+  --r-main-font: Georgia, Cambria, "Times New Roman", "DejaVu Serif", Times, serif;
+}
+.memo-slide.memo-font-mono {
+  --r-main-font: ui-monospace, SFMono-Regular, Menlo, Consolas,
+                 "DejaVu Sans Mono", monospace;
+}
+.memo-slide.memo-font-rounded {
+  --r-main-font: "Trebuchet MS", "Segoe UI", Verdana, "DejaVu Sans", sans-serif;
+}
+.memo-slide.memo-font-condensed {
+  --r-main-font: "Arial Narrow", "Liberation Sans Narrow",
+                 "DejaVu Sans Condensed", "Helvetica Neue", sans-serif;
+}
+
 .memo-theme-black,
 .memo-theme-white {
-  --r-main-font: "Source Sans Pro", Helvetica, Arial, sans-serif;
+  /* The default, for a slide rendered without a font class at all. */
+  --r-main-font: system-ui, -apple-system, "Segoe UI", Roboto, "DejaVu Sans",
+                 Arial, sans-serif;
   --r-heading-font: var(--r-main-font);
   --r-code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   /* Reveal's own value is 42px against its 960px stage. This stage is 1280px
@@ -288,13 +326,25 @@
  * the theme class on <body> and paints it here. */
 .memo-player { background: var(--r-background-color); }
 
-.reveal .slides section .memo-slide {
+/* The slide keeps its real 1280x720 here too — that is the whole point of the
+ * shared stylesheet, and overriding it to percentages was what broke the player.
+ *
+ * Reveal's own default is `center: true`, which positions each <section> from
+ * its MEASURED height; sections are absolutely positioned with height:auto, so a
+ * `height: 100%` child resolves against auto, collapses to nothing, and takes
+ * every layout that depends on the 720px box with it. present.html therefore
+ * sets `center: false`, reveal pins the section to the top-left of the stage it
+ * has already sized to exactly 1280x720, and the box lands precisely. */
+.reveal .slides section {
+  padding: 0;                     /* reveal insets sections by default */
   width: 100%;
   height: 100%;
-  transform: none;
 }
-/* Reveal centres section content by default and adds its own padding. */
-.reveal .slides section { padding: 0; }
+.reveal .slides section .memo-slide { transform: none; }
+
+/* Reveal keeps past and future slides in the DOM for the transition. An
+ * off-screen slide must never take a click. */
+.reveal .slides section:not(.present) { pointer-events: none; }
 
 /* --------------------------------------------------------------------------
  * The editor stage: a 16:9 box that scales the 1280px slide down to fit.

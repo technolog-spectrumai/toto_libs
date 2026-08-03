@@ -25,7 +25,7 @@ the deck.
 </head>
 <body class="memo-print memo-theme-{{ theme|default:'black' }}">
   {% for slide in presentation.slides %}
-    {% include "memo/_slide.html" with slide=slide theme=theme trust_html=True %}
+    {% include "memo/_slide.html" with slide=slide theme=theme font=font trust_html=True %}
   {% endfor %}
 </body>
 </html>

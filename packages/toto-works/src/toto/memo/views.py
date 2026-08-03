@@ -610,9 +610,10 @@ def _cover(vault_file) -> dict:
     try:
         presentation = presentation_format.loads(_read_raw(vault_file))
     except Exception:                                  # noqa: BLE001
-        return {"cover": None, "theme": "black", "slide_count": 0}
+        return {"cover": None, "theme": "black", "font": "sans", "slide_count": 0}
     return {
         "cover": presentation.slides[0] if presentation.slides else None,
         "theme": presentation.theme,
+        "font": presentation.font,
         "slide_count": len(presentation.slides),
     }

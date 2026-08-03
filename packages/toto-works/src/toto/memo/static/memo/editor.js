@@ -60,6 +60,7 @@
       },
 
       layouts: M.LAYOUTS,
+      fonts: M.FONTS,
       blockTypes: M.BLOCK_TYPES,
       media: readJson("memo-media", []),
 
@@ -177,6 +178,16 @@
 
       setTheme: function (theme) {
         this.mutate(function (s) { s.theme = theme; });
+      },
+
+      setFont: function (font) {
+        this.mutate(function (s) { s.font = font; });
+      },
+
+      get fontClass() { return M.FONT_CLASS[this.state.font] || "memo-font-sans"; },
+      get fontLabel() {
+        var found = M.FONTS.filter(function (f) { return f.id === this.state.font; }, this);
+        return found.length ? found[0].label : "Sans";
       },
 
       // ---- blocks ----------------------------------------------------------

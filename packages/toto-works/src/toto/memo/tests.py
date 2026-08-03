@@ -761,6 +761,137 @@ class PlayerTests(TestCase):
         self.assertIn("&lt;script&gt;", body)
 
 
+class SlideGeometryTests(TestCase):
+    """The bugs that made presenting not work, pinned so they cannot come back."""
+
+    def _asset(self, name):
+        from django.contrib.staticfiles import finders
+        from pathlib import Path
+
+        found = finders.find(name)
+        return Path(found).read_text() if found else ""
+
+    def test_the_player_turns_reveal_centring_off(self):
+        """Reveal's default `center: true` is what broke the player.
+
+        It positions each <section> from its MEASURED height, and reveal's
+        sections are absolutely positioned with height:auto — so a slide sized
+        as a percentage of that collapses to nothing, taking every layout that
+        depends on the 720px box with it.
+        """
+        from django.template.loader import get_template
+
+        source = get_template("memo/present.html").template.source
+        self.assertIn("center: false", source)
+        self.assertIn("width: 1280", source)
+        self.assertIn("height: 720", source)
+
+    def test_the_slide_keeps_its_real_size_in_the_player(self):
+        css = self._asset("memo/slide.css")
+        self.assertTrue(css, "slide.css not found by the staticfiles finders")
+        self.assertNotIn(".reveal .slides section .memo-slide {\n  width: 100%;", css,
+                         "the percentage override is back — the box will collapse")
+        self.assertIn("width: 1280px", css)
+        self.assertIn("height: 720px", css)
+
+    def test_an_offscreen_slide_cannot_take_a_click(self):
+        # Reveal keeps past/future slides in the DOM for the transition.
+        self.assertIn(".reveal .slides section:not(.present) { pointer-events: none; }",
+                      self._asset("memo/slide.css"))
+
+    def test_a_press_on_a_control_is_never_a_drag(self):
+        """The filmstrip's Delete/Duplicate/arrows were dead because of this.
+
+        The whole row is a drag handle, so `setPointerCapture` fired for a press
+        that landed on a button, the pointerup was retargeted to the row, and the
+        browser never synthesised a click on the button.
+        """
+        js = self._asset("memo/drag.js")
+        self.assertTrue(js, "drag.js not found")
+        self.assertIn("button, a, input, select, textarea, label,"
+                      " [contenteditable], [data-no-drag]", js)
+
+
+class FontTests(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+
+    def _deck_file(self, font="serif", public=True):
+        deck = _deck()
+        deck.font = font
+        return VaultFile.objects.create(
+            owner=self.alice, title="talk.xml", file_type="presentation",
+            is_public=public, bucket=self.bucket,
+            file=SimpleUploadedFile("talk.xml", pf.dumps(deck).encode()))
+
+    def test_the_font_round_trips(self):
+        for font in pf.FONTS:
+            deck = pf.Presentation(title="T", font=font, slides=[pf.Slide(title="a")])
+            self.assertEqual(pf.loads(pf.dumps(deck)).font, font)
+
+    def test_an_unknown_font_falls_back(self):
+        self.assertEqual(
+            pf.loads('<presentation version="2" font="comic-sans"/>').font, "sans")
+
+    def test_a_deck_with_no_font_is_sans(self):
+        self.assertEqual(pf.loads('<presentation version="2"/>').font, "sans")
+
+    def test_the_font_reaches_the_player(self):
+        deck = self._deck_file("serif")
+        body = self.client.get(
+            reverse("memo:present", args=[deck.pk])).content.decode()
+        self.assertIn("memo-font-serif", body)
+
+    def test_the_font_reaches_the_print_document(self):
+        from django.template.loader import render_to_string
+
+        deck = _deck()
+        deck.font = "mono"
+        html = render_to_string("memo/print.html", {
+            "presentation": deck, "theme": deck.theme, "font": deck.font,
+            "slide_css": ""})
+        self.assertIn("memo-font-mono", html)
+
+    def test_the_font_reaches_the_gallery_card(self):
+        self._deck_file("condensed")
+        self.client.force_login(self.alice)
+        body = self.client.get(reverse("memo:index")).content.decode()
+        self.assertIn("memo-font-condensed", body)
+
+    def test_the_font_reaches_the_editor(self):
+        deck = self._deck_file("rounded", public=False)
+        self.client.force_login(self.alice)
+        body = self.client.get(reverse("memo:edit", args=[deck.pk])).content.decode()
+        chunk = body.split('id="memo-data"')[1].split("</script>")[0]
+        self.assertEqual(json.loads(chunk.split(">", 1)[1])["font"], "rounded")
+
+    def test_every_font_has_a_stack_and_ends_in_a_generic(self):
+        """A family the container lacks would silently substitute in the PDF.
+
+        Every stack must end in a CSS generic, which fontconfig can always
+        resolve inside the image — otherwise the exported deck stops matching
+        what the author saw, which is the one thing slide.css exists to prevent.
+        """
+        from django.contrib.staticfiles import finders
+        from pathlib import Path
+
+        css = Path(finders.find("memo/slide.css")).read_text()
+        for font in pf.FONTS:
+            marker = f".memo-slide.memo-font-{font} {{"
+            self.assertIn(marker, css, font)
+            stack = css.split(marker)[1].split("}")[0]
+            self.assertTrue(
+                any(g in stack for g in ("sans-serif;", "serif;", "monospace;")),
+                f"{font} stack does not end in a generic: {stack.strip()}")
+
+
 class VaultDetectionTests(TestCase):
     def test_pml_extension_retired(self):
         # The dedicated `.pml`/presentation vault type is retired — presentations

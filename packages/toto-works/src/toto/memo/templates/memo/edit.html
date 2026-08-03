@@ -70,6 +70,27 @@ old one carried 210 lines of inline Alpine that no test could reach.
                 class="h-6 w-6 rounded-full border border-current bg-white"></button>
       </span>
 
+      {# Font is a deck property too, so a deck reads the same anywhere. #}
+      <div x-data="{ open: false }" class="relative">
+        <button type="button" @click="open = !open" title="{% trans 'Font' %}"
+                class="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs opacity-70 transition hover:opacity-100">
+          <span class="font-semibold">Aa</span>
+          <span x-text="fontLabel"></span>
+          <i class="fa-solid fa-chevron-down text-[0.55rem] opacity-60"></i>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="absolute left-0 z-[9100] mt-1 min-w-[11rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+          <template x-for="f in fonts" :key="f.id">
+            <button type="button" @click="setFont(f.id); open = false"
+                    class="flex w-full items-center justify-between px-3 py-1.5 text-left hover:opacity-70">
+              <span x-text="f.label"></span>
+              <i class="fa-solid fa-check text-[0.6rem]" x-show="state.font === f.id"></i>
+            </button>
+          </template>
+        </div>
+      </div>
+
       <span class="min-w-[4.5rem] text-xs opacity-55" x-text="ui.status"></span>
 
       <button type="button" @click="save(true)" :disabled="ui.saving"
@@ -163,7 +184,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
                 <span x-show="!ui.filmstrip" class="truncate text-xs" x-text="slide.title"></span>
                 <div x-show="ui.filmstrip" class="memo-thumb"
                      :class="'memo-theme-' + state.theme">
-                  <div class="memo-slide" :class="'memo-theme-' + state.theme"
+                  <div class="memo-slide"
+                       :class="['memo-theme-' + state.theme, fontClass]"
                        :data-layout="slide.layout">
                     <h2 class="memo-title" x-text="slide.title"></h2>
                     <div class="memo-flow">
@@ -250,7 +272,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
         </div>
 
         <div x-ref="stage" class="memo-stage mx-auto w-full max-w-[72rem] shadow-lg">
-          <div class="memo-slide memo-editing" :class="'memo-theme-' + state.theme"
+          <div class="memo-slide memo-editing"
+               :class="['memo-theme-' + state.theme, fontClass]"
                :data-layout="activeSlide.layout">
 
             <h2 class="memo-title" contenteditable="true"

@@ -61,12 +61,12 @@ gone. A deck looks the same on whatever machine you present it from.
     {% if presentation.slides %}
       {% for slide in presentation.slides %}
         <section>
-          {% include "memo/_slide.html" with slide=slide theme=presentation.theme trust_html=True %}
+          {% include "memo/_slide.html" with slide=slide theme=presentation.theme font=presentation.font trust_html=True %}
         </section>
       {% endfor %}
     {% else %}
       <section>
-        <div class="memo-slide memo-theme-{{ presentation.theme|default:'black' }}"
+        <div class="memo-slide memo-theme-{{ presentation.theme|default:'black' }} memo-font-{{ presentation.font|default:'sans' }}"
              data-layout="section">
           <div class="memo-flow">
             <h1>{{ presentation.title|default:vault_file.title }}</h1>
@@ -83,9 +83,17 @@ gone. A deck looks the same on whatever machine you present it from.
   // 1280×720 matches slide.css exactly, so reveal scales the same box the
   // editor scales. Same geometry, reached two ways — which is what makes the
   // two surfaces isomorphic rather than merely similar.
+  //
+  // center:false is load-bearing, not a preference. Reveal's default centring
+  // positions each section from its MEASURED height, and its sections are
+  // absolutely positioned with height:auto — so a slide sized as a percentage
+  // of that collapses to nothing. With centring off, reveal pins the section to
+  // the top-left of the stage it has already sized to exactly width × height,
+  // and the 1280×720 box fills it.
   Reveal.initialize({
     width: 1280,
     height: 720,
+    center: false,
     margin: 0.04,
     transition: "slide",
     hash: true,

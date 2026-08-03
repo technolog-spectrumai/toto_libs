@@ -146,6 +146,20 @@
 
     root.addEventListener("pointerdown", function (event) {
       if (event.button !== 0 && event.pointerType === "mouse") return;
+
+      // A press that lands on a control is that control's, never a drag.
+      //
+      // Without this, any button nested inside a drag handle is dead: the
+      // handle lookup below finds the ancestor, setPointerCapture retargets the
+      // pointerup to it, and the browser never synthesises a `click` on the
+      // button. That is exactly what killed Delete, Duplicate and the reorder
+      // arrows in the filmstrip, where the whole row is the handle. One guard
+      // fixes every such control rather than each one separately.
+      if (event.target.closest(
+            "button, a, input, select, textarea, label, [contenteditable], [data-no-drag]")) {
+        return;
+      }
+
       var handle = event.target.closest("[data-drag-handle]");
       if (!handle || !root.contains(handle)) return;
       var owner = handle.closest("[data-drag-id]");
