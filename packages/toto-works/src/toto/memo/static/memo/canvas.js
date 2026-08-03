@@ -100,8 +100,53 @@
     });
   }
 
+  /* ---- the filmstrip ------------------------------------------------------
+   *
+   * A thumbnail is a real slide — same markup, same stylesheet — which is what
+   * makes it honest, and also what makes it expensive: a forty-slide deck was
+   * building forty full slide DOMs and rebuilding them on every render.
+   *
+   * So only rows near the viewport get their contents. One observer for the
+   * whole list, not one per row, and a generous margin so scrolling never shows
+   * an empty box. Rows out of view keep their number and title, which is all
+   * you navigate by anyway.
+   */
+  function watchFilmstrip(list, onVisible) {
+    if (!list || !onVisible) return function () {};
+    if (typeof IntersectionObserver === "undefined") {
+      // No observer: render everything, as before. Correct, just not cheap.
+      Array.prototype.forEach.call(list.querySelectorAll("[data-drag-id]"),
+        function (row) { onVisible(row.getAttribute("data-drag-id"), true); });
+      return function () {};
+    }
+
+    // Reports into component state rather than setting a DOM attribute: Alpine
+    // tracks its own reactive data, and would never re-evaluate an x-if that
+    // read an attribute an observer had changed behind its back.
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        onVisible(entry.target.getAttribute("data-drag-id"), entry.isIntersecting);
+      });
+    }, { root: list, rootMargin: "300px 0px" });
+
+    var observed = [];
+    function sync() {
+      observed.forEach(function (row) { io.unobserve(row); });
+      observed = Array.prototype.slice.call(list.querySelectorAll("[data-drag-id]"));
+      observed.forEach(function (row) { io.observe(row); });
+    }
+    sync();
+
+    // Alpine replaces these rows whenever the deck changes, so re-observe.
+    var mo = new MutationObserver(sync);
+    mo.observe(list, { childList: true });
+
+    return function () { io.disconnect(); mo.disconnect(); };
+  }
+
   global.MemoCanvas = {
     SLIDE_W: SLIDE_W, SLIDE_H: 720,
+    watchFilmstrip: watchFilmstrip,
     MIN_SCALE: MIN_SCALE, MAX_SCALE: MAX_SCALE, STEP: STEP,
     fit: fit, observe: observe, autofit: autofit
   };

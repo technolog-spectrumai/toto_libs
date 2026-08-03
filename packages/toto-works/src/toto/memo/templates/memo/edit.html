@@ -171,7 +171,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
           </button>
         </div>
 
-        <ol data-drop-kind="slide" class="max-h-[64vh] space-y-2 overflow-y-auto p-2">
+        <ol x-ref="filmstrip" data-drop-kind="slide"
+            class="max-h-[64vh] space-y-2 overflow-y-auto p-2">
           <template x-for="(slide, index) in state.slides" :key="slide.id">
             <li data-drag-kind="slide" :data-drag-id="slide.id" data-drag-handle
                 @click="select(slide.id)"
@@ -183,25 +184,32 @@ old one carried 210 lines of inline Alpine that no test could reach.
               <div class="flex items-center gap-2">
                 <span class="w-4 shrink-0 text-right text-[0.65rem] opacity-40" x-text="index + 1"></span>
                 <span x-show="!ui.filmstrip" class="truncate text-xs" x-text="slide.title"></span>
+                {# A real slide, scaled — but only for rows near the viewport.
+                   `data-live` is set by one IntersectionObserver on the list;
+                   off-screen rows keep their number and title and build no
+                   slide DOM at all. Nothing in here is focusable or editable:
+                   the open slide is the only live surface. #}
                 <div x-show="ui.filmstrip" class="memo-thumb"
-                     :class="'memo-theme-' + state.theme">
-                  <div class="memo-slide"
-                       :class="['memo-theme-' + state.theme, fontClass]"
-                       :data-layout="slide.layout">
-                    <h2 class="memo-title" x-text="slide.title"></h2>
-                    <div class="memo-flow">
-                      <template x-for="b in slide.blocks.slice(0, 4)" :key="b.id">
-                        <div class="memo-block" :data-type="b.type">
-                          <template x-if="b.type === 'image'">
-                            <img :src="b.payload" alt="">
-                          </template>
-                          <template x-if="b.type !== 'image' && b.type !== 'svg'">
-                            <div x-text="b.payload ? b.payload.replace(/<[^>]*>/g, '').slice(0, 90) : ''"></div>
-                          </template>
-                        </div>
-                      </template>
+                     :class="'memo-theme-' + state.theme" aria-hidden="true">
+                  <template x-if="ui.live[slide.id]">
+                    <div class="memo-slide"
+                         :class="['memo-theme-' + state.theme, fontClass]"
+                         :data-layout="slide.layout">
+                      <h2 class="memo-title" x-text="slide.title"></h2>
+                      <div class="memo-flow">
+                        <template x-for="b in slide.blocks.slice(0, 4)" :key="b.id">
+                          <div class="memo-block" :data-type="b.type">
+                            <template x-if="b.type === 'image'">
+                              <img :src="b.payload" alt="">
+                            </template>
+                            <template x-if="b.type !== 'image' && b.type !== 'svg'">
+                              <div x-text="thumbText(b)"></div>
+                            </template>
+                          </div>
+                        </template>
+                      </div>
                     </div>
-                  </div>
+                  </template>
                 </div>
               </div>
 

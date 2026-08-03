@@ -55,6 +55,9 @@
         showMedia: false,
         mediaSearch: "",
         mediaBusy: false,
+        // Slide ids whose thumbnail is near the viewport. Reactive, so Alpine
+        // builds a thumbnail's contents exactly when it becomes visible.
+        live: {},
         menu: { open: false, x: 0, y: 0, id: "", kind: "" },
         popover: { open: false, x: 0, y: 0 }
       },
@@ -77,6 +80,12 @@
         history.seed(this.state);
 
         this._stopCanvas = global.MemoCanvas.observe(this.$refs.stage);
+        this._stopStrip = global.MemoCanvas.watchFilmstrip(
+          this.$refs.filmstrip,
+          function (id, visible) {
+            if (visible) self.ui.live[id] = true;
+            else delete self.ui.live[id];
+          });
         this.scheduleAutofit();
         global.MemoDrag.init(this.$el, {
           onDrop: function (kind, id, zone, before) { self.onDrop(kind, id, zone, before); },
@@ -95,7 +104,23 @@
         });
       },
 
-      destroy: function () { if (this._stopCanvas) this._stopCanvas(); },
+      destroy: function () {
+        if (this._stopCanvas) this._stopCanvas();
+        if (this._stopStrip) this._stopStrip();
+      },
+
+      /* Thumbnail text, computed once per block rather than per render.
+       *
+       * The old expression ran a tag-stripping regex over every block of every
+       * slide on every keystroke. Cached against the payload, so it recomputes
+       * exactly when the payload changes. */
+      thumbText: function (block) {
+        if (block._thumbFor !== block.payload) {
+          block._thumbFor = block.payload;
+          block._thumb = (block.payload || "").replace(/<[^>]*>/g, "").slice(0, 90);
+        }
+        return block._thumb;
+      },
 
       // ---- derived ---------------------------------------------------------
       get activeSlide() {

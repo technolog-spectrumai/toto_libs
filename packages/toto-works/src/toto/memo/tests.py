@@ -812,6 +812,55 @@ class SlideGeometryTests(TestCase):
                       " [contenteditable], [data-no-drag]", js)
 
 
+class EditorCostTests(TestCase):
+    """The editor must not do work proportional to the whole deck per keystroke."""
+
+    def _asset(self, name):
+        from django.contrib.staticfiles import finders
+        from pathlib import Path
+
+        return Path(finders.find(name)).read_text()
+
+    def test_typing_does_not_snapshot_the_whole_deck_per_keystroke(self):
+        """A deck with twenty embedded images is several MB per structuredClone.
+
+        The model still updates synchronously — nothing is at risk — but the
+        copy is deferred onto the window that already groups typing into one
+        undo step.
+        """
+        js = self._asset("memo/history.js")
+        self.assertIn("flushPending", js)
+        self.assertIn("this._pending = state", js)
+        # undo/redo must settle the deferred snapshot before reading history
+        self.assertIn("this.flushPending();", js)
+
+    def test_offscreen_thumbnails_build_nothing(self):
+        from django.template.loader import get_template
+
+        source = get_template("memo/edit.html").template.source
+        self.assertIn('x-if="ui.live[slide.id]"', source)
+        self.assertIn('x-ref="filmstrip"', source)
+
+    def test_the_live_set_is_component_state_not_a_dom_attribute(self):
+        # Alpine tracks its own reactive data; it would never re-evaluate an
+        # x-if that read an attribute an IntersectionObserver had changed.
+        js = self._asset("memo/canvas.js")
+        self.assertIn("onVisible", js)
+        self.assertNotIn('setAttribute("data-live"', js)
+
+    def test_thumbnail_text_is_memoised(self):
+        js = self._asset("memo/editor.js")
+        self.assertIn("_thumbFor", js)
+
+    def test_a_thumbnail_is_inert(self):
+        from django.template.loader import get_template
+
+        source = get_template("memo/edit.html").template.source
+        thumb = source.split('class="memo-thumb"')[1].split("</template>")[0]
+        for live in ("contenteditable", "@input", "x-model"):
+            self.assertNotIn(live, thumb, "a thumbnail became editable")
+
+
 class FormulaTests(TestCase):
     """You write LaTeX; the render is cached so the PDF can show it too."""
 
