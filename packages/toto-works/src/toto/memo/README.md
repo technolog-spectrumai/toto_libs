@@ -41,6 +41,15 @@ slide.css ──► the editor canvas   .memo-slide
           ──► the gallery         a scaled-down thumbnail
 ```
 
+**Reveal is initialised with `center: false`, and that is load-bearing.** Its
+default centring positions each `<section>` from the section's *measured*
+height, and reveal's sections are absolutely positioned with `height: auto` — so
+a slide sized as a percentage of that collapses to nothing, taking every layout
+that depends on the 720px box with it. With centring off, reveal pins the
+section to the top-left of the stage it has already sized to exactly
+1280 × 720, and the real box fills it. The slide is never sized in percentages
+on any surface.
+
 **Reveal's own theme is deliberately not loaded.** `theme-black.css` and
 `theme-white.css` put their variables on `:root` and set global typography — on
 the editor page that fights the oya chrome, and in the gallery it is impossible,
@@ -50,23 +59,75 @@ two scoped classes, copied from reveal's files. That is the only duplication in
 the design, it is about twenty lines, and it buys per-element theming. Reveal
 keeps what it is good at: transitions, controls, progress and hash navigation.
 
+## Fonts, sizing and formulas
+
+**Font** is a deck property, like the theme: five CSS system stacks
+(`sans`, `serif`, `mono`, `rounded`, `condensed`). System stacks only, because no
+webfont is vendored, `slide.css` may not use `url()`, and the PDF is rendered by
+WeasyPrint inside a container — a family the image lacks would substitute
+silently and the export would stop matching the screen. Every stack therefore
+ends in a generic, and names the DejaVu families `notarius/render.py` already
+relies on. The classes are written `.memo-slide.memo-font-serif`, not bare, so
+they beat the theme rule regardless of source order.
+
+**Sizing.** A block carries `scale`, which is `auto`, `auto:0.80` or `0.80`. The
+editor measures the block against the space it has and writes the resolved
+number back — the player and the PDF cannot measure, so they can only render
+what the editor decided. The intent rides along with the measurement precisely
+so that storing a number never silently pins a block that should keep re-fitting.
+Auto-fit only shrinks; the manual override goes both ways, to 1.6.
+
+The multiplier is `--memo-block-scale`, **not** `--memo-scale`: that one is the
+stage's zoom, set on an ancestor, and custom properties inherit — sharing the
+name would shrink every block's text by the canvas zoom as well.
+
+**Overflow.** Below the 0.5 floor the content no longer fits at all. Everywhere
+except the editor it clips, as it must for the geometry to stay exact; in the
+editor it spills past the border, dimmed and flagged, because clipping there
+hides the very thing you need to fix.
+
+**Formulas** are a block type, written as ordinary LaTeX in a textarea with
+KaTeX rendering live above it. There is no equation builder — what is stored is
+exactly what you typed — and a folded-away cheatsheet inserts examples at the
+cursor. `throwOnError: false`, so a half-typed formula shows the broken fragment
+in red rather than blanking.
+
+The rendered markup is **cached in the document**, in a `<render>` child beside
+`<source>`, because WeasyPrint runs no JavaScript and an exported deck would
+otherwise lose every formula. Both parts are child elements, never element text
+beside a child: mixed content would let the source silently absorb the
+indentation whitespace around its sibling. The cache is derived and untrusted —
+it comes from a browser — so `sanitize_katex()` strips it to KaTeX's own tags,
+`katex-` classes and a short list of metric styles. If nothing survives, the
+block falls back to showing its source, never a blank.
+
+KaTeX is vendored into `core/static/vendor/katex/`, CSS plus ~60 font files, by
+each host's `download_vendor.py`. That directory is gitignored and fetched at
+image build, so its absence is normal — and the PDF path checks for the fonts as
+well as the stylesheet, because a stylesheet without its fonts renders every
+glyph as a box, which is worse than showing the source.
+
 ## Format v2
 
 ```xml
-<presentation version="2" title="Quarterly review" theme="black">
+<presentation version="2" title="Quarterly review" theme="black" font="serif">
   <slide id="s-a1b2c3d4" layout="two-column">
     <title>Findings</title>
     <block id="b-11aa" type="list" slot="left">
       <item><![CDATA[Growth strongest in EMEA]]></item>
     </block>
-    <block id="b-11ab" type="image" slot="right" alt="Chart"><![CDATA[data:image/png;base64,…]]></block>
+    <block id="b-11ab" type="image" slot="right" alt="Chart" scale="auto:0.80"><![CDATA[data:image/png;base64,…]]></block>
+    <block id="b-11ac" type="formula">
+      <source><![CDATA[E = mc^2]]></source>
+      <render><![CDATA[<span class="katex">…</span>]]></render>
+    </block>
   </slide>
 </presentation>
 ```
 
 - **Layouts**: `title-content`, `two-column`, `full-bleed`, `section`, `quote`.
-- **Blocks**: `heading`, `text`, `list`, `image`, `svg`, `code`, `quote`, plus
-  `html` — the escape hatch, hidden from the add menu.
+- **Blocks**: `heading`, `text`, `list`, `image`, `svg`, `code`, `quote`,
+  `formula`, plus `html` — the escape hatch, hidden from the add menu.
 - **Every payload is CDATA-wrapped**, with no per-type exceptions. It reads
   noisier than escaped text and it is the only rule that cannot lose a byte,
   including a literal `]]>` (split across two sections, as v1 already did).
@@ -165,7 +226,11 @@ the elements are recreated instead, by bumping a nonce that is part of every
 Undo is **whole-document snapshots**, not a command log: `contenteditable`
 produces mutations the app never observes (a paste, an autocorrect), so a command
 log drifts out of step within a session. Fifty entries, coalesced within 600 ms
-by key, so typing a sentence is one undo step. `Ctrl+Z` inside a text field is
+by key, so typing a sentence is one undo step. The copy is **deferred** onto that
+same window rather than taken per keystroke — a deck with twenty embedded images
+is several MB per `structuredClone`. The model updates synchronously, so nothing
+is ever at risk; only the copy waits. Anything that reads history (undo, redo)
+settles the pending snapshot first. `Ctrl+Z` inside a text field is
 deliberately **not** intercepted — the browser's own undo knows about the caret.
 
 Saving is autosave on idle (2s, with a 30s ceiling), plus Save, `Ctrl+S`, and
@@ -203,6 +268,7 @@ that saves a 4 MB deck.
 | `render_pdf.py` | WeasyPrint, gated |
 | `media.py` | data-URI conversion both ways, SVG cleaning |
 | `templates/memo/_slide.html` | one slide, rendered once, for every surface |
+| `templates/memo/_formula_help.html` | the click-to-insert LaTeX cheatsheet |
 | `static/memo/slide.css` | how a slide looks, for every surface |
 | `static/memo/{model,history,sanitize,canvas,drag,editor}.js` | the editor |
 
@@ -213,6 +279,22 @@ vanishes only in a host's clean-env gate; and a directory named `media/`,
 `build/`, `dist/` or `staticfiles/` anywhere under `static/` is gitignored at any
 depth and would never be committed at all — note this app already has a
 `media.py`, which makes `static/memo/media/` a very natural and fatal choice.
+
+## Two things that look like details and are not
+
+**A press on a control is never a drag.** `drag.js` ignores a `pointerdown` that
+starts on a `button`, link, field or `[data-no-drag]`. Without that guard, any
+control nested inside a drag handle is simply dead: the handle lookup finds the
+ancestor, `setPointerCapture` retargets the pointerup to it, and the browser
+never synthesises a `click` on the button. That is what killed Delete, Duplicate
+and the reorder arrows in the filmstrip, where the whole row is the handle.
+
+**Off-screen thumbnails build nothing.** A thumbnail is a real slide — same
+markup, same stylesheet — which is what makes it honest and also what made a
+forty-slide deck build forty slide DOMs. One `IntersectionObserver` on the list
+reports into reactive component state (`ui.live`), not into a DOM attribute:
+Alpine tracks its own data and would never re-evaluate an `x-if` that read an
+attribute an observer had changed behind its back.
 
 ## Tests
 
