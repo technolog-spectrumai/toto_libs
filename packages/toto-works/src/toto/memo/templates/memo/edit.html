@@ -105,6 +105,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
               <i class="fa-solid fa-file-zipper w-4 opacity-60"></i> {% trans "Export archive" %}
             </a>
           {% endif %}
+          {% if gitvault_ctx %}
+            <div class="my-1 border-t border-current/10"></div>
+            {% include "gitvault/_git_toolbar_buttons.html" %}
+          {% endif %}
         </div>
       </div>
     </header>
@@ -469,6 +473,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% endblock %}
 
 {% block end_script %}
+  {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
   <script src="{% static 'memo/model.js' %}"></script>
   <script src="{% static 'memo/history.js' %}"></script>
   <script src="{% static 'memo/sanitize.js' %}"></script>

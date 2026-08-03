@@ -4,6 +4,12 @@
 
 {% block title %}{% trans "Presentations" %} | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+  <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
+  <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
+  <style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
 {% block content %}
 {% if is_authenticated %}
 <script>
@@ -46,33 +52,50 @@
     {% if presentations %}
       <div class="grid gap-5 md:grid-cols-2">
         {% for p in presentations %}
-          <article
-            :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-            class="border rounded-lg p-5 shadow-md space-y-4 transition-colors duration-300">
-            <div class="space-y-2">
-              <a href="{{ p.present_url }}" class="block text-xl font-bold underline hover:opacity-80">
+          <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                   class="group overflow-hidden rounded-2xl border shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+
+            {# A real slide, scaled — the same partial and the same stylesheet
+               the player uses. trust_html=False: this page lists OTHER PEOPLE'S
+               public decks, so a legacy html block renders as an inert chip
+               rather than live markup. #}
+            <a href="{{ p.present_url }}" class="block">
+              <div class="memo-card-thumb mx-auto my-3">
+                {% if p.cover %}
+                  {% include "memo/_slide.html" with slide=p.cover theme=p.theme trust_html=False %}
+                {% else %}
+                  <div class="memo-slide memo-theme-{{ p.theme }}" data-layout="section">
+                    <div class="memo-flow"><p>{% trans "Empty" %}</p></div>
+                  </div>
+                {% endif %}
+              </div>
+            </a>
+
+            <div class="space-y-2 border-t border-current/10 p-4">
+              <a href="{{ p.present_url }}" class="block truncate text-base font-semibold hover:underline">
                 {{ p.title }}
               </a>
-              <div class="flex items-center gap-1.5 text-xs opacity-60">
-                <i class="fa-solid fa-folder-open"></i>
-                <span>{{ p.location }}</span>
-              </div>
-              <div class="flex flex-wrap gap-4 text-xs opacity-65">
-                <span>{{ p.owner }}</span>
+              <div class="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs opacity-60">
+                <span><i class="fa-solid fa-folder"></i> {{ p.location }}</span>
+                <span><i class="fa-solid fa-layer-group"></i>
+                  {% blocktrans count n=p.slide_count %}{{ n }} slide{% plural %}{{ n }} slides{% endblocktrans %}</span>
+                <span><i class="fa-solid fa-user"></i> {{ p.owner }}</span>
                 <span>{{ p.uploaded|date:"M d, Y" }}</span>
               </div>
-            </div>
-            <div class="flex gap-3 text-sm">
-              <a href="{{ p.present_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
-              {% if p.is_owner %}
-                <a href="{{ p.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
-              {% endif %}
+              <div class="flex gap-3 pt-1 text-sm">
+                <a href="{{ p.present_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                  <i class="fa-solid fa-play"></i> {% trans "Present" %}</a>
+                {% if p.is_owner %}
+                  <a href="{{ p.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
+                    <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+                {% endif %}
+              </div>
             </div>
           </article>
         {% endfor %}
       </div>
+
+      {% include "oya/partials/_server_pagination.html" %}
     {% else %}
       <div
         :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"

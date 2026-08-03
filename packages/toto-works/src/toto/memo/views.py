@@ -26,7 +26,6 @@ from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
 from django.views import View
 from django.conf import settings
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 from django.contrib.auth.mixins import LoginRequiredMixin
 
@@ -199,81 +198,6 @@ class PresentationView(View):
 
 
 # ---------------------------------------------------------------------------
-# Source editor (plain text)
-# ---------------------------------------------------------------------------
-
-class PresentationSourceView(LoginRequiredMixin, View):
-    """Plain-text editor for the raw presentation XML (owner only).
-
-    This is what the vault's Edit button opens — in the vault a presentation
-    is just an editable XML text file. The structured slide editor stays
-    reachable from the memo app (index, player, and a toolbar link here).
-    """
-
-    template_name = "memo/source.html"
-    login_url = reverse_lazy("core:login")
-
-    def get(self, request, file_pk):
-        vault_file = _get_owned_file(request, file_pk)
-        if vault_file.is_encrypted:
-            from toto.vault.access import encrypted_lock_response
-            return encrypted_lock_response(request, vault_file)
-        try:
-            content = vault_file.file.read().decode("utf-8")
-        except Exception:
-            content = ""
-
-        context = PageProcessor().decorate(
-            {
-                "vault_file": vault_file,
-                "content": content,
-                "save_url": reverse("memo:source_save", args=[file_pk]),
-                "edit_url": reverse("memo:edit", args=[file_pk]),
-                "present_url": reverse("memo:present", args=[file_pk]),
-                **BaseFileDisplayView.gitvault_context(vault_file),
-            },
-            request,
-        )
-        return render(request, self.template_name, context)
-
-
-@csrf_exempt
-def presentation_source_save(request, file_pk):
-    """Persist raw XML text back to the vault file.
-
-    No validation gate — the file is plain text and the viewer already
-    tolerates corrupt content. Parse state is reported so the editor can
-    warn without blocking the save.
-    """
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
-    if not request.user.is_authenticated:
-        return JsonResponse({"error": "Not authenticated."}, status=401)
-
-    vault_file = _get_owned_file(request, file_pk)
-    if vault_file.is_encrypted:
-        return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
-    content = request.POST.get("content", "")
-    content_bytes = content.encode("utf-8")
-
-    try:
-        with vault_file.file.open("w") as f:
-            f.write(content)
-        vault_file.content_hash = hashlib.sha256(content_bytes).hexdigest()
-        vault_file.file_size_bytes = len(content_bytes)
-        vault_file.save(update_fields=["content_hash", "file_size_bytes"])
-    except Exception as exc:
-        return JsonResponse({"error": str(exc)}, status=500)
-
-    try:
-        presentation_format.loads(content)
-        valid = True
-    except presentation_format.PresentationParseError:
-        valid = False
-    return JsonResponse({"status": "ok", "valid_presentation": valid})
-
-
-# ---------------------------------------------------------------------------
 # Editor
 # ---------------------------------------------------------------------------
 
@@ -314,6 +238,9 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "present_url": reverse("memo:present", args=[file_pk]),
                 "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),
                 "export_zip_url": reverse("memo:export_zip", args=[file_pk]),
+                # The git toolbar moved here from the retired source page — a
+                # deck under gitvault keeps its history buttons.
+                **BaseFileDisplayView.gitvault_context(vault_file),
             },
             request,
         )
@@ -589,14 +516,17 @@ def presentation_export_pdf(request, file_pk):
 # ---------------------------------------------------------------------------
 
 class PresentationIndexView(View):
-    """List presentation vault files the current user can open."""
+    """The gallery: every deck the current user can open, with a thumbnail."""
 
     template_name = "memo/index.html"
+    PER_PAGE = 12
 
-    # Bound the content-sniff scan (presentations share the generic xml type now).
-    PRESENTATION_LIST_CAP = 300
+    # Only legacy rows still need sniffing, and only until they are opened
+    # once — a typed deck is found by the database. This bounds the tail.
+    SNIFF_CAP = 300
 
     def get(self, request):
+        from django.core.paginator import Paginator
         from django.db.models import Q
 
         qs = VaultFile.objects.filter(
@@ -606,49 +536,83 @@ class PresentationIndexView(View):
             qs = qs.filter(Q(is_public=True) | Q(owner=request.user))
         else:
             qs = qs.filter(is_public=True)
-        qs = qs.order_by("-uploaded_at", "title")[: self.PRESENTATION_LIST_CAP]
+        qs = qs.order_by("-uploaded_at", "title")
 
-        def _location(f):
-            loc = f.bucket.name if f.bucket else "—"
-            if f.directory:
-                loc = f"{loc} / {f.directory.full_path()}"
-            return loc
-
-        presentations = []
-        stale = []
+        rows, stale, sniffed = [], [], 0
         for f in qs:
-            try:
-                # The cheap sniff, not a full parse: this loop runs over every
-                # candidate XML file, and `is_presentation` would parse each
-                # deck's embedded images end to end just to read one tag.
-                raw = _read_head(f)
-            except Exception:
-                continue
-            if not presentation_format.sniff_is_presentation(raw):
-                continue
             if f.file_type != "presentation":
+                # A legacy row. Read the first 2 KB, not the whole file: a full
+                # parse here means pulling every deck's embedded images off disk
+                # just to look at one tag.
+                if sniffed >= self.SNIFF_CAP:
+                    continue
+                sniffed += 1
+                try:
+                    head = _read_head(f)
+                except Exception:                      # noqa: BLE001
+                    continue
+                if not presentation_format.sniff_is_presentation(head):
+                    continue
                 stale.append(f.pk)
-            presentations.append({
-                "title": f.title,
-                "owner": f.owner.username,
-                "uploaded": f.uploaded_at,
-                "location": _location(f),
-                "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
-                "present_url": reverse("memo:present", args=[f.pk]),
-                "edit_url": reverse("memo:edit", args=[f.pk]),
-            })
+            rows.append(f)
 
         # One query, not one per row — see _adopt.
         if stale:
             VaultFile.objects.filter(pk__in=stale).update(file_type="presentation")
 
+        page = Paginator(rows, self.PER_PAGE).get_page(request.GET.get("page"))
+
+        presentations = []
+        for f in page.object_list:
+            presentations.append({
+                "title": f.title,
+                "owner": f.owner.username,
+                "uploaded": f.uploaded_at,
+                "location": _location_of(f),
+                "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
+                "present_url": reverse("memo:present", args=[f.pk]),
+                "edit_url": reverse("memo:edit", args=[f.pk]),
+                # Only the current page is parsed — which is the point of
+                # paginating at all. A gallery of 300 decks used to read and
+                # fully parse all 300 files on every visit.
+                **_cover(f),
+            })
+
         buckets_json, directories_json = new_file_picker_json(request.user)
         context = PageProcessor().decorate(
             {
                 "presentations": presentations,
+                "page_obj": page,
+                "is_paginated": page.has_other_pages(),
                 "buckets_json": buckets_json,
                 "directories_json": directories_json,
             },
             request,
         )
         return render(request, self.template_name, context)
+
+
+def _location_of(vault_file) -> str:
+    location = vault_file.bucket.name if vault_file.bucket else "\u2014"
+    if vault_file.directory:
+        location = f"{location} / {vault_file.directory.full_path()}"
+    return location
+
+
+def _cover(vault_file) -> dict:
+    """Slide one and the deck theme, for the card thumbnail.
+
+    The thumbnail is a real slide rendered through the same `_slide.html` and
+    `slide.css` as the player, just scaled down — so a slide that is too full
+    looks too full on the card. A screenshot or a text summary would be one more
+    thing to keep in step.
+    """
+    try:
+        presentation = presentation_format.loads(_read_raw(vault_file))
+    except Exception:                                  # noqa: BLE001
+        return {"cover": None, "theme": "black", "slide_count": 0}
+    return {
+        "cover": presentation.slides[0] if presentation.slides else None,
+        "theme": presentation.theme,
+        "slide_count": len(presentation.slides),
+    }

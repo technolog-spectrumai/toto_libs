@@ -833,6 +833,45 @@ class PresentationVaultIntegrationTests(TestCase):
         self.assertEqual(vf.file_type, "presentation")
         self.assertIsNotNone(VaultPlayPlugin.for_file_type(vf.file_type))
 
+    def test_the_raw_xml_editor_is_gone(self):
+        """Edit opens the block editor; there is no angle-bracket surface left.
+
+        It carried the gitvault toolbar, which moved onto the editor rather than
+        being lost with it.
+        """
+        from django.urls import NoReverseMatch
+
+        for name in ("memo:source", "memo:source_save"):
+            with self.assertRaises(NoReverseMatch):
+                reverse(name, args=[1])
+
+    def test_the_editor_carries_the_git_toolbar(self):
+        """The history buttons moved here rather than dying with the XML page.
+
+        gitvault is a host app and is not installed under memo's own settings,
+        so `gitvault_context` correctly returns nothing here — patching it is
+        what proves the editor asks for it at all.
+        """
+        from toto.editor.views import BaseFileDisplayView
+
+        vf = self._make_presentation()
+        self.client.force_login(self.alice)
+        # A marker key rather than `gitvault_ctx` itself: the template's include
+        # of gitvault's partial is guarded on that name, and forcing it truthy
+        # on a host where gitvault is not installed would fail on a missing
+        # template — which is the guard doing its job, not a bug.
+        with mock.patch.object(BaseFileDisplayView, "gitvault_context",
+                               return_value={"git_probe": "consulted"}):
+            res = self.client.get(reverse("memo:edit", args=[vf.pk]))
+        self.assertEqual(res.context["git_probe"], "consulted")
+
+    def test_the_editor_guards_the_git_include(self):
+        # A host with memo but without gitvault must still render the editor.
+        from django.template.loader import get_template
+
+        source = get_template("memo/edit.html").template.source
+        self.assertIn("{% if gitvault_ctx %}", source)
+
     def test_a_plain_xml_file_still_belongs_to_the_generic_editor(self):
         """The assertion that stops memo hijacking every XML file in the vault."""
         vf = VaultFile.objects.create(
@@ -1002,86 +1041,14 @@ class PresentationVaultIntegrationTests(TestCase):
         res = self.client.get(reverse("memo:index"))
         self.assertContains(res, "Lab / Talks")
 
-    def test_source_view_owner_only(self):
-        p = pf.Presentation(title="T", slides=[pf.Slide(title="S1", blocks=[pf.Block(type="html", payload="<p>x</p>")])])
-        vf = self._make_presentation(p=p)
 
-        # non-owner → 404
-        self.client.force_login(self.bob)
-        self.assertEqual(
-            self.client.get(reverse("memo:source", args=[vf.pk])).status_code, 404
-        )
-
-        # owner → 200 with the raw XML in the page
-        self.client.force_login(self.alice)
-        res = self.client.get(reverse("memo:source", args=[vf.pk]))
-        self.assertEqual(res.status_code, 200)
-        body = res.content.decode()
-        # The raw XML is hydrated into Ace via |escapejs, so `<presentation`
-        # appears as the escaped literal.
-        self.assertIn("\\u003Cpresentation", body)
-        self.assertIn(reverse("memo:source_save", args=[vf.pk]), body)
-        # Toolbar links back into the memo app.
-        self.assertIn(reverse("memo:edit", args=[vf.pk]), body)
-        self.assertIn(reverse("memo:present", args=[vf.pk]), body)
-
-    def test_source_save_round_trip(self):
-        vf = self._make_presentation()
-        self.client.force_login(self.alice)
-        xml = pf.dumps(
-            pf.Presentation(title="Raw", slides=[pf.Slide(title="One", blocks=[pf.Block(type="html", payload="<p>hi</p>")])])
-        )
-        res = self.client.post(
-            reverse("memo:source_save", args=[vf.pk]), data={"content": xml}
-        )
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["status"], "ok")
-        self.assertTrue(res.json()["valid_presentation"])
-
-        vf.refresh_from_db()
-        with vf.file.open("r") as f:
-            saved = f.read()
-        if isinstance(saved, bytes):
-            saved = saved.decode("utf-8")
-        self.assertEqual(saved, xml)
-        self.assertEqual(pf.loads(saved).title, "Raw")
-
-    def test_source_save_accepts_invalid_xml_but_flags_it(self):
-        # Plain-text editing must not gate on parse state — the save lands,
-        # the response just reports the file no longer parses.
-        vf = self._make_presentation()
-        self.client.force_login(self.alice)
-        res = self.client.post(
-            reverse("memo:source_save", args=[vf.pk]), data={"content": "<broken"}
-        )
-        self.assertEqual(res.status_code, 200)
-        self.assertEqual(res.json()["status"], "ok")
-        self.assertFalse(res.json()["valid_presentation"])
-
-        vf.refresh_from_db()
-        with vf.file.open("r") as f:
-            saved = f.read()
-        if isinstance(saved, bytes):
-            saved = saved.decode("utf-8")
-        self.assertEqual(saved, "<broken")
-
-    def test_source_save_denied_for_non_owner(self):
-        vf = self._make_presentation()
-        self.client.force_login(self.bob)
-        res = self.client.post(
-            reverse("memo:source_save", args=[vf.pk]), data={"content": "x"}
-        )
-        self.assertEqual(res.status_code, 404)
-
-
-# 1×1 transparent PNG — small, real raster that Pillow can decode.
 _TINY_PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
 )
 
 
 class PresentationMediaEmbedTests(TestCase):
-    """Insert image/SVG from a vault bucket into a slide (self-contained embed)."""
+    """Insert an image or SVG from a vault bucket into a slide."""
 
     def setUp(self):
         self._tmp = tempfile.mkdtemp()
