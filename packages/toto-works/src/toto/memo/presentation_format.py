@@ -91,7 +91,13 @@ _SLIDE_OWN_ATTRS = {"id", "layout"}
 _ROOT_OWN_ATTRS = {"version", "title", "theme", "font"}
 
 # Order matters only for deterministic output.
-_BLOCK_ATTR_ORDER = ("level", "ordered", "alt", "fit", "language", "cite")
+_BLOCK_ATTR_ORDER = ("level", "ordered", "alt", "fit", "language", "cite", "scale")
+
+# How small auto-fit is allowed to go before it gives up and lets the content
+# spill. Below about half size a slide is unreadable from the back of a room, so
+# shrinking further would trade one failure for a worse one.
+MIN_SCALE = 0.5
+MAX_SCALE = 1.6
 
 
 class PresentationParseError(ValueError):
@@ -120,6 +126,26 @@ class Block:
         # — the seeder, a test — also serialises with ids and is stable from its
         # FIRST dump rather than its second.
         self.id = self.id or _new_id("b")
+
+    @property
+    def scale_css(self) -> str:
+        """The resolved multiplier, or "" when this block renders at full size.
+
+        Templates cannot parse `auto:0.80`, and every surface needs the same
+        number, so the parsing lives here once.
+        """
+        raw = (self.attrs.get("scale") or "auto").strip()
+        number = raw[5:] if raw.startswith("auto:") else ("" if raw.startswith("auto") else raw)
+        if not number:
+            return ""
+        try:
+            value = float(number)
+        except (TypeError, ValueError):
+            return ""
+        # Only an exact 1.0 is a no-op. A manually enlarged block (1.60) must
+        # keep its size — auto-fit only ever shrinks, but the override goes both
+        # ways.
+        return "" if abs(value - 1.0) < 0.005 else f"{value:.2f}"
 
     def to_dict(self) -> dict:
         return {
@@ -355,6 +381,28 @@ def _sanitize_block(block: Block) -> None:
     _clamp_attrs(block)
 
 
+def _clean_scale(raw: str) -> str:
+    """`auto` | `auto:<n>` | `<n>` — intent and measurement in one attribute.
+
+    The editor measures a block against the space it has and writes the result
+    back, because the player and the PDF cannot measure and can only render what
+    the editor decided. But a block that was *auto* has to stay auto, or it would
+    never re-fit when its content changed — so the resolved number rides along
+    with the intent rather than replacing it.
+    """
+    raw = (raw or "auto").strip()
+    auto = raw.startswith("auto")
+    number = raw[5:] if raw.startswith("auto:") else ("" if auto else raw)
+    if not number:
+        return "auto"
+    try:
+        value = float(number)
+    except (TypeError, ValueError):
+        return "auto"
+    value = min(max(value, MIN_SCALE), MAX_SCALE)
+    return f"auto:{value:.2f}" if auto else f"{value:.2f}"
+
+
 def _clamp_attrs(block: Block) -> None:
     attrs = block.attrs
     if "level" in attrs and attrs["level"] not in ("1", "2", "3", "4"):
@@ -365,6 +413,8 @@ def _clamp_attrs(block: Block) -> None:
         attrs["ordered"] = "true" if attrs["ordered"] == "true" else "false"
     if "language" in attrs and not _LANGUAGE_RE.match(attrs["language"]):
         del attrs["language"]
+    if "scale" in attrs:
+        attrs["scale"] = _clean_scale(attrs["scale"])
     for key in ("alt", "cite"):
         if key in attrs:
             attrs[key] = sanitize.plain_text(attrs[key])[:200]

@@ -812,6 +812,69 @@ class SlideGeometryTests(TestCase):
                       " [contenteditable], [data-no-drag]", js)
 
 
+class ScaleTests(TestCase):
+    """Auto-fit, the manual override, and how they reach the other surfaces."""
+
+    def test_the_three_shapes_round_trip(self):
+        for raw, expect in [("auto", "auto"), ("auto:0.80", "auto:0.80"),
+                            ("0.75", "0.75")]:
+            deck = pf.Presentation(slides=[pf.Slide(title="a", blocks=[
+                pf.Block(type="text", payload="<p>x</p>", attrs={"scale": raw})])])
+            back = pf.loads(pf.dumps(deck))
+            self.assertEqual(back.slides[0].blocks[0].attrs["scale"], expect, raw)
+
+    def test_a_measurement_never_silently_pins_a_block(self):
+        """`auto:0.80` stays auto, so it keeps re-fitting when content changes.
+
+        Storing the resolved number *instead of* the intent would freeze a block
+        at whatever size it happened to need once.
+        """
+        block = pf.Block(type="text", attrs={"scale": "auto:0.80"})
+        self.assertTrue(block.attrs["scale"].startswith("auto"))
+        self.assertEqual(block.scale_css, "0.80")
+
+    def test_an_out_of_range_scale_is_clamped_not_rejected(self):
+        deck = pf.Presentation.from_dict({"slides": [{"title": "a", "blocks": [
+            {"type": "text", "attrs": {"scale": "0.05"}},
+            {"type": "text", "attrs": {"scale": "9"}},
+            {"type": "text", "attrs": {"scale": "nonsense"}}]}]})
+        scales = [b.attrs["scale"] for b in deck.slides[0].blocks]
+        self.assertEqual(scales, [f"{pf.MIN_SCALE:.2f}", f"{pf.MAX_SCALE:.2f}", "auto"])
+
+    def test_a_full_size_block_emits_no_style(self):
+        # Otherwise every block on every slide carries a redundant inline style.
+        for raw in ("auto", "1.00", ""):
+            self.assertEqual(pf.Block(type="text", attrs={"scale": raw}).scale_css, "")
+
+    def test_an_enlarged_block_keeps_its_size(self):
+        # Auto-fit only ever shrinks; the manual override goes both ways.
+        self.assertEqual(pf.Block(type="text", attrs={"scale": "1.60"}).scale_css, "1.60")
+
+    def test_the_resolved_scale_reaches_the_player(self):
+        from django.template.loader import render_to_string
+
+        deck = pf.Presentation(title="T", slides=[pf.Slide(title="a", blocks=[
+            pf.Block(type="text", payload="<p>small</p>",
+                     attrs={"scale": "auto:0.65"})])])
+        html = render_to_string("memo/print.html", {
+            "presentation": deck, "theme": "black", "font": "sans", "slide_css": ""})
+        self.assertIn("--memo-block-scale: 0.65", html)
+
+    def test_the_block_scale_does_not_share_the_stage_zoom_property(self):
+        """Custom properties inherit.
+
+        The stage sets `--memo-scale` on an ancestor to zoom the whole slide. If
+        the per-block font multiplier used the same name, every block on a
+        scaled-down canvas would shrink its text by the zoom factor too.
+        """
+        from django.contrib.staticfiles import finders
+        from pathlib import Path
+
+        css = Path(finders.find("memo/slide.css")).read_text()
+        self.assertIn("font-size: calc(1em * var(--memo-block-scale, 1))", css)
+        self.assertIn("transform: scale(var(--memo-scale, 1))", css)
+
+
 class FontTests(TestCase):
     def setUp(self):
         self._tmp = tempfile.mkdtemp()

@@ -27,7 +27,7 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
     <div class="memo-flow" data-slot="{{ slot }}">
       {% for block in blocks %}
         {% if block.type == "heading" %}
-          <div class="memo-block" data-type="heading" data-block-id="{{ block.id }}">
+          <div class="memo-block" data-type="heading" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
             {% if block.attrs.level == "1" %}<h1>{{ block.payload|safe }}</h1>
             {% elif block.attrs.level == "3" %}<h3>{{ block.payload|safe }}</h3>
             {% elif block.attrs.level == "4" %}<h4>{{ block.payload|safe }}</h4>
@@ -35,10 +35,10 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
           </div>
 
         {% elif block.type == "text" %}
-          <div class="memo-block" data-type="text" data-block-id="{{ block.id }}">{{ block.payload|safe }}</div>
+          <div class="memo-block" data-type="text" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload|safe }}</div>
 
         {% elif block.type == "list" %}
-          <div class="memo-block" data-type="list" data-block-id="{{ block.id }}">
+          <div class="memo-block" data-type="list" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
             {% if block.attrs.ordered == "true" %}
               <ol>{% for item in block.items %}<li>{{ item|safe }}</li>{% endfor %}</ol>
             {% else %}
@@ -62,10 +62,10 @@ visitor. So the gallery passes trust_html=False and gets an inert placeholder.
           {# Escaped, not |safe: a code block is plain text by definition, and
              showing the markup is the entire point of it. #}
           <pre class="memo-block" data-type="code" data-block-id="{{ block.id }}"
-               data-language="{{ block.attrs.language|default:'' }}">{{ block.payload }}</pre>
+               data-language="{{ block.attrs.language|default:'' }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload }}</pre>
 
         {% elif block.type == "quote" %}
-          <blockquote class="memo-block" data-type="quote" data-block-id="{{ block.id }}">
+          <blockquote class="memo-block" data-type="quote" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
             {{ block.payload|safe }}
             {% if block.attrs.cite %}<cite class="memo-cite">{{ block.attrs.cite }}</cite>{% endif %}
           </blockquote>

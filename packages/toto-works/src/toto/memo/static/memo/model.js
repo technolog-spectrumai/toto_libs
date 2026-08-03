@@ -78,6 +78,7 @@
     if (type === "list") block.items = [""];
     if (type === "heading") block.attrs.level = "2";
     if (type === "image") block.attrs.fit = "contain";
+    block.attrs.scale = "auto";
     return block;
   }
 
@@ -244,8 +245,27 @@
     };
   }
 
+  /* "auto" until the editor measures it, then a number. `blockScale` is what
+   * the templates bind to, so an unmeasured block still renders at full size
+   * rather than at zero. */
+  function blockScale(block) {
+    var raw = (block && block.attrs && block.attrs.scale) || "auto";
+    var value = parseFloat(raw.indexOf("auto:") === 0 ? raw.slice(5) : raw);
+    return isNaN(value) ? 1 : value;
+  }
+
+  /* Auto blocks keep re-fitting as their content changes; a pinned one does
+   * not. The resolved number rides along with the intent — "auto:0.80" — so
+   * storing a measurement never silently pins the block. */
+  function isAutoScaled(block) {
+    var raw = (block && block.attrs && block.attrs.scale) || "auto";
+    return raw.indexOf("auto") === 0;
+  }
+
   global.MemoModel = {
     LAYOUTS: LAYOUTS,
+    blockScale: blockScale,
+    isAutoScaled: isAutoScaled,
     FONTS: FONTS,
     FONT_CLASS: FONT_CLASS,
     BLOCK_TYPES: BLOCK_TYPES,

@@ -263,7 +263,19 @@
  * Blocks
  * ------------------------------------------------------------------------ */
 
-.memo-block { min-width: 0; }
+/* Auto-fit. The editor measures the block against the space it has and writes
+ * the resolved number back into the document, so the player and the PDF — which
+ * cannot measure — render exactly what the author saw. An inline custom
+ * property, never a class: a JS-assembled Tailwind class does not exist under
+ * the JIT build.
+ *
+ * NOT `--memo-scale` — that one is the stage's zoom, set on an ancestor, and
+ * custom properties inherit. Sharing the name would make every block on a
+ * scaled-down canvas shrink its text by the zoom factor as well. */
+.memo-block {
+  min-width: 0;
+  font-size: calc(1em * var(--memo-block-scale, 1));
+}
 
 .memo-block[data-type="image"],
 .memo-block[data-type="svg"] {
@@ -358,6 +370,9 @@
   overflow: hidden;
   border-radius: 12px;
 }
+/* While editing, spilled content has to be visible outside the box — see the
+ * overflow section. The stage keeps its own height so the page does not jump. */
+.memo-stage:has(> .memo-editing) { overflow: visible; }
 .memo-stage > .memo-slide {
   position: absolute;
   top: 0;
@@ -387,6 +402,47 @@
 .memo-editing .memo-title:hover { outline-color: var(--memo-rule-color); }
 .memo-editing .memo-block[data-focused],
 .memo-editing .memo-title[data-focused] { outline-color: var(--r-link-color); }
+
+/* Overflow, below the scale floor.
+ *
+ * The slide clips on every surface EXCEPT while editing, where clipping would
+ * hide the very thing you need to fix. Here the content spills past the border,
+ * dimmed and marked, so it is visible and obviously wrong. The presented
+ * geometry is unchanged — what spills here is what the player will clip.
+ */
+.memo-editing.memo-slide { overflow: visible; }
+.memo-editing .memo-flow { overflow: visible; }
+
+.memo-editing .memo-block[data-overflow] {
+  outline: 2px dashed rgba(245, 158, 11, 0.85);
+  outline-offset: 6px;
+}
+.memo-editing .memo-block[data-overflow]::after {
+  content: attr(data-overflow);
+  position: absolute;
+  right: 0;
+  bottom: -1.6em;
+  font-size: 0.42em;
+  font-family: var(--r-main-font);
+  color: rgb(245, 158, 11);
+  white-space: nowrap;
+}
+
+/* Everything past the bottom edge of the slide, dimmed. A gradient rather than
+ * a hard line, so it reads as "this is falling off" rather than as a design. */
+.memo-editing.memo-slide::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 240px;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+              var(--r-background-color), transparent 65%);
+  opacity: 0.55;
+}
+.memo-editing.memo-slide { position: relative; }
 
 /* Empty blocks say what they are, instead of being an invisible click target. */
 .memo-editing [data-placeholder]:empty::before {

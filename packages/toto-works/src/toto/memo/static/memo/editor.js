@@ -66,6 +66,7 @@
 
       _timer: null,
       _ceiling: null,
+      _fitTimer: null,
       _inflight: false,
 
       // ---- boot ------------------------------------------------------------
@@ -75,6 +76,7 @@
         history.seed(this.state);
 
         this._stopCanvas = global.MemoCanvas.observe(this.$refs.stage);
+        this.scheduleAutofit();
         global.MemoDrag.init(this.$el, {
           onDrop: function (kind, id, zone, before) { self.onDrop(kind, id, zone, before); },
           onClick: function (kind, id) {
@@ -124,7 +126,59 @@
 
       /* Redraw the editable DOM from the model. Only for changes the DOM did
        * not make itself — see the header. */
-      refresh: function () { this.ui.nonce += 1; },
+      refresh: function () { this.ui.nonce += 1; this.scheduleAutofit(); },
+
+      // ---- auto-fit --------------------------------------------------------
+      /* Measure after the DOM has settled, then write the resolved scale back
+       * into the document so the player and the PDF get the same size. Debounced
+       * because it reads layout, which forces a reflow. */
+      scheduleAutofit: function () {
+        var self = this;
+        clearTimeout(this._fitTimer);
+        this._fitTimer = setTimeout(function () { self.autofit(); }, 120);
+      },
+
+      autofit: function () {
+        var self = this;
+        var stage = this.$refs.stage;
+        if (!stage || !global.MemoCanvas.autofit) return;
+        var changed = false;
+        global.MemoCanvas.autofit(stage, function (blockId, scale, spill) {
+          var found = M.findBlock(self.state, blockId);
+          if (!found || !M.isAutoScaled(found.block)) return;
+          var next = scale >= 1 ? "auto" : "auto:" + scale.toFixed(2);
+          // Only mark the document dirty if the number actually moved —
+          // otherwise every render would schedule a save forever.
+          if (found.block.attrs.scale !== next) {
+            found.block.attrs.scale = next;
+            changed = true;
+          }
+        });
+        if (changed) { this.ui.dirty = true; this.scheduleSave(); }
+      },
+
+      blockScale: function (block) { return M.blockScale(block); },
+      isAutoScaled: function (block) { return M.isAutoScaled(block); },
+
+      /* The manual override pins a number and stops auto-fitting that block. */
+      nudgeScale: function (block, delta) {
+        var C = global.MemoCanvas;
+        var current = M.blockScale(block);
+        var next = Math.min(C.MAX_SCALE, Math.max(C.MIN_SCALE,
+                            +(current + delta).toFixed(2)));
+        this.mutate(function () { block.attrs.scale = next.toFixed(2); },
+                    "scale:" + block.id);
+        this.refresh();
+      },
+
+      resetScale: function (block) {
+        this.mutate(function () { block.attrs.scale = "auto"; });
+        this.refresh();
+      },
+
+      scaleLabel: function (block) {
+        return Math.round(M.blockScale(block) * 100) + "%";
+      },
 
       // ---- slides ----------------------------------------------------------
       select: function (id) { this.ui.activeId = id; this.ui.focusedId = ""; },
