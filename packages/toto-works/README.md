@@ -49,26 +49,71 @@ Domain models (`kanban/models.py`) extend `toto.core.domain.DomainEntity`, excep
 
 **Couplings.** `people` (Person), `locations` (Zone / Address / Route), `verbena` (documentation base classes), `core.domain` (DomainEntity), `api.cors` (API base views), and `socialhub` (profile links in templates). Economy/tokenisation concerns that once lived here (mission economy, project tokenisation) now live in `toto.mission_economy` and are **not** part of this package.
 
-### memo — presentation viewer and editor
+### memo — presentation editor, player and export
 
-memo has **no database models of its own** (`models.py` documents that the former `Tag` / `MemoDiagram` / `MemoDeck` / `MemoCard` models were dropped in migration `0002_drop_memo_models`). A presentation is a single self-contained `.pml` (Presentation Markup Language) file stored in the vault as a `VaultFile` with `file_type="presentation"`.
+memo has **no database models of its own** (`models.py` documents that the former
+`Tag` / `MemoDiagram` / `MemoDeck` / `MemoCard` models were dropped in migration
+`0002_drop_memo_models`). A presentation is one self-contained XML document
+stored as a `VaultFile` with `file_type="presentation"` — images embedded as
+base64 `data:` URIs, SVGs inlined verbatim, nothing external to lose.
 
-- **Format.** `presentation_format.py` parses the XML document — a `<presentation version title>` root containing `<slide>` elements, each with a `<title>` and a CDATA-wrapped `<body>`. Each slide becomes one reveal.js `<section>`. The file is the single source of truth (the same model as `.tpy` notebooks in `toto.mandragora`): parsed when the viewer/editor opens, serialised back on save. Bodies are CDATA-wrapped so pasted HTML, `<img>` data URIs, and inline `<svg>` survive verbatim.
-- **Detection.** The `.pml` extension is what types a file as a presentation, via `VaultFile._EXT_MAP` (extension-first, like `.tpy → notebook`); a generic `.xml` file stays typed `xml`.
-- **Entry points / URLs** (`urls.py`, `views.py`): `memo:index` (the presentations workspace gallery, linked from the dashboard's *Presentations* card), `memo:create` (new deck), `memo:present` (reveal.js viewer), `memo:edit` (structured slide editor with client-side image resize to ≤640px + base64 embedding and SVG inlining), `memo:source` (raw XML editor in Ace), `memo:save` / `memo:source_save` (persist slides / raw XML back to the vault), and `memo:media_embed` (server-side media embedding, `presentation_media_embed`). `media.py` handles media helpers.
-- **Vault wiring.** `plugins/vault_play_plugins.py` maps the vault **Play** button to `memo:present`; `plugins/vault_editor_plugins.py` maps the **Edit** button to `memo:source`.
-- **Trust.** The viewer renders slide bodies as raw HTML (`|safe`), the same trust model as serving an uploaded `.html` / `.svg` vault file; presentations are owner-authored and respect vault visibility. reveal.js is vendored under `static/vendor/reveal/`.
-- **Dependency.** `vault` — presentations are `VaultFile`s and the play/editor plugins wire the buttons.
+See `src/toto/memo/README.md` for the full picture. In brief:
+
+- **Format v2.** `presentation_format.py` parses a `<presentation version theme>`
+  root of `<slide layout>` elements, each a `<title>` plus typed `<block>`
+  children (`heading`, `text`, `list`, `image`, `svg`, `code`, `quote`, and
+  `html` as the v1 escape hatch). v1 documents — a title and one blob of body
+  HTML — upgrade **in memory** to a single `html` block and are **not rewritten
+  on open**, so an old deck presents byte-identically until its owner saves.
+  Unknown attributes, block types and child elements are preserved and re-emitted
+  rather than dropped, which v1 did not do.
+- **One stylesheet, four surfaces.** `static/memo/slide.css` defines how a slide
+  looks and is loaded by the editor canvas, the player, the PDF export and the
+  gallery thumbnail. Reveal's own themes are deliberately *not* loaded — they put
+  their variables on `:root`, which cannot work in a gallery showing several
+  decks with different themes. Reveal still supplies transitions, controls and
+  hash navigation.
+- **The editor** (`memo:edit`) is a block canvas: the real slide at 1280×720,
+  scaled to fit, with `contenteditable` text, a selection popover, layout
+  presets, undo/redo, autosave with optimistic-concurrency 409s, and hand-rolled
+  pointer-event drag and drop for slides, blocks, vault media and desktop files.
+  All of its logic lives in `static/memo/*.js`.
+- **Detection.** `file_type="presentation"`; the `.pml` extension stays retired
+  and deck files are ordinary `.xml`. The type exists because the vault plugin
+  registries are `dict[key -> plugin]` and only fire when `key == file_type` —
+  with decks typed `xml` (already claimed by `toto.editor`) they could not have a
+  Play button at all. Legacy `xml` rows are retyped the first time memo opens one.
+- **URLs** (`urls.py`): `memo:index` (gallery, paginated, real thumbnails),
+  `memo:create`, `memo:import`, `memo:present`, `memo:edit`, `memo:save`,
+  `memo:export_pdf`, `memo:export_zip`, `memo:media_embed`, `memo:media_upload`.
+  The raw-XML source editor is **retired**; its gitvault toolbar moved onto the
+  editor.
+- **Export.** PDF via WeasyPrint, lazily imported and gated by
+  `BUILD_WEASYPRINT` (the shape `toto.notarius.render` uses); ZIP as
+  `presentation.xml` plus `assets/` real files, re-importable, always landing as
+  a new deck.
+- **Trust.** Everything is sanitised server-side in `sanitize.py`, on save *and*
+  on open — a deck can arrive by upload, and a public one renders in every
+  visitor's gallery. `code` blocks are kept literal and escaped at render; `html`
+  blocks stay verbatim in the player and render escaped in the gallery.
+- **Static.** memo is the **first app in this package to ship static files**, at
+  `static/memo/`. `pyproject.toml` package-data and `MANIFEST.in` already allow
+  `.js`/`.css`; note the allowlist is by extension and that `build_wheels.py
+  --sdist` builds the wheel from the sdist.
+- **Tests.** `testing/settings.py` makes the suite runnable, and zenobia's
+  clean-env gate runs it against the installed wheels.
+- **Dependency.** `vault` (the file and the play/editor plugins), `editor` (the
+  gitvault toolbar context).
 
 ### Cross-cutting design notes
-- **File-as-source-of-truth.** antaresia and memo store no user content of their own beyond run records: antaresia's `PythonRun` points at a vault file, and memo keeps everything in the `.pml` file itself. Both integrate with the vault through its plugin system rather than owning storage.
+- **File-as-source-of-truth.** antaresia, memo and primula store no user content of their own beyond run records: antaresia's `PythonRun` points at a vault file, and memo and primula keep everything in the vault file itself. All integrate with the vault through its plugin system rather than owning storage.
 - **Workflow-backed, with a fallback.** antaresia runs scripts through a toto-flow `WorkflowRun` when the corresponding `Workflow` is configured, and degrades to a direct Celery task otherwise — the reason `toto-flow` is a hard dependency of this package.
 
 ## Usage
 
 These apps are normally consumed as part of an assembled toto portal, not standalone.
 
-**Install.** Hosts pin the whole suite at one version in `requirements.toto.txt`; `toto-works` is installed at the suite version (`1.6`) alongside its siblings. For local/dev work it is installed from the monorepo (editable install of the package under `toto_libs/packages/toto-works`).
+**Install.** Hosts pin the whole suite at one version in `requirements.toto.txt`; `toto-works` is installed at the suite version alongside its siblings — see `VERSION` at the root of the vendored tree, which `scripts/release.py` is the only thing allowed to change. For local/dev work it is installed from the monorepo (editable install of the package under `toto_libs/packages/toto-works`).
 
 **Wire it into a project.** Add the apps you need to `INSTALLED_APPS`:
 
@@ -99,10 +144,10 @@ cd portal && python manage.py test toto.antaresia toto.memo
 
 ## Build & packaging
 
-`toto-works` is part of the lockstep-versioned toto suite: all nine wheels share a single `VERSION`, and this package is currently `1.6`. It declares its sibling pins in `pyproject.toml`:
+`toto-works` is part of the lockstep-versioned toto suite: all nine wheels share a single `VERSION`, kept in `VERSION` at the root of the tree and rewritten only by `scripts/release.py`. It declares its sibling pins in `pyproject.toml`:
 
-- `toto-base==1.6`
-- `toto-flow==1.6` — antaresia foreign-keys `workflows.WorkflowRun`
+- `toto-base` at the suite version
+- `toto-flow` at the suite version — antaresia foreign-keys `workflows.WorkflowRun`
 
 Versions are rewritten only by `scripts/release.py` (never edited by hand), and `scripts/check_package_graph.py` enforces that each wheel owns a disjoint slice of the `toto.*` namespace. The build backend is setuptools with namespace package discovery under `src/`; package data bundles `templates/**/*`, `static/**/*`, and `graph/*.yaml`. Hosts pin the assembled suite in `requirements.toto.txt`.
 

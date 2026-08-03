@@ -304,6 +304,8 @@ def test_memo_ships_in_toto_works(owner):
     assert owner.get("toto/memo/static/memo/editor.js") == "toto-works"
     assert owner.get("toto/memo/testing/settings.py") == "toto-works"
     assert owner.get("toto/memo/tests.py") == "toto-works"
+    assert owner.get("toto/memo/bundle.py") == "toto-works"
+    assert owner.get("toto/memo/render_pdf.py") == "toto-works"
 
 
 def test_primula_ships_in_toto_works(owner):
