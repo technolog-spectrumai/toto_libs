@@ -154,6 +154,25 @@ class Slide:
         """
         return "".join(b.payload for b in self.blocks if b.type == "html")
 
+    @property
+    def columns(self) -> list[tuple[str, list["Block"]]]:
+        """The flow regions this layout renders, as (slot, blocks) pairs.
+
+        Templates cannot call a method with an argument, and every surface —
+        player, thumbnail, PDF — needs the same grouping. Doing it here means
+        one definition of "which blocks are in the right-hand column" rather
+        than three that drift.
+
+        A block whose slot does not exist in this layout still appears: it falls
+        into the first region rather than vanishing, which is what happens when
+        a two-column slide is switched back to a single-column layout.
+        """
+        if self.layout != "two-column":
+            return [("", list(self.blocks))]
+        left = [b for b in self.blocks if b.slot != "right"]
+        right = [b for b in self.blocks if b.slot == "right"]
+        return [("left", left), ("right", right)]
+
     def to_dict(self) -> dict:
         return {
             "id": self.id, "title": self.title, "layout": self.layout,
@@ -292,7 +311,13 @@ def _sanitize_block(block: Block) -> None:
     elif kind in ("heading", "quote"):
         block.payload = sanitize.sanitize_inline(block.payload)
     elif kind == "code":
-        block.payload = sanitize.plain_text(block.payload)
+        # Deliberately untouched. A code block is literal text — running it
+        # through the HTML sanitiser would drop `<script>alert(1)</script>` with
+        # its contents, silently deleting the very snippet somebody pasted in to
+        # show. Safety comes from the render side instead: every surface escapes
+        # it (`{{ block.payload }}`, no `|safe`), which is both correct and
+        # lossless.
+        pass
     elif kind == "list":
         block.items = [sanitize.sanitize_inline(i) for i in block.items][:MAX_ITEMS]
         block.payload = ""

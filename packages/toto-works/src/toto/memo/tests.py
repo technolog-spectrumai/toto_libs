@@ -239,8 +239,16 @@ class SanitisationTests(TestCase):
         self.assertEqual(self._block("heading", "<p>A <b>bold</b> idea</p>").payload,
                          "A <b>bold</b> idea")
 
-    def test_code_is_reduced_to_text(self):
-        self.assertEqual(self._block("code", "<b>print</b>(1)").payload, "print(1)")
+    def test_code_is_kept_literal(self):
+        """A code block is text, and every surface escapes it on render.
+
+        Sanitising it would drop `<script>alert(1)</script>` **with its
+        contents** — silently deleting the exact snippet somebody pasted in to
+        show their audience. Safety comes from escaping at render, which is both
+        correct and lossless.
+        """
+        for raw in ("<b>print</b>(1)", "<script>alert(1)</script>", "a < b && c"):
+            self.assertEqual(self._block("code", raw).payload, raw)
 
     def test_an_image_must_be_a_self_contained_data_uri(self):
         # An external src would stop the deck being self-contained and turn
@@ -274,6 +282,86 @@ class SanitisationTests(TestCase):
                         '<block type="svg"><![CDATA[<svg onload="x"><rect/></svg>]]>'
                         "</block></slide></presentation>")
         self.assertNotIn("onload", deck.slides[0].blocks[0].payload)
+
+
+class PlayerTests(TestCase):
+    """The player is a standalone document with no site chrome."""
+
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+
+    def _deck(self, xml: str, *, is_public=True) -> VaultFile:
+        return VaultFile.objects.create(
+            owner=self.alice, title="talk.xml", file_type="xml",
+            is_public=is_public, bucket=self.bucket,
+            file=SimpleUploadedFile("talk.xml", xml.encode("utf-8")))
+
+    def _present(self, deck):
+        return self.client.get(reverse("memo:present", args=[deck.pk]))
+
+    def test_the_page_is_a_single_document(self):
+        # The old template emitted a second <body> inside the page body, which
+        # the browser drops — taking reveal's viewport sizing with it.
+        body = self._present(self._deck(pf.dumps(pf.new_presentation("T")))).content.decode()
+        self.assertEqual(body.count("<body"), 1, "nested <body> is back")
+        self.assertEqual(body.count("<html"), 1)
+
+    def test_the_site_chrome_does_not_cover_the_deck(self):
+        body = self._present(self._deck(pf.dumps(pf.new_presentation("T")))).content.decode()
+        for chrome in ("</header>", "</footer>", "Dashboard", "My Profile"):
+            self.assertNotIn(chrome, body, f"{chrome} renders over the slideshow")
+
+    def test_the_deck_carries_its_own_theme(self):
+        # Not the viewer's dark-mode toggle, and no setInterval polling
+        # localStorage for it: a deck looks the same wherever it is presented.
+        deck = self._deck(pf.dumps(pf.Presentation(title="T", theme="white",
+                                                   slides=[pf.Slide(title="a")])))
+        body = self._present(deck).content.decode()
+        self.assertIn("memo-theme-white", body)
+        self.assertNotIn("theme-black.css", body)
+        self.assertNotIn("localStorage", body)
+
+    def test_the_shared_stylesheet_is_what_styles_a_slide(self):
+        body = self._present(self._deck(pf.dumps(pf.new_presentation("T")))).content.decode()
+        self.assertIn("memo/slide.css", body)
+        self.assertIn("vendor/reveal/reveal.css", body, "reveal machinery still needed")
+
+    def test_the_stage_matches_the_stylesheet(self):
+        # 1280x720 in both places, or the editor and the player scale
+        # differently and the whole isomorphism is a lie.
+        body = self._present(self._deck(pf.dumps(pf.new_presentation("T")))).content.decode()
+        self.assertIn("width: 1280", body)
+        self.assertIn("height: 720", body)
+
+    def test_every_block_type_renders(self):
+        deck = self._deck(pf.dumps(_deck()))
+        body = self._present(deck).content.decode()
+        self.assertIn("Where we landed", body)
+        self.assertIn("<li>one</li>", body)
+        self.assertIn("data:image/png;base64,", body)
+        self.assertIn("<svg", body)
+        self.assertIn("Ada", body)
+        self.assertIn('data-layout="two-column"', body)
+
+    def test_a_v1_deck_still_presents_its_html(self):
+        body = self._present(self._deck(V1_DOC)).content.decode()
+        self.assertIn("hand written", body)
+        self.assertIn('style="display:flex"', body, "v1 body was rewritten")
+
+    def test_code_is_escaped_not_executed(self):
+        deck = self._deck(pf.dumps(pf.Presentation(title="T", slides=[
+            pf.Slide(title="a", blocks=[
+                pf.Block(type="code", payload="<script>alert(1)</script>")])])))
+        body = self._present(deck).content.decode()
+        self.assertNotIn("<script>alert(1)</script>", body)
+        self.assertIn("&lt;script&gt;", body)
 
 
 class VaultDetectionTests(TestCase):

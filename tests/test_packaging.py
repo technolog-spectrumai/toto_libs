@@ -299,6 +299,8 @@ def test_memo_ships_in_toto_works(owner):
     # The three things a wheel silently drops: templates, static, and the
     # settings module the gate needs to run the suite at all.
     assert owner.get("toto/memo/templates/memo/edit.html") == "toto-works"
+    assert owner.get("toto/memo/templates/memo/_slide.html") == "toto-works"
+    assert owner.get("toto/memo/static/memo/slide.css") == "toto-works"
     assert owner.get("toto/memo/testing/settings.py") == "toto-works"
     assert owner.get("toto/memo/tests.py") == "toto-works"
 
