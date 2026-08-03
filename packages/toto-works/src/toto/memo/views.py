@@ -17,7 +17,10 @@ import mimetypes
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.base import ContentFile
-from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.contrib import messages
+from django.http import (
+    Http404, HttpResponse, HttpResponseForbidden, JsonResponse,
+)
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
@@ -37,7 +40,7 @@ from toto.vault.views import (
     resolve_new_file_target,
 )
 
-from . import presentation_format
+from . import bundle, presentation_format, render_pdf
 from .media import clean_svg_markup, image_bytes_to_data_uri
 
 # Vault file types that can be embedded into a slide body.
@@ -309,6 +312,8 @@ class PresentationEditView(LoginRequiredMixin, View):
                     },
                 },
                 "present_url": reverse("memo:present", args=[file_pk]),
+                "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),
+                "export_zip_url": reverse("memo:export_zip", args=[file_pk]),
             },
             request,
         )
@@ -498,6 +503,85 @@ class PresentationCreateView(LoginRequiredMixin, View):
         vault_file.save()
 
         return redirect(reverse("memo:edit", args=[vault_file.pk]))
+
+
+class PresentationImportView(LoginRequiredMixin, View):
+    """Restore a deck from an exported ZIP.
+
+    Always creates a NEW file, never overwrites one. A restore that can destroy
+    the deck you were trying to protect is the wrong shape for a backup.
+    """
+
+    login_url = reverse_lazy("core:login")
+
+    def post(self, request):
+        upload = request.FILES.get("archive")
+        if upload is None:
+            messages.error(request, "Choose a .zip export to import.")
+            return redirect("memo:index")
+        if upload.size > getattr(settings, "MEMO_MAX_DECK_BYTES", 32 * 1024 * 1024):
+            messages.error(request, "That archive is too large to import.")
+            return redirect("memo:index")
+
+        try:
+            presentation = bundle.import_zip(upload.read())
+        except bundle.BundleError as exc:
+            messages.error(request, str(exc))
+            return redirect("memo:index")
+
+        bucket, directory = resolve_new_file_target(
+            request.user,
+            request.POST.get("bucket_id"),
+            request.POST.get("directory_id"),
+        )
+        base = (presentation.title
+                or (upload.name or "imported").rsplit(".", 1)[0]) or "imported"
+        title = f"{base}.xml"
+        xml_bytes = presentation_format.dumps(presentation).encode("utf-8")
+
+        vault_file = VaultFile(
+            owner=request.user, title=title,
+            key=_unique_file_key(slugify(base) or "imported", bucket),
+            file_type="presentation", bucket=bucket, directory=directory,
+            is_public=False,
+        )
+        vault_file.file.save(title, ContentFile(xml_bytes), save=False)
+        vault_file.content_hash = hashlib.sha256(xml_bytes).hexdigest()
+        vault_file.file_size_bytes = len(xml_bytes)
+        vault_file.save()
+
+        messages.success(request, f"Imported {title}.")
+        return redirect(reverse("memo:edit", args=[vault_file.pk]))
+
+
+@login_required
+def presentation_export_zip(request, file_pk):
+    """The deck as a readable archive: XML plus its pictures as real files."""
+    vault_file = _get_owned_file(request, file_pk)
+    presentation = _read_presentation(vault_file)
+    raw = bundle.export_zip(presentation)
+
+    base = (vault_file.title or "presentation").rsplit(".", 1)[0]
+    response = HttpResponse(raw, content_type="application/zip")
+    response["Content-Disposition"] = f'attachment; filename="{slugify(base) or "deck"}.zip"'
+    return response
+
+
+@login_required
+def presentation_export_pdf(request, file_pk):
+    """One page per slide, rendered from the same slide.css as everything else."""
+    vault_file = _get_owned_file(request, file_pk)
+    presentation = _read_presentation(vault_file)
+    try:
+        raw = render_pdf.render(presentation)
+    except render_pdf.PdfUnavailable as exc:
+        # A deployment fact, not something the user can fix by trying again.
+        return HttpResponse(str(exc), status=503, content_type="text/plain")
+
+    base = (vault_file.title or "presentation").rsplit(".", 1)[0]
+    response = HttpResponse(raw, content_type="application/pdf")
+    response["Content-Disposition"] = f'attachment; filename="{slugify(base) or "deck"}.pdf"'
+    return response
 
 
 # ---------------------------------------------------------------------------

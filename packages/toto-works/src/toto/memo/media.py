@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import base64
 import io
+import urllib.parse
 import re
 
 # Match the editor's client-side resize cap (memo/templates/memo/edit.html).
@@ -51,6 +52,50 @@ def image_bytes_to_data_uri(raw: bytes, content_type: str = "", max_dim: int = M
         mime = ctype or "application/octet-stream"
 
     return "data:" + mime + ";base64," + base64.b64encode(data).decode("ascii")
+
+
+_DATA_URI = re.compile(r"^data:([^;,]*)(;base64)?,(.*)$", re.DOTALL)
+
+# Enough to name a file. Not a full registry — anything unrecognised becomes
+# .bin, which still round-trips because the manifest records the payload as-is.
+_EXT_FOR_MIME = {
+    "image/png": ".png", "image/jpeg": ".jpg", "image/gif": ".gif",
+    "image/webp": ".webp", "image/svg+xml": ".svg", "image/bmp": ".bmp",
+    "image/tiff": ".tiff",
+}
+
+
+def data_uri_to_bytes(uri: str) -> "tuple[bytes, str, str]":
+    """``(raw, mime, extension)`` for a ``data:`` URI.
+
+    The inverse of :func:`image_bytes_to_data_uri`, and what lets the ZIP export
+    write a real ``.png`` next to the XML instead of two megabytes of base64
+    that nobody can open.
+    """
+    match = _DATA_URI.match((uri or "").strip())
+    if not match:
+        return b"", "", ".bin"
+    mime = (match.group(1) or "application/octet-stream").strip()
+    payload = match.group(3) or ""
+    if match.group(2):
+        try:
+            raw = base64.b64decode(payload, validate=False)
+        except Exception:                              # noqa: BLE001
+            raw = b""
+    else:
+        raw = urllib.parse.unquote_to_bytes(payload)
+    return raw, mime, _EXT_FOR_MIME.get(mime, ".bin")
+
+
+def bytes_to_data_uri(raw: bytes, mime: str) -> str:
+    """Straight base64, with NO resize — the inverse of the export path.
+
+    Deliberately not `image_bytes_to_data_uri`: re-importing an archive must
+    return the bytes that were exported, and running them through the 640px
+    thumbnailer again would shrink a picture a little more on every round trip.
+    """
+    return ("data:" + (mime or "application/octet-stream")
+            + ";base64," + base64.b64encode(raw).decode("ascii"))
 
 
 def clean_svg_markup(text: str) -> str:

@@ -3,8 +3,12 @@
 from __future__ import annotations
 
 import base64
+import io
 import json
+import zipfile
 import tempfile
+
+from unittest import mock, skipUnless
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -12,7 +16,7 @@ from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
-from toto.memo import presentation_format as pf
+from toto.memo import bundle, presentation_format as pf, render_pdf
 from toto.vault.models import Bucket, VaultDirectory, VaultFile
 from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 
@@ -478,6 +482,203 @@ class MediaUploadTests(TestCase):
 
     def test_a_get_is_refused(self):
         self.assertEqual(self.client.get(self.url).status_code, 405)
+
+
+class BundleTests(TestCase):
+    """The ZIP export, and reading it back."""
+
+    def _deck_with_assets(self):
+        return pf.Presentation(title="Talk", theme="white", slides=[
+            pf.Slide(title="a", layout="two-column", blocks=[
+                pf.Block(type="image", slot="left", attrs={"alt": "Diagram"},
+                         payload="data:image/png;base64,aGVsbG8="),
+                pf.Block(type="svg", slot="right",
+                         payload='<svg viewBox="0 0 1 1"><rect/></svg>'),
+                pf.Block(type="text", payload="<p>hi</p>"),
+            ])])
+
+    def test_the_archive_holds_readable_xml_and_real_files(self):
+        # The whole point: a deck is otherwise megabytes of base64 on one line.
+        raw = bundle.export_zip(self._deck_with_assets())
+        names = zipfile.ZipFile(io.BytesIO(raw)).namelist()
+        self.assertIn("presentation.xml", names)
+        self.assertTrue(any(n.endswith(".png") for n in names), names)
+        self.assertTrue(any(n.endswith(".svg") for n in names), names)
+
+    def test_the_manifest_carries_no_base64(self):
+        raw = bundle.export_zip(self._deck_with_assets())
+        xml = zipfile.ZipFile(io.BytesIO(raw)).read("presentation.xml").decode()
+        self.assertNotIn("base64", xml)
+        self.assertIn('src="assets/', xml)
+
+    def test_export_then_import_returns_the_same_deck(self):
+        deck = self._deck_with_assets()
+        back = bundle.import_zip(bundle.export_zip(deck))
+        self.assertEqual(pf.dumps(back), pf.dumps(deck))
+
+    def test_exporting_does_not_damage_the_deck_it_was_given(self):
+        # It is usually the one being rendered; rewriting its payloads to file
+        # paths would blank every image on screen.
+        deck = self._deck_with_assets()
+        bundle.export_zip(deck)
+        self.assertTrue(deck.slides[0].blocks[0].payload.startswith("data:"))
+
+    def test_an_image_is_not_re_shrunk_on_every_round_trip(self):
+        # Re-running the 640px thumbnailer on import is a slow way to lose a
+        # deck: each cycle would make every picture a little smaller.
+        deck = self._deck_with_assets()
+        once = bundle.import_zip(bundle.export_zip(deck))
+        twice = bundle.import_zip(bundle.export_zip(once))
+        self.assertEqual(once.slides[0].blocks[0].payload,
+                         twice.slides[0].blocks[0].payload)
+
+    def test_a_non_zip_is_refused_with_a_sentence(self):
+        with self.assertRaises(bundle.BundleError):
+            bundle.import_zip(b"not a zip at all")
+
+    def test_an_archive_without_a_manifest_is_refused(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("readme.txt", "hello")
+        with self.assertRaises(bundle.BundleError) as ctx:
+            bundle.import_zip(buf.getvalue())
+        self.assertIn("presentation.xml", str(ctx.exception))
+
+    def test_a_traversal_path_cannot_reach_outside_the_archive(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("presentation.xml",
+                       '<presentation version="2"><slide><title>t</title>'
+                       '<block type="image" src="../../etc/passwd"/></slide>'
+                       "</presentation>")
+            z.writestr("../../etc/passwd", b"root:x:0:0")
+        back = bundle.import_zip(buf.getvalue())
+        self.assertEqual(back.slides[0].blocks[0].payload, "")
+
+    def test_a_missing_asset_leaves_an_empty_block_not_a_crash(self):
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("presentation.xml",
+                       '<presentation version="2"><slide><title>t</title>'
+                       '<block type="image" src="assets/gone.png"/></slide>'
+                       "</presentation>")
+        back = bundle.import_zip(buf.getvalue())
+        self.assertEqual(back.slides[0].blocks[0].payload, "")
+
+    def test_an_imported_archive_is_sanitised(self):
+        # An archive is a file somebody handed us, not something we wrote.
+        buf = io.BytesIO()
+        with zipfile.ZipFile(buf, "w") as z:
+            z.writestr("presentation.xml",
+                       '<presentation version="2"><slide><title>t</title>'
+                       '<block type="svg" src="assets/x.svg"/></slide></presentation>')
+            z.writestr("assets/x.svg", b'<svg onload="alert(1)"><rect/></svg>')
+        back = bundle.import_zip(buf.getvalue())
+        self.assertNotIn("onload", back.slides[0].blocks[0].payload)
+
+
+class ExportEndpointTests(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.bucket = Bucket.objects.create(name="Lab", slug="lab", owner=self.alice)
+        self.deck = VaultFile.objects.create(
+            owner=self.alice, title="talk.xml", file_type="presentation",
+            bucket=self.bucket,
+            file=SimpleUploadedFile("talk.xml", pf.dumps(_deck()).encode()))
+        self.client.force_login(self.alice)
+
+    def test_the_zip_downloads_as_an_attachment(self):
+        res = self.client.get(reverse("memo:export_zip", args=[self.deck.pk]))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res["Content-Type"], "application/zip")
+        self.assertIn("attachment", res["Content-Disposition"])
+        self.assertIn("presentation.xml",
+                      zipfile.ZipFile(io.BytesIO(res.content)).namelist())
+
+    def test_a_stranger_cannot_export_your_deck(self):
+        self.client.force_login(User.objects.create_user("bob", password="p"))
+        for name in ("memo:export_zip", "memo:export_pdf"):
+            self.assertEqual(
+                self.client.get(reverse(name, args=[self.deck.pk])).status_code, 404)
+
+    def test_pdf_without_weasyprint_says_what_to_do(self):
+        with mock.patch.object(render_pdf, "render",
+                               side_effect=render_pdf.PdfUnavailable(
+                                   "needs WeasyPrint … BUILD_WEASYPRINT=1")):
+            res = self.client.get(reverse("memo:export_pdf", args=[self.deck.pk]))
+        self.assertEqual(res.status_code, 503)
+        self.assertIn("BUILD_WEASYPRINT", res.content.decode())
+
+    @skipUnless(render_pdf.is_available(), "WeasyPrint is not installed here")
+    def test_the_pdf_renders_one_page_per_slide(self):
+        res = self.client.get(reverse("memo:export_pdf", args=[self.deck.pk]))
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res["Content-Type"], "application/pdf")
+        self.assertTrue(res.content.startswith(b"%PDF"))
+
+    def test_the_print_document_uses_the_shared_stylesheet(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("memo/print.html", {
+            "presentation": _deck(), "theme": "white", "slide_css": "/*CSS*/"})
+        self.assertIn("/*CSS*/", html)
+        self.assertIn("memo-slide", html)
+        self.assertIn("Where we landed", html)
+
+
+class ImportEndpointTests(TestCase):
+    def setUp(self):
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="Toto", author="T",
+                                publication_year=2026, active=True)
+        self.alice = User.objects.create_user("alice", password="pass")
+        self.client.force_login(self.alice)
+        self.url = reverse("memo:import")
+
+    def _archive(self):
+        return bundle.export_zip(pf.Presentation(title="Restored", slides=[
+            pf.Slide(title="a", blocks=[pf.Block(type="text", payload="<p>hi</p>")])]))
+
+    def test_importing_creates_a_new_deck_and_opens_it(self):
+        res = self.client.post(self.url, {
+            "archive": SimpleUploadedFile("deck.zip", self._archive(),
+                                          content_type="application/zip")})
+        self.assertEqual(res.status_code, 302)
+        deck = VaultFile.objects.get(owner=self.alice, file_type="presentation")
+        self.assertIn(str(deck.pk), res["Location"])
+        self.assertEqual(pf.loads(deck.file.read().decode()).title, "Restored")
+
+    def test_importing_never_overwrites_an_existing_deck(self):
+        # A restore that can destroy the deck you were protecting is the wrong
+        # shape for a backup.
+        for _ in range(2):
+            self.client.post(self.url, {
+                "archive": SimpleUploadedFile("deck.zip", self._archive(),
+                                              content_type="application/zip")})
+        self.assertEqual(
+            VaultFile.objects.filter(owner=self.alice, file_type="presentation").count(), 2)
+
+    def test_rubbish_is_reported_not_raised(self):
+        res = self.client.post(self.url, {
+            "archive": SimpleUploadedFile("x.zip", b"nope", content_type="application/zip")})
+        self.assertEqual(res.status_code, 302)
+        self.assertFalse(VaultFile.objects.filter(owner=self.alice).exists())
+
+    def test_it_needs_a_login(self):
+        self.client.logout()
+        res = self.client.post(self.url, {
+            "archive": SimpleUploadedFile("d.zip", self._archive())})
+        self.assertEqual(res.status_code, 302)
+        self.assertIn("login", res["Location"])
 
 
 class PlayerTests(TestCase):

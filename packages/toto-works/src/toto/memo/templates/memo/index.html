@@ -12,7 +12,7 @@
 </script>
 {% endif %}
 <section
-  x-data="{ showCreate: false, fname: '', bucketId: '', dirId: '',
+  x-data="{ showCreate: false, showImport: false, fname: '', bucketId: '', dirId: '',
             buckets: window._newFileBuckets || [],
             directories: window._newFileDirectories || [],
             get filteredDirs() { return this.directories.filter(d => String(d.bucket_id) === String(this.bucketId)); } }"
@@ -33,6 +33,10 @@
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
             <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+          <button type="button" @click="showImport = true"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-file-import"></i>{% trans "Import" %}</button>
         {% endif %}
         <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
           {% trans "Vault" %}</a>
@@ -81,6 +85,10 @@
             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
             class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold hover:opacity-90 transition">
             <i class="fa-solid fa-plus"></i>{% trans "New presentation" %}</button>
+          <button type="button" @click="showImport = true"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+            class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold transition hover:opacity-85">
+            <i class="fa-solid fa-file-import"></i>{% trans "Import" %}</button>
         {% endif %}
       </div>
     {% endif %}
@@ -88,6 +96,66 @@
   </div>
 
   {% if is_authenticated %}
+  <!-- Import from an exported archive. Always creates a NEW deck: a restore
+       that can destroy the deck you were protecting is the wrong shape. -->
+  <div x-show="showImport" x-cloak
+       class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="showImport = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md rounded-2xl border shadow-2xl">
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-file-import"></i>{% trans "Import a presentation" %}</h2>
+        <button type="button" @click="showImport = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100 transition">&times;</button>
+      </div>
+      <form method="post" action="{% url 'memo:import' %}" enctype="multipart/form-data"
+            class="space-y-4 p-5">
+        {% csrf_token %}
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Exported archive" %}</label>
+          <input type="file" name="archive" accept=".zip,application/zip" required
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2 text-sm">
+          <p class="mt-2 text-xs opacity-55">
+            {% blocktrans %}A .zip written by Export archive. It always lands as a
+            new presentation — nothing you already have is replaced.{% endblocktrans %}
+          </p>
+        </div>
+        <div>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Bucket" %}</label>
+          <select name="bucket_id" x-model="bucketId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Personal (default)" %}</option>
+            <template x-for="b in buckets" :key="b.id">
+              <option :value="b.id" x-text="b.name"></option>
+            </template>
+          </select>
+        </div>
+        <div x-show="bucketId" x-cloak>
+          <label class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Folder" %}</label>
+          <select name="directory_id" x-model="dirId"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm">
+            <option value="">{% trans "Bucket root" %}</option>
+            <template x-for="d in filteredDirs" :key="d.id">
+              <option :value="d.id" x-text="d.name"></option>
+            </template>
+          </select>
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex w-full items-center justify-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-file-import"></i> {% trans "Import" %}
+        </button>
+      </form>
+    </div>
+  </div>
+
   <!-- New presentation modal -->
   <div x-show="showCreate" x-cloak
        class="fixed inset-0 z-[9000] flex items-center justify-center p-4">
