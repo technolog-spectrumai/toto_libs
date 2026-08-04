@@ -93,7 +93,7 @@ _LANGUAGE_RE = re.compile(r"^[A-Za-z0-9+#._-]{1,20}$")
 _DATA_URI_RE = re.compile(
     r"^data:image/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+$", re.IGNORECASE)
 
-_ROOT_OWN_ATTRS = {"version", "title", "font", "page", "margins", "toc",
+_ROOT_OWN_ATTRS = {"version", "title", "font", "page", "margins", "toc", "cover",
                    "numbering"}
 _SECTION_OWN_ATTRS = {"id", "level", "color"}
 _BLOCK_OWN_ATTRS = {"id", "type"}
@@ -178,6 +178,10 @@ class Document:
     font: str = DEFAULT_FONT
     margins: str = DEFAULT_MARGINS
     toc: bool = True
+    # The cover sheet is OPT-IN: the ordinary cyprian document is a teacher's
+    # one-page handout, and a title page would double its length. A report that
+    # wants one turns it on in Page setup.
+    cover: bool = False
     attrs: dict[str, str] = field(default_factory=dict)
     extra: list[str] = field(default_factory=list)
 
@@ -216,7 +220,7 @@ class Document:
     def to_dict(self) -> dict:
         return {
             "title": self.title, "version": self.version, "font": self.font,
-            "margins": self.margins, "toc": self.toc,
+            "margins": self.margins, "toc": self.toc, "cover": self.cover,
             "content": self.content,
             "meta": dict(self.meta),
             "attrs": dict(self.attrs), "extra": list(self.extra),
@@ -239,6 +243,7 @@ class Document:
             font=str(raw.get("font") or DEFAULT_FONT),
             margins=str(raw.get("margins") or DEFAULT_MARGINS),
             toc=bool(raw.get("toc", True)),
+            cover=bool(raw.get("cover", False)),
             version=FORMAT_VERSION,
             content=content[:MAX_PAYLOAD_BYTES],
             meta={str(k): str(v) for k, v in (raw.get("meta") or {}).items()},
@@ -250,9 +255,16 @@ class Document:
 
 
 def new_document(title: str = "") -> Document:
-    """A blank document: a heading if it has a name, and somewhere to type."""
+    """A blank document: a heading if it has a name, and somewhere to type.
+
+    Tuned for the ordinary case — a one-page handout. No cover sheet and no
+    contents page: the H1 IS the title on the sheet, and both extras are one
+    checkbox away in Page setup when a longer document wants them. Existing
+    files keep whatever they say (a missing ``toc`` still reads as true there,
+    because that was the old default and their exports must not change).
+    """
     body = f"<h1>{_esc_text(title)}</h1><p></p>" if title else "<p></p>"
-    return Document(title=title, content=body)
+    return Document(title=title, content=body, toc=False, cover=False)
 
 
 # ---------------------------------------------------------------------------
@@ -401,7 +413,8 @@ def dumps(document: Document) -> str:
          ("title", document.title),
          ("font", document.font or DEFAULT_FONT),
          ("margins", document.margins or DEFAULT_MARGINS),
-         ("toc", "true" if document.toc else "false")], root_extra) + ">")
+         ("toc", "true" if document.toc else "false"),
+         ("cover", "true" if document.cover else "false")], root_extra) + ">")
 
     if document.meta:
         lines.append("  <meta>")
@@ -546,6 +559,7 @@ def loads(text: str) -> Document:
         font=root.get("font") or DEFAULT_FONT,
         margins=root.get("margins") or DEFAULT_MARGINS,
         toc=(root.get("toc") or "true") != "false",
+        cover=(root.get("cover") or "false") == "true",
         version=FORMAT_VERSION,
         attrs={k: v for k, v in root.attrib.items() if k not in _ROOT_OWN_ATTRS},
     )

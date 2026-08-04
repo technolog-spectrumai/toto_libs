@@ -249,3 +249,29 @@ class UnknownMarkupTests(SimpleTestCase):
         for fragment in ('sparkle="yes"', "<appendix>", "later"):
             with self.subTest(fragment=fragment):
                 self.assertIn(fragment, again)
+
+
+class HandoutDefaultTests(SimpleTestCase):
+    """A new document is a one-page handout until it says otherwise."""
+
+    def test_a_new_document_has_no_cover_and_no_contents_page(self):
+        doc = df.new_document("Pochodne")
+        self.assertFalse(doc.cover)
+        self.assertFalse(doc.toc)
+
+    def test_the_cover_flag_round_trips(self):
+        doc = df.new_document("R")
+        doc.cover = True
+        back = df.loads(df.dumps(doc))
+        self.assertTrue(back.cover)
+        self.assertFalse(df.loads(df.dumps(df.new_document("R"))).cover)
+
+    def test_an_old_file_without_the_attribute_keeps_its_contents_page(self):
+        # `toc` defaulted on in the era before the handout tuning; a file that
+        # never wrote the attribute must not lose its contents page now.
+        xml = ('<?xml version="1.0" encoding="utf-8"?>'
+               '<document version="3" title="Old"><content>'
+               '<![CDATA[<h1>Old</h1>]]></content></document>')
+        old = df.loads(xml)
+        self.assertTrue(old.toc)
+        self.assertFalse(old.cover)   # but no cover appears out of nowhere

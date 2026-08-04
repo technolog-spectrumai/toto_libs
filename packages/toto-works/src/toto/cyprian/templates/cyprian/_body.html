@@ -9,7 +9,7 @@ IS the structure now — there is no section id to keep in step with it. The PDF
 resolves the page numbers after layout with `target-counter()`, which is why the
 anchor has to be real.
 {% endcomment %}
-{% if document.title %}
+{% if document.cover and document.title %}
   <section class="cy-page cy-cover">
     <h1 class="cy-title">{{ document.title }}</h1>
     {% if document.meta.subtitle %}<p class="cy-subtitle">{{ document.meta.subtitle }}</p>{% endif %}

@@ -99,6 +99,7 @@
       margins: ["narrow", "normal", "wide"].indexOf(data.margins) !== -1
                ? data.margins : "normal",
       toc: data.toc !== false,
+      cover: data.cover === true,
       content: data.content || "<p></p>",
       attrs: Object.assign({}, data.attrs || {}),
       extra: (data.extra || []).slice()
@@ -135,6 +136,7 @@
       font: state.font,
       margins: state.margins,
       toc: state.toc,
+      cover: state.cover,
       content: state.content,
       attrs: state.attrs,
       extra: state.extra

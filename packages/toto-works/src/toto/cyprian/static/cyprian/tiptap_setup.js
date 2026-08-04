@@ -324,6 +324,13 @@ const EXTENSIONS = (options) => [
  * editor and never written back into a focused one, which is memo's rule and
  * the reason the caret stays where the writer put it.
  */
+function imageFile(transfer) {
+  const files = transfer && transfer.files;
+  if (!files || !files.length) return null;
+  const file = files[0];
+  return /^image\//.test(file.type) ? file : null;
+}
+
 function create(element, html, handlers) {
   handlers = handlers || {};
   return new Editor({
@@ -332,6 +339,21 @@ function create(element, html, handlers) {
     content: html || "<p></p>",
     editorProps: {
       attributes: { class: "cy-content cy-editable" },
+      /* A screenshot pasted or dropped straight onto the page. The file goes to
+       * whoever mounted us (the Alpine component uploads it and inserts the
+       * data URI the server answers with) — the same path as the image dialog,
+       * so the resize policy and the SVG sanitiser stay server-side and singular.
+       * Returning true stops ProseMirror pasting the raw file as text. */
+      handlePaste: (view, event) => {
+        const file = imageFile(event.clipboardData);
+        if (file && handlers.onImageFile) { handlers.onImageFile(file); return true; }
+        return false;
+      },
+      handleDrop: (view, event) => {
+        const file = imageFile(event.dataTransfer);
+        if (file && handlers.onImageFile) { handlers.onImageFile(file); return true; }
+        return false;
+      },
     },
     onUpdate: ({ editor }) => {
       if (handlers.onUpdate) handlers.onUpdate(editor.getHTML());
