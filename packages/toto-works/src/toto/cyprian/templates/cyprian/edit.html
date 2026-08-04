@@ -17,6 +17,7 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
 {{ document_json|json_script:"cy-document" }}
 {{ config_json|json_script:"cy-config" }}
 {{ vault_media_json|json_script:"cy-media" }}
+{{ picker_json|json_script:"cy-picker" }}
 
 <section x-data="cyprianEditor()" x-init="boot()" @keydown.window="onKey($event)"
          :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
@@ -110,6 +111,13 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
             </template>
           </div>
 
+          {% comment %} Both extras are OFF for a new document: the ordinary
+          cyprian document is a one-page handout, and a cover sheet or contents
+          page would double it. A longer report turns them on here.{% endcomment %}
+          <label class="flex items-center gap-2 px-1 py-1 text-xs">
+            <input type="checkbox" :checked="state.cover" @change="toggleCover()" class="h-3 w-3">
+            {% trans "Cover page" %}
+          </label>
           <label class="flex items-center gap-2 px-1 py-1 text-xs">
             <input type="checkbox" :checked="state.toc" @change="toggleToc()" class="h-3 w-3">
             {% trans "Contents page" %}
@@ -220,6 +228,16 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
 
       <span class="cy-tool-sep"></span>
 
+      {% comment %} A picture and a formula are what a maths handout is made of,
+      so they sit beside bold and italic rather than at the end of the bar.
+      {% endcomment %}
+      <button type="button" @click="openDialog('image')" title="{% trans 'Image' %}"
+              class="cy-tool"><i class="fa-solid fa-image"></i></button>
+      <button type="button" @click="openDialog('formula')" title="{% trans 'Formula' %}"
+              class="cy-tool"><i class="fa-solid fa-square-root-variable"></i></button>
+
+      <span class="cy-tool-sep"></span>
+
       <button type="button" @click="toggleBulletList()" title="{% trans 'Bulleted list' %}"
               :data-on="isActive('bulletList') ? '1' : null" class="cy-tool">
         <i class="fa-solid fa-list-ul"></i></button>
@@ -262,12 +280,8 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
       <button type="button" @click="setLink()" title="{% trans 'Link' %}"
               :data-on="isActive('link') ? '1' : null" class="cy-tool">
         <i class="fa-solid fa-link"></i></button>
-      <button type="button" @click="openDialog('image')" title="{% trans 'Image' %}"
-              class="cy-tool"><i class="fa-solid fa-image"></i></button>
       <button type="button" @click="insertTable()" title="{% trans 'Table' %}"
               class="cy-tool"><i class="fa-solid fa-table"></i></button>
-      <button type="button" @click="openDialog('formula')" title="{% trans 'Formula' %}"
-              class="cy-tool"><i class="fa-solid fa-square-root-variable"></i></button>
 
       <div x-data="{ open: false }" class="relative">
         <button type="button" @click="open = !open" title="{% trans 'Callout' %}"
@@ -396,11 +410,14 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
   What a save produced, and where it went. A flash message would say the same
   words and leave you hunting for the file; a link is one click.
   {% endcomment %}
-  {% comment %}---- the save-rendition dialog ----
+  {% comment %}---- the export dialog ----
 
   The one place a file name is asked for, and it is obligatory: the button stays
-  dead until there is one. The watermark is offered for PDF only — plain text,
-  drawn faintly across every page by the print stylesheet.
+  dead until there is one. A PDF can carry a watermark — short text, or a
+  picture from the vault (a data URI, so WeasyPrint fetches nothing) — drawn
+  faintly across every page. And the destination is chosen here too: the tree of
+  the writer's own buckets and folders, defaulting to "beside this document",
+  through the same vault gate the New Document flow uses.
   {% endcomment %}
   <div x-show="ui.saveDialog.open" x-cloak
        @keydown.escape.window="ui.saveDialog.open = false"
@@ -408,35 +425,112 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
          @click="ui.saveDialog.open = false"></div>
     <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
-         class="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl">
+         class="relative z-10 flex max-h-[86vh] w-full max-w-lg flex-col overflow-hidden rounded-2xl border shadow-2xl">
       <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
         <h2 class="flex items-center gap-2 text-lg font-bold">
           <i class="fa-solid" :class="ui.saveDialog.kind === 'pdf' ? 'fa-file-pdf' : 'fa-file-code'"></i>
-          <span x-text="ui.saveDialog.kind === 'pdf' ? '{% trans "Save as PDF" %}' : '{% trans "Save as HTML" %}'"></span>
+          <span x-text="ui.saveDialog.kind === 'pdf' ? '{% trans "Export PDF" %}' : '{% trans "Save as HTML" %}'"></span>
         </h2>
         <button @click="ui.saveDialog.open = false"
                 class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
       </div>
-      <form class="space-y-3 p-5" @submit.prevent="confirmRendition()">
+      <form class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5" @submit.prevent="confirmRendition()">
+
         <label class="block text-sm">
           <span class="mb-1 block font-semibold">{% trans "File name" %}</span>
           <input type="text" x-model="ui.saveDialog.name" required
                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                  class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
           <span class="mt-1 block text-xs opacity-55">
-            {% trans "Saved into the vault beside this document. An existing file of this name is replaced." %}
+            {% trans "An existing file of this name in the chosen folder is replaced." %}
           </span>
         </label>
-        <label x-show="ui.saveDialog.kind === 'pdf'" class="block text-sm">
-          <span class="mb-1 block font-semibold">{% trans "Watermark" %} <span class="font-normal opacity-55">({% trans "optional" %})</span></span>
-          <input type="text" x-model="ui.saveDialog.watermark" maxlength="80"
-                 placeholder="{% trans 'DRAFT, CONFIDENTIAL, a recipient…' %}"
-                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                 class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
-          <span class="mt-1 block text-xs opacity-55">
-            {% trans "Drawn faintly across every page." %}
-          </span>
-        </label>
+
+        {# ---- watermark: none / text / image — PDF only ---- #}
+        <div x-show="ui.saveDialog.kind === 'pdf'" class="space-y-2">
+          <span class="block text-sm font-semibold">{% trans "Watermark" %}</span>
+          <div class="flex gap-1 text-sm">
+            <template x-for="opt in [
+                  {id: 'none',  label: '{% trans "None" %}'},
+                  {id: 'text',  label: '{% trans "Text" %}'},
+                  {id: 'image', label: '{% trans "Picture" %}'}
+                ]" :key="'wm' + opt.id">
+              <button type="button" @click="ui.saveDialog.watermarkKind = opt.id"
+                      :class="ui.saveDialog.watermarkKind === opt.id
+                              ? (darkMode ? 'bg-accent-dark/25' : 'bg-accent-light/25')
+                              : 'opacity-60'"
+                      class="rounded-lg border border-current/20 px-3 py-1.5 transition hover:opacity-100"
+                      x-text="opt.label"></button>
+            </template>
+          </div>
+          <div x-show="ui.saveDialog.watermarkKind === 'text'">
+            <input type="text" x-model="ui.saveDialog.watermark" maxlength="80"
+                   placeholder="{% trans 'DRAFT, CONFIDENTIAL, a recipient…' %}"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
+            <span class="mt-1 block text-xs opacity-55">{% trans "Drawn faintly across every page." %}</span>
+          </div>
+          <div x-show="ui.saveDialog.watermarkKind === 'image'" class="space-y-2">
+            <div x-show="ui.saveDialog.watermarkImage"
+                 class="flex items-center gap-3 rounded-lg border border-current/15 p-2">
+              <img :src="ui.saveDialog.watermarkImage" alt="" class="max-h-16 rounded">
+              <span class="min-w-0 flex-1 truncate text-xs" x-text="ui.saveDialog.watermarkImageName"></span>
+              <button type="button" @click="ui.saveDialog.watermarkImage = ''"
+                      class="text-sm opacity-50 hover:opacity-100">&times;</button>
+            </div>
+            <template x-if="!ui.saveDialog.watermarkImage">
+              <div class="space-y-2">
+                <input type="search" x-model="ui.saveDialog.imageSearch"
+                       placeholder="{% trans 'Search images in your buckets' %}"
+                       class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+                <div class="max-h-40 overflow-y-auto rounded-lg border border-current/10">
+                  <template x-for="m in watermarkMedia" :key="'wmm' + m.pk">
+                    <button type="button" @click="pickWatermark(m.pk, m.title)"
+                            class="flex w-full items-center gap-2 px-3 py-1.5 text-left text-sm hover:opacity-70">
+                      <i class="fa-solid fa-image opacity-50"></i>
+                      <span class="min-w-0 flex-1 truncate" x-text="m.title"></span>
+                      <span class="truncate text-xs opacity-45" x-text="m.location"></span>
+                    </button>
+                  </template>
+                  <p x-show="!watermarkMedia.length" class="px-3 py-2 text-xs opacity-55">
+                    {% trans "No images in your buckets yet." %}</p>
+                </div>
+                <p x-show="ui.saveDialog.imageBusy" class="text-xs opacity-55">{% trans "Loading…" %}</p>
+              </div>
+            </template>
+          </div>
+        </div>
+
+        {# ---- destination: bucket + folder tree ---- #}
+        <div class="space-y-2">
+          <span class="block text-sm font-semibold">{% trans "Save into" %}</span>
+          <select x-model.number="ui.saveDialog.bucket"
+                  @change="ui.saveDialog.directory = 0"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
+            <template x-for="b in picker.buckets" :key="'bk' + b.id">
+              <option :value="b.id" x-text="b.name"
+                      :selected="b.id === ui.saveDialog.bucket"></option>
+            </template>
+          </select>
+          <div class="max-h-40 overflow-y-auto rounded-lg border border-current/10 py-1 text-sm">
+            <button type="button" @click="ui.saveDialog.directory = 0"
+                    :class="!ui.saveDialog.directory ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/20') : ''"
+                    class="flex w-full items-center gap-2 px-3 py-1 text-left hover:opacity-70">
+              <i class="fa-solid fa-database text-xs opacity-50"></i> {% trans "Bucket root" %}
+            </button>
+            <template x-for="d in saveDirs" :key="'sd' + d.id">
+              <button type="button" @click="ui.saveDialog.directory = d.id"
+                      :class="ui.saveDialog.directory === d.id ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/20') : ''"
+                      :style="'padding-left: ' + (0.75 + d.depth * 1.1) + 'rem'"
+                      class="flex w-full items-center gap-2 py-1 pr-3 text-left hover:opacity-70">
+                <i class="fa-solid fa-folder text-xs opacity-50"></i>
+                <span class="min-w-0 flex-1 truncate" x-text="d.path.split('/').pop()"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
         <div class="flex justify-end gap-2 pt-1">
           <button type="button" @click="ui.saveDialog.open = false"
                   class="rounded-lg px-3 py-2 text-sm opacity-70 hover:opacity-100">

@@ -46,10 +46,20 @@ document.
       text-align: center;
       color: rgba(0, 0, 0, 0.10);
     }
+    .cy-watermark-image {
+      position: fixed;
+      top: 25%; left: 15%; right: 15%;
+      z-index: -1;
+      transform: rotate(-30deg);
+      text-align: center;
+      opacity: 0.10;
+    }
+    .cy-watermark-image img { max-width: 100%; max-height: 400px; }
   </style>
 </head>
 <body class="cy-doc cy-font-{{ document.font }}" data-margins="{{ document.margins }}">
   {% if watermark %}<div class="cy-watermark">{{ watermark }}</div>{% endif %}
+  {% if watermark_image %}<div class="cy-watermark-image"><img src="{{ watermark_image }}" alt=""></div>{% endif %}
   {% include "cyprian/_body.html" with document=document %}
 </body>
 </html>

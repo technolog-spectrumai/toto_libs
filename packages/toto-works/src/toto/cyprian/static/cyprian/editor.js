@@ -100,9 +100,13 @@
         dialog: { open: false, kind: "image", payload: "", attrs: {} },
         // What the last "save to the vault" produced, and where it went.
         rendition: { open: false, kind: "", name: "", url: "" },
-        // The ask before it: the obligatory file name, and — for a PDF, which
-        // has pages to stamp — an optional watermark.
-        saveDialog: { open: false, kind: "", name: "", watermark: "" },
+        // The ask before it: the obligatory file name; for a PDF an optional
+        // watermark (text, or a picture from the vault); and the destination —
+        // a bucket and folder, defaulting to "beside this document".
+        saveDialog: { open: false, kind: "", name: "",
+                      watermark: "", watermarkKind: "none",
+                      watermarkImage: "", watermarkImageName: "",
+                      bucket: 0, directory: 0, imageSearch: "", imageBusy: false },
         saving: false,
         dirty: false,
         status: "",
@@ -121,6 +125,7 @@
       sizes: M.SIZES,
       formulaHelp: (global.MemoModel || {}).FORMULA_HELP || [],
       media: readJson("cy-media", []),
+      picker: readJson("cy-picker", { buckets: [], directories: [] }),
 
       _timer: null,
       _ceiling: null,
@@ -260,6 +265,26 @@
         this.mutate(function (s) { s.meta[name] = value; }, "meta:" + name);
       },
 
+      // ---- page setup ------------------------------------------------------
+      // Everything here travels IN THE FILE, so the reader and the PDF agree
+      // with the writer. Margins re-paginate; the rest just re-renders.
+      setMargins: function (id) {
+        // No explicit re-paginate: the decoration plugin re-measures on its
+        // next frame, against the CSS variables the new margins just changed.
+        this.mutate(function (s) { s.margins = id; }, "margins");
+      },
+      setFont: function (id) {
+        this.mutate(function (s) { s.font = id; }, "font");
+      },
+      toggleToc: function () {
+        this.mutate(function (s) { s.toc = !s.toc; }, "toc");
+      },
+      /* The cover sheet is opt-in: the ordinary document here is a one-page
+       * handout, and a title page would double its length in print. */
+      toggleCover: function () {
+        this.mutate(function (s) { s.cover = !s.cover; }, "cover");
+      },
+
       // ---- the editor ------------------------------------------------------
       /* ONE TipTap instance, on the section being written.
        *
@@ -297,6 +322,27 @@
           // The A4 content box, measured from the real page element so a margin
           // change is picked up without rebuilding anything.
           pageHeight: function () { return self.pageHeight(); },
+          /* A pasted or dropped picture. Uploaded through the same endpoint as
+           * the image dialog — one resize policy, one sanitiser — and inserted
+           * at the caret as the data URI the server answers with. */
+          onImageFile: function (file) {
+            var body = new FormData();
+            body.append("file", file, file.name || "pasted-image.png");
+            self.ui.status = "Embedding…";
+            fetch(self.config.urls.upload, {
+              method: "POST", headers: { "X-CSRFToken": csrf() }, body: body
+            }).then(function (r) { return r.json(); })
+              .then(function (data) {
+                if (!data || data.error || data.kind === "svg") {
+                  self.ui.status = (data && data.error) || "Could not embed that.";
+                  return;
+                }
+                self.ui.status = "";
+                self.cmd(function (c) { c.setImage({ src: data.payload,
+                                                     alt: data.alt || "" }).run(); });
+              })
+              .catch(function () { self.ui.status = "Could not embed that."; });
+          },
           onPages: function (pages, tall) {
             self.ui.pageCount = pages;
             self.ui.tallCount = tall;
@@ -586,11 +632,60 @@
        * dialog's button stays disabled without one); the watermark is offered
        * for PDF only, where there are pages to stamp. */
       saveRendition: function (kind) {
+        var home = this.config.home || {};
         this.ui.saveDialog = {
           open: true, kind: kind,
           name: (this.config.renditionBase || "document") + "." + kind,
-          watermark: ""
+          watermark: "", watermarkKind: "none",
+          watermarkImage: "", watermarkImageName: "",
+          bucket: home.bucket || 0, directory: home.directory || 0,
+          imageSearch: "", imageBusy: false
         };
+      },
+
+      /* The destination tree: the chosen bucket's folders, root first, indented
+       * by depth. From the same picker data the New Document flow uses, so
+       * what is offered is exactly what the user may write into. */
+      get saveDirs() {
+        var picker = this.picker || { directories: [] };
+        var bucket = Number(this.ui.saveDialog.bucket);
+        return (picker.directories || [])
+          .filter(function (d) { return d.bucket_id === bucket; })
+          .map(function (d) {
+            return { id: d.id, path: d.path,
+                     depth: (d.path.match(/\//g) || []).length };
+          });
+      },
+
+      /* Watermark pictures come from the vault like every other image here:
+       * the embed endpoint answers with a data URI, so the PDF renderer never
+       * fetches anything. */
+      get watermarkMedia() {
+        var q = (this.ui.saveDialog.imageSearch || "").toLowerCase();
+        return this.media.filter(function (m) {
+          return !q || (m.title || "").toLowerCase().indexOf(q) !== -1;
+        }).slice(0, 40);
+      },
+
+      pickWatermark: function (pk, title) {
+        var self = this;
+        this.ui.saveDialog.imageBusy = true;
+        fetch(this.config.urls.embed + "?file_pk=" + encodeURIComponent(pk))
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            self.ui.saveDialog.imageBusy = false;
+            if (!data || data.error || data.type === "svg") {
+              // an svg embed is markup, not a data URI — no stamp from it
+              self.ui.status = (data && data.error) || "Pick a bitmap image.";
+              return;
+            }
+            self.ui.saveDialog.watermarkImage = data.payload;
+            self.ui.saveDialog.watermarkImageName = title || "";
+          })
+          .catch(function () {
+            self.ui.saveDialog.imageBusy = false;
+            self.ui.status = "Could not load that image.";
+          });
       },
 
       confirmRendition: function () {
@@ -603,8 +698,15 @@
         var url = kind === "pdf" ? this.config.urls.savePdf : this.config.urls.saveHtml;
         var body = new FormData();
         body.append("name", d.name.trim());
-        if (kind === "pdf" && (d.watermark || "").trim()) {
+        if (kind === "pdf" && d.watermarkKind === "text" && (d.watermark || "").trim()) {
           body.append("watermark", d.watermark.trim());
+        }
+        if (kind === "pdf" && d.watermarkKind === "image" && d.watermarkImage) {
+          body.append("watermark_image", d.watermarkImage);
+        }
+        if (d.bucket) {
+          body.append("bucket", String(d.bucket));
+          if (d.directory) body.append("directory", String(d.directory));
         }
         Promise.resolve(this.ui.dirty ? this.save(true) : null)
           .then(function () {

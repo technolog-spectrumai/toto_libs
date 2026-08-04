@@ -83,12 +83,17 @@ def katex_css() -> str:
     return _katex_assets()[0]
 
 
-def render(document, watermark: str = "") -> bytes:
+def render(document, watermark: str = "", watermark_image: str = "") -> bytes:
     """The document as PDF bytes.
 
     ``watermark`` is plain text drawn diagonally across every page — DRAFT,
     CONFIDENTIAL, a recipient's name. Text, never markup: it goes through the
     template autoescaped, and a watermark is a stamp, not a canvas.
+
+    ``watermark_image`` is the same idea as a picture: a ``data:image/`` URI
+    (the only form the vault picker produces, so WeasyPrint never fetches
+    anything), drawn faint behind the text of every page. When both are given
+    the image wins — one stamp per page.
     """
     try:
         from weasyprint import HTML  # lazy: gated by BUILD_WEASYPRINT
@@ -111,7 +116,8 @@ def render(document, watermark: str = "") -> bytes:
 
     html = render_to_string("cyprian/print.html", {
         "document": document,
-        "watermark": watermark,
+        "watermark": watermark if not watermark_image else "",
+        "watermark_image": watermark_image,
         "document_css": css,
         "katex_css": katex_css,
     })

@@ -446,6 +446,51 @@ class ExportTests(CyprianTestCase):
         response = self.client.post(url, {"name": "   "})
         self.assertEqual(response.json()["name"], "report.html")
 
+    def test_an_html_rendition_lands_in_the_asked_folder(self):
+        # The export modal chooses a destination through the same vault gate
+        # the New Document flow uses — and someone else's bucket 404s.
+        from toto.vault.models import Bucket, VaultDirectory
+        other_bucket = Bucket.objects.create(
+            slug="dest", name="Dest", owner=self.owner, storage_backend="local")
+        folder = VaultDirectory.objects.create(
+            name="exports", bucket=other_bucket, owner=self.owner)
+        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
+        response = self.client.post(url, {
+            "name": "filed", "bucket": other_bucket.pk, "directory": folder.pk})
+        self.assertEqual(response.status_code, 200)
+        saved = VaultFile.objects.get(title="filed.html")
+        self.assertEqual(saved.bucket, other_bucket)
+        self.assertEqual(saved.directory, folder)
+
+    def test_someone_elses_bucket_is_refused(self):
+        from toto.vault.models import Bucket
+        theirs = Bucket.objects.create(
+            slug="theirs", name="Theirs", owner=self.other, storage_backend="local")
+        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
+        response = self.client.post(url, {"name": "x", "bucket": theirs.pk})
+        self.assertEqual(response.status_code, 404)
+
+    def test_an_image_watermark_reaches_the_print_page_and_junk_does_not(self):
+        from django.template.loader import render_to_string
+
+        from toto.cyprian import views as cyprian_views
+
+        good = "data:image/png;base64,iVBORw0K"
+        html = render_to_string("cyprian/print.html", {
+            "document": df.Document(title="R", content="<p>b</p>"),
+            "watermark_image": good, "document_css": "", "katex_css": "",
+        })
+        self.assertIn('<div class="cy-watermark-image">', html)
+        self.assertIn(good, html)
+
+        # The view drops anything that is not a data:image URI — a URL here
+        # would have WeasyPrint fetching the network on the writer's behalf.
+        class Req:
+            POST = {"watermark_image": "https://evil.example/x.png",
+                    "watermark": ""}
+        text, image = cyprian_views._asked_watermark(Req())
+        self.assertEqual(image, "")
+
     def test_the_watermark_reaches_every_print_page(self):
         # position:fixed repeats on every page in WeasyPrint — that is the whole
         # mechanism — and the text is autoescaped: a watermark is a stamp, not

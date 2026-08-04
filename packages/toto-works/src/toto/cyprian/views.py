@@ -137,6 +137,19 @@ def _media_list(user) -> list[dict]:
     return out
 
 
+def _picker_data(user):
+    """Buckets and directories the user may save into, as plain Python.
+
+    The same data `new_file_picker_json` serves the New Document flow, but
+    unserialised — `json_script` does the serialising here, and handing it a
+    pre-serialised string produces an island that parses back into a *string*.
+    """
+    import json as _json
+    buckets_json, dirs_json = new_file_picker_json(user)
+    return {"buckets": _json.loads(buckets_json),
+            "directories": _json.loads(dirs_json)}
+
+
 # ---------------------------------------------------------------------------
 # Library
 # ---------------------------------------------------------------------------
@@ -313,6 +326,9 @@ class DocumentEditView(LoginRequiredMixin, View):
             # undefined.
             "document_json": document.to_dict(),
             "vault_media_json": _media_list(request.user),
+            # The export modal's destination picker — the same bucket/folder
+            # "save-as" data the New Document flow uses, straight from vault.
+            "picker_json": _picker_data(request.user),
             "config_json": {
                 "canEdit": True,
                 "contentHash": vault_file.content_hash or "",
@@ -329,6 +345,10 @@ class DocumentEditView(LoginRequiredMixin, View):
                 # document — there is no title field in the editor.
                 "renditionBase": slugify(
                     (vault_file.title or "document").rsplit(".", 1)[0]) or "document",
+                # Where a rendition goes unless the writer picks otherwise:
+                # beside the document.
+                "home": {"bucket": vault_file.bucket_id,
+                         "directory": vault_file.directory_id or 0},
                 "text": {
                     "namePrompt": _("File name"),
                 },
@@ -661,6 +681,33 @@ def _sibling_name(vault_file, document, suffix: str) -> str:
     return f"{base}.{suffix}"
 
 
+def _asked_target(request, vault_file):
+    """(bucket, directory) the export modal chose, or the document's own.
+
+    Ownership goes through vault's `resolve_new_file_target`, the same gate the
+    New Document flow uses — no rendition can land in someone else's bucket.
+    """
+    bucket_id = (request.POST.get("bucket") or "").strip()
+    directory_id = (request.POST.get("directory") or "").strip()
+    if not bucket_id:
+        return vault_file.bucket, vault_file.directory
+    return resolve_new_file_target(request.user, bucket_id, directory_id or None)
+
+
+def _asked_watermark(request):
+    """(text, image_data_uri) from the export modal, both optional and capped.
+
+    The image must be a data: URI of an image — which is the only form the
+    picker produces — and small enough to be a stamp, not a poster. Anything
+    else is dropped silently: a bad watermark must not cost the export.
+    """
+    text = (request.POST.get("watermark") or "").strip()[:80]
+    image = (request.POST.get("watermark_image") or "").strip()
+    if image and (not image.startswith("data:image/") or len(image) > 2_000_000):
+        image = ""
+    return text, image
+
+
 def _asked_name(request, vault_file, document, suffix: str) -> str:
     """The name the writer typed into the save prompt, made safe.
 
@@ -677,23 +724,28 @@ def _asked_name(request, vault_file, document, suffix: str) -> str:
     return f"{base or 'document'}.{suffix}"
 
 
-def _save_beside(vault_file, *, name: str, data: bytes, file_type: str, owner):
-    """Write a rendition into the same bucket and folder as its source.
+def _save_beside(vault_file, *, name: str, data: bytes, file_type: str, owner,
+                 bucket=None, directory=None):
+    """Write a rendition into the vault — beside its source by default.
 
     Beside the document rather than in a renditions folder somewhere: the vault
     is the filesystem here, and a PDF of a report belongs where the report is.
-    Overwrites the previous rendition rather than accumulating `report-2.pdf` —
-    exporting twice is not two documents.
+    The export modal can point somewhere else (`bucket`/`directory`, ownership
+    already enforced by `resolve_new_file_target`). Overwrites the previous
+    rendition at that spot rather than accumulating `report-2.pdf` — exporting
+    twice is not two documents.
     """
+    if bucket is None:
+        bucket, directory = vault_file.bucket, vault_file.directory
     existing = VaultFile.objects.filter(
-        bucket=vault_file.bucket, directory=vault_file.directory,
+        bucket=bucket, directory=directory,
         title=name).first()
     target = existing or VaultFile(
         owner=owner, title=name,
         key=_unique_key(slugify(name.rsplit(".", 1)[0]) or "export",
-                        vault_file.bucket),
-        file_type=file_type, bucket=vault_file.bucket,
-        directory=vault_file.directory, is_public=False)
+                        bucket),
+        file_type=file_type, bucket=bucket,
+        directory=directory, is_public=False)
     if existing is None:
         target.save()
     target.file.save(name, ContentFile(data), save=True)
@@ -729,16 +781,17 @@ def document_save_pdf(request, file_pk):
     """Render the PDF and file it in the vault, beside the document."""
     vault_file = _get_owned_file(request, file_pk)
     document = _read_document(vault_file)
-    # Optional, plain text, capped: a watermark is a short stamp. Anything an
-    # attacker could put here is autoescaped by the print template anyway.
-    watermark = (request.POST.get("watermark") or "").strip()[:80]
+    watermark, watermark_image = _asked_watermark(request)
+    bucket, directory = _asked_target(request, vault_file)
     try:
-        raw = render_pdf.render(document, watermark=watermark)
+        raw = render_pdf.render(document, watermark=watermark,
+                                watermark_image=watermark_image)
     except render_pdf.PdfUnavailable as exc:
         return JsonResponse({"error": str(exc)}, status=503)
 
     saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "pdf"),
-                         data=raw, file_type="pdf", owner=request.user)
+                         data=raw, file_type="pdf", owner=request.user,
+                         bucket=bucket, directory=directory)
     return JsonResponse({
         "name": saved.title, "kind": "PDF",
         "url": reverse("cyprian:rendition", args=[saved.pk])})
@@ -762,9 +815,10 @@ def document_save_html(request, file_pk):
         "document_css": render_pdf.document_css(),
         "katex_css": render_pdf.katex_css(),
     })
+    bucket, directory = _asked_target(request, vault_file)
     saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "html"),
                          data=html.encode("utf-8"), file_type="html",
-                         owner=request.user)
+                         owner=request.user, bucket=bucket, directory=directory)
     return JsonResponse({
         "name": saved.title, "kind": "HTML",
         "url": reverse("cyprian:rendition", args=[saved.pk])})
