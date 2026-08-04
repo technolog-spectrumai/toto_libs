@@ -61,6 +61,12 @@ class Features:
     # unless a host says otherwise, and turning it off only drops toto.kanban.
     # Nothing has a model FK into it, so it leaves nothing dangling.
     kanban: bool
+    # The zenobia workspace labs (host-owned apps, resolved here since 1.47 so
+    # their closures cannot be forgotten: a Python lab whose image lacks the
+    # jupyter packages, or a TeX lab whose image lacks pdflatex, is a lab in
+    # name only). BUILD_AMBROSIA is the pre-split alias enabling both.
+    antaresia: bool
+    texlab: bool
     # Derived.
     editor: bool
     vicuna: bool
@@ -122,15 +128,20 @@ def resolve_features(get) -> Features:
     weather = flag(get, "BUILD_WEATHER", tier_realtime)       # toto.weather (FKs workflows.WorkflowRun)
 
     # Editing features (standalone — each enabled on its own; no labs tier).
-    # sketch, canasta, travels and gitvault are host-owned apps (see the suite
-    # README): the flags stay here because they are part of the host contract —
-    # needs_channels depends on sketch and canasta, and the workflows closure on
-    # gitvault — but registry.FEATURE_APPS deliberately has no entry for them,
-    # since the host supplies the INSTALLED_APPS line from its own portion.
-    # (BUILD_LATEX left in 1.46: the workspace split's texlab/antaresia are
-    # zenobia-host flags — BUILD_TEXLAB/BUILD_ANTARESIA — resolved in that
-    # host's settings, not here. `texlive` stays; see where it is resolved below.)
+    # sketch, canasta, travels, gitvault, antaresia and texlab are host-owned
+    # apps (see the suite README): the flags stay here because they are part of
+    # the host contract — needs_channels depends on sketch and canasta, the
+    # workflows closure on gitvault and texlab, realtime on antaresia — but
+    # registry.FEATURE_APPS deliberately has no entry for them, since the host
+    # supplies the INSTALLED_APPS line from its own portion. (BUILD_LATEX left
+    # in 1.46 with the workspace split; the labs joined here in 1.47 so their
+    # closures hold for ANY config, not just builder-written ones.)
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
+    # The pre-split alias: BUILD_AMBROSIA means both labs, and an explicit "0"
+    # on a specific flag still wins over it.
+    _ambrosia = flag(get, "BUILD_AMBROSIA")
+    antaresia = flag(get, "BUILD_ANTARESIA", _ambrosia)       # zenobia/toto/antaresia — Python lab
+    texlab = flag(get, "BUILD_TEXLAB", _ambrosia)             # zenobia/toto/texlab — TeX lab
     # toto.canasta lives in zenobia's own portion (zenobia/toto/canasta). Its
     # table is a websocket, so it belongs in the needs_channels closure below —
     # and through it in `realtime`, which is what decides whether the image
@@ -216,6 +227,9 @@ def resolve_features(get) -> Features:
     # weather, fileservices and gitvault all have a model FK to
     # workflows.WorkflowRun, so they require the workflows app —
     # else Django's system check fails with fields.E300/E307.
+    # texlab is here for a dispatch edge, not an FK: every compile runs as a
+    # workflow (`ambrosia-compile-latex`), so without the engine the Compile
+    # button can only refuse.
     #
     # Neither app still in toto-media appears here, which is new in 1.21: vod has no
     # models at all, and ocr's last workflows edge was a migration dependency left
@@ -226,7 +240,7 @@ def resolve_features(get) -> Features:
     # manta is NOT here either, though it is in the same package as fileservices: it
     # has exactly one FK (FileJob.owner → User) and names workflows nowhere. What it
     # needs is celery, which the realtime tier below installs.
-    if weather or fileservices or gitvault:
+    if weather or fileservices or gitvault or texlab:
         workflows = True
     # connectors / formica feed or curate the ingestor → bento/ravioli graph.
     #
@@ -275,7 +289,10 @@ def resolve_features(get) -> Features:
     # boot. It does not join the workflows closure — it has no FK to WorkflowRun and
     # dispatches its own task. Whether a worker container actually runs is still
     # services.celery in the profile; without one, mail queues and never leaves.
-    realtime = chat or workflows or weather or needs_channels or manta or jess
+    # antaresia is here for its pip layer, not a websocket: jupyter_client and
+    # ipykernel ride requirements.realtime.txt, and a Python lab without them
+    # boots fine and then fails on the first Run click.
+    realtime = chat or workflows or weather or needs_channels or manta or jess or antaresia
     neo4j = graph
 
     # Native binaries, each following the feature that shells out to it. tesseract
@@ -289,21 +306,18 @@ def resolve_features(get) -> Features:
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
     ffmpeg = fileservices or manta or explicit_ffmpeg
-    # texlive (pdflatex) has TWO independent consumers, both on zenobia now:
-    # TeX Lab compilation (host-owned toto.texlab, flag BUILD_TEXLAB resolved in
-    # host settings) and notarius contract→PDF export, a separate implementation
-    # sharing no import with texlab and installed unconditionally. So it must NOT
-    # default to either one — deriving it from a feature meant a host that moved
-    # the feature away silently lost notarius PDF export, and there was nothing
-    # to catch that. Every profile states it;
-    # test_latex_profiles_state_whether_they_want_texlive in the monorepo suite
-    # is the enforcement.
-    texlive = flag(get, "INSTALL_TEXLIVE")
+    # texlive (pdflatex) has exactly ONE consumer since 1.47: TeX Lab
+    # compilation. (notarius went WeasyPrint in 1.44 and signature-only in the
+    # rework — no pdflatex anywhere else.) So it now DERIVES from texlab: a TeX
+    # workspace whose image lacks the compiler is a lab in name only. An
+    # explicit INSTALL_TEXLIVE=0 still wins, for the deliberate edit-only host.
+    texlive = flag(get, "INSTALL_TEXLIVE", texlab)
     # WeasyPrint (HTML→PDF) is a PIP layer, not an apt one: its native libraries
     # (cairo/pango/gdk-pixbuf/libffi) already ship in every host's base image, so all
-    # that is gated is the wheel and the feature. Its own explicit flag, like texlive:
-    # notarius contract→PDF is the first consumer and the invoice generator is the
-    # planned second, so it must not derive from either.
+    # that is gated is the wheel and the feature. Its own explicit flag: the
+    # cyprian/memo PDF exports are the consumers now (the reworked notarius
+    # stamps with pypdf/reportlab and renders nothing), and the planned invoice
+    # generator would be the next — it must not derive from any one of them.
     weasyprint = flag(get, "BUILD_WEASYPRINT")
 
     return Features(
@@ -329,6 +343,8 @@ def resolve_features(get) -> Features:
         primula=primula,
         geo=geo,
         kanban=kanban,
+        antaresia=antaresia,
+        texlab=texlab,
         editor=editor,
         vicuna=vicuna,
         sabbia_openai=sabbia_openai,

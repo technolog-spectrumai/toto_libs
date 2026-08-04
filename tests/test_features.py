@@ -225,6 +225,35 @@ def test_texlive_is_its_own_explicit_flag():
     assert resolve(INSTALL_TEXLIVE=1).texlive is True
 
 
+def test_the_labs_carry_their_closures():
+    # 1.47: the zenobia workspace labs resolve here so their closures cannot be
+    # forgotten by a hand-written config. texlab compiles through the workflows
+    # engine and derives the TeX layer; antaresia's jupyter packages ride the
+    # realtime pip layer.
+    f = resolve(BUILD_TEXLAB=1)
+    assert (f.texlab, f.workflows, f.texlive, f.realtime) == (True, True, True, True)
+    f = resolve(BUILD_ANTARESIA=1)
+    assert (f.antaresia, f.realtime) == (True, True)
+    assert (f.workflows, f.texlive) == (False, False)   # a Python lab buys no TeX
+
+
+def test_the_ambrosia_alias_still_means_both_labs():
+    f = resolve(BUILD_AMBROSIA=1)
+    assert (f.antaresia, f.texlab, f.texlive, f.workflows) == (True, True, True, True)
+    # An explicit "0" on a specific flag wins over the alias — and takes its
+    # closure with it.
+    f = resolve(BUILD_AMBROSIA=1, BUILD_TEXLAB=0)
+    assert (f.antaresia, f.texlab, f.texlive) == (True, False, False)
+
+
+def test_an_edit_only_tex_lab_is_a_deliberate_refusal():
+    # INSTALL_TEXLIVE=0 with the lab on: legal (write and read, never compile),
+    # but only ever explicit — absence means the compiler ships.
+    f = resolve(BUILD_TEXLAB=1, INSTALL_TEXLIVE=0)
+    assert (f.texlab, f.texlive) == (True, False)
+    assert resolve(INSTALL_TEXLIVE=1).texlive is True   # notarius-free standalone still works
+
+
 def test_weasyprint_is_its_own_explicit_flag():
     # HTML→PDF is a pip layer whose native libs already ship in every base image, so it
     # gates only the wheel and the feature. Off by default, on with BUILD_WEASYPRINT=1,
