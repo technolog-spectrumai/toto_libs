@@ -45,6 +45,21 @@ gone. A deck looks the same on whatever machine you present it from.
       border-radius: 6px; font-size: 13px; text-decoration: none;
     }
     .present-toolbar a:hover { background: rgba(0, 0, 0, 0.75); }
+
+    /* Reveal's navigation arrows and progress bar draw in `currentColor`, and
+       their colour normally comes from a reveal THEME stylesheet — which this
+       player deliberately does not load (memo themes its own slides). Without
+       it the arrows inherited black, which on the black deck theme meant
+       invisible arrows and a player people could only drive with the space
+       bar. The deck theme class sits on the body element, so the colour follows it. */
+    /* Child combinator on purpose: reveal appends both widgets as direct
+       children of .reveal, and a legacy html block could carry its own element
+       classed "controls" or "progress" inside a slide — which a descendant
+       selector would retint. */
+    .memo-theme-black .reveal > .controls { color: rgba(255, 255, 255, 0.9); }
+    .memo-theme-white .reveal > .controls { color: rgba(0, 0, 0, 0.75); }
+    .memo-theme-black .reveal > .progress { color: rgba(255, 255, 255, 0.6); background: rgba(255, 255, 255, 0.15); }
+    .memo-theme-white .reveal > .progress { color: rgba(0, 0, 0, 0.5); background: rgba(0, 0, 0, 0.12); }
   </style>
 </head>
 <body class="memo-player memo-theme-{{ presentation.theme|default:'black' }}">
