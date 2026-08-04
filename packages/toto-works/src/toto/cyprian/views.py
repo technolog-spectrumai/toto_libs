@@ -788,6 +788,13 @@ def document_save_pdf(request, file_pk):
                                 watermark_image=watermark_image)
     except render_pdf.PdfUnavailable as exc:
         return JsonResponse({"error": str(exc)}, status=503)
+    except Exception:                                  # noqa: BLE001
+        # A corrupt embedded image (or any other render-time surprise) must
+        # come back as a sentence, not a 500: the document itself is fine and
+        # still saves — only this export failed.
+        return JsonResponse({"error": "The PDF could not be rendered. An "
+                             "embedded image may be corrupt — try removing "
+                             "the most recently added one."}, status=422)
 
     saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "pdf"),
                          data=raw, file_type="pdf", owner=request.user,
