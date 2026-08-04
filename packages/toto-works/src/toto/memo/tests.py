@@ -1690,6 +1690,60 @@ class LayoutBoxTests(TestCase):
                 self.assertEqual(back.slides[0].blocks[0].type, block_type)
 
 
+class DeletionTests(TestCase):
+    """Deleting a deck is the VAULT's delete, surfaced — not a second one.
+
+    memo adds only buttons; `vault:delete_file` owns the rules (owner-only,
+    bytes and row together). These tests pin the surfacing and the reuse.
+    """
+
+    def setUp(self):
+        from django.core.files.base import ContentFile
+        self._content_file = ContentFile
+        # A scratch MEDIA_ROOT, like every file-touching class here: the real
+        # one is a root-owned docker bind mount on a deployed checkout.
+        self._tmp = tempfile.mkdtemp()
+        self._override = override_settings(MEDIA_ROOT=self._tmp)
+        self._override.enable()
+        self.addCleanup(self._override.disable)
+        Platform.objects.create(site_name="T", author="t", publication_year=2026)
+        self.owner = User.objects.create_user("deck-owner", password="p")
+        self.other = User.objects.create_user("deck-other", password="p")
+        self.bucket = Bucket.objects.create(
+            slug="del", name="Del", owner=self.owner, storage_backend="local")
+        deck = pf.new_presentation(title="Doomed")
+        self.vf = VaultFile(owner=self.owner, title="doomed.pml", key="doomed",
+                            file_type="presentation", bucket=self.bucket,
+                            is_public=True, is_encrypted=False)
+        self.vf.file.save("doomed.pml",
+                          self._content_file(pf.dumps(deck).encode()),
+                          save=True)
+
+    def test_the_gallery_offers_delete_to_the_owner_only(self):
+        self.client.force_login(self.owner)
+        body = self.client.get(reverse("memo:index")).content.decode()
+        self.assertIn("destroy(%d" % self.vf.pk, body)
+        self.client.force_login(self.other)
+        body = self.client.get(reverse("memo:index")).content.decode()
+        self.assertNotIn("destroy(%d" % self.vf.pk, body)
+
+    def test_the_editor_offers_delete_through_the_vault(self):
+        self.client.force_login(self.owner)
+        body = self.client.get(reverse("memo:edit", args=[self.vf.pk])).content.decode()
+        self.assertIn("Delete presentation", body)
+        self.assertIn(reverse("vault:delete_file"), body)
+
+    def test_the_vault_endpoint_deletes_a_deck_for_its_owner_only(self):
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(
+            reverse("vault:delete_file"), {"file_pk": self.vf.pk}).status_code, 404)
+        self.client.force_login(self.owner)
+        response = self.client.post(
+            reverse("vault:delete_file"), {"file_pk": self.vf.pk})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(VaultFile.objects.filter(pk=self.vf.pk).exists())
+
+
 class TipTapVendorTests(SimpleTestCase):
     """The vendored TipTap closure and the import map that resolves it.
 

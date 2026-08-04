@@ -657,3 +657,39 @@ class ContractIntegrationTests(CyprianTestCase):
         self.assertIn("<strong>from the writer</strong>", html)
         # Sanitised there AND here: a `.contract` can arrive by upload.
         self.assertNotIn("alert(1)", html)
+
+
+class DeletionTests(CyprianTestCase):
+    """Deleting a document is the VAULT's delete, surfaced — not a second one."""
+
+    def setUp(self):
+        super().setUp()
+        self.vault_file = VaultFile.objects.create(
+            owner=self.owner, title="doomed.xml", file_type="document",
+            bucket=self.bucket,
+            file=SimpleUploadedFile("doomed.xml", df.dumps(
+                df.Document(title="Doomed", content="<p>x</p>")).encode()))
+
+    def test_the_library_offers_delete_to_the_owner_only(self):
+        self.client.force_login(self.owner)
+        body = self.client.get(reverse("cyprian:index")).content.decode()
+        self.assertIn("destroy(%d" % self.vault_file.pk, body)
+        self.client.force_login(self.other)
+        body = self.client.get(reverse("cyprian:index")).content.decode()
+        self.assertNotIn("destroy(%d" % self.vault_file.pk, body)
+
+    def test_the_writer_offers_delete_through_the_vault(self):
+        self.client.force_login(self.owner)
+        body = self.client.get(
+            reverse("cyprian:edit", args=[self.vault_file.pk])).content.decode()
+        self.assertIn("Delete document", body)
+        self.assertIn(reverse("vault:delete_file"), body)
+
+    def test_the_vault_endpoint_deletes_a_document_for_its_owner_only(self):
+        self.client.force_login(self.other)
+        self.assertEqual(self.client.post(
+            reverse("vault:delete_file"), {"file_pk": self.vault_file.pk}).status_code, 404)
+        self.client.force_login(self.owner)
+        self.assertEqual(self.client.post(
+            reverse("vault:delete_file"), {"file_pk": self.vault_file.pk}).status_code, 200)
+        self.assertFalse(VaultFile.objects.filter(pk=self.vault_file.pk).exists())

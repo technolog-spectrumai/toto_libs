@@ -227,6 +227,7 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "vault_media_json": _media_list(request.user),
                 "config_json": {
                     "canEdit": True,
+                    "filePk": vault_file.pk,
                     # The editor sends this back with every save; the endpoint
                     # answers 409 if the file moved on underneath it.
                     "contentHash": vault_file.content_hash or "",
@@ -234,6 +235,9 @@ class PresentationEditView(LoginRequiredMixin, View):
                         "save": reverse("memo:save", args=[file_pk]),
                         "embed": reverse("memo:media_embed"),
                         "upload": reverse("memo:media_upload"),
+                        # The vault's own delete — reused, not duplicated.
+                        "destroy": reverse("vault:delete_file"),
+                        "index": reverse("memo:index"),
                     },
                     # Strings the editor puts in a browser prompt/dialog, where
                     # a {% trans %} in the template cannot reach.
@@ -574,6 +578,7 @@ class PresentationIndexView(View):
         presentations = []
         for f in page.object_list:
             presentations.append({
+                "file_pk": f.pk,
                 "title": f.title,
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at,

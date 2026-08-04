@@ -18,7 +18,26 @@
 </script>
 {% endif %}
 <section
+{% comment %} Translated OUTSIDE the x-data attribute and passed through
+escapejs: a raw {% templatetag openblock %} trans {% templatetag closeblock %} inside a single-quoted JS string breaks the whole
+component the day a translation contains an apostrophe.{% endcomment %}
+{% trans "Delete" as i18n_delete %}
+{% trans "This cannot be undone." as i18n_undone %}
   x-data="{ showCreate: false, showImport: false, fname: '', bucketId: '', dirId: '',
+            destroy(pk, title) {
+              var name = String(title || '').replace(/\s+/g, ' ').trim();
+              if (!confirm(this.i18nDelete + ' \u201C' + name + '\u201D? ' + this.i18nUndone)) return;
+              var csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+              var body = new FormData();
+              body.append('file_pk', pk);
+              fetch('{% url "vault:delete_file" %}', {
+                method: 'POST', headers: { 'X-CSRFToken': csrf }, body: body
+              }).then(r => r.json())
+                .then(d => { if (d.ok) location.reload(); else alert(d.error || 'Could not delete.'); })
+                .catch(() => alert('Could not delete.'));
+            },
+            i18nDelete: '{{ i18n_delete|escapejs }}',
+            i18nUndone: '{{ i18n_undone|escapejs }}',
             buckets: window._newFileBuckets || [],
             directories: window._newFileDirectories || [],
             get filteredDirs() { return this.directories.filter(d => String(d.bucket_id) === String(this.bucketId)); } }"
@@ -88,6 +107,11 @@
                 {% if p.is_owner %}
                   <a href="{{ p.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                     <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+                  {% comment %} Deletion is the vault's, reused — the same
+                  owner-only endpoint the file manager calls.{% endcomment %}
+                  <button type="button" @click="destroy({{ p.file_pk }}, '{{ p.title|escapejs }}')"
+                          class="inline-flex items-center gap-2 underline opacity-60 transition hover:opacity-100 hover:text-red-600">
+                    <i class="fa-solid fa-trash-can"></i> {% trans "Delete" %}</button>
                 {% endif %}
               </div>
             </div>

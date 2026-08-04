@@ -145,6 +145,35 @@
       _fitTimer: null,
       _inflight: false,
 
+
+      /* Delete the whole file, through the vault's own owner-only endpoint —
+       * the same one the file manager uses, so the rules cannot drift. The
+       * confirm names the file: "delete" from inside an editor is the one
+       * button here whose mistake cannot be undone. */
+      destroyFile: function () {
+        var name = String(this.state.title || "this presentation").replace(/\s+/g, " ").trim();
+        if (!confirm('Delete \u201C' + name + '\u201D? This cannot be undone.')) return;
+        // Disarm the autosave FIRST: a debounced save firing during the delete
+        // round-trip would 404 against the vanishing file, and an in-flight
+        // one would trip the beforeunload guard on the way out — an "unsaved
+        // changes" prompt for a file that no longer exists.
+        if (this._timer) { clearTimeout(this._timer); this._timer = null; }
+        if (this._ceiling) { clearTimeout(this._ceiling); this._ceiling = null; }
+        this.ui.dirty = false;
+        var body = new FormData();
+        body.append("file_pk", String(this.config.filePk || ""));
+        var self = this;
+        fetch(this.config.urls.destroy, {
+          method: "POST", headers: { "X-CSRFToken": csrf() }, body: body
+        }).then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d.ok) { self.ui.status = d.error || "Could not delete."; return; }
+            self._inflight = false;         // nothing left to finish saving
+            global.location.assign(self.config.urls.index);
+          })
+          .catch(function () { self.ui.status = "Could not delete."; });
+      },
+
       // ---- boot ------------------------------------------------------------
       boot: function () {
         var self = this;

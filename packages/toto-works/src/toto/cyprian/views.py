@@ -205,6 +205,7 @@ class DocumentIndexView(View):
             except Exception:                          # noqa: BLE001
                 continue
             documents.append({
+                "file_pk": f.pk,
                 "title": doc.title or f.title,
                 "owner": f.owner.username,
                 "uploaded": f.uploaded_at,
@@ -331,6 +332,7 @@ class DocumentEditView(LoginRequiredMixin, View):
             "picker_json": _picker_data(request.user),
             "config_json": {
                 "canEdit": True,
+                "filePk": vault_file.pk,
                 "contentHash": vault_file.content_hash or "",
                 "urls": {
                     "save": reverse("cyprian:save", args=[file_pk]),
@@ -339,6 +341,9 @@ class DocumentEditView(LoginRequiredMixin, View):
                     "saveHtml": reverse("cyprian:save_html", args=[file_pk]),
                     "embed": reverse("cyprian:media_embed"),
                     "upload": reverse("cyprian:media_upload"),
+                    # The vault's own delete — reused, not duplicated.
+                    "destroy": reverse("vault:delete_file"),
+                    "index": reverse("cyprian:index"),
                 },
                 # The suggestion the save prompt starts from: the file's own
                 # name, which is the only name the writer has ever given this
