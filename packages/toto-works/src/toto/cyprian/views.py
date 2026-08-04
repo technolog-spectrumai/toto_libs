@@ -11,6 +11,7 @@ import hashlib
 import json
 import mimetypes
 
+from django.apps import apps
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -559,6 +560,8 @@ def from_contract(request, file_pk):
     format for free, so the link survives a download, an edit by hand and a
     restore from backup.
     """
+    if not apps.is_installed("toto.notarius"):
+        raise Http404("No contracts on this host.")
     from toto.notarius import contract_format
 
     contract_file = _owned_file(request, file_pk, types=["contract"])
@@ -616,8 +619,12 @@ def _write_back_to_contract(document, *, user) -> None:
 
     Silent when the link is stale or the contract is not the user's: a document
     that outlived its contract is still a document, and refusing to save it
-    would be losing work over a broken pointer.
+    would be losing work over a broken pointer. Silent, too, on a host with no
+    notarius at all — delta has documents but no contracts — where the link is
+    just an inert meta field that survives the round trip like any other.
     """
+    if not apps.is_installed("toto.notarius"):
+        return
     from toto.notarius import contract_format
 
     raw_pk = (document.meta or {}).get(CONTRACT_META)

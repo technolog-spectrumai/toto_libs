@@ -3,6 +3,7 @@
 import json
 from unittest import mock, skipUnless
 
+from django.apps import apps
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
@@ -511,11 +512,15 @@ class ExportTests(CyprianTestCase):
         self.assertTrue(response.content.startswith(b"%PDF"))
 
 
+@skipUnless(apps.is_installed("toto.notarius"),
+            "toto.notarius is a zenobia host app — delta has no contracts")
 class ContractIntegrationTests(CyprianTestCase):
     """toto.notarius owns the contract; cyprian owns its prose.
 
     The link is one meta field in the document, so it round-trips through the
     format for free — it survives a download, a hand edit and a restore.
+    The skip is the same fact the views express with `apps.is_installed`
+    guards: cyprian must run on a host with no contracts at all.
     """
 
     def _contract(self, body="Hello **world**."):
