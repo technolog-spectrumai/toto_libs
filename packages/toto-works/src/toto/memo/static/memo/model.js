@@ -85,15 +85,24 @@
     condensed: "memo-font-condensed"
   };
 
-  /* What the "add block" menu offers. `html` is deliberately absent: it exists
-   * only as the shape a v1 slide upgrades into, and offering it would invite
-   * people back into hand-writing HTML — the thing this editor replaces. */
+  /* What the box toolbar offers.
+   *
+   * `html` is deliberately absent: it exists only as the shape a v1 slide
+   * upgrades into, and offering it would invite people back into hand-writing
+   * markup — the thing this editor replaces.
+   *
+   * `svg` is absent too, and that is a change rather than an oversight. An SVG
+   * is a PICTURE, and asking someone to know which kind of picture file they
+   * have before they can choose it is a question about file formats, not about
+   * the slide. Image accepts both: the dialog switches the box to an svg node
+   * by itself when the payload turns out to be markup, because an <img src>
+   * pointing at SVG source would simply show nothing. Existing svg boxes still
+   * render and still edit. */
   var BLOCK_TYPES = [
     { id: "heading", label: "Heading", icon: "fa-heading" },
     { id: "text",    label: "Text",    icon: "fa-paragraph" },
     { id: "list",    label: "List",    icon: "fa-list-ul" },
     { id: "image",   label: "Image",   icon: "fa-image" },
-    { id: "svg",     label: "SVG",     icon: "fa-bezier-curve" },
     { id: "code",    label: "Code",    icon: "fa-code" },
     { id: "quote",   label: "Quote",   icon: "fa-quote-left" },
     { id: "formula", label: "Formula", icon: "fa-square-root-variable" }

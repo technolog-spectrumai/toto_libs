@@ -482,6 +482,24 @@ class EditorPageTests(TestCase):
                 self.assertNotIn(word, label,
                                  f"layout label {label!r} names content")
 
+    def test_the_toolbar_offers_no_svg_button(self):
+        # An SVG is a picture. You insert it with Image — from the vault or an
+        # upload — and the block becomes an `svg` when the payload turns out to
+        # be markup. Asking the writer which kind of picture file they were
+        # about to choose is a question with no useful answer, so the toolbar
+        # does not ask it.
+        model = (pathlib.Path(pf.__file__).parent
+                 / "static" / "memo" / "model.js").read_text()
+        types = model.split("var BLOCK_TYPES = [", 1)[1].split("];", 1)[0]
+        offered = re.findall(r'id: "([^"]+)"', types)
+        self.assertIn("image", offered)
+        self.assertNotIn("svg", offered)
+
+    def test_the_svg_block_type_still_exists_on_the_server(self):
+        # Dropping the BUTTON is not dropping the type: decks in the wild hold
+        # svg blocks, they still render, and the image dialog still creates them.
+        self.assertIn("svg", pf.BLOCK_TYPES)
+
     def test_the_floating_widgets_are_suppressed(self):
         self.assertNotIn("render_floating_plugins", self._page())
 

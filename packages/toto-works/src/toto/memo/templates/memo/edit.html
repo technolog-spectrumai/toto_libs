@@ -482,18 +482,16 @@ old one carried 210 lines of inline Alpine that no test could reach.
           </div>
         </template>
 
-        {# svg and code — ACE, the editor this platform already uses for text #}
-        <template x-if="ui.dialog.type === 'svg' || ui.dialog.type === 'code'">
+{% comment %} code, and the v1 `html` escape hatch — ACE, the editor this
+        platform already uses for text. NOT svg: an SVG is a picture, inserted
+        through the image dialog above, never typed here.{% endcomment %}
+        <template x-if="ui.dialog.type === 'code' || ui.dialog.type === 'html'">
           <div class="space-y-2">
             <input x-show="ui.dialog.type === 'code'" type="text"
                    x-model="ui.dialog.attrs.language"
                    placeholder="{% trans 'Language (optional) — python, sql, …' %}"
                    class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
             <div id="memo-source" class="h-[46vh] w-full rounded-lg border border-current/20"></div>
-            <p class="text-xs opacity-55" x-show="ui.dialog.type === 'svg'">
-              {% blocktrans %}Paste an &lt;svg&gt; element. Scripts, event handlers and
-              external references are stripped when the deck is saved.{% endblocktrans %}
-            </p>
           </div>
         </template>
 
@@ -512,9 +510,17 @@ old one carried 210 lines of inline Alpine that no test could reach.
         {# image — from the vault or from your machine, never a URL box #}
         <template x-if="ui.dialog.type === 'image'">
           <div class="space-y-3">
-            <div x-show="ui.dialog.payload" class="rounded-lg border border-current/15 p-2 text-center">
+            {% comment %} A picture is a picture: PNG, JPEG, GIF, WebP or SVG,
+            chosen the same way. Only the RENDERING differs — SVG is markup and
+            goes in inline, everything else is a data URI in an <img> — and that
+            is decided from the payload rather than asked about.{% endcomment %}
+            <div x-show="ui.dialog.payload && !ui.dialog.isSvg"
+                 class="rounded-lg border border-current/15 p-2 text-center">
               <img :src="ui.dialog.payload" alt="" class="mx-auto max-h-56">
             </div>
+            <div x-show="ui.dialog.payload && ui.dialog.isSvg" x-cloak
+                 class="rounded-lg border border-current/15 p-2 text-center [&_svg]:mx-auto [&_svg]:max-h-56"
+                 x-html="ui.dialog.isSvg ? ui.dialog.payload : ''"></div>
             <div class="flex flex-wrap items-center gap-2">
               <input type="text" x-model="ui.dialog.attrs.alt"
                      placeholder="{% trans 'Describe the picture (alt text)' %}"
@@ -532,7 +538,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
               </label>
             </div>
             <input type="search" x-model="ui.mediaSearch"
-                   placeholder="{% trans 'Search images and SVGs in your buckets' %}"
+                   placeholder="{% trans 'Search pictures in your buckets' %}"
                    class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
             <div class="max-h-56 overflow-y-auto rounded-lg border border-current/10">
               <template x-for="m in filteredMedia" :key="m.pk">
@@ -587,7 +593,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% block end_script %}
   {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
-  {% comment %} Trix for prose, ACE for SVG and code — both vendored under
+  {% comment %} Trix for prose, ACE for code — both vendored under
      core/static/vendor and listed in every host's download_vendor.py.{% endcomment %}
   <script src="{% static 'vendor/trix/trix.umd.min.js' %}"></script>
   {% comment %} ACE, and the files it cannot fetch for itself.

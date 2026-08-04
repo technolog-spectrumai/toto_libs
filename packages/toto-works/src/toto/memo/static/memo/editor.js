@@ -428,7 +428,10 @@
         this.ui.targetSlot = slot;
         this.ui.focusedId = block.id;
         this.ui.dialog = {
-          open: true, slot: slot, type: block.type,
+          open: true, slot: slot,
+          // An svg box opens as the picture dialog it was chosen from.
+          type: block.type === "svg" ? "image" : block.type,
+          isSvg: block.type === "svg",
           payload: block.payload || "",
           items: (block.items || []).join("\n"),
           attrs: Object.assign({}, block.attrs || {})
@@ -445,13 +448,16 @@
         this.ui.dialog.open = false;
       },
 
-      /* ACE for SVG, code and the v1 html escape hatch. Mounted when the dialog
+      /* ACE for code and the v1 html escape hatch. Mounted when the dialog
        * opens and destroyed when it closes: Alpine rebuilds this subtree, and an
        * ACE bound to a detached div is a silent no-op that looks like a broken
-       * editor. */
+       * editor.
+       *
+       * Not for `svg` — an SVG is a picture, chosen in the image dialog, never
+       * typed. See openBoxDialog. */
       mountSource: function () {
         var type = this.ui.dialog.type;
-        if (["svg", "code", "html"].indexOf(type) === -1) return;
+        if (["code", "html"].indexOf(type) === -1) return;
         if (typeof ace === "undefined") return;
         var host = document.getElementById("memo-source");
         if (!host) return;
@@ -460,7 +466,7 @@
         this._ace.setTheme(aceTheme());
         // Only five modes are vendored; anything else would 404 and leave the
         // editor with no highlighting at all. Text is the honest fallback.
-        var mode = type === "svg" || type === "html" ? "ace/mode/xml" : "ace/mode/text";
+        var mode = type === "html" ? "ace/mode/xml" : "ace/mode/text";
         var language = (this.ui.dialog.attrs.language || "").toLowerCase();
         if (type === "code" && ["python", "html", "xml", "latex"].indexOf(language) !== -1) {
           mode = "ace/mode/" + language;
@@ -509,13 +515,13 @@
               self.ui.status = (data && data.error) || "Could not embed that.";
               return;
             }
-            // An SVG picked into an image box becomes an SVG box: the payload
-            // decides what it is, and rendering markup through <img src> would
-            // simply show nothing.
-            if (data.type === "svg") self.ui.dialog.type = "svg";
+            // A picture is a picture: PNG, JPEG or SVG, chosen the same way.
+            // What differs is only how it RENDERS — markup through <img src>
+            // would show nothing — so the kind is remembered and applied to the
+            // block on Insert, rather than swapping the dialog under the user.
+            self.ui.dialog.isSvg = data.type === "svg";
             self.ui.dialog.payload = data.payload;
             if (!self.ui.dialog.attrs.alt) self.ui.dialog.attrs.alt = data.alt || "";
-            self.$nextTick(function () { self.mountSource(); });
           })
           .catch(function () {
             self.ui.mediaBusy = false;
@@ -543,10 +549,9 @@
               self.ui.status = (data && data.error) || "Upload failed.";
               return;
             }
-            if (data.type === "svg") self.ui.dialog.type = "svg";
+            self.ui.dialog.isSvg = data.type === "svg";
             self.ui.dialog.payload = data.payload;
             if (!self.ui.dialog.attrs.alt) self.ui.dialog.attrs.alt = data.alt || "";
-            self.$nextTick(function () { self.mountSource(); });
           })
           .catch(function () {
             self.ui.mediaBusy = false;
@@ -575,8 +580,12 @@
         if (d.type === "list") {
           items = items.map(function (item) { return sanitize.inline(item); });
         }
+        // An image box holds whichever kind of picture was chosen: SVG is
+        // markup and renders inline, everything else is a data URI in an <img>.
+        var type = d.type === "image" && d.isSvg ? "svg" : d.type;
+
         this.mutate(function () {
-          block.type = d.type;
+          block.type = type;
           block.payload = payload;
           block.items = items;
           block.attrs = attrs;

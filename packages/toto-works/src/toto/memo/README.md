@@ -163,8 +163,12 @@ glyph as a box, which is worse than showing the source.
 ```
 
 - **Layouts**: `title-content`, `two-column`, `full-bleed`, `section`, `quote`.
-- **Blocks**: `heading`, `text`, `list`, `image`, `svg`, `code`, `quote`,
-  `formula`, plus `html` — the escape hatch, hidden from the add menu.
+- **Blocks**: `heading`, `text`, `list`, `image`, `code`, `quote`,
+  `formula`, plus `svg` and `html` — both real block types, neither offered in
+  the toolbar. An SVG is a *picture*: you insert it with **Image**, from the
+  vault or an upload, and the block becomes an `svg` when the payload turns out
+  to be markup rather than a data URI. Asking a writer which kind of picture
+  file they were about to choose was a question with no useful answer.
 - **Every payload is CDATA-wrapped**, with no per-type exceptions. It reads
   noisier than escaped text and it is the only rule that cannot lose a byte,
   including a literal `]]>` (split across two sections, as v1 already did).
@@ -264,9 +268,9 @@ the canvas renders and the dialog writes:
 |---|---|
 | heading, text, quote | Trix — bold, italics, links, lists |
 | list | one item per line, which is how people type a list |
-| svg, code, the v1 `html` | ACE, XML or plain-text mode |
+| code, the v1 `html` | ACE, XML or plain-text mode |
 | formula | LaTeX with a live KaTeX preview and the cheatsheet |
-| image | your vault, or an upload, with alt text and fit |
+| image, svg | your vault, or an upload, with alt text and fit — one dialog for both, previewing a data URI in an `<img>` and markup inline |
 
 Because nothing is edited in place, what the canvas shows is always exactly what
 the file holds — a slide can no longer be half-edited, and the autofit
