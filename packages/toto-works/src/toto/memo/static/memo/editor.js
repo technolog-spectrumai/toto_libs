@@ -117,6 +117,8 @@
         // Which marks are under the caret in the prose field. Reactive, so the
         // toolbar buttons can show themselves as active — see syncProse.
         prose: {},
+        // The new-slide ask: which geometry, and what the slide is called.
+        slideDialog: { open: false, title: "", layout: "title-content" },
         // Reactive mirrors of MemoHistory's state — see canUndo.
         canUndo: false,
         canRedo: false,
@@ -405,13 +407,33 @@
       // ---- slides ----------------------------------------------------------
       select: function (id) { this.ui.activeId = id; this.ui.focusedId = ""; },
 
-      addSlide: function (layout) {
+      addSlide: function (layout, title) {
         var self = this;
         var slide = M.newSlide(layout || "title-content");
+        slide.title = String(title || "").trim();
         this.mutate(function (s) {
           s.slides.splice(self.activeIndex + 1, 0, slide);
         });
         this.select(slide.id);
+      },
+
+      /* The new-slide modal. A dropdown of eleven geometry names asked the
+       * writer to imagine each one; the modal shows them as a picker and takes
+       * the slide's title in the same breath, so a new slide arrives named
+       * rather than as another "Untitled". */
+      openSlideDialog: function () {
+        var self = this;
+        this.ui.slideDialog = { open: true, title: "", layout: "title-content" };
+        this.$nextTick(function () {
+          if (self.$refs.slideTitle) self.$refs.slideTitle.focus();
+        });
+      },
+
+      confirmSlide: function () {
+        var d = this.ui.slideDialog;
+        if (!d.open) return;
+        this.ui.slideDialog.open = false;
+        this.addSlide(d.layout, d.title);
       },
 
       duplicateSlide: function (id) {

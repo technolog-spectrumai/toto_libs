@@ -233,23 +233,13 @@ old one carried 210 lines of inline Alpine that no test could reach.
         </ol>
 
         <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t p-2">
-          <div x-data="{ open: false }" class="relative">
-            <button type="button" @click="open = !open"
-                    class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-current/40 px-2 py-2 text-xs opacity-70 transition hover:opacity-100">
-              <i class="fa-solid fa-plus"></i><span x-show="ui.filmstrip">{% trans "New slide" %}</span>
-            </button>
-            <div x-show="open" x-cloak @click.outside="open = false"
-                 :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-                 class="absolute bottom-full left-0 z-[9100] mb-1 min-w-[12rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
-              <template x-for="layout in layouts" :key="layout.id">
-                <button type="button" @click="addSlide(layout.id); open = false"
-                        class="block w-full px-3 py-1.5 text-left hover:opacity-70">
-                  <i class="fa-solid w-4 opacity-60" :class="layout.icon"></i>
-                  <span x-text="layout.label"></span>
-                </button>
-              </template>
-            </div>
-          </div>
+          {% comment %} Opens the new-slide modal — the layout choice and the
+          slide's title in one place, instead of a dropdown of geometry names
+          the writer had to imagine.{% endcomment %}
+          <button type="button" @click="openSlideDialog()"
+                  class="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed border-current/40 px-2 py-2 text-xs opacity-70 transition hover:opacity-100">
+            <i class="fa-solid fa-plus"></i><span x-show="ui.filmstrip">{% trans "New slide" %}</span>
+          </button>
         </div>
       </aside>
 
@@ -433,6 +423,68 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
   The canvas shows the slide. This writes it.
   {% endcomment %}
+  {% comment %}---- the new-slide modal ----
+
+  The layout choice and the slide's title, asked together: a slide is born
+  named and shaped, instead of appearing untitled from a dropdown of geometry
+  names. The grid collapses from four columns to two on a narrow screen.
+  {% endcomment %}
+  <div x-show="ui.slideDialog.open" x-cloak
+       @keydown.escape.window="ui.slideDialog.open = false"
+       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/55 backdrop-blur-sm"
+         @click="ui.slideDialog.open = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl">
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-plus"></i> {% trans "New slide" %}
+        </h2>
+        <button @click="ui.slideDialog.open = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+      </div>
+
+      <form class="min-h-0 flex-1 space-y-4 overflow-y-auto p-5" @submit.prevent="confirmSlide()">
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{% trans "Slide title" %}</span>
+          <input type="text" x-model="ui.slideDialog.title" x-ref="slideTitle"
+                 placeholder="{% trans 'Untitled slide' %}"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
+          <span class="mt-1 block text-xs opacity-55">
+            {% trans "Shown on the slide, in the filmstrip and in the outline. You can leave it empty." %}
+          </span>
+        </label>
+
+        <div class="space-y-2">
+          <span class="block text-sm font-semibold">{% trans "Layout" %}</span>
+          <div class="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4">
+            <template x-for="layout in layouts" :key="'nl' + layout.id">
+              <button type="button" @click="ui.slideDialog.layout = layout.id"
+                      :class="ui.slideDialog.layout === layout.id
+                              ? (darkMode ? 'border-accent-dark bg-accent-dark/15' : 'border-accent-light bg-accent-light/15')
+                              : 'border-current/20 opacity-70 hover:opacity-100'"
+                      class="flex flex-col items-center gap-2 rounded-xl border p-3 text-center transition">
+                <i class="fa-solid text-xl" :class="layout.icon"></i>
+                <span class="text-xs leading-tight" x-text="layout.label"></span>
+              </button>
+            </template>
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" @click="ui.slideDialog.open = false"
+                  class="rounded-lg px-3 py-2 text-sm opacity-70 hover:opacity-100">
+            {% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-plus"></i> {% trans "Add slide" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div x-show="ui.dialog.open" x-cloak
        @keydown.escape.window="closeDialog()"
        class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
