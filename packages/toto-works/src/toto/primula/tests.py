@@ -108,6 +108,17 @@ class SheetLifecycleTests(TestCase):
             "A",
         )
 
+    def test_the_editor_follows_the_platform_mode_and_background(self):
+        # Univer is told the platform's dark mode at mount (its own dark theme
+        # for the chrome and the grid's DEFAULT surfaces; explicit cell fills
+        # come from the snapshot and stay as saved), and the workspace surface
+        # is pinned to the SYSTEM background — read off <body> at runtime,
+        # because the palette lives in the platform's theme record.
+        vf = make_sheet(self.user, "grid")
+        body = self.client.get(reverse("primula:edit", args=[vf.pk])).content.decode()
+        self.assertIn("darkMode: dark", body)
+        self.assertIn("--primula-system-bg", body)
+
     def test_edit_read_only_for_public_non_owner(self):
         vf = make_sheet(self.other, "shared", is_public=True)
         resp = self.client.get(reverse("primula:edit", args=[vf.pk]))

@@ -10,6 +10,16 @@
     /* Univer needs a sized container; keep the grid below the app chrome. */
     #univer-container { width: 100%; height: calc(100vh - 6.5rem); }
     #univer-container * { box-sizing: content-box; }
+    /* The workspace surface is the SYSTEM background, not Univer's own white
+       or near-black: the boot script below reads the page's real background —
+       the platform theme is data, so it cannot be a literal here — and pins it
+       to this variable. Cell fills a user set explicitly live in the snapshot
+       and are painted by Univer as stored, so they are untouched. */
+    #univer-container,
+    #univer-container .univer-workbench,
+    #univer-container [class*="univer-app"] {
+      background: var(--primula-system-bg, transparent);
+    }
   </style>
 {% endblock %}
 
@@ -69,12 +79,43 @@
   var UniverSheetsCorePreset = UniverPresetSheetsCore.UniverSheetsCorePreset;
   var enUS = UniverPresetSheetsCoreEnUS.default || UniverPresetSheetsCoreEnUS;
 
+  // The platform's mode and its ACTUAL background. localStorage is where
+  // oya/base.html seeds the page's own darkMode from, and the theme toggle
+  // reloads the page, so mount time is the only time this has to be right.
+  // The colour is read off <body> rather than hardcoded because the palette
+  // comes from the platform's theme record in the database.
+  var dark = false;
+  try { dark = localStorage.getItem("darkMode") === "true"; } catch (e) {}
+  // Alpine applies the body's theme class AFTER this script runs, and the body
+  // animates it in over 300ms (`transition-colors`) — so poll a frame at a time
+  // until the colour is there AND fully opaque, or the first read lands on an
+  // interpolated frame of the fade. Bounded: if the page never settles (it
+  // always does), nothing is pinned and the container stays transparent over
+  // the section, which carries the same background anyway.
+  (function pin(tries) {
+    var bg = getComputedStyle(document.body).backgroundColor;
+    var opaque = /^rgb\(/.test(bg) ||
+                 /^rgba\([^)]*,\s*1\s*\)$/.test(bg);
+    if (bg && opaque) {
+      document.getElementById("univer-container").style.setProperty(
+        "--primula-system-bg", bg);
+    } else if (tries > 0) {
+      requestAnimationFrame(function () { pin(tries - 1); });
+    }
+  })(120);
+
   var univer = createUniver({
     locale: "enUS",
     locales: { "enUS": enUS },
+    // Univer's own dark theme for the chrome and the grid's DEFAULT surfaces.
+    // Explicit cell fills come from the snapshot and stay exactly as saved.
+    darkMode: dark,
     presets: [ UniverSheetsCorePreset({ container: "univer-container" }) ],
   });
   var univerAPI = univer.univerAPI;
+  // On window on purpose: the console (and the UI checks in CI) can reach the
+  // sheet API without fishing in a closure. Same practice as window.MemoModel.
+  window.univerAPI = univerAPI;
   univerAPI.createWorkbook(snapshot);
 
   if (!canEdit) return;
