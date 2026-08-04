@@ -22,9 +22,9 @@ import re
 from html import escape
 from html.parser import HTMLParser
 
-# Inline marks an editor can produce, and nothing else. `del` and `ins` are
-# here because Trix — the rich-text field toto.cyprian uses — writes
-# strikethrough as <del> rather than <s>.
+# Inline marks an editor can produce, and nothing else. `del` and `ins` stay
+# even though the prose field is TipTap now (which writes <s>): Trix wrote
+# strikethrough as <del>, and every deck saved in that era still holds it.
 INLINE_TAGS = {
     "b", "strong", "i", "em", "u", "s", "del", "ins", "code", "a", "br",
     "span", "sub", "sup", "mark", "small",
@@ -32,12 +32,13 @@ INLINE_TAGS = {
 
 # Additionally allowed inside a text block, which is a small flow of prose.
 #
-# `div`, the headings, `blockquote` and `pre` are Trix's doing: it writes each
-# line as a <div> and offers a heading and a quote in its toolbar. Dropping them
-# would not lose the words — an unknown tag is unwrapped, not deleted — but it
-# WOULD silently reflow every paragraph the moment it was saved, which reads as
-# the editor eating your formatting. Attributes are stripped from all of them
-# regardless, so allowing a tag grants no styling power.
+# TipTap writes <p>, the lists and <blockquote>; <div>, the headings and <pre>
+# are what the Trix era left in saved decks (Trix wrote each line as a <div>).
+# Dropping the legacy tags would not lose the words — an unknown tag is
+# unwrapped, not deleted — but it WOULD silently reflow every old deck the
+# moment it was next saved, which reads as the editor eating your formatting.
+# Attributes are stripped from all of them regardless, so allowing a tag grants
+# no styling power.
 BLOCK_TAGS = {"p", "div", "h1", "h2", "h3", "blockquote", "pre", "ul", "ol", "li"}
 
 # Kept per tag. Everything else — style, class, id, data-*, and every on* — goes.

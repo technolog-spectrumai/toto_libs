@@ -549,7 +549,7 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
   The import map has to come BEFORE any module script, so it is rendered here
   ahead of the one module on the page. It maps the bare specifiers inside the
   vendored TipTap and ProseMirror files ("@tiptap/core", "prosemirror-state") to
-  our own hashed static URLs — see cyprian/tiptap.py, and vendor/tiptap/
+  our own hashed static URLs — see memo/tiptap.py, and memo/vendor/tiptap/
   VERSION.txt for why this app is the exception to the UMD rule everywhere else.
 
   The module publishes window.CyprianTipTap and fires `cyprian-tiptap-ready`;

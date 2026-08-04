@@ -51,6 +51,35 @@
     return isDarkMode() ? "ace/theme/twilight" : "ace/theme/textmate";
   }
 
+  /* The three kinds of box whose payload is prose, and what each field says
+   * when it is empty. `list` is not here: a list is one item per line, which is
+   * how people type a list, and a rich editor would only get in the way. */
+  var PROSE_TYPES = ["heading", "text", "quote"];
+  var PROSE_PLACEHOLDER = {
+    heading: "Title of this slide",
+    text: "Write something",
+    quote: "The quotation"
+  };
+
+  /* What the toolbar offers, and the TipTap command behind each button.
+   *
+   * Every one of these survives `memo/sanitize.py`: strong, em, u, s and code
+   * are in INLINE_TAGS, the lists and the blockquote in BLOCK_TAGS, and a link
+   * keeps its href. Nothing here carries a class or a style, because the
+   * sanitiser strips both — a mark that did would vanish on the first save.
+   *
+   * The list and quote buttons are hidden for heading and quote boxes, whose
+   * payload goes through sanitize.inline() and would lose the block anyway; see
+   * MemoTipTap.INLINE_ONLY, which is the same fact expressed in the schema. */
+  var PROSE_MARKS = ["bold", "italic", "underline", "strike", "code", "link",
+                     "bulletList", "orderedList", "blockquote"];
+  var PROSE_COMMANDS = {
+    bold: "toggleBold", italic: "toggleItalic", underline: "toggleUnderline",
+    strike: "toggleStrike", code: "toggleCode",
+    bulletList: "toggleBulletList", orderedList: "toggleOrderedList",
+    blockquote: "toggleBlockquote"
+  };
+
   function csrf() {
     var m = document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[2]) : "";
@@ -59,6 +88,17 @@
   global.memoEditor = function () {
     var config = readJson("memo-config", {});
     var history = new global.MemoHistory();
+
+    /* The TipTap instance for the box dialog's prose field.
+     *
+     * Held HERE, in the closure, and deliberately not on the returned component.
+     * Alpine wraps component state in a reactive Proxy, and ProseMirror compares
+     * `transaction.before` with `state.doc` by IDENTITY — through a Proxy those
+     * are never the same object, and every keystroke throws "Applying a
+     * mismatched transaction". cyprian learned this the hard way; see its
+     * editor.js. The same reasoning already applies to `_ace` below.
+     */
+    var prose = null;
 
     return {
       config: config,
@@ -74,6 +114,9 @@
         targetSlot: "",
         dialog: { open: false, slot: "", type: "text", payload: "",
                   items: "", attrs: {} },
+        // Which marks are under the caret in the prose field. Reactive, so the
+        // toolbar buttons can show themselves as active — see syncProse.
+        prose: {},
         // Reactive mirrors of MemoHistory's state — see canUndo.
         canUndo: false,
         canRedo: false,
@@ -439,12 +482,14 @@
         var self = this;
         this.$nextTick(function () {
           self.mountSource();
+          self.mountProse();
           self.previewFormula();
         });
       },
 
       closeDialog: function () {
         this.teardownSource();
+        this.teardownProse();
         this.ui.dialog.open = false;
       },
 
@@ -490,12 +535,80 @@
         if (this._ace) { this._ace.destroy(); this._ace = null; }
       },
 
-      /* Trix, for the three prose kinds. Loaded once per open — see cyprian's
-       * loadTrix for why both x-init and trix-initialize call this. */
-      loadTrix: function (el) {
-        if (!el || !el.editor || el.__memoLoaded) return;
-        el.__memoLoaded = true;
-        el.editor.loadHTML(this.ui.dialog.payload || "");
+      /* TipTap, for the three prose kinds.
+       *
+       * Mounted when the dialog opens and destroyed when it closes, for the same
+       * reason as ACE above: Alpine rebuilds this subtree, and an editor bound
+       * to a detached node is a silent no-op that looks broken.
+       *
+       * The payload is written into the editor ONCE, at mount, and read back out
+       * on every change — never the reverse. Writing into a focused rich-text
+       * field moves the caret to the start on every keystroke, which is the
+       * single most common way these editors are broken.
+       */
+      mountProse: function () {
+        var type = this.ui.dialog.type;
+        if (PROSE_TYPES.indexOf(type) === -1) return;
+        if (!global.MemoTipTap) return;      // the module has not landed yet
+        var host = document.getElementById("memo-prose");
+        if (!host) return;
+        this.teardownProse();
+
+        var self = this;
+        prose = global.MemoTipTap.create(host, this.ui.dialog.payload || "", {
+          kind: type,
+          placeholder: PROSE_PLACEHOLDER[type] || "",
+          onUpdate: function (html) { self.ui.dialog.payload = html; },
+          // A reactive mirror of the marks under the caret, so the toolbar can
+          // light up. Reading editor.isActive() from a getter would not work:
+          // the editor is a plain object Alpine tracks nothing about, so the
+          // effect behind :class would run once and never again — the same bug
+          // that left undo and redo disabled for a whole session.
+          onSelection: function (editor) { self.syncProse(editor); }
+        });
+        this.syncProse(prose);
+      },
+
+      teardownProse: function () {
+        if (prose) { prose.destroy(); prose = null; }
+      },
+
+      /* Toolbar state, pushed into reactive `ui` rather than pulled from the
+       * editor. See onSelection above. */
+      syncProse: function (editor) {
+        if (!editor) { this.ui.prose = {}; return; }
+        var marks = {};
+        PROSE_MARKS.forEach(function (name) {
+          marks[name] = editor.isActive(name);
+        });
+        this.ui.prose = marks;
+      },
+
+      /* Run a command against the prose editor. Every toolbar button goes
+       * through here so the chain is started and focused in exactly one place. */
+      proseCmd: function (fn) {
+        if (!prose) return;
+        fn(prose.chain().focus());
+        this.syncProse(prose);
+      },
+
+      toggleProse: function (name) {
+        var command = PROSE_COMMANDS[name];
+        if (!command) return;
+        this.proseCmd(function (chain) { chain[command]().run(); });
+      },
+
+      /* A link is the one mark that needs a value, so it asks for one. Clearing
+       * the box removes the link, which is what an empty answer means. */
+      setProseLink: function () {
+        if (!prose) return;
+        var current = prose.getAttributes("link").href || "";
+        var href = global.prompt(this.config.text.linkPrompt || "Link address", current);
+        if (href === null) return;
+        var chain = prose.chain().focus().extendMarkRange("link");
+        if (!href.trim()) chain.unsetLink().run();
+        else chain.setLink({ href: href.trim() }).run();
+        this.syncProse(prose);
       },
 
       previewFormula: function () {
@@ -563,7 +676,12 @@
         var d = this.ui.dialog;
         var block = this.boxBlock(d.slot);
         if (!block) { this.closeDialog(); return; }
-        var payload = this._ace ? this._ace.getValue() : d.payload;
+        // Read from whichever editor owns this box's payload. `d.payload` is
+        // kept in step by onUpdate, but reading the source of truth directly
+        // means a change made in the same tick as Insert cannot be lost.
+        var payload = d.payload;
+        if (this._ace) payload = this._ace.getValue();
+        else if (prose) payload = prose.getHTML();
         var items = d.type === "list"
           ? (d.items || "").split("\n").map(function (line) { return line.trim(); })
               .filter(function (line) { return line.length; })

@@ -163,14 +163,36 @@
   pointer-events: none;
 }
 
-/* Trix inside the dialog is a plain field: the dialog is a form, not a page. */
-trix-editor.memo-trix {
-  border: 0;
-  padding: 0;
+/* TipTap inside the dialog is a plain field: the dialog is a form, not a page.
+   The toolbar above it is ours and is styled with Tailwind in the template; all
+   that is left here is the writing surface itself. */
+.memo-prose-host .memo-prose {
   min-height: 8rem;
   font: inherit;
   color: inherit;
   background: transparent;
   outline: none;
 }
-trix-toolbar .trix-button--icon-attach { display: none; }
+.memo-prose-host .memo-prose > * + * { margin-top: 0.5em; }
+.memo-prose-host .memo-prose ul { list-style: disc; padding-left: 1.4em; }
+.memo-prose-host .memo-prose ol { list-style: decimal; padding-left: 1.4em; }
+.memo-prose-host .memo-prose blockquote {
+  border-left: 3px solid currentColor;
+  padding-left: 0.75em;
+  opacity: 0.85;
+}
+.memo-prose-host .memo-prose code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+.memo-prose-host .memo-prose a { text-decoration: underline; }
+
+/* The placeholder. TipTap marks the first empty node rather than emptying the
+   field, so this is the only way to show one. */
+.memo-prose-host .memo-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  opacity: 0.4;
+}

@@ -16,7 +16,7 @@
 
   var INLINE = ["B", "STRONG", "I", "EM", "U", "S", "DEL", "INS", "CODE", "A",
                 "BR", "SPAN", "SUB", "SUP", "MARK", "SMALL"];
-  // Kept identical to sanitize.py's BLOCK_TAGS — see the note there about Trix
+  // Kept identical to sanitize.py's BLOCK_TAGS — see the note there about the
   // writing lines as <div> and offering headings and quotes in its toolbar.
   var BLOCK = ["P", "DIV", "H1", "H2", "H3", "BLOCKQUOTE", "PRE",
                "UL", "OL", "LI"];

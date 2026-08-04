@@ -14,11 +14,11 @@ from unittest import mock, skipUnless
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase, override_settings
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
-from toto.memo import bundle, presentation_format as pf, render_pdf
+from toto.memo import bundle, presentation_format as pf, render_pdf, tiptap
 from toto.vault.models import Bucket, VaultDirectory, VaultFile
 from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 
@@ -231,11 +231,11 @@ class SanitisationTests(TestCase):
         self.assertEqual(self._block("text", "<font><big>words</big></font>").payload,
                          "words")
 
-    def test_the_trix_block_vocabulary_survives(self):
-        # <div> is how Trix writes a line, and a heading and a quote are two of
-        # its toolbar buttons. Unwrapping them would not lose words but WOULD
-        # reflow every paragraph on save, which reads as the editor eating your
-        # formatting. Attributes still go.
+    def test_the_legacy_block_vocabulary_survives(self):
+        # <div> is how the Trix era wrote a line, and every deck saved then
+        # still holds them. Unwrapping the legacy tags would not lose words but
+        # WOULD reflow every old deck on its next save, which reads as the
+        # editor eating your formatting. Attributes still go.
         payload = self._block(
             "text",
             '<div style="color:red">one</div><h1>Title</h1>'
@@ -461,12 +461,15 @@ class EditorPageTests(TestCase):
         self.assertIn("clearBox(", body)
 
     def test_the_dialog_brings_its_editors(self):
-        # Trix writes the prose, ACE the SVG and the code listings; both are
-        # vendored, and a 404 here would leave a dialog that cannot type.
+        # TipTap writes the prose (an ES module resolved through the import
+        # map), ACE the code listings. A gap in either is a dialog that cannot
+        # type — and Trix must be GONE, or two editors fight over the field.
         body = self._page()
-        self.assertIn("vendor/trix/trix.umd.min.js", body)
+        self.assertIn("memo/tiptap_setup.js", body)
+        self.assertIn('type="importmap"', body)
+        self.assertIn("@tiptap/core", body)
         self.assertIn("vendor/ace/ace.js", body)
-        self.assertIn("vendor/trix/trix.css", body)
+        self.assertNotIn("trix", body.lower())
 
     def test_layout_names_are_geometry_not_content(self):
         # "Picture, then text" decides for you what goes where. A box takes any
@@ -1685,3 +1688,75 @@ class LayoutBoxTests(TestCase):
                 back = pf.loads(pf.dumps(deck))
                 self.assertEqual(back.slides[0].blocks[0].slot, "d")
                 self.assertEqual(back.slides[0].blocks[0].type, block_type)
+
+
+class TipTapVendorTests(SimpleTestCase):
+    """The vendored TipTap closure and the import map that resolves it.
+
+    These files live in memo because both editors in this wheel run on TipTap
+    and only one app can own 54 vendored modules; cyprian imports memo, never
+    the other way round, so the shared half sits here. cyprian's own setup
+    module is checked in `toto.cyprian.tests.test_tiptap`.
+
+    An import map is easy to get wrong in a way nothing else catches: a missing
+    entry is a module that 404s in a browser, after a deploy, with the editor
+    simply not appearing. These tests are the reason that cannot happen quietly.
+    """
+
+    def test_the_manifest_is_not_empty(self):
+        self.assertTrue(tiptap.manifest(),
+                        "no vendored TipTap — run scripts/fetch_tiptap.py")
+
+    def test_every_manifest_entry_has_a_file(self):
+        for spec, name in tiptap.manifest().items():
+            with self.subTest(spec=spec):
+                self.assertTrue((tiptap.VENDOR_DIR / name).is_file(), name)
+
+    def test_the_specifiers_the_slide_editor_imports_are_all_there(self):
+        # If one of these is missing, tiptap_setup.js fails on its first import
+        # and the box dialog has no prose field at all.
+        setup = (tiptap.VENDOR_DIR.parent.parent / "tiptap_setup.js")
+        for spec in tiptap.bare_imports(setup.read_text(encoding="utf-8")):
+            with self.subTest(spec=spec):
+                self.assertIn(spec, tiptap.manifest())
+
+    def test_the_map_resolves_every_import_in_every_vendored_file(self):
+        # The closure test. A gap here is a 404 in production and nothing else
+        # in this repo would notice.
+        self.assertEqual(tiptap.missing_specifiers(), {})
+
+    def test_no_vendored_file_is_an_mjs(self):
+        # Production serves /static/ straight from nginx with stock mime.types,
+        # which has no .mjs entry — the file would go out as
+        # application/octet-stream and the browser would refuse the module.
+        # Whitenoise (dev) knows .mjs, so this would break ONLY in production.
+        for name in tiptap.manifest().values():
+            with self.subTest(name=name):
+                self.assertFalse(name.endswith(".mjs"), name)
+
+    def test_no_vendored_file_carries_a_sourcemap_comment(self):
+        # We do not vendor the .map, and the resilient storage would rather not
+        # see the reference at all.
+        for name in tiptap.manifest().values():
+            text = (tiptap.VENDOR_DIR / name).read_text(encoding="utf-8")
+            with self.subTest(name=name):
+                self.assertIsNone(re.search(r"(?m)^//# sourceMappingURL=", text))
+
+    def test_the_pin_is_written_down(self):
+        version = (tiptap.VENDOR_DIR / "VERSION.txt").read_text()
+        self.assertIn("TipTap", version)
+        self.assertIn("import map", version)
+        self.assertTrue((tiptap.VENDOR_DIR / "LICENSE").is_file())
+
+    def test_it_is_a_valid_import_map(self):
+        parsed = json.loads(tiptap.import_map_json().replace("\\u003c", "<"))
+        self.assertIn("imports", parsed)
+        self.assertIn("@tiptap/core", parsed["imports"])
+
+    def test_every_url_goes_through_static(self):
+        for spec, url in tiptap.import_map()["imports"].items():
+            with self.subTest(spec=spec):
+                self.assertTrue(url.startswith("/static/"), url)
+
+    def test_a_less_than_sign_cannot_close_the_script_element(self):
+        self.assertNotIn("<", tiptap.import_map_json())

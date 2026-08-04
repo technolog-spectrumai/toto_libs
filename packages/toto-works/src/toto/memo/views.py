@@ -24,6 +24,7 @@ from django.http import (
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
 from django.views import View
 from django.conf import settings
 from django.views.decorators.http import require_POST
@@ -39,7 +40,7 @@ from toto.vault.views import (
     resolve_new_file_target,
 )
 
-from . import bundle, presentation_format, render_pdf
+from . import bundle, presentation_format, render_pdf, tiptap
 from .media import clean_svg_markup, image_bytes_to_data_uri
 
 # Vault file types that can be embedded into a slide body.
@@ -234,7 +235,15 @@ class PresentationEditView(LoginRequiredMixin, View):
                         "embed": reverse("memo:media_embed"),
                         "upload": reverse("memo:media_upload"),
                     },
+                    # Strings the editor puts in a browser prompt/dialog, where
+                    # a {% trans %} in the template cannot reach.
+                    "text": {
+                        "linkPrompt": _("Link address"),
+                    },
                 },
+                # The import map for the prose field's ES module — built
+                # server-side so every URL is hashed static. See tiptap.py.
+                "tiptap_import_map": tiptap.import_map_json(),
                 "present_url": reverse("memo:present", args=[file_pk]),
                 "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),
                 "export_zip_url": reverse("memo:export_zip", args=[file_pk]),

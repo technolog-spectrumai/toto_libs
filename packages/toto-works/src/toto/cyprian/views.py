@@ -35,7 +35,9 @@ from toto.vault.filetree import accessible_files
 from toto.vault.models import VaultFile
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
-from . import document_format, render_pdf, tiptap
+from toto.memo import tiptap
+
+from . import document_format, render_pdf
 from .sanitize_html import sanitize_content
 
 # Vault file types that can be embedded into a document.
@@ -323,7 +325,8 @@ class DocumentEditView(LoginRequiredMixin, View):
             },
             # The import map for the vendored TipTap modules. Built in Python
             # so every module goes through static() and is cache-busted with
-            # the rest of the site — see tiptap.py.
+            # the rest of the site — see memo/tiptap.py, which owns the vendored
+            # files because both editors in this wheel run on TipTap.
             "tiptap_import_map": tiptap.import_map_json(),
             "read_url": reverse("cyprian:read", args=[file_pk]),
             "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]),

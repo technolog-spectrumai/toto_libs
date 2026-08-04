@@ -21,8 +21,6 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% block start_script %}
   <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
-  {# Trix writes the prose in the box dialog; editor.css strips its chrome. #}
-  <link rel="stylesheet" href="{% static 'vendor/trix/trix.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
   <style>[x-cloak] { display: none !important; }</style>
@@ -450,16 +448,60 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
       <div class="min-h-0 flex-1 overflow-y-auto p-5">
 
-        {# heading, text, quote — one rich field #}
+{% comment %} heading, text, quote — one rich field, on TipTap.
+
+        The toolbar is ours rather than the library's: every button here maps to
+        a tag `memo/sanitize.py` already allows, so nothing a writer can press
+        disappears on save. The list and quote buttons are hidden for a heading
+        or a quote box, whose payload goes through sanitize.inline() — the same
+        fact MemoTipTap.INLINE_ONLY expresses in the schema, so those commands do
+        not merely fail quietly, they are not offered.
+        {% endcomment %}
         <template x-if="['heading', 'text', 'quote'].indexOf(ui.dialog.type) !== -1">
           <div class="space-y-3">
-            <div class="rounded-lg border border-current/20 p-2">
-              <trix-editor class="memo-trix"
-                           x-init="loadTrix($el)"
-                           @trix-initialize="loadTrix($event.target)"
-                           @trix-change="ui.dialog.payload = $event.target.value"
-                           @trix-file-accept.prevent="ui.status = 'Pictures are their own box.'"></trix-editor>
+            <div class="flex flex-wrap items-center gap-1 rounded-lg border border-current/20 px-2 py-1.5">
+              <template x-for="tool in [
+                    {id: 'bold',      icon: 'fa-bold',          label: '{% trans "Bold" %}'},
+                    {id: 'italic',    icon: 'fa-italic',        label: '{% trans "Italic" %}'},
+                    {id: 'underline', icon: 'fa-underline',     label: '{% trans "Underline" %}'},
+                    {id: 'strike',    icon: 'fa-strikethrough', label: '{% trans "Strikethrough" %}'},
+                    {id: 'code',      icon: 'fa-code',          label: '{% trans "Code" %}'}
+                  ]" :key="tool.id">
+                <button type="button" @click="toggleProse(tool.id)" :title="tool.label"
+                        :class="ui.prose[tool.id] ? (darkMode ? 'bg-accent-dark/25' : 'bg-accent-light/25') : 'opacity-60'"
+                        class="rounded px-2 py-1 text-sm transition hover:opacity-100">
+                  <i class="fa-solid" :class="tool.icon"></i>
+                </button>
+              </template>
+
+              <span class="mx-1 h-4 w-px bg-current/20"></span>
+
+              <button type="button" @click="setProseLink()" title="{% trans 'Link' %}"
+                      :class="ui.prose.link ? (darkMode ? 'bg-accent-dark/25' : 'bg-accent-light/25') : 'opacity-60'"
+                      class="rounded px-2 py-1 text-sm transition hover:opacity-100">
+                <i class="fa-solid fa-link"></i>
+              </button>
+
+              {# Blocks: a text box only. See INLINE_ONLY. #}
+              <template x-if="ui.dialog.type === 'text'">
+                <span class="flex items-center gap-1">
+                  <span class="mx-1 h-4 w-px bg-current/20"></span>
+                  <template x-for="tool in [
+                        {id: 'bulletList',  icon: 'fa-list-ul',  label: '{% trans "Bulleted list" %}'},
+                        {id: 'orderedList', icon: 'fa-list-ol',  label: '{% trans "Numbered list" %}'},
+                        {id: 'blockquote',  icon: 'fa-quote-left', label: '{% trans "Quote" %}'}
+                      ]" :key="tool.id">
+                    <button type="button" @click="toggleProse(tool.id)" :title="tool.label"
+                            :class="ui.prose[tool.id] ? (darkMode ? 'bg-accent-dark/25' : 'bg-accent-light/25') : 'opacity-60'"
+                            class="rounded px-2 py-1 text-sm transition hover:opacity-100">
+                      <i class="fa-solid" :class="tool.icon"></i>
+                    </button>
+                  </template>
+                </span>
+              </template>
             </div>
+
+            <div id="memo-prose" class="memo-prose-host rounded-lg border border-current/20 p-2"></div>
             <label x-show="ui.dialog.type === 'heading'" class="flex items-center gap-2 text-sm">
               {% trans "Size" %}
               <select x-model="ui.dialog.attrs.level"
@@ -593,9 +635,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% block end_script %}
   {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
-  {% comment %} Trix for prose, ACE for code — both vendored under
-     core/static/vendor and listed in every host's download_vendor.py.{% endcomment %}
-  <script src="{% static 'vendor/trix/trix.umd.min.js' %}"></script>
+  {% comment %} ACE, for the code box, vendored under core/static/vendor and
+     listed in every host's download_vendor.py. The prose field is TipTap, at
+     the bottom of this block — it is an ES module and has to come last.
+  {% endcomment %}
   {% comment %} ACE, and the files it cannot fetch for itself.
 
   `ace.js` carries the `textmate` theme and a plain-text mode and NOTHING else:
@@ -613,6 +656,21 @@ old one carried 210 lines of inline Alpine that no test could reach.
   <script src="{% static 'memo/sanitize.js' %}"></script>
   <script src="{% static 'memo/canvas.js' %}"></script>
   <script src="{% static 'memo/editor.js' %}"></script>
+  {% comment %} TipTap, the prose field in the box dialog.
+
+  It is ESM — the only ES module in this app — so its bare specifiers are
+  resolved by an import map built server-side, where every URL goes through
+  static() and is cache-busted with the rest of the site. See memo/tiptap.py for
+  why an import map rather than the UMD bundle everything else here uses, and
+  memo/vendor/tiptap/VERSION.txt for the pin.
+
+  The module publishes window.MemoTipTap. It loads after editor.js and may still
+  land after Alpine has started, which is why mountProse() simply returns when
+  the factory is not there yet and the dialog mounts on the next open — a fifty-
+  file fetch must not be able to race the page.
+  {% endcomment %}
+  <script type="importmap">{{ tiptap_import_map|safe }}</script>
+  <script type="module" src="{% static 'memo/tiptap_setup.js' %}"></script>
 {% endblock %}
 
 {% comment %} An editor is a place to concentrate; the floating plugin widgets are not part

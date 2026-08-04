@@ -1,5 +1,12 @@
 """The import map that makes a bundler-free TipTap possible.
 
+It lives in **memo** because both editors in this wheel run on TipTap and only
+one of them can own the 54 vendored files. cyprian already imports memo (its
+sanitisers and media helpers) and memo must not import cyprian — a host can
+install decks without documents — so the shared half sits at the bottom, here,
+and each app keeps its own `tiptap_setup.js` with the extensions it actually
+needs.
+
 TipTap is ESM. Everything else vendored in this suite is a UMD bundle loaded
 with a plain `<script src>`, because there is no bundler in this repo and adding
 one is a far bigger change than the alternative — which is an **import map**:
@@ -18,7 +25,7 @@ Four things had to be true for that to work here, and all four are:
 
 The map is built HERE rather than written into the template so that every
 module goes through `static()` and is cache-busted with the rest of the site —
-and so `test_tiptap` can prove the map covers every specifier the vendored
+and so the closure test can prove the map covers every specifier the vendored
 files actually import.
 """
 
@@ -31,9 +38,9 @@ from pathlib import Path
 
 from django.templatetags.static import static
 
-VENDOR_DIR = Path(__file__).resolve().parent / "static" / "cyprian" / "vendor" / "tiptap"
+VENDOR_DIR = Path(__file__).resolve().parent / "static" / "memo" / "vendor" / "tiptap"
 MANIFEST = VENDOR_DIR / "manifest.json"
-STATIC_PREFIX = "cyprian/vendor/tiptap/"
+STATIC_PREFIX = "memo/vendor/tiptap/"
 
 # Every `from "…"` in a vendored file whose target is a package rather than a
 # relative path. The map has to answer all of them or the module 404s.
