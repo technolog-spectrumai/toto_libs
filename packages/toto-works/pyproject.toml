@@ -4,13 +4,15 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# The workflow-adjacent tier: antaresia FKs workflows.WorkflowRun (hence the
-# toto-flow dep); kanban, memo, cyprian and primula are task/content apps
-# shipped alongside it. cyprian is here rather than in a package of its own
-# because it imports memo's sanitisers and media helpers — same wheel, plain
-# intra-package import, no new distribution edge.
+# The content tier: kanban, memo, cyprian and primula. (antaresia, the old
+# vault Python runner, was deleted in 1.45 — its name now belongs to zenobia's
+# Python workspace app, ambrosia's successor.) cyprian is here rather than in a
+# package of its own because it imports memo's sanitisers and media helpers —
+# same wheel, plain intra-package import, no new distribution edge. The
+# toto-flow dep left with antaresia — nothing else in this wheel touches the
+# workflow engine.
 name = "toto-works"
-version = "1.44"
+version = "1.45"
 description = "toto workflow-backed file, document and data services"
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,8 +20,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.44",
-    "toto-flow==1.44",
+    "toto-base==1.45",
 ]
 
 [tool.setuptools.packages.find]

@@ -242,7 +242,9 @@ def test_weasyprint_is_its_own_explicit_flag():
 def test_the_editor_still_follows_latex_when_unnamed():
     # The default is unchanged, so no existing profile resolves differently.
     assert resolve(BUILD_LATEX=1).editor is True
-    assert resolve(BUILD_PYEDITOR=1).editor is True
+    # BUILD_PYEDITOR is gone with the retired antaresia (1.45): setting it now
+    # resolves nothing, exactly like any unknown flag.
+    assert resolve(BUILD_PYEDITOR=1).editor is False
     assert resolve().editor is False
 
 
@@ -253,7 +255,7 @@ def test_the_editor_survives_latex_leaving():
     # Edit link rendered as "".
     f = resolve(BUILD_EDITOR=1)
     assert f.editor is True
-    assert (f.latex, f.pyeditor) == (False, False)
+    assert f.latex is False
 
 
 def test_the_editor_can_be_refused_even_with_latex_on():

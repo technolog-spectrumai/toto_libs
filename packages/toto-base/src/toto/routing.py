@@ -11,7 +11,6 @@ import importlib
 # explicit list — see zenobia/zenobia/asgi.py and faros/faros/asgi.py.
 DEFAULT_WEBSOCKET_ROUTING_MODULES = [
     "toto.forum.routing",
-    "toto.antaresia.routing",
     "toto.editor.routing",
     "toto.sabbia.routing",
 ]

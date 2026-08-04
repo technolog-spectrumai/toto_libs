@@ -31,7 +31,6 @@ class Features:
     weather: bool
     # Editing features (standalone - each enabled on its own; no labs tier).
     latex: bool
-    pyeditor: bool
     sketch: bool
     canasta: bool
     media: bool
@@ -125,7 +124,6 @@ def resolve_features(get) -> Features:
 
     # Editing features (standalone — each enabled on its own; no labs tier).
     latex = flag(get, "BUILD_LATEX")                          # toto.texlab
-    pyeditor = flag(get, "BUILD_PYEDITOR")                    # toto.antaresia — Python editor
     # latex, sketch, canasta, travels and gitvault are host-owned apps (see
     # the suite README): the flags stay here because they are part of the host
     # contract — needs_channels depends on sketch and canasta, `editor` defaults
@@ -216,7 +214,7 @@ def resolve_features(get) -> Features:
         )
 
     # Dependency closure — a feature pulls in what it cannot run without.
-    # weather, fileservices, latex (texlab), pyeditor (antaresia) and gitvault all
+    # weather, fileservices, latex (texlab) and gitvault all
     # have a model FK to workflows.WorkflowRun, so they require the workflows app —
     # else Django's system check fails with fields.E300/E307.
     #
@@ -229,7 +227,7 @@ def resolve_features(get) -> Features:
     # manta is NOT here either, though it is in the same package as fileservices: it
     # has exactly one FK (FileJob.owner → User) and names workflows nowhere. What it
     # needs is celery, which the realtime tier below installs.
-    if weather or fileservices or latex or pyeditor or gitvault:
+    if weather or fileservices or latex or gitvault:
         workflows = True
     # connectors / formica feed or curate the ingestor → bento/ravioli graph.
     #
@@ -249,12 +247,12 @@ def resolve_features(get) -> Features:
     # Derived infrastructure.
     # toto.editor — the shared ACE base. Settable on its own, because it carries
     # EIGHT file-type plugins (text/json/yaml/xml/csv/html/latex/bib) and only two
-    # of them belong to latex. Derived from latex-or-pyeditor alone, a host that
+    # of them belong to latex. Derived from latex alone, a host that
     # moved LaTeX elsewhere silently lost every vault Edit link:
     # vault/views.py renders "" for a file type with no plugin.
-    editor = flag(get, "BUILD_EDITOR", latex or pyeditor)
+    editor = flag(get, "BUILD_EDITOR", latex)
     # Channels/ASGI back every WebSocket consumer.
-    needs_channels = chat or latex or pyeditor or sketch or sabbia or canasta
+    needs_channels = chat or latex or sketch or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
     vicuna = graph or sabbia_ollama
 
@@ -313,7 +311,6 @@ def resolve_features(get) -> Features:
         workflows=workflows,
         weather=weather,
         latex=latex,
-        pyeditor=pyeditor,
         sketch=sketch,
         canasta=canasta,
         media=media,

@@ -240,7 +240,6 @@ def _manual_features(request):
         "graph": apps.is_installed("toto.ravioli"),
         "ocr": apps.is_installed("toto.ocr"),
         "latex": apps.is_installed("toto.texlab"),
-        "pyeditor": apps.is_installed("toto.antaresia"),
         "steven": apps.is_installed("toto.steven"),
         # Cosmetic gate like the dashboard "Monitoring" card — Grafana enforces
         # its own superuser-only access via OIDC role mapping.

@@ -72,7 +72,6 @@ FEATURE_APPS = {
     "steven": ["toto.steven"],
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],
-    "pyeditor": ["toto.antaresia"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
     # The mail transport (BUILD_JESS). Flag-gated rather than core because it queues
     # every send: a host with no celery worker would have an email service whose

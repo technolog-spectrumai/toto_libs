@@ -72,7 +72,10 @@ def test_migrations_are_packaged(all_names, owner):
     # 41 as of 1.29: 40 plus toto.clearing, the toto-economy app that federates
     # selected assets with a paired platform (its own tables: the peer, and the
     # bridge state that follows in later stages).
-    assert len(apps_with_migrations) == 41, sorted(apps_with_migrations)
+    # 40 as of 1.45: antaresia was DELETED from toto-works (not moved) — its
+    # name now belongs to zenobia's Python workspace host app, ambrosia's
+    # successor, and its PythonRun table dies with it.
+    assert len(apps_with_migrations) == 40, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
