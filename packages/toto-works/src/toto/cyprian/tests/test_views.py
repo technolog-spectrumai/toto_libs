@@ -376,6 +376,13 @@ class WriterChromeTests(CyprianTestCase):
         # then have to go hunting behind.
         self.assertIn("ui.rendition.url", self.body)
 
+    def test_saving_asks_for_a_name_and_offers_a_watermark(self):
+        # The save dialog is the ONE place a file name is asked for — there is
+        # no name field in the header — and the name is obligatory.
+        self.assertIn("ui.saveDialog.name", self.body)
+        self.assertIn("ui.saveDialog.watermark", self.body)
+        self.assertNotIn('x-model="state.title"', self.body)
+
     def test_the_page_boundary_is_drawn_by_the_paginator(self):
         # The canvas stays one continuous element — splitting it into real page
         # elements would move nodes under a live ProseMirror view and lose the
@@ -423,6 +430,45 @@ class ExportTests(CyprianTestCase):
     def test_a_stranger_cannot_export_your_document(self):
         self.client.force_login(self.other)
         self.assertEqual(self.client.get(self.url).status_code, 404)
+
+    def test_an_html_rendition_takes_the_asked_name_but_not_the_asked_extension(self):
+        # The name is the writer's; the extension is OURS — the file IS html,
+        # and honouring `report.exe` would be labelling bytes wrongly on the
+        # writer's own instruction.
+        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
+        response = self.client.post(url, {"name": "Quarterly Report.exe"})
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["name"], "quarterly-report.html")
+
+    def test_an_empty_name_falls_back_to_the_documents_own(self):
+        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
+        response = self.client.post(url, {"name": "   "})
+        self.assertEqual(response.json()["name"], "report.html")
+
+    def test_the_watermark_reaches_every_print_page(self):
+        # position:fixed repeats on every page in WeasyPrint — that is the whole
+        # mechanism — and the text is autoescaped: a watermark is a stamp, not
+        # markup.
+        from django.template.loader import render_to_string
+
+        document = df.Document(title="R", content="<p>b</p>")
+        html = render_to_string("cyprian/print.html", {
+            "document": document, "watermark": "DRAFT <b>2026</b>",
+            "document_css": "", "katex_css": "",
+        })
+        self.assertIn('<div class="cy-watermark">', html)
+        self.assertIn("DRAFT &lt;b&gt;2026&lt;/b&gt;", html)
+
+    def test_no_watermark_no_stamp_element(self):
+        from django.template.loader import render_to_string
+
+        html = render_to_string("cyprian/print.html", {
+            "document": df.Document(title="R", content="<p>b</p>"),
+            "document_css": "", "katex_css": "",
+        })
+        # The stylesheet always carries the rule; only the ELEMENT is
+        # conditional.
+        self.assertNotIn('<div class="cy-watermark">', html)
 
     def test_the_print_document_carries_the_page_furniture(self):
         """Nothing else in this repo produces any of this.

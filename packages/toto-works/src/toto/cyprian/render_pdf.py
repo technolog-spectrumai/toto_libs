@@ -83,8 +83,13 @@ def katex_css() -> str:
     return _katex_assets()[0]
 
 
-def render(document) -> bytes:
-    """The document as PDF bytes."""
+def render(document, watermark: str = "") -> bytes:
+    """The document as PDF bytes.
+
+    ``watermark`` is plain text drawn diagonally across every page — DRAFT,
+    CONFIDENTIAL, a recipient's name. Text, never markup: it goes through the
+    template autoescaped, and a watermark is a stamp, not a canvas.
+    """
     try:
         from weasyprint import HTML  # lazy: gated by BUILD_WEASYPRINT
     except Exception as exc:         # noqa: BLE001
@@ -106,6 +111,7 @@ def render(document) -> bytes:
 
     html = render_to_string("cyprian/print.html", {
         "document": document,
+        "watermark": watermark,
         "document_css": css,
         "katex_css": katex_css,
     })

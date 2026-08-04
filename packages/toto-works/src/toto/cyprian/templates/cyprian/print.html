@@ -32,9 +32,24 @@ document.
     .cy-doc .cy-title { string-set: cy-doc-title content(); }
     .cy-toc .cy-toc-page { display: none; }
     .cy-toc a::after { content: leader(".") " " target-counter(attr(href), page); color: #666; }
+    /* The watermark: position:fixed repeats on EVERY page in WeasyPrint, which
+       is the whole trick. Behind the text (z-index), faint, and sized by the
+       page, not the content. */
+    .cy-watermark {
+      position: fixed;
+      top: 40%; left: 0; right: 0;
+      z-index: -1;
+      transform: rotate(-30deg);
+      font-size: 64pt;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      text-align: center;
+      color: rgba(0, 0, 0, 0.10);
+    }
   </style>
 </head>
 <body class="cy-doc cy-font-{{ document.font }}" data-margins="{{ document.margins }}">
+  {% if watermark %}<div class="cy-watermark">{{ watermark }}</div>{% endif %}
   {% include "cyprian/_body.html" with document=document %}
 </body>
 </html>

@@ -100,6 +100,9 @@
         dialog: { open: false, kind: "image", payload: "", attrs: {} },
         // What the last "save to the vault" produced, and where it went.
         rendition: { open: false, kind: "", name: "", url: "" },
+        // The ask before it: the obligatory file name, and — for a PDF, which
+        // has pages to stamp — an optional watermark.
+        saveDialog: { open: false, kind: "", name: "", watermark: "" },
         saving: false,
         dirty: false,
         status: "",
@@ -577,19 +580,32 @@
        * a file that does not match the document it claims to be. Then shows the
        * link, because "saved to your bucket" without one means hunting for it.
        */
+      /* Open the save dialog. The one moment a file name is asked for — there
+       * is no name field in the header, because naming is part of SAVING a
+       * product of the document, not of writing it. The name is obligatory (the
+       * dialog's button stays disabled without one); the watermark is offered
+       * for PDF only, where there are pages to stamp. */
       saveRendition: function (kind) {
+        this.ui.saveDialog = {
+          open: true, kind: kind,
+          name: (this.config.renditionBase || "document") + "." + kind,
+          watermark: ""
+        };
+      },
+
+      confirmRendition: function () {
+        var d = this.ui.saveDialog;
+        if (!d.open || !(d.name || "").trim()) return;
         var self = this;
-        // The one moment a file name is asked for. There is no name field in
-        // the header — the document is edited like a document, and naming is
-        // part of SAVING a product of it, not of writing.
-        var suggested = (this.config.renditionBase || "document") + "." + kind;
-        var name = prompt(this.config.text && this.config.text.namePrompt || "File name",
-                          suggested);
-        if (name === null) return;
+        var kind = d.kind;
+        this.ui.saveDialog.open = false;
         this.ui.status = "Rendering…";
         var url = kind === "pdf" ? this.config.urls.savePdf : this.config.urls.saveHtml;
         var body = new FormData();
-        body.append("name", name.trim());
+        body.append("name", d.name.trim());
+        if (kind === "pdf" && (d.watermark || "").trim()) {
+          body.append("watermark", d.watermark.trim());
+        }
         Promise.resolve(this.ui.dirty ? this.save(true) : null)
           .then(function () {
             return fetch(url, {

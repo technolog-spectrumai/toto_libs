@@ -722,8 +722,11 @@ def document_save_pdf(request, file_pk):
     """Render the PDF and file it in the vault, beside the document."""
     vault_file = _get_owned_file(request, file_pk)
     document = _read_document(vault_file)
+    # Optional, plain text, capped: a watermark is a short stamp. Anything an
+    # attacker could put here is autoescaped by the print template anyway.
+    watermark = (request.POST.get("watermark") or "").strip()[:80]
     try:
-        raw = render_pdf.render(document)
+        raw = render_pdf.render(document, watermark=watermark)
     except render_pdf.PdfUnavailable as exc:
         return JsonResponse({"error": str(exc)}, status=503)
 

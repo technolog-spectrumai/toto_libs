@@ -396,6 +396,60 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
   What a save produced, and where it went. A flash message would say the same
   words and leave you hunting for the file; a link is one click.
   {% endcomment %}
+  {% comment %}---- the save-rendition dialog ----
+
+  The one place a file name is asked for, and it is obligatory: the button stays
+  dead until there is one. The watermark is offered for PDF only — plain text,
+  drawn faintly across every page by the print stylesheet.
+  {% endcomment %}
+  <div x-show="ui.saveDialog.open" x-cloak
+       @keydown.escape.window="ui.saveDialog.open = false"
+       class="fixed inset-0 z-[9300] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+         @click="ui.saveDialog.open = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl">
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid" :class="ui.saveDialog.kind === 'pdf' ? 'fa-file-pdf' : 'fa-file-code'"></i>
+          <span x-text="ui.saveDialog.kind === 'pdf' ? '{% trans "Save as PDF" %}' : '{% trans "Save as HTML" %}'"></span>
+        </h2>
+        <button @click="ui.saveDialog.open = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+      </div>
+      <form class="space-y-3 p-5" @submit.prevent="confirmRendition()">
+        <label class="block text-sm">
+          <span class="mb-1 block font-semibold">{% trans "File name" %}</span>
+          <input type="text" x-model="ui.saveDialog.name" required
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
+          <span class="mt-1 block text-xs opacity-55">
+            {% trans "Saved into the vault beside this document. An existing file of this name is replaced." %}
+          </span>
+        </label>
+        <label x-show="ui.saveDialog.kind === 'pdf'" class="block text-sm">
+          <span class="mb-1 block font-semibold">{% trans "Watermark" %} <span class="font-normal opacity-55">({% trans "optional" %})</span></span>
+          <input type="text" x-model="ui.saveDialog.watermark" maxlength="80"
+                 placeholder="{% trans 'DRAFT, CONFIDENTIAL, a recipient…' %}"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="w-full rounded-lg border bg-transparent px-3 py-2 text-sm">
+          <span class="mt-1 block text-xs opacity-55">
+            {% trans "Drawn faintly across every page." %}
+          </span>
+        </label>
+        <div class="flex justify-end gap-2 pt-1">
+          <button type="button" @click="ui.saveDialog.open = false"
+                  class="rounded-lg px-3 py-2 text-sm opacity-70 hover:opacity-100">
+            {% trans "Cancel" %}</button>
+          <button type="submit" :disabled="!ui.saveDialog.name.trim()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+            {% trans "Save" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <div x-show="ui.rendition.open" x-cloak
        @keydown.escape.window="ui.rendition.open = false"
        class="fixed inset-0 z-[9300] flex items-center justify-center p-4">
