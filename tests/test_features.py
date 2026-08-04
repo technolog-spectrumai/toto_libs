@@ -52,7 +52,7 @@ def test_kanban_is_independent_of_every_other_feature():
     # nor be pulled in by anything. Turning the whole platform on must leave a
     # BUILD_KANBAN=0 host without kanban.
     everything = resolve(
-        BUILD_STUDIO=1, BUILD_MEDIA=1, BUILD_LATEX=1, BUILD_GITVAULT=1,
+        BUILD_STUDIO=1, BUILD_MEDIA=1, BUILD_GITVAULT=1,
         BUILD_TRAVELS=1, BUILD_MONIT=1, BUILD_KANBAN=0,
     )
     assert everything.kanban is False
@@ -212,22 +212,17 @@ def test_tesseract_no_longer_bundles_ffmpeg():
 
 
 # ---------------------------------------------------------------------------
-# pdflatex and the ACE editor: two things latex used to drag along
+# pdflatex and the ACE editor: two things BUILD_LATEX used to drag along
 # ---------------------------------------------------------------------------
 
-def test_texlive_is_not_implied_by_latex_any_more():
-    # It has two independent consumers — texlab compilation AND notarius
-    # contract→PDF, which is a separate implementation sharing no import with
-    # texlab and installed unconditionally. Defaulting it from `latex` meant a
-    # host that moved texlab away silently lost notarius PDF export.
-    assert resolve(BUILD_LATEX=1).texlive is False
-    assert resolve(BUILD_LATEX=1, INSTALL_TEXLIVE=1).texlive is True
-
-
-def test_texlive_can_be_had_without_latex_at_all():
-    # The notarius-only case: no texlab, but contracts still export to PDF.
-    f = resolve(INSTALL_TEXLIVE=1)
-    assert (f.texlive, f.latex) == (True, False)
+def test_texlive_is_its_own_explicit_flag():
+    # It has two independent consumers, both on zenobia now — TeX Lab compilation
+    # (host flag BUILD_TEXLAB) and notarius contract→PDF, a separate
+    # implementation sharing no import with texlab and installed unconditionally.
+    # Defaulting it from a feature meant a host that moved the feature away
+    # silently lost notarius PDF export.
+    assert resolve().texlive is False
+    assert resolve(INSTALL_TEXLIVE=1).texlive is True
 
 
 def test_weasyprint_is_its_own_explicit_flag():
@@ -239,27 +234,14 @@ def test_weasyprint_is_its_own_explicit_flag():
     assert resolve(INSTALL_TEXLIVE=1).weasyprint is False
 
 
-def test_the_editor_still_follows_latex_when_unnamed():
-    # The default is unchanged, so no existing profile resolves differently.
-    assert resolve(BUILD_LATEX=1).editor is True
-    # BUILD_PYEDITOR is gone with the retired antaresia (1.45): setting it now
-    # resolves nothing, exactly like any unknown flag.
+def test_the_editor_is_explicit_only():
+    # BUILD_LATEX (1.46) and BUILD_PYEDITOR (1.45) are both gone with the
+    # workspace split: setting either now resolves nothing, exactly like any
+    # unknown flag. The editors come only from BUILD_EDITOR itself.
+    assert resolve(BUILD_EDITOR=1).editor is True
+    assert resolve(BUILD_LATEX=1).editor is False
     assert resolve(BUILD_PYEDITOR=1).editor is False
     assert resolve().editor is False
-
-
-def test_the_editor_survives_latex_leaving():
-    # The whole point of making it settable. toto.editor carries EIGHT file-type
-    # plugins and only two are latex's; without this a host that moved LaTeX
-    # elsewhere lost json/yaml/xml/csv/html/text editing too, and every vault
-    # Edit link rendered as "".
-    f = resolve(BUILD_EDITOR=1)
-    assert f.editor is True
-    assert f.latex is False
-
-
-def test_the_editor_can_be_refused_even_with_latex_on():
-    assert resolve(BUILD_LATEX=1, BUILD_EDITOR=0).editor is False
 
 
 # ---------------------------------------------------------------------------
@@ -280,7 +262,7 @@ def test_realtime_is_derived_not_merely_echoed():
     # zenobia still installs it after the split — it keeps workflows.
     assert resolve(BUILD_WORKFLOWS=1).realtime is True
     assert resolve(BUILD_CHAT=1).realtime is True
-    assert resolve(BUILD_LATEX=1).realtime is True      # via needs_channels
+    assert resolve(BUILD_SKETCH=1).realtime is True     # via needs_channels
     assert resolve().realtime is False
 
 

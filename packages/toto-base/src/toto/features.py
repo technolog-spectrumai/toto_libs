@@ -30,7 +30,6 @@ class Features:
     workflows: bool
     weather: bool
     # Editing features (standalone - each enabled on its own; no labs tier).
-    latex: bool
     sketch: bool
     canasta: bool
     media: bool
@@ -123,14 +122,14 @@ def resolve_features(get) -> Features:
     weather = flag(get, "BUILD_WEATHER", tier_realtime)       # toto.weather (FKs workflows.WorkflowRun)
 
     # Editing features (standalone — each enabled on its own; no labs tier).
-    latex = flag(get, "BUILD_LATEX")                          # toto.texlab
-    # latex, sketch, canasta, travels and gitvault are host-owned apps (see
-    # the suite README): the flags stay here because they are part of the host
-    # contract — needs_channels depends on sketch and canasta, `editor` defaults
-    # from latex, and the workflows closure on latex/gitvault — but
-    # registry.FEATURE_APPS deliberately has no entry for them, since the host
-    # supplies the INSTALLED_APPS line from its own portion. `texlive` used to
-    # default from latex too and no longer does; see where it is resolved below.
+    # sketch, canasta, travels and gitvault are host-owned apps (see the suite
+    # README): the flags stay here because they are part of the host contract —
+    # needs_channels depends on sketch and canasta, and the workflows closure on
+    # gitvault — but registry.FEATURE_APPS deliberately has no entry for them,
+    # since the host supplies the INSTALLED_APPS line from its own portion.
+    # (BUILD_LATEX left in 1.46: the workspace split's texlab/antaresia are
+    # zenobia-host flags — BUILD_TEXLAB/BUILD_ANTARESIA — resolved in that
+    # host's settings, not here. `texlive` stays; see where it is resolved below.)
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
     # toto.canasta lives in zenobia's own portion (zenobia/toto/canasta). Its
     # table is a websocket, so it belongs in the needs_channels closure below —
@@ -214,8 +213,8 @@ def resolve_features(get) -> Features:
         )
 
     # Dependency closure — a feature pulls in what it cannot run without.
-    # weather, fileservices, latex (texlab) and gitvault all
-    # have a model FK to workflows.WorkflowRun, so they require the workflows app —
+    # weather, fileservices and gitvault all have a model FK to
+    # workflows.WorkflowRun, so they require the workflows app —
     # else Django's system check fails with fields.E300/E307.
     #
     # Neither app still in toto-media appears here, which is new in 1.21: vod has no
@@ -227,7 +226,7 @@ def resolve_features(get) -> Features:
     # manta is NOT here either, though it is in the same package as fileservices: it
     # has exactly one FK (FileJob.owner → User) and names workflows nowhere. What it
     # needs is celery, which the realtime tier below installs.
-    if weather or fileservices or latex or gitvault:
+    if weather or fileservices or gitvault:
         workflows = True
     # connectors / formica feed or curate the ingestor → bento/ravioli graph.
     #
@@ -245,14 +244,13 @@ def resolve_features(get) -> Features:
     sabbia_ollama = sabbia and flag(get, "SABBIA_OLLAMA")     # Ollama endpoint (vicuna)
 
     # Derived infrastructure.
-    # toto.editor — the shared ACE base. Settable on its own, because it carries
-    # EIGHT file-type plugins (text/json/yaml/xml/csv/html/latex/bib) and only two
-    # of them belong to latex. Derived from latex alone, a host that
-    # moved LaTeX elsewhere silently lost every vault Edit link:
-    # vault/views.py renders "" for a file type with no plugin.
-    editor = flag(get, "BUILD_EDITOR", latex)
+    # toto.editor — the shared ACE base, carrying EIGHT file-type plugins
+    # (text/json/yaml/xml/csv/html/latex/bib). Explicit-only since 1.46: it used
+    # to default from BUILD_LATEX, and that flag left with the workspace split —
+    # the hosts that want the editors (all of them, today) say BUILD_EDITOR=1.
+    editor = flag(get, "BUILD_EDITOR")
     # Channels/ASGI back every WebSocket consumer.
-    needs_channels = chat or latex or sketch or sabbia or canasta
+    needs_channels = chat or sketch or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
     vicuna = graph or sabbia_ollama
 
@@ -291,13 +289,15 @@ def resolve_features(get) -> Features:
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
     ffmpeg = fileservices or manta or explicit_ffmpeg
-    # texlive (pdflatex) has TWO independent consumers: texlab compilation and
-    # notarius contract→PDF export, which is a separate implementation sharing no
-    # import with texlab and installed unconditionally. So it must NOT default to
-    # either one — deriving it from `latex` meant a host that moved texlab away
-    # silently lost notarius PDF export, and there was nothing to catch that.
-    # Every profile states it; test_latex_profiles_state_whether_they_want_texlive
-    # in the monorepo suite is the enforcement.
+    # texlive (pdflatex) has TWO independent consumers, both on zenobia now:
+    # TeX Lab compilation (host-owned toto.texlab, flag BUILD_TEXLAB resolved in
+    # host settings) and notarius contract→PDF export, a separate implementation
+    # sharing no import with texlab and installed unconditionally. So it must NOT
+    # default to either one — deriving it from a feature meant a host that moved
+    # the feature away silently lost notarius PDF export, and there was nothing
+    # to catch that. Every profile states it;
+    # test_latex_profiles_state_whether_they_want_texlive in the monorepo suite
+    # is the enforcement.
     texlive = flag(get, "INSTALL_TEXLIVE")
     # WeasyPrint (HTML→PDF) is a PIP layer, not an apt one: its native libraries
     # (cairo/pango/gdk-pixbuf/libffi) already ship in every host's base image, so all
@@ -310,7 +310,6 @@ def resolve_features(get) -> Features:
         chat=chat,
         workflows=workflows,
         weather=weather,
-        latex=latex,
         sketch=sketch,
         canasta=canasta,
         media=media,
