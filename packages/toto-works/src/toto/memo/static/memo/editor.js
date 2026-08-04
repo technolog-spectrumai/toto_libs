@@ -29,6 +29,28 @@
     try { return JSON.parse(el.textContent); } catch (e) { return fallback; }
   }
 
+  /* Light or dark, as ACE needs to be told it.
+   *
+   * From localStorage, which is where `oya/base.html` seeds the page's own
+   * `darkMode` from — NOT from `this.darkMode`. Alpine resolves a parent
+   * component's data for template EXPRESSIONS but not for property access
+   * inside a method, so `this.darkMode` is undefined here and every read of it
+   * silently fell through to this fallback anyway. Saying so beats relying on
+   * it.
+   *
+   * The theme toggle reloads the page, so mount time is the only time this has
+   * to be right — `boot()` also watches `darkMode` so a future toggle that
+   * stops reloading still re-themes whatever is open.
+   */
+  function isDarkMode() {
+    try { return localStorage.getItem("darkMode") === "true"; }
+    catch (e) { return false; }
+  }
+
+  function aceTheme() {
+    return isDarkMode() ? "ace/theme/twilight" : "ace/theme/textmate";
+  }
+
   function csrf() {
     var m = document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/);
     return m ? decodeURIComponent(m[2]) : "";
@@ -104,6 +126,11 @@
         global.addEventListener("beforeunload", function (e) {
           if (self.ui.dirty || self._inflight) { e.preventDefault(); e.returnValue = ""; }
         });
+
+        // The theme toggle reloads the page today, so this is insurance rather
+        // than a live requirement — but an ACE stuck in the light theme inside
+        // a dark dialog is exactly the mismatch this suite keeps fixing.
+        this.$watch("darkMode", function () { self.syncSourceTheme(); });
       },
 
       destroy: function () {
@@ -428,13 +455,9 @@
         if (typeof ace === "undefined") return;
         var host = document.getElementById("memo-source");
         if (!host) return;
-        var dark = this.darkMode;
-        if (dark === undefined) {
-          try { dark = localStorage.getItem("darkMode") === "true"; } catch (e) {}
-        }
         this.teardownSource();
         this._ace = ace.edit(host);
-        this._ace.setTheme(dark ? "ace/theme/twilight" : "ace/theme/textmate");
+        this._ace.setTheme(aceTheme());
         // Only five modes are vendored; anything else would 404 and leave the
         // editor with no highlighting at all. Text is the honest fallback.
         var mode = type === "svg" || type === "html" ? "ace/mode/xml" : "ace/mode/text";
@@ -443,9 +466,18 @@
           mode = "ace/mode/" + language;
         }
         this._ace.session.setMode(mode);
+        // No syntax worker. ACE would fetch `worker-<mode>.js` from a base path
+        // this page never configures — a 404 and a console error for a validator
+        // nobody asked for. The server sanitises what is applied anyway.
+        this._ace.session.setUseWorker(false);
         this._ace.setOptions({ fontSize: "13px", showPrintMargin: false,
                                useSoftTabs: true, tabSize: 2, wrap: true });
         this._ace.setValue(this.ui.dialog.payload || "", -1);
+      },
+
+      /* Light or dark. See isDarkMode() for where the answer comes from. */
+      syncSourceTheme: function () {
+        if (this._ace) this._ace.setTheme(aceTheme());
       },
 
       teardownSource: function () {

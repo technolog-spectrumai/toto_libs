@@ -275,7 +275,18 @@
   </div>
 </div>
 
+{% comment %} ACE, and the files it cannot fetch for itself.
+
+  `ace.min.js` carries the `textmate` theme and a plain-text mode and nothing
+  else: every other theme and mode is a separate file ACE loads at runtime from
+  a base path this page never configures. Asking for one that is not already
+  present succeeds silently and leaves the editor on textmate — white, on a dark
+  page. So the themes and the Python mode are loaded here as ordinary scripts.
+{% endcomment %}
 <script src="{% static 'vendor/ace/ace.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+<script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+<script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
 <script>
 (function () {
   var _editor = null;
@@ -298,11 +309,13 @@
   function _applyTheme() {
     if (!_editor) return;
     var dark = localStorage.getItem('darkMode') === 'true';
-    _editor.setTheme(dark ? 'ace/theme/tomorrow_night' : 'ace/theme/tomorrow');
+    // The two themes this suite vendors, and the two the page above loads.
+    _editor.setTheme(dark ? 'ace/theme/twilight' : 'ace/theme/textmate');
     var box = document.getElementById('lambda-modal-box');
     if (box) {
-      box.style.background = dark ? '#1d1f21' : '#ffffff';
-      box.style.color      = dark ? '#c5c8c6' : '#1d1f21';
+      // The modal chrome, matched to whichever theme the editor is wearing.
+      box.style.background = dark ? '#141414' : '#ffffff';
+      box.style.color      = dark ? '#f8f8f8' : '#1d1f21';
       box.style.borderColor = dark ? '#444' : '#ddd';
     }
   }

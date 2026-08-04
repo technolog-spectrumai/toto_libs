@@ -590,7 +590,18 @@ old one carried 210 lines of inline Alpine that no test could reach.
   {% comment %} Trix for prose, ACE for SVG and code — both vendored under
      core/static/vendor and listed in every host's download_vendor.py.{% endcomment %}
   <script src="{% static 'vendor/trix/trix.umd.min.js' %}"></script>
+  {% comment %} ACE, and the files it cannot fetch for itself.
+
+  `ace.js` carries the `textmate` theme and a plain-text mode and NOTHING else:
+  every other theme and mode is a separate file it tries to load at runtime from
+  a base path that is not configured here — so `setTheme("ace/theme/twilight")`
+  silently did nothing and the editor stayed light on a dark page. Loading them
+  as ordinary scripts is the fix, and it is what ambrosia's workspace already
+  does.{% endcomment %}
   <script src="{% static 'vendor/ace/ace.js' %}"></script>
+  <script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
   <script src="{% static 'memo/model.js' %}"></script>
   <script src="{% static 'memo/history.js' %}"></script>
   <script src="{% static 'memo/sanitize.js' %}"></script>
