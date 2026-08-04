@@ -10,7 +10,7 @@ build-backend = "setuptools.build_meta"
 # because it imports memo's sanitisers and media helpers — same wheel, plain
 # intra-package import, no new distribution edge.
 name = "toto-works"
-version = "1.43"
+version = "1.44"
 description = "toto workflow-backed file, document and data services"
 readme = "README.md"
 license = { text = "MIT" }
@@ -18,8 +18,8 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.43",
-    "toto-flow==1.43",
+    "toto-base==1.44",
+    "toto-flow==1.44",
 ]
 
 [tool.setuptools.packages.find]
