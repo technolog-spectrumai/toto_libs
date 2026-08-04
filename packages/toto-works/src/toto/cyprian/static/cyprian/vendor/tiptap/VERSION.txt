@@ -1,0 +1,54 @@
+TipTap 2.27.2 + ProseMirror, as ESM modules resolved by an import map.
+Pinned closure: 54 files, ~1.0 MB. See manifest.json for specifier -> filename.
+
+Entry points imported by cyprian/tiptap_setup.js:
+  @tiptap/core, @tiptap/starter-kit, @tiptap/extension-image,
+  @tiptap/extension-table{,-row,-cell,-header}, @tiptap/extension-link,
+  @tiptap/extension-placeholder, @tiptap/extension-underline
+Everything else in this directory arrived by walking their imports.
+
+Sources (all https://cdn.jsdelivr.net/npm/<pkg>@<version>/<path>):
+  @tiptap/*            2.27.2   dist/index.js
+  @tiptap/pm/<sub>     2.27.2   <sub>/dist/index.js
+  prosemirror-commands 1.7.1    prosemirror-dropcursor 1.8.3
+  prosemirror-gapcursor 1.4.1   prosemirror-history 1.5.0
+  prosemirror-keymap   1.2.3    prosemirror-model 1.25.11
+  prosemirror-schema-list 1.5.1 prosemirror-state 1.4.4
+  prosemirror-tables   1.8.5    prosemirror-transform 1.12.0
+  prosemirror-view     1.42.2   orderedmap 2.1.1
+  rope-sequence        1.3.4    w3c-keyname 2.2.8 (index.js, not dist/)
+  linkifyjs            4.3.3    dist/linkify.mjs
+
+Licences: TipTap MIT (LICENSE beside this file); ProseMirror MIT; linkifyjs MIT.
+
+WHY ESM AND AN IMPORT MAP, when every other vendored library here is a UMD
+bundle loaded with a plain <script src>:
+
+  TipTap v3 is ESM-only. v2 ships a UMD build, but it expects ProseMirror as
+  BARE GLOBALS (window.state, window.model, window.view) — not a supported
+  distribution path, and one broken sibling would be silent. There is no
+  bundler in this repo and adding one is a bigger change than an import map.
+
+  Bare specifiers survive collectstatic untouched: Django's
+  support_js_module_import_aggregation is off, so nothing tries to rewrite
+  them, and toto.core.storage.ResilientManifestStaticFilesStorage would
+  swallow the failure even if it did. The map itself is rendered from
+  cyprian/tiptap.py with {% static %} URLs, so every module is cache-busted.
+
+  .mjs IS NEVER USED HERE, deliberately. Production serves /static/ straight
+  from nginx:latest with stock mime.types, which has no .mjs entry — the file
+  would go out as application/octet-stream and the browser would refuse the
+  module. Whitenoise (dev) knows .mjs, so the break would appear only in
+  production. linkifyjs ships its ESM as dist/linkify.mjs; it is vendored here
+  as linkifyjs.js.
+
+The trailing //# sourceMappingURL= comment is stripped from every file: we do
+not vendor the .map, and the resilient storage would rather not see it.
+
+NOT fetched by zenobia/scripts/download_vendor.py — that writes into the
+VENDORED toto library tree, and dirtying vendor/toto_libs blocks every pinned
+build and freezes subtree pulls. Same reasoning as
+toto/canasta/static/canasta/vendor/pixi/VERSION.txt.
+
+Refresh with scripts/fetch_tiptap.py beside this app (run by hand, never at
+build time), then re-run toto.cyprian.tests.test_tiptap.

@@ -1,0 +1,564 @@
+{% extends "cyprian/base.html" %}
+{% load static i18n %}
+
+{% comment %}The writer.
+
+The canvas is the document: the same `document.css` the reader and the PDF load,
+laid out at true page width and margins. Page boundaries are drawn where the
+paginator measured them, and because the editor only ever breaks BETWEEN blocks
+while the PDF is forbidden from splitting one, those are the pages you get.
+
+All logic is in static/cyprian/*.js. Nothing but markup lives here.
+{% endcomment %}
+
+{% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+{{ document_json|json_script:"cy-document" }}
+{{ config_json|json_script:"cy-config" }}
+{{ vault_media_json|json_script:"cy-media" }}
+
+<section x-data="cyprianEditor()" x-init="boot()" @keydown.window="onKey($event)"
+         :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-3 py-4 sm:px-5">
+  <div class="mx-auto max-w-[92rem] space-y-4">
+
+    {# ---- header ------------------------------------------------------- #}
+    <header :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="flex flex-wrap items-center gap-3 rounded-2xl border p-3 shadow-sm">
+      <a href="{% url 'cyprian:index' %}" title="{% trans 'All documents' %}"
+         class="opacity-60 transition hover:opacity-100">
+        <i class="fa-solid fa-arrow-left"></i>
+      </a>
+
+      <input type="text" x-model="state.title"
+             @input="mutate(function () {}, 'doc-title')"
+             placeholder="{% trans 'Untitled document' %}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-base font-semibold">
+
+      <span class="flex items-center gap-1">
+        <button type="button" @click="undo()" :disabled="!canUndo" title="{% trans 'Undo' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+          <i class="fa-solid fa-rotate-left text-sm"></i>
+        </button>
+        <button type="button" @click="redo()" :disabled="!canRedo" title="{% trans 'Redo' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100 disabled:opacity-20">
+          <i class="fa-solid fa-rotate-right text-sm"></i>
+        </button>
+      </span>
+
+      {# Document or source. Two views of one file, not two documents. #}
+      <span class="inline-flex overflow-hidden rounded-lg border"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <button type="button" @click="setView('document')"
+                :class="ui.view === 'document'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-55 hover:opacity-100'"
+                class="px-2.5 py-1.5 text-xs font-semibold transition">
+          <i class="fa-solid fa-file-lines"></i> {% trans "Document" %}
+        </button>
+        <button type="button" @click="setView('source')"
+                :class="ui.view === 'source'
+                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                  : 'opacity-55 hover:opacity-100'"
+                class="px-2.5 py-1.5 text-xs font-semibold transition">
+          <i class="fa-solid fa-code"></i> {% trans "Source" %}
+        </button>
+      </span>
+
+      {% comment %} Page setup, behind one menu. Everything here travels in
+         the file and applies to the writer, the reader and the PDF alike.
+
+         There is no paper-size control: A4 only. A document that can be one of
+         two sizes needs this control, a rule in every stylesheet and a branch
+         in the paginator, for something almost nobody changes and nobody
+         changes twice.{% endcomment %}
+      <div x-data="{ open: false }" class="relative">
+        <button type="button" @click="open = !open" title="{% trans 'Page setup' %}"
+                class="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs opacity-70 transition hover:opacity-100">
+          <i class="fa-solid fa-file-lines"></i> A4
+          <i class="fa-solid fa-chevron-down text-[0.55rem] opacity-60"></i>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="absolute left-0 z-[9100] mt-1 min-w-[15rem] overflow-hidden rounded-xl border p-2 text-sm shadow-lg">
+
+          <p class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-50">{% trans "Margins" %}</p>
+          <div class="flex gap-1 pb-2">
+            <template x-for="m in marginChoices" :key="m.id">
+              <button type="button" @click="setMargins(m.id)"
+                      :class="state.margins === m.id
+                        ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                        : 'opacity-55 hover:opacity-100'"
+                      class="flex-1 rounded px-2 py-1 text-xs font-semibold transition"
+                      x-text="m.label"></button>
+            </template>
+          </div>
+
+          <p class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-50">{% trans "Typeface" %}</p>
+          <div class="grid grid-cols-2 gap-1 pb-2">
+            <template x-for="f in fonts" :key="f.id">
+              <button type="button" @click="setFont(f.id)"
+                      :class="state.font === f.id
+                        ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                        : 'opacity-55 hover:opacity-100'"
+                      class="rounded px-2 py-1 text-xs font-semibold transition"
+                      x-text="f.label"></button>
+            </template>
+          </div>
+
+          <label class="flex items-center gap-2 px-1 py-1 text-xs">
+            <input type="checkbox" :checked="state.toc" @change="toggleToc()" class="h-3 w-3">
+            {% trans "Contents page" %}
+          </label>
+        </div>
+      </div>
+
+      <span class="text-xs opacity-45">
+        <span x-text="wordCount"></span> {% trans "words" %} ·
+        <span x-text="ui.pageCount"></span> {% trans "pages" %}
+      </span>
+      <span class="min-w-[4.5rem] text-xs opacity-55" x-text="ui.status"></span>
+
+      <button type="button" @click="save(true)" :disabled="ui.saving"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+        <i class="fa-solid" :class="ui.saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
+        {% trans "Save" %}
+      </button>
+
+      <a href="{{ read_url }}" target="_blank" rel="noopener"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-85">
+        <i class="fa-solid fa-book-open"></i> {% trans "Read" %}
+      </a>
+
+      <div x-data="{ open: false }" class="relative">
+        <button type="button" @click="open = !open" title="{% trans 'More' %}"
+                class="rounded-lg px-2 py-2 opacity-60 transition hover:opacity-100">
+          <i class="fa-solid fa-ellipsis-vertical"></i>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="absolute right-0 z-[9100] mt-1 min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
+          <a href="{{ pdf_url }}" class="block px-3 py-1.5 hover:opacity-70">
+            <i class="fa-solid fa-download w-4 opacity-60"></i> {% trans "Download PDF" %}
+          </a>
+          {% comment %} Saving into the vault rather than downloading, because
+          the vault IS the filesystem here: a PDF of a report belongs beside the
+          report, where it can be shared, linked and versioned like anything
+          else. The link comes back in a modal so the file is one click away
+          instead of "somewhere in your bucket".{% endcomment %}
+          <button type="button" @click="saveRendition('pdf'); open = false"
+                  class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+            <i class="fa-solid fa-file-pdf w-4 opacity-60"></i>
+            {% trans "Save PDF to the vault" %}
+          </button>
+          <button type="button" @click="saveRendition('html'); open = false"
+                  class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+            <i class="fa-solid fa-file-code w-4 opacity-60"></i>
+            {% trans "Save HTML to the vault" %}
+          </button>
+          {% if gitvault_ctx %}
+            <div class="my-1 border-t border-current/10"></div>
+            {% include "gitvault/_git_toolbar_buttons.html" %}
+          {% endif %}
+        </div>
+      </div>
+    </header>
+
+    <div x-show="ui.conflict" x-cloak
+         class="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm">
+      <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+      <p class="flex-1">
+        {% blocktrans %}This document changed somewhere else since you opened it.
+        Reload to take that version, or overwrite it with what is on screen.{% endblocktrans %}
+      </p>
+      <button type="button" @click="window.location.reload()"
+              class="rounded-lg border border-current px-3 py-1.5 text-xs font-semibold">{% trans "Reload" %}</button>
+      <button type="button" @click="saveOverwriting()"
+              class="rounded-lg border border-red-500/60 px-3 py-1.5 text-xs font-semibold text-red-500">{% trans "Overwrite" %}</button>
+    </div>
+
+    {% comment %}---- the writing toolbar ----
+
+    Ours, not TipTap's: TipTap ships no UI at all, which is the point of using
+    it. Every button runs a command through `cmd()` and asks `isActive()` what
+    the caret is in, so "is this on" and "turn this on" cannot disagree — which
+    is exactly how a toolbar ends up lying about the selection.
+
+    It is sticky because a document is taller than a screen and a formatting
+    control you have to scroll to is a control you stop using.
+    {% endcomment %}
+    <div x-show="ui.view === 'document'"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="cy-toolbar sticky top-2 z-40 flex flex-wrap items-center gap-1 rounded-2xl border p-2 shadow-sm">
+
+      <template x-for="lvl in [1, 2, 3]" :key="'tb-h' + lvl">
+        <button type="button" @click="toggleHeading(lvl)"
+                :data-on="isActive('heading', { level: lvl }) ? '1' : null"
+                :title="'{% trans "Heading" %} ' + lvl"
+                class="cy-tool">H<span x-text="lvl"></span></button>
+      </template>
+
+      <span class="cy-tool-sep"></span>
+
+      <button type="button" @click="toggleMark('bold')" title="{% trans 'Bold' %}"
+              :data-on="isActive('bold') ? '1' : null" class="cy-tool font-bold">B</button>
+      <button type="button" @click="toggleMark('italic')" title="{% trans 'Italic' %}"
+              :data-on="isActive('italic') ? '1' : null" class="cy-tool italic">I</button>
+      <button type="button" @click="toggleMark('underline')" title="{% trans 'Underline' %}"
+              :data-on="isActive('underline') ? '1' : null" class="cy-tool underline">U</button>
+      <button type="button" @click="toggleMark('strike')" title="{% trans 'Strikethrough' %}"
+              :data-on="isActive('strike') ? '1' : null" class="cy-tool line-through">S</button>
+      <button type="button" @click="toggleMark('code')" title="{% trans 'Inline code' %}"
+              :data-on="isActive('code') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-code"></i></button>
+
+      <span class="cy-tool-sep"></span>
+
+      <button type="button" @click="toggleBulletList()" title="{% trans 'Bulleted list' %}"
+              :data-on="isActive('bulletList') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-list-ul"></i></button>
+      <button type="button" @click="toggleOrderedList()" title="{% trans 'Numbered list' %}"
+              :data-on="isActive('orderedList') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-list-ol"></i></button>
+      <button type="button" @click="toggleQuote()" title="{% trans 'Quote' %}"
+              :data-on="isActive('blockquote') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-quote-left"></i></button>
+      <button type="button" @click="toggleCodeBlock()" title="{% trans 'Code block' %}"
+              :data-on="isActive('codeBlock') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-file-code"></i></button>
+
+      <span class="cy-tool-sep"></span>
+
+      {% comment %} Size and colour are CLASSES, never inline styles: the server
+      strips `style` everywhere in this suite, so an inline-style mark would
+      vanish on the first save. See sanitize_html.py.{% endcomment %}
+      <template x-for="size in sizes" :key="'tb-s' + (size.id || 'n')">
+        <button type="button" @click="setSize(size.id)" :title="size.label"
+                :data-on="size.id ? (isActive('cySize', { size: size.id }) ? '1' : null)
+                                  : (!isActive('cySize') ? '1' : null)"
+                class="cy-tool"
+                :class="size.id === 'sm' ? 'text-[0.7rem]' : (size.id === 'lg' ? 'text-base' : 'text-sm')">A</button>
+      </template>
+
+      <span class="cy-tool-sep"></span>
+
+      <template x-for="ink in inks" :key="'tb-i' + ink.id">
+        <button type="button" @click="setInk(ink.id)" :title="ink.label"
+                :data-ink="ink.id"
+                :data-on="isActive('cyInk', { ink: ink.id }) ? '1' : null"
+                class="cy-tool cy-ink-dot"></button>
+      </template>
+      <button type="button" @click="setInk('')" title="{% trans 'Default colour' %}"
+              class="cy-tool cy-ink-dot" data-ink="none"></button>
+
+      <span class="cy-tool-sep"></span>
+
+      <button type="button" @click="setLink()" title="{% trans 'Link' %}"
+              :data-on="isActive('link') ? '1' : null" class="cy-tool">
+        <i class="fa-solid fa-link"></i></button>
+      <button type="button" @click="openDialog('image')" title="{% trans 'Image' %}"
+              class="cy-tool"><i class="fa-solid fa-image"></i></button>
+      <button type="button" @click="insertTable()" title="{% trans 'Table' %}"
+              class="cy-tool"><i class="fa-solid fa-table"></i></button>
+      <button type="button" @click="openDialog('formula')" title="{% trans 'Formula' %}"
+              class="cy-tool"><i class="fa-solid fa-square-root-variable"></i></button>
+
+      <div x-data="{ open: false }" class="relative">
+        <button type="button" @click="open = !open" title="{% trans 'Callout' %}"
+                :data-on="isActive('callout') ? '1' : null" class="cy-tool">
+          <i class="fa-solid fa-circle-info"></i>
+        </button>
+        <div x-show="open" x-cloak @click.outside="open = false"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="absolute left-0 z-[9100] mt-1 min-w-[9rem] rounded-xl border py-1 text-sm shadow-lg">
+          <template x-for="tone in tones" :key="'tone' + tone.id">
+            <button type="button" @click="setCallout(tone.id); open = false"
+                    class="block w-full px-3 py-1.5 text-left hover:opacity-70"
+                    x-text="tone.label"></button>
+          </template>
+        </div>
+      </div>
+
+      <button type="button" @click="addDivider()" title="{% trans 'Divider' %}"
+              class="cy-tool"><i class="fa-solid fa-minus"></i></button>
+      <button type="button" @click="addPageBreak()" title="{% trans 'Page break' %}"
+              class="cy-tool"><i class="fa-solid fa-scissors"></i></button>
+
+      {% comment %} Table controls appear only when the caret is in a table.
+      Eight buttons that do nothing most of the time is the clutter this editor
+      exists to avoid.{% endcomment %}
+      <template x-if="inTable">
+        <span class="flex flex-wrap items-center gap-1">
+          <span class="cy-tool-sep"></span>
+          <button type="button" @click="tableCmd('addColumnBefore')"
+                  title="{% trans 'Column before' %}" class="cy-tool">
+            <i class="fa-solid fa-arrow-left"></i>|</button>
+          <button type="button" @click="tableCmd('addColumnAfter')"
+                  title="{% trans 'Column after' %}" class="cy-tool">
+            |<i class="fa-solid fa-arrow-right"></i></button>
+          <button type="button" @click="tableCmd('deleteColumn')"
+                  title="{% trans 'Delete column' %}" class="cy-tool">
+            <i class="fa-solid fa-delete-left"></i></button>
+          <button type="button" @click="tableCmd('addRowBefore')"
+                  title="{% trans 'Row above' %}" class="cy-tool">
+            <i class="fa-solid fa-arrow-up"></i>|</button>
+          <button type="button" @click="tableCmd('addRowAfter')"
+                  title="{% trans 'Row below' %}" class="cy-tool">
+            |<i class="fa-solid fa-arrow-down"></i></button>
+          <button type="button" @click="tableCmd('deleteRow')"
+                  title="{% trans 'Delete row' %}" class="cy-tool">
+            <i class="fa-solid fa-delete-left fa-rotate-90"></i></button>
+          <button type="button" @click="tableCmd('toggleHeaderRow')"
+                  title="{% trans 'Header row' %}" class="cy-tool">
+            <i class="fa-solid fa-heading"></i></button>
+          <button type="button" @click="tableCmd('deleteTable')"
+                  title="{% trans 'Delete table' %}" class="cy-tool cy-danger">
+            <i class="fa-solid fa-trash"></i></button>
+        </span>
+      </template>
+    </div>
+
+    {% comment %}---- the canvas ----
+
+    ONE editor, for the whole document. No sections to add, order or delete —
+    a heading in the body is the structure, and it is one keystroke rather than
+    a button, a level and an ordering to manage.
+
+    The sheet is A4 and the page boundaries are DRAWN where the paginator
+    measured them: the canvas stays one continuous element, because splitting it
+    into real page elements would mean moving nodes around under a live
+    ProseMirror view, which loses the caret. `document.css` draws the gap so it
+    reads as the next sheet.
+    {% endcomment %}
+    <div x-show="ui.view === 'document'" class="min-w-0">
+      <div class="cy-desk">
+        <div x-ref="canvas"
+             class="cy-doc cy-screen cy-editing mx-auto"
+             :class="fontClass"
+             :data-theme="darkMode ? 'dark' : 'light'"
+             :data-margins="state.margins"
+             style="width: max-content">
+
+          <div class="cy-page" data-page-number="1">
+            <template x-if="ui.nonce >= 0">
+              <div id="cy-editor" :key="'editor-' + ui.nonce"></div>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% comment %} ---- source view ----------------------------------------------------
+       The document IS one XML file, so this is not a debug panel: it is the
+       document, in the form it is stored and backed up in. ACE because the
+       rest of this platform edits text in ACE, and because a textarea over a
+       2,000-line document is not editing.
+
+       Applying goes through the SERVER's parser (document_format.loads) rather
+       than a second one written in JavaScript. One parser, one set of rules,
+       one place a malformed file is explained.
+       -------------------------------------------------------------------{% endcomment %}
+    <div x-show="ui.view === 'source'" x-cloak
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-2xl border shadow-sm">
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="flex flex-wrap items-center gap-2 border-b px-3 py-2 text-xs">
+        <i class="fa-solid fa-code opacity-60"></i>
+        <span class="opacity-60">{% trans "The document as it is stored — one XML file." %}</span>
+        <span class="flex-1"></span>
+        <span x-show="ui.sourceError" x-cloak class="text-amber-500"
+              x-text="ui.sourceError"></span>
+        <button type="button" @click="loadSource(true)" class="cy-chip">
+          <i class="fa-solid fa-rotate-left"></i> {% trans "Revert" %}
+        </button>
+        <button type="button" @click="applySource()" :disabled="ui.sourceBusy"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-3 py-1.5 font-semibold transition hover:opacity-90 disabled:opacity-40">
+          <i class="fa-solid" :class="ui.sourceBusy ? 'fa-spinner fa-spin' : 'fa-check'"></i>
+          {% trans "Apply" %}
+        </button>
+      </div>
+      <div id="cy-source" class="h-[70vh] w-full"></div>
+    </div>
+  </div>
+
+
+  {% comment %}---- the rendition modal ----
+
+  What a save produced, and where it went. A flash message would say the same
+  words and leave you hunting for the file; a link is one click.
+  {% endcomment %}
+  <div x-show="ui.rendition.open" x-cloak
+       @keydown.escape.window="ui.rendition.open = false"
+       class="fixed inset-0 z-[9300] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+         @click="ui.rendition.open = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-md overflow-hidden rounded-2xl border shadow-2xl">
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-circle-check text-green-500"></i>
+          <span x-text="ui.rendition.kind + ' {% trans "saved" %}'"></span>
+        </h2>
+        <button @click="ui.rendition.open = false"
+                class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+      </div>
+      <div class="space-y-3 p-5">
+        <p class="text-sm opacity-70">
+          {% trans "It is in the vault, beside this document." %}
+        </p>
+        <a :href="ui.rendition.url" target="_blank" rel="noopener"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-85">
+          <i class="fa-solid fa-up-right-from-square opacity-60"></i>
+          <span class="min-w-0 flex-1 truncate" x-text="ui.rendition.name"></span>
+        </a>
+      </div>
+    </div>
+  </div>
+
+  {% comment %}---- the dialog ----
+
+  Two things need a form: a picture has to be chosen from somewhere, and a
+  formula is LaTeX you want to see rendered before you commit to it. Everything
+  else on the toolbar is one click, which is why this modal has shrunk from an
+  eleven-type block builder to these two.
+  {% endcomment %}
+  <div x-show="ui.dialog.open" x-cloak
+       @keydown.escape.window="closeDialog()"
+       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeDialog()"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[86vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-2xl">
+
+      <div class="flex items-center justify-between border-b border-current/10 px-5 py-4">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid"
+             :class="ui.dialog.kind === 'image' ? 'fa-image' : 'fa-square-root-variable'"></i>
+          <span x-text="ui.dialog.kind === 'image' ? '{% trans "Image" %}' : '{% trans "Formula" %}'"></span>
+        </h2>
+        <button @click="closeDialog()" class="text-lg leading-none opacity-50 hover:opacity-100">&times;</button>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto p-5">
+        <template x-if="ui.dialog.kind === 'formula'">
+          <div class="space-y-2">
+            <div class="rounded-lg border border-current/15 p-3 text-center" x-ref="formulaPreview"></div>
+            <textarea id="cy-formula-source" x-model="ui.dialog.payload" rows="3"
+                      spellcheck="false" @input="previewFormula()"
+                      placeholder="{% trans 'e.g. \frac{a}{b}' %}"
+                      class="w-full resize-y rounded-lg border border-current/30 bg-transparent px-3 py-2 text-center font-mono text-sm"></textarea>
+            {% include "memo/_formula_help.html" %}
+          </div>
+        </template>
+
+        <template x-if="ui.dialog.kind === 'image'">
+          <div class="space-y-3">
+            <div x-show="ui.dialog.payload" class="rounded-lg border border-current/15 p-2 text-center">
+              <img :src="ui.dialog.payload" alt="" class="mx-auto max-h-48">
+            </div>
+            <div class="flex flex-wrap items-center gap-2">
+              <input type="text" x-model="ui.dialog.attrs.alt"
+                     placeholder="{% trans 'Describe the picture (alt text)' %}"
+                     class="min-w-0 flex-1 rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+              <select x-model="ui.dialog.attrs.width"
+                      class="rounded-lg border border-current/30 bg-transparent px-2 py-2 text-sm">
+                <template x-for="w in ['25', '33', '50', '66', '75', '100']" :key="w">
+                  <option :value="w" x-text="w + '%'"></option>
+                </template>
+              </select>
+              <select x-model="ui.dialog.attrs.align"
+                      class="rounded-lg border border-current/30 bg-transparent px-2 py-2 text-sm">
+                <option value="left">{% trans "Left" %}</option>
+                <option value="center">{% trans "Centre" %}</option>
+                <option value="right">{% trans "Right" %}</option>
+              </select>
+              <label class="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-current/30 px-3 py-2 text-sm">
+                <i class="fa-solid fa-upload"></i> {% trans "Upload" %}
+                <input type="file" class="hidden"
+                       accept="image/png,image/jpeg,image/gif,image/webp,image/svg+xml"
+                       @change="uploadForDialog($event.target.files); $event.target.value = ''">
+              </label>
+            </div>
+            <input type="search" x-model="ui.mediaSearch"
+                   placeholder="{% trans 'Search images and SVGs in your buckets' %}"
+                   class="w-full rounded-lg border border-current/30 bg-transparent px-3 py-2 text-sm">
+            <div class="max-h-56 overflow-y-auto rounded-lg border border-current/10">
+              <template x-for="m in filteredMedia" :key="m.pk">
+                <button type="button" @click="pickMedia(m.pk)"
+                        class="flex w-full items-center gap-3 px-3 py-2 text-left transition hover:opacity-75">
+                  <i class="fa-solid shrink-0 opacity-70"
+                     :class="m.file_type === 'svg' ? 'fa-bezier-curve' : 'fa-image'"></i>
+                  <span class="min-w-0 flex-1">
+                    <span class="block truncate text-sm font-semibold" x-text="m.title"></span>
+                    <span class="block truncate text-xs opacity-60" x-text="m.location"></span>
+                  </span>
+                </button>
+              </template>
+              <p x-show="!filteredMedia.length" class="px-3 py-6 text-center text-sm opacity-50">
+                {% trans "Nothing here yet. Upload an image to a vault bucket first." %}
+              </p>
+            </div>
+          </div>
+        </template>
+      </div>
+
+      <div class="flex items-center justify-end gap-2 border-t border-current/10 px-5 py-3">
+        <button type="button" @click="closeDialog()"
+                class="rounded-lg border border-current/30 px-3 py-2 text-sm">{% trans "Cancel" %}</button>
+        <button type="button" @click="applyDialog()" :disabled="!ui.dialog.payload"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
+          <i class="fa-solid fa-check"></i> {% trans "Insert" %}
+        </button>
+      </div>
+    </div>
+  </div>
+
+</section>
+{% endblock %}
+
+{% block end_script %}
+  <script src="{% static 'vendor/katex/katex.min.js' %}"></script>
+  {% comment %} ACE, and the files it cannot fetch for itself.
+
+  `ace.js` carries the `textmate` theme and a plain-text mode and NOTHING else:
+  every other theme and mode is a separate file it tries to load at runtime from
+  a base path that is not configured here — so `setTheme("ace/theme/twilight")`
+  silently did nothing and the editor stayed light on a dark page. Loading them
+  as ordinary scripts is the fix, and it is what ambrosia's workspace already
+  does.{% endcomment %}
+  <script src="{% static 'vendor/ace/ace.js' %}"></script>
+  <script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
+  <script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
+  {% comment %} Reused wholesale from memo: snapshot undo, and the client mirror
+  of the Python allowlist for pasted content.{% endcomment %}
+  <script src="{% static 'memo/history.js' %}"></script>
+  <script src="{% static 'memo/sanitize.js' %}"></script>
+  <script src="{% static 'memo/model.js' %}"></script>
+  <script src="{% static 'cyprian/model.js' %}"></script>
+  <script src="{% static 'cyprian/editor.js' %}"></script>
+
+  {% comment %}---- TipTap ----
+
+  The import map has to come BEFORE any module script, so it is rendered here
+  ahead of the one module on the page. It maps the bare specifiers inside the
+  vendored TipTap and ProseMirror files ("@tiptap/core", "prosemirror-state") to
+  our own hashed static URLs — see cyprian/tiptap.py, and vendor/tiptap/
+  VERSION.txt for why this app is the exception to the UMD rule everywhere else.
+
+  The module publishes window.CyprianTipTap and fires `cyprian-tiptap-ready`;
+  the Alpine component mounts an editor on whichever arrives second, so the
+  fifty-file fetch cannot race the page.
+  {% endcomment %}
+  <script type="importmap">{{ tiptap_import_map|safe }}</script>
+  <script type="module" src="{% static 'cyprian/tiptap_setup.js' %}"></script>
+{% endblock %}
+
+{# A writer is a place to concentrate. #}
+{% block floating_widgets %}{% endblock %}

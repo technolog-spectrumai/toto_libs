@@ -1,0 +1,55 @@
+{% extends "cyprian/base.html" %}
+{% load i18n %}
+
+{% comment %}The reader.
+
+The same `_body.html` the PDF renders, in the reading variant of document.css —
+no page boxes, a comfortable measure. One definition of what a document is,
+three surfaces rendering it.
+{% endcomment %}
+
+{% block title %}{{ document.title|default:vault_file.title }} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-4 py-10 sm:px-6">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <div class="flex flex-wrap items-center gap-3">
+      <a href="{% url 'cyprian:index' %}"
+         class="text-sm underline opacity-60 transition hover:opacity-100">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "All documents" %}
+      </a>
+      <span class="flex-1"></span>
+      <span class="text-xs opacity-55">
+        {% blocktrans count n=document.word_count %}{{ n }} word{% plural %}{{ n }} words{% endblocktrans %}
+        · {% blocktrans with m=document.reading_time_minutes %}{{ m }} min read{% endblocktrans %}
+      </span>
+      {% if pdf_url %}
+        <a href="{{ pdf_url }}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold transition hover:opacity-85">
+          <i class="fa-solid fa-file-pdf"></i> {% trans "PDF" %}
+        </a>
+      {% endif %}
+      {% if edit_url %}
+        <a href="{{ edit_url }}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-pen"></i> {% trans "Edit" %}
+        </a>
+      {% endif %}
+    </div>
+
+    {% comment %} The document follows the platform theme on screen — `cy-screen` is what
+       switches the paper — and stays ink-on-white in the PDF, which is the one
+       surface where a dark page would be wrong. Reading a bright white sheet
+       inside a dark app is what this replaced.{% endcomment %}
+    <article class="cy-doc cy-screen cy-reading cy-font-{{ document.font }} rounded-2xl p-8 shadow-sm sm:p-12"
+             :data-theme="darkMode ? 'dark' : 'light'"
+             style="background: var(--cy-paper); color: var(--cy-ink)" data-margins="{{ document.margins }}">
+      {% include "cyprian/_body.html" with document=document %}
+    </article>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,9 @@
+{% extends "oya/base.html" %}
+{% load static %}
+
+{% block start_script %}
+  <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
+  <link rel="stylesheet" href="{% static 'cyprian/document.css' %}">
+  <link rel="stylesheet" href="{% static 'cyprian/editor.css' %}">
+  <style>[x-cloak] { display: none !important; }</style>
+{% endblock %}

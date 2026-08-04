@@ -1,6 +1,6 @@
 # toto-works
 
-**toto workflow-backed file, document and data services.** `toto-works` is one wheel in the lockstep-versioned toto suite. It bundles three Django apps that sit on top of the shared vault and workflow engine: **antaresia** (run Python scripts stored in the vault), **kanban** (project / mission / task management with sprint metrics), and **memo** (a browser-based slide presentation viewer and editor). Two of the three apps are thin, database-light layers over the vault; kanban is the data-rich one. All three ship under the shared `toto.*` PEP 420 namespace and are versioned in step with the rest of the suite.
+**toto workflow-backed file, document and data services.** `toto-works` is one wheel in the lockstep-versioned toto suite. It bundles five Django apps that sit on top of the shared vault and workflow engine: **antaresia** (run Python scripts stored in the vault), **kanban** (project / mission / task management with sprint metrics), **memo** (a browser slide-deck editor and presenter), **cyprian** (a writer: long documents with real pages and a finished PDF), and **primula** (vault-backed spreadsheets). Four of the five are thin, database-light layers over the vault — memo, cyprian and primula store nothing at all, their content being one self-contained file each; kanban is the data-rich one. All five ship under the shared `toto.*` PEP 420 namespace and are versioned in step with the rest of the suite.
 
 ## What it does (functional)
 
@@ -10,12 +10,15 @@ Open a Python file that lives in your vault, edit it in a browser code editor wi
 ### Plan and track work on boards (kanban)
 Create a **Project** with a designated lead, then break the work down: group initiatives into **Campaigns**, each holding **Missions**, each holding **Tasks**. Arrange tasks across board **Columns** (your own workflow states), size them with Fibonacci weights, set due dates, and assign each to a practitioner plus an optional reviewer who signs it off. Run time-boxed **Sprints**, prioritise missions on an Eisenhower urgency/impact matrix, and attach rich how-to documentation pages to a mission. Built-in dashboards report sprint burndown, velocity, lead time, backlog health, and progress per assignee and per campaign. A JSON API lets external clients list projects, create and edit tasks, move tasks forward or back through the board, and pull mission, backlog, matrix, and sprint-metrics data.
 
+### Write documents (cyprian)
+Write a long document in one WYSIWYG canvas that draws the A4 page boundaries as you type, so a page break in the editor is a page break in the PDF. Headings, lists, quotes, code, tables, images, formulas and callouts come from a toolbar; three system colours and three sizes follow the platform theme in the reader and in print. A **Source** tab holds the file itself. Save the finished thing into the vault as PDF or HTML. A document, like a deck, is one self-contained XML file — `toto.notarius` outsources contract prose to it where both are installed.
+
 ### Build and present slide decks (memo)
 Author self-contained presentations entirely in the browser — no database, no separate asset store. Start a new deck from the presentations workspace or the vault's *New File* menu, then edit it either as structured slides (paste HTML, drop in images that are automatically resized and embedded, inline SVG) or directly as raw XML source. Present the result as a full reveal.js slideshow. Because a presentation is just a file in the vault, the vault's **Play** and **Edit** buttons launch the viewer and editor, and normal vault sharing/visibility rules apply.
 
 ## How it works (technical)
 
-The package contains three Django apps under `src/toto/`: `antaresia`, `kanban`, and `memo`. Each is a standard `AppConfig` (`toto.antaresia`, `toto.kanban`, `toto.memo`). Cross-app model relationships are expressed as string-based Django foreign keys (e.g. `"vault.VaultFile"`, `"workflows.WorkflowRun"`, `"locations.Zone"`) and are resolved when the full portal Django project is assembled; the only *declared* wheel dependencies are `toto-base` and `toto-flow` (see Build & packaging).
+The package contains five Django apps under `src/toto/`: `antaresia`, `kanban`, `memo`, `cyprian` and `primula`. Each is a standard `AppConfig` (`toto.antaresia`, `toto.kanban`, `toto.memo`, `toto.cyprian`, `toto.primula`). `cyprian` imports `toto.memo`'s sanitisers and media helpers, which is why the two share a wheel; it reaches `toto.notarius` only through `apps.is_installed` guards, so the wheel does not depend on the host that owns contracts. Cross-app model relationships are expressed as string-based Django foreign keys (e.g. `"vault.VaultFile"`, `"workflows.WorkflowRun"`, `"locations.Zone"`) and are resolved when the full portal Django project is assembled; the only *declared* wheel dependencies are `toto-base` and `toto-flow` (see Build & packaging).
 
 ### antaresia — Python execution service
 

@@ -1,0 +1,33 @@
+{% load i18n %}<!doctype html>
+{% comment %}The document as ONE self-contained HTML file, for the vault.
+
+Standalone in the same sense the XML is: the stylesheet is inlined, the pictures
+are already data URIs, and nothing is fetched. It opens in a browser, in an
+email client, or on a machine that has never heard of this platform — which is
+the only reason to export HTML at all rather than link to the reader.
+
+No `.cy-screen`: a saved file is a document, not a page of this app, so it is
+ink-on-white like the PDF rather than following whoever's theme happened to be
+on when it was written.
+{% endcomment %}
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ document.title|default:"Document" }}</title>
+  {% if katex_css %}<style>{{ katex_css|safe }}</style>{% endif %}
+  <style>{{ document_css|safe }}</style>
+  <style>
+    body { margin: 0; background: #f2f2f2; }
+    .cy-doc { margin: 0 auto; background: #fff; }
+    @media screen { .cy-page { box-shadow: 0 2px 18px rgba(0,0,0,.15); margin: 24px auto; } }
+    @media print  { body { background: #fff; } .cy-page { box-shadow: none; margin: 0; } }
+  </style>
+</head>
+<body>
+  <article class="cy-doc cy-font-{{ document.font }}"
+           data-margins="{{ document.margins }}">
+    {% include "cyprian/_body.html" with document=document %}
+  </article>
+</body>
+</html>

@@ -1,0 +1,481 @@
+/* How a document looks — the ONE stylesheet, loaded by every surface.
+ *
+ *   document.css ──► the writer canvas   .cy-page > .cy-content
+ *                ──► the reader          the same markup, no page boxes
+ *                ──► the PDF export      @page + the same blocks
+ *                ──► the library card     a scaled-down first page
+ *
+ * Same discipline as memo's slide.css: one definition of what a document looks
+ * like, so the editor cannot drift from the export. What memo achieves with a
+ * fixed 1280x720 box, this achieves with a fixed page box and one rule both
+ * ends obey — see THE PAGINATION CONTRACT below.
+ *
+ * No url() and no @import: collectstatic runs under a hashed-manifest storage in
+ * the host gate, where an unresolvable reference degrades silently.
+ */
+
+/* --------------------------------------------------------------------------
+ * Page geometry. Variables, so `page` and `margins` are two attributes rather
+ * than four stylesheets. Pixels at 96dpi, which is what the browser lays out
+ * in; the PDF re-states the same sizes in mm under @page.
+ * ------------------------------------------------------------------------ */
+
+.cy-doc {
+  /* A4, and only A4 — 210 x 297mm in CSS pixels at 96dpi. A second paper size
+     would need a control, a rule here and a branch in the paginator, for a
+     choice almost nobody makes. */
+  --cy-page-w: 794px;
+  --cy-page-h: 1123px;
+  --cy-margin-y: 95px;     /*      25mm */
+  --cy-margin-x: 76px;     /*      20mm */
+
+  --cy-ink: #1a1a1a;
+  --cy-paper: #ffffff;
+  --cy-muted: rgba(0, 0, 0, 0.55);
+  --cy-rule: rgba(0, 0, 0, 0.16);
+  --cy-accent: #2a6df4;
+  --cy-code-bg: rgba(0, 0, 0, 0.05);
+
+  --cy-body-size: 16px;
+  --cy-line: 1.62;
+}
+
+/* Dark paper, when the platform is dark and the surface is a SCREEN.
+ *
+ * Scoped to `.cy-screen`, which the writer and the reader set and the PDF never
+ * does — a document printed on a dark page would waste a cartridge and read
+ * badly, so the export stays ink-on-white whatever the reader's theme.
+ *
+ * The values are the Oya dark tokens rather than a guess, so a document sits in
+ * the app instead of glowing in the middle of it — the same choice memo's dark
+ * slide theme makes.
+ */
+.cy-doc.cy-screen[data-theme="dark"] {
+  --cy-ink: #d3d7e0;
+  --cy-paper: #14171f;
+  --cy-muted: rgba(211, 215, 224, 0.6);
+  --cy-rule: rgba(211, 215, 224, 0.18);
+  --cy-accent: #7aa2ff;
+  --cy-code-bg: rgba(255, 255, 255, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+ * Section colours. Three named roles from the Oya palette — accent, success,
+ * warning — set on a section and used for its heading and for the tint behind
+ * a highlighted block inside it.
+ *
+ * Roles, not hex, for three reasons: they follow the theme in both directions,
+ * they still mean something in the PDF, and a document cannot end up with a
+ * heading nobody can read. Each is declared twice, once per theme, because a
+ * colour legible on white is rarely legible on near-black.
+ * ------------------------------------------------------------------------ */
+
+.cy-section[data-color="accent"]  { --cy-tone: #2a6df4; }
+.cy-section[data-color="success"] { --cy-tone: #1f8a4c; }
+.cy-section[data-color="warn"]    { --cy-tone: #b45309; }
+
+.cy-screen[data-theme="dark"] .cy-section[data-color="accent"]  { --cy-tone: #7aa2ff; }
+.cy-screen[data-theme="dark"] .cy-section[data-color="success"] { --cy-tone: #4ade80; }
+.cy-screen[data-theme="dark"] .cy-section[data-color="warn"]    { --cy-tone: #fbbf24; }
+
+.cy-section[data-color] > .cy-heading { color: var(--cy-tone); }
+.cy-section[data-color] .cy-highlight {
+  background: color-mix(in srgb, var(--cy-tone) 12%, transparent);
+  border-left: 3px solid var(--cy-tone);
+  padding-left: 0.9em;
+}
+/* color-mix is recent; WeasyPrint and older engines get a flat tint instead of
+   nothing. Declared first so a supporting engine overrides it above. */
+@supports not (background: color-mix(in srgb, red 10%, transparent)) {
+  .cy-section[data-color] .cy-highlight {
+    background: rgba(127, 127, 127, 0.12);
+  }
+}
+
+.cy-doc[data-margins="narrow"] { --cy-margin-y: 45px; --cy-margin-x: 45px; }
+.cy-doc[data-margins="wide"]   { --cy-margin-y: 132px; --cy-margin-x: 132px; }
+
+/* --------------------------------------------------------------------------
+ * Fonts. The same five system stacks as memo, for the same reason: no webfont
+ * is vendored, this file may not use url(), and the PDF is rendered by
+ * WeasyPrint inside a container — a family the image lacks would substitute
+ * silently and the export would stop matching the screen. Every stack ends in a
+ * generic, and names the DejaVu families notarius already relies on.
+ *
+ * Qualified with `.cy-doc` so they cannot be beaten by source order.
+ * ------------------------------------------------------------------------ */
+
+.cy-doc.cy-font-sans {
+  --cy-body-font: system-ui, -apple-system, "Segoe UI", Roboto, "DejaVu Sans", Arial, sans-serif;
+}
+.cy-doc.cy-font-serif {
+  --cy-body-font: Georgia, Cambria, "Times New Roman", "DejaVu Serif", Times, serif;
+}
+.cy-doc.cy-font-mono {
+  --cy-body-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+}
+.cy-doc.cy-font-rounded {
+  --cy-body-font: "Trebuchet MS", "Segoe UI", Verdana, "DejaVu Sans", sans-serif;
+}
+.cy-doc.cy-font-condensed {
+  --cy-body-font: "Arial Narrow", "Liberation Sans Narrow", "DejaVu Sans Condensed", sans-serif;
+}
+
+.cy-doc {
+  --cy-body-font: Georgia, Cambria, "Times New Roman", "DejaVu Serif", Times, serif;
+  --cy-heading-font: var(--cy-body-font);
+  --cy-code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", monospace;
+  color: var(--cy-ink);
+  font-family: var(--cy-body-font);
+  font-size: var(--cy-body-size);
+  line-height: var(--cy-line);
+}
+
+/* --------------------------------------------------------------------------
+ * The page box. On screen it is a sheet with a shadow; in print the @page rule
+ * owns the margins and this becomes a plain flow.
+ * ------------------------------------------------------------------------ */
+
+.cy-page {
+  box-sizing: border-box;
+  width: var(--cy-page-w);
+  min-height: var(--cy-page-h);
+  padding: var(--cy-margin-y) var(--cy-margin-x);
+  margin: 0 auto 28px;
+  background: var(--cy-paper);
+  position: relative;
+}
+.cy-page * , .cy-page *::before, .cy-page *::after { box-sizing: border-box; }
+
+/* The page number drawn on screen. The PDF gets a real one from @page. */
+.cy-page::after {
+  content: attr(data-page-number);
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--cy-margin-y) / 2.6);
+  text-align: center;
+  font-family: var(--cy-body-font);
+  font-size: 11px;
+  color: var(--cy-muted);
+}
+
+/* --------------------------------------------------------------------------
+ * Typography
+ * ------------------------------------------------------------------------ */
+
+.cy-doc h1, .cy-doc h2, .cy-doc h3, .cy-doc h4 {
+  font-family: var(--cy-heading-font);
+  line-height: 1.25;
+  margin: 0 0 0.4em;
+  color: var(--cy-ink);
+}
+.cy-doc h1 { font-size: 2em;    margin-top: 0; }
+.cy-doc h2 { font-size: 1.5em;  margin-top: 1.4em; }
+.cy-doc h3 { font-size: 1.22em; margin-top: 1.2em; }
+.cy-doc h4 { font-size: 1.05em; margin-top: 1.1em; }
+.cy-section:first-child > .cy-heading { margin-top: 0; }
+
+.cy-doc p { margin: 0 0 0.85em; }
+.cy-doc p:last-child { margin-bottom: 0; }
+.cy-doc ul, .cy-doc ol { margin: 0 0 0.85em; padding-left: 1.4em; }
+.cy-doc li { margin-bottom: 0.25em; }
+.cy-doc a { color: var(--cy-accent); text-decoration: underline; }
+
+.cy-doc code {
+  font-family: var(--cy-code-font);
+  font-size: 0.88em;
+  background: var(--cy-code-bg);
+  padding: 0.08em 0.3em;
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+ * Blocks
+ * ------------------------------------------------------------------------ */
+
+/* A section's content: one rich-text document, the same markup on the canvas,
+ * in the reader, in the thumbnail and in the PDF.
+ *
+ * Everything below is styled by TAG, not by a block type, because there are no
+ * blocks any more — TipTap emits ordinary HTML and this is what it looks like.
+ */
+
+.cy-content > * { margin: 0 0 0.85em; }
+.cy-content > *:last-child { margin-bottom: 0; }
+
+.cy-content h1, .cy-content h2, .cy-content h3 {
+  font-family: var(--cy-heading-font);
+  font-weight: 700;
+  line-height: 1.25;
+  margin: 1.1em 0 0.4em;
+}
+.cy-content h1 { font-size: 1.5em; }
+.cy-content h2 { font-size: 1.28em; }
+.cy-content h3 { font-size: 1.1em; }
+.cy-content > h1:first-child,
+.cy-content > h2:first-child,
+.cy-content > h3:first-child { margin-top: 0; }
+
+/* Older documents carry Trix's one-div-per-line prose. Converted rather than
+ * rewritten, so the spacing rule stays. */
+.cy-content div:not([class]) { margin: 0 0 0.55em; }
+
+.cy-content ul, .cy-content ol { padding-left: 1.5em; }
+.cy-content li { margin: 0.15em 0; }
+.cy-content li > p { margin: 0; }
+
+.cy-content a { color: var(--cy-accent); text-decoration: underline; }
+
+.cy-content blockquote {
+  border-left: 3px solid var(--cy-rule);
+  padding-left: 1em;
+  font-style: italic;
+  color: var(--cy-muted);
+}
+.cy-content blockquote .cy-cite {
+  display: block;
+  margin-top: 0.4em;
+  font-size: 0.85em;
+  font-style: normal;
+}
+.cy-content blockquote .cy-cite::before { content: "— "; }
+
+.cy-content pre {
+  font-family: var(--cy-code-font);
+  font-size: 0.82em;
+  line-height: 1.45;
+  background: var(--cy-code-bg);
+  border-radius: 6px;
+  padding: 0.7em 0.9em;
+  white-space: pre-wrap;
+  tab-size: 4;
+  overflow-wrap: anywhere;
+}
+.cy-content code { font-family: var(--cy-code-font); font-size: 0.9em; }
+.cy-content pre code { font-size: 1em; background: none; padding: 0; }
+.cy-content :not(pre) > code {
+  background: var(--cy-code-bg);
+  border-radius: 4px;
+  padding: 0.1em 0.35em;
+}
+
+/* --------------------------------------------------------------------------
+ * Text colour and size — CLASSES, never inline styles.
+ *
+ * The server strips `style` from every document, so an inline-style mark would
+ * vanish on the first save. A class survives, follows the theme in both
+ * directions, and still means something when the PDF prints it in ink.
+ * ------------------------------------------------------------------------ */
+
+.cy-ink-accent  { color: #2a6df4; }
+.cy-ink-success { color: #1f8a4c; }
+.cy-ink-warn    { color: #b45309; }
+.cy-screen[data-theme="dark"] .cy-ink-accent  { color: #7aa2ff; }
+.cy-screen[data-theme="dark"] .cy-ink-success { color: #4ade80; }
+.cy-screen[data-theme="dark"] .cy-ink-warn    { color: #fbbf24; }
+
+.cy-size-sm { font-size: 0.82em; }
+.cy-size-lg { font-size: 1.22em; }
+
+/* ---- pictures ---------------------------------------------------------- */
+
+.cy-content img {
+  max-width: 100%;
+  height: auto;
+  border-radius: 3px;
+  display: block;
+  margin-inline: auto;
+}
+.cy-content img[data-width="25"] { width: 25%; }
+.cy-content img[data-width="33"] { width: 33%; }
+.cy-content img[data-width="50"] { width: 50%; }
+.cy-content img[data-width="66"] { width: 66%; }
+.cy-content img[data-width="75"] { width: 75%; }
+.cy-content img[data-align="left"]  { margin-inline: 0 auto; }
+.cy-content img[data-align="right"] { margin-inline: auto 0; }
+
+/* ---- tables ------------------------------------------------------------ */
+
+.cy-content table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92em;
+  table-layout: fixed;
+}
+.cy-content th, .cy-content td {
+  border: 1px solid var(--cy-rule);
+  padding: 0.4em 0.6em;
+  text-align: left;
+  vertical-align: top;
+}
+.cy-content th { background: var(--cy-code-bg); font-weight: 600; }
+.cy-content th > p, .cy-content td > p { margin: 0; }
+
+/* ---- our own nodes ----------------------------------------------------- */
+
+.cy-formula { text-align: center; margin: 1.2em 0; }
+.cy-formula-source {
+  font-family: var(--cy-code-font);
+  font-size: 0.85em;
+  opacity: 0.75;
+  background: var(--cy-code-bg);
+  border-radius: 5px;
+  padding: 0.2em 0.5em;
+}
+
+.cy-callout {
+  border-left: 4px solid var(--cy-accent);
+  background: rgba(42, 109, 244, 0.06);
+  border-radius: 0 6px 6px 0;
+  padding: 0.7em 0.9em;
+}
+.cy-callout > *:last-child { margin-bottom: 0; }
+.cy-callout[data-tone="warn"] { border-left-color: #d97706; background: rgba(217, 119, 6, 0.07); }
+.cy-callout[data-tone="tip"]  { border-left-color: #059669; background: rgba(5, 150, 105, 0.07); }
+.cy-callout[data-tone="quote"] {
+  border-left-color: var(--cy-rule);
+  background: transparent;
+  font-style: italic;
+}
+
+.cy-content hr {
+  border: none;
+  border-top: 1px solid var(--cy-rule);
+  margin: 1.6em 0;
+}
+
+/* A page break occupies no space on screen — the paginator reads it and starts
+ * a new page; the PDF gets `break-after: page`. */
+.cy-pagebreak { margin: 0; height: 0; }
+
+/* Kept from version 1: a block that carried the section tint. Nothing writes
+ * one any more, but a converted document still has them. */
+.cy-section[data-color] .cy-highlight {
+  background: color-mix(in srgb, var(--cy-tone) 12%, transparent);
+  border-left: 3px solid var(--cy-tone);
+  padding-left: 0.9em;
+}
+
+/* --------------------------------------------------------------------------
+ * Table of contents
+ * ------------------------------------------------------------------------ */
+
+.cy-toc { margin: 0 0 1.5em; }
+.cy-toc h2 { margin-top: 0; }
+.cy-toc ol { list-style: none; margin: 0; padding: 0; }
+.cy-toc li { margin: 0.28em 0; }
+.cy-toc li[data-level="2"] { padding-left: 1.3em; font-size: 0.95em; }
+.cy-toc li[data-level="3"] { padding-left: 2.6em; font-size: 0.9em; }
+.cy-toc a { color: inherit; text-decoration: none; display: block; }
+.cy-toc .cy-toc-page { float: right; color: var(--cy-muted); }
+
+/* Auto section numbers, when the document asks for them. A CSS counter rather
+ * than numbers baked into the text, so inserting a section renumbers the rest
+ * for free and the stored heading stays what the author typed. */
+.cy-doc[data-numbering="decimal"] { counter-reset: cy-h1; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="1"] { counter-increment: cy-h1; counter-reset: cy-h2; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="2"] { counter-increment: cy-h2; counter-reset: cy-h3; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="3"] { counter-increment: cy-h3; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="1"] > .cy-heading::before { content: counter(cy-h1) ". "; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="2"] > .cy-heading::before { content: counter(cy-h1) "." counter(cy-h2) ". "; }
+.cy-doc[data-numbering="decimal"] .cy-section[data-level="3"] > .cy-heading::before { content: counter(cy-h1) "." counter(cy-h2) "." counter(cy-h3) ". "; }
+
+/* --------------------------------------------------------------------------
+ * The cover
+ * ------------------------------------------------------------------------ */
+
+.cy-cover { text-align: center; padding-top: 22%; }
+.cy-cover .cy-title { font-size: 2.6em; line-height: 1.15; margin: 0 0 0.3em; }
+.cy-cover .cy-subtitle { font-size: 1.25em; color: var(--cy-muted); margin: 0 0 2.2em; }
+.cy-cover .cy-byline { font-size: 1em; color: var(--cy-muted); }
+.cy-cover .cy-byline span { display: block; margin: 0.15em 0; }
+
+/* --------------------------------------------------------------------------
+ * Reader — no page boxes, just the flow, sized for reading on a screen.
+ * ------------------------------------------------------------------------ */
+
+.cy-reading .cy-page {
+  width: 100%;
+  max-width: 46rem;
+  min-height: 0;
+  padding: 0;
+  margin: 0 auto 2.2em;
+  background: transparent;
+  box-shadow: none;
+}
+.cy-reading .cy-page::after { content: none; }
+
+/* --------------------------------------------------------------------------
+ * THE PAGINATION CONTRACT
+ *
+ * The editor breaks pages only between blocks; the PDF is forbidden from
+ * splitting one. Then there is exactly one question — does this block fit in
+ * what is left of the page? — and both surfaces answer it identically, so the
+ * page markers you see while writing are the pages you get.
+ *
+ * A block taller than a whole page cannot honour that, and is marked
+ * `data-tall` by the paginator rather than lied about: there the rule is
+ * dropped and both sides split it the same way instead.
+ * ------------------------------------------------------------------------ */
+
+@page {
+  size: A4;
+  margin: 25mm 20mm;
+  @top-center {
+    content: string(cy-doc-title);
+    font-family: Georgia, "DejaVu Serif", serif;
+    font-size: 9pt;
+    color: #666;
+  }
+  @bottom-center {
+    content: "— " counter(page) " —";
+    font-family: Georgia, "DejaVu Serif", serif;
+    font-size: 9pt;
+    color: #666;
+  }
+}
+@page :first {
+  @top-center { content: none; }
+  @bottom-center { content: none; }
+}
+
+@media print {
+  .cy-doc { --cy-body-size: 11pt; }
+
+  /* @page owns the margins now; the page box becomes a plain flow. */
+  .cy-page {
+    width: auto;
+    min-height: 0;
+    padding: 0;
+    margin: 0;
+    background: transparent;
+  }
+  .cy-page::after { content: none; }
+
+  /* THE pagination contract: the editor breaks pages only between these, and
+     the PDF may not split one. Both surfaces then answer the same question —
+     does this fit in what is left of the page — and agree. */
+  .cy-heading, .cy-content > * { break-inside: avoid; }
+  .cy-content > *[data-tall] { break-inside: auto; }
+  .cy-pagebreak { break-after: page; }
+  .cy-cover { break-after: page; }
+  .cy-toc { break-after: page; }
+
+  /* A heading must never be the last thing on a page. */
+  .cy-heading { break-after: avoid; }
+  .cy-doc p { orphans: 2; widows: 2; }
+
+  /* Feeds @top-center, so every page after the first carries the title. */
+  .cy-doc .cy-title { string-set: cy-doc-title content(); }
+
+  /* Real page numbers on the contents page. This is what a browser cannot do
+   * and WeasyPrint can: the number is resolved after layout, from the page the
+   * target actually landed on. */
+  .cy-toc .cy-toc-page { content: target-counter(attr(href), page); }
+  .cy-toc a::after {
+    content: leader(".") " " target-counter(attr(href), page);
+    color: #666;
+  }
+  .cy-toc .cy-toc-page { display: none; }
+}

@@ -1,0 +1,40 @@
+{% load i18n %}<!DOCTYPE html>
+{% comment %}The print document, for WeasyPrint.
+
+Standalone and self-contained: no {% static %}, no site chrome, and the
+stylesheets inlined rather than linked, because WeasyPrint runs inside the
+container and resolving a hashed static URL over HTTP from there is a needless
+dependency on the server being able to reach itself.
+
+The content was sanitised on the way in: you are exporting your own
+document, and the escape hatch has to render as it reads or the PDF is not the
+document.
+{% endcomment %}
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ document.title|default:"Document" }}</title>
+  {% if katex_css %}<style>{{ katex_css|safe }}</style>{% endif %}
+  <style>{{ document_css|safe }}</style>
+  <style>
+    /* WeasyPrint honours @page from document.css; this only removes the page's
+       own margins and forces the print rules on, since there is no media query
+       to trigger them in a rendering that is print by definition. */
+    html, body { margin: 0; padding: 0; }
+    .cy-page { width: auto; min-height: 0; padding: 0; margin: 0; background: transparent; }
+    .cy-page::after { content: none; }
+    .cy-block { break-inside: avoid; }
+    .cy-block[data-tall] { break-inside: auto; }
+    .cy-block[data-type="pagebreak"] { break-after: page; }
+    .cy-cover, .cy-toc { break-after: page; }
+    .cy-heading { break-after: avoid; }
+    .cy-doc p { orphans: 2; widows: 2; }
+    .cy-doc .cy-title { string-set: cy-doc-title content(); }
+    .cy-toc .cy-toc-page { display: none; }
+    .cy-toc a::after { content: leader(".") " " target-counter(attr(href), page); color: #666; }
+  </style>
+</head>
+<body class="cy-doc cy-font-{{ document.font }}" data-margins="{{ document.margins }}">
+  {% include "cyprian/_body.html" with document=document %}
+</body>
+</html>

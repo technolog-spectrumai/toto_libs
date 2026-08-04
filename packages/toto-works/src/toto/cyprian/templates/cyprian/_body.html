@@ -1,0 +1,38 @@
+{% load i18n %}{% comment %}The whole document body: cover, contents, content.
+
+Shared by the reader, the print/PDF document, the standalone HTML export and the
+library thumbnail, so none of them can drift from the others.
+
+The contents page links to headings in the body. Those anchors are minted by
+`document.anchored_content` at render time rather than stored, because a heading
+IS the structure now — there is no section id to keep in step with it. The PDF
+resolves the page numbers after layout with `target-counter()`, which is why the
+anchor has to be real.
+{% endcomment %}
+{% if document.title %}
+  <section class="cy-page cy-cover">
+    <h1 class="cy-title">{{ document.title }}</h1>
+    {% if document.meta.subtitle %}<p class="cy-subtitle">{{ document.meta.subtitle }}</p>{% endif %}
+    <div class="cy-byline">
+      {% if document.meta.author %}<span>{{ document.meta.author }}</span>{% endif %}
+      {% if document.meta.date %}<span>{{ document.meta.date }}</span>{% endif %}
+    </div>
+  </section>
+{% endif %}
+
+{% if document.toc and document.outline %}
+  <section class="cy-page cy-toc">
+    <h2>{% trans "Contents" %}</h2>
+    <ol>
+      {% for entry in document.outline %}
+        <li data-level="{{ entry.level }}">
+          <a href="#{{ entry.id }}">{{ entry.text }}<span class="cy-toc-page"></span></a>
+        </li>
+      {% endfor %}
+    </ol>
+  </section>
+{% endif %}
+
+<section class="cy-page">
+  <div class="cy-content">{{ document.anchored_content|safe }}</div>
+</section>

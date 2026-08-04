@@ -1,0 +1,233 @@
+/* Writer chrome — the parts Tailwind cannot express, plus the page rules the
+ * paginator draws.
+ *
+ * Everything about how a DOCUMENT looks lives in document.css, which the
+ * reader and the PDF load too. This file is only the furniture around it.
+ */
+
+/* The canvas sits on a desk, so a page reads as a sheet. */
+/* The surround the page sits on.
+ *
+ * Transparent, so the writer sits IN the platform rather than on a grey slab
+ * pasted over it — the page itself is the only surface with a colour, and it
+ * takes that colour from the theme. A shadow and a hairline are enough to say
+ * "this is a sheet"; a fake desk was decoration that fought every theme it was
+ * shown in. */
+.cy-desk {
+  background: transparent;
+  padding: 8px 0 32px;
+  overflow-x: auto;
+}
+.cy-desk .cy-page {
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.18);
+  border: 1px solid var(--cy-rule);
+  border-radius: 4px;
+}
+
+/* --------------------------------------------------------------------------
+ * Page boundaries, drawn from the paginator's measurement.
+ *
+ * The editor's canvas is ONE continuous page element; the breaks are drawn as
+ * rules above each block that opens a page. Splitting the DOM into real page
+ * elements would mean moving nodes around under a live contenteditable, which
+ * loses the caret — this shows the same information without touching the tree
+ * the browser is editing.
+ * ------------------------------------------------------------------------ */
+
+/* Where one A4 sheet ends and the next begins.
+ *
+ * The gap is as wide as the sheet and the colour of the desk behind it, so text
+ * that passes the boundary visibly lands on a new page while you type. The
+ * canvas stays ONE element: splitting it into real page elements would mean
+ * moving nodes under a live ProseMirror view, which loses the caret.
+ */
+.cy-editing .cy-page-start {
+  position: relative;
+  margin-top: calc(var(--cy-margin-y) * 2 + 40px) !important;
+}
+.cy-editing .cy-page-start::before {
+  content: "";
+  position: absolute;
+  left: calc(var(--cy-margin-x) * -1);
+  right: calc(var(--cy-margin-x) * -1);
+  top: calc((var(--cy-margin-y) + 20px) * -1);
+  height: 40px;
+  background: var(--cy-desk);
+  border-top: 1px solid var(--cy-rule);
+  border-bottom: 1px solid var(--cy-rule);
+  pointer-events: none;
+}
+.cy-editing .cy-page-start::after {
+  content: "page " attr(data-page-start);
+  position: absolute;
+  right: 0;
+  top: calc((var(--cy-margin-y) - 6px) * -1);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--cy-muted);
+  pointer-events: none;
+}
+
+.cy-editing .cy-tall {
+  outline: 2px dashed rgba(217, 119, 6, 0.8);
+  outline-offset: 6px;
+}
+.cy-editing .cy-tall::after {
+  content: "taller than a page — this one will split";
+  display: block;
+  margin-top: 0.4em;
+  font-family: var(--cy-body-font);
+  font-size: 10px;
+  color: rgb(180, 83, 9);
+}
+
+/* --------------------------------------------------------------------------
+ * Editing affordances
+ * ------------------------------------------------------------------------ */
+
+.cy-editing .cy-content > *,
+.cy-editing .cy-heading {
+  position: relative;
+  border-radius: 4px;
+  outline: 1px solid transparent;
+  outline-offset: 5px;
+  transition: outline-color 120ms ease;
+}
+.cy-editing .cy-content > *:hover,
+.cy-editing .cy-heading:hover { outline-color: var(--cy-rule); }
+.cy-editing .cy-content:focus-within,
+.cy-editing .cy-heading[data-focused] { outline-color: var(--cy-accent); }
+
+.cy-editing [data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--cy-muted);
+  pointer-events: none;
+}
+.cy-editing [contenteditable] { outline: none; }
+
+/* Handles own the pointer so the page still scrolls everywhere else. */
+.cy-editing .cy-handle { touch-action: none; cursor: grab; }
+.cy-editing .cy-handle:active { cursor: grabbing; }
+
+/* memo's drag.js draws these three; it is reused wholesale, so the class names
+ * come with it. */
+
+/* --------------------------------------------------------------------------
+ * The writing toolbar, and the editable area.
+ *
+ * TipTap ships no UI at all — that is why it is here rather than Trix, whose
+ * toolbar had to be fought into shape and still could not do a table. What
+ * follows is ours.
+ * ------------------------------------------------------------------------ */
+
+.cy-tool {
+  min-width: 1.9rem;
+  padding: 0.25rem 0.45rem;
+  border-radius: 0.45rem;
+  font-size: 0.78rem;
+  line-height: 1.2;
+  opacity: 0.65;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.cy-tool:hover { opacity: 1; background: rgba(127, 127, 127, 0.16); }
+.cy-tool[data-on] { opacity: 1; background: rgba(127, 127, 127, 0.26); font-weight: 700; }
+.cy-tool.cy-danger:hover { color: #dc2626; }
+.cy-tool-sep {
+  width: 1px;
+  height: 1.1rem;
+  margin: 0 0.2rem;
+  background: currentColor;
+  opacity: 0.18;
+}
+
+/* The three ink roles, as dots. Literal colours, because a swatch has to show
+   the colour it applies even before the document is themed. */
+.cy-ink-dot { position: relative; }
+.cy-ink-dot::after {
+  content: "";
+  display: block;
+  width: 0.85rem;
+  height: 0.85rem;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+}
+.cy-ink-dot[data-ink="accent"]::after  { background: #2a6df4; }
+.cy-ink-dot[data-ink="success"]::after { background: #1f8a4c; }
+.cy-ink-dot[data-ink="warn"]::after    { background: #b45309; }
+.cy-ink-dot[data-ink="none"]::after    { background: transparent; }
+
+/* ProseMirror's editable div. It must look EXACTLY like the rendered content
+   beside it — same class, so it does — with only the caret to say which is
+   which. */
+.cy-content.cy-editable { outline: none; min-height: 2em; }
+.cy-content.cy-editable:focus { outline: none; }
+.ProseMirror-selectednode { outline: 2px solid var(--cy-accent); outline-offset: 2px; }
+
+/* The placeholder, from @tiptap/extension-placeholder. */
+.cy-content .is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  opacity: 0.35;
+}
+
+/* Tables get visible edges while editing even when the document's own borders
+   are off, and the cell you are in is marked. */
+.cy-editing .cy-content table { position: relative; }
+.cy-editing .cy-content .selectedCell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(127, 127, 127, 0.18);
+  pointer-events: none;
+}
+
+/* A small bordered button — the Source tab's Revert, and anything like it. */
+.cy-chip {
+  border: 1px solid var(--cy-rule);
+  border-radius: 0.35rem;
+  padding: 0.15rem 0.5rem;
+  font-size: 0.7rem;
+  opacity: 0.7;
+  transition: opacity 120ms ease;
+}
+.cy-chip:hover { opacity: 1; }
+
+/* The desk the sheet sits on — read by the drawn page gap so a break shows the
+   desk between two sheets rather than a rule someone painted. */
+.cy-doc { --cy-desk: rgba(127, 127, 127, 0.3); }
+
+/* The library card thumbnail: a real first page, scaled. 240 / 794 = 0.302. */
+.cy-card-thumb {
+  --cy-thumb-scale: 0.302;
+  width: 240px;
+  height: 340px;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+  border-radius: 3px;
+}
+.cy-card-thumb > .cy-doc {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--cy-thumb-scale));
+  transform-origin: top left;
+}
+.cy-card-thumb .cy-page { box-shadow: none; margin: 0; }
+
+.cy-legacy {
+  display: inline-block;
+  font-size: 0.8em;
+  opacity: 0.6;
+  border: 1px dashed currentColor;
+  border-radius: 5px;
+  padding: 0.2em 0.5em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cy-editing .cy-content > *, .cy-editing .cy-heading { transition: none; }
+}
