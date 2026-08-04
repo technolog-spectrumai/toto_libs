@@ -351,6 +351,15 @@
       setCallout: function (tone) { this.cmd(function (c) { c.setCallout(tone).run(); }); },
       addPageBreak: function () { this.cmd(function (c) { c.setPageBreak().run(); }); },
       addDivider: function () { this.cmd(function (c) { c.setHorizontalRule().run(); }); },
+      /* An explicit paragraph break. Enter already makes one in prose, but
+       * inside a code block, a quote or a table Enter means something else and
+       * there is no obvious way OUT — this ends whatever block the caret is in
+       * and starts a plain paragraph after it. The visible tool matters in a
+       * canvas with no per-block chrome: structure is the writer's act, and
+       * this is the act. */
+      addParagraph: function () {
+        this.cmd(function (c) { c.createParagraphNear().setParagraph().run(); });
+      },
 
       setLink: function () {
         if (!editor) return;
@@ -570,12 +579,21 @@
        */
       saveRendition: function (kind) {
         var self = this;
+        // The one moment a file name is asked for. There is no name field in
+        // the header — the document is edited like a document, and naming is
+        // part of SAVING a product of it, not of writing.
+        var suggested = (this.config.renditionBase || "document") + "." + kind;
+        var name = prompt(this.config.text && this.config.text.namePrompt || "File name",
+                          suggested);
+        if (name === null) return;
         this.ui.status = "Rendering…";
         var url = kind === "pdf" ? this.config.urls.savePdf : this.config.urls.saveHtml;
+        var body = new FormData();
+        body.append("name", name.trim());
         Promise.resolve(this.ui.dirty ? this.save(true) : null)
           .then(function () {
             return fetch(url, {
-              method: "POST", headers: { "X-CSRFToken": csrf() }
+              method: "POST", headers: { "X-CSRFToken": csrf() }, body: body
             });
           })
           .then(function (r) {

@@ -31,11 +31,13 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
         <i class="fa-solid fa-arrow-left"></i>
       </a>
 
-      <input type="text" x-model="state.title"
-             @input="mutate(function () {}, 'doc-title')"
-             placeholder="{% trans 'Untitled document' %}"
-             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-             class="min-w-0 flex-1 rounded-lg border bg-transparent px-3 py-2 text-base font-semibold">
+      {% comment %} No name field. The file was named when it was created and
+      renditions ask for theirs when saved — a text input up here read as a
+      required part of writing, which it never was. The title shown is the
+      file's, and renaming stays a vault operation like for every other file.
+      {% endcomment %}
+      <span class="min-w-0 flex-1 truncate px-1 text-base font-semibold"
+            title="{{ vault_file.title }}">{{ vault_file.title }}</span>
 
       <span class="flex items-center gap-1">
         <button type="button" @click="undo()" :disabled="!canUndo" title="{% trans 'Undo' %}"
@@ -283,6 +285,8 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
         </div>
       </div>
 
+      <button type="button" @click="addParagraph()" title="{% trans 'New paragraph' %}"
+              class="cy-tool"><i class="fa-solid fa-paragraph"></i></button>
       <button type="button" @click="addDivider()" title="{% trans 'Divider' %}"
               class="cy-tool"><i class="fa-solid fa-minus"></i></button>
       <button type="button" @click="addPageBreak()" title="{% trans 'Page break' %}"

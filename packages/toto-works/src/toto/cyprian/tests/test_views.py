@@ -388,8 +388,10 @@ class WriterChromeTests(CyprianTestCase):
 
     def test_the_block_model_is_gone_from_the_page(self):
         # A section is one document now. Nothing on this page knows what a
-        # block was.
-        for gone in ("cy-block", "openBlockDialog", "addParagraph",
+        # block was. (addParagraph is NOT in this list: the name came back in
+        # the toolbar as the paragraph-break tool, which ends the block the
+        # caret is in — a writing act, not a block-model resurrection.)
+        for gone in ("cy-block", "openBlockDialog",
                      "isInlineEdited", "data-drag-handle"):
             with self.subTest(gone=gone):
                 self.assertNotIn(gone, self.body)

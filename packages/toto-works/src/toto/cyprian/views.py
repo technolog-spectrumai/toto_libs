@@ -25,6 +25,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
 from django.views import View
 from django.views.decorators.http import require_POST
 
@@ -321,6 +322,14 @@ class DocumentEditView(LoginRequiredMixin, View):
                     "saveHtml": reverse("cyprian:save_html", args=[file_pk]),
                     "embed": reverse("cyprian:media_embed"),
                     "upload": reverse("cyprian:media_upload"),
+                },
+                # The suggestion the save prompt starts from: the file's own
+                # name, which is the only name the writer has ever given this
+                # document — there is no title field in the editor.
+                "renditionBase": slugify(
+                    (vault_file.title or "document").rsplit(".", 1)[0]) or "document",
+                "text": {
+                    "namePrompt": _("File name"),
                 },
             },
             # The import map for the vendored TipTap modules. Built in Python
@@ -645,6 +654,22 @@ def _sibling_name(vault_file, document, suffix: str) -> str:
     return f"{base}.{suffix}"
 
 
+def _asked_name(request, vault_file, document, suffix: str) -> str:
+    """The name the writer typed into the save prompt, made safe.
+
+    The editor asks at save time — there is no name field anywhere else — so
+    this is the one place a rendition's name enters the system. Slugified like
+    every other vault name here, and the extension is OURS: the file IS a pdf or
+    an html document, and honouring `report.exe` would be labelling bytes wrongly
+    on the writer's own instruction.
+    """
+    raw = (request.POST.get("name") or "").strip()
+    if not raw:
+        return _sibling_name(vault_file, document, suffix)
+    base = slugify(raw.rsplit(".", 1)[0] if "." in raw else raw)
+    return f"{base or 'document'}.{suffix}"
+
+
 def _save_beside(vault_file, *, name: str, data: bytes, file_type: str, owner):
     """Write a rendition into the same bucket and folder as its source.
 
@@ -702,7 +727,7 @@ def document_save_pdf(request, file_pk):
     except render_pdf.PdfUnavailable as exc:
         return JsonResponse({"error": str(exc)}, status=503)
 
-    saved = _save_beside(vault_file, name=_sibling_name(vault_file, document, "pdf"),
+    saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "pdf"),
                          data=raw, file_type="pdf", owner=request.user)
     return JsonResponse({
         "name": saved.title, "kind": "PDF",
@@ -727,7 +752,7 @@ def document_save_html(request, file_pk):
         "document_css": render_pdf.document_css(),
         "katex_css": render_pdf.katex_css(),
     })
-    saved = _save_beside(vault_file, name=_sibling_name(vault_file, document, "html"),
+    saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "html"),
                          data=html.encode("utf-8"), file_type="html",
                          owner=request.user)
     return JsonResponse({

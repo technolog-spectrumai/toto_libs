@@ -86,18 +86,11 @@
  * Editing affordances
  * ------------------------------------------------------------------------ */
 
-.cy-editing .cy-content > *,
-.cy-editing .cy-heading {
-  position: relative;
-  border-radius: 4px;
-  outline: 1px solid transparent;
-  outline-offset: 5px;
-  transition: outline-color 120ms ease;
-}
-.cy-editing .cy-content > *:hover,
-.cy-editing .cy-heading:hover { outline-color: var(--cy-rule); }
-.cy-editing .cy-content:focus-within,
-.cy-editing .cy-heading[data-focused] { outline-color: var(--cy-accent); }
+/* No per-line affordances. The canvas is ONE document, as in a word processor:
+ * the caret says where you are, and outlining whichever paragraph the mouse
+ * happens to cross read as the editor slicing the text into boxes — the block
+ * model this rework left behind. Structure is the writer's job, made with the
+ * paragraph and page-break tools, not something hover suggests. */
 
 .cy-editing [data-placeholder]:empty::before {
   content: attr(data-placeholder);
