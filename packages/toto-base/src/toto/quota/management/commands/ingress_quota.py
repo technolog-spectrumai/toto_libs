@@ -51,16 +51,27 @@ class Command(IngressCommand):
                 skipped += 1
                 continue
 
+            # Most metrics seed as BLOCK, which is the field default. A metric
+            # can ask for TRACK instead when refusing the action would do more
+            # harm than the action itself — primula.save is the case: a 429
+            # there loses whatever the user had not saved yet, and there is no
+            # top-up path to recover from it. Counting still happens; only the
+            # refusal does not. An admin can change it afterwards either way.
+            defaults = {
+                "name": metric.label,
+                "limit": Decimal(str(metric.default_limit)),
+                "unit": metric.unit,
+                "period": metric.period,
+                "active": True,
+            }
+            seed_mode = (metric.metadata or {}).get("seed_mode")
+            if seed_mode:
+                defaults["mode"] = seed_mode
+
             policy, created = policy_model.objects.get_or_create(
                 metric_code=metric.code,
                 user=None,
-                defaults={
-                    "name": metric.label,
-                    "limit": Decimal(str(metric.default_limit)),
-                    "unit": metric.unit,
-                    "period": metric.period,
-                    "active": True,
-                },
+                defaults=defaults,
             )
             if created:
                 seeded += 1

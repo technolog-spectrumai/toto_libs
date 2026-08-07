@@ -10,7 +10,11 @@ from django.views.decorators.csrf import csrf_exempt
 
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
+from toto.quota import QuotaExceeded, check_quota, record_usage
+from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+
 from .dispatch import create_service_run, dispatch_run
+from .models import FileserviceQuotaPolicy, FileserviceUsageEvent
 from .models import FileServiceRun
 from .plugin import FileServicePlugin
 
@@ -78,7 +82,18 @@ def run_service(request, file_pk):
     if plugin.args_required and not args.strip():
         return JsonResponse({"error": f"{plugin.args_label} are required."}, status=400)
 
+    tariff = price_for(request.user, "fileservices")
+    try:
+        check_quota(FileserviceQuotaPolicy, "fileservices.run", 1, request.user)
+        check_funds(request.user, tariff, "fileservices.run", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
+
     run = create_service_run(request.user, vault_file, service_key, args)
+    _src = {"source_type": "fileservices.FileServiceRun", "source_id": str(run.id)}
+    if record_usage(FileserviceUsageEvent, "fileservices.run", 1, request.user,
+                    idempotency_key=f"fileservices.run:{run.id}", **_src) is not None:
+        charge(request.user, tariff, "fileservices.run", 1, **_src)
     run_url = reverse("fileservices:run_detail", args=[run.id])
     try:
         queued = dispatch_run(run)

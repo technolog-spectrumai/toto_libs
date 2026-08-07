@@ -38,6 +38,7 @@ from toto.ingress import IngressCommand
 from django.conf import settings
 
 from toto.quota.metrics import registry
+from toto.tariffs import rate_card
 from toto.tariffs.models import (
     BillingMetric,
     BillingUnit,
@@ -88,6 +89,11 @@ def _account(code, name, account_type=AccountType.SYSTEM):
         defaults={"name": name, "account_type": account_type, "active": True},
     )
     return acc
+
+
+# The three helpers above are still used by the --full demo tariffs, which price
+# in assets that are not this host's gas and so cannot go through rate_card.
+# Everything on the real rate card does — see process().
 
 
 def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
@@ -209,9 +215,20 @@ def host_prices() -> dict:
     a float would put binary rounding inside a billing path.
 
     This only seeds. The rate card lives in the database and staff edit it at
-    /tariffs/ afterwards; re-running ingress does not undo their edits.
+    /quota/rates/ afterwards; re-running ingress does not undo their edits.
+
+    ``TARIFF_SEED_PRICES = False`` seeds **no** prices at all, which is how a
+    host brings the economy up without charging anyone yet: the caps still
+    refuse (429), the ledger is live and audited, and the rate desk is real but
+    empty. Turning it on is then a deliberate, reviewable act rather than a
+    side effect of a deploy. Sizing matters here — a user at their daily caps
+    burns the whole GAS_STARTING_GRANT in a few days, and there is no
+    self-service top-up.
     """
     from django.conf import settings
+
+    if not getattr(settings, "TARIFF_SEED_PRICES", True):
+        return {}
 
     prices = dict(PRICES)
     for code, value in (getattr(settings, "TARIFF_PRICES", None) or {}).items():
@@ -239,42 +256,33 @@ class Command(IngressCommand):
             return
 
         prices = host_prices()
-        revenue = _account("platform-usage-fees", "Platform Usage Fees")
-        self.stdout.write("  +/✓ account platform-usage-fees")
+        rate_card.revenue_account()
+        self.stdout.write(f"  +/✓ account {rate_card.REVENUE_ACCOUNT_CODE}")
 
-        tariff, _created = _tariff(
-            "platform-default",
-            "Platform default",
-            f"What metered work costs, in gas ({ticker}). Applies to everyone "
-            "without a more specific tariff.",
-        )
+        tariff = rate_card.default_tariff()
         # Deliberately ownerless: this is the platform's rate card, not a
         # person's. `_can_manage` lets any staff member edit an ownerless
         # tariff, which is what makes it reachable from the UI.
-        self.stdout.write("  +/✓ tariff platform-default")
+        self.stdout.write(f"  +/✓ tariff {rate_card.DEFAULT_TARIFF_CODE}")
 
-        units: dict[str, BillingUnit] = {}
         priced = 0
         for metric_spec in registry.all():
-            unit = units.get(metric_spec.unit)
-            if unit is None:
-                unit = units[metric_spec.unit] = _bu(
-                    metric_spec.unit, metric_spec.unit.upper(), ""
-                )
-            metric = _metric(
-                metric_spec.code,
-                metric_spec.label,
-                app_label=metric_spec.app_label,
-                default_unit=unit,
-            )
+            # The mirror rows exist whether or not the metric is priced, so the
+            # billing side keeps a complete catalogue of what could be charged.
+            rate_card.billing_metric_for(metric_spec)
             price = prices.get(metric_spec.code)
             if price is None:
                 # Metered but not priced — free, and deliberately so.
                 self.stdout.write(f"  ·   {metric_spec.code} is metered but free")
                 continue
-            _item(tariff, metric, metric_spec.label, gas, price, unit, revenue)
+            # One implementation, shared with the staff rate desk: if this ever
+            # diverges from what a human typing a number gets, the two screens
+            # start disagreeing about what anybody pays.
+            rate_card.upsert_price(metric_spec, price)
             priced += 1
-            self.stdout.write(f"  +/✓ price {metric_spec.code} = {price} {ticker}/{unit.code}")
+            self.stdout.write(
+                f"  +/✓ price {metric_spec.code} = {price} {ticker}/{metric_spec.unit}"
+            )
 
         # A price whose metric this host does not meter is simply not seeded.
         # This used to assert, which was right while one host installed every
@@ -300,7 +308,8 @@ class Command(IngressCommand):
             ))
             return
 
-        self._seed_demo_tariffs(revenue, _bu("request", "Request", "count"))
+        self._seed_demo_tariffs(rate_card.revenue_account(),
+                                _bu("request", "Request", "count"))
         self.stdout.write(self.style.SUCCESS("✅  Tariffs ingress complete."))
 
     # ------------------------------------------------------------------ #

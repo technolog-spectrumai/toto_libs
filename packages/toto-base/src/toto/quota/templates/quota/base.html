@@ -34,6 +34,14 @@
                 {% block tab_mine %}opacity-50{% endblock %}">
         <i class="fa-solid fa-user-clock"></i>{% trans "My usage" %}
       </a>
+      {% if user.is_staff %}
+      <a href="{% url 'quota:rate_desk' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_rates %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-sliders"></i>{% trans "Rate desk" %}
+      </a>
+      {% endif %}
       {% if billing_enabled %}
       <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
             class="mx-1 self-center h-5 border-l opacity-30"></span>

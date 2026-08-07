@@ -128,22 +128,36 @@ def tariff_edit(request, uuid):
 
 @login_required
 def tariff_detail(request, uuid):
+    """The rate card, plus — for whoever manages it — what has been billed on it.
+
+    The prices stay readable by every signed-in user on purpose: gas.md's
+    protection against being charged without being asked is that prices are
+    published, so putting the rate card behind a staff gate would remove the
+    guarantee. What is *not* public is who spent what — `recent_usage` names
+    other people's payer accounts and `usage_stats` counts their activity, so
+    both are withheld from everyone but a manager.
+    """
     tariff = get_object_or_404(
         Tariff.objects.prefetch_related("items__charged_asset", "items__receiving_account"),
         uuid=uuid,
     )
-    recent_usage = UsageRecord.objects.filter(tariff=tariff).select_related(
-        "payer_account"
-    ).order_by("-created_at")[:20]
+    is_owner = _can_manage(request.user, tariff)
 
-    usage_stats = {
-        "posted": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.POSTED).count(),
-        "pending": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.PENDING).count(),
-        "failed": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.FAILED).count(),
-        "total": UsageRecord.objects.filter(tariff=tariff).count(),
-    }
+    recent_usage = []
+    usage_stats = None
+    if is_owner:
+        recent_usage = UsageRecord.objects.filter(tariff=tariff).select_related(
+            "payer_account"
+        ).order_by("-created_at")[:20]
 
-    sim_form = UsageSimulationForm()
+        usage_stats = {
+            "posted": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.POSTED).count(),
+            "pending": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.PENDING).count(),
+            "failed": UsageRecord.objects.filter(tariff=tariff, status=UsageStatus.FAILED).count(),
+            "total": UsageRecord.objects.filter(tariff=tariff).count(),
+        }
+
+    sim_form = UsageSimulationForm() if is_owner else None
 
     return _render(request, "tariffs/tariff_detail.html", {
         "tariff": tariff,
@@ -151,7 +165,7 @@ def tariff_detail(request, uuid):
         "recent_usage": recent_usage,
         "usage_stats": usage_stats,
         "sim_form": sim_form,
-        "is_owner": _can_manage(request.user, tariff),
+        "is_owner": is_owner,
     })
 
 
@@ -206,7 +220,9 @@ def tariff_item_edit(request, pk):
 
 @login_required
 def tariff_simulate(request, uuid):
+    """Price a hypothetical action. A pricing tool, so it gates like the others."""
     tariff = get_object_or_404(Tariff, uuid=uuid)
+    _require_manage(request.user, tariff)
     result = None
     if request.method == "POST":
         form = UsageSimulationForm(request.POST)
@@ -231,7 +247,16 @@ def tariff_simulate(request, uuid):
 
 @login_required
 def usage_list(request):
+    """Metered actions and what they cost. Yours, unless you manage the platform.
+
+    This used to list every user's records to anyone signed in, which leaked
+    both who is using the platform and what they are paying for it.
+    """
     qs = UsageRecord.objects.select_related("tariff", "payer_account", "ledger_transaction")
+
+    is_manager = _can_manage(request.user)
+    if not is_manager:
+        qs = qs.filter(payer_account__user=request.user)
 
     status_filter = request.GET.get("status", "").strip()
     tariff_filter = request.GET.get("tariff", "").strip()
@@ -267,7 +292,11 @@ def usage_list(request):
         "q": q,
         "date_from": date_from,
         "date_to": date_to,
-        "tariffs": Tariff.objects.filter(status=TariffStatus.ACTIVE).order_by("code"),
+        # The tariff picker is a platform-wide view of who charges what; a user
+        # filtering their own history has no use for tariffs they never paid.
+        "tariffs": (Tariff.objects.filter(status=TariffStatus.ACTIVE).order_by("code")
+                    if is_manager else []),
+        "is_manager": is_manager,
     })
 
 
@@ -304,6 +333,11 @@ def usage_detail(request, uuid):
         ),
         uuid=uuid,
     )
+    # The uuid is unguessable, but that is obscurity rather than access control —
+    # and usage_list handed these out to everyone until now.
+    if not _can_manage(request.user) and record.payer_account.user_id != request.user.pk:
+        raise PermissionDenied
+
     charges = record.charges.select_related(
         "tariff_item", "charged_asset", "payer_account", "receiving_account"
     )
@@ -346,7 +380,12 @@ def usage_post(request, uuid):
 
 @login_required
 def metrics(request):
-    from django.db.models.functions import TruncDate
+    """Platform billing overview. Staff only — there is no per-user reading of it.
+
+    Every panel here is about other people: revenue by receiving account, and a
+    list of which accounts are nearly out of gas.
+    """
+    _require_manage(request.user)
 
     tariff_filter = request.GET.get("tariff", "").strip()
     status_filter = request.GET.get("status", "").strip()
@@ -509,6 +548,8 @@ def api_post(request):
 
 @login_required
 def api_metrics(request):
+    """The JSON half of the metrics page, and gated the same way."""
+    _require_manage(request.user)
     from .models import UsageCharge
     data = {
         "usage_total": UsageRecord.objects.count(),

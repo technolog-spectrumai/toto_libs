@@ -1,0 +1,172 @@
+{% extends "quota/base.html" %}
+{% load i18n %}
+
+{% block quota_title %}{% trans "Rate desk" %}{% endblock %}
+{% block quota_heading %}{% trans "Rate desk" %}{% endblock %}
+{% block tab_rates %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block quota_content %}
+
+  <div
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-lg border p-5 text-sm shadow-sm">
+    <p>
+      {% blocktrans count counter=metric_count %}
+        One meterable action on this platform. Set what it caps at and, where the
+        platform bills, what it costs.
+      {% plural %}
+        {{ counter }} meterable actions on this platform. Set what each one caps
+        at and, where the platform bills, what it costs.
+      {% endblocktrans %}
+    </p>
+    <p class="mt-2 opacity-70">
+      {% trans "An empty limit means unlimited." %}
+      {% if pricing_enabled %}{% trans "An empty price means free." %}{% endif %}
+    </p>
+  </div>
+
+  <form method="post" class="space-y-6">
+    {% csrf_token %}
+
+    {% for group in groups %}
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border shadow-sm">
+        <h2 class="border-b px-5 py-3 font-semibold"
+            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          {{ group.verbose_name }}
+        </h2>
+        <div class="overflow-x-auto">
+          <table class="w-full text-sm">
+            <thead>
+              <tr class="border-b text-xs font-semibold uppercase opacity-60"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <th class="px-5 py-3 text-left">{% trans "Action" %}</th>
+                <th class="px-5 py-3 text-left">{% trans "Unit" %}</th>
+                <th class="px-5 py-3 text-right">{% trans "Limit" %}</th>
+                <th class="px-5 py-3 text-left">{% trans "When exceeded" %}</th>
+                {% comment %}
+                  One flag guards the header and every cell, so a price column
+                  can never appear with nothing under it.
+                {% endcomment %}
+                {% if pricing_enabled %}
+                <th class="px-5 py-3 text-right">
+                  {% trans "Price" %}{% if price_asset %} ({{ price_asset }}){% endif %}
+                </th>
+                <th class="px-5 py-3"></th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody class="divide-y" :class="darkMode ? 'divide-accent-1' : 'divide-accent-2'">
+              {% for row in group.rows %}
+                <tr>
+                  <td class="px-5 py-3">
+                    <div class="font-semibold">{{ row.metric.label }}</div>
+                    <code class="rounded px-1.5 py-0.5 text-xs"
+                          :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+                      {{ row.metric.code }}
+                    </code>
+                    {% if row.metric.description %}
+                      <div class="mt-1 text-xs opacity-60">{{ row.metric.description }}</div>
+                    {% endif %}
+                  </td>
+                  <td class="px-5 py-3 text-xs opacity-70">
+                    {{ row.metric.unit }} / {{ row.period }}
+                  </td>
+                  <td class="px-5 py-3 text-right">
+                    {% if row.has_table %}
+                      <input type="text" inputmode="decimal"
+                             name="limit__{{ row.metric.code }}"
+                             value="{{ row.limit|default_if_none:'' }}"
+                             placeholder="{% trans 'unlimited' %}"
+                             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                             class="w-28 rounded-lg border px-2 py-1 text-right text-sm outline-none">
+                    {% else %}
+                      <span class="text-xs opacity-50" title="{% trans 'This app ships no table to store limits in.' %}">—</span>
+                    {% endif %}
+                  </td>
+                  <td class="px-5 py-3">
+                    {% if row.has_table %}
+                      <select name="mode__{{ row.metric.code }}"
+                              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                              class="rounded-lg border px-2 py-1 text-sm outline-none">
+                        {% for value, label in modes %}
+                          <option value="{{ value }}" {% if row.mode == value %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                      </select>
+                    {% endif %}
+                  </td>
+                  {% if pricing_enabled %}
+                  <td class="px-5 py-3 text-right">
+                    <span class="inline-flex items-center gap-1">
+                      <input type="text" inputmode="decimal"
+                             name="price__{{ row.metric.code }}"
+                             value="{% if row.price %}{{ row.price.price_display|floatformat:-9 }}{% endif %}"
+                             placeholder="{% trans 'free' %}"
+                             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                             class="w-32 rounded-lg border px-2 py-1 text-right font-mono text-sm outline-none">
+                      {# Currency, per metered thing. Blank inherits the tariff's
+                         default (then the host gas asset), so an untouched row
+                         keeps whatever it already had. #}
+                      {% if billing_assets %}
+                        <select name="asset__{{ row.metric.code }}"
+                                title="{% trans 'Currency this metric is priced in' %}"
+                                :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                                class="rounded-lg border px-2 py-1 text-sm outline-none">
+                          <option value="">{% trans "default" %}</option>
+                          {% for asset in billing_assets %}
+                            <option value="{{ asset.id }}"
+                                    {% if row.price and row.price.asset_id == asset.id %}selected{% endif %}>
+                              {{ asset.symbol }}
+                            </option>
+                          {% endfor %}
+                        </select>
+                      {% endif %}
+                    </span>
+                  </td>
+                  <td class="px-5 py-3 text-right whitespace-nowrap">
+                    <a href="{% url 'quota:metric_detail' row.metric.code %}"
+                       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                       class="inline-flex items-center gap-1 rounded border px-2 py-1 text-xs font-semibold transition hover:opacity-80"
+                       title="{% trans 'Per-user overrides, schedules and the fields this grid does not show' %}">
+                      <i class="fa-solid fa-sliders"></i>{% trans "Advanced" %}
+                    </a>
+                  </td>
+                  {% endif %}
+                </tr>
+              {% empty %}
+                <tr>
+                  <td colspan="{{ column_count }}" class="px-5 py-8 text-center text-sm opacity-60">
+                    {% trans "This app meters nothing." %}
+                  </td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% empty %}
+      <div
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-lg border p-10 text-center shadow-sm">
+        <i :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="fa-solid fa-gauge-high text-4xl"></i>
+        <h2 class="mt-4 text-xl font-bold">{% trans "Nothing is metered yet" %}</h2>
+        <p class="mt-1 text-sm opacity-70">
+          {% trans "An app declares what it meters in its own metrics.py." %}
+        </p>
+      </div>
+    {% endfor %}
+
+    {% if groups %}
+      <div class="flex justify-end">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+          <i class="fa-solid fa-floppy-disk"></i>{% trans "Save all" %}
+        </button>
+      </div>
+    {% endif %}
+  </form>
+
+{% endblock %}

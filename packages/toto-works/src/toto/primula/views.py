@@ -26,6 +26,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
+from toto.quota import QuotaExceeded, check_quota, record_usage
+from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+from toto.primula.models import PrimulaQuotaPolicy, PrimulaUsageEvent
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -245,6 +248,18 @@ def sheet_save(request, file_pk):
     if not (isinstance(snapshot, dict) and isinstance(snapshot.get("sheets"), dict)):
         return JsonResponse({"error": "Not a Univer workbook snapshot."}, status=400)
 
+    # After the is_authenticated check above, not before: check_funds resolves a
+    # billing account off the user, and handing it AnonymousUser raises rather
+    # than refusing. The seeded policy is TRACK, so this counts and does not
+    # refuse — refusing a save would lose the user's unsaved work, and with no
+    # top-up path that is unrecoverable without an admin.
+    tariff = price_for(request.user, "primula")
+    try:
+        check_quota(PrimulaQuotaPolicy, "primula.save", 1, request.user)
+        check_funds(request.user, tariff, "primula.save", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
+
     text = sheet_format.dumps(snapshot)
     data = text.encode("utf-8")
     try:
@@ -257,6 +272,13 @@ def sheet_save(request, file_pk):
         vault_file.save(update_fields=["content_hash", "file_size_bytes"])
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
+
+    # Counted after the write, so a failed save is not a charged one. No
+    # idempotency key: saving twice is two saves, which is the point.
+    _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk),
+            "source_label": vault_file.title or ""}
+    record_usage(PrimulaUsageEvent, "primula.save", 1, request.user, **_src)
+    charge(request.user, tariff, "primula.save", 1, **_src)
 
     snapshot_version(vault_file, text, request.user)
     return JsonResponse(

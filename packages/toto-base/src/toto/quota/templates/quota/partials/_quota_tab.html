@@ -1,0 +1,11 @@
+{% comment %}
+  One "Usage" link, styled to sit beside an app's own nav buttons.
+  Renders nothing at all when the app meters nothing — see quota_tags.py.
+{% endcomment %}
+{% if url %}
+<a href="{{ url }}"
+   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+   class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+  <i class="{{ icon }}"></i>{{ label }}
+</a>
+{% endif %}

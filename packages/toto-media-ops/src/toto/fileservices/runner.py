@@ -109,6 +109,15 @@ def execute_run(run_id: int) -> dict:
             run.stderr = str(exc)
         run.finished_at = timezone.now()
         run.save(update_fields=["status", "stdout", "stderr", "finished_at"])
+        # This function is the single funnel for both execution paths — the
+        # celery worker and the inline fallback for a host with no worker — so
+        # one refund here covers both. refund_for re-finds the record by
+        # (source_type, source_id), which is why a worker holding only a pk can
+        # undo a charge the web request posted.
+        from toto.quota.charge import refund_for
+
+        refund_for("fileservices.FileServiceRun", run.id, "fileservices.run",
+                   reason=f"service run failed: {exc}")
         _sync_manta_job(run)
         raise
 

@@ -13,11 +13,21 @@ from .models import BillingMetric, BillingUnit, RoundingMode, Tariff, TariffItem
 class TariffForm(forms.ModelForm):
     class Meta:
         model = Tariff
-        fields = ["name", "code", "status", "description", "owner", "source_type", "source_id", "metadata"]
+        fields = [
+            "name", "code", "status", "description", "owner", "default_asset",
+            "source_type", "source_id", "metadata",
+        ]
         widgets = {
             "description": forms.Textarea(attrs={"rows": 3}),
             "metadata": forms.Textarea(attrs={"rows": 3}),
         }
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.fields["default_asset"].queryset = Asset.objects.filter(active=True)
+        # Empty is meaningful — it inherits the host's gas asset — so name it
+        # rather than leaving Django's bare "---------".
+        self.fields["default_asset"].empty_label = _("Host default (gas asset)")
 
     def clean_code(self):
         code = self.cleaned_data["code"].strip()
@@ -51,6 +61,12 @@ class TariffItemForm(forms.ModelForm):
         self.tariff = tariff
         self.fields["metric"].queryset = BillingMetric.objects.filter(active=True)
         self.fields["charged_asset"].queryset = Asset.objects.filter(active=True)
+        # A new item starts in the tariff's currency; overriding it here is the
+        # per-metric choice.
+        if tariff is not None and not self.instance.pk and not self.initial.get("charged_asset"):
+            inherited = tariff.pricing_asset()
+            if inherited is not None:
+                self.fields["charged_asset"].initial = inherited.pk
         self.fields["receiving_account"].queryset = LedgerAccount.objects.filter(active=True)
         self.fields["unit"].queryset = BillingUnit.objects.filter(active=True)
 

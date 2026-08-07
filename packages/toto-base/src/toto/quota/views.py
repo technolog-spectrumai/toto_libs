@@ -12,10 +12,13 @@ set a limit on it.
 
 from __future__ import annotations
 
+from decimal import Decimal, InvalidOperation
+
 from django.apps import apps
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.db import transaction
 from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -23,7 +26,9 @@ from django.utils.translation import gettext_lazy as _
 
 from toto.ui import PageProcessor
 
+from . import rates
 from .api import get_policy, remaining, used
+from .choices import Mode
 from .forms import policy_form_for
 from .metrics import policy_model_for, registry
 
@@ -40,19 +45,34 @@ def _staff_only(request):
 def _billing_url(code: str) -> str:
     """Where this metric's price is set, or "" when nothing bills.
 
-    Asks the app registry rather than importing anything — the billing app is
-    owned by one host and this module ships to all of them.
+    Prefers the metric's own price row over the rate-card index — landing on a
+    list of every tariff when you asked about one metric was never useful. Falls
+    back to the list while a metric is still free and so has no row to edit.
+
+    The URL arrives as a pre-computed string from :mod:`toto.quota.rates` rather
+    than being reversed here, so no quota template ever names ``tariffs:``.
     """
     if not apps.is_installed("toto.tariffs"):
         return ""
+    if code:
+        specific = rates.advanced_url(code)
+        if specific:
+            return specific
     try:
         return reverse("tariffs:tariff_list")
     except Exception:
         return ""
 
 
-def _row(metric, user):
-    """One line of the limits table: what it is, its cap, and your use of it."""
+def _row(metric, user, *, prices=None, spend=None):
+    """One line of the limits table: what it is, its cap, and your use of it.
+
+    ``prices`` and ``spend`` are the whole rate card and the whole spend summary,
+    passed in so a page renders them with one query each rather than one per
+    row. Both are ``{}`` on a host with no economy, and every price key then
+    comes back None — which is the same thing a free metric produces, and
+    deliberately so.
+    """
     policy_model = policy_model_for(metric.app_label)
     policy = get_policy(policy_model, metric.code, user) if policy_model else None
 
@@ -67,6 +87,9 @@ def _row(metric, user):
     if limit:
         pct = min(float(consumed / limit * 100), 999) if consumed is not None else None
 
+    # Clamp for the bar but keep "over" as its own fact, so the bar never
+    # overflows its track while still being able to turn red.
+    price = (prices or {}).get(metric.code)
     return {
         "metric": metric,
         "policy": policy,
@@ -76,7 +99,12 @@ def _row(metric, user):
         "used": consumed,
         "remaining": left,
         "pct_used": pct,
+        "pct_bar": min(int(pct), 100) if pct is not None else 0,
+        "over": bool(pct is not None and pct > 100),
         "has_table": policy_model is not None,
+        "price": price,
+        "spent": (spend or {}).get(metric.code),
+        "advanced_url": price["advanced_url"] if price else "",
     }
 
 
@@ -100,6 +128,164 @@ def index(request):
         "billing_url": _billing_url(""),
         "billing_enabled": apps.is_installed("toto.tariffs"),
     })
+
+
+@login_required
+def rate_desk(request):
+    """Every limit and every price on one screen, saved in one POST.
+
+    Limits and prices live in different apps and used to be set one metric at a
+    time on two different pages, which made "what does this platform actually
+    cap, and what does it charge for it" a question nobody could answer without
+    clicking through everything.
+    """
+    _staff_only(request)
+
+    if request.method == "POST":
+        plan, errors = _parse_desk(request.POST)
+        if errors:
+            # Nothing is written until every row is good: a ValidationError
+            # raised mid-loop would roll back but still render as success, and
+            # leave the operator guessing which row was at fault.
+            for message in errors:
+                messages.error(request, message)
+        else:
+            with transaction.atomic():
+                _apply_desk(plan)
+            messages.success(request, _("Limits and prices saved."))
+            return redirect("quota:rate_desk")
+
+    prices = rates.rate_card()
+    groups = []
+    for app_label, metrics in registry.by_app().items():
+        rows = [_row(m, None, prices=prices) for m in metrics]
+        config = apps.get_app_config(app_label) if apps.is_installed(f"toto.{app_label}") else None
+        groups.append({
+            "app_label": app_label,
+            "verbose_name": getattr(config, "verbose_name", app_label) if config else app_label,
+            "rows": rows,
+        })
+
+    pricing = rates.pricing_enabled()
+    return _render(request, "quota/rate_desk.html", {
+        "groups": groups,
+        "metric_count": len(registry),
+        "pricing_enabled": pricing,
+        "price_asset": rates.price_asset_symbol(),
+        # Currencies a price may be denominated in. Empty on a host with no
+        # assets app, and the grid then renders no picker — the price column
+        # behaves exactly as it did before per-metric currencies existed.
+        "billing_assets": rates.billing_assets() if pricing else [],
+        # The <th> and every <td> read this one flag, so a price column can
+        # never appear as a header with no cells under it.
+        "column_count": 6 if pricing else 4,
+        "modes": Mode.choices,
+    })
+
+
+def _parse_desk(post):
+    """Read the whole grid before writing any of it.
+
+    The field-naming rule, which inverts formica's on purpose:
+
+    ==================  ==========================================
+    key absent          the row was not rendered — leave it alone
+    key present, blank  explicit erasure: drop the policy / price
+    key present, valued upsert
+    ==================  ==========================================
+
+    Absent-versus-blank is what stops a half-rendered form, a browser that
+    dropped fields, or a host where tariffs vanished between GET and POST from
+    silently wiping the rate card. Codes are dotted, so `__` separates the
+    prefix from the code.
+    """
+    plan, errors = [], []
+    pricing = rates.pricing_enabled()
+
+    for metric in registry.installed():
+        entry = {"metric": metric}
+        limit_key = f"limit__{metric.code}"
+        price_key = f"price__{metric.code}"
+
+        if limit_key in post:
+            raw = (post.get(limit_key) or "").strip()
+            if raw == "":
+                entry["limit"] = None
+            else:
+                try:
+                    value = Decimal(raw)
+                except (InvalidOperation, ValueError):
+                    errors.append(_("%(code)s: %(value)r is not a number.")
+                                  % {"code": metric.code, "value": raw})
+                    continue
+                if value < 0:
+                    errors.append(_("%(code)s: a limit cannot be negative.")
+                                  % {"code": metric.code})
+                    continue
+                entry["limit"] = value
+            entry["mode"] = post.get(f"mode__{metric.code}") or Mode.BLOCK
+
+        # Guard one: never even look at a price field on an unbilled host.
+        if pricing and price_key in post:
+            try:
+                # Guard two: parse here so a bad number is a form error rather
+                # than an exception out of the write phase.
+                from toto.tariffs.rate_card import parse_price
+
+                entry["price"] = parse_price(post.get(price_key))
+                entry["has_price"] = True
+                # Per-metric currency. Absent or blank keeps the inherited one
+                # (tariff default, else the host gas asset), so a desk that does
+                # not render the column behaves exactly as before.
+                entry["asset_id"] = (post.get(f"asset__{metric.code}") or "").strip() or None
+            except ImportError:  # pragma: no cover
+                pass
+            except ValueError as exc:
+                errors.append(f"{metric.code}: {exc}")
+                continue
+
+        if len(entry) > 1:
+            plan.append(entry)
+
+    return plan, errors
+
+
+def _apply_desk(plan):
+    """Write a validated plan. Caller owns the transaction."""
+    for entry in plan:
+        metric = entry["metric"]
+        if "limit" in entry:
+            policy_model = policy_model_for(metric.app_label)
+            if policy_model is not None:
+                _set_default_limit(policy_model, metric, entry["limit"], entry.get("mode"))
+        if entry.get("has_price"):
+            # Guard three: set_price is itself a no-op when nothing bills.
+            if entry["price"] is None:
+                rates.clear_price(metric.code)
+            else:
+                rates.set_price(metric.code, entry["price"], asset_id=entry.get("asset_id"))
+
+
+def _set_default_limit(policy_model, metric, limit, mode=None):
+    """Set or drop the everyone-policy for one metric.
+
+    A blank limit deletes the row rather than storing zero — nothing is limited
+    until a policy exists, so an absent policy is how "unlimited" is spelled.
+    """
+    existing = policy_model.objects.filter(metric_code=metric.code, user__isnull=True).first()
+    if limit is None:
+        if existing is not None:
+            existing.delete()
+        return
+    if existing is None:
+        existing = policy_model(metric_code=metric.code, user=None,
+                                name=metric.label, unit=metric.unit,
+                                period=metric.period)
+    existing.limit = limit
+    if mode:
+        existing.mode = mode
+    existing.active = True
+    existing.save()
 
 
 @login_required
@@ -195,10 +381,56 @@ def override_delete(request, code, pk):
 
 
 @login_required
-def my_usage(request):
-    """What the signed-in user has consumed, across every metered app."""
-    rows = [_row(m, request.user) for m in registry.all()]
+def my_usage(request, app_label=None):
+    """What the signed-in user has consumed, what it cost, and what is left.
+
+    ``app_label`` narrows it to one app, which is where each metered app's own
+    "Usage" link lands.
+    """
+    if app_label is not None and not registry.for_app(app_label):
+        # A tab pointing at an app that meters nothing would be a dead link;
+        # 404 rather than render a convincingly empty page.
+        raise Http404(f"{app_label!r} meters nothing on this host.")
+
+    metrics = registry.for_app(app_label) if app_label else registry.all()
+    prices = rates.rate_card()
+    spend = rates.spend_by_metric(request.user)
+    rows = [r for r in (_row(m, request.user, prices=prices, spend=spend)
+                        for m in metrics) if r["has_table"]]
+
+    at_limit = sum(1 for r in rows if r["over"] or (r["limit"] and r["remaining"] == 0))
+    actions = sum((r["used"] or 0) for r in rows)
+
     return _render(request, "quota/my_usage.html", {
-        "rows": [r for r in rows if r["has_table"]],
+        "rows": rows,
+        "scope_app": app_label,
         "billing_enabled": apps.is_installed("toto.tariffs"),
+        "price_asset": rates.price_asset_symbol(),
+        "balance": rates.balance_of(request.user),
+        "wallet_url": rates.wallet_url(),
+        "kpi_actions": actions,
+        "kpi_at_limit": at_limit,
+        "kpi_spent": _total_spend(spend),
+        # Labels come from here rather than the template: `{% include with %}`
+        # cannot call gettext, and untranslated KPI captions beside translated
+        # ones read as a bug.
+        "kpi_actions_label": _("Actions this period"),
+        "kpi_at_limit_label": _("At their limit"),
+        "kpi_at_limit_tone": "warn" if at_limit else "success",
+        "kpi_balance_label": _("Gas balance"),
+        "kpi_spent_label": _("Spent this period"),
     })
+
+
+def _total_spend(spend):
+    """Everything spent this period, when it is all in one asset.
+
+    Prices can name any asset, so a single total is only honest when there is a
+    single denominator — there is no exchange rate anywhere in the ledger and
+    inventing one for a KPI card would be the worst place to start.
+    """
+    assets = {row["asset"] for row in spend.values()}
+    if len(assets) != 1:
+        return None
+    return {"amount": sum(row["amount"] for row in spend.values()),
+            "asset": assets.pop()}

@@ -10,7 +10,11 @@ from toto.ui import PageProcessor
 
 from .access import user_can_access_vault_file
 from .commands import OPERATIONS, TAB_ORDER, commands_for_tab, get_command
-from .models import FileJob
+from toto.quota import QuotaExceeded, check_quota, record_usage
+from toto.quota.charge import (InsufficientFunds, charge, check_funds,
+                               price_for, refund_for)
+
+from .models import MantaQuotaPolicy, MantaUsageEvent, FileJob
 
 # Logical preset file-type → VaultFile.file_type values for the tree pickers.
 _PRESET_TO_VAULT_TYPES = {
@@ -292,6 +296,14 @@ def command_builder(request):
 
 
 def _run(request, vf, cmd_cls, params, extra_objs):
+    tariff = price_for(request.user, "manta")
+    try:
+        check_quota(MantaQuotaPolicy, "manta.job", 1, request.user)
+        check_funds(request.user, tariff, "manta.job", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        messages.error(request, str(exc))
+        return redirect("manta:command_builder")
+
     # The command family owns execution; we just create the record and enqueue.
     job = FileJob.objects.create(
         name=f"{cmd_cls.label}: {vf.title}",
@@ -301,8 +313,21 @@ def _run(request, vf, cmd_cls, params, extra_objs):
         params=dict(params),
         status=FileJob.Status.PENDING,
     )
+    _src = {"source_type": "manta.FileJob", "source_id": str(job.id)}
+    if record_usage(MantaUsageEvent, "manta.job", 1, request.user,
+                    idempotency_key=f"manta.job:{job.id}", **_src) is not None:
+        charge(request.user, tariff, "manta.job", 1, **_src)
+
     from .tasks_direct import run_direct_job
-    run_direct_job.delay(job.id)
+    try:
+        run_direct_job.delay(job.id)
+    except Exception as exc:                      # noqa: BLE001 — broker died
+        # Paid for, never queued. A job that RUNS and fails keeps its charge.
+        refund_for("manta.FileJob", job.id, "manta.job", reason=f"not queued: {exc}")
+        job.status = FileJob.Status.FAILED
+        job.save(update_fields=["status"])
+        messages.error(request, f"{cmd_cls.label} could not be queued: {exc}")
+        return redirect("manta:job_detail", pk=job.id)
     messages.success(request, f"{cmd_cls.label} started.")
     return redirect("manta:job_detail", pk=job.id)
 

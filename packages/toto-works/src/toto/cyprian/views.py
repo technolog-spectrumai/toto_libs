@@ -34,6 +34,9 @@ from toto.editor.views import BaseFileDisplayView
 from toto.memo.media import clean_svg_markup, image_bytes_to_data_uri
 from toto.ui import PageProcessor
 from toto.vault.filetree import accessible_files
+from toto.quota import QuotaExceeded, check_quota, record_usage
+from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+from toto.cyprian.models import CyprianQuotaPolicy, CyprianUsageEvent
 from toto.vault.models import VaultFile
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
@@ -552,11 +555,27 @@ def document_export_pdf(request, file_pk):
     """The document as a PDF, with a contents page and real page numbers."""
     vault_file = _get_owned_file(request, file_pk)
     document = _read_document(vault_file)
+
+    tariff = price_for(request.user, "cyprian")
+    try:
+        check_quota(CyprianQuotaPolicy, "cyprian.pdf", 1, request.user)
+        check_funds(request.user, tariff, "cyprian.pdf", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        # Plain text, not messages+redirect: this is a download target.
+        return HttpResponse(str(exc), status=exc.status_code, content_type="text/plain")
+
     try:
         raw = render_pdf.render(document)
     except render_pdf.PdfUnavailable as exc:
         # A deployment fact, not something the user can fix by retrying.
         return HttpResponse(str(exc), status=503, content_type="text/plain")
+
+    # Charged after the render succeeds — nothing to refund on a synchronous
+    # call that either returns bytes or raised before this line.
+    _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk),
+            "source_label": vault_file.title or ""}
+    record_usage(CyprianUsageEvent, "cyprian.pdf", 1, request.user, **_src)
+    charge(request.user, tariff, "cyprian.pdf", 1, **_src)
 
     base = slugify(document.title or vault_file.title or "document") or "document"
     response = HttpResponse(raw, content_type="application/pdf")

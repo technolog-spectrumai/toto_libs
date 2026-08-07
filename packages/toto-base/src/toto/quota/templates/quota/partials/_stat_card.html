@@ -1,0 +1,19 @@
+{% comment %}
+  One KPI figure. Takes: icon, label, value, tone (accent|warn|success).
+
+  Shaped like vault/partials/_stat_card.html on purpose — the two pages sit
+  beside each other in the same nav — but kept here because Django loads
+  template directories only for installed apps, and quota renders on every host
+  whether or not vault does.
+{% endcomment %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border p-4 shadow-sm">
+  <div class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+    <i class="{{ icon }}
+       {% if tone == 'warn' %}text-warn-light{% elif tone == 'success' %}text-success-light{% endif %}"
+       {% if tone != 'warn' and tone != 'success' %}:class="darkMode ? 'text-accent-dark' : 'text-accent-light'"{% endif %}></i>
+    <span>{{ label }}</span>
+  </div>
+  <div class="mt-2 text-2xl font-bold font-mono
+              {% if tone == 'warn' %}text-warn-light{% endif %}">{{ value }}</div>
+</div>

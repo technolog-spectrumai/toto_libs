@@ -1,5 +1,7 @@
 from django.db import models
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 
 class FileServiceRun(models.Model):
     PENDING = "pending"
@@ -63,3 +65,23 @@ class FileServiceRun(models.Model):
         pks = self.output_file_pks
         by_pk = {f.pk: f for f in VaultFile.objects.filter(pk__in=pks)}
         return [by_pk[pk] for pk in pks if pk in by_pk]
+
+
+# --------------------------------------------------------------------------- #
+# Metering                                                                     #
+# --------------------------------------------------------------------------- #
+# toto.quota owns no tables, so each metered app declares its own concrete pair
+# and the rows live in that app's migrations. See toto/quota/models.py.
+
+class FileserviceUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "File services usage event"
+        verbose_name_plural = "File services usage events"
+
+
+class FileserviceQuotaPolicy(AbstractQuotaPolicy):
+    events = FileserviceUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "File services quota policy"
+        verbose_name_plural = "File services quota policies"

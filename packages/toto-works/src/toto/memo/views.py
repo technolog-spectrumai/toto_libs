@@ -33,6 +33,9 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from toto.editor.views import BaseFileDisplayView
 from toto.ui import PageProcessor
 from toto.vault.filetree import accessible_files
+from toto.quota import QuotaExceeded, check_quota, record_usage
+from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+from toto.memo.models import MemoQuotaPolicy, MemoUsageEvent
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -512,11 +515,28 @@ def presentation_export_pdf(request, file_pk):
     """One page per slide, rendered from the same slide.css as everything else."""
     vault_file = _get_owned_file(request, file_pk)
     presentation = _read_presentation(vault_file)
+
+    tariff = price_for(request.user, "memo")
+    try:
+        check_quota(MemoQuotaPolicy, "memo.pdf", 1, request.user)
+        check_funds(request.user, tariff, "memo.pdf", 1)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        # Plain text, not messages+redirect: this is a download target, and a
+        # redirect would replace the page the user is looking at.
+        return HttpResponse(str(exc), status=exc.status_code, content_type="text/plain")
+
     try:
         raw = render_pdf.render(presentation)
     except render_pdf.PdfUnavailable as exc:
         # A deployment fact, not something the user can fix by trying again.
         return HttpResponse(str(exc), status=503, content_type="text/plain")
+
+    # Charged after the render succeeds. A synchronous call that returns bytes
+    # has no paid-for-but-undelivered window, so there is nothing to refund.
+    _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk),
+            "source_label": vault_file.title or ""}
+    record_usage(MemoUsageEvent, "memo.pdf", 1, request.user, **_src)
+    charge(request.user, tariff, "memo.pdf", 1, **_src)
 
     base = (vault_file.title or "presentation").rsplit(".", 1)[0]
     response = HttpResponse(raw, content_type="application/pdf")

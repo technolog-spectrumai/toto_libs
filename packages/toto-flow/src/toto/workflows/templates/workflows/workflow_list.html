@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}Workflows | {{ platform.site_name }}{% endblock %}
 
@@ -38,6 +39,7 @@
           <span class="font-bold">{{ workflows|length }}</span>
           <span class="opacity-65">{% trans "workflows" %}</span>
         </div>
+        {% quota_tab "workflows" %}
       </div>
     </header>
 

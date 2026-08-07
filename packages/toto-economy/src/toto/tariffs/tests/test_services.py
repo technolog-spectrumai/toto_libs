@@ -3,7 +3,7 @@ Tests for tariff calculation and posting services.
 """
 from decimal import Decimal
 
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from toto.assets.models import (
     AccountType,
@@ -523,12 +523,18 @@ class TariffViewTests(TestCase):
 # The seeded rate card
 # ---------------------------------------------------------------------------
 
+@override_settings(TARIFF_SEED_PRICES=True)
 class RateCardTests(TestCase):
     """What `ingress_tariffs` actually produces.
 
     These replace an older set that asserted `ingress_vault` seeded billing
     rows. That coupling is gone on purpose: vault ships in the library and
     cannot know about tariffs, which this host owns.
+
+    Seeding is forced on here because zenobia ships with TARIFF_SEED_PRICES
+    off — the platform goes live capping but not charging, and prices are set
+    deliberately from the rate desk afterwards. These tests are about what the
+    seeder produces *when asked to*, which is a different question.
     """
 
     def seed(self, full=False):
@@ -603,6 +609,7 @@ class RateCardTests(TestCase):
         self.assertNotEqual(demo.status, TariffStatus.ACTIVE)
 
 
+@override_settings(TARIFF_SEED_PRICES=True)
 class GasGrantTests(TestCase):
     """A new account has to be able to afford something."""
 

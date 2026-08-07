@@ -31,6 +31,11 @@
           {% endfor %}
         </select>
       </div>
+      {% comment %}
+        Filtering across tariffs only means something when you can see across
+        users. A user's own history is already one list.
+      {% endcomment %}
+      {% if is_manager %}
       <div>
         <label class="mb-1 block text-sm font-semibold">{% trans "Tariff" %}</label>
         <select
@@ -43,6 +48,7 @@
           {% endfor %}
         </select>
       </div>
+      {% endif %}
       <div>
         <label class="mb-1 block text-sm font-semibold">{% trans "Metric" %}</label>
         <input
@@ -79,6 +85,7 @@
       <div class="text-xs opacity-65">{% trans "Matching records" %}</div>
     </div>
 
+    {% if is_manager %}
     <a
       href="{% url 'tariffs:usage_create' %}"
       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -86,6 +93,7 @@
       <i class="fa-solid fa-plus"></i>
       {% trans "Record Usage" %}
     </a>
+    {% endif %}
   </aside>
 
   <section class="space-y-3">

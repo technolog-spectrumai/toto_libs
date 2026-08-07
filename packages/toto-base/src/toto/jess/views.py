@@ -34,7 +34,7 @@ from . import receive
 from . import status as jess_status
 from . import vault
 from .forms import AccountForm, ComposeForm
-from .models import EmailProvider, InboundMessage, MailMessage
+from .models import EmailProvider, InboundMessage, JessUsageEvent, MailMessage
 
 # The outbox is a diagnostic surface, not an archive browser. Same cap idea as
 # fileservices' RUN_LIST_CAP.
@@ -48,6 +48,26 @@ RELEASE_BATCH_CAP = 25
 
 def _render(request, template, context):
     return render(request, template, PageProcessor().decorate(context, request))
+
+
+def _meter_sends(user, message_ids):
+    """Count queued mail against the person who asked for it.
+
+    Keyed per MailMessage, which is what makes this safe to reach twice: manual
+    release walks the held queue later and would otherwise bill the releasing
+    admin for messages somebody else composed — and for anonymous rows that were
+    never charged at all. A duplicate key returns None, and the charge is
+    skipped with it.
+    """
+    from toto.quota import check_quota, record_usage
+    from toto.quota.charge import charge, check_funds, price_for
+
+    tariff = price_for(user, "jess")
+    for pk in message_ids:
+        src = {"source_type": "jess.MailMessage", "source_id": str(pk)}
+        if record_usage(JessUsageEvent, "jess.send", 1, user,
+                        idempotency_key=f"jess.send:{pk}", **src) is not None:
+            charge(user, tariff, "jess.send", 1, **src)
 
 
 def _staff_only(request):
@@ -117,6 +137,7 @@ def compose(request):
             # Claimed for the acting user here rather than in the backend, which has no
             # request and also serves password reset.
             MailMessage.objects.filter(pk__in=recorded).update(created_by=request.user)
+            _meter_sends(request.user, recorded)
 
             passphrase = (request.POST.get("passphrase") or "").strip()
             if manual and passphrase:
@@ -531,6 +552,7 @@ def inbox_reply(request, pk):
     recorded = list(getattr(connection, "recorded_ids", []))
     if recorded:
         MailMessage.objects.filter(pk__in=recorded).update(created_by=request.user)
+        _meter_sends(request.user, recorded)
         InboundMessage.objects.filter(pk=inbound.pk).update(replied_with_id=recorded[0])
         passphrase = (request.POST.get("passphrase") or "").strip()
         if manual and passphrase:

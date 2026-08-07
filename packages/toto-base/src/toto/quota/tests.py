@@ -433,3 +433,178 @@ class LimitsUiTests(SampleModels):
     def test_an_unregistered_metric_is_a_404(self):
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get("/quota/no.such.metric/").status_code, 404)
+
+
+class RateDeskTests(SampleModels):
+    """One screen for every limit and every price."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "test", "publication_year": 2026, "active": True},
+        )
+        self.staff = User.objects.create_user(username="deskstaff", password="pw", is_staff=True)
+        self.plain = User.objects.create_user(username="deskplain", password="pw")
+
+    def _code(self):
+        from toto.quota.metrics import registry
+
+        return registry.codes()[0]
+
+    def test_the_desk_is_reachable_and_not_swallowed_by_the_code_route(self):
+        """`rates/` sits above `<str:code>/`, or it 404s as an unknown metric."""
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get("/quota/rates/").status_code, 200)
+
+    def test_the_desk_is_staff_only(self):
+        self.client.force_login(self.plain)
+        self.assertEqual(self.client.get("/quota/rates/").status_code, 403)
+        self.assertEqual(self.client.post("/quota/rates/", {}).status_code, 403)
+
+    def test_a_limit_is_set_from_the_grid(self):
+        from toto.quota.metrics import policy_model_for, registry
+
+        code = self._code()
+        model = policy_model_for(registry.get(code).app_label)
+        self.client.force_login(self.staff)
+
+        self.client.post("/quota/rates/", {f"limit__{code}": "42"})
+
+        policy = model.objects.get(metric_code=code, user__isnull=True)
+        self.assertEqual(policy.limit, Decimal("42"))
+
+    def test_a_blank_limit_deletes_the_policy_rather_than_storing_zero(self):
+        """Nothing is limited until a policy exists, so unlimited is an absence."""
+        from toto.quota.metrics import policy_model_for, registry
+
+        code = self._code()
+        model = policy_model_for(registry.get(code).app_label)
+        self.client.force_login(self.staff)
+        self.client.post("/quota/rates/", {f"limit__{code}": "5"})
+
+        self.client.post("/quota/rates/", {f"limit__{code}": ""})
+
+        self.assertFalse(model.objects.filter(metric_code=code, user__isnull=True).exists())
+
+    def test_an_absent_key_leaves_the_row_alone(self):
+        """A half-rendered form must not read as "erase everything"."""
+        from toto.quota.metrics import policy_model_for, registry
+
+        code = self._code()
+        model = policy_model_for(registry.get(code).app_label)
+        self.client.force_login(self.staff)
+        self.client.post("/quota/rates/", {f"limit__{code}": "7"})
+
+        self.client.post("/quota/rates/", {})  # nothing submitted at all
+
+        self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
+                         Decimal("7"))
+
+    def test_one_bad_row_saves_nothing(self):
+        from toto.quota.metrics import policy_model_for, registry
+
+        codes = registry.codes()
+        if len(codes) < 2:
+            self.skipTest("needs two registered metrics")
+        good, bad = codes[0], codes[1]
+        model = policy_model_for(registry.get(good).app_label)
+        self.client.force_login(self.staff)
+
+        self.client.post("/quota/rates/", {f"limit__{good}": "9", f"limit__{bad}": "-5"})
+
+        self.assertFalse(model.objects.filter(metric_code=good, user__isnull=True).exists())
+
+
+class PricingBoundaryTests(SampleModels):
+    """toto.quota must keep working where toto.tariffs cannot even be imported.
+
+    aurelian and studio pin toto-base but not toto-economy, so this is not a
+    hypothetical: the module is absent from those images entirely.
+    """
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "test", "publication_year": 2026, "active": True},
+        )
+        self.staff = User.objects.create_user(username="nbstaff", password="pw", is_staff=True)
+
+    def test_rates_is_a_no_op_when_nothing_bills(self):
+        from unittest.mock import patch
+
+        from toto.quota import rates
+
+        with patch.object(rates, "pricing_enabled", return_value=False):
+            self.assertEqual(rates.rate_card(), {})
+            self.assertIsNone(rates.price_of("anything"))
+            self.assertFalse(rates.set_price("anything", "1"))
+            self.assertFalse(rates.clear_price("anything"))
+            self.assertEqual(rates.advanced_url("anything"), "")
+            self.assertEqual(rates.price_asset_symbol(), "")
+            self.assertEqual(rates.spend_by_metric(self.staff), {})
+            self.assertIsNone(rates.balance_of(self.staff))
+            self.assertEqual(rates.wallet_url(), "")
+
+    def test_the_desk_renders_and_saves_limits_with_no_price_column(self):
+        from unittest.mock import patch
+
+        from toto.quota import rates
+        from toto.quota.metrics import policy_model_for, registry
+
+        code = registry.codes()[0]
+        model = policy_model_for(registry.get(code).app_label)
+        self.client.force_login(self.staff)
+
+        with patch.object(rates, "pricing_enabled", return_value=False):
+            response = self.client.get("/quota/rates/")
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(response.context["pricing_enabled"])
+            # A <th> with no <td> under it would skew the whole table.
+            self.assertEqual(response.context["column_count"], 4)
+
+            self.client.post("/quota/rates/", {f"limit__{code}": "11"})
+
+        self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
+                         Decimal("11"))
+
+    def test_a_forged_price_field_is_ignored_when_nothing_bills(self):
+        """The template omits it, the parser skips it, and set_price refuses."""
+        from unittest.mock import patch
+
+        from toto.quota import rates
+        from toto.quota.metrics import registry
+
+        code = registry.codes()[0]
+        self.client.force_login(self.staff)
+        with patch.object(rates, "pricing_enabled", return_value=False), \
+                patch.object(rates, "set_price") as set_price:
+            self.client.post("/quota/rates/", {f"price__{code}": "9.99"})
+        set_price.assert_not_called()
+
+    def test_quota_never_imports_tariffs_at_module_scope(self):
+        """The rule, pinned at the source rather than only by the repo scan."""
+        import ast
+        import pathlib
+
+        import toto.quota
+
+        package = pathlib.Path(toto.quota.__file__).parent
+        offenders = []
+        for path in package.rglob("*.py"):
+            tree = ast.parse(path.read_text())
+            for node in ast.walk(tree):
+                # Only module-level imports matter; inside a function body they
+                # are lazy by construction and are the sanctioned shape.
+                if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                    continue
+                if getattr(node, "col_offset", 0) != 0:
+                    continue
+                names = [node.module or ""] if isinstance(node, ast.ImportFrom) \
+                    else [a.name for a in node.names]
+                if any(n.startswith(("toto.tariffs", "toto.assets")) for n in names):
+                    offenders.append(f"{path.name}:{node.lineno}")
+        self.assertEqual(offenders, [])

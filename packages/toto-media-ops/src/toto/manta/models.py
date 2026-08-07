@@ -10,6 +10,8 @@ stdout / rendered argv, and no run history. ``MediaJob`` is a proxy subclass of
 from django.contrib.auth.models import User
 from django.db import models
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 
 class FileJob(models.Model):
     class Status(models.TextChoices):
@@ -59,3 +61,23 @@ class MediaJob(FileJob):
     def extra_inputs(self) -> list:
         ids = self.inputs or []
         return ids[1:]
+
+
+# --------------------------------------------------------------------------- #
+# Metering                                                                     #
+# --------------------------------------------------------------------------- #
+# toto.quota owns no tables, so each metered app declares its own concrete pair
+# and the rows live in that app's migrations. See toto/quota/models.py.
+
+class MantaUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Manta usage event"
+        verbose_name_plural = "Manta usage events"
+
+
+class MantaQuotaPolicy(AbstractQuotaPolicy):
+    events = MantaUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Manta quota policy"
+        verbose_name_plural = "Manta quota policies"

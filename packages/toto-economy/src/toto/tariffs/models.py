@@ -107,11 +107,36 @@ class Tariff(models.Model):
         related_name="owned_tariffs",
         help_text=_("Only this user can edit the tariff and its items."),
     )
+    default_asset = models.ForeignKey(
+        "assets.Asset",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="default_for_tariffs",
+        help_text=_(
+            "Currency this tariff prices in. Items may still override it per metric; "
+            "leave empty to use the host's gas asset."
+        ),
+    )
     source_type = models.CharField(max_length=100, blank=True)
     source_id = models.CharField(max_length=255, blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def pricing_asset(self):
+        """The asset an item of this tariff is priced in when it names none.
+
+        Nullable on purpose: a host that has always billed in its gas asset must
+        keep doing so after this field exists, so "unset" means "the host's gas
+        asset" rather than "no price". Resolution order is therefore
+        item.charged_asset → tariff.default_asset → gas_asset().
+        """
+        if self.default_asset_id:
+            return self.default_asset
+        from .rate_card import gas_asset
+
+        return gas_asset()
 
     class Meta:
         ordering = ["name"]

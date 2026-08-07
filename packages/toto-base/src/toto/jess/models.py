@@ -15,6 +15,8 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models, transaction
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 # --- how a provider actually sends -----------------------------------------------
 # The dotted paths are Django's own backends. Jess's own backend is deliberately NOT
 # in this map: a provider claiming it would make delivery.py re-enter the queue and
@@ -380,3 +382,25 @@ class InboundMessage(models.Model):
 
     def __str__(self):
         return f"{self.subject or '(no subject)'} ← {self.from_address or '(unknown)'}"
+
+
+# --------------------------------------------------------------------------- #
+# Metering                                                                     #
+# --------------------------------------------------------------------------- #
+# toto.quota owns no tables, so each metered app declares its own concrete pair
+# and the rows live in that app's migrations. See toto/quota/models.py.
+# Metric: jess.send — and see metrics.py for why the EMAIL_BACKEND path is not
+# metered at all.
+
+class JessUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Jess usage event"
+        verbose_name_plural = "Jess usage events"
+
+
+class JessQuotaPolicy(AbstractQuotaPolicy):
+    events = JessUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Jess quota policy"
+        verbose_name_plural = "Jess quota policies"

@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{% trans "Vault Metrics" %} | {{ platform.site_name }}{% endblock %}
 
@@ -38,6 +39,9 @@
             {% trans "Metrics" %}
           </h1>
         </div>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        {% quota_tab "vault" %}
       </div>
     </header>
 

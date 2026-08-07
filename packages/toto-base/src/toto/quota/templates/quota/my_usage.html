@@ -7,6 +7,37 @@
 
 {% block quota_content %}
 
+{% if scope_app %}
+  <div class="flex items-center gap-3 text-sm">
+    <a href="{% url 'quota:my_usage' %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>{% trans "All apps" %}
+    </a>
+    <span class="opacity-60">{% blocktrans %}Showing {{ scope_app }} only.{% endblocktrans %}</span>
+  </div>
+{% endif %}
+
+{% comment %}
+  KPI row. The two money cards vanish on a host with no ledger; the two
+  counting cards are true everywhere, which is the point of the split.
+  The card markup is inlined rather than pulled from vault/partials — Django
+  only loads template dirs for installed apps, so borrowing another app's
+  partial makes this page's rendering depend on that app being switched on.
+{% endcomment %}
+<div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-bolt" label=kpi_actions_label value=kpi_actions|floatformat:"-2" tone="accent" %}
+  {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-triangle-exclamation" label=kpi_at_limit_label value=kpi_at_limit tone=kpi_at_limit_tone %}
+  {% if billing_enabled %}
+    {% if balance %}
+      {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-gas-pump" label=kpi_balance_label value=balance.amount|floatformat:"-9" tone="accent" %}
+    {% endif %}
+    {% if kpi_spent %}
+      {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-receipt" label=kpi_spent_label value=kpi_spent.amount|floatformat:"-9" tone="accent" %}
+    {% endif %}
+  {% endif %}
+</div>
+
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 {% for row in rows %}
   <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -25,19 +56,41 @@
     </div>
 
     {% if row.limit %}
+      {% comment %}
+        pct_bar is clamped server-side and `over` is its own fact, so the bar
+        never overflows its track while still being able to turn red.
+      {% endcomment %}
       <div class="h-2 overflow-hidden rounded-full"
            :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
         <div class="h-full rounded-full"
-             :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
-             style="width: {% if row.pct_used > 100 %}100{% else %}{{ row.pct_used|floatformat:0 }}{% endif %}%"></div>
+             {% if row.over %}class="bg-warn-light"{% else %}:class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"{% endif %}
+             style="width: {{ row.pct_bar }}%"></div>
       </div>
-      <p class="text-xs opacity-60">
+      <p class="text-xs {% if row.over %}text-warn-light{% else %}opacity-60{% endif %}">
         {% blocktrans with left=row.remaining|floatformat:"-2" unit=row.metric.unit period=row.period %}
           {{ left }} {{ unit }} left this {{ period }} period.
         {% endblocktrans %}
       </p>
     {% else %}
       <p class="text-xs opacity-55">{% trans "No limit on this action." %}</p>
+    {% endif %}
+
+    {% if billing_enabled %}
+      <div class="flex items-baseline justify-between border-t pt-2 text-xs"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="opacity-60">
+          {% if row.price %}
+            {% blocktrans with price=row.price.price_display|floatformat:-9 asset=row.price.asset unit=row.metric.unit %}
+              {{ price }} {{ asset }} per {{ unit }}
+            {% endblocktrans %}
+          {% else %}
+            {% trans "Free" %}
+          {% endif %}
+        </span>
+        {% if row.spent %}
+          <span class="font-mono">{{ row.spent.amount|floatformat:"-9" }} {{ row.spent.asset }}</span>
+        {% endif %}
+      </div>
     {% endif %}
   </article>
 {% empty %}
@@ -50,5 +103,12 @@
   </div>
 {% endfor %}
 </div>
+
+{% if billing_enabled and wallet_url %}
+  <p class="text-xs opacity-60">
+    <i class="fa-solid fa-wallet mr-1"></i>
+    <a href="{{ wallet_url }}" class="underline">{% trans "Your wallet and every transaction behind these numbers." %}</a>
+  </p>
+{% endif %}
 
 {% endblock %}

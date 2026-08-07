@@ -23,7 +23,13 @@ Two sentinels carry the whole "billing may not exist" story, so call sites need
 no guard of their own: :func:`price_for` returns ``None`` when tariffs is not
 installed *or* when the metric simply has no price, and every other function is
 a no-op on a ``None`` tariff. An unpriced metric and an unbilled host are the
-same thing to a caller, and both mean free.
+same thing to a caller, and both mean free. **No call site should ever write**
+``if billing_enabled():`` — the cap must apply everywhere, and the charge
+disables itself.
+
+See also :mod:`toto.quota.rates`, which reaches across the same boundary to
+*quote* prices for the two staff-facing screens. It is kept separate because
+this module is imported by every metered request and that one is not.
 """
 
 from __future__ import annotations
@@ -106,3 +112,37 @@ def refund(usage_record, *, reference: str = "", description: str = ""):
     from toto.tariffs.charge import refund_usage_record
 
     return refund_usage_record(usage_record, reference=reference, description=description)
+
+
+def refund_for(source_type: str, source_id, metric_code: str = "", *, reason: str = ""):
+    """Reverse the live charge against one domain row. None when there was none.
+
+    Re-finds the record rather than taking one, which is what makes refunding
+    possible at all from where failures are actually noticed. ``charge()``
+    returns a ``tariffs.UsageRecord``, but the place that discovers the work
+    failed is usually a celery worker holding nothing but a pk — a different
+    process from the request that paid. Nor can the record be stashed on the
+    domain row: a real FK to ``toto.tariffs`` would be ``fields.E300`` at import
+    time on every host that ships no economy, which is why ``LatexRun`` already
+    carries its workflow link as a plain integer.
+
+    Pass ``metric_code`` whenever a row carries more than one metric, or this
+    reverses whichever charge happens to be newest.
+
+    Reversal, not deletion: the charge and its refund both stay in the ledger.
+    Safe to call twice — ``refund_usage_record`` declines a record that is not
+    POSTED or is already reversed.
+    """
+    if not billing_enabled():
+        return None
+    from toto.tariffs.models import UsageRecord, UsageStatus
+
+    records = UsageRecord.objects.filter(
+        source_type=source_type,
+        source_id=str(source_id),
+        status=UsageStatus.POSTED,
+    )
+    if metric_code:
+        records = records.filter(metric_code=metric_code)
+
+    return refund(records.order_by("-created_at").first(), description=reason)

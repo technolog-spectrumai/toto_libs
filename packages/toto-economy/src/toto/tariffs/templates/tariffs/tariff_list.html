@@ -62,6 +62,7 @@
       </button>
     </form>
 
+    {% if user.is_staff %}
     <div class="pt-2">
       <a
         href="{% url 'tariffs:usage_create' %}"
@@ -71,6 +72,7 @@
         {% trans "Record Usage" %}
       </a>
     </div>
+    {% endif %}
   </aside>
 
   <section class="space-y-3">

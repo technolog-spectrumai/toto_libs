@@ -55,7 +55,6 @@
           <i class="fa-solid fa-plus"></i>
           {% trans "Add Item" %}
         </a>
-        {% endif %}
         <a
           href="{% url 'tariffs:tariff_simulate' tariff.uuid %}"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -70,6 +69,7 @@
           <i class="fa-solid fa-bolt"></i>
           {% trans "Record Usage" %}
         </a>
+        {% endif %}
         {% if tariff.owner %}
         <span class="flex items-center gap-1.5 text-xs opacity-50 self-center">
           <i class="fa-solid fa-user-shield"></i>
@@ -80,7 +80,9 @@
     </div>
   </div>
 
-  <!-- Stats -->
+  <!-- Stats — how much has been billed on this card, which is nobody's business
+       but the people who manage it. The prices below stay public. -->
+  {% if usage_stats %}
   <div class="grid grid-cols-2 gap-3 sm:grid-cols-4">
     {% for label, value in usage_stats.items %}
       <div
@@ -91,6 +93,7 @@
       </div>
     {% endfor %}
   </div>
+  {% endif %}
 
   <!-- Tariff items table -->
   <div
@@ -181,7 +184,9 @@
     </div>
   </div>
 
-  <!-- Recent usage -->
+  <!-- Recent usage — names other people's payer accounts, so managers only.
+       A user looking for their own history has /tariffs/usage/. -->
+  {% if is_owner %}
   <div
     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
     class="rounded-lg border shadow-sm">
@@ -253,6 +258,7 @@
       </table>
     </div>
   </div>
+  {% endif %}
 
 </div>
 {% endblock %}

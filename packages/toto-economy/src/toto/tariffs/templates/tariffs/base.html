@@ -13,11 +13,17 @@
        class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
       <i class="fa-solid fa-list"></i>{% trans "Tariffs" %}
     </a>
+    {% comment %}
+      Usage is scoped to the signed-in user, so everyone gets it. Metrics and
+      New Tariff are staff-only in the view; showing the chips to everyone else
+      just advertises a 403.
+    {% endcomment %}
     <a href="{% url 'tariffs:usage_list' %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
       <i class="fa-solid fa-bolt"></i>{% trans "Usage" %}
     </a>
+    {% if user.is_staff %}
     <a href="{% url 'tariffs:metrics' %}"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
        class="inline-flex items-center gap-1.5 rounded border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
@@ -28,6 +34,7 @@
        class="inline-flex items-center gap-1.5 rounded px-3 py-1.5 text-xs font-semibold transition hover:opacity-90">
       <i class="fa-solid fa-plus"></i>{% trans "New Tariff" %}
     </a>
+    {% endif %}
   </nav>
 
   {% block tariffs_content %}{% endblock %}
