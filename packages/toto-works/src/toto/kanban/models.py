@@ -5,10 +5,11 @@ from django.db import models
 from django.db.models import Q
 from django.core.exceptions import ValidationError
 from django.utils import timezone
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from toto.core.domain import DomainEntity
 from toto.people.models import Person
-from toto.verbena.models import AbstractPage, AbstractSection
+from toto.verbena.models import AbstractPage
 
 
 THREE_SCALE = [
@@ -163,8 +164,41 @@ class Mission(DomainEntity):
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
 
+    # ── Budget ───────────────────────────────────────────────────────────────
+    # One number and a currency, per MISSION. Deliberately not per task: a task
+    # is a unit of work, not a unit of spend, and pricing every card would turn
+    # the board into a spreadsheet nobody keeps current. The mission is the
+    # smallest thing anyone actually budgets.
+    #
+    # Null means "not budgeted", which is different from a budget of zero — so
+    # the field is nullable rather than defaulting to 0, and the templates say
+    # "No budget set" rather than showing a misleading 0.00.
+    budget_amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        null=True,
+        blank=True,
+        help_text="What this mission is budgeted at. Leave empty for no budget.",
+    )
+    # A SYMBOL, not a foreign key. The obvious modelling would be an FK to
+    # assets.Asset, and it is not available: that model ships in toto-economy,
+    # which only zenobia pins — studio and aurelian install kanban from this same
+    # wheel and would be left with a migration they cannot build and a package
+    # edge check_package_graph.py forbids (toto-works depends on toto-base and
+    # nothing else). A short symbol costs those hosts nothing, and a host that
+    # does run the ledger can still match it against Asset.symbol for display.
+    budget_currency = models.CharField(
+        max_length=12,
+        blank=True,
+        help_text="Currency symbol or code, e.g. ASR, EUR, PLN.",
+    )
+
     def __str__(self):
         return f"{self.title} ({self.campaign.name})"
+
+    @property
+    def has_budget(self) -> bool:
+        return self.budget_amount is not None
 
     @property
     def urgency_label(self):
@@ -184,6 +218,34 @@ class Mission(DomainEntity):
 
     def clean(self):
         self._validate_zone_containment()
+        self._validate_budget()
+
+    def _validate_budget(self):
+        """A budget is a number AND a currency, or it is nothing.
+
+        Normalises the symbol on the way through, so "eur" and "EUR" cannot both
+        end up in the column and make two missions look like they are budgeted in
+        different things.
+        """
+        self.budget_currency = (self.budget_currency or "").strip().upper()
+
+        if self.budget_amount is None:
+            if self.budget_currency:
+                raise ValidationError({
+                    "budget_currency": _(
+                        "Set a budget amount, or clear the currency."),
+                })
+            return
+
+        if self.budget_amount < 0:
+            raise ValidationError({
+                "budget_amount": _("A budget cannot be negative."),
+            })
+        if not self.budget_currency:
+            raise ValidationError({
+                "budget_currency": _(
+                    "Say what currency the budget is in."),
+            })
 
     def _validate_zone_containment(self):
         """Refuse a mission zone that lies outside its campaign's zone.
@@ -674,37 +736,155 @@ class MissionAttachment(DomainEntity):
 
 
 class DocumentationPage(AbstractPage):
-    mission = models.OneToOneField(
-        Mission,
+    """A wiki page. The project is the space; pages form a tree inside it.
+
+    This was one page per mission, one-to-one, editable only in Django admin.
+    That shape could hold a mission's overview and nothing else — no index, no
+    "how we deploy", no page about two missions at once — and it put the only
+    writing surface behind a mission detail page. cyprian's own README named the
+    captivity as its founding motivation.
+
+    Now: a page belongs to a PROJECT, which is the space, and to an optional
+    parent, which makes the tree. It MAY still name a mission — that is what the
+    migrated rows keep, and what the mission page lists.
+    """
+
+    project = models.ForeignKey(
+        Project,
         on_delete=models.CASCADE,
-        related_name="documentation_page",
+        related_name="wiki_pages",
+    )
+    parent = models.ForeignKey(
+        "self",
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name="children",
+    )
+    mission = models.ForeignKey(
+        Mission,
+        # SET_NULL, not CASCADE: deleting a mission must not delete the prose
+        # written about it. The page outlives what it documents, which is the
+        # ordinary case for a wiki and was impossible under the one-to-one.
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="wiki_pages",
+        help_text="Optional: the mission this page is about.",
     )
     is_manual = models.BooleanField(
         default=False,
-        help_text="If true, this page is an instruction / how-to manual for the mission.",
+        help_text="If true, this page is an instruction / how-to manual.",
+    )
+    order = models.PositiveIntegerField(default=0)
+
+    # Redeclared to drop AbstractPage's `unique=True`. Overriding a field
+    # inherited from an ABSTRACT base is allowed — the prohibition is on
+    # concrete inheritance — and a global slug namespace is simply wrong for a
+    # wiki, where two projects both want a page called "getting-started". The
+    # constraint below scopes it; save() resolves collisions within one project.
+    slug = models.SlugField(blank=True)
+
+    # THE read model. Every host renders this and nothing else: studio and
+    # aurelian install kanban from the shared wheel and have no cyprian to parse
+    # a vault file with, and five of six zenobia profiles historically had none
+    # either. Written on every save through the bridge, already sanitised —
+    # Document.from_dict runs sanitize_content on the way in, which is what makes
+    # rendering it with |safe legitimate rather than hopeful.
+    body_html = models.TextField(blank=True)
+
+    # The cyprian document this page's prose is edited in. Nullable because a
+    # page exists before anyone opens the writer, and on hosts without cyprian
+    # nothing ever mints one.
+    #
+    # editable=False is load-bearing and not cosmetic: this column is the trust
+    # anchor the cyprian bridge authorises against, so it must be writable ONLY
+    # by cyprian.bridge.open_document. Put it on a ModelForm, in admin fields,
+    # or in an API serialiser, and a project member can point a page at any
+    # VaultFile pk on the instance and have the bridge hand them somebody else's
+    # private document. See cyprian/bridge.py.
+    vault_file = models.ForeignKey(
+        "vault.VaultFile",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        editable=False,
+        related_name="kanban_wiki_pages",
     )
 
     class Meta:
+        ordering = ["order", "title"]
         verbose_name = "Documentation Page"
         verbose_name_plural = "Documentation Pages"
+        constraints = [
+            models.UniqueConstraint(
+                fields=["project", "slug"],
+                name="kanban_docpage_slug_per_project",
+            ),
+        ]
+
+    def save(self, *args, **kwargs):
+        # AbstractPage.save slugifies a blank slug but knows nothing about the
+        # scope, so two pages titled "Overview" in one project would collide on
+        # the constraint instead of getting distinct slugs.
+        if not self.slug:
+            self.slug = slugify(self.title)
+        base, n = self.slug or "page", 1
+        clash = DocumentationPage.objects.filter(
+            project_id=self.project_id, slug=self.slug)
+        if self.pk:
+            clash = clash.exclude(pk=self.pk)
+        while clash.exists():
+            n += 1
+            self.slug = f"{base}-{n}"
+            clash = DocumentationPage.objects.filter(
+                project_id=self.project_id, slug=self.slug)
+            if self.pk:
+                clash = clash.exclude(pk=self.pk)
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if self.parent_id:
+            if self.parent_id == self.pk:
+                raise ValidationError({"parent": "A page cannot be its own parent."})
+            if self.parent.project_id != self.project_id:
+                raise ValidationError(
+                    {"parent": "The parent page belongs to a different project."})
+            # Bounded walk: a cycle here would hang every tree render, and the
+            # tree is drawn on the space home, the page itself and the sidebar.
+            seen, node = {self.pk}, self.parent
+            while node is not None:
+                if node.pk in seen:
+                    raise ValidationError({"parent": "That would make a loop."})
+                seen.add(node.pk)
+                node = node.parent
+        if self.mission_id and self.mission.campaign.project_id != self.project_id:
+            raise ValidationError(
+                {"mission": "That mission belongs to a different project."})
 
     def get_absolute_url(self):
         from django.urls import reverse
-        return reverse("kanban:documentation_page_detail", args=[self.pk])
+        return reverse("kanban:wiki_page", args=[self.project_id, self.slug])
+
+    def ancestors(self):
+        """Root-first, for breadcrumbs. Bounded by the same depth cap as the tree."""
+        chain, node, guard = [], self.parent, 0
+        while node is not None and guard < WIKI_MAX_DEPTH:
+            chain.append(node)
+            node = node.parent
+            guard += 1
+        return list(reversed(chain))
 
 
-class DocumentationSection(AbstractSection):
-    page = models.ForeignKey(
-        DocumentationPage,
-        on_delete=models.CASCADE,
-        related_name="sections",
-    )
+#: The `document.meta` key a page's cyprian document is stamped with, so a file
+#: that is downloaded and restored still says what it belongs to. A breadcrumb
+#: only — the bridge authorises on `vault_file`, never on this. Defined here
+#: rather than in the plugin so that importing it costs no plugin registration.
+KANBAN_PAGE_META = "kanban_page"
 
-    class Meta:
-        ordering = ["order"]
-        verbose_name = "Documentation Section"
-        verbose_name_plural = "Documentation Sections"
-
-    def __str__(self):
-        return f"{self.page.title} – {self.title or 'Section'}"
+# How deep the tree is walked, for breadcrumbs and for the recursive template
+# include. Not a limit on what can be created — clean() already refuses loops —
+# but a floor under the cost of drawing a tree somebody nested absurdly.
+WIKI_MAX_DEPTH = 12
 

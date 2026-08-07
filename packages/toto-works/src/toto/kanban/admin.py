@@ -7,12 +7,12 @@ from django.utils.timezone import now
 
 from .models import (
     Project, Task, TaskRelation, Sprint, Mission, MissionAttachment, Campaign,
-    DocumentationPage, DocumentationSection,
+    DocumentationPage,
     Practitioner, ProjectCommitment,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
-from toto.verbena.admin import SectionInlineMixin, PageAdminMixin
+from toto.verbena.admin import PageAdminMixin
 
 
 class PrettyJSONTextarea(forms.Textarea):
@@ -112,17 +112,6 @@ class CampaignAdmin(admin.ModelAdmin):
 
 # ── Mission ───────────────────────────────────────────────────────────────────
 
-class DocumentationPageInline(admin.StackedInline):
-    model = DocumentationPage
-    extra = 0
-    fields = ("title", "slug", "description", "is_manual")
-    prepopulated_fields = {"slug": ("title",)}
-
-
-class DocumentationSectionInline(SectionInlineMixin):
-    model = DocumentationSection
-
-
 class TaskInlineForMission(admin.TabularInline):
     model = Task
     extra = 1
@@ -153,13 +142,20 @@ class MissionAttachmentInline(admin.TabularInline):
 @admin.register(Mission)
 class MissionAdmin(admin.ModelAdmin):
     form = MissionAdminForm
-    list_display = ("title", "campaign", "visibility", "urgency", "impact", "owner", "task_count")
+    list_display = ("title", "campaign", "visibility", "urgency", "impact", "owner",
+                    "budget", "task_count")
     list_filter = ("visibility", "campaign", "urgency", "impact")
     search_fields = ("title", "description")
     ordering = ("campaign", "title")
     filter_horizontal = ("visible_to",)
     raw_id_fields = ("owner", "location", "route", "zone", "calendar_event")
-    inlines = [TaskInlineForMission, DocumentationPageInline, MissionAttachmentInline]
+    inlines = [TaskInlineForMission, MissionAttachmentInline]
+
+    def budget(self, obj):
+        if obj.budget_amount is None:
+            return "—"
+        return f"{obj.budget_amount} {obj.budget_currency}"
+    budget.short_description = "Budget"
 
     def task_count(self, obj):
         return obj.tasks.count()
@@ -264,12 +260,27 @@ class SprintAdmin(admin.ModelAdmin):
 
 @admin.register(DocumentationPage)
 class DocumentationPageAdmin(PageAdminMixin):
-    list_display = ("title", "mission", "is_manual", "created_at")
-    list_filter = ("is_manual",)
-    search_fields = ["title", "description", "mission__title"]
+    """The page's identity and its place in the tree. Never its prose.
+
+    There is no section inline any more — the body is one HTML field written by
+    the cyprian bridge — and `body_html` is read-only here on purpose: the writer
+    owns it, and a textarea that silently loses the editor's markup would be a
+    trap rather than a convenience.
+
+    `vault_file` is not an editable field and must never become one. It is the
+    column the cyprian bridge authorises against, so anyone who could set it here
+    could hand themselves any document on the instance. It is `editable=False` on
+    the model, which already keeps it out of this form; it is named in
+    readonly_fields so that it is visible, and so that the reason is written next
+    to it.
+    """
+
+    list_display = ("title", "project", "parent", "mission", "is_manual", "created_at")
+    list_filter = ("is_manual", "project")
+    search_fields = ["title", "description", "mission__title", "project__name"]
     autocomplete_fields = ("mission",)
-    readonly_fields = ["created_at"]
-    inlines = [DocumentationSectionInline]
+    raw_id_fields = ("project", "parent")
+    readonly_fields = ["created_at", "body_html", "vault_file"]
 
 
 # ── Task relations ────────────────────────────────────────────────────────────

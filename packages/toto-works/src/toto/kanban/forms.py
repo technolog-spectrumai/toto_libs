@@ -6,7 +6,7 @@ from toto.events.models import ScheduledEvent
 from toto.people.models import Person
 from toto.kanban.models import (
     Task, TaskRelation, Mission, Campaign, Sprint, Practitioner,
-    SYMMETRIC_RELATIONS, visible_missions_for,
+    DocumentationPage, SYMMETRIC_RELATIONS, visible_missions_for,
 )
 
 
@@ -201,6 +201,8 @@ class MissionForm(forms.ModelForm):
             "visibility",
             "visible_to",
             "calendar_event",
+            "budget_amount",
+            "budget_currency",
         ]
 
         _input = "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300"
@@ -231,6 +233,18 @@ class MissionForm(forms.ModelForm):
                 "size": 6,
             }),
             "calendar_event": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
+            "budget_amount": forms.NumberInput(attrs={
+                "class": _input,
+                "x-bind:class": _dark,
+                "step": "0.01",
+                "min": "0",
+                "placeholder": "No budget",
+            }),
+            "budget_currency": forms.TextInput(attrs={
+                "class": _input,
+                "x-bind:class": _dark,
+                "placeholder": "ASR",
+            }),
         }
 
 
@@ -264,3 +278,100 @@ class LinkedEventCreateForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         for name in ("start_time", "end_time"):
             self.fields[name].input_formats = ["%Y-%m-%dT%H:%M"]
+
+
+class WikiPageForm(forms.ModelForm):
+    """Title, place in the tree, and an optional mission. Not the prose.
+
+    The body is written in cyprian and arrives through the bridge, so there is
+    no content field here — and, deliberately, no `vault_file` field either. That
+    column is the trust anchor the bridge authorises against; a form that
+    accepted it would let any project member point a page at any VaultFile on the
+    instance. It is `editable=False` on the model, which keeps it out of
+    `fields = "__all__"` too, but the reason belongs written down at every place
+    someone might be tempted to add it back.
+    """
+
+    class Meta:
+        model = DocumentationPage
+        fields = ["title", "description", "parent", "mission", "is_manual"]
+        widgets = {
+            "title": forms.TextInput(attrs={
+                "class": "w-full rounded-lg border px-3 py-2 outline-none",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "description": forms.Textarea(attrs={
+                "rows": 3,
+                "class": "w-full rounded-lg border px-3 py-2 outline-none",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+        }
+
+    def __init__(self, *args, project=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.project = project or getattr(self.instance, "project", None)
+
+        select = {
+            "class": "w-full rounded-lg border px-3 py-2 outline-none",
+            "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+        }
+        self.fields["parent"].widget.attrs.update(select)
+        self.fields["mission"].widget.attrs.update(select)
+        self.fields["parent"].required = False
+        self.fields["mission"].required = False
+
+        if self.project is None:
+            self.fields["parent"].queryset = DocumentationPage.objects.none()
+            self.fields["mission"].queryset = Mission.objects.none()
+            return
+
+        # Only this project's pages, and never the page itself or one of its own
+        # descendants — model.clean() refuses a loop, but a dropdown that offers
+        # one is a form that invites the error rather than preventing it.
+        parents = DocumentationPage.objects.filter(project=self.project)
+        if self.instance.pk:
+            banned, frontier = {self.instance.pk}, [self.instance.pk]
+            while frontier:
+                frontier = list(
+                    DocumentationPage.objects
+                    .filter(parent_id__in=frontier)
+                    .values_list("pk", flat=True))
+                banned.update(frontier)
+            parents = parents.exclude(pk__in=banned)
+        self.fields["parent"].queryset = parents.order_by("title")
+
+        self.fields["mission"].queryset = (
+            Mission.objects
+            .filter(campaign__project=self.project)
+            .order_by("title"))
+
+
+class MissionBudgetForm(forms.ModelForm):
+    """Just the budget, for the box on the mission page.
+
+    A separate form rather than sending people to the full mission editor: the
+    budget is the one number on that page anybody changes twice, and making them
+    walk past zone containment and a visible_to multi-select to do it is how a
+    field ends up permanently wrong.
+
+    ModelForm, so ``Mission.clean`` runs through ``full_clean`` and the
+    amount-without-currency rule is enforced in exactly one place.
+    """
+
+    class Meta:
+        model = Mission
+        fields = ["budget_amount", "budget_currency"]
+        widgets = {
+            "budget_amount": forms.NumberInput(attrs={
+                "step": "0.01",
+                "min": "0",
+                "placeholder": "No budget",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+            "budget_currency": forms.TextInput(attrs={
+                "placeholder": "ASR",
+                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none",
+                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
+            }),
+        }

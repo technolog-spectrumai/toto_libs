@@ -1,0 +1,53 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% blocktrans with name=project.name %}{{ name }} wiki{% endblocktrans %}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+      <div class="space-y-2">
+        <a href="{% url 'kanban:project_detail' project.pk %}"
+           class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+          <i class="fa-solid fa-arrow-left"></i>{{ project.name }}
+        </a>
+        <div>
+          <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold uppercase tracking-wide">{% trans "Wiki" %}</p>
+          <h1 class="mt-1 text-3xl font-bold">{% trans "Pages" %}</h1>
+        </div>
+      </div>
+
+      {% if can_manage %}
+        <a href="{% url 'kanban:wiki_page_create' project.pk %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-plus"></i>{% trans "New page" %}
+        </a>
+      {% endif %}
+    </header>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-4 shadow-sm">
+      {% include "kanban/_wiki_tree.html" with nodes=wiki_tree depth=0 %}
+    </div>
+
+    {% if not has_writer %}
+      {% comment %} Said once, on the space home, rather than on every page: this
+      host installs the boards but not the writer, so the pages read and do not
+      write. A missing button with no explanation reads as a bug. {% endcomment %}
+      <p class="text-xs opacity-60">
+        {% trans "This platform has no document editor installed, so pages are read-only here." %}
+      </p>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

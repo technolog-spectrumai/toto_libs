@@ -43,7 +43,10 @@ from toto.vault.views import new_file_picker_json, resolve_new_file_target
 from toto.memo import tiptap
 
 from . import document_format, render_pdf
+from .bridge import DocumentBridge, open_document
+from .bridge import write_back as _bridge_write_back
 from .sanitize_html import sanitize_content
+from .surface import document_editor_shown
 
 # Vault file types that can be embedded into a document.
 _MEDIA_TYPES = ["image", "svg"]
@@ -85,6 +88,18 @@ def _adopt(vault_file: VaultFile) -> None:
 
 
 def _get_owned_file(request, file_pk) -> VaultFile:
+    """A DOCUMENT of this user's. Strict ownership, in the query.
+
+    Still the gate for everything that reads a document out whole or writes a
+    file beside it — `document_source` (raw XML, no renderer, no sanitiser),
+    `document_export_pdf`, `document_save_pdf`, `document_save_html`. Those are
+    deliberately NOT bridged: two of them write into `vault_file.bucket`, and
+    `_save_beside` overwrites a same-named file there without an owner filter,
+    which is safe only while the requester is guaranteed to be the owner.
+
+    `_open_document` below is the bridged gate, and it covers the two endpoints
+    a shared document actually needs: opening the writer, and saving it.
+    """
     vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner"),
         pk=file_pk, owner=request.user, file_type__in=["document", "xml"])
@@ -92,6 +107,68 @@ def _get_owned_file(request, file_pk) -> VaultFile:
         raise Http404("Not a document.")
     _adopt(vault_file)
     return vault_file
+
+
+def _open_document(request, file_pk):
+    """The file and its parsed document, if this user may EDIT it.
+
+    The owner filter moves out of the QUERY and into a decision made afterwards,
+    because ownership is no longer the only right answer: a project wiki page is
+    written by the project's team, none of whom hold the bytes. So the row is
+    fetched unfiltered, the owning app is asked, and a stranger is refused.
+
+    The order is forced by where the answer lives — the bridge is resolved from
+    the FILE, but a bridge may want the parsed document too, and the document is
+    inside the file. Read once, parse once, hand both back. That is cheaper than
+    what it replaces: `_get_owned_file` + `_read_document` read and parsed the
+    same bytes TWICE on every writer open.
+
+    404, not 403, on refusal. It is what a stranger has always got here, and it
+    keeps a page's existence quiet — the same choice kanban makes for missions
+    they cannot see.
+
+    Returns `(vault_file, document)`. The document is None only for an encrypted
+    file, which is returned unread so each caller's own `is_encrypted` branch can
+    say its own sentence.
+    """
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        pk=file_pk, file_type__in=["document", "xml"])
+
+    if vault_file.is_encrypted:
+        # Nothing to parse and nothing to authorise against: an encrypted
+        # document has no readable meta and no bridge can claim it, so only its
+        # owner can be here.
+        if vault_file.owner_id != request.user.pk:
+            raise Http404("Not a document.")
+        return vault_file, None
+
+    try:
+        raw = _read_raw(vault_file)
+    except (FileNotFoundError, UnicodeDecodeError, ValueError):
+        raise Http404("Not a document.")
+    if not document_format.is_document(raw):
+        raise Http404("Not a document.")
+
+    try:
+        document = document_format.loads(raw)
+    except document_format.DocumentParseError:
+        # Corrupt content — start from a blank rather than blowing up the
+        # writer. Saving overwrites with valid XML.
+        document = document_format.new_document(title=vault_file.title)
+
+    if vault_file.owner_id == request.user.pk:
+        _adopt(vault_file)
+        return vault_file, document
+
+    match = DocumentBridge.for_file(vault_file, document)
+    if match is not None and match[0].can_edit(request.user, match[1]):
+        # Deliberately AFTER the ownership branch: _adopt writes to the row, and
+        # a non-owner should not be able to retype somebody's file by looking at
+        # it. A bridged document was minted as file_type="document" anyway.
+        return vault_file, document
+
+    raise Http404("Not a document.")
 
 
 def _owned_file(request, file_pk, *, types=None) -> VaultFile:
@@ -168,6 +245,15 @@ class DocumentIndexView(View):
         from django.core.paginator import Paginator
         from django.db.models import Q
 
+        # The library is the browsable half of this app, so it is what
+        # SHOW_DOCUMENT_EDITOR turns off — 404, the same answer a host that
+        # never installed cyprian gives, rather than an empty page that implies
+        # the feature is here and you have nothing. The writer itself stays
+        # mounted either way: kanban's wiki pages open at cyprian:edit and must
+        # keep opening.
+        if not document_editor_shown():
+            raise Http404("The document library is not enabled on this host.")
+
         qs = VaultFile.objects.filter(
             file_type__in=["document", "xml"], is_encrypted=False
         ).select_related("owner", "bucket", "directory")
@@ -239,6 +325,13 @@ class DocumentCreateView(LoginRequiredMixin, View):
     login_url = reverse_lazy("core:login")
 
     def post(self, request):
+        # Goes with the library: a standalone document is the thing this app
+        # offers on its own account, and the only button that reaches here lives
+        # on the index. A wiki page is minted by its owning app's bridge, not
+        # through this view, so nothing the boards need runs through this gate.
+        if not document_editor_shown():
+            raise Http404("The document library is not enabled on this host.")
+
         bucket, directory = resolve_new_file_target(
             request.user, request.POST.get("bucket_id"),
             request.POST.get("directory_id"))
@@ -280,22 +373,45 @@ class DocumentReadView(View):
 
         if vault_file.is_encrypted:
             return HttpResponseForbidden("Cannot display an encrypted file.")
-        if not _is_document_file(vault_file):
+
+        # Read once, parse once. The sniff, the visibility ladder and the render
+        # all want the same bytes, and this page used to fetch them from storage
+        # three times over to answer three questions about one file.
+        try:
+            raw = _read_raw(vault_file)
+        except (FileNotFoundError, UnicodeDecodeError, ValueError):
+            raise Http404("Not a document.")
+        if not document_format.is_document(raw):
             raise Http404("Not a document.")
         _adopt(vault_file)
+
+        try:
+            document = document_format.loads(raw)
+        except document_format.DocumentParseError:
+            document = document_format.new_document(title=vault_file.title)
+
+        # The owning app, if this document is really a view onto one of its
+        # objects — a wiki page, a contract's prose.
+        match = DocumentBridge.for_file(vault_file, document)
 
         # Visibility ladder, mirroring toto.memo's player.
         if not vault_file.is_public:
             if not request.user.is_authenticated:
                 return redirect_to_login(request.get_full_path())
             allowed = vault_file.owner == request.user
+            # The owning app's readers come BEFORE the vault's folder ACL: a
+            # wiki page's readers are decided by its project, and none of them
+            # are in the file owner's directory whitelist.
+            if not allowed and match is not None:
+                allowed = match[0].can_read(request.user, match[1])
             if not allowed and vault_file.directory:
                 allowed = vault_file.directory.user_can_access(request.user)
             if not allowed:
                 return HttpResponseForbidden()
 
-        document = _read_document(vault_file)
-        can_edit = request.user.is_authenticated and vault_file.owner == request.user
+        can_edit = request.user.is_authenticated and (
+            vault_file.owner == request.user
+            or (match is not None and match[0].can_edit(request.user, match[1])))
 
         context = PageProcessor().decorate({
             "vault_file": vault_file,
@@ -315,15 +431,23 @@ class DocumentEditView(LoginRequiredMixin, View):
     login_url = reverse_lazy("core:login")
 
     def get(self, request, file_pk):
-        vault_file = _get_owned_file(request, file_pk)
+        vault_file, document = _open_document(request, file_pk)
         if vault_file.is_encrypted:
             from toto.vault.access import encrypted_lock_response
             return encrypted_lock_response(request, vault_file)
 
-        document = _read_document(vault_file)
+        # Who is at the keyboard decides three things the template needs: whether
+        # Delete is offered at all (the vault's endpoint is owner-only, so a
+        # bridged editor's click would 404 into silence), whether renditions can
+        # be written beside the file, and where the back arrow goes.
+        is_owner = vault_file.owner_id == request.user.pk
+        match = DocumentBridge.for_file(vault_file, document)
 
         context = PageProcessor().decorate({
             "vault_file": vault_file,
+            "can_delete": is_owner,
+            "return_url": match[0].return_url(match[1]) if match else "",
+            "return_label": match[0].return_label(match[1]) if match else "",
             # Plain Python, not JSON strings — `json_script` serialises what it
             # is given, and handing it something already serialised produces an
             # island that parses back into a *string* with every property
@@ -354,9 +478,13 @@ class DocumentEditView(LoginRequiredMixin, View):
                 "renditionBase": slugify(
                     (vault_file.title or "document").rsplit(".", 1)[0]) or "document",
                 # Where a rendition goes unless the writer picks otherwise:
-                # beside the document.
-                "home": {"bucket": vault_file.bucket_id,
-                         "directory": vault_file.directory_id or 0},
+                # beside the document, or — for someone editing a document they
+                # do not own — nowhere in particular, so the picker asks. Must
+                # agree with _asked_target, which refuses to file a non-owner's
+                # export into the owner's bucket.
+                "home": ({"bucket": vault_file.bucket_id,
+                          "directory": vault_file.directory_id or 0}
+                         if is_owner else {"bucket": 0, "directory": 0}),
                 "text": {
                     "namePrompt": _("File name"),
                 },
@@ -393,7 +521,7 @@ def document_save(request, file_pk):
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
-    vault_file = _get_owned_file(request, file_pk)
+    vault_file, _opened = _open_document(request, file_pk)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."},
                             status=403)
@@ -430,9 +558,11 @@ def document_save(request, file_pk):
     except Exception as exc:                           # noqa: BLE001
         return JsonResponse({"error": str(exc)}, status=500)
 
-    # A document opened from a contract writes its body back, so notarius's own
-    # Generate PDF renders what was just written here.
-    _write_back_to_contract(document, user=request.user)
+    # A document that belongs to something else writes its body back, so the
+    # owning app's own surfaces render what was just written — notarius's
+    # Generate PDF, a kanban wiki page. Resolved from the FILE, not from the
+    # payload's meta: this very request could have rewritten that.
+    _bridge_write_back(vault_file, document, user=request.user)
 
     return JsonResponse({"status": "ok", "content_hash": vault_file.content_hash})
 
@@ -587,9 +717,6 @@ def document_export_pdf(request, file_pk):
 # Contracts — toto.notarius writes its body here
 # ---------------------------------------------------------------------------
 
-CONTRACT_META = "contract"
-
-
 @login_required
 def from_contract(request, file_pk):
     """Open a `.contract`'s body in the writer, and keep them linked.
@@ -597,16 +724,26 @@ def from_contract(request, file_pk):
     notarius owns the contract — the parties, the signatures, the audit trail —
     and it is a poor place to write prose: its body is a textarea holding
     Markdown. Cyprian is the writer, so this is where the body is edited, and
-    notarius keeps the buttons that are genuinely its own (Generate PDF, Sign).
+    notarius keeps the buttons that are genuinely its own.
 
     The companion document is created once and reused, and it remembers which
     contract it belongs to in `meta["contract"]` — which round-trips through the
     format for free, so the link survives a download, an edit by hand and a
     restore from backup.
+
+    The minting, the reuse and the write-back all live in `bridge.py` now; this
+    is the entry point and the Markdown conversion, which are the only parts
+    that are actually about contracts. See `plugins/cyprian_bridges.py`.
     """
     if not apps.is_installed("toto.notarius"):
         raise Http404("No contracts on this host.")
     from toto.notarius import contract_format
+
+    # Imported here, not at module scope: the bridge module registers a plugin
+    # on import and asks the app registry whether notarius is installed, and
+    # this module is imported from urls.py. Keeping it lazy means views.py
+    # never forces that question at an hour when the registry cannot answer it.
+    from .plugins.cyprian_bridges import CONTRACT_META
 
     contract_file = _owned_file(request, file_pk, types=["contract"])
     raw = _read_raw(contract_file)
@@ -615,31 +752,16 @@ def from_contract(request, file_pk):
     except contract_format.ContractParseError as exc:
         raise Http404(str(exc))
 
-    title = f"{slugify(contract.title or contract_file.title)}-body.xml"
-    companion = VaultFile.objects.filter(
-        bucket=contract_file.bucket, directory=contract_file.directory,
-        title=title, file_type="document").first()
-
-    if companion is None:
-        document = document_format.new_document(contract.title or "Contract")
-        document.content = _contract_body_html(contract)
-        document.meta[CONTRACT_META] = str(contract_file.pk)
-        # No contents page: a contract is read start to finish, and its front
-        # matter is notarius's, not ours.
-        document.toc = False
-        xml = document_format.dumps(document).encode("utf-8")
-        companion = VaultFile(
-            owner=request.user, title=title,
-            key=_unique_key(slugify(title.rsplit(".", 1)[0]) or "contract-body",
-                            contract_file.bucket),
-            file_type="document", bucket=contract_file.bucket,
-            directory=contract_file.directory, is_public=False)
-        companion.save()
-        companion.file.save(title, ContentFile(xml), save=True)
-        companion.content_hash = companion.create_hash()
-        companion.file_size_bytes = companion.file.size
-        companion.save(update_fields=["content_hash", "file_size_bytes"])
-
+    companion = open_document(
+        key=CONTRACT_META,
+        ref=str(contract_file.pk),
+        title=f"{slugify(contract.title or contract_file.title)}-body.xml",
+        seed_html=_contract_body_html(contract),
+        owner=request.user,
+        bucket=contract_file.bucket,
+        directory=contract_file.directory,
+        document_title=contract.title or "Contract",
+    )
     return redirect("cyprian:edit", file_pk=companion.pk)
 
 
@@ -652,48 +774,6 @@ def _contract_body_html(contract) -> str:
     from toto.notarius import render as notarius_render
 
     return sanitize_content(notarius_render._body_html(contract))
-
-
-def _write_back_to_contract(document, *, user) -> None:
-    """Put the writer's HTML back into the contract it came from.
-
-    Called on every save of a linked document, so notarius's own Generate PDF
-    button renders what was just written — that is what makes cyprian the editor
-    rather than a copy of the text.
-
-    Silent when the link is stale or the contract is not the user's: a document
-    that outlived its contract is still a document, and refusing to save it
-    would be losing work over a broken pointer. Silent, too, on a host with no
-    notarius at all — delta has documents but no contracts — where the link is
-    just an inert meta field that survives the round trip like any other.
-    """
-    if not apps.is_installed("toto.notarius"):
-        return
-    from toto.notarius import contract_format
-
-    raw_pk = (document.meta or {}).get(CONTRACT_META)
-    if not raw_pk:
-        return
-    try:
-        contract_file = VaultFile.objects.get(pk=int(raw_pk))
-    except (TypeError, ValueError, VaultFile.DoesNotExist):
-        return
-    if contract_file.owner_id != user.pk or contract_file.is_encrypted:
-        return
-
-    try:
-        contract = contract_format.loads(_read_raw(contract_file))
-    except Exception:                                  # noqa: BLE001
-        return
-
-    contract.content.media_type = "text/html"
-    contract.content.encoding = "text"
-    contract.content.data = document.content
-    payload = contract_format.dumps(contract).encode("utf-8")
-    contract_file.file.save(contract_file.title, ContentFile(payload), save=True)
-    contract_file.content_hash = contract_file.create_hash()
-    contract_file.file_size_bytes = contract_file.file.size
-    contract_file.save(update_fields=["content_hash", "file_size_bytes"])
 
 
 # ---------------------------------------------------------------------------
@@ -714,6 +794,14 @@ def _asked_target(request, vault_file):
     bucket_id = (request.POST.get("bucket") or "").strip()
     directory_id = (request.POST.get("directory") or "").strip()
     if not bucket_id:
+        # "Beside the document" is only a kindness while the document is yours.
+        # A bridged document lives in somebody else's bucket — a wiki page's file
+        # is held by the project lead — and defaulting there would file a team
+        # member's export into a vault they can neither browse nor delete from.
+        # Their own bucket is the honest default, and resolve_new_file_target is
+        # the same gate the New Document flow uses.
+        if vault_file.owner_id != request.user.pk:
+            return resolve_new_file_target(request.user, None, None)
         return vault_file.bucket, vault_file.directory
     return resolve_new_file_target(request.user, bucket_id, directory_id or None)
 

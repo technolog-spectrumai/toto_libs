@@ -18,7 +18,16 @@ it can never half-exist.
 The structure is `toto.verbena`'s — a page of ordered sections — *serialised*
 rather than stored in tables.
 
-Optional: `BUILD_CYPRIAN`, offered by the builder as **Documents**.
+Not optional. On zenobia the app is installed unconditionally, because
+`toto.kanban`'s project wikis are written through this editor — a build without it
+would be a build whose wikis are read-only.
+
+What *is* a choice is whether Documents is somewhere a user can go:
+`SHOW_DOCUMENT_EDITOR` (subtractive, defaults on, offered by the builder as
+**Documents**) hides the dashboard tile, the `/cyprian/` library and the vault's
+document Edit/Play buttons. `cyprian:edit`, `cyprian:save` and the media
+endpoints are never gated — the apps that own documents drive them. See
+`surface.py`.
 
 ## Screens
 
@@ -154,9 +163,15 @@ inserting a section renumbers the rest for free and the stored heading stays wha
 the author typed.
 
 Gated by `BUILD_WEASYPRINT`, lazily imported, with the named refusal
-`notarius/render.py` established. The builder declares
-`flags=("BUILD_CYPRIAN", "BUILD_WEASYPRINT")` so ticking Documents cannot
-produce a deployment whose export only ever answers 503.
+`notarius/render.py` established.
+
+The Documents capability used to carry `BUILD_WEASYPRINT` alongside its own flag,
+so that ticking it could not produce a deployment whose export only ever answers
+503. That stopped working when the flag became subtractive: `_base()` states the
+`"1"`, so a preset that does not choose the capability still shows the writer, and
+`is_selected()` would report an unticked box on a build with a Documents tile. A
+subtractive flag and an additive pip layer cannot answer one checkbox, so PDF
+generation is its own capability now.
 
 ## Reuse, not reimplementation
 
@@ -306,7 +321,7 @@ is read with `request.read()`, never `request.body`, which is capped at Django's
 ## Tests
 
 ```bash
-cd zenobia/zenobia && BUILD_CYPRIAN=1 BUILD_EDITOR=1 \
+cd zenobia/zenobia && BUILD_EDITOR=1 \
   DJANGO_SETTINGS_MODULE=zenobia.settings python manage.py test \
   toto.cyprian.tests.test_format toto.cyprian.tests.test_views \
   toto.cyprian.tests.test_sanitize toto.cyprian.tests.test_tiptap
@@ -336,7 +351,8 @@ notarius keeps the buttons that are genuinely its own (Generate PDF, Sign).
 - `notarius/render.py` sanitises the HTML again on the way out, because a
   `.contract` can arrive by upload.
 
-The button is absent, not broken, on a build without `BUILD_CYPRIAN`.
+The button is absent, not broken, on a host without cyprian — `notarius`
+guards it with `apps.is_installed`.
 
 ## Not in this pass
 

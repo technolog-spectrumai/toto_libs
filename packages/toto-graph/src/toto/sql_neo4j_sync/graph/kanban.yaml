@@ -36,6 +36,10 @@ nodes:
       metadata:
         source: metadata
         transform: default_dict
+      budget_amount:
+        source: budget_amount
+        transform: str
+      budget_currency: budget_currency
 
   - label: KanbanSprint
     model: toto.kanban.models.Sprint
@@ -62,6 +66,9 @@ nodes:
         transform: default_dict
       completed_at: completed_at
 
+  # One node per wiki page. DocumentationSection is gone — a page's prose is a
+  # single body_html now, written through the cyprian bridge, so there are no
+  # section rows left to mirror.
   - label: KanbanDocPage
     model: toto.kanban.models.DocumentationPage
     uuid_field: uid
@@ -69,14 +76,6 @@ nodes:
       title: title
       slug: slug
       is_manual: is_manual
-
-  - label: KanbanDocSection
-    model: toto.kanban.models.DocumentationSection
-    uuid_field: uid
-    fields:
-      title: title
-      content: content
-      order: order
 
 links:
   - from_label: KanbanProject
@@ -142,16 +141,26 @@ links:
     cardinality: one
     nullable: true
 
+  # A page belongs to a project and only OPTIONALLY names a mission, so both of
+  # these are nullable now; DOCUMENTS was nullable: false while the link was a
+  # one-to-one that could not be absent.
+  - from_label: KanbanDocPage
+    to_label: KanbanProject
+    relation: BELONGS_TO_PROJECT
+    source: project
+    cardinality: one
+    nullable: false
+
   - from_label: KanbanDocPage
     to_label: KanbanMission
     relation: DOCUMENTS
     source: mission
     cardinality: one
-    nullable: false
+    nullable: true
 
-  - from_label: KanbanDocSection
+  - from_label: KanbanDocPage
     to_label: KanbanDocPage
-    relation: SECTION_OF
-    source: page
+    relation: CHILD_OF
+    source: parent
     cardinality: one
-    nullable: false
+    nullable: true

@@ -14,6 +14,13 @@ from .api_views import (
 )
 from .views import (
     ProjectListView,
+    WikiIndexView,
+    WikiPageDetailView,
+    WikiPageCreateView,
+    WikiPageUpdateView,
+    WikiPageDeleteView,
+    wiki_page_write,
+    documentation_page_redirect,
     ProjectDetailView,
     EisenhowerMatrixView,
     BacklogView,
@@ -27,6 +34,7 @@ from .views import (
     relation_delete,
     MissionCreateView,
     MissionUpdateView,
+    mission_budget,
     mission_event_link,
     mission_event_create,
     task_event_link,
@@ -37,7 +45,6 @@ from .views import (
     CampaignCalendarView,
     campaign_map_data,
     SprintMetricsView,
-    DocumentationPageDetailView,
 )
 
 app_name = "kanban"
@@ -82,9 +89,47 @@ urlpatterns = [
         name="mission_detail",
     ),
 
+    # ── The wiki ────────────────────────────────────────────────────────────
+    # A project is the space; `slug` is unique within it, which is why these are
+    # keyed on slug rather than pk — a wiki URL should be readable and should
+    # survive being pasted into a page.
+    path(
+        "project/<int:pk>/wiki/",
+        WikiIndexView.as_view(),
+        name="wiki_index",
+    ),
+    path(
+        "project/<int:pk>/wiki/new/",
+        WikiPageCreateView.as_view(),
+        name="wiki_page_create",
+    ),
+    path(
+        "project/<int:pk>/wiki/<slug:slug>/",
+        WikiPageDetailView.as_view(),
+        name="wiki_page",
+    ),
+    path(
+        "project/<int:pk>/wiki/<slug:slug>/edit/",
+        WikiPageUpdateView.as_view(),
+        name="wiki_page_edit",
+    ),
+    path(
+        "project/<int:pk>/wiki/<slug:slug>/delete/",
+        WikiPageDeleteView.as_view(),
+        name="wiki_page_delete",
+    ),
+    path(
+        "project/<int:pk>/wiki/<slug:slug>/write/",
+        wiki_page_write,
+        name="wiki_page_write",
+    ),
+
+    # The old per-mission documentation URL, kept as a redirect. Django admin's
+    # "View on site" reverses get_absolute_url, and pages have been linked from
+    # mission pages for a year — a 404 here would be a self-inflicted wound.
     path(
         "documentation/<int:pk>/",
-        DocumentationPageDetailView.as_view(),
+        documentation_page_redirect,
         name="documentation_page_detail",
     ),
 
@@ -146,6 +191,12 @@ urlpatterns = [
         "project/<int:project_pk>/mission/<int:pk>/edit/",
         MissionUpdateView.as_view(),
         name="mission_edit",
+    ),
+
+    path(
+        "mission/<int:pk>/budget/",
+        mission_budget,
+        name="mission_budget",
     ),
 
     path(

@@ -12,10 +12,20 @@ from django.urls import reverse
 
 from toto.vault.plugins import VaultEditorPlugin
 
+from ..surface import document_editor_shown
+
 
 @VaultEditorPlugin.plugin(key="document", title="Document", order=28)
 class DocumentEditorPlugin(VaultEditorPlugin):
     file_type = "document"
+
+    @classmethod
+    def should_register(cls) -> bool:
+        # A host that hides the writer hides the way in from the vault too —
+        # otherwise the file manager still hands out the one door the dashboard
+        # just closed. The editor's own URLs stay mounted for the apps that
+        # drive it; this is the browsable surface, and it goes with the tile.
+        return document_editor_shown()
 
     def get_editor_url(self, vault_file) -> str:
         return reverse("cyprian:edit", args=[vault_file.pk])

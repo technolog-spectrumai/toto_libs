@@ -105,9 +105,9 @@
                              placeholder="{% trans 'free' %}"
                              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
                              class="w-32 rounded-lg border px-2 py-1 text-right font-mono text-sm outline-none">
-                      {# Currency, per metered thing. Blank inherits the tariff's
+                      {% comment %} Currency, per metered thing. Blank inherits the tariff's
                          default (then the host gas asset), so an untouched row
-                         keeps whatever it already had. #}
+                         keeps whatever it already had. {% endcomment %}
                       {% if billing_assets %}
                         <select name="asset__{{ row.metric.code }}"
                                 title="{% trans 'Currency this metric is priced in' %}"

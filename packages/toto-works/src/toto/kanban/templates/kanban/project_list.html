@@ -192,6 +192,16 @@
                 <i class="fa-solid fa-flag-checkered"></i>
                 {% trans "Sprints" %}
               </a>
+
+              <a
+                href="{% url 'kanban:wiki_index' project.pk %}"
+                :class="darkMode
+                  ? 'border-accent-1 bg-sunken-dark'
+                  : 'border-accent-2 bg-sunken-light'"
+                class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+                <i class="fa-solid fa-book"></i>
+                {% trans "Wiki" %}
+              </a>
             </div>
           </article>
         {% endfor %}

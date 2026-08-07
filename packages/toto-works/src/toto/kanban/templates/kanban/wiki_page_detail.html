@@ -1,0 +1,123 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ page.title }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto grid max-w-7xl gap-6 lg:grid-cols-[18rem_minmax(0,1fr)]">
+
+    {% comment %} Sidebar first in the source so a narrow screen gets the tree
+    above the prose rather than stranded below it. {% endcomment %}
+    <aside class="space-y-3">
+      <a href="{% url 'kanban:wiki_index' project.pk %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "All pages" %}
+      </a>
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-3 shadow-sm">
+        {% include "kanban/_wiki_tree.html" with nodes=wiki_tree depth=0 %}
+      </div>
+    </aside>
+
+    <div class="min-w-0 space-y-6">
+
+      <header class="space-y-3">
+        {% if ancestors %}
+          <nav class="flex flex-wrap items-center gap-1 text-xs opacity-70">
+            {% for crumb in ancestors %}
+              <a href="{% url 'kanban:wiki_page' project.pk crumb.slug %}"
+                 class="underline hover:opacity-80">{{ crumb.title }}</a>
+              <span>/</span>
+            {% endfor %}
+            <span>{{ page.title }}</span>
+          </nav>
+        {% endif %}
+
+        <div class="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div>
+            <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+               class="text-xs font-semibold uppercase tracking-wide">
+              {% if page.is_manual %}{% trans "Instruction" %}{% else %}{% trans "Page" %}{% endif %}
+            </p>
+            <h1 class="mt-1 text-3xl font-bold">{{ page.title }}</h1>
+            {% if page.description %}
+              <p class="mt-2 max-w-2xl opacity-80">{{ page.description }}</p>
+            {% endif %}
+          </div>
+
+          {% if can_manage %}
+            <div class="flex flex-wrap gap-2">
+              {% if has_writer %}
+                <a href="{% url 'kanban:wiki_page_write' project.pk page.slug %}"
+                   :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                   class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+                  <i class="fa-solid fa-feather-pointed"></i>{% trans "Write" %}
+                </a>
+              {% endif %}
+              <a href="{% url 'kanban:wiki_page_edit' project.pk page.slug %}"
+                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:opacity-80">
+                <i class="fa-solid fa-gear"></i>{% trans "Settings" %}
+              </a>
+              <a href="{% url 'kanban:wiki_page_delete' project.pk page.slug %}"
+                 class="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm text-red-600 hover:opacity-80">
+                <i class="fa-solid fa-trash-can"></i>{% trans "Delete" %}
+              </a>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if page.mission %}
+          <p class="text-xs opacity-70">
+            <i class="fa-solid fa-bullseye"></i>
+            <a href="{% url 'kanban:mission_detail' page.mission.pk %}"
+               class="underline hover:opacity-80">{{ page.mission.title }}</a>
+          </p>
+        {% endif %}
+      </header>
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-2xl border p-6 shadow-sm">
+        {% if page.body_html %}
+          {% comment %} |safe is a fact, not a hope: body_html is only ever
+          written by the cyprian bridge, and Document.from_dict runs
+          sanitize_content over it on the way in. {% endcomment %}
+          <div class="prose max-w-none dark:prose-invert">{{ page.body_html|safe }}</div>
+        {% else %}
+          <p class="opacity-60">
+            {% if can_manage and has_writer %}
+              {% trans "This page is empty. Press Write to start it." %}
+            {% else %}
+              {% trans "This page is empty." %}
+            {% endif %}
+          </p>
+        {% endif %}
+      </article>
+
+      {% if children %}
+        <section class="space-y-2">
+          <h2 class="text-sm font-semibold uppercase tracking-wide opacity-70">{% trans "Sub-pages" %}</h2>
+          <ul class="grid gap-2 sm:grid-cols-2">
+            {% for child in children %}
+              <li>
+                <a href="{% url 'kanban:wiki_page' project.pk child.slug %}"
+                   :class="darkMode ? 'border-accent-1 hover:bg-bubble-bg-dark' : 'border-accent-2 hover:bg-bubble-bg-light'"
+                   class="block rounded-xl border px-3 py-2 text-sm transition">
+                  {{ child.title }}
+                </a>
+              </li>
+            {% endfor %}
+          </ul>
+        </section>
+      {% endif %}
+
+    </div>
+  </div>
+</section>
+{% endblock %}

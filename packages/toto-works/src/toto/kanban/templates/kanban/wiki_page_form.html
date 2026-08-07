@@ -1,0 +1,68 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% if is_create %}{% trans "New page" %}{% else %}{{ page.title }}{% endif %}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <header class="space-y-2">
+      <a href="{% if page %}{% url 'kanban:wiki_page' project.pk page.slug %}{% else %}{% url 'kanban:wiki_index' project.pk %}{% endif %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Back" %}
+      </a>
+      <h1 class="text-3xl font-bold">
+        {% if is_create %}{% trans "New page" %}{% else %}{% trans "Page settings" %}{% endif %}
+      </h1>
+      {% comment %} The prose is not here on purpose: it is written in the
+      document editor, reached from the page itself. This form is the page's
+      identity and its place in the tree. {% endcomment %}
+      <p class="text-sm opacity-70">
+        {% trans "The text of the page is written in the document editor. This is its title and where it sits." %}
+      </p>
+    </header>
+
+    <form method="post"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-4 rounded-2xl border p-6 shadow-sm">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="rounded-lg border border-red-500/40 px-3 py-2 text-sm text-red-600">
+          {{ form.non_field_errors }}
+        </div>
+      {% endif %}
+
+      {% for field in form %}
+        <div class="space-y-1">
+          <label for="{{ field.id_for_label }}" class="block text-sm font-semibold">
+            {{ field.label }}
+          </label>
+          {{ field }}
+          {% if field.help_text %}
+            <p class="text-xs opacity-60">{{ field.help_text }}</p>
+          {% endif %}
+          {% if field.errors %}
+            <p class="text-xs text-red-600">{{ field.errors|striptags }}</p>
+          {% endif %}
+        </div>
+      {% endfor %}
+
+      <div class="flex gap-2 pt-2">
+        <button type="submit"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold hover:opacity-80">
+          <i class="fa-solid fa-check"></i>{% trans "Save" %}
+        </button>
+      </div>
+    </form>
+
+  </div>
+</section>
+{% endblock %}

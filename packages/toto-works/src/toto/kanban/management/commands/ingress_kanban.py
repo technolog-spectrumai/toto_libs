@@ -6,7 +6,7 @@ from django.utils import timezone
 
 from toto.kanban.models import (
     TaskStatus,
-    Campaign, DocumentationPage, DocumentationSection,
+    Campaign, DocumentationPage,
     Mission, Practitioner, Project, ProjectCommitment, Sprint, Task,
 )
 from toto.people.models import Person
@@ -160,37 +160,46 @@ class Command(IngressCommand):
         tasks[5].completed_at = now - timedelta(days=1)
         tasks[5].save(update_fields=["status", "completed_at"])
 
-        # ── Documentation ─────────────────────────────────────────────────
-        doc1, _ = DocumentationPage.objects.update_or_create(
-            slug="mvp-launch-overview",
+        # ── Wiki ──────────────────────────────────────────────────────────
+        # Keyed on (project, slug), not slug alone: the slug is only unique
+        # within a project now, so a bare slug lookup can match several rows and
+        # update_or_create would raise MultipleObjectsReturned on the second
+        # project anyone seeds.
+        #
+        # Seeds body_html directly. That is the read model every host renders,
+        # and on a host with cyprian the first Write picks it up as the seed —
+        # so demo data reads correctly whether or not a writer is installed.
+        DocumentationPage.objects.update_or_create(
+            project=project, slug="mvp-launch-overview",
             defaults={
                 "title": "MVP Launch — Overview",
                 "mission": mission1,
                 "description": "High-level documentation covering scope, goals, and release criteria for the MVP.",
                 "is_manual": False,
+                "body_html": (
+                    "<h2>Scope</h2>"
+                    "<p>The MVP covers core authentication, the main dashboard, "
+                    "and basic CRUD operations.</p>"
+                    "<h2>Release Criteria</h2>"
+                    "<ul><li>All P0 tasks completed</li>"
+                    "<li>Staging signed off</li></ul>"
+                ),
             },
         )
-        DocumentationSection.objects.get_or_create(
-            page=doc1, title="Scope",
-            defaults={"content": "<h2>Scope</h2><p>The MVP covers core authentication, the main dashboard, and basic CRUD operations.</p>", "order": 1},
-        )
-        DocumentationSection.objects.get_or_create(
-            page=doc1, title="Release Criteria",
-            defaults={"content": "<h2>Release Criteria</h2><ul><li>All P0 tasks completed</li><li>Staging signed off</li></ul>", "order": 2},
-        )
 
-        doc2, _ = DocumentationPage.objects.update_or_create(
-            slug="authentication-system-instruction",
+        DocumentationPage.objects.update_or_create(
+            project=project, slug="authentication-system-instruction",
             defaults={
                 "title": "Authentication System — Instruction",
                 "mission": mission2,
                 "description": "Step-by-step instruction for setting up JWT-based authentication.",
                 "is_manual": True,
+                "body_html": (
+                    "<h2>Setup</h2>"
+                    "<p>Install <code>djangorestframework-simplejwt</code> and "
+                    "configure <code>JWTAuthentication</code>.</p>"
+                ),
             },
-        )
-        DocumentationSection.objects.get_or_create(
-            page=doc2, title="Setup",
-            defaults={"content": "<h2>Setup</h2><p>Install <code>djangorestframework-simplejwt</code> and configure <code>JWTAuthentication</code>.</p>", "order": 1},
         )
 
         print("[Ingress] Demo Kanban setup created successfully.")

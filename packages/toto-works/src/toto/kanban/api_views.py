@@ -346,6 +346,13 @@ class MissionDetailApiView(MeshGatedApiView):
             "urgency_label": mission.urgency_label,
             "impact": mission.impact,
             "impact_label": mission.impact_label,
+            # Serialised as a string, not a float: this is money, and JSON
+            # numbers are binary floats. A client that wants arithmetic can
+            # parse it as a decimal; one that got 1234.5599999 could not.
+            "budget_amount": (
+                str(mission.budget_amount)
+                if mission.budget_amount is not None else None),
+            "budget_currency": mission.budget_currency or None,
             "campaign": {
                 "id": camp.id,
                 "name": camp.name,

@@ -1,0 +1,51 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Delete page" %}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-xl space-y-6">
+    <h1 class="text-3xl font-bold">{% trans "Delete page" %}</h1>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="space-y-3 rounded-2xl border p-6 shadow-sm">
+      <p>{% blocktrans with title=page.title %}Delete “{{ title }}”?{% endblocktrans %}</p>
+
+      {% if descendant_count %}
+        <p class="text-sm text-red-600">
+          {% blocktrans count counter=descendant_count %}Its {{ counter }} sub-page goes with it.{% plural %}Its {{ counter }} sub-pages go with it.{% endblocktrans %}
+        </p>
+      {% endif %}
+
+      {% comment %} The cyprian document is deliberately NOT deleted with the
+      page: it is an ordinary file in the lead's vault, and the vault is where
+      files are deleted. Removing it from here would be this app reaching into
+      storage it does not own. {% endcomment %}
+      {% if page.vault_file %}
+        <p class="text-xs opacity-60">
+          {% trans "The document holding its text stays in the vault." %}
+        </p>
+      {% endif %}
+
+      <form method="post" class="flex gap-2 pt-2">
+        {% csrf_token %}
+        <button type="submit"
+                class="inline-flex items-center gap-2 rounded-lg border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-600 hover:opacity-80">
+          <i class="fa-solid fa-trash-can"></i>{% trans "Delete" %}
+        </button>
+        <a href="{% url 'kanban:wiki_page' project.pk page.slug %}"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm hover:opacity-80">
+          {% trans "Cancel" %}
+        </a>
+      </form>
+    </div>
+  </div>
+</section>
+{% endblock %}

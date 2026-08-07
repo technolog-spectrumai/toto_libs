@@ -2,7 +2,8 @@ import json
 from collections import defaultdict
 
 from django.core.exceptions import ValidationError
-from django.http import HttpResponseForbidden, JsonResponse
+from django.apps import apps
+from django.http import Http404, HttpResponseForbidden, JsonResponse
 from django.views.generic import DetailView, ListView, UpdateView, CreateView, DeleteView
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -14,10 +15,11 @@ from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
+from toto.api.cors import render_access_denied
 from toto.ui import PageProcessor
 from toto.kanban.forms import (
     TaskCreateForm, TaskRelationForm, MissionForm, LinkedEventCreateForm,
-    _linkable_events,
+    MissionBudgetForm, WikiPageForm, _linkable_events,
 )
 from toto.kanban.metrics import (
     SprintMetricsCalculator, MissionMetricsCalculator, summarize_tasks,
@@ -25,11 +27,11 @@ from toto.kanban.metrics import (
 from toto.kanban.models import (
     Project, Campaign, Task, TaskRelation, TaskStatus, RelationType,
     STATUS_ORDER, adjacent_status, Sprint, Mission, MissionAttachment,
-    DocumentationPage, Practitioner, visible_missions_for, visible_tasks_for,
+    DocumentationPage, Practitioner, KANBAN_PAGE_META, WIKI_MAX_DEPTH,
+    visible_missions_for, visible_tasks_for,
 )
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.kanban.plugins.mission_tab_plugins import MissionTabPlugin
-from toto.verbena.views import PageDetailMixin
 
 
 class ChartViewMixin:
@@ -774,7 +776,6 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "campaign__zone__territory",
                 "zone",
                 "calendar_event",
-                "documentation_page",
             )
             .prefetch_related(
                 "tasks",
@@ -782,6 +783,12 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
                 "tasks__assignee__person",
                 "tasks__reviewer__person",
                 "attachments__vault_file",
+                # prefetch, not select_related: a mission has MANY wiki pages
+                # since the one-to-one became a foreign key, and select_related
+                # on a reverse FK is a FieldError at queryset construction — it
+                # would 500 this page on every host, including the two that
+                # never asked for a wiki.
+                "wiki_pages",
             )
         )
 
@@ -795,10 +802,10 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         # would throw that away and re-query for numbers already in memory.
         tasks = list(mission.tasks.all())
 
-        try:
-            documentation_page = mission.documentation_page
-        except mission.__class__.documentation_page.RelatedObjectDoesNotExist:
-            documentation_page = None
+        # A list now, not an object-or-None: `mission.documentation_page` was a
+        # one-to-one descriptor and its RelatedObjectDoesNotExist no longer
+        # exists to catch.
+        wiki_pages = list(mission.wiki_pages.all())
 
         can_manage = can_manage_tasks(self.request.user, project)
         file_tree = []
@@ -809,12 +816,13 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
         context.update({
             "project": project,
             "tasks": tasks,
-            "documentation_page": documentation_page,
+            "wiki_pages": wiki_pages,
             "can_manage": can_manage,
             "attachments": list(mission.attachments.all()),
             "file_tree": file_tree,
             "linkable_events": _linkable_events(mission),
             "event_create_form": LinkedEventCreateForm(),
+            "budget_form": MissionBudgetForm(instance=mission),
             **summarize_tasks(tasks),
         })
         context["mission_plugin_sections"] = MissionPlugin.render_all(
@@ -831,19 +839,263 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
 
         return context
 
-class DocumentationPageDetailView(PageDetailMixin, DetailView):
-    model = DocumentationPage
-    template_name = "kanban/documentation_page_detail.html"
-    context_object_name = "page"
+# ── The wiki ─────────────────────────────────────────────────────────────────
+#
+# A project is a space; pages form a tree inside it. Reading follows project
+# membership, writing follows can_manage_tasks — the same team model the board
+# uses, so there is one answer to "who works on this project" and not two.
+#
+# The prose is written in toto.cyprian and read from `page.body_html`. Those are
+# not alternatives: body_html is what EVERY host renders, and cyprian is how it
+# gets written where cyprian exists. studio and aurelian install kanban from the
+# same wheel and have no writer, so their pages are read-only — which is a
+# missing button, not a broken page.
+
+
+def can_read_project(user, project) -> bool:
+    """Project membership, mirroring ProjectListView's own non-staff filter."""
+    if not user.is_authenticated:
+        return False
+    if user.is_staff or user.is_superuser:
+        return True
+    return (
+        Project.objects
+        .filter(pk=project.pk)
+        .filter(
+            Q(project_lead__user=user)
+            | Q(commitments__practitioner__person__user=user,
+                commitments__is_active=True)
+            | Q(auditors__person__user=user)
+        )
+        .exists()
+    )
+
+
+def _wiki_context(request, project, page=None):
+    can_manage = can_manage_tasks(request.user, project)
+    return {
+        "project": project,
+        "page": page,
+        "can_manage": can_manage,
+        # The Write button is the one thing that genuinely depends on the host
+        # having a writer. Everything else on these pages works either way.
+        "has_writer": apps.is_installed("toto.cyprian"),
+        "wiki_tree": _wiki_tree(project),
+    }
+
+
+def _wiki_tree(project):
+    """The whole space as nested dicts, built from one query.
+
+    Recursion in the template needs the children already attached; doing it with
+    a queryset per node turns a fifty-page space into fifty-one queries on a page
+    that is mostly navigation.
+    """
+    pages = list(
+        DocumentationPage.objects
+        .filter(project=project)
+        .order_by("order", "title"))
+    children = defaultdict(list)
+    for page in pages:
+        children[page.parent_id].append(page)
+
+    def build(parent_id, depth):
+        if depth >= WIKI_MAX_DEPTH:
+            return []
+        return [
+            {"page": page, "children": build(page.pk, depth + 1)}
+            for page in children.get(parent_id, ())
+        ]
+
+    return build(None, 0)
+
+
+class WikiIndexView(LoginRequiredMixin, DetailView):
+    """The space home: the tree, and nothing else worth putting above it."""
+
+    model = Project
+    template_name = "kanban/wiki_index.html"
+    context_object_name = "project"
+
+    def dispatch(self, request, *args, **kwargs):
+        if not request.user.is_authenticated:
+            return super().dispatch(request, *args, **kwargs)
+        project = get_object_or_404(Project, pk=kwargs["pk"])
+        if not can_read_project(request.user, project):
+            raise Http404("No such project.")
+        return super().dispatch(request, *args, **kwargs)
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        context["sections"] = self.render_sections(self.object)
-        context["back_url"] = "kanban:mission_detail"
-        context["back_url_pk"] = self.object.mission.pk
-        context["back_label"] = self.object.mission.title
-        context["page_type_label"] = "Documentation"
+        context.update(_wiki_context(self.request, self.object))
         return PageProcessor().decorate(context, self.request)
+
+
+class WikiPageDetailView(LoginRequiredMixin, DetailView):
+    """One page.
+
+    LoginRequiredMixin and a scoped queryset, both of which the view this
+    replaces had neither of: a DocumentationPage used to be readable by anyone
+    who could guess a pk, anonymously, even for a PRIVATE mission. Widening the
+    scope from one mission to a whole project without fixing that would have
+    turned a leak into a bigger one.
+    """
+
+    model = DocumentationPage
+    template_name = "kanban/wiki_page_detail.html"
+    context_object_name = "page"
+
+    def get_object(self, queryset=None):
+        project = get_object_or_404(Project, pk=self.kwargs["pk"])
+        if not can_read_project(self.request.user, project):
+            raise Http404("No such project.")
+        return get_object_or_404(
+            DocumentationPage.objects.select_related("project", "mission", "parent"),
+            project=project, slug=self.kwargs["slug"])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        page = self.object
+        context.update(_wiki_context(self.request, page.project, page))
+        context["ancestors"] = page.ancestors()
+        context["children"] = list(page.children.order_by("order", "title"))
+        return PageProcessor().decorate(context, self.request)
+
+
+class WikiPageCreateView(LoginRequiredMixin, CreateView):
+    model = DocumentationPage
+    form_class = WikiPageForm
+    template_name = "kanban/wiki_page_form.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.project = get_object_or_404(Project, pk=kwargs["pk"])
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return render_access_denied(request)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["project"] = self.project
+        return kwargs
+
+    def form_valid(self, form):
+        form.instance.project = self.project
+        return super().form_valid(form)
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(_wiki_context(self.request, self.project))
+        context["is_create"] = True
+        return PageProcessor().decorate(context, self.request)
+
+
+class WikiPageUpdateView(LoginRequiredMixin, UpdateView):
+    model = DocumentationPage
+    form_class = WikiPageForm
+    template_name = "kanban/wiki_page_form.html"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.project = get_object_or_404(Project, pk=kwargs["pk"])
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return render_access_denied(request)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(
+            DocumentationPage, project=self.project, slug=self.kwargs["slug"])
+
+    def get_form_kwargs(self):
+        kwargs = super().get_form_kwargs()
+        kwargs["project"] = self.project
+        return kwargs
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(_wiki_context(self.request, self.project, self.object))
+        return PageProcessor().decorate(context, self.request)
+
+
+class WikiPageDeleteView(LoginRequiredMixin, DeleteView):
+    model = DocumentationPage
+    template_name = "kanban/wiki_page_confirm_delete.html"
+    context_object_name = "page"
+
+    def dispatch(self, request, *args, **kwargs):
+        self.project = get_object_or_404(Project, pk=kwargs["pk"])
+        if request.user.is_authenticated and not can_manage_tasks(request.user, self.project):
+            return render_access_denied(request)
+        return super().dispatch(request, *args, **kwargs)
+
+    def get_object(self, queryset=None):
+        return get_object_or_404(
+            DocumentationPage, project=self.project, slug=self.kwargs["slug"])
+
+    def get_success_url(self):
+        return reverse("kanban:wiki_index", args=[self.project.pk])
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context.update(_wiki_context(self.request, self.project, self.object))
+        # Children go with it (parent is CASCADE), which is worth saying out loud
+        # on the confirmation rather than discovering afterwards.
+        context["descendant_count"] = self.object.children.count()
+        return PageProcessor().decorate(context, self.request)
+
+
+def documentation_page_redirect(request, pk):
+    """The old `documentation/<pk>/` URL, permanently moved.
+
+    A page used to be identified by its own pk and reached from exactly one
+    mission. It is identified by (project, slug) now. This exists because
+    `get_absolute_url` is what Django admin's "View on site" reverses and what a
+    year of mission pages linked to — the URL changing is not a reason for those
+    to break.
+
+    301, not 302: the location really is permanent, and a bookmark should learn.
+    """
+    page = get_object_or_404(DocumentationPage, pk=pk)
+    return redirect(page.get_absolute_url(), permanent=True)
+
+
+@login_required
+def wiki_page_write(request, pk, slug):
+    """Open this page's prose in the writer.
+
+    The seam between kanban and cyprian, and the only place a page's vault file
+    is ever created. `open_document` mints it and hands it back; nothing accepts
+    a file pk from the request, which is what makes `page.vault_file` safe for
+    the bridge to authorise against.
+
+    Seeded from `body_html` the first time and never again — re-seeding on each
+    open would silently revert whatever the last save wrote.
+    """
+    project = get_object_or_404(Project, pk=pk)
+    if not can_manage_tasks(request.user, project):
+        return render_access_denied(request)
+    page = get_object_or_404(DocumentationPage, project=project, slug=slug)
+
+    if not apps.is_installed("toto.cyprian"):
+        raise Http404("No document editor on this host.")
+    from toto.cyprian.bridge import open_document
+
+    if page.vault_file_id is None:
+        # Owned by the project lead, not by whoever clicked first: a shared page
+        # outlives its author's interest in it, and the lead is the one seat
+        # every project is guaranteed to have. Edit rights come from
+        # can_manage_tasks either way, so ownership only decides who holds the
+        # bytes and where they are filed.
+        owner = getattr(project.project_lead, "user", None) or request.user
+        page.vault_file = open_document(
+            key=KANBAN_PAGE_META,
+            ref=str(page.pk),
+            title=f"{page.slug or 'page'}-{page.pk}.xml",
+            seed_html=page.body_html,
+            owner=owner,
+            document_title=page.title,
+        )
+        page.save(update_fields=["vault_file"])
+
+    return redirect("cyprian:edit", file_pk=page.vault_file_id)
 
 
 # mission_economy, project_tokenize, and project_tokenization_default
@@ -927,6 +1179,40 @@ def _load_visible_mission(request, pk, project=None):
     if project is not None:
         qs = qs.filter(campaign__project=project)
     return get_object_or_404(qs, pk=pk)
+
+
+@login_required
+@require_POST
+def mission_budget(request, pk):
+    """Set or clear this mission's budget — one number and a currency.
+
+    Per mission, and only per mission. Tasks have no budget field and are not
+    getting one: a task is a unit of work, not a unit of spend, and a board where
+    every card carries a number is a board whose numbers are stale by Thursday.
+
+    Clearing both fields is a supported answer, not an error — "we no longer
+    budget this" has to be sayable, and null is distinct from a budget of zero.
+    """
+    mission = _load_visible_mission(request, pk)
+    if not can_manage_tasks(request.user, mission.campaign.project):
+        return HttpResponseForbidden("You cannot edit missions in this project.")
+
+    form = MissionBudgetForm(request.POST, instance=mission)
+    if form.is_valid():
+        form.save()
+        if mission.budget_amount is None:
+            messages.success(request, "Budget cleared.")
+        else:
+            messages.success(
+                request,
+                f"Budget set to {mission.budget_amount} {mission.budget_currency}.")
+    else:
+        # Surfaced as a message rather than by re-rendering the whole mission
+        # page with a bound form: the box is one of a dozen panels there, and
+        # rebuilding all of them to show one field error is not worth it.
+        for error in form.errors.values():
+            messages.error(request, "; ".join(error))
+    return redirect("kanban:mission_detail", pk=mission.pk)
 
 
 @login_required
