@@ -108,8 +108,9 @@
         <span id="compile-error" class="hidden max-w-[16rem] truncate text-xs text-red-500"></span>
         {% endif %}
 
-        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
-
+        {% comment %} No git menu on the generic editor: this page is reached
+        from the vault's Edit buttons, and git left the vault UI. The same file
+        opened inside a workspace still gets the full menu there. {% endcomment %}
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
         <!-- Delete -->
@@ -177,13 +178,10 @@
 .toolbar-btn-primary:hover { opacity: 0.85; }
 /* Icon-only toolbar: hide the button/link text labels (the <i> icons and the
    title= tooltips remain). Targets only the `hidden sm:inline` label spans, so
-   badges/counters (e.g. #deps-count) and the git dropdown menu text stay. */
+   badges/counters (e.g. #deps-count) stay. */
 .icon-only-toolbar span.sm\:inline { display: none !important; }
 </style>
 
-{% if gitvault_ctx %}
-  {% include "gitvault/_git_ui.html" %}
-{% endif %}
 {% endblock %}
 
 {% block end_script %}

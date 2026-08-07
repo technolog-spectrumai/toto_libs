@@ -1082,60 +1082,12 @@
                       <i class="fa-solid fa-file-zipper text-xs"></i>
                       <span class="hidden sm:inline">{% trans "Zip" %}</span>
                     </button>
-                    <!-- Git actions for this directory: one dropdown. Repo-less
-                         dirs offer Initialize; repo dirs offer Commit/Push/Pull/
-                         History/Repository. The menu is position:fixed (computed
-                         from the button rect) so the tree container's overflow
-                         never clips it, and it flips up near the viewport bottom.
-                         ctx is built via the global gitCtx(item.git). -->
-                    <div x-show="item.git && ((item.git.init_url && item.can_create) || item.git.repo_pk)"
-                         class="relative"
-                         x-data="{ gitMenu:false, mLeft:0, mTop:0, mBottom:0, flipUp:false,
-                                   openGit(e){ const r=e.currentTarget.getBoundingClientRect();
-                                     this.mLeft=r.right;
-                                     this.flipUp=(window.innerHeight-r.bottom)<260;
-                                     this.mTop=r.bottom+4; this.mBottom=window.innerHeight-r.top+4;
-                                     this.gitMenu=true; } }"
-                         @keydown.escape.window="gitMenu=false"
-                         @scroll.window="gitMenu=false">
-                      <button @click.stop="gitMenu ? (gitMenu=false) : openGit($event)"
-                              :class="darkMode ? 'border-accent-1 text-text-main-dark hover:bg-accent-dark/15' : 'border-accent-2 text-text-main-light hover:bg-accent-light/15'"
-                              class="inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-xs font-semibold transition">
-                        <i class="fa-solid fa-code-branch text-xs"></i>
-                        <span class="hidden sm:inline">{% trans "Git" %}</span>
-                        <i class="fa-solid fa-chevron-down text-[8px] opacity-60"></i>
-                      </button>
-                      <div x-show="gitMenu" x-cloak @click.outside="gitMenu=false" @click.stop
-                           :style="`position:fixed; left:${mLeft}px; transform:translateX(-100%); z-index:60; ` + (flipUp ? `bottom:${mBottom}px;` : `top:${mTop}px;`)"
-                           class="w-44 overflow-hidden rounded-lg border shadow-xl"
-                           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
-                        <template x-if="item.git.init_url">
-                          <button @click.stop="gitMenu=false; GitUI.openInit(item.git.init_url, item.name)" class="git-menu-item">
-                            <i class="fa-solid fa-code-branch"></i>{% trans "Initialize repository" %}
-                          </button>
-                        </template>
-                        <template x-if="item.git.repo_pk">
-                          <div>
-                            <button @click.stop="gitMenu=false; GitUI.openCommit(gitCtx(item.git))" class="git-menu-item">
-                              <i class="fa-solid fa-code-commit"></i>{% trans "Commit…" %}
-                            </button>
-                            <button @click.stop="gitMenu=false; GitUI.openAndRun(gitCtx(item.git), 'push')" class="git-menu-item">
-                              <i class="fa-solid fa-cloud-arrow-up"></i>{% trans "Push" %}
-                            </button>
-                            <button @click.stop="gitMenu=false; GitUI.openAndRun(gitCtx(item.git), 'pull')" class="git-menu-item">
-                              <i class="fa-solid fa-cloud-arrow-down"></i>{% trans "Pull" %}
-                            </button>
-                            <button @click.stop="gitMenu=false; GitUI.openHistory(gitCtx(item.git))" class="git-menu-item">
-                              <i class="fa-solid fa-timeline"></i>{% trans "History" %}
-                            </button>
-                            <div class="h-px bg-current opacity-10"></div>
-                            <button @click.stop="gitMenu=false; GitUI.openPanel(gitCtx(item.git))" class="git-menu-item">
-                              <i class="fa-solid fa-sliders"></i>{% trans "Repository…" %}
-                            </button>
-                          </div>
-                        </template>
-                      </div>
-                    </div>
+                    <!-- No Git dropdown here any more: git belongs to the
+                         surfaces (workspaces, documents, presentations) and to
+                         the dashboard's Git page. A per-folder menu on every
+                         row of the file manager was the clutter, and this was
+                         the only place a repo could be created — that way in
+                         now lives in each surface's own toolbar. -->
                     <a x-show="item.upload_url" :href="item.upload_url" @click.stop
                        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                        class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1 text-xs font-semibold transition hover:opacity-85">
@@ -2215,7 +2167,4 @@
   </div>
 </div>
 
-{% if gitvault_enabled %}
-  {% include "gitvault/_git_ui.html" %}
-{% endif %}
 {% endblock %}

@@ -26,7 +26,6 @@ from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
-from toto.editor.views import BaseFileDisplayView
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
 
@@ -237,7 +236,6 @@ class TpyDisplayView(LoginRequiredMixin, View):
                 "start_url": reverse("mandragora:tpy_start_kernel", args=[file_pk]),
                 "stop_url": reverse("mandragora:tpy_stop_kernel", args=[file_pk]),
                 "status_url": reverse("mandragora:tpy_kernel_status", args=[file_pk]),
-                **BaseFileDisplayView.gitvault_context(vault_file),
             },
             request,
         )

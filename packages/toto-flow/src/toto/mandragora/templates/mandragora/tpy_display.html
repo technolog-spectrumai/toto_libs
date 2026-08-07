@@ -82,7 +82,6 @@
           class="toolbar-btn-primary">
           <i class="fa-solid fa-floppy-disk"></i><span class="hidden sm:inline">{% trans "Save" %}</span>
         </button>
-        {% if gitvault_ctx %}{% include "gitvault/_git_toolbar_buttons.html" %}{% endif %}
         <button id="btn-delete" title="{% trans 'Delete file' %}"
           :class="darkMode ? 'bg-warn-dark text-primary-bg-dark' : 'bg-warn-light text-primary-bg-light'"
           class="toolbar-btn-primary">
@@ -161,9 +160,6 @@
 .icon-only-toolbar span.sm\:inline { display: none !important; }
 </style>
 
-{% if gitvault_ctx %}
-  {% include "gitvault/_git_ui.html" %}
-{% endif %}
 {% endblock %}
 
 {% block end_script %}
@@ -369,8 +365,6 @@ async function save() {
   finally { btn.style.opacity = "1"; }
 }
 document.getElementById("btn-save").addEventListener("click", save);
-// gitvault commit flushes the notebook buffer through the same save().
-window.gitvaultFlushSave = save;
 
 // ── Cell execution ─────────────────────────────────────────────────────────
 async function runCell(uid, btn) {

@@ -72,7 +72,9 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 "wrap_lines": "true" if self.wrap_lines else "false",
                 "save_url": reverse(self.save_url_name, args=[file_pk]),
                 "delete_url": reverse(self.delete_url_name, args=[file_pk]),
-                **self.gitvault_context(vault_file),
+                # gitvault_context deliberately NOT merged here any more: the
+                # generic editor is the vault's own surface and git left the
+                # vault UI. The helper stays — memo and cyprian still call it.
                 **self.get_extra_context(vault_file),
             },
             request,
