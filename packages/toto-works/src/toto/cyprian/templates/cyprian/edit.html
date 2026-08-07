@@ -697,6 +697,11 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
   </div>
 
 </section>
+
+{% comment %} The gitUI host the Git menu above drives. This include was
+missing — the menu rendered and every item threw "GitUI is not defined". The
+toolbar partial's own docstring demands the pair. {% endcomment %}
+{% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
 {% endblock %}
 
 {% block end_script %}
