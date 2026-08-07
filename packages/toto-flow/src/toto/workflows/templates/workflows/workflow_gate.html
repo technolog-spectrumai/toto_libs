@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% block title %}{{ workflow.name }} Gate | {{ platform.site_name }}{% endblock %}
 
@@ -164,6 +164,7 @@
                   class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold shadow-sm transition">
             <i class="fa-solid fa-play"></i>
             {% trans "Submit" %}
+            {% price_hint "workflows.run" %}
           </button>
         </div>
       </form>

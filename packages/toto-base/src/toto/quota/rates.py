@@ -24,6 +24,8 @@ blow up on exactly the hosts this indirection exists to protect.
 
 from __future__ import annotations
 
+from django.db import DatabaseError
+
 
 def pricing_enabled() -> bool:
     """True when this host has a rate card to read or write."""
@@ -40,7 +42,17 @@ def rate_card() -> dict[str, dict]:
         from toto.tariffs.rate_card import rate_card as _rate_card
     except ImportError:  # pragma: no cover - app installed, wheel absent
         return {}
-    return _rate_card()
+    try:
+        return _rate_card()
+    except DatabaseError:
+        # The app is installed and its tables are not there yet: a database
+        # mid-migrate, a scratch shell, a fresh deploy between `migrate` and the
+        # tariffs seeder. This module's contract is an empty answer rather than
+        # an exception, and until the price hint arrived the only thing that
+        # would have noticed was a staff screen. Now every toolbar with a
+        # {% price_hint %} on it asks this question on every render, so a raise
+        # here is a 500 on half the product instead of one page.
+        return {}
 
 
 def price_of(metric_code: str) -> dict | None:

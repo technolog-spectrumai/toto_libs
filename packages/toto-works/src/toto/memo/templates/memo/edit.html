@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load static i18n %}
+{% load static i18n quota_tags %}
 
 {% comment %}The block-canvas editor.
 
@@ -118,8 +118,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="absolute right-0 z-[9100] mt-1 min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
           {% if export_pdf_url %}
-            <a href="{{ export_pdf_url }}" class="block px-3 py-1.5 hover:opacity-70">
-              <i class="fa-solid fa-file-pdf w-4 opacity-60"></i> {% trans "Export PDF" %}
+            <a href="{{ export_pdf_url }}" class="flex items-center gap-2 px-3 py-1.5 hover:opacity-70">
+              <i class="fa-solid fa-file-pdf w-4 opacity-60"></i>
+              <span class="flex-1">{% trans "Export PDF" %}</span>
+              {% price_hint "memo.pdf" %}
             </a>
           {% endif %}
           {% if export_zip_url %}

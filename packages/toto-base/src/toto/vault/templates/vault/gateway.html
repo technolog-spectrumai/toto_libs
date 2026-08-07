@@ -1,6 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% block title %}{% trans "Upload" %} | {{ gateway.name }}{% endblock %}
 
@@ -182,6 +182,11 @@
 
       {% widthratio gateway.max_file_size 1024 1 as max_mb %}
       <p class="text-xs opacity-55 text-center">{% trans "Max file size" %}: {{ max_mb }} MB</p>
+
+      {% comment %} An upload is charged twice — once for the call and once for
+      the megabytes — so both codes go in, or the quote undercounts the thing it
+      is quoting. Renders nothing on a host that does not bill. {% endcomment %}
+      <p class="text-center">{% price_hint "storage.request" "storage.transfer_mb" %}</p>
 
       <!-- Uploading spinner -->
       <template x-if="uploading">

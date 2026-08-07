@@ -1,6 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
-{% load i18n %}
+{% load i18n quota_tags %}
 
 {% block title %}{% trans "Public Files" %} | {{ platform.site_name }}{% endblock %}
 
@@ -2135,6 +2135,7 @@
 
           <h2 class="text-base font-bold flex items-center gap-2">
             <i class="fa-solid fa-wand-magic-sparkles opacity-60"></i>{% trans "Run a service" %}
+            {% price_hint "fileservices.run" %}
           </h2>
           <p class="text-xs opacity-60 -mt-2 truncate">
             <span class="font-mono" x-text="svcFileTitle"></span>

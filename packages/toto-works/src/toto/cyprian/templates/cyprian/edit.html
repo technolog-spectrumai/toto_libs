@@ -1,5 +1,5 @@
 {% extends "cyprian/base.html" %}
-{% load static i18n %}
+{% load static i18n quota_tags %}
 
 {% comment %}The writer.
 
@@ -164,8 +164,10 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
         <div x-show="open" x-cloak @click.outside="open = false"
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="absolute right-0 z-[9100] mt-1 min-w-[13rem] overflow-hidden rounded-xl border py-1 text-sm shadow-lg">
-          <a href="{{ pdf_url }}" class="block px-3 py-1.5 hover:opacity-70">
-            <i class="fa-solid fa-download w-4 opacity-60"></i> {% trans "Download PDF" %}
+          <a href="{{ pdf_url }}" class="flex items-center gap-2 px-3 py-1.5 hover:opacity-70">
+            <i class="fa-solid fa-download w-4 opacity-60"></i>
+            <span class="flex-1">{% trans "Download PDF" %}</span>
+            {% price_hint "cyprian.pdf" %}
           </a>
           {% comment %} Saving into the vault rather than downloading, because
           the vault IS the filesystem here: a PDF of a report belongs beside the
@@ -173,9 +175,10 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
           else. The link comes back in a modal so the file is one click away
           instead of "somewhere in your bucket".{% endcomment %}
           <button type="button" @click="saveRendition('pdf'); open = false"
-                  class="block w-full px-3 py-1.5 text-left hover:opacity-70">
+                  class="flex w-full items-center gap-2 px-3 py-1.5 text-left hover:opacity-70">
             <i class="fa-solid fa-file-pdf w-4 opacity-60"></i>
-            {% trans "Save PDF to the vault" %}
+            <span class="flex-1">{% trans "Save PDF to the vault" %}</span>
+            {% price_hint "cyprian.pdf" %}
           </button>
           <button type="button" @click="saveRendition('html'); open = false"
                   class="block w-full px-3 py-1.5 text-left hover:opacity-70">

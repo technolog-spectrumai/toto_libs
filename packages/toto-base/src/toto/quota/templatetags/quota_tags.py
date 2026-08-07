@@ -38,3 +38,75 @@ def quota_tab(app_label, label=None):
         url = ""
     return {"url": url, "label": label or _("Usage"),
             "icon": "fa-solid fa-gauge-high"}
+
+
+@register.inclusion_tag("quota/partials/_price_hint.html", takes_context=True)
+def price_hint(context, *metric_codes, label=None):
+    """What this button is about to cost, next to the button.
+
+    Everything on this platform pays, and until now it only said so afterwards —
+    on the usage page, or in a 402 when the money had already run out. A price is
+    a thing to know BEFORE clicking, so this puts it on the control that spends
+    it::
+
+        {% load quota_tags %}
+        <button>Export PDF {% price_hint "cyprian.pdf" %}</button>
+
+    Several codes when one action meters several things — a vault upload is
+    charged per call AND per megabyte, and quoting only the first would be a
+    quote that undercounts::
+
+        {% price_hint "storage.request" "storage.transfer_mb" %}
+
+    **Renders nothing at all** when there is no price to name: a host with no
+    economy (studio and aurelian pin no tariffs wheel), a metric nobody has
+    priced, or a price of zero. That is the common case on two of three hosts, so
+    the empty answer has to be silent rather than an apologetic "free" badge on
+    every button in the product.
+
+    Prices come from ``rates.price_of``, which already returns plain data and {}
+    on an unbilled host — so this never imports tariffs and is safe in a template
+    on any host in the fleet.
+    """
+    from toto.quota import rates
+
+    # One rate-card read per request, not one per tag. A toolbar carries several
+    # of these and the card is a table scan with three joins — rendering the
+    # cyprian menu was three identical queries before this cache, and the number
+    # grows with every button anyone annotates. Stashed on the request so it also
+    # spans {% include %}, which a render_context cache would not.
+    request = context.get("request")
+    card = getattr(request, "_toto_rate_card", None) if request is not None else None
+    if card is None:
+        card = rates.rate_card()
+        if request is not None:
+            request._toto_rate_card = card
+
+    quotes = []
+    for code in metric_codes:
+        row = card.get(code)
+        if not row:
+            continue
+        price = row.get("price_display")
+        if not price:          # unpriced, or priced at zero — say nothing
+            continue
+
+        # The rate card's own unit wins over the metric's: an admin can price
+        # "per 10 MB" on a metric declared in MB, and the number shown has to
+        # match the number charged.
+        metric = registry.get(code)
+        unit = row.get("unit_code") or (metric.unit if metric else "")
+        quantity = row.get("unit_quantity") or 1
+        per = ""
+        if unit and unit != "request":
+            per = f"{quantity} {unit}" if quantity and quantity != 1 else unit
+
+        quotes.append({
+            "code": code,
+            "label": metric.label if metric else code,
+            "price": price,
+            "asset": row.get("asset", ""),
+            "per": per,
+        })
+
+    return {"quotes": quotes, "label": label}

@@ -4,7 +4,7 @@ the Run button. Expects the standard command_builder context (vf, op, tab, form,
 needs_extra, extra_slot, extra_tree, backend). Used by both the ffmpeg tab and
 the focused ffprobe tab.
 {% endcomment %}
-{% load i18n %}
+{% load i18n quota_tags %}
 <form method="post" action="{% url 'manta:command_builder' %}" class="space-y-6"
   x-data="builderForm()" x-init="preview()"
   @input.debounce.400ms="preview()" @change.debounce.400ms="preview()">
@@ -83,6 +83,7 @@ the focused ffprobe tab.
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark hover:opacity-90' : 'bg-accent-light text-white hover:opacity-90'"
         class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition disabled:opacity-40 disabled:cursor-not-allowed">
         <i class="fa-solid fa-play"></i> {% trans "Run" %}
+        {% price_hint "manta.job" %}
       </button>
     </div>
   </div>

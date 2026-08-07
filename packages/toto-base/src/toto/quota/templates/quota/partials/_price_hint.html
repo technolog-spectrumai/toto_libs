@@ -1,0 +1,14 @@
+{% load i18n %}
+{% comment %} Nothing at all when nothing is priced — see price_hint's docstring.
+An empty span would still take layout and put a stray gap in every toolbar on
+the two hosts that never bill. {% endcomment %}
+{% if quotes %}
+  <span class="inline-flex flex-wrap items-center gap-1 align-middle text-xs opacity-70"
+        title="{% if label %}{{ label }}{% else %}{% trans "What this costs" %}{% endif %}">
+    <i class="fa-solid fa-coins" aria-hidden="true"></i>
+    {% for quote in quotes %}
+      <span class="whitespace-nowrap tabular-nums"
+            title="{{ quote.label }}">{{ quote.price }}&nbsp;{{ quote.asset }}{% if quote.per %}<span class="opacity-70">/{{ quote.per }}</span>{% endif %}</span>{% if not forloop.last %}<span class="opacity-50">+</span>{% endif %}
+    {% endfor %}
+  </span>
+{% endif %}
