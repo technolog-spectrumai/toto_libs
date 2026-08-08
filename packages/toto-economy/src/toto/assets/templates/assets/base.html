@@ -102,6 +102,15 @@
         {% trans "Tariffs" %}
       </a>
       {% endif %}
+      {% if HAS_TAX %}
+      <a href="{% url 'tax:my_levies' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_tax %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-coins"></i>
+        {% trans "Levies" %}
+      </a>
+      {% endif %}
     </nav>
 
     {% block assets_content %}{% endblock %}

@@ -13,6 +13,7 @@
     {% if features.socialhub %}<a href="#profile" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Profile &amp; communities</a>{% endif %}
     {% if features.gervazy %}<a href="#keys" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">My Keys</a>{% endif %}
     {% if features.vault %}<a href="#storage" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Storage</a>{% endif %}
+    {% if features.tax %}<a href="#storage-fee" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Storage fee</a>{% endif %}
     {% if features.events %}<a href="#events" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Events</a>{% endif %}
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Tasks</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Locations</a>{% endif %}
@@ -105,6 +106,53 @@
     {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — TeX Lab workspaces compile a whole folder of <code>.tex</code> files to PDF, with the result previewed in the room.</li>{% endif %}
   </ul>
+</section>
+{% endif %}
+
+{% if features.tax %}
+<!-- Storage fee -->
+<section id="storage-fee"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-coins"></i>Storage fee</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Keeping files on this server costs a small daily fee. Everyone has a
+    <span class="font-semibold">free allowance</span> — an amount of storage you can use at no charge,
+    set by the platform staff. Only storage above the allowance is charged, once a day, per gigabyte;
+    the current rate and the currency it is charged in are published on the
+    <a href="{% url 'tariffs:tariff_list' %}" class="font-semibold underline hover:opacity-80">rate card</a>,
+    and <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">My levies</a>
+    shows what you store and what tonight's charge will be.
+    <span class="font-semibold">The fee is taken from your account automatically — you are not asked
+    to confirm it.</span> This is a platform rule, the same one that applies to every metered action.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">If a daily charge fails</span> because your balance is too low,
+      a notice appears in your <a href="{% url 'events:event_list' %}" class="font-semibold underline hover:opacity-80">calendar</a>
+      and in your invites: you have <span class="font-semibold">one week</span> to top up. No debt
+      builds up — a day that could not be charged is written off and is never collected later.</li>
+    <li><span class="font-semibold">To close the case</span>, add funds to your
+      <a href="{% url 'assets:wallet' %}" class="font-semibold underline hover:opacity-80">wallet</a>
+      (ask an administrator, or trade on the bourse). The next successful daily charge — or shrinking
+      your storage back under the allowance — resolves it.</li>
+    <li><span class="font-semibold">If the week passes unpaid</span>, the server deletes files from
+      your storage, <span class="font-semibold">chosen at random</span>, until you are back within the
+      free allowance. <span class="font-semibold">Deleted files are deleted forever</span> — neither
+      you nor the staff can recover them.</li>
+  </ul>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">Time limits work the same way.</span> Some things are bounded by time
+    rather than space — how long an idle Python kernel stays warm, how long a compile or a media job
+    may run. Each has a free default, and you can raise it from its app or centrally on
+    <a href="{% url 'tax:demurrage' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
+    holding a raised limit costs a small daily fee (demurrage), charged automatically per hour of
+    extension, whether you use it or not. If the fee cannot be collected, the same warning and
+    one-week rule applies — except nothing is deleted: your time limits are simply reset to the free
+    defaults. Housekeeping runs regardless: idle kernels stop automatically once their limit passes
+    (variables are cleared, files are untouched), and background jobs that die without reporting are
+    closed as failed within a few hours.
+  </p>
 </section>
 {% endif %}
 

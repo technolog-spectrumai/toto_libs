@@ -16,6 +16,7 @@ import tempfile
 
 from django.conf import settings
 from django.core.files.base import File
+from django.utils import timezone
 
 from ..client import validate_argv
 from ..models import FileJob
@@ -66,13 +67,15 @@ class FfmpegCommand(BaseCommand):
         from toto.vault.models import VaultFile
 
         job.status = FileJob.Status.RUNNING
-        job.save(update_fields=["status"])
+        job.started_at = timezone.now()
+        job.save(update_fields=["status", "started_at"])
         try:
             self._run(job, VaultFile)
         except Exception as exc:
             job.status = FileJob.Status.FAILED
             job.output = {"error": str(exc)}
-            job.save(update_fields=["status", "output"])
+            job.finished_at = timezone.now()
+            job.save(update_fields=["status", "output", "finished_at"])
             raise
 
     def _run(self, job, VaultFile) -> None:
@@ -93,9 +96,17 @@ class FfmpegCommand(BaseCommand):
             spec = self.build_spec(input_name=staged[0], extra_input_names=staged[1:], params=job.params)
 
             probe_stdout = None
+            # The budget was snapshotted into params at dispatch, where the
+            # celery limits were fixed — the subprocess ceiling must match
+            # those, not a grant that changed since. The −60 puts the
+            # subprocess timeout UNDER the soft limit, so TimeoutExpired
+            # surfaces through the except-branch (clean FAILED + finished_at)
+            # instead of racing SoftTimeLimitExceeded.
+            budget = int((job.params or {}).get("time_budget_seconds") or 7200)
             for argv in spec.commands:
                 validate_argv(list(argv))
-                proc = subprocess.run(list(argv), cwd=tmpdir, capture_output=True, text=True, timeout=7200)
+                proc = subprocess.run(list(argv), cwd=tmpdir, capture_output=True,
+                                      text=True, timeout=max(60, budget - 60))
                 if proc.returncode != 0:
                     raise RuntimeError(f"{argv[0]} exited {proc.returncode}:\n{proc.stderr[-2000:]}")
                 if self.backend == "ffprobe":
@@ -119,7 +130,8 @@ class FfmpegCommand(BaseCommand):
 
             job.output = output
             job.status = FileJob.Status.DONE
-            job.save(update_fields=["output", "status"])
+            job.finished_at = timezone.now()
+            job.save(update_fields=["output", "status", "finished_at"])
 
 
 class FfprobeCommand(FfmpegCommand):

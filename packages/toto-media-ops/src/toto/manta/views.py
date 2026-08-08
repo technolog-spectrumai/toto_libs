@@ -38,6 +38,20 @@ TAB_UI = {
     },
 }
 
+# The Time tab is not a command family: it renders the user's job-runtime
+# dial. It appears only when the levy engine is mounted (dial()["set_url"]).
+_TIME_TAB = {
+    "label": "Time", "icon": "fa-clock",
+    "blurb": "How long one of your jobs may run.",
+}
+
+
+def _time_dial(user):
+    from toto.quota import times
+
+    return times.dial("manta.job_runtime", user=user)
+
+
 # The focused tabs let you upload a new file (to a bucket of your choice) instead
 # of only picking an existing vault file. The ffmpeg tab keeps its existing flow.
 _UPLOAD_TABS = {"ffprobe"}
@@ -195,6 +209,15 @@ def command_builder(request):
     op_req = (request.POST.get("op") or request.GET.get("op") or "").strip()
     file_pk = request.POST.get("file") or request.GET.get("file")
 
+    if tab_req == "time":
+        dial = _time_dial(request.user)
+        if dial.get("set_url"):
+            tabs = [dict(key=k, active=False, **TAB_UI[k]) for k in TAB_ORDER]
+            tabs.append(dict(key="time", active=True, **_TIME_TAB))
+            return _render(request, "manta/time_tab.html",
+                           {"tabs": tabs, "tab_ui": _TIME_TAB, "dial": dial})
+        tab_req = ""  # no levy engine here — the tab does not exist
+
     # Resolve the source first so we can default the tab from its type.
     vf, source_error = None, None
     if file_pk:
@@ -234,7 +257,9 @@ def command_builder(request):
         "vf": vf,
         "op": op,
         "tab": tab,
-        "tabs": [dict(key=k, active=(k == tab), **TAB_UI[k]) for k in TAB_ORDER],
+        "tabs": ([dict(key=k, active=(k == tab), **TAB_UI[k]) for k in TAB_ORDER]
+                 + ([dict(key="time", active=False, **_TIME_TAB)]
+                    if _time_dial(request.user).get("set_url") else [])),
         "tab_ui": TAB_UI[tab],
         "operations": [(c.key, c.label) for c in commands_for_tab("ffmpeg")],
         "backend": (cmd_cls.backend_label or cmd_cls.backend),
@@ -304,13 +329,27 @@ def _run(request, vf, cmd_cls, params, extra_objs):
         messages.error(request, str(exc))
         return redirect("manta:command_builder")
 
+    # How long this job may run: the user's "manta.job_runtime" dial. Snapshot
+    # it into params so the worker's subprocess ceiling matches the celery
+    # limits fixed here, immune to mid-flight grant edits. The clamp keeps the
+    # hard limit under the broker's visibility timeout, or Redis would
+    # redeliver a task that is still legitimately running.
+    from django.conf import settings as _settings
+
+    from toto.quota import times
+
+    budget = times.effective_seconds("manta.job_runtime", user=request.user) or 7200
+    _visibility = (getattr(_settings, "CELERY_BROKER_TRANSPORT_OPTIONS", {})
+                   .get("visibility_timeout") or 7800)
+    budget = min(budget, _visibility - 200)
+
     # The command family owns execution; we just create the record and enqueue.
     job = FileJob.objects.create(
         name=f"{cmd_cls.label}: {vf.title}",
         command=cmd_cls.key,
         owner=request.user,
         inputs=[vf.id] + [o.id for o in extra_objs],
-        params=dict(params),
+        params={**dict(params), "time_budget_seconds": budget},
         status=FileJob.Status.PENDING,
     )
     _src = {"source_type": "manta.FileJob", "source_id": str(job.id)}
@@ -320,7 +359,9 @@ def _run(request, vf, cmd_cls, params, extra_objs):
 
     from .tasks_direct import run_direct_job
     try:
-        run_direct_job.delay(job.id)
+        result = run_direct_job.apply_async(
+            args=[job.id], soft_time_limit=budget, time_limit=budget + 100)
+        FileJob.objects.filter(pk=job.id).update(celery_task_id=result.id or "")
     except Exception as exc:                      # noqa: BLE001 — broker died
         # Paid for, never queued. A job that RUNS and fails keeps its charge.
         refund_for("manta.FileJob", job.id, "manta.job", reason=f"not queued: {exc}")

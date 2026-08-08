@@ -222,6 +222,9 @@ def _manual_features(request):
 
     return {
         "vault": apps.is_installed("toto.vault"),
+        # The recurring storage fee (levy engine). Implies the economy: toto.tax
+        # ships in toto-economy, so the section may link tariffs/assets URLs.
+        "tax": apps.is_installed("toto.tax"),
         "gervazy": apps.is_installed("toto.gervazy"),
         "socialhub": apps.is_installed("toto.socialhub"),
         "events": apps.is_installed("toto.events"),

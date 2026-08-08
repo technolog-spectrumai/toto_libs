@@ -15,4 +15,5 @@ def economy_apps(request):
     return {
         "HAS_BOURSE": apps.is_installed("toto.bourse"),
         "HAS_TARIFFS": apps.is_installed("toto.tariffs"),
+        "HAS_TAX": apps.is_installed("toto.tax"),
     }

@@ -191,6 +191,9 @@ PRICES = {
     # Storage — charged by size as well as per call.
     "storage.request": CHEAP,
     "storage.transfer_mb": CHEAP,
+    # storage.gb_day is deliberately absent: it is levied nightly by toto.tax
+    # for data already sitting on disk, and an automatic recurring charge must
+    # be armed by a person at /quota/rates/, never by a deploy.
     # Compute — a worker is occupied for real time.
     "texlab.compile": NORMAL,
     "workflows.run": NORMAL,

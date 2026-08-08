@@ -105,6 +105,11 @@ TASK_MODULES = [
     "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
+    "toto.tax",         # the daily levy sweep; inert where toto-economy is absent
+    # toto.quota's stuck-run sweeper (quota/tasks.py). In toto-base, so it is
+    # importable on every host; the beat entry (schedules.beat_schedule
+    # sweep=...) is what turns it on.
+    "toto.quota",
     # toto.monit's sampler and pruner are SCHEDULED by toto/schedules.py whenever
     # BUILD_MONIT is on, so the worker has to be able to find them. Without the
     # entry beat kept enqueueing `toto.monit.tasks.monit_prune` and the worker

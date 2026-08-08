@@ -12,3 +12,8 @@ class QuotaConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
 
         autodiscover_plugins("metrics")
+        # Time-limit declarations (<app>/times.py) — same pure-data contract.
+        autodiscover_plugins("times")
+        # Stuck-run sweep policies (<app>/sweeps.py) — dataclasses + dotted
+        # closer paths only, so ready() stays import-light on the WSGI tier.
+        autodiscover_plugins("sweeps")

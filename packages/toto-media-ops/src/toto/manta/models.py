@@ -29,9 +29,12 @@ class FileJob(models.Model):
     params = models.JSONField(default=dict)
     output = models.JSONField(default=dict)                   # full serialized output
     created_at = models.DateTimeField(auto_now_add=True)
+    started_at = models.DateTimeField(null=True, blank=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ["-created_at"]
+        indexes = [models.Index(fields=["status", "created_at"])]
 
     def __str__(self):
         return self.name or f"{self.command} #{self.pk}"
@@ -41,9 +44,31 @@ class FileJob(models.Model):
         return self.status in (self.Status.DONE, self.Status.FAILED)
 
     @property
+    def duration(self) -> float | None:
+        if self.started_at is None or self.finished_at is None:
+            return None
+        return (self.finished_at - self.started_at).total_seconds()
+
+    @property
     def output_file_ids(self) -> list:
         out = self.output if isinstance(self.output, dict) else {}
         return out.get("files", [])
+
+
+def fail_job(job: FileJob, message: str) -> None:
+    """Terminally close a job that will never report.
+
+    FileJob has no error field by design — failures live in output['error']
+    (the backends.py shape) — so the sweeper's reason lands there too.
+    """
+    from django.utils import timezone
+
+    out = job.output if isinstance(job.output, dict) else {}
+    out["error"] = message
+    job.output = out
+    job.status = FileJob.Status.FAILED
+    job.finished_at = timezone.now()
+    job.save(update_fields=["status", "output", "finished_at"])
 
 
 class MediaJob(FileJob):

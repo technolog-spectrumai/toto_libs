@@ -64,6 +64,16 @@ def _billing_url(code: str) -> str:
         return ""
 
 
+def _tax_rules_url() -> str:
+    """Where levy allowances are edited, or "" when no levy engine ships."""
+    if not apps.is_installed("toto.tax"):
+        return ""
+    try:
+        return reverse("tax:rules")
+    except Exception:
+        return ""
+
+
 def _row(metric, user, *, prices=None, spend=None):
     """One line of the limits table: what it is, its cap, and your use of it.
 
@@ -171,6 +181,10 @@ def rate_desk(request):
         "groups": groups,
         "metric_count": len(registry),
         "pricing_enabled": pricing,
+        # Where the recurring levies' free allowances are set. A pre-computed
+        # string like _billing_url, so no quota template ever names "tax:" —
+        # empty on the hosts that ship no levy engine.
+        "tax_rules_url": _tax_rules_url(),
         "price_asset": rates.price_asset_symbol(),
         # Currencies a price may be denominated in. Empty on a host with no
         # assets app, and the grid then renders no picker — the price column

@@ -107,7 +107,8 @@ class WorkflowExecutor:
             node_run.completed_at = timezone.now()
             node_run.save(update_fields=["status", "error", "completed_at"])
             node_run.workflow_run.status = WorkflowRun.FAILED
-            node_run.workflow_run.save(update_fields=["status"])
+            node_run.workflow_run.completed_at = timezone.now()
+            node_run.workflow_run.save(update_fields=["status", "completed_at"])
             return
 
         if isinstance(output, _AsyncDispatched):
@@ -423,3 +424,21 @@ def _format_lambda_error(error: str) -> str:
     if error == "kernel_server_timeout":
         return "Workflow task timed out."
     return f"Workflow task error: {error}"
+
+
+# ---------------------------------------------------------------------------
+# Stuck-run closers (toto.quota.sweeps policies name these by dotted path)
+# ---------------------------------------------------------------------------
+
+def fail_stuck_node_run(node_run, message: str) -> None:
+    """Close a node run that will never report — cascades to its run."""
+    WorkflowExecutor().mark_node_run_failed(node_run.pk, message)
+
+
+def fail_stuck_workflow_run(run, message: str) -> None:
+    """Close a workflow run alone. WorkflowRun has no error field, so the
+    reason lives in the log only."""
+    run.status = WorkflowRun.FAILED
+    run.completed_at = timezone.now()
+    run.save(update_fields=["status", "completed_at"])
+    log.warning("workflow run %s closed by sweeper: %s", run.pk, message)

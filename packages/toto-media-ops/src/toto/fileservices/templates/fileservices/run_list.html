@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{% trans "File service runs" %}{% endblock %}
 
@@ -21,6 +22,42 @@
       <p class="mt-1 text-sm opacity-60">
         {% trans "Every file service you have started, newest first." %}</p>
     </div>
+
+    {% if time_dial.set_url %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-2xl border p-5 shadow-sm space-y-2">
+      <h2 class="text-sm font-semibold"><i class="fa-solid fa-clock mr-1"></i>{% trans "Time" %} — {{ time_dial.label }}</h2>
+      <p class="text-xs opacity-70">
+        {{ time_dial.description }}
+        {% blocktrans with free=time_dial.free_seconds %}Free up to {{ free }} s.{% endblocktrans %}
+        {% trans "Above that it is demurrage:" %} {% price_hint "time.hold" %}
+      </p>
+      <form method="post" action="{{ time_dial.set_url }}" class="flex flex-wrap items-end gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="key" value="{{ time_dial.key }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <label class="space-y-1 text-xs">
+          <span class="block opacity-70">{% trans "Limit in seconds" %}
+            ({{ time_dial.free_seconds }}–{{ time_dial.ceiling_seconds }})</span>
+          <input type="text" inputmode="numeric" name="seconds"
+                 value="{{ time_dial.effective_seconds }}"
+                 class="rounded-lg border border-current bg-transparent px-3 py-2 text-xs font-mono">
+        </label>
+        <button type="submit"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-85">
+          {% trans "Save" %}
+        </button>
+        <button type="submit" name="seconds" value=""
+                class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-xs font-semibold opacity-70 transition hover:opacity-100">
+          {% trans "Reset to free" %}
+        </button>
+      </form>
+      <p class="text-xs opacity-55">
+        <a href="{{ time_dial.manage_url }}" class="underline hover:opacity-80">{% trans "All your extensions and their daily cost" %}</a>
+      </p>
+    </div>
+    {% endif %}
 
     {% if rows %}
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

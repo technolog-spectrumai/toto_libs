@@ -22,6 +22,10 @@
     <p class="mt-2 opacity-70">
       {% trans "An empty limit means unlimited." %}
       {% if pricing_enabled %}{% trans "An empty price means free." %}{% endif %}
+      {% if tax_rules_url %}
+        {% trans "Recurring levies keep their free allowances on the" %}
+        <a href="{{ tax_rules_url }}" class="font-semibold underline hover:opacity-80">{% trans "allowances desk" %}</a>.
+      {% endif %}
     </p>
   </div>
 

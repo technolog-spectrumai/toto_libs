@@ -13,6 +13,7 @@
     {% if features.socialhub %}<a href="#profile" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Profil i społeczności</a>{% endif %}
     {% if features.gervazy %}<a href="#keys" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moje klucze</a>{% endif %}
     {% if features.vault %}<a href="#storage" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przechowywanie</a>{% endif %}
+    {% if features.tax %}<a href="#storage-fee" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Opłata za przechowywanie</a>{% endif %}
     {% if features.events %}<a href="#events" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zdarzenia</a>{% endif %}
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zadania</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Lokalizacje</a>{% endif %}
@@ -105,6 +106,56 @@
     {% if features.notebooks %}<li><span class="font-semibold">Notatniki</span> — notatniki <code>.tpy</code> łączą komórki z kodem i ich wyniki; edytuj je i uruchamiaj w edytorze notatników.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — przestrzenie TeX Lab kompilują cały folder plików <code>.tex</code> do PDF, z podglądem wyniku w pokoju.</li>{% endif %}
   </ul>
+</section>
+{% endif %}
+
+{% if features.tax %}
+<!-- Opłata za przechowywanie -->
+<section id="storage-fee"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-coins"></i>Opłata za przechowywanie</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Przechowywanie plików na tym serwerze wiąże się z niewielką dzienną opłatą. Każdy ma
+    <span class="font-semibold">darmowy limit</span> — ilość miejsca, z której korzysta bezpłatnie;
+    ustala go obsługa platformy. Opłata naliczana jest raz dziennie, za każdy gigabajt ponad limit;
+    aktualna stawka i waluta, w której jest pobierana, publikowane są w
+    <a href="{% url 'tariffs:tariff_list' %}" class="font-semibold underline hover:opacity-80">cenniku</a>,
+    a strona <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
+    pokazuje, ile przechowujesz i ile wyniesie najbliższa opłata.
+    <span class="font-semibold">Opłata pobierana jest z Twojego konta automatycznie — bez pytania
+    o zgodę.</span> To zasada platformy, ta sama, która dotyczy każdej płatnej operacji.
+  </p>
+  <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Jeśli dzienna opłata się nie powiedzie</span> z powodu zbyt
+      niskiego salda, w Twoim <a href="{% url 'events:event_list' %}" class="font-semibold underline hover:opacity-80">kalendarzu</a>
+      oraz w zaproszeniach pojawi się powiadomienie: masz <span class="font-semibold">tydzień</span>
+      na doładowanie konta. Dług nie narasta — dzień, którego nie udało się rozliczyć, jest umarzany
+      i nigdy nie zostanie pobrany później.</li>
+    <li><span class="font-semibold">Aby zamknąć sprawę</span>, zasil swój
+      <a href="{% url 'assets:wallet' %}" class="font-semibold underline hover:opacity-80">portfel</a>
+      (poproś administratora albo wymień na giełdzie). Najbliższa udana dzienna opłata — albo
+      zmniejszenie zajmowanego miejsca poniżej limitu — rozwiązuje sprawę.</li>
+    <li><span class="font-semibold">Jeśli tydzień minie bez zapłaty</span>, serwer usunie pliki
+      z Twojego magazynu, <span class="font-semibold">wybierając je losowo</span>, aż zmieścisz się
+      z powrotem w darmowym limicie. <span class="font-semibold">Usunięte pliki przepadają
+      bezpowrotnie</span> — nie odzyska ich ani użytkownik, ani obsługa.</li>
+  </ul>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">Limity czasowe działają tak samo.</span> Niektóre rzeczy ogranicza
+    czas, nie miejsce — jak długo bezczynny kernel Pythona pozostaje uruchomiony, jak długo może
+    trwać kompilacja albo zadanie multimedialne. Każdy limit ma darmową wartość domyślną, którą
+    możesz podnieść w danej aplikacji albo centralnie na stronie
+    <a href="{% url 'tax:demurrage' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
+    utrzymywanie podniesionego limitu kosztuje niewielką dzienną opłatę (demurrage), pobieraną
+    automatycznie za każdą godzinę rozszerzenia — niezależnie od tego, czy z niego korzystasz.
+    Jeśli opłaty nie uda się pobrać, obowiązuje to samo ostrzeżenie i tydzień na zapłatę — z tą
+    różnicą, że nic nie jest usuwane: limity wracają po prostu do darmowych wartości domyślnych.
+    Porządki działają niezależnie: bezczynne kernele zatrzymują się po przekroczeniu limitu
+    (zmienne przepadają, pliki zostają), a zadania w tle, które zakończyły się bez raportu, są
+    zamykane jako nieudane w ciągu kilku godzin.
+  </p>
 </section>
 {% endif %}
 

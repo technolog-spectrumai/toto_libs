@@ -38,7 +38,12 @@ class FFmpegServicePlugin(FileServicePlugin):
             before = set(os.listdir(tmpdir))
 
             argv = ["ffmpeg", "-y", "-i", input_path, *tokens]
-            proc = run_subprocess(argv, cwd=tmpdir, timeout=7200)
+            from toto.quota import times
+
+            proc = run_subprocess(
+                argv, cwd=tmpdir,
+                timeout=times.effective_seconds("fileservices.run_runtime",
+                                                user=run.owner))
             run.stdout = proc.stdout[-8000:]
             run.stderr = proc.stderr[-8000:]
             if proc.returncode != 0:

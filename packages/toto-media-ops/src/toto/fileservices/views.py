@@ -13,7 +13,7 @@ from toto.vault.models import VaultFile
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 
-from .dispatch import create_service_run, dispatch_run
+from .dispatch import create_service_run, dispatch_run, fail_run
 from .models import FileserviceQuotaPolicy, FileserviceUsageEvent
 from .models import FileServiceRun
 from .plugin import FileServicePlugin
@@ -98,6 +98,10 @@ def run_service(request, file_pk):
     try:
         queued = dispatch_run(run)
     except Exception as exc:
+        # Close the row too — before this, a failed dispatch left it PENDING
+        # forever, which is exactly the shape the stuck-run sweeper exists to
+        # catch; the request that watched it happen should not need a sweeper.
+        fail_run(run, f"Could not be queued: {exc}")
         return JsonResponse({"status": "failed", "run_id": run.id, "run_url": run_url,
                              "error": str(exc)}, status=200)
     if queued:
@@ -170,11 +174,17 @@ class RunListView(LoginRequiredMixin, View):
                 "url": reverse("fileservices:run_detail", args=[run.id]),
             })
 
+        from toto.quota import times
+
         context = PageProcessor().decorate(
             {
                 "rows": rows,
                 "capped": len(runs) >= self.RUN_LIST_CAP,
                 "run_list_cap": self.RUN_LIST_CAP,
+                # The user's runtime dial; set_url is "" without the levy
+                # engine and the template hides the card on that.
+                "time_dial": times.dial("fileservices.run_runtime",
+                                        user=request.user),
             },
             request,
         )

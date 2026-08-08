@@ -17,6 +17,10 @@ def beat_schedule(
     monit=False,
     monit_minutes=2,
     clearing=False,
+    tax=False,
+    tax_hour=4,
+    tax_minute=15,
+    sweep=False,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -85,6 +89,28 @@ def beat_schedule(
         schedule["clearing-expire-holds"] = {
             "task": "toto.clearing.tasks.expire_holds",
             "schedule": crontab(minute="*/5"),
+        }
+
+    if tax:
+        from celery.schedules import crontab
+
+        # One sweep a day: sample resource holdings, levy the part above each
+        # rule's free allowance. Idempotent per user/day via the usage-event
+        # key, so a double fire is free; a missed day is never backfilled.
+        schedule["tax-daily-levy"] = {
+            "task": "toto.tax.tasks.run_daily_levy",
+            "schedule": crontab(hour=tax_hour, minute=tax_minute),
+        }
+
+    if sweep:
+        from celery.schedules import crontab
+
+        # The safety net for every run table: closes rows whose worker died
+        # without a finally-block. Hourly, off the :00 stampede (monit-prune's
+        # :17 reasoning). Idempotent — a closed row never matches again.
+        schedule["quota-sweep-stuck-runs"] = {
+            "task": "toto.quota.tasks.sweep_stuck_runs",
+            "schedule": crontab(minute="41"),
         }
 
     return schedule

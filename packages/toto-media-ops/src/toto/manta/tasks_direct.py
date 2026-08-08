@@ -11,6 +11,9 @@ log = logging.getLogger(__name__)
 
 @shared_task(bind=True, name="toto.manta.tasks.run_direct", time_limit=7300, soft_time_limit=7200)
 def run_direct_job(self, job_id: int) -> dict:
+    # Worker-side capture (belt to the dispatch-side one): covers redelivery
+    # and any send_task caller that skipped apply_async.
+    FileJob.objects.filter(pk=job_id).update(celery_task_id=self.request.id or "")
     job = FileJob.objects.get(pk=job_id)
     try:
         get_command(job.command)().execute(job)
