@@ -44,6 +44,7 @@ from .serializers import (
     WorkflowRunSerializer,
     WorkflowSerializer,
 )
+from .permissions import can_cancel_run, can_manage_workflow
 from .services.reports import render_report
 from .services.validator import ValidationError, WorkflowValidator
 from .tasks import start_workflow_run_task
@@ -119,7 +120,9 @@ def workflow_list(request):
 
     ser = WorkflowSerializer(data=request.data)
     ser.is_valid(raise_exception=True)
-    workflow = ser.save()
+    # owner is a read-only serializer field, so this is the only write path —
+    # a client cannot spoof somebody else's ownership.
+    workflow = ser.save(owner=request.user)
     return Response(WorkflowSerializer(workflow).data, status=status.HTTP_201_CREATED)
 
 
@@ -134,8 +137,17 @@ def workflow_detail(request, workflow_id):
     if request.method == "GET":
         return Response(WorkflowSerializer(workflow).data)
 
+    if not can_manage_workflow(request.user, workflow):
+        return Response(
+            {"detail": "Only the workflow's owner or staff may modify it."},
+            status=status.HTTP_403_FORBIDDEN)
+
     if request.method == "DELETE":
         workflow.delete()
+        # A deleted workflow must stop billing: drop any raised time dial.
+        from toto.quota import times
+
+        times.clear_scope("workflows.Workflow", workflow_id)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     partial = request.method == "PATCH"
@@ -177,6 +189,11 @@ def node_create(request, workflow_id):
     except Workflow.DoesNotExist:
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    if not can_manage_workflow(request.user, workflow):
+        return Response(
+            {"detail": "Only the workflow's owner or staff may modify it."},
+            status=status.HTTP_403_FORBIDDEN)
+
     data = {**request.data, "workflow": workflow.id}
     ser = WorkflowNodeSerializer(data=data)
     ser.is_valid(raise_exception=True)
@@ -188,12 +205,18 @@ def node_create(request, workflow_id):
 @permission_classes([IsAuthenticated])
 def node_detail(request, workflow_id, node_id):
     try:
-        node = WorkflowNode.objects.get(pk=node_id, workflow_id=workflow_id)
+        node = WorkflowNode.objects.select_related("workflow").get(
+            pk=node_id, workflow_id=workflow_id)
     except WorkflowNode.DoesNotExist:
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
     if request.method == "GET":
         return Response(WorkflowNodeSerializer(node).data)
+
+    if not can_manage_workflow(request.user, node.workflow):
+        return Response(
+            {"detail": "Only the workflow's owner or staff may modify it."},
+            status=status.HTTP_403_FORBIDDEN)
 
     if request.method == "DELETE":
         node.delete()
@@ -218,6 +241,11 @@ def edge_create(request, workflow_id):
     except Workflow.DoesNotExist:
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
 
+    if not can_manage_workflow(request.user, workflow):
+        return Response(
+            {"detail": "Only the workflow's owner or staff may modify it."},
+            status=status.HTTP_403_FORBIDDEN)
+
     data = {**request.data, "workflow": workflow.id}
     ser = WorkflowEdgeSerializer(data=data)
     ser.is_valid(raise_exception=True)
@@ -229,9 +257,15 @@ def edge_create(request, workflow_id):
 @permission_classes([IsAuthenticated])
 def edge_delete(request, workflow_id, edge_id):
     try:
-        edge = WorkflowEdge.objects.get(pk=edge_id, workflow_id=workflow_id)
+        edge = WorkflowEdge.objects.select_related("workflow").get(
+            pk=edge_id, workflow_id=workflow_id)
     except WorkflowEdge.DoesNotExist:
         return Response({"detail": "Not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    if not can_manage_workflow(request.user, edge.workflow):
+        return Response(
+            {"detail": "Only the workflow's owner or staff may modify it."},
+            status=status.HTTP_403_FORBIDDEN)
 
     edge.delete()
     return Response(status=status.HTTP_204_NO_CONTENT)
@@ -287,6 +321,7 @@ def run_list(request, workflow_id):
     run = WorkflowRun.objects.create(
         workflow=workflow,
         input_data=ser.validated_data.get("input_data") or {},
+        started_by=request.user,
     )
     src = {"source_type": "workflows.WorkflowRun", "source_id": str(run.pk)}
     record_usage(WorkflowUsageEvent, "workflows.run", 1, request.user,
@@ -322,9 +357,19 @@ def cancel_run(request, run_id):
     current status so callers don't need to pre-check.
     """
     from django.utils import timezone as _tz
-    run = get_object_or_404(WorkflowRun, pk=run_id)
+    run = get_object_or_404(
+        WorkflowRun.objects.select_related("workflow"), pk=run_id)
 
-    if run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED, "cancelled"):
+    # Before the terminal short-circuit: a stranger gets 403 even for a
+    # finished run — one consistent answer instead of an oracle.
+    if not can_cancel_run(request.user, run):
+        return Response(
+            {"detail": "Only the run's starter, the workflow's owner or "
+                       "staff may cancel it."},
+            status=status.HTTP_403_FORBIDDEN)
+
+    if run.status in (WorkflowRun.COMPLETED, WorkflowRun.FAILED,
+                      WorkflowRun.CANCELLED):
         return Response({"status": run.status, "detail": "Run already finished."})
 
     # Mark any in-flight node runs as failed
@@ -333,10 +378,10 @@ def cancel_run(request, run_id):
         status__in=[WorkflowNodeRun.PENDING, WorkflowNodeRun.RUNNING],
     ).update(status=WorkflowNodeRun.FAILED, error="Cancelled by user.")
 
-    run.status = "cancelled"
+    run.status = WorkflowRun.CANCELLED
     run.completed_at = _tz.now()
     run.save(update_fields=["status", "completed_at"])
-    return Response({"status": "cancelled"})
+    return Response({"status": WorkflowRun.CANCELLED})
 
 
 # ---------------------------------------------------------------------------
@@ -350,7 +395,8 @@ class WorkflowListUIView(LoginRequiredMixin, ListView):
     login_url = reverse_lazy("core:login")
 
     def get_queryset(self):
-        return Workflow.objects.prefetch_related("nodes").order_by("-created_at")
+        return (Workflow.objects.select_related("owner")
+                .prefetch_related("nodes").order_by("-created_at"))
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
@@ -373,7 +419,17 @@ class WorkflowDetailUIView(LoginRequiredMixin, DetailView):
         edges = list(workflow.edges.select_related("source", "target").order_by("id"))
         context["nodes"] = nodes
         context["edges"] = edges
-        context["runs"] = workflow.runs.order_by("-created_at")[:20]
+        context["runs"] = (workflow.runs.select_related("started_by")
+                           .order_by("-created_at")[:20])
+        # The Time card: only the owner may dial their workflow, and the card
+        # hides itself when the levy engine is absent (set_url == "").
+        context["is_owner"] = (workflow.owner_id is not None
+                               and self.request.user.pk == workflow.owner_id)
+        if context["is_owner"]:
+            from toto.quota import times
+
+            context["time_dial"] = times.dial("workflows.lambda_timeout",
+                                              scope_id=workflow.pk)
         context["graph_nodes_json"] = json.dumps([
             {
                 "id": n.id,
@@ -404,11 +460,14 @@ class WorkflowRunDetailUIView(LoginRequiredMixin, DetailView):
     login_url = reverse_lazy("core:login")
 
     def get_object(self, queryset=None):
-        return get_object_or_404(WorkflowRun, pk=self.kwargs["run_id"])
+        return get_object_or_404(
+            WorkflowRun.objects.select_related("workflow", "started_by"),
+            pk=self.kwargs["run_id"])
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         run = self.get_object()
+        context["can_cancel"] = can_cancel_run(self.request.user, run)
         node_runs = list(run.node_runs.select_related("node").order_by("id"))
         edge_runs = list(run.edge_runs.select_related("edge__source", "edge__target").order_by("id"))
         reports = list(

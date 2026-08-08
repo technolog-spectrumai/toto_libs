@@ -19,7 +19,8 @@ from . import services
 logger = logging.getLogger("toto.tax")
 
 
-@shared_task(name="toto.tax.tasks.run_daily_levy")
+@shared_task(name="toto.tax.tasks.run_daily_levy",
+             soft_time_limit=3300, time_limit=3600)
 def run_daily_levy() -> list[dict]:
     summaries = services.run_daily_levy()
     return [

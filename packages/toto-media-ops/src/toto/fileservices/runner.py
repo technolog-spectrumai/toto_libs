@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import os
 import shlex
 import subprocess
@@ -7,6 +8,8 @@ import tempfile
 
 from django.core.files.base import File
 from django.utils import timezone
+
+logger = logging.getLogger("toto.fileservices")
 
 # Shell tokens rejected from user-supplied free-text args (shell=False, but we
 # stay defensive). `;` is allowed for ffmpeg filtergraph chains.
@@ -84,6 +87,11 @@ def execute_run(run_id: int) -> dict:
     from .plugin import FileServicePlugin
 
     run = FileServiceRun.objects.select_related("input_file", "owner", "bucket").get(pk=run_id)
+    if run.status in (FileServiceRun.SUCCESS, FileServiceRun.FAILED):
+        # A redelivered task (broker visibility timeout) must not resurrect a
+        # row the stuck-run sweeper already closed.
+        logger.warning("fileservices: run %s is already terminal; refusing to re-run", run_id)
+        return {"status": run.status, "skipped": True}
     run.status = FileServiceRun.RUNNING
     run.save(update_fields=["status"])
 

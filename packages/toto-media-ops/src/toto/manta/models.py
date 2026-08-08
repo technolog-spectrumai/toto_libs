@@ -59,16 +59,25 @@ def fail_job(job: FileJob, message: str) -> None:
     """Terminally close a job that will never report.
 
     FileJob has no error field by design — failures live in output['error']
-    (the backends.py shape) — so the sweeper's reason lands there too.
+    (the backends.py shape) — so the sweeper's reason lands there too. A job
+    closed while still PENDING never ran at all: the charge is refunded (the
+    house rule — paid-for-but-never-delivered work refunds; work that RAN and
+    failed keeps its charge).
     """
     from django.utils import timezone
 
+    never_ran = job.status == FileJob.Status.PENDING
     out = job.output if isinstance(job.output, dict) else {}
     out["error"] = message
     job.output = out
     job.status = FileJob.Status.FAILED
     job.finished_at = timezone.now()
     job.save(update_fields=["status", "output", "finished_at"])
+    if never_ran:
+        from toto.quota.charge import refund_for
+
+        refund_for("manta.FileJob", job.pk, "manta.job",
+                   reason=f"never ran: {message}")
 
 
 class MediaJob(FileJob):

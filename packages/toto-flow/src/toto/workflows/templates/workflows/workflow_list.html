@@ -67,6 +67,9 @@
                   <span class="mx-2 opacity-40">·</span>
                   <i class="fa-regular fa-clock mr-1"></i>
                   {% trans "Created" %} {{ wf.created_at|date:"Y-m-d H:i" }}
+                  <span class="mx-2 opacity-40">·</span>
+                  <i class="fa-solid fa-user mr-1"></i>
+                  {% if wf.owner %}{{ wf.owner.username }}{% else %}{% trans "System" %}{% endif %}
                 </p>
               </div>
               <div class="flex shrink-0 flex-wrap gap-2">

@@ -83,3 +83,14 @@ class Command(IngressCommand):
                         f"tax: {code} is metered but FREE — price it at "
                         "/quota/rates/ to arm the levy."
                     )
+
+        # Community-fee policies are never seeded — armed by a person, per
+        # asset, at /tax/rules/.
+        from ...models import SurplusPolicy
+
+        if not SurplusPolicy.objects.exists():
+            self.stdout.write(
+                "tax: no community-fee policies — arm one per asset at "
+                "/tax/rules/ (threshold, %/period; collected into "
+                "platform-community-fees)."
+            )

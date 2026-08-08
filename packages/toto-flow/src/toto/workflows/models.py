@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
@@ -125,6 +126,11 @@ class Workflow(models.Model):
     slug = models.SlugField(max_length=280, unique=True, blank=True)
     description = models.TextField(blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    owner = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="owned_workflows",
+        help_text="NULL = system workflow (seeded by ingress/apps; staff-managed).",
+    )
 
     def save(self, *args, **kwargs):
         if not self.slug:
@@ -248,12 +254,14 @@ class WorkflowRun(models.Model):
     RUNNING = "running"
     COMPLETED = "completed"
     FAILED = "failed"
+    CANCELLED = "cancelled"
 
     STATUS_CHOICES = [
         (PENDING, "Pending"),
         (RUNNING, "Running"),
         (COMPLETED, "Completed"),
         (FAILED, "Failed"),
+        (CANCELLED, "Cancelled"),
     ]
 
     workflow = models.ForeignKey(Workflow, on_delete=models.CASCADE, related_name="runs")
@@ -263,6 +271,10 @@ class WorkflowRun(models.Model):
     started_at = models.DateTimeField(null=True, blank=True)
     completed_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(default=timezone.now)
+    started_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="started_workflow_runs",
+    )
 
     def __str__(self):
         return f"Run {self.id} [{self.workflow}] {self.status}"

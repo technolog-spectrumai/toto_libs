@@ -32,6 +32,10 @@ logger = logging.getLogger("toto.tax")
 
 REASON_PAID = "paid"
 REASON_UNDER_ALLOWANCE = "under_allowance"
+# The metric lost its price: nothing is being charged, so nothing is owed —
+# a case left WARNED across an unpriced interlude would otherwise enforce
+# instantly (stale deadline) on the first failure after re-pricing.
+REASON_UNPRICED = "unpriced"
 
 ACTIVE_STATUSES = (ArrearsStatus.OPEN, ArrearsStatus.WARNED)
 
@@ -45,6 +49,17 @@ def _trim(value) -> str:
     ``normalize()`` would render 10 as ``1E+1`` in a sentence for a person."""
     text = str(value)
     return text.rstrip("0").rstrip(".") if "." in text else text
+
+
+def _provider_for(rule):
+    from toto.quota.levy import registry
+
+    return registry.get(rule.metric_code)
+
+
+def _provider_consequence(rule) -> str:
+    provider = _provider_for(rule)
+    return getattr(provider, "consequence_text", "") if provider else ""
 
 
 def _active_case(user, rule):
@@ -118,6 +133,7 @@ def _deliver_warning(case, rule, *, shortfall, asset, now) -> None:
             deadline=deadline,
             shortfall=shortfall, asset=asset,
             allowance_text=f"{_trim(rule.allowance)} {rule.unit_label}".strip(),
+            consequence=_provider_consequence(rule),
         )
     except Exception:  # noqa: BLE001 - warning must not sink the levy run
         logger.exception("tax: could not create warning event for case %s", case.uuid)
@@ -229,10 +245,20 @@ def enforce_if_due(case, provider, *, now=None):
     _delete_warning_event(case)
 
     try:
+        freed_text = provider.format_raw(result.deleted_raw) or ""
+        summary = ""
+        if getattr(provider, "consequence_text", ""):
+            # A non-storage levy words its own outcome instead of the
+            # deleted-files default.
+            summary = (f"{result.deleted_count} item(s) "
+                       f"({freed_text or result.deleted_raw}) were shed: "
+                       f"{provider.consequence_text}.")
         notices.create_enforcement_event(
             case.user,
             deleted_count=result.deleted_count,
             deleted_raw=result.deleted_raw,
+            freed_text=freed_text,
+            summary=summary,
         )
     except Exception:  # noqa: BLE001 - the deed is done; only the notice failed
         logger.exception("tax: could not create enforcement notice for case %s", case.uuid)

@@ -16,7 +16,8 @@ def superuser_required(view_func):
     return user_passes_test(lambda u: u.is_active and u.is_superuser)(view_func)
 
 
-def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun":
+def _trigger_workflow(slug: str, input_data: dict | None = None,
+                      user=None) -> "WorkflowRun":
     from toto.workflows.models import Workflow, WorkflowRun
     from toto.workflows.tasks import start_workflow_run_task
 
@@ -25,7 +26,9 @@ def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun
         raise RuntimeError(
             f"Workflow '{slug}' not found — run ingress_sql_neo4j_sync to create it."
         )
-    run = WorkflowRun.objects.create(workflow=wf, input_data=input_data or {})
+    run = WorkflowRun.objects.create(
+        workflow=wf, input_data=input_data or {},
+        started_by=user if getattr(user, "pk", None) else None)
     start_workflow_run_task.delay(run.pk)
     return run
 
@@ -74,6 +77,7 @@ def create_projection_plan(request):
         run = _trigger_workflow(
             "ravioli-generate-plan",
             input_data={"data": {"labels": selected_labels}},
+            user=request.user,
         )
     except RuntimeError as exc:
         messages.error(request, str(exc))
@@ -136,6 +140,7 @@ def apply_projection_plan_view(request, plan_id):
         run = _trigger_workflow(
             "ravioli-apply-plan",
             input_data={"data": {"plan_id": plan.pk}},
+            user=request.user,
         )
     except RuntimeError as exc:
         messages.error(request, str(exc))
@@ -159,7 +164,7 @@ def full_sync_view(request):
         return redirect("sql_neo4j_sync:projection_sync")
 
     try:
-        run = _trigger_workflow("ravioli-sync")
+        run = _trigger_workflow("ravioli-sync", user=request.user)
     except RuntimeError as exc:
         messages.error(request, str(exc))
         return redirect("sql_neo4j_sync:projection_sync")
@@ -182,7 +187,7 @@ def clear_db_view(request):
         return redirect("sql_neo4j_sync:projection_sync")
 
     try:
-        run = _trigger_workflow("ravioli-clear-db")
+        run = _trigger_workflow("ravioli-clear-db", user=request.user)
     except RuntimeError as exc:
         messages.error(request, str(exc))
         return redirect("sql_neo4j_sync:projection_sync")

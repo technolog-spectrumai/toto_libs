@@ -53,6 +53,12 @@
         {% endwith %}
       </div>
       <p class="text-xs opacity-50">{% trans "Account" %}: {{ holding.account.code }}</p>
+      {% if holding.community_fee %}
+      <p class="text-xs opacity-60">
+        <i class="fa-solid fa-hand-holding-dollar mr-1"></i>
+        {% blocktrans with estimate=holding.community_fee.estimate|floatformat:"-9" unit=holding.community_fee.unit period=holding.community_fee.period threshold=holding.community_fee.threshold|floatformat:"-9" %}Community fee: ~{{ estimate }} {{ unit }} / {{ period }} above {{ threshold }}{% endblocktrans %}
+      </p>
+      {% endif %}
     </article>
     {% endfor %}
   </div>

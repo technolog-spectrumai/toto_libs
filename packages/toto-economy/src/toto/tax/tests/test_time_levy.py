@@ -196,3 +196,31 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
         row = next(r for r in rows if r["rule"].metric_code == "time.hold")
         self.assertEqual(row["display"], "4 h")
         self.assertEqual(row["billable"], Decimal("4"))
+
+    def test_warning_and_enforcement_notices_speak_time_not_storage(self):
+        # Review finding: the notices were hardcoded for storage — the time
+        # levy must warn about dial resets, never about deleting files.
+        from toto.events.models import ScheduledEvent
+        from toto.people.models import Person
+
+        Person.objects.create(user=self.alice, display_name="alice", slug="alice")
+        price_time_hold("0.25")
+        fund_prepaid(self.alice, self.asset, 1)
+
+        services.levy_rule(self.rule)
+
+        warning = ScheduledEvent.objects.get()
+        self.assertIn("reset to their free defaults", warning.description)
+        self.assertNotIn("permanently deleted", warning.description)
+
+        case = TaxArrearsCase.objects.get(user=self.alice)
+        case.deadline_at = timezone.now() - datetime.timedelta(hours=1)
+        case.save(update_fields=["deadline_at"])
+        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
+        services.levy_rule(self.rule, day=tomorrow)
+
+        # The warning was deleted on enforcement; only the notice remains.
+        notice = ScheduledEvent.objects.get()
+        self.assertIn("limits reduced", notice.title.lower())
+        self.assertIn("4 h", notice.description)
+        self.assertNotIn("GB", notice.description)

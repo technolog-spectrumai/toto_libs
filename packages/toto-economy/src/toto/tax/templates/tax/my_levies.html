@@ -76,7 +76,47 @@
     {% endif %}
   </article>
 {% empty %}
+  {% if not community_rows %}
   <p class="text-sm opacity-60">{% trans "No recurring levies are configured on this host." %}</p>
+  {% endif %}
 {% endfor %}
+
+{% if community_rows %}
+  <h2 class="pt-2 text-lg font-bold"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>{% trans "Community fee" %}</h2>
+  <p class="text-sm leading-6 opacity-70">
+    {% trans "The community fee prevents idle accounts: currency held above the threshold is charged a small percentage each period, automatically, in the same currency — money should move." %}
+  </p>
+  {% for row in community_rows %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm space-y-3">
+      <div class="flex flex-wrap items-baseline justify-between gap-2">
+        <div>
+          <div class="font-semibold">{{ row.asset_name }} ({{ row.unit }})</div>
+          <span class="text-xs opacity-55">
+            {% blocktrans with rate=row.rate_pct period=row.period threshold=row.threshold|floatformat:"-9" unit=row.unit %}{{ rate }}% per {{ period }} on holdings above {{ threshold }} {{ unit }}{% endblocktrans %}
+          </span>
+        </div>
+        {% if row.surplus > 0 %}
+          <div class="text-right">
+            <div class="text-2xl font-bold font-mono">{{ row.estimate|floatformat:"-9" }} {{ row.unit }}</div>
+            <div class="text-xs opacity-55">{% blocktrans with period=row.period %}next fee ({{ period }}){% endblocktrans %}</div>
+          </div>
+        {% else %}
+          <span class="rounded-full border px-3 py-1 text-xs font-semibold opacity-70">{% trans "you are under the threshold" %}</span>
+        {% endif %}
+      </div>
+      <div class="grid gap-4 sm:grid-cols-2">
+        <div>
+          <div class="text-xs uppercase tracking-wide opacity-55">{% trans "You hold" %}</div>
+          <div class="text-lg font-bold font-mono">{{ row.total|floatformat:"-9" }} {{ row.unit }}</div>
+        </div>
+        <div>
+          <div class="text-xs uppercase tracking-wide opacity-55">{% trans "Surplus" %}</div>
+          <div class="text-lg font-bold font-mono">{{ row.surplus|floatformat:"-9" }} {{ row.unit }}</div>
+        </div>
+      </div>
+    </article>
+  {% endfor %}
+{% endif %}
 
 {% endblock %}

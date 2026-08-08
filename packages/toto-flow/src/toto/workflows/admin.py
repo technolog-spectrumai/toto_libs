@@ -66,10 +66,11 @@ class LambdaFunctionAdmin(admin.ModelAdmin):
 
 @admin.register(Workflow)
 class WorkflowAdmin(admin.ModelAdmin):
-    list_display = ("id", "name", "slug", "node_count", "created_at")
-    search_fields = ("name", "slug")
+    list_display = ("id", "name", "slug", "owner", "node_count", "created_at")
+    search_fields = ("name", "slug", "owner__username")
     prepopulated_fields = {"slug": ("name",)}
     readonly_fields = ("created_at",)
+    raw_id_fields = ("owner",)
     inlines = [WorkflowNodeInline, WorkflowEdgeInline]
 
     @admin.display(description="Nodes")
@@ -113,8 +114,10 @@ class WorkflowEdgeRunInline(admin.TabularInline):
 
 @admin.register(WorkflowRun)
 class WorkflowRunAdmin(admin.ModelAdmin):
-    list_display = ("id", "workflow", "status_badge", "started_at", "completed_at")
+    list_display = ("id", "workflow", "started_by", "status_badge",
+                    "started_at", "completed_at")
     list_filter = ("status", "workflow")
+    raw_id_fields = ("started_by",)
     readonly_fields = ("created_at", "started_at", "completed_at")
     inlines = [WorkflowNodeRunInline, WorkflowEdgeRunInline]
 

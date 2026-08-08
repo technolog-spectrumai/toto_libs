@@ -76,20 +76,29 @@ class WorkflowEdgeSerializer(serializers.ModelSerializer):
 class WorkflowSerializer(serializers.ModelSerializer):
     nodes = WorkflowNodeSerializer(many=True, read_only=True)
     edges = WorkflowEdgeSerializer(many=True, read_only=True)
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+    # default=None is what survives a NULL owner on the dotted source.
+    owner_username = serializers.CharField(source="owner.username",
+                                           read_only=True, default=None)
 
     class Meta:
         model = Workflow
-        fields = ["id", "name", "slug", "description", "created_at", "nodes", "edges"]
-        read_only_fields = ["id", "slug", "created_at"]
+        fields = ["id", "name", "slug", "description", "created_at",
+                  "owner", "owner_username", "nodes", "edges"]
+        read_only_fields = ["id", "slug", "created_at", "owner", "owner_username"]
 
 
 class WorkflowListSerializer(serializers.ModelSerializer):
     node_count = serializers.IntegerField(source="nodes.count", read_only=True)
+    owner = serializers.PrimaryKeyRelatedField(read_only=True)
+    owner_username = serializers.CharField(source="owner.username",
+                                           read_only=True, default=None)
 
     class Meta:
         model = Workflow
-        fields = ["id", "name", "slug", "description", "created_at", "node_count"]
-        read_only_fields = ["id", "slug", "created_at"]
+        fields = ["id", "name", "slug", "description", "created_at",
+                  "owner", "owner_username", "node_count"]
+        read_only_fields = ["id", "slug", "created_at", "owner", "owner_username"]
 
 
 class WorkflowNodeRunSerializer(serializers.ModelSerializer):
@@ -116,17 +125,22 @@ class WorkflowEdgeRunSerializer(serializers.ModelSerializer):
 class WorkflowRunSerializer(serializers.ModelSerializer):
     node_runs = WorkflowNodeRunSerializer(many=True, read_only=True)
     edge_runs = WorkflowEdgeRunSerializer(many=True, read_only=True)
+    started_by = serializers.PrimaryKeyRelatedField(read_only=True)
+    started_by_username = serializers.CharField(source="started_by.username",
+                                                read_only=True, default=None)
 
     class Meta:
         model = WorkflowRun
         fields = [
             "id", "workflow", "status", "input_data", "output_data",
             "started_at", "completed_at", "created_at",
+            "started_by", "started_by_username",
             "node_runs", "edge_runs",
         ]
         read_only_fields = [
             "id", "status", "output_data",
             "started_at", "completed_at", "created_at",
+            "started_by", "started_by_username",
             "node_runs", "edge_runs",
         ]
 

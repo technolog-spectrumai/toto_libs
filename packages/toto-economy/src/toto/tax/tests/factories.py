@@ -43,6 +43,37 @@ def price_gb_day(value="0.5", asset=None):
     return upsert_price(registry.get("storage.gb_day"), Decimal(value), asset=asset)
 
 
+def make_user_account(user, code, priority=0):
+    from toto.assets.models import AccountType, LedgerAccount
+
+    return LedgerAccount.objects.create(
+        code=code, name=code, account_type=AccountType.USER,
+        user=user, user_priority=priority, active=True,
+    )
+
+
+def fund_account(account, asset, base_units: int):
+    from toto.assets.models import AssetHolding
+
+    holding, _created = AssetHolding.objects.get_or_create(
+        account=account, asset=asset, defaults={"balance_base_units": base_units},
+    )
+    if holding.balance_base_units != base_units:
+        holding.balance_base_units = base_units
+        holding.save()
+    return holding
+
+
+def make_surplus_policy(asset, threshold="100", rate="0.02", period="monthly",
+                        active=True):
+    from ..models import SurplusPolicy
+
+    return SurplusPolicy.objects.create(
+        asset=asset, threshold_display=Decimal(threshold),
+        rate=Decimal(rate), period=period, active=active,
+    )
+
+
 def fund_prepaid(user, asset, base_units: int):
     account, _created = get_or_create_prepaid_account(user)
     holding, _created = AssetHolding.objects.get_or_create(

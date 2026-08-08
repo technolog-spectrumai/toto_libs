@@ -65,6 +65,10 @@ class LevyProvider:
     code: str = ""
     metric_code: str = ""
     raw_per_unit: int = 1
+    #: What enforcement means for THIS resource, for the warning notice —
+    #: e.g. "your raised time limits will be reset to their free defaults".
+    #: Empty means the engine's default (permanent random deletion) wording.
+    consequence_text: str = ""
 
     def format_raw(self, raw: int) -> str | None:
         """A human rendering of a raw amount ("2.5 h"), or None to let the

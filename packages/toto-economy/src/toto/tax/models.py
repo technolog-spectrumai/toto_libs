@@ -114,6 +114,113 @@ class TaxQuotaPolicy(AbstractQuotaPolicy):
         verbose_name_plural = "Tax quota policies"
 
 
+class SurplusPeriod(models.TextChoices):
+    DAILY = "daily", "Daily"
+    WEEKLY = "weekly", "Weekly"
+    MONTHLY = "monthly", "Monthly"
+    YEARLY = "yearly", "Yearly"
+
+
+class SurplusPolicy(models.Model):
+    """The community fee's per-asset dial: threshold, rate, period.
+
+    Holdings above the threshold are the surplus; the fee is
+    floor(surplus × rate) per calendar-aligned period, deducted in the SAME
+    asset. The FK is a string reference so this module never imports assets
+    at import time; both apps ship in the toto-economy wheel.
+    """
+
+    asset = models.OneToOneField(
+        "assets.Asset", on_delete=models.PROTECT, related_name="+",
+    )
+    threshold_display = models.DecimalField(
+        max_digits=30, decimal_places=18,
+        help_text="Held for free, in asset units. Only the excess is taxed.",
+    )
+    # Derived from threshold_display on save; the only number the sweep reads.
+    threshold_base_units = models.PositiveBigIntegerField(blank=True, default=0)
+    rate = models.DecimalField(
+        max_digits=7, decimal_places=6,
+        help_text="Fraction of the surplus per period, e.g. 0.02 = 2%.",
+    )
+    period = models.CharField(max_length=10, choices=SurplusPeriod.choices,
+                              default=SurplusPeriod.MONTHLY)
+    active = models.BooleanField(default=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name_plural = "Surplus policies"
+
+    def clean(self):
+        from decimal import Decimal
+
+        from django.core.exceptions import ValidationError
+
+        if self.rate is not None and not (Decimal("0") <= self.rate <= Decimal("0.25")):
+            raise ValidationError("The rate must be between 0 and 0.25 per period.")
+        if self.threshold_display is not None and self.threshold_display < 0:
+            raise ValidationError("The threshold cannot be negative.")
+
+    def save(self, *args, **kwargs):
+        # The TariffItem invariant: the display number is what a human typed,
+        # the derived base units are what is actually charged — always a full
+        # save, never bill the display.
+        from toto.assets.models import to_base_units
+
+        if self.threshold_display is not None and self.asset_id:
+            self.threshold_base_units = to_base_units(
+                self.threshold_display, self.asset.decimals)
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return (f"Community fee on {self.asset} — {self.rate} per "
+                f"{self.period} above {self.threshold_display}")
+
+
+class SurplusChargeStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    COLLECTED = "collected", "Collected"
+    SKIPPED = "skipped", "Skipped"
+
+
+class SurplusCharge(models.Model):
+    """One user's community fee for one period — the journal, not the money
+    (the ledger transactions are the money trail). The unique constraint is
+    the sweep's idempotency backbone; the stored allocation is what makes a
+    crash-recovery replay produce identical transfer fingerprints."""
+
+    policy = models.ForeignKey(SurplusPolicy, on_delete=models.CASCADE,
+                               related_name="charges")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="surplus_charges")
+    period_label = models.CharField(max_length=32)
+    total_base = models.PositiveBigIntegerField()
+    threshold_base = models.PositiveBigIntegerField()
+    fee_base = models.PositiveBigIntegerField()
+    rate = models.DecimalField(max_digits=7, decimal_places=6)
+    allocation = models.JSONField(default=list)  # [[account_id, amount_base], ...] largest-first
+    status = models.CharField(max_length=10, choices=SurplusChargeStatus.choices,
+                              default=SurplusChargeStatus.PENDING, db_index=True)
+    collected_at = models.DateTimeField(null=True, blank=True)
+    note = models.JSONField(default=dict, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(
+                fields=["policy", "user", "period_label"],
+                name="tax_one_surplus_charge_per_period",
+            ),
+        ]
+        indexes = [models.Index(fields=["policy", "status"])]
+        ordering = ["-created_at"]
+
+    def __str__(self):
+        return f"{self.user} / {self.policy.asset} {self.period_label}: {self.fee_base} ({self.status})"
+
+
 class ArrearsStatus(models.TextChoices):
     OPEN = "open", "Open"            # charge failed; warning not yet delivered
     WARNED = "warned", "Warned"      # warning delivered; deadline running

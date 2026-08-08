@@ -143,8 +143,8 @@
   </ul>
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">Time limits work the same way.</span> Some things are bounded by time
-    rather than space — how long an idle Python kernel stays warm, how long a compile or a media job
-    may run. Each has a free default, and you can raise it from its app or centrally on
+    rather than space — how long an idle Python kernel stays warm, how long a compile, a media job
+    or a workflow step may run. Each has a free default, and you can raise it from its app or centrally on
     <a href="{% url 'tax:demurrage' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
     holding a raised limit costs a small daily fee (demurrage), charged automatically per hour of
     extension, whether you use it or not. If the fee cannot be collected, the same warning and
@@ -152,6 +152,15 @@
     defaults. Housekeeping runs regardless: idle kernels stop automatically once their limit passes
     (variables are cleared, files are untouched), and background jobs that die without reporting are
     closed as failed within a few hours.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">The community fee works the same way.</span> It prevents idle
+    accounts: money held above a per-currency threshold is charged a small percentage each period,
+    automatically, in the same currency — taken from your largest holding first, summed across all
+    your accounts. Nothing to confirm and nothing to run out of: the fee is always smaller than the
+    surplus it taxes. Money should move. The thresholds and rates are published on
+    <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">My levies</a>
+    and on each currency's page.
   </p>
 </section>
 {% endif %}

@@ -103,6 +103,11 @@ TASK_MODULES = [
     "toto.connectors",
     "toto.formica",
     "toto.manta",       # toto-media-ops; needs manta/tasks.py to be discoverable
+    # fileservices' direct task (run_file_service_task) — the extended-runtime
+    # dispatch path and the no-workflow fallback both enqueue it, and without
+    # this entry the worker answers KeyError and discards the job (the exact
+    # transcription failure mode above). Inert where the ops wheel is absent.
+    "toto.fileservices",
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
     "toto.tax",         # the daily levy sweep; inert where toto-economy is absent

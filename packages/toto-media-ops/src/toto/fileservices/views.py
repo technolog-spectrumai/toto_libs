@@ -101,7 +101,12 @@ def run_service(request, file_pk):
         # Close the row too — before this, a failed dispatch left it PENDING
         # forever, which is exactly the shape the stuck-run sweeper exists to
         # catch; the request that watched it happen should not need a sweeper.
-        fail_run(run, f"Could not be queued: {exc}")
+        # The INLINE path records its own failure (real stderr + refund) on a
+        # fresh instance before re-raising — refresh so we don't clobber it
+        # with a false "could not be queued".
+        run.refresh_from_db()
+        if run.status not in (FileServiceRun.SUCCESS, FileServiceRun.FAILED):
+            fail_run(run, f"Could not be queued: {exc}")
         return JsonResponse({"status": "failed", "run_id": run.id, "run_url": run_url,
                              "error": str(exc)}, status=200)
     if queued:

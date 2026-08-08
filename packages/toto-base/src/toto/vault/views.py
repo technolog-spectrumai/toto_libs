@@ -1149,6 +1149,7 @@ class EncryptFileView(LoginRequiredMixin, View):
                 run = WorkflowRun.objects.create(
                     workflow=wf,
                     input_data={"data": {"file_pk": vault_file.pk, "owner_id": request.user.id}},
+                    started_by=request.user,
                 )
                 use_celery = celery_available()
             except Exception:  # noqa: BLE001 — engine/db issue → fall back to synchronous
@@ -1600,7 +1601,7 @@ class CreateZipView(LoginRequiredMixin, View):
             "file_ids": valid_ids,
             "output_name": output_name,
         }}
-        run, queued = self._start_zip_run(payload)
+        run, queued = self._start_zip_run(payload, request.user)
 
         try:
             run_url = reverse("workflows:workflow_run_detail", args=[run.id])
@@ -1636,7 +1637,7 @@ class CreateZipView(LoginRequiredMixin, View):
             )
         return wf
 
-    def _start_zip_run(self, payload):
+    def _start_zip_run(self, payload, user):
         """Create the WorkflowRun and execute it. Uses Celery when a worker is
         reachable, otherwise runs inline (so zipping still works on a dev/runserver
         setup with no worker — mirrors fileservices.dispatch.dispatch_run)."""
@@ -1644,7 +1645,8 @@ class CreateZipView(LoginRequiredMixin, View):
         from toto.workflows.models import WorkflowRun
 
         wf = self._ensure_workflow()
-        run = WorkflowRun.objects.create(workflow=wf, input_data=payload)
+        run = WorkflowRun.objects.create(workflow=wf, input_data=payload,
+                                         started_by=user)
         if celery_available():
             from toto.workflows.tasks import start_workflow_run_task
             start_workflow_run_task.delay(run.id)

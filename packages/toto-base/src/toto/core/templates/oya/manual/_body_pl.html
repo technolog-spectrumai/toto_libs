@@ -145,7 +145,7 @@
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">Limity czasowe działają tak samo.</span> Niektóre rzeczy ogranicza
     czas, nie miejsce — jak długo bezczynny kernel Pythona pozostaje uruchomiony, jak długo może
-    trwać kompilacja albo zadanie multimedialne. Każdy limit ma darmową wartość domyślną, którą
+    trwać kompilacja, zadanie multimedialne albo krok przepływu pracy. Każdy limit ma darmową wartość domyślną, którą
     możesz podnieść w danej aplikacji albo centralnie na stronie
     <a href="{% url 'tax:demurrage' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
     utrzymywanie podniesionego limitu kosztuje niewielką dzienną opłatę (demurrage), pobieraną
@@ -155,6 +155,16 @@
     Porządki działają niezależnie: bezczynne kernele zatrzymują się po przekroczeniu limitu
     (zmienne przepadają, pliki zostają), a zadania w tle, które zakończyły się bez raportu, są
     zamykane jako nieudane w ciągu kilku godzin.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    <span class="font-semibold">Opłata wspólnotowa działa tak samo.</span> Zapobiega bezczynnym
+    kontom: środki powyżej progu ustalonego dla danej waluty są obciążane niewielkim procentem
+    w każdym okresie, automatycznie, w tej samej walucie — pobierane najpierw z największego
+    salda, sumowane ze wszystkich Twoich kont. Niczego nie trzeba potwierdzać i nic nie może
+    zabraknąć: opłata jest zawsze mniejsza niż nadwyżka, którą obciąża. Pieniądz powinien krążyć.
+    Progi i stawki publikowane są na stronie
+    <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
+    oraz na stronie każdej waluty.
   </p>
 </section>
 {% endif %}

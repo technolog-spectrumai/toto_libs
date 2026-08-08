@@ -91,6 +91,38 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
             timegrants.set_grant(actor=self.alice, key="test.bucket_dial",
                                  seconds=500, scope_id=999999)
 
+    def test_total_estimate_subtracts_the_hold_allowance(self):
+        # Review finding: the levy bills only the excess above the time.hold
+        # rule's allowance; the tab's total must not overstate the bill.
+        from decimal import Decimal
+
+        from toto.assets.models import Asset
+        from toto.quota.metrics import registry as metric_registry
+        from toto.tariffs.rate_card import upsert_price
+
+        from ..models import TaxRule
+
+        Asset.objects.create(name="Gas", unit_name="ASR", decimals=9,
+                             total_supply_base_units=10 ** 15, active=True)
+        upsert_price(metric_registry.get("time.hold"), Decimal("1"))
+        TaxRule.objects.create(metric_code="time.hold",
+                               allowance=Decimal("1"), unit_label="h")
+        times.registry.register(TimeLimit(
+            key="test.wide", label="Wide dial", app_label="tax", scope="user",
+            free_seconds=0, ceiling_seconds=10 * 3600,
+        ))
+        timegrants.set_grant(actor=self.alice, key="test.wide",
+                             seconds=2 * 3600)  # 2h extra
+
+        data = timegrants.rows_for_user(self.alice)
+
+        # 2h held − 1h allowance = 1h billable at 1 ASR/h·day.
+        self.assertEqual(data["total_extra_hours"], 2.0)
+        self.assertEqual(data["total_estimate"]["amount"], Decimal("1.000000000"))
+        # The per-row estimate stays marginal (documented).
+        self.assertEqual(data["rows"][0]["estimate"]["amount"],
+                         Decimal("2.000000000"))
+
     def test_rows_for_user(self):
         bucket = make_bucket(self.alice)
         timegrants.set_grant(actor=self.alice, key="test.dial", seconds=460)

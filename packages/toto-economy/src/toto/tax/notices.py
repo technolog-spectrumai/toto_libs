@@ -41,24 +41,30 @@ def _category():
 
 
 def create_warning_event(user, *, deadline, shortfall=None, asset: str = "",
-                         allowance_text: str = "") -> ScheduledEvent | None:
+                         allowance_text: str = "",
+                         consequence: str = "") -> ScheduledEvent | None:
     """The one-week warning. Returns the event, or None when the user has no
     Person profile. Sits on the deadline day so the calendar shows the date
-    that matters."""
+    that matters. ``consequence`` states what enforcement means for the levied
+    resource; empty keeps the storage-deletion wording."""
     person = _person_for(user)
     if person is None:
         return None
 
     short_text = f"{shortfall} {asset}".strip() if shortfall is not None else "the amount due"
+    if not consequence:
+        consequence = (
+            "files chosen at random will be permanently deleted from your "
+            "storage until it is back within the free allowance"
+            f"{f' of {allowance_text}' if allowance_text else ''}. "
+            "Deleted files cannot be recovered by anyone"
+        )
     description = (
-        "A recurring platform storage fee could not be collected from your "
+        "A recurring platform fee could not be collected from your "
         f"account (short by {short_text}).\n"
         f"You have until {deadline:%Y-%m-%d} to top up your wallet.\n"
-        "If the fee still cannot be collected by then, files chosen at random "
-        "will be permanently deleted from your storage until it is back within "
-        f"the free allowance{f' of {allowance_text}' if allowance_text else ''}. "
-        "Deleted files cannot be recovered by anyone.\n"
-        "Your current storage, the daily fee and this case: /tax/ — top up via "
+        f"If the fee still cannot be collected by then, {consequence}.\n"
+        "The details and this case: /tax/ — top up via "
         "your wallet (ask an administrator, or trade on the bourse)."
     )
     event = ScheduledEvent.objects.create(
@@ -78,8 +84,13 @@ def create_warning_event(user, *, deadline, shortfall=None, asset: str = "",
     return event
 
 
-def create_enforcement_event(user, *, deleted_count: int, deleted_raw: int) -> ScheduledEvent | None:
-    """The after-the-fact notice: what was shed, and that it is permanent."""
+def create_enforcement_event(user, *, deleted_count: int, deleted_raw: int,
+                             freed_text: str = "",
+                             summary: str = "") -> ScheduledEvent | None:
+    """The after-the-fact notice: what was shed. ``freed_text`` renders the
+    amount in the resource's own unit (a provider's format_raw); ``summary``
+    replaces the whole storage-worded sentence. Defaults keep the storage
+    wording."""
     person = _person_for(user)
     if person is None:
         return None
@@ -87,16 +98,24 @@ def create_enforcement_event(user, *, deleted_count: int, deleted_raw: int) -> S
     from django.utils import timezone
 
     now = timezone.now()
-    freed_gb = deleted_raw / 2 ** 30
+    if not freed_text:
+        freed_text = f"{deleted_raw / 2 ** 30:.2f} GB"
+    title_suffix = "storage reduced"
+    if summary:
+        title_suffix = "limits reduced"
+    else:
+        summary = (
+            f"{deleted_count} file(s) ({freed_text}) chosen at random were "
+            "permanently deleted to bring your storage back within the free "
+            "allowance. Deleted files cannot be recovered."
+        )
     description = (
-        "The unpaid storage fee deadline passed. "
-        f"{deleted_count} file(s) ({freed_gb:.2f} GB) chosen at random were "
-        "permanently deleted to bring your storage back within the free "
-        "allowance. Deleted files cannot be recovered.\n"
+        "The unpaid fee deadline passed. "
+        f"{summary}\n"
         "Details: /tax/."
     )
     event = ScheduledEvent.objects.create(
-        title="Account notice — storage reduced",
+        title=f"Account notice — {title_suffix}",
         description=description,
         start_time=now,
         end_time=now + timedelta(hours=1),

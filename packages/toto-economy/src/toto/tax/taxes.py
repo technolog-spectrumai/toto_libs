@@ -23,6 +23,8 @@ class TimeHoldLevy(LevyProvider):
     code = "tax.time"
     metric_code = "time.hold"
     raw_per_unit = 3600  # raw = extension seconds; billing unit = hours
+    consequence_text = ("your raised time limits will be reset to their free "
+                        "defaults (nothing is deleted)")
 
     def format_raw(self, raw: int) -> str:
         return f"{raw / 3600:g} h"

@@ -40,8 +40,11 @@ def _staff_only(request):
 @login_required
 def my_levies(request):
     """What you hold, what of it is free, and what tonight's levy will cost."""
+    from . import surplus
+
     return _render(request, "tax/my_levies.html", {
         "rows": services.estimate_for_user(request.user),
+        "community_rows": surplus.estimate_for_user(request.user),
         "wallet_url": rates.wallet_url(),
         "balance": rates.balance_of(request.user),
         "is_staff": request.user.is_staff,
@@ -118,12 +121,14 @@ def rules(request):
 
     if request.method == "POST":
         plan, errors = _parse_rules(request.POST)
-        if errors:
-            for message in errors:
+        surplus_plan, surplus_errors = _parse_surplus(request.POST)
+        if errors or surplus_errors:
+            for message in [*errors, *surplus_errors]:
                 messages.error(request, message)
         else:
             with transaction.atomic():
                 _apply_rules(plan)
+                _apply_surplus(surplus_plan)
             messages.success(request, _("Allowances saved."))
             return redirect("tax:rules")
 
@@ -142,7 +147,37 @@ def rules(request):
         "rows": rows,
         "rate_desk_url": reverse("quota:rate_desk"),
         "price_asset": rates.price_asset_symbol(),
+        "surplus_rows": _surplus_rows(),
+        "surplus_periods": _surplus_period_choices(),
     })
+
+
+def _surplus_period_choices():
+    from .models import SurplusPeriod
+
+    return SurplusPeriod.choices
+
+
+def _surplus_rows():
+    """One row per active asset — the tax is on holdings, so every asset is
+    armable; staff choosing which to arm IS the filter."""
+    from toto.assets.models import Asset
+
+    from .models import SurplusPolicy
+
+    policies = {p.asset_id: p for p in SurplusPolicy.objects.all()}
+    rows = []
+    for asset in Asset.objects.filter(active=True).order_by("unit_name"):
+        policy = policies.get(asset.pk)
+        from .surplus import rate_pct_text
+
+        rows.append({
+            "asset": asset,
+            "policy": policy,
+            # The grid speaks PERCENT; the model stores the fraction.
+            "rate_pct": rate_pct_text(policy.rate) if policy else "",
+        })
+    return rows
 
 
 def _parse_rules(post):
@@ -180,3 +215,68 @@ def _apply_rules(plan):
         rule.allowance = entry["allowance"]
         rule.active = entry["active"]
         rule.save()
+
+
+def _parse_surplus(post):
+    """The community-fee grid: read the whole thing before writing any of it.
+    Key absent = row not rendered, leave alone; blank threshold = delete the
+    policy; valued = upsert. Rates are typed as percent, stored as fraction."""
+    from .models import SurplusPeriod
+
+    plan, errors = [], []
+    from toto.assets.models import Asset
+
+    for asset in Asset.objects.filter(active=True):
+        key = f"threshold__{asset.pk}"
+        if key not in post:
+            continue
+        raw_threshold = (post.get(key) or "").strip()
+        if raw_threshold == "":
+            plan.append({"asset": asset, "delete": True})
+            continue
+        raw_rate = (post.get(f"rate_pct__{asset.pk}") or "").strip()
+        period = (post.get(f"period__{asset.pk}") or "").strip()
+        try:
+            threshold = Decimal(raw_threshold)
+            rate_pct = Decimal(raw_rate or "0")
+        except (InvalidOperation, ValueError):
+            errors.append(_("%(asset)s: the threshold and rate must be numbers.")
+                          % {"asset": asset.unit_name})
+            continue
+        if threshold < 0:
+            errors.append(_("%(asset)s: the threshold cannot be negative.")
+                          % {"asset": asset.unit_name})
+            continue
+        if not (Decimal("0") <= rate_pct <= Decimal("25")):
+            errors.append(_("%(asset)s: the rate must be between 0 and 25 percent.")
+                          % {"asset": asset.unit_name})
+            continue
+        if period not in SurplusPeriod.values:
+            errors.append(_("%(asset)s: pick a period.") % {"asset": asset.unit_name})
+            continue
+        plan.append({
+            "asset": asset, "delete": False,
+            "threshold": threshold,
+            "rate": rate_pct / Decimal("100"),
+            "period": period,
+            "active": bool(post.get(f"surplus_active__{asset.pk}")),
+        })
+    return plan, errors
+
+
+def _apply_surplus(plan):
+    """Write a validated community-fee plan. Caller owns the transaction."""
+    from .models import SurplusPolicy
+
+    for entry in plan:
+        if entry["delete"]:
+            SurplusPolicy.objects.filter(asset=entry["asset"]).delete()
+            continue
+        policy = SurplusPolicy.objects.filter(asset=entry["asset"]).first()
+        if policy is None:
+            policy = SurplusPolicy(asset=entry["asset"])
+        policy.threshold_display = entry["threshold"]
+        policy.rate = entry["rate"]
+        policy.period = entry["period"]
+        policy.active = entry["active"]
+        policy.save()

@@ -103,7 +103,8 @@ def query_unified_view(request):
     return render(request, "ravioli/query_unified.html", context)
 
 
-def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun":
+def _trigger_workflow(slug: str, input_data: dict | None = None,
+                      user=None) -> "WorkflowRun":
     from toto.workflows.models import Workflow, WorkflowRun
     from toto.workflows.tasks import start_workflow_run_task
 
@@ -112,7 +113,9 @@ def _trigger_workflow(slug: str, input_data: dict | None = None) -> "WorkflowRun
         raise RuntimeError(
             f"Workflow '{slug}' not found — run ingress_ravioli to create it."
         )
-    run = WorkflowRun.objects.create(workflow=wf, input_data=input_data or {})
+    run = WorkflowRun.objects.create(
+        workflow=wf, input_data=input_data or {},
+        started_by=user if getattr(user, "pk", None) else None)
     start_workflow_run_task.delay(run.pk)
     return run
 
@@ -173,6 +176,7 @@ def run_cypher_query_view(request, query_id):
         run = _trigger_workflow(
             "ravioli-run-cypher-query",
             input_data={"data": {"query_id": selected_query.pk}},
+            user=request.user,
         )
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
@@ -403,7 +407,8 @@ def start_graph_analysis_view(request):
         input_data["data"]["title"] = title
 
     try:
-        run = _trigger_workflow(workflow_slug, input_data=input_data)
+        run = _trigger_workflow(workflow_slug, input_data=input_data,
+                                user=request.user)
     except RuntimeError as exc:
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -520,6 +525,7 @@ def search_view(request):
                     input_data={"data": {
                         "q": q, "mode": mode, "limit": limit, "exact": exact,
                     }},
+                    user=request.user,
                 )
                 wf_run_id = wf_run.pk
             except RuntimeError as exc:
@@ -644,6 +650,7 @@ def start_graphrag_describe_view(request):
         run = _trigger_workflow(
             "ravioli-graphrag-describe",
             input_data={"data": {"question": question, "top_k": 8, "text2cypher": True}},
+            user=request.user,
         )
     except RuntimeError as exc:
         return JsonResponse({"error": str(exc)}, status=500)

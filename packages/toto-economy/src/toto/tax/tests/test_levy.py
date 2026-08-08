@@ -178,6 +178,34 @@ class LevyTests(TestCase):
 
         self.assertIn("no registered metric", summary.skipped_reason)
 
+    def test_unpriced_day_resolves_a_stale_warned_case(self):
+        # Review finding: a WARNED case must not survive an unpriced interlude
+        # with its old deadline ticking — the first failure after re-pricing
+        # would enforce instantly with no fresh warning or week.
+        user = make_user("alice")
+        make_vault_file(user, 3 * GB)
+        case = TaxArrearsCase.objects.create(user=user, rule=self.rule,
+                                             status=ArrearsStatus.WARNED)
+
+        services.levy_rule(self.rule)  # metric is unpriced in this test
+
+        case.refresh_from_db()
+        self.assertEqual(case.status, ArrearsStatus.RESOLVED)
+        self.assertEqual(case.resolution_reason, "unpriced")
+
+    def test_soft_time_limit_is_reraised_not_swallowed(self):
+        from unittest.mock import patch
+
+        from celery.exceptions import SoftTimeLimitExceeded
+
+        user = make_user("alice")
+        make_vault_file(user, 3 * GB)
+
+        with patch.object(services, "levy_user",
+                          side_effect=SoftTimeLimitExceeded()):
+            with self.assertRaises(SoftTimeLimitExceeded):
+                services.levy_rule(self.rule)
+
     def test_run_daily_levy_returns_a_summary_per_rule(self):
         user = make_user("alice")
         make_vault_file(user, 3 * GB)

@@ -43,6 +43,19 @@ class LifecycleTests(TestCase):
         self.assertEqual(job.output["error"], "swept away")
         self.assertIsNotNone(job.finished_at)
 
+    def test_fail_job_refunds_a_job_that_never_ran(self):
+        from unittest.mock import patch
+
+        pending = make_job(self.owner)  # PENDING
+        with patch("toto.quota.charge.refund_for") as refund:
+            fail_job(pending, "swept")
+        refund.assert_called_once()
+
+        ran = make_job(self.owner, status=FileJob.Status.RUNNING)
+        with patch("toto.quota.charge.refund_for") as refund:
+            fail_job(ran, "swept")
+        refund.assert_not_called()  # work that RAN and failed keeps its charge
+
     def test_duration_property(self):
         job = make_job(self.owner)
         self.assertIsNone(job.duration)

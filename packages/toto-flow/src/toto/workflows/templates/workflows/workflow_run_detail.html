@@ -47,7 +47,7 @@
             <span x-text="displayStatus">{{ run.status|upper }}</span>
           </span>
 
-          {% if run.status in 'pending,running' %}
+          {% if can_cancel and run.status in 'pending,running' %}
           <button
             @click="cancelRun()"
             :disabled="cancelling || done"
@@ -67,6 +67,9 @@
 
       <!-- Meta -->
       <div class="flex flex-wrap gap-4 text-xs opacity-55">
+        {% if run.started_by %}
+          <span><i class="fa-solid fa-user mr-1"></i> {% trans "Started by" %} {{ run.started_by.username }}</span>
+        {% endif %}
         {% if run.started_at %}
           <span><i class="fa-regular fa-clock mr-1"></i> {% trans "Started" %} {{ run.started_at|date:"Y-m-d H:i:s" }}</span>
         {% endif %}

@@ -49,6 +49,7 @@ def dispatch_run(run: FileServiceRun) -> bool:
             wf_run = WorkflowRun.objects.create(
                 workflow=wf,
                 input_data={"data": {"run_id": run.id}},
+                started_by=run.owner,
             )
             run.workflow_run = wf_run
             run.save(update_fields=["workflow_run"])
@@ -70,11 +71,18 @@ def dispatch_run(run: FileServiceRun) -> bool:
 
 def fail_run(run: FileServiceRun, message: str) -> FileServiceRun:
     """Terminally close a run that will never report — used by the dispatch
-    error path and the stuck-run sweeper."""
+    error path and the stuck-run sweeper. A run closed while still PENDING
+    never ran: its charge is refunded (paid-for-but-never-delivered)."""
     from django.utils import timezone
 
+    never_ran = run.status == FileServiceRun.PENDING
     run.status = FileServiceRun.FAILED
     run.stderr = (run.stderr + "\n" if run.stderr else "") + message
     run.finished_at = timezone.now()
     run.save(update_fields=["status", "stderr", "finished_at"])
+    if never_ran:
+        from toto.quota.charge import refund_for
+
+        refund_for("fileservices.FileServiceRun", run.pk, "fileservices.run",
+                   reason=f"never ran: {message}")
     return run

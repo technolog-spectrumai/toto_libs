@@ -12,13 +12,17 @@ from __future__ import annotations
 from .models import Workflow, WorkflowRun
 
 
-def trigger_workflow(workflow_slug: str, payload: dict | None = None) -> WorkflowRun:
+def trigger_workflow(workflow_slug: str, payload: dict | None = None,
+                     *, user=None) -> WorkflowRun:
     """
     Start a workflow by slug and return the created WorkflowRun.
 
     Execution is asynchronous — the run is queued via Celery and this
     function returns immediately. Poll run.status or subscribe via the
     API endpoint to track completion.
+
+    ``user`` is recorded as ``WorkflowRun.started_by`` for attribution; it
+    grants nothing and is safe to omit for system-triggered runs.
 
     Raises Workflow.DoesNotExist if the slug is not found.
     """
@@ -28,6 +32,7 @@ def trigger_workflow(workflow_slug: str, payload: dict | None = None) -> Workflo
     run = WorkflowRun.objects.create(
         workflow=workflow,
         input_data=payload or {},
+        started_by=user if getattr(user, "pk", None) else None,
     )
     start_workflow_run_task.delay(run.id)
     return run

@@ -63,6 +63,64 @@
       </tbody>
     </table>
   </div>
+  <h2 class="pt-4 text-lg font-bold"><i class="fa-solid fa-hand-holding-dollar mr-1"></i>{% trans "Community fee" %}</h2>
+  <p class="text-sm leading-6 opacity-70">
+    {% trans "A surplus tax on holdings: whatever a user keeps above the threshold is charged the rate each period, automatically, in the same asset — it prevents idle accounts; money should move. Collected into" %}
+    <code>platform-community-fees</code>.
+    {% trans "System, reserve, external and company accounts are exempt. A blank threshold removes the policy. Changing the period mid-window can charge one overlapping window twice." %}
+  </p>
+  <div class="overflow-x-auto">
+    <table class="w-full text-sm">
+      <thead>
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-left">
+          <th class="px-3 py-2">{% trans "Asset" %}</th>
+          <th class="px-3 py-2">{% trans "Free threshold" %}</th>
+          <th class="px-3 py-2">{% trans "Rate % / period" %}</th>
+          <th class="px-3 py-2">{% trans "Period" %}</th>
+          <th class="px-3 py-2">{% trans "Active" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in surplus_rows %}
+        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+          <td class="px-3 py-2">
+            <div class="font-semibold">{{ row.asset.unit_name }}</div>
+            <span class="text-xs opacity-55">{{ row.asset.name }}</span>
+          </td>
+          <td class="px-3 py-2">
+            <input type="text" inputmode="decimal" name="threshold__{{ row.asset.pk }}"
+                   value="{% if row.policy %}{{ row.policy.threshold_display|floatformat:'-18' }}{% endif %}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-28 rounded border px-2 py-1 font-mono">
+            <span class="text-xs opacity-55">{{ row.asset.unit_name }}</span>
+          </td>
+          <td class="px-3 py-2">
+            <input type="text" inputmode="decimal" name="rate_pct__{{ row.asset.pk }}"
+                   value="{{ row.rate_pct }}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-20 rounded border px-2 py-1 font-mono">
+          </td>
+          <td class="px-3 py-2">
+            <select name="period__{{ row.asset.pk }}"
+                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                    class="rounded border px-2 py-1">
+              {% for value, label in surplus_periods %}
+                <option value="{{ value }}" {% if row.policy and row.policy.period == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </td>
+          <td class="px-3 py-2">
+            <input type="checkbox" name="surplus_active__{{ row.asset.pk }}"
+                   {% if not row.policy or row.policy.active %}checked{% endif %}>
+          </td>
+        </tr>
+        {% empty %}
+        <tr><td colspan="5" class="px-3 py-6 text-center opacity-60">{% trans "No active assets on this host." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
   <button type="submit"
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
           class="rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">

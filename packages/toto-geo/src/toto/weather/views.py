@@ -90,7 +90,7 @@ def api_refresh_weather(request):
         run = trigger_workflow(WEATHER_CURRENT_SLUG, {
             "location_ids": location_ids,
             "provider": settings_obj.current_provider,
-        })
+        }, user=request.user)
         return JsonResponse({"run_id": run.id})
     except Workflow.DoesNotExist:
         return JsonResponse(
@@ -164,7 +164,7 @@ def api_load_forecast(request):
             "provider": settings_obj.forecast_provider,
             "start_at": start_at,
             "end_at": end_at,
-        })
+        }, user=request.user)
         return JsonResponse({"run_id": run.id})
     except Workflow.DoesNotExist:
         return JsonResponse(
@@ -284,7 +284,7 @@ def api_export_layers(request):
                 "password": data.get("password") or None,
                 "owner_id": request.user.pk,
             }
-        })
+        }, user=request.user)
         return JsonResponse({"run_id": run.id})
     except Workflow.DoesNotExist:
         return JsonResponse(

@@ -103,11 +103,21 @@ def rows_for_user(user) -> dict:
             "extra_hours": round(extra / 3600, 4),
             "estimate": _estimate(price, extra),
         })
+    # The levy bills only the excess above the time.hold rule's allowance
+    # (seeded 0, but a staff edit must not make this page overstate the bill).
+    # Per-row estimates stay marginal — correct once the allowance is spent.
+    allowance_seconds = 0
+    from .models import TaxRule
+
+    hold_rule = TaxRule.objects.filter(metric_code="time.hold").first()
+    if hold_rule is not None:
+        allowance_seconds = int(hold_rule.allowance * 3600)
+    billable_extra = max(0, total_extra - allowance_seconds)
     return {
         "rows": rows,
         "price": price,
         "total_extra_hours": round(total_extra / 3600, 4),
-        "total_estimate": _estimate(price, total_extra),
+        "total_estimate": _estimate(price, billable_extra),
     }
 
 

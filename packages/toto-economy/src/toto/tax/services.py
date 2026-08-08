@@ -54,12 +54,33 @@ def idempotency_key(rule: TaxRule, user_id: int, day) -> str:
     return f"tax.{rule.metric_code}:{user_id}:{day.isoformat()}"
 
 
+def _is_soft_time_limit(exc: Exception) -> bool:
+    """celery's SoftTimeLimitExceeded, without a hard celery import."""
+    try:
+        from celery.exceptions import SoftTimeLimitExceeded
+    except ImportError:  # pragma: no cover - celery-less host
+        return False
+    return isinstance(exc, SoftTimeLimitExceeded)
+
+
 def run_daily_levy(day=None) -> list[LevySummary]:
-    """Levy every active rule. The beat task calls this and nothing else."""
+    """Levy every active rule, then sweep the community fee. The beat task
+    calls this and nothing else."""
     summaries = [levy_rule(rule, day=day) for rule in TaxRule.objects.filter(active=True)]
     for summary in summaries:
         logger.info("tax: %s %s — %s", summary.metric_code, summary.day,
                     summary.skipped_reason or summary.counts)
+
+    # The community fee rides the same daily beat but is its own idempotent
+    # sweep — isolate it so neither half can take the other down.
+    try:
+        from . import surplus
+
+        logger.info("tax: community fee — %s", surplus.run_surplus_sweep())
+    except Exception as exc:  # noqa: BLE001
+        if _is_soft_time_limit(exc):
+            raise
+        logger.exception("tax: community-fee sweep failed; levy run unaffected")
     return summaries
 
 
@@ -101,7 +122,11 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
         try:
             outcome = levy_user(rule, metric, provider, user, raw, day,
                                 priced=priced, event_model=event_model)
-        except Exception:  # noqa: BLE001 - one bad row must not stall the levy
+        except Exception as exc:  # noqa: BLE001 - one bad row must not stall the levy
+            # ... except the worker telling us to stop: swallowing the soft
+            # time limit here would keep looping until the hard SIGKILL.
+            if _is_soft_time_limit(exc):
+                raise
             logger.exception("tax: levy failed for user %s on %s", user_id, rule.metric_code)
             outcome = Outcome.ERROR
         summary.add(outcome)
@@ -147,10 +172,14 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool, even
         return Outcome.ALREADY
 
     if not priced:
+        # Nothing charges, so nothing can be owed: an open case must not
+        # survive an unpriced interlude with its old deadline ticking.
+        arrears.resolve_case(user, rule, reason=arrears.REASON_UNPRICED)
         return Outcome.FREE
 
     tariff = price_for(user, metric.app_label)
     if tariff is None:
+        arrears.resolve_case(user, rule, reason=arrears.REASON_UNPRICED)
         return Outcome.FREE
 
     try:

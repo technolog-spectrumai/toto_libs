@@ -1,0 +1,25 @@
+{% load i18n %}
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-xl border shadow-sm overflow-hidden">
+  <div class="flex items-center justify-between border-b px-5 py-4"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+    <h2 class="font-semibold flex items-center gap-2">
+      <i class="{{ asset_plugin_icon }} opacity-60"></i>
+      {% trans "Community fee" %}
+    </h2>
+    <span class="text-xs opacity-60 font-mono">
+      {{ fee_rate_pct }}% / {{ fee_policy.period }}
+    </span>
+  </div>
+  <div class="px-5 py-5 space-y-2 text-sm">
+    <p class="leading-6 opacity-80">
+      {% blocktrans with threshold=fee_threshold unit=fee_policy.asset.unit_name rate=fee_rate_pct period=fee_policy.period %}Holdings above {{ threshold }} {{ unit }} are charged {{ rate }}% per {{ period }}, automatically, in the same currency — taken from the largest holding first.{% endblocktrans %}
+      <span class="font-semibold">{% trans "It prevents idle accounts: money should move." %}</span>
+    </p>
+    {% if fee_mine %}
+      <p class="text-xs opacity-70">
+        {% blocktrans with total=fee_mine.total|floatformat:"-9" surplus=fee_mine.surplus|floatformat:"-9" estimate=fee_mine.estimate|floatformat:"-9" unit=fee_policy.asset.unit_name period=fee_policy.period %}You hold {{ total }} {{ unit }} — surplus {{ surplus }}, next fee ≈ {{ estimate }} {{ unit }} / {{ period }}.{% endblocktrans %}
+      </p>
+    {% endif %}
+  </div>
+</div>

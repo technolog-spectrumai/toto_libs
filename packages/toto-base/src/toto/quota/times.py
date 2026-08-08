@@ -260,6 +260,9 @@ def _hold_price() -> dict | None:
 
 
 def _daily_estimate(extension_seconds: int) -> dict | None:
+    # MARGINAL cost of this one dial's extension: any time.hold allowance is
+    # applied to the user's total, not per dial, so the demurrage tab's total
+    # is where the allowance is subtracted.
     price = _hold_price()
     if price is None or extension_seconds <= 0:
         return None

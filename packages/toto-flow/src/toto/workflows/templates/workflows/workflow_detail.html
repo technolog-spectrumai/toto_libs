@@ -1,6 +1,7 @@
 {% extends "oya/base.html" %}
 {% load static %}
 {% load i18n %}
+{% load quota_tags %}
 
 {% block title %}{{ workflow.name }} | {{ platform.site_name }}{% endblock %}
 
@@ -43,8 +44,55 @@
           <i class="fa-solid fa-arrow-right-long opacity-60"></i>
           <span class="font-bold">{{ edges|length }}</span> {% trans "edges" %}
         </span>
+        <span :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="flex items-center gap-2 rounded-lg border px-3 py-2 text-sm shadow-sm">
+          <i class="fa-solid fa-user opacity-60"></i>
+          {% if workflow.owner %}{{ workflow.owner.username }}{% else %}{% trans "System" %}{% endif %}
+        </span>
       </div>
     </header>
+
+    {% if time_dial.set_url %}
+    <!-- Time: the owner's lambda-step dial; demurrage applies above the free default -->
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-2xl border p-5 shadow-sm space-y-2">
+      <h2 class="text-sm font-semibold"><i class="fa-solid fa-clock mr-1"></i>{% trans "Time" %} — {{ time_dial.label }}</h2>
+      <p class="text-xs opacity-70">
+        {{ time_dial.description }}
+        {% blocktrans with free=time_dial.free_seconds %}Free up to {{ free }} s.{% endblocktrans %}
+        {% trans "Above that it is demurrage:" %} {% price_hint "time.hold" %}
+        {% if time_dial.daily_estimate %}
+          <span class="font-semibold">{% blocktrans with amount=time_dial.daily_estimate.amount|floatformat:"-9" asset=time_dial.daily_estimate.asset %}currently ≈ {{ amount }} {{ asset }}/day{% endblocktrans %}</span>
+        {% endif %}
+      </p>
+      <form method="post" action="{{ time_dial.set_url }}" class="flex flex-wrap items-end gap-2">
+        {% csrf_token %}
+        <input type="hidden" name="key" value="{{ time_dial.key }}">
+        <input type="hidden" name="scope_id" value="{{ time_dial.scope_id }}">
+        <input type="hidden" name="next" value="{{ request.path }}">
+        <label class="space-y-1 text-xs">
+          <span class="block opacity-70">{% trans "Limit in seconds" %}
+            ({{ time_dial.free_seconds }}–{{ time_dial.ceiling_seconds }})</span>
+          <input type="text" inputmode="numeric" name="seconds"
+                 value="{{ time_dial.effective_seconds }}"
+                 class="rounded-lg border border-current bg-transparent px-3 py-2 text-xs font-mono">
+        </label>
+        <button type="submit"
+                :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs font-semibold transition hover:opacity-85">
+          {% trans "Save" %}
+        </button>
+        <button type="submit" name="seconds" value=""
+                class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-3 py-2 text-xs font-semibold opacity-70 transition hover:opacity-100">
+          {% trans "Reset to free" %}
+        </button>
+      </form>
+      <p class="text-xs opacity-55">
+        {% trans "Applies to runs started after changing it." %}
+        <a href="{{ time_dial.manage_url }}" class="underline hover:opacity-80">{% trans "All your extensions and their daily cost" %}</a>
+      </p>
+    </section>
+    {% endif %}
 
     <!-- Graph -->
     <section>
@@ -232,7 +280,10 @@
                     <span class="rounded-full bg-gray-500/15 px-2 py-0.5 text-xs font-semibold text-gray-500">{{ run.status }}</span>
                   {% endif %}
                 </a>
-                <span class="text-xs opacity-50">{{ run.created_at|date:"Y-m-d H:i" }}</span>
+                <span class="text-xs opacity-50">
+                  {{ run.created_at|date:"Y-m-d H:i" }}{% if run.started_by %}
+                  <span class="mx-1 opacity-40">·</span><i class="fa-solid fa-user mr-1"></i>{{ run.started_by.username }}{% endif %}
+                </span>
               </div>
             </li>
           {% endfor %}

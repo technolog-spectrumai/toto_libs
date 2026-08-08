@@ -70,3 +70,33 @@ class FileservicesSweepTests(TestCase):
         self.assertIn("stuck-run sweeper", stuck.stderr)
         fresh.refresh_from_db()
         self.assertEqual(fresh.status, FileServiceRun.PENDING)
+
+    def test_direct_task_is_worker_discoverable(self):
+        # Review finding [critical]: the extended-runtime path enqueues
+        # run_file_service_task; without this registry entry the worker
+        # answers KeyError and a paying user's run never executes.
+        from toto.registry import TASK_MODULES
+
+        self.assertIn("toto.fileservices", TASK_MODULES)
+
+    def test_never_ran_close_refunds(self):
+        from unittest.mock import patch
+
+        run = create_service_run(self.owner, self.vf, "svc")
+        with patch("toto.quota.charge.refund_for") as refund:
+            fail_run(run, "swept")
+        refund.assert_called_once()
+        self.assertEqual(refund.call_args.args[:3],
+                         ("fileservices.FileServiceRun", run.pk, "fileservices.run"))
+
+    def test_terminal_row_is_not_resurrected_by_a_redelivered_task(self):
+        from .runner import execute_run
+
+        run = create_service_run(self.owner, self.vf, "svc")
+        fail_run(run, "swept")
+
+        result = execute_run(run.id)
+
+        self.assertTrue(result.get("skipped"))
+        run.refresh_from_db()
+        self.assertEqual(run.status, FileServiceRun.FAILED)

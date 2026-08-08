@@ -174,8 +174,26 @@ class WorkflowExecutor:
     def _lambda_task_timeout_seconds(self, node_run: WorkflowNodeRun) -> int:
         lambda_fn = node_run.node.lambda_function
         if lambda_fn and lambda_fn.kernel and lambda_fn.kernel.timeout_ms:
-            return max(1, int(lambda_fn.kernel.timeout_ms / 1000))
-        return int(getattr(settings, "WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS", 30))
+            base = max(1, int(lambda_fn.kernel.timeout_ms / 1000))
+        else:
+            base = int(getattr(settings, "WORKFLOW_LAMBDA_TASK_TIMEOUT_SECONDS", 30))
+
+        from toto.quota import times  # lazy — the fileservices.dispatch pattern
+
+        # The workflow's own dial ("workflows.lambda_timeout"), applied ONLY
+        # when raised so an untouched workflow keeps exactly today's behavior
+        # (including deliberately tight per-kernel timeouts); a kernel
+        # configured above the dial still wins.
+        eff = times.effective_seconds("workflows.lambda_timeout",
+                                      scope_id=node_run.workflow_run.workflow_id)
+        value = base
+        if eff > times.free_seconds("workflows.lambda_timeout"):
+            value = max(base, eff)
+        # Hard cap whatever won: ComputeKernel.timeout_ms is a staff-editable
+        # integer with no validator, and a value past the node sweep floor
+        # (10800 s) or the broker visibility timeout would let the sweeper
+        # close — or Redis redeliver — a legitimately running step.
+        return min(value, 3600)
 
     def _run_lambda(self, node_run: WorkflowNodeRun) -> dict:
         lambda_fn = node_run.node.lambda_function

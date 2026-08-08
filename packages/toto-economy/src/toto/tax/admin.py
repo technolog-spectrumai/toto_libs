@@ -1,6 +1,28 @@
 from django.contrib import admin
 
-from .models import TaxArrearsCase, TaxEnforcementAction, TaxRule, TimeGrant
+from .models import (
+    SurplusCharge, SurplusPolicy, TaxArrearsCase, TaxEnforcementAction,
+    TaxRule, TimeGrant,
+)
+
+
+@admin.register(SurplusPolicy)
+class SurplusPolicyAdmin(admin.ModelAdmin):
+    list_display = ("asset", "threshold_display", "rate", "period", "active",
+                    "updated_at")
+    list_filter = ("active", "period")
+
+
+@admin.register(SurplusCharge)
+class SurplusChargeAdmin(admin.ModelAdmin):
+    list_display = ("policy", "user", "period_label", "fee_base", "status",
+                    "collected_at")
+    list_filter = ("status", "policy")
+    search_fields = ("user__username", "period_label")
+    readonly_fields = [f.name for f in SurplusCharge._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
 
 
 @admin.register(TimeGrant)

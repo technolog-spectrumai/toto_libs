@@ -66,6 +66,10 @@ class FfmpegCommand(BaseCommand):
     def execute(self, job: FileJob) -> None:
         from toto.vault.models import VaultFile
 
+        if job.is_terminal:
+            # A redelivered task (broker visibility timeout) must not
+            # resurrect a row the stuck-run sweeper already closed.
+            return
         job.status = FileJob.Status.RUNNING
         job.started_at = timezone.now()
         job.save(update_fields=["status", "started_at"])
