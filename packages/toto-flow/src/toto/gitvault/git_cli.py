@@ -385,8 +385,13 @@ def pull(worktree: Path, branch: str, username: str, token: str, user, timeout: 
             ["diff", "--name-only", "--diff-filter=U", "-z"], cwd=worktree
         ).stdout
         paths = [p for p in conflicted.split("\0") if p]
+        # Read the resolution material BEFORE aborting: ours/theirs live in the
+        # index stages, which --abort discards. A pull conflict is an ordinary
+        # merge conflict and gets the same resolver, so it needs the same
+        # detail — without it the UI could only report the paths and stop.
+        details = _conflict_details(worktree, paths) if paths else []
         run_git(["merge", "--abort"], cwd=worktree, check=False)
         if paths:
-            raise MergeConflict(paths)
+            raise MergeConflict(paths, details)
         raise GitError(res.stderr.strip() or "pull merge failed", res)
     return res

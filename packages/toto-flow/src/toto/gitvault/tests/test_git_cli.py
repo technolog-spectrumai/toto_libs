@@ -148,6 +148,55 @@ class RestoreToTests(GitCliTests):
             git_cli.restore_to(self.wt, sha, fake_user())
 
 
+class PullConflictTests(GitCliTests):
+    """A conflicted PULL must be as resolvable as a conflicted merge.
+
+    Pull merges a remote branch instead of a local one; everything after that
+    is the same operation. It used to raise MergeConflict with the paths and
+    nothing else, so the resolver UI — which needs ours/theirs/merged per
+    file — had nothing to render and the user was simply stuck.
+    """
+
+    def _remote_conflict(self):
+        """A clone whose origin has moved on, conflicting with local work."""
+        origin = Path(self.tmp.name) / "origin"
+        git_cli.init(origin)
+        (origin / "a.txt").write_text("base\n")
+        git_cli.add_all(origin)
+        git_cli.commit(origin, "base", fake_user())
+
+        git_cli.run_git(["clone", str(origin), str(self.wt / ".." / "clone")],
+                        cwd=Path(self.tmp.name))
+        clone = Path(self.tmp.name) / "clone"
+
+        # origin moves on
+        (origin / "a.txt").write_text("remote change\n")
+        git_cli.add_all(origin)
+        git_cli.commit(origin, "remote change", fake_user())
+        # …and so does the clone, incompatibly
+        (clone / "a.txt").write_text("local change\n")
+        git_cli.add_all(clone)
+        git_cli.commit(clone, "local change", fake_user())
+        return clone
+
+    def test_a_conflicted_pull_carries_resolution_material(self):
+        clone = self._remote_conflict()
+        branch = git_cli.head_branch(clone)
+
+        with self.assertRaises(git_cli.MergeConflict) as ctx:
+            git_cli.pull(clone, branch, "", "", fake_user())
+
+        self.assertEqual(ctx.exception.paths, ["a.txt"])
+        detail = ctx.exception.details[0]
+        self.assertEqual(detail["path"], "a.txt")
+        self.assertTrue(detail["editable"])
+        self.assertEqual(detail["ours"], "local change\n")
+        self.assertEqual(detail["theirs"], "remote change\n")
+        self.assertIn("<<<<<<<", detail["merged"])
+        # …and the tree is restored, exactly as a local merge conflict leaves it
+        self.assertEqual((clone / "a.txt").read_text(), "local change\n")
+
+
 class MergeResolutionTests(GitCliTests):
     """Conflicted merges: rich detail on refusal, per-file settlement on re-run."""
 

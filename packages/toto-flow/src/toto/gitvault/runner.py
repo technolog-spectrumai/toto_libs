@@ -35,7 +35,13 @@ def execute_git_run(run_id: int) -> None:
         # conflict list is the product — refunding it would make a conflicting
         # merge cheaper than a clean one.
         run.stderr = "merge conflicts (aborted): " + ", ".join(exc.paths)
-        run.import_summary = {"conflicts": exc.paths}
+        # The DETAILS ride along too: a pull that conflicts is an ordinary
+        # merge conflict, and the resolver needs ours/theirs per file. They are
+        # read before the abort (git_cli) and would otherwise be lost with the
+        # index stages — leaving the run reporting that something conflicted
+        # without saying what, which is the one thing a conflict must not do.
+        run.import_summary = {"conflicts": exc.paths,
+                              "conflict_details": exc.details}
         run.status = GitRun.FAILED
     except Exception as exc:
         run.stderr = (run.stderr + "\n" if run.stderr else "") + str(exc)
