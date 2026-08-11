@@ -479,7 +479,26 @@ def _round_display_amount(amount: Decimal, asset: Asset) -> Decimal:
     return Decimal(amount).quantize(_display_quantum(asset), rounding=ROUND_UP)
 
 
+def _require_trading_host() -> None:
+    """Trading happens on the master, and nowhere else.
+
+    The exchange services ship in the wheel to every host that installs the
+    ledger, so the absence of a bourse UI on a branch is not protection — a
+    shell, a management command or any future code could still reach them.
+    The guard sits beside the issuance guard so both asymmetries live in one
+    place.
+    """
+    from toto.assets.issuer import is_monetary_master
+
+    if not is_monetary_master():
+        raise ValidationError(
+            "Assets are traded on the master platform, not here. This "
+            "platform holds a single billing currency assigned to it; open a "
+            "bourse proposal on the master to exchange anything.")
+
+
 def get_exchange_rate(from_asset: Asset, to_asset: Asset):
+    _require_trading_host()
     if from_asset.pk == to_asset.pk:
         return None, Decimal("1"), Decimal("0"), "same_asset"
 
@@ -490,6 +509,7 @@ def get_exchange_rate(from_asset: Asset, to_asset: Asset):
 
 
 def quote_exchange(*, from_asset: Asset, to_asset: Asset, amount: Decimal) -> ExchangeQuote:
+    _require_trading_host()
     if amount <= 0:
         raise ValidationError("Exchange amount must be positive.")
 
@@ -511,6 +531,7 @@ def quote_exchange(*, from_asset: Asset, to_asset: Asset, amount: Decimal) -> Ex
 
 
 def quote_currency_payment(*, currency_code: str, payment_asset: Asset, amount: Decimal) -> ExchangeQuote:
+    _require_trading_host()
     source_asset = get_currency_asset(currency_code)
     if not source_asset:
         raise ValidationError(f"No asset is linked to {currency_code}.")
