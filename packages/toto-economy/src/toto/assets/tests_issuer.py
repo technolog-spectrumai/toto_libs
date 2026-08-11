@@ -197,3 +197,28 @@ class SecretSeparationTests(TestCase):
         with override_settings(MONETARY_ISSUER_KEY="",
                                FIELD_ENCRYPTION_KEY=OTHER_SECRET):
             self.assertFalse(issuer_module.is_monetary_master())
+
+
+class UnmigratedHostTests(TestCase):
+    """The app installed and its tables not there yet — a real deploy state."""
+
+    @override_settings(MONETARY_ISSUER_KEY=ISSUER_SECRET)
+    def test_a_missing_table_means_not_the_master_rather_than_a_crash(self):
+        from unittest import mock
+
+        from django.db import DatabaseError
+
+        with mock.patch("toto.assets.models.CurrencyIssuer.objects.filter",
+                        side_effect=DatabaseError("no such table")):
+            self.assertFalse(issuer_module.is_monetary_master())
+
+    @override_settings(MONETARY_ISSUER_KEY=ISSUER_SECRET)
+    def test_and_issuance_is_refused_readably_rather_than_500ing(self):
+        from unittest import mock
+
+        from django.db import DatabaseError
+
+        with mock.patch("toto.assets.models.CurrencyIssuer.objects.filter",
+                        side_effect=DatabaseError("no such table")):
+            with self.assertRaises(NotTheMaster):
+                issuer_module.require_master()

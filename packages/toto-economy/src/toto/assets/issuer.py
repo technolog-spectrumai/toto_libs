@@ -62,10 +62,22 @@ def fingerprint_for(public_key_pem: str) -> str:
 
 
 def local_issuer():
-    """The issuer row describing *this* host, or None."""
+    """The issuer row describing *this* host, or None.
+
+    Returns None when the table is not there yet — the app installed but not
+    migrated, which happens during a deploy and during checks that run before
+    migrate. The repo's standing answer to that shape (see toto.quota.rates):
+    degrade, do not raise. Here it degrades the safe way, because "we cannot
+    tell" and "not the master" lead to the same refusal.
+    """
+    from django.db import DatabaseError
+
     from .models import CurrencyIssuer
 
-    return CurrencyIssuer.objects.filter(is_self=True).first()
+    try:
+        return CurrencyIssuer.objects.filter(is_self=True).first()
+    except DatabaseError:
+        return None
 
 
 def is_monetary_master() -> bool:
