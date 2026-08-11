@@ -30,7 +30,7 @@ class IssueTests(TestCase):
 
         holding = asset.holdings.get(account=asset.reserve_account)
         self.assertEqual(holding.balance_base_units,
-                         asset.total_supply_base_units)
+                         asset.max_supply_base_units)
 
     def test_the_opening_mint_is_linked(self):
         # The posting an issuance record points at is the MINT that filled the
@@ -93,7 +93,7 @@ class NoSecretInflationTests(TestCase):
     def test_the_maximum_cannot_be_raised_afterwards(self):
         # The ceiling is in the currency hash. Moving it would make the
         # identity describe a promise that was never made.
-        self.asset.total_supply_base_units *= 2
+        self.asset.max_supply_base_units *= 2
         with self.assertRaises(ValidationError):
             self.asset.save()
 
@@ -113,7 +113,7 @@ class NoSecretInflationTests(TestCase):
                             reason="Another.")
         self.assertNotEqual(again.currency_hash, self.asset.currency_hash)
         self.asset.refresh_from_db()
-        self.assertEqual(self.asset.total_supply_display, Decimal("100"))
+        self.assertEqual(self.asset.max_supply_display, Decimal("100"))
 
     def test_the_record_cannot_be_edited_or_deleted(self):
         record = IssuanceRecord.objects.get()

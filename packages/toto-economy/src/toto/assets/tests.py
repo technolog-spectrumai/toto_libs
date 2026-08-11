@@ -20,7 +20,7 @@ from .models import (
 from .queries import (
     get_asset_balance,
     get_asset_balance_display,
-    get_asset_total_supply,
+    get_asset_max_supply,
     get_transaction_by_reference,
     list_asset_holders,
     verify_asset_ledger,
@@ -93,7 +93,7 @@ class AssetCreationTests(TestCase):
         )
         self.assertIsNotNone(asset.pk)
         self.assertEqual(asset.unit_name, "SPC")
-        self.assertEqual(asset.total_supply_base_units, 100000000)
+        self.assertEqual(asset.max_supply_base_units, 100000000)
 
     def test_reserve_receives_total_supply(self):
         asset = create_currency(
@@ -387,10 +387,10 @@ class IngressAssetsTests(TestCase):
         tpln = Asset.objects.get(unit_name="TPLN")
         self.assertEqual(asr.name, "Assarion")
         self.assertEqual(asr.decimals, 9)
-        self.assertEqual(asr.total_supply_display, Decimal("6666.666666667"))
+        self.assertEqual(asr.max_supply_display, Decimal("6666.666666667"))
         self.assertEqual(tpln.name, "Toto Złoty")
         self.assertEqual(tpln.decimals, 2)
-        self.assertEqual(tpln.total_supply_display, Decimal("76658.70"))
+        self.assertEqual(tpln.max_supply_display, Decimal("76658.70"))
         # The display code lives on the asset now — there is one kind of thing,
         # and what makes it a platform's CURRENCY is that platform's contract.
         self.assertEqual(asr.code, "ASR")
@@ -603,11 +603,11 @@ class SupplyTests(TestCase):
         )
 
     def test_total_supply_helper(self):
-        self.assertEqual(get_asset_total_supply(self.asset), 100000)
+        self.assertEqual(get_asset_max_supply(self.asset), 100000)
 
     def test_holdings_equal_total_supply_on_create(self):
         status = verify_asset_ledger(self.asset)
-        self.assertTrue(status["total_supply_matches"])
+        self.assertTrue(status["supply_matches"])
 
     def test_holdings_equal_total_supply_after_transfer(self):
         transfer_asset(
@@ -615,7 +615,7 @@ class SupplyTests(TestCase):
             amount=Decimal("200.00"), reference="txfr-sup-01",
         )
         status = verify_asset_ledger(self.asset)
-        self.assertTrue(status["total_supply_matches"])
+        self.assertTrue(status["supply_matches"])
 
     def test_entries_balanced_across_all_transactions(self):
         transfer_asset(

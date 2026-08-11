@@ -42,7 +42,7 @@ class TariffVisibilityTests(TestCase):
 
         cls.asset = make_asset(
             name="Gas", unit_name="GAS", decimals=9,
-            total_supply_base_units=10 ** 15, active=True,
+            max_supply_base_units=10 ** 15, active=True,
         )
         cls.revenue = LedgerAccount.objects.create(
             code="platform-usage-fees", name="Fees",

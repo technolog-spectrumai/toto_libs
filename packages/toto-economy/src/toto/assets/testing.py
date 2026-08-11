@@ -49,7 +49,7 @@ class LedgerTransactionTestCase(DjangoTransactionTestCase):
 
 
 def make_asset(*, unit_name: str, name: str = "", decimals: int = 2,
-               total_supply_base_units: int = 10 ** 12, **extra):
+               max_supply_base_units: int = 10 ** 12, **extra):
     """An asset with real provenance, for test fixtures.
 
     Tests used to build assets with ``Asset.objects.create``. Every asset now
@@ -64,11 +64,11 @@ def make_asset(*, unit_name: str, name: str = "", decimals: int = 2,
     genesis = build_genesis(
         issuer_fingerprint=issuer.fingerprint, unit_name=unit_name,
         name=name or unit_name, decimals=decimals,
-        max_supply_base_units=total_supply_base_units,
+        max_supply_base_units=max_supply_base_units,
         issued_at="2026-01-01T00:00:00+00:00")
     return Asset.objects.create(
         name=name or unit_name, unit_name=unit_name, decimals=decimals,
-        total_supply_base_units=total_supply_base_units,
+        max_supply_base_units=max_supply_base_units,
         issuer=issuer, currency_hash=compute_currency_hash(genesis),
         genesis_payload=genesis, genesis_signature=issuer.sign_genesis(genesis),
         **extra)

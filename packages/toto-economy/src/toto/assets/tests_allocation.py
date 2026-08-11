@@ -41,7 +41,7 @@ class AllocationConservesSupplyTests(TestCase):
 
         self.assertEqual(_circulating(self.asset), before)
         self.assertEqual(_circulating(self.asset),
-                         self.asset.total_supply_base_units)
+                         self.asset.max_supply_base_units)
 
     def test_the_master_knows_how_much_is_out_where(self):
         allocation.allocate_to_branch(node="placidia", asset=self.asset,

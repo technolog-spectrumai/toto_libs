@@ -60,19 +60,19 @@ class Command(BaseCommand):
 
         ai_token, _ = Asset.objects.get_or_create(
             unit_name="AI_TOKEN",
-            defaults={"name": "AI Usage Token", "decimals": 6, "total_supply_base_units": 10 ** 15, "active": True},
+            defaults={"name": "AI Usage Token", "decimals": 6, "max_supply_base_units": 10 ** 15, "active": True},
         )
         storage_token, _ = Asset.objects.get_or_create(
             unit_name="STORAGE_TOKEN",
-            defaults={"name": "Storage Token", "decimals": 6, "total_supply_base_units": 10 ** 15, "active": True},
+            defaults={"name": "Storage Token", "decimals": 6, "max_supply_base_units": 10 ** 15, "active": True},
         )
         graph_token, _ = Asset.objects.get_or_create(
             unit_name="GRAPH_TOKEN",
-            defaults={"name": "Graph (Neo4j) Token", "decimals": 6, "total_supply_base_units": 10 ** 15, "active": True},
+            defaults={"name": "Graph (Neo4j) Token", "decimals": 6, "max_supply_base_units": 10 ** 15, "active": True},
         )
         compute_token, _ = Asset.objects.get_or_create(
             unit_name="COMPUTE_TOKEN",
-            defaults={"name": "Compute Token", "decimals": 6, "total_supply_base_units": 10 ** 15, "active": True},
+            defaults={"name": "Compute Token", "decimals": 6, "max_supply_base_units": 10 ** 15, "active": True},
         )
 
         bu_input_token  = _bu("ai.input_token",  "AI input token",  "ai")

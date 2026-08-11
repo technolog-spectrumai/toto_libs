@@ -34,16 +34,16 @@ class AssetHoldingInline(admin.TabularInline):
 
 @admin.register(Asset)
 class AssetAdmin(admin.ModelAdmin):
-    list_display = ("name", "unit_name", "decimals", "total_supply_display", "active", "created_at")
+    list_display = ("name", "unit_name", "decimals", "max_supply_display", "active", "created_at")
     list_filter = ("active",)
     search_fields = ("name", "unit_name")
-    readonly_fields = ("created_at", "updated_at", "total_supply_display")
+    readonly_fields = ("created_at", "updated_at", "max_supply_display")
     inlines = [AssetHoldingInline]
 
     @staticmethod
-    def total_supply_display(obj):
-        return f"{obj.total_supply_display} {obj.unit_name}"
-    total_supply_display.short_description = "Total supply"
+    def max_supply_display(obj):
+        return f"{obj.max_supply_display} {obj.unit_name}"
+    max_supply_display.short_description = "Total supply"
 
 
 @admin.register(LedgerAccount)

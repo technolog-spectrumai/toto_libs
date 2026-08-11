@@ -5,7 +5,7 @@ from .models import IssuanceRecord
 
 @admin.register(IssuanceRecord)
 class IssuanceRecordAdmin(admin.ModelAdmin):
-    list_display = ("unit_name", "total_supply_base_units", "actor",
+    list_display = ("unit_name", "max_supply_base_units", "actor",
                     "created_at")
     search_fields = ("unit_name", "currency_hash", "reason")
     raw_id_fields = ("asset", "actor", "ledger_transaction")

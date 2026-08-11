@@ -39,7 +39,7 @@ def make_asset(unit_name, decimals=6):
         name=unit_name,
         unit_name=unit_name,
         decimals=decimals,
-        total_supply_base_units=10 ** 15,
+        max_supply_base_units=10 ** 15,
         active=True,
     )
 

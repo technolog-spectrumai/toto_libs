@@ -42,7 +42,7 @@ User = get_user_model()
 def make_asset(unit_name="CHARGE", decimals=2):
     return issued_asset(
         name=unit_name, unit_name=unit_name, decimals=decimals,
-        total_supply_base_units=10 ** 12, active=True,
+        max_supply_base_units=10 ** 12, active=True,
     )
 
 

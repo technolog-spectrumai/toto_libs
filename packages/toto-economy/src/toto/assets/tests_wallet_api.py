@@ -14,7 +14,7 @@ def _make_asset(unit_name="TST"):
         name=f"Test Asset {unit_name}",
         unit_name=unit_name,
         decimals=2,
-        total_supply_base_units=1_000_000,
+        max_supply_base_units=1_000_000,
     )
 
 

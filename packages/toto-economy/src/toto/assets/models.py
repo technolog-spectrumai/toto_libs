@@ -210,9 +210,15 @@ class TransactionType(models.TextChoices):
 class Asset(models.Model):
     """One kind of thing, and one only.
 
-    Every asset is created by the monetary master, carries a genesis hash and
-    an issuer signature, and has a supply fixed once at creation. There is no
-    second category — see portal/hierarchical_economy.md.
+    Every asset is engraved by the monetary master, carries a genesis hash and
+    an issuer signature, and has a MAXIMUM fixed once at engrave time. There is
+    no second category — see portal/hierarchical_economy.md.
+
+    There is no supply column here on purpose. The maximum is identity and is
+    committed to the hash; how much actually exists is ``Σ minted − Σ burned``
+    over toto.mint's event chain, computed on demand. Two places to look would
+    be two answers that can disagree, and for supply that disagreement is the
+    entire class of bug this design exists to prevent.
 
     "Currency" is NOT a property here. An asset becomes a platform's currency
     when that platform bills in it, which is a CurrencyContract pointing at it.
@@ -227,7 +233,9 @@ class Asset(models.Model):
     code = models.CharField(max_length=10, blank=True)
     symbol = models.CharField(max_length=5, blank=True)
     decimals = models.PositiveSmallIntegerField()
-    total_supply_base_units = models.PositiveBigIntegerField()
+    #: The ceiling, not the amount. Committed to the currency hash, so it can
+    #: never be raised — needing more means engraving a new currency.
+    max_supply_base_units = models.PositiveBigIntegerField()
     active = models.BooleanField(default=True)
     backing_document = models.TextField(blank=True, help_text="What this asset is backed by (e.g. reserves held by …)")
     minting_authority = models.CharField(max_length=255, blank=True, help_text="Entity authorised to mint this asset")
@@ -262,7 +270,7 @@ class Asset(models.Model):
     #: Fields the genesis hash commits to. Once hashed, none may move: the
     #: identity would no longer describe the thing.
     IDENTITY_FIELDS = ("unit_name", "name", "decimals",
-                       "total_supply_base_units", "currency_hash")
+                       "max_supply_base_units", "currency_hash")
 
     class Meta:
         ordering = ["name"]
@@ -292,9 +300,10 @@ class Asset(models.Model):
     def save(self, *args, **kwargs):
         """Identity is immutable once the asset has one.
 
-        The LedgerTransaction.save() idiom. Supply is in this set because it
-        is committed to the hash: changing it would make the identity describe
-        an amount that no longer exists.
+        The LedgerTransaction.save() idiom. The maximum is in this set
+        because it is committed to the hash: raising it would make the identity
+        describe a promise that was never made. Supply is NOT in this set,
+        because supply is not a column — it is the chain.
         """
         if self.pk and self.currency_hash:
             previous = type(self).objects.filter(pk=self.pk).values(
@@ -309,8 +318,13 @@ class Asset(models.Model):
         super().save(*args, **kwargs)
 
     @property
-    def total_supply_display(self) -> Decimal:
-        return from_base_units(self.total_supply_base_units, self.decimals)
+    def max_supply_display(self) -> Decimal:
+        """The ceiling, in display units. NOT how much exists.
+
+        For how much exists, ask ``toto.mint.history.supply()`` — which lives
+        there and not here because only the master has the chain.
+        """
+        return from_base_units(self.max_supply_base_units, self.decimals)
 
     def verify_genesis(self) -> bool:
         """Does this row still match the document its issuer signed?"""

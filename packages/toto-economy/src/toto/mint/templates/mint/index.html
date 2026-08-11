@@ -79,7 +79,7 @@
             {% for record in records %}
             <tr class="border-t border-current/10">
               <td class="py-2 pr-4 font-bold">{{ record.unit_name }}</td>
-              <td class="py-2 pr-4">{{ record.asset.total_supply_display }}</td>
+              <td class="py-2 pr-4">{{ record.asset.max_supply_display }}</td>
               <td class="py-2 pr-4 font-mono text-xs">{{ record.currency_hash|truncatechars:24 }}</td>
               <td class="py-2 pr-4">{{ record.actor|default:"—" }}</td>
               <td class="py-2">{{ record.reason|truncatechars:80 }}</td>

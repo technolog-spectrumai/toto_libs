@@ -163,4 +163,4 @@ class HoldLifecycleTests(TestCase):
         holds_service.void_hold(h2)
         report = verify_asset_ledger(self.asset)
         self.assertTrue(report["entries_balanced"])
-        self.assertTrue(report["total_supply_matches"])
+        self.assertTrue(report["supply_matches"])

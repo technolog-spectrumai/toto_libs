@@ -104,7 +104,7 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
         from ..models import TaxRule
 
         make_asset(name="Gas", unit_name="ASR", decimals=9,
-                             total_supply_base_units=10 ** 15, active=True)
+                             max_supply_base_units=10 ** 15, active=True)
         upsert_price(metric_registry.get("time.hold"), Decimal("1"))
         TaxRule.objects.create(metric_code="time.hold",
                                allowance=Decimal("1"), unit_label="h")

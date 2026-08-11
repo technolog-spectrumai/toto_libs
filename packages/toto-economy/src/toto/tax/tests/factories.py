@@ -32,7 +32,7 @@ def make_gas_asset(decimals=9):
     resolve it without setting overrides."""
     return make_asset(
         name="Gas", unit_name="ASR", decimals=decimals,
-        total_supply_base_units=10 ** 15, active=True,
+        max_supply_base_units=10 ** 15, active=True,
     )
 
 

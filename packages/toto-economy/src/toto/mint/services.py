@@ -309,7 +309,7 @@ def issue_asset(*, name: str, unit_name: str, total_supply: Decimal,
         IssuanceRecord.objects.create(
             asset=asset, currency_hash=asset.currency_hash,
             unit_name=asset.unit_name,
-            total_supply_base_units=asset.total_supply_base_units,
+            max_supply_base_units=asset.max_supply_base_units,
             decimals=asset.decimals, actor=actor, reason=reason,
             genesis_payload=asset.genesis_payload,
             genesis_signature=asset.genesis_signature,

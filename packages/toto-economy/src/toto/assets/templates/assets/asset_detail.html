@@ -30,7 +30,7 @@
         </div>
         <div class="flex flex-wrap gap-4 text-sm opacity-70">
           <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
-          <span><i class="fa-solid fa-database mr-1"></i>{% trans "Total supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+          <span><i class="fa-solid fa-database mr-1"></i>{% trans "Maximum supply" %}: {{ asset.max_supply_display }} {{ asset.unit_name }}</span>
           <span><i class="fa-solid fa-calendar mr-1"></i>{{ asset.created_at|date:"M d, Y H:i" }}</span>
           {% if asset.code %}
           <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-coins mr-1"></i>{{ asset.code }}{% if asset.symbol %} · {{ asset.symbol }}{% endif %}</span>
@@ -54,7 +54,7 @@
           <button @mouseenter="open=true" @mouseleave="open=false" @focus="open=true" @blur="open=false"
                   :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
                   class="w-full rounded-lg px-4 py-3 text-center cursor-default">
-            {% if ledger_status.total_supply_matches %}
+            {% if ledger_status.supply_matches %}
               <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
               <span class="ml-1 font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "Supply verified" %}</span>
             {% elif ledger_status.supply_diff > 0 %}
@@ -71,15 +71,15 @@
             <p class="font-semibold opacity-80 uppercase tracking-wide mb-1">{% trans "Supply check" %}</p>
             <div class="space-y-1">
               <div class="flex justify-between gap-2">
-                <span class="opacity-60">{% trans "Declared total supply" %}</span>
-                <span class="font-mono font-semibold">{{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+                <span class="opacity-60">{% trans "Issued supply" %}</span>
+                <span class="font-mono font-semibold">{{ ledger_status.issued_supply_display }} {{ asset.unit_name }}</span>
               </div>
               <div class="flex justify-between gap-2">
                 <span class="opacity-60">{% trans "Sum of all holdings" %}</span>
                 <span class="font-mono font-semibold">{{ ledger_status.holdings_sum_display }} {{ asset.unit_name }}</span>
               </div>
             </div>
-            {% if not ledger_status.total_supply_matches %}
+            {% if not ledger_status.supply_matches %}
             <div class="border-t pt-2" :class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
               <div class="flex justify-between gap-2" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
                 <span class="font-semibold">{% trans "Discrepancy" %}</span>
@@ -87,9 +87,9 @@
               </div>
               <p class="mt-2 opacity-70 leading-relaxed">
                 {% if ledger_status.supply_diff < 0 %}
-                  {% trans "Holdings are less than declared supply. The reserve account may be missing or its AssetHolding was not created at token creation time." %}
+                  {% trans "Holdings are less than what was issued. The reserve account may be missing, or its holding row was not created when the units were minted." %}
                 {% else %}
-                  {% trans "Holdings exceed declared supply. Supply is immutable after creation — tokens in circulation exceed the authorised limit. Treat this as a fraud signal." %}
+                  {% trans "Holdings exceed what was ever issued. Every unit in existence comes from a signed mint event, so units that no mint accounts for are a fraud signal." %}
                 {% endif %}
               </p>
             </div>

@@ -136,7 +136,7 @@ class Command(IngressCommand):
 
         if LedgerTransaction.objects.filter(reference=reference).exists():
             gas = Asset.objects.get(unit_name=ticker)
-            existing_supply = gas.total_supply_display
+            existing_supply = gas.max_supply_display
             if existing_supply != supply:
                 self.stdout.write(self.style.WARNING(
                     f"  ⚠ {ticker} already exists with supply={existing_supply}; "
@@ -172,7 +172,7 @@ class Command(IngressCommand):
         # ── TPLN ─────────────────────────────────────────────────────────
         if LedgerTransaction.objects.filter(reference="create-tpln").exists():
             tpln = Asset.objects.get(unit_name="TPLN")
-            existing_supply = tpln.total_supply_display
+            existing_supply = tpln.max_supply_display
             if existing_supply != TPLN_SUPPLY:
                 self.stdout.write(self.style.WARNING(
                     f"  ⚠ TPLN already exists with supply={existing_supply}; "

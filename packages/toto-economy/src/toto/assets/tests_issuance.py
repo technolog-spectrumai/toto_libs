@@ -107,9 +107,15 @@ class MasterIssuesTests(TestCase):
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 
+        from toto.mint.history import supply
+
         self.assertEqual(asset.genesis_payload["max_supply_base_units"],
-                         asset.total_supply_base_units)
-        self.assertNotIn("total_supply_base_units", asset.genesis_payload)
+                         asset.max_supply_base_units)
+        # The amount that exists is nowhere in the identity, even when a mint
+        # has just made the two numbers equal.
+        self.assertEqual(supply(asset), asset.max_supply_base_units)
+        self.assertNotIn("supply_base_units", asset.genesis_payload)
+        self.assertNotIn("minted_base_units", asset.genesis_payload)
         self.assertEqual(compute_currency_hash(asset.genesis_payload),
                          asset.currency_hash)
 
@@ -156,13 +162,13 @@ class ConstraintTests(TestCase):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Asset.objects.create(name="Bare", unit_name="BARE",
-                                     decimals=0, total_supply_base_units=1)
+                                     decimals=0, max_supply_base_units=1)
 
     def test_an_empty_hash_is_refused_as_firmly_as_a_missing_one(self):
         with self.assertRaises(IntegrityError):
             with transaction.atomic():
                 Asset.objects.create(name="Bare", unit_name="BARE2",
-                                     decimals=0, total_supply_base_units=1,
+                                     decimals=0, max_supply_base_units=1,
                                      currency_hash="")
 
 
@@ -183,7 +189,7 @@ class IdentityIsImmutableTests(TestCase):
     def test_the_supply_cannot_be_changed(self):
         # Supply is committed to the hash; moving it would make the identity
         # describe an amount that no longer exists.
-        self.asset.total_supply_base_units += 1
+        self.asset.max_supply_base_units += 1
         with self.assertRaises(ValidationError):
             self.asset.save()
 

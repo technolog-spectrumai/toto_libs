@@ -292,7 +292,7 @@ class TransferProtocolTests(TestCase):
         })
         report = verify_asset_ledger(self.asset)
         self.assertTrue(report["entries_balanced"])
-        self.assertTrue(report["total_supply_matches"])
+        self.assertTrue(report["supply_matches"])
 
 
 @override_settings(FIELD_ENCRYPTION_KEY=FERNET_KEY)

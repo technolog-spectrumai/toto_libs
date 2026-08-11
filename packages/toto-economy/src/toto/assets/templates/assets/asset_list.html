@@ -60,7 +60,7 @@
             </div>
             <div class="flex flex-wrap items-center gap-3 text-xs opacity-70">
               <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
-              <span><i class="fa-solid fa-database mr-1"></i>{% trans "Supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
+              <span><i class="fa-solid fa-database mr-1"></i>{% trans "Max" %}: {{ asset.max_supply_display }} {{ asset.unit_name }}</span>
               <span>{% blocktrans with date=asset.created_at|date:"M d, Y" %}Created {{ date }}{% endblocktrans %}</span>
             </div>
           </div>

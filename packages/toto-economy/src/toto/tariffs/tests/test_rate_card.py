@@ -34,7 +34,7 @@ class RateCardTests(TestCase):
         )
         self.gas = make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
-            total_supply_base_units=10 ** 15, active=True,
+            max_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
         )
 
@@ -120,7 +120,7 @@ class SeederAgreesWithTheGridTests(TestCase):
         )
         make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
-            total_supply_base_units=10 ** 15, active=True,
+            max_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
         )
 
@@ -174,7 +174,7 @@ class PricingCurrencyTests(TestCase):
         )
         self.gas = make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
-            total_supply_base_units=10 ** 15, active=True,
+            max_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
         )
         coin_reserve = LedgerAccount.objects.create(
@@ -183,7 +183,7 @@ class PricingCurrencyTests(TestCase):
         )
         self.coin = make_asset(
             name="Side Coin", unit_name="COIN", decimals=2,
-            total_supply_base_units=10 ** 9, active=True,
+            max_supply_base_units=10 ** 9, active=True,
             reserve_account=coin_reserve,
         )
 

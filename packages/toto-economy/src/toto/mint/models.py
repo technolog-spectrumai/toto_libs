@@ -21,7 +21,7 @@ class IssuanceRecord(models.Model):
     #: a local pk means nothing.
     currency_hash = models.CharField(max_length=71)
     unit_name = models.CharField(max_length=20)
-    total_supply_base_units = models.PositiveBigIntegerField()
+    max_supply_base_units = models.PositiveBigIntegerField()
     decimals = models.PositiveSmallIntegerField()
 
     actor = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,

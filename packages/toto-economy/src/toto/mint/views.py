@@ -71,6 +71,6 @@ def issue(request):
 
     messages.success(
         request,
-        f"Issued {asset.unit_name} — {asset.total_supply_display} into its "
+        f"Issued {asset.unit_name} — {asset.max_supply_display} into its "
         f"reserve. Identity {asset.currency_hash[:20]}…")
     return redirect("mint:index")
