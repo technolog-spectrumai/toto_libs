@@ -125,6 +125,59 @@ class CurrencyIssuer(models.Model):
         return verify_genesis_document(self.public_key_pem, document, signature)
 
 
+class CurrencyContract(models.Model):
+    """What a platform bills in — the thing that makes an asset a currency.
+
+    "Currency" is a ROLE, not a property of the asset: the same asset is an
+    ordinary tradeable instrument on the master and *the* currency from a
+    branch's point of view. This row is that role, and it is per platform.
+
+    Superseded rows are KEPT. The set of assets a platform may legitimately
+    hold is its contract history — current plus superseded — so a currency it
+    was never contracted for can never acquire a balance, and balances in a
+    retired currency stay spendable while nothing new is priced in them.
+    """
+
+    #: Which platform this contract is for. A branch has exactly one active
+    #: row, naming itself; the master self-contracts the same way, so there is
+    #: one code path for "what do we bill in" everywhere.
+    node_id = models.CharField(max_length=200)
+    asset = models.ForeignKey("Asset", on_delete=models.PROTECT,
+                              related_name="contracts")
+    #: Denormalised from the asset so a contract is self-describing on the
+    #: wire and in an audit, where the local pk means nothing.
+    currency_hash = models.CharField(max_length=71)
+    issuer = models.ForeignKey("CurrencyIssuer", on_delete=models.PROTECT,
+                               related_name="contracts")
+    #: Monotonic per platform. A branch refuses any serial at or below the one
+    #: it holds, which is what makes replaying an old descriptor impossible.
+    serial = models.PositiveIntegerField(default=1)
+    payload = models.JSONField(default=dict, blank=True)
+    signature = models.TextField(blank=True)
+    #: True for the contract describing THIS host.
+    is_local = models.BooleanField(default=False)
+    superseded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-serial", "-created_at"]
+        constraints = [
+            # One active contract for this host. Superseded rows are exempt —
+            # they are history, and history is what the holdings guard reads.
+            models.UniqueConstraint(
+                fields=["is_local"],
+                condition=models.Q(is_local=True, superseded_at__isnull=True),
+                name="assets_one_active_local_contract"),
+            models.UniqueConstraint(
+                fields=["node_id", "serial"],
+                name="assets_one_contract_per_node_serial"),
+        ]
+
+    def __str__(self):
+        state = "" if self.superseded_at is None else " (superseded)"
+        return f"{self.node_id} bills in {self.asset.unit_name}{state}"
+
+
 # ---------------------------------------------------------------------------
 # Choices
 # ---------------------------------------------------------------------------
@@ -266,10 +319,15 @@ class Asset(models.Model):
         return self.issuer.verify_genesis(self.genesis_payload,
                                           self.genesis_signature)
 
-    # The honest replacement for the retired ``is_currency`` boolean is
-    # ``is_currency_for(node_id)`` — the answer differs per platform, so it
-    # takes an argument. It arrives with CurrencyContract, which is the thing
-    # that makes an asset a currency at all.
+    def is_currency_for(self, node_id: str) -> bool:
+        """Is this asset that platform's billing currency?
+
+        The honest replacement for the retired ``is_currency`` boolean: the
+        answer differs per platform, so it takes an argument. A boolean column
+        could only ever have been right about one of them.
+        """
+        return self.contracts.filter(node_id=node_id,
+                                     superseded_at__isnull=True).exists()
 
 
 # ---------------------------------------------------------------------------

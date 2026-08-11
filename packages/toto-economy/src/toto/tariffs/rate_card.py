@@ -46,9 +46,22 @@ class NoGasAsset(Exception):
 # ---------------------------------------------------------------------------
 
 def gas_asset():
-    """The asset metered work is billed in on this host, or None if unseeded."""
+    """The asset metered work is billed in on this platform, or None.
+
+    Resolves through the platform's CURRENCY CONTRACT — the thing that makes
+    an asset a currency at all. ``settings.GAS_ASSET`` is not consulted: a
+    ticker is a label, and a host does not choose what it bills in. It
+    survives only as a genesis-time seed hint in ingress_assets.
+
+    Falls back to the ticker ONLY while no contract exists, so a host mid-way
+    through seeding still works; once contracted, the contract wins.
+    """
+    from toto.assets.contracts import contractual_asset
     from toto.assets.models import Asset
 
+    contracted = contractual_asset()
+    if contracted is not None:
+        return contracted
     ticker = getattr(settings, "GAS_ASSET", "ASR")
     return Asset.objects.filter(unit_name=ticker, active=True).first()
 
