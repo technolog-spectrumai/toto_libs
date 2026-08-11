@@ -12,17 +12,27 @@ initial migration depends on `assets.0001`; charging *is* writing ledger rows.
 
 ## Why it is a package
 
-It was carried by one host until a second one needed to price its own work
-differently. A host that pins this runs **its own** economy: its own assets, its
-own prices, its own wallets. Nothing crosses between hosts — the bourse is
-per-host and `assets.services.get_exchange_rate()` refuses every cross-asset
-pair, so an implicit FX rate can never appear inside a billing path.
+It was carried by one host until a second one needed a ledger of its own. A host
+that pins this keeps **its own** ledger, its own prices and its own wallets —
+those stay local — but the money itself does not belong to it.
 
-Two hosts each running this are two economies, not one shared one. That is the
-point, and it is why a host billing in the same ticker as its sibling is a
-mistake: two things named alike that cannot be exchanged is exactly the
-ambiguity the no-conversion rule exists to prevent. Give each host's gas its own
-name.
+**One issuer, many ledgers.** Zenobia is the only monetary master: it is the
+only place a currency is created, and the only place assets are traded. Every
+currency it issues carries a permanent genesis hash that identifies it on every
+platform — never a ticker, never a name, never a row id. A branch mirrors that
+catalogue read-only, bills in exactly one currency Zenobia assigned it, and
+cannot issue, re-identify or trade anything.
+
+This reverses the older rule that each host should name its own gas. That rule
+existed because two ledgers that could not exchange must not use one name for
+two different things; the fix now is one issuer rather than separate names.
+
+`assets.services.get_exchange_rate()` still refuses every cross-asset pair, so
+an implicit FX rate can never appear inside a billing path — and on a branch the
+exchange services refuse outright, because trading lives on the master.
+
+**The full doctrine is `portal/hierarchical_economy.md`.** Read it before
+changing anything about currency identity, issuance or custody.
 
 ## What it is not
 

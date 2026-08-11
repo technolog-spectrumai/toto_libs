@@ -248,8 +248,10 @@ class Command(IngressCommand):
     def process(self):
         self.stdout.write("⛽  Seeding tariffs…")
 
-        # The gas ticker is per host: two hosts running their own ledgers must
-        # not both bill in "ASR", because the balances are not interchangeable.
+        # Seeding only. What this host BILLS in is its currency contract, not a
+        # ticker — see portal/hierarchical_economy.md. This lookup exists to
+        # find the asset to hang seed prices on when the contract has not been
+        # assigned yet; runtime resolution goes through contractual_asset().
         ticker = getattr(settings, "GAS_ASSET", "ASR")
         gas = Asset.objects.filter(unit_name=ticker).first()
         if gas is None:

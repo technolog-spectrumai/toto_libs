@@ -24,12 +24,13 @@ from toto.ingress import IngressCommand
 # against an already-seeded ledger never trips the immutability re-check.
 ASR_SUPPLY = Decimal("6666.666666667")
 
-# The gas asset — what metered work is billed in — is per host. It was ASR
-# everywhere until a second host started running its own economy (see the
-# monorepo's studio.md): two ledgers that cannot exchange must not use one
-# ticker, or a balance means different things depending where you read it.
-# GAS_ASSET/GAS_SUPPLY/GAS_ASSET_NAME default to the historical Assarion, so a
-# host that names none of them seeds exactly what it always did.
+# The gas asset — what metered work is billed in — is no longer a per-host
+# choice. Zenobia issues every currency and assigns each platform the one it
+# bills in, so GAS_ASSET survives only as a SEED HINT here at genesis time:
+# it names what to create on a master that has nothing yet. Nothing reads it at
+# runtime any more — billing resolves through the currency contract. A branch
+# seeds no gas at all; it mirrors what the master issued.
+# See portal/hierarchical_economy.md.
 GAS_DEFAULTS = {
     "ASR": ("Assarion", "Assari",
             "Assarion — fine-grained unit of account of the platform. 9 decimal places."),
