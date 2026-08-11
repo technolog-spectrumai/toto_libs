@@ -1,8 +1,9 @@
-"""Commit DAG → positioned graph JSON for the Sigma.js history modal.
+"""Commit DAG → positioned graph JSON for the history modal.
 
-Sigma renders fixed coordinates (it does no layout), so the classic gitk lane
-layout is computed here: commits arrive from ``git log --all --topo-order``
-(newest first); each gets ``y = -row``. Lanes are columns: an ordered list of
+The renderer (Cytoscape, layout: preset) draws fixed coordinates and does no
+layout of its own, so the classic gitk lane layout is computed here: commits
+arrive from ``git log --all --topo-order`` (newest first); each gets
+``y = -row``. Lanes are columns: an ordered list of
 "expected next sha" slots. A commit takes the leftmost lane expecting it (or
 opens one), its first parent inherits that lane, extra parents open lanes to
 the right, and duplicate expectations of the same parent collapse into the
