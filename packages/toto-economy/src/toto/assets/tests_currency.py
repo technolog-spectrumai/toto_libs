@@ -9,9 +9,8 @@ import json
 from django.test import SimpleTestCase
 
 from toto.assets import currency_hash
-from toto.assets.currency_hash import (GENESIS_CONTEXT, GenesisError,
-                                       SUPPLY_CAPPED, SUPPLY_FIXED,
-                                       SUPPLY_OPEN, build_genesis,
+from toto.assets.currency_hash import (GENESIS_CONTEXT, GENESIS_VERSION,
+                                       GenesisError, build_genesis,
                                        canonical, compute_currency_hash,
                                        framed, verify_genesis_document)
 
@@ -23,8 +22,7 @@ def _document(**overrides):
         "unit_name": "ASR",
         "name": "Assarion",
         "decimals": 9,
-        "supply_policy": SUPPLY_FIXED,
-        "supply_cap": None,
+        "total_supply_base_units": 6_666_666_666_667,
         "genesis_nonce": "b" * 64,
         "issued_at": "2026-08-11T12:00:00+00:00",
     }
@@ -53,7 +51,7 @@ class CanonicalisationTests(SimpleTestCase):
         from decimal import Decimal
 
         with self.assertRaises(GenesisError):
-            canonical(_document(supply_cap=Decimal("5")))
+            canonical({"supply": Decimal("5")})
 
     def test_unicode_in_names_is_preserved_not_escaped(self):
         one = compute_currency_hash(_document(name="Złoty"))
@@ -99,7 +97,7 @@ class CurrencyHashTests(SimpleTestCase):
             "unit_name": "TPLN",
             "name": "Toto Zloty",
             "decimals": 2,
-            "supply_policy": SUPPLY_OPEN,
+            "total_supply_base_units": 42,
             "genesis_nonce": "d" * 64,
             "issued_at": "2027-01-01T00:00:00+00:00",
         }
@@ -114,55 +112,63 @@ class CurrencyHashTests(SimpleTestCase):
         # collision with the retired one.
         one = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                             name="Assarion", decimals=9,
-                            supply_policy=SUPPLY_FIXED,
+                            total_supply_base_units=10 ** 9,
                             issued_at="2026-08-11T12:00:00+00:00")
         two = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                             name="Assarion", decimals=9,
-                            supply_policy=SUPPLY_FIXED,
+                            total_supply_base_units=10 ** 9,
                             issued_at="2026-08-11T12:00:00+00:00")
         self.assertNotEqual(compute_currency_hash(one),
                             compute_currency_hash(two))
 
-    def test_a_capped_policy_commits_its_cap(self):
-        capped_low = _document(supply_policy=SUPPLY_CAPPED, supply_cap=1000)
-        capped_high = _document(supply_policy=SUPPLY_CAPPED, supply_cap=2000)
-        self.assertNotEqual(compute_currency_hash(capped_low),
-                            compute_currency_hash(capped_high))
+    def test_supply_is_committed_so_the_promise_is_verifiable(self):
+        # The whole point of putting a fixed supply in the preimage: a holder
+        # can tell from the document alone how much will ever exist.
+        few = _document(total_supply_base_units=1000)
+        many = _document(total_supply_base_units=2000)
+        self.assertNotEqual(compute_currency_hash(few),
+                            compute_currency_hash(many))
 
 
 class BuildGenesisTests(SimpleTestCase):
     def test_the_builder_fills_version_and_nonce(self):
         document = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                                  name="Assarion", decimals=9,
-                                 supply_policy=SUPPLY_FIXED,
+                                 total_supply_base_units=10 ** 9,
                                  issued_at="2026-08-11T12:00:00+00:00")
-        self.assertEqual(document["v"], 1)
+        self.assertEqual(document["v"], GENESIS_VERSION)
         self.assertEqual(len(document["genesis_nonce"]), 64)
         int(document["genesis_nonce"], 16)  # hex or it raises
 
-    def test_a_cap_is_required_exactly_when_the_policy_is_capped(self):
-        with self.assertRaises(GenesisError):
-            build_genesis(issuer_fingerprint="a" * 64, unit_name="X",
-                          name="X", decimals=0, supply_policy=SUPPLY_CAPPED,
-                          issued_at="2026-08-11T12:00:00+00:00")
-        with self.assertRaises(GenesisError):
-            build_genesis(issuer_fingerprint="a" * 64, unit_name="X",
-                          name="X", decimals=0, supply_policy=SUPPLY_FIXED,
-                          supply_cap=10,
-                          issued_at="2026-08-11T12:00:00+00:00")
+    def test_supply_must_be_a_positive_integer_of_base_units(self):
+        # A float would make the identity bytes depend on repr(); zero or
+        # negative is not a currency.
+        for bad in (0, -1, 1.5, "1000", True):
+            with self.subTest(supply=bad):
+                with self.assertRaises(GenesisError):
+                    compute_currency_hash(
+                        _document(total_supply_base_units=bad))
 
-    def test_unknown_policies_are_refused(self):
+    def test_a_supply_policy_field_is_malformed_not_ignored(self):
+        # Flexible supply is a future v2 document. A v1 carrying a policy is a
+        # caller confusing the two, and silently dropping it would let two
+        # differing documents share a hash.
+        document = _document()
+        document["supply_policy"] = "issuable"
         with self.assertRaises(GenesisError):
-            build_genesis(issuer_fingerprint="a" * 64, unit_name="X",
-                          name="X", decimals=0, supply_policy="whatever",
-                          issued_at="2026-08-11T12:00:00+00:00")
+            compute_currency_hash(document)
 
-    def test_current_supply_has_no_place_in_identity(self):
-        # The field the first design committed and minting evicted. A document
-        # carrying it is malformed, not merely ignored — silently dropping it
-        # would let two differing documents share a hash.
+    def test_an_unknown_version_is_refused(self):
+        # v1 means fixed supply by definition. A v2 document means something
+        # this build has not been taught and must not guess at.
         with self.assertRaises(GenesisError):
-            compute_currency_hash(_document(total_supply_base_units=10 ** 9))
+            compute_currency_hash(_document(v=2))
+
+    def test_decimals_are_bounded(self):
+        for bad in (-1, 20, 1.5, "9"):
+            with self.subTest(decimals=bad):
+                with self.assertRaises(GenesisError):
+                    compute_currency_hash(_document(decimals=bad))
 
 
 class SignatureTests(SimpleTestCase):

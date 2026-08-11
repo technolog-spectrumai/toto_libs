@@ -18,12 +18,22 @@ Three deliberate boundaries:
   bytes must never depend on what Python's ``str()`` happens to do to a Decimal
   or a datetime — a non-JSON-native value is a caller bug and is refused.
 
-On supply: the preimage commits a supply POLICY (``fixed`` | ``capped`` |
-``open``), never the current amount. Minting exists (toto.mint, master-only),
-so an amount in the preimage would mean every mint changes the currency's
-identity. The policy is the monetary promise itself: a holder can verify from
-the hash alone whether the issuer may dilute them, and a mint past a committed
-cap is refusable by anyone holding the genesis document.
+On supply: the preimage commits the TOTAL SUPPLY, because supply is strictly
+fixed. It is created once by ``create_asset()`` into the asset's reserve
+account and never again — there is no mint verb and no burn verb anywhere on
+the platform, and ``TransactionType`` has no such member. More of something in
+circulation means releasing from the reserve; something genuinely new means a
+new asset with a new identity. So the amount is safe to commit, and committing
+it makes the hash a complete attestation: a holder can verify from the document
+alone exactly how much of this will ever exist.
+
+A branch allocation is a TRANSFER, not an increase. Sending a branch more
+currency moves units out of Zenobia's reserve into the branch's; there is
+visibly more on that branch and exactly as much in the world.
+
+If flexible supply is ever wanted, ``v`` is the upgrade path: ``v1`` *means*
+fixed supply by definition, so a ``v2`` document could carry a policy without
+invalidating or re-hashing a single existing currency.
 """
 
 from __future__ import annotations
@@ -38,17 +48,16 @@ import struct
 #: from every entry in it by construction ("toto/currency/" vs "toto/clearing/").
 GENESIS_CONTEXT = b"toto/currency/v1/genesis"
 
-SUPPLY_FIXED = "fixed"
-SUPPLY_CAPPED = "capped"
-SUPPLY_OPEN = "open"
-SUPPLY_POLICIES = (SUPPLY_FIXED, SUPPLY_CAPPED, SUPPLY_OPEN)
+#: The one document version there is. v1 means fixed supply by definition —
+#: see the note on flexible supply in the module docstring.
+GENESIS_VERSION = 1
 
 #: Exactly these keys, no more, no fewer. A document with an extra key is
 #: malformed rather than tolerated: silently dropping it would let two
 #: differing documents share a hash.
 GENESIS_FIELDS = frozenset({
     "v", "issuer_fingerprint", "unit_name", "name", "decimals",
-    "supply_policy", "supply_cap", "genesis_nonce", "issued_at",
+    "total_supply_base_units", "genesis_nonce", "issued_at",
 })
 
 HASH_PREFIX = "tcur1:"
@@ -85,16 +94,20 @@ def _validated(document: dict) -> dict:
         if missing:
             parts.append(f"missing: {', '.join(missing)}")
         raise GenesisError(f"Not a genesis document ({'; '.join(parts)}).")
-    if document["supply_policy"] not in SUPPLY_POLICIES:
+    if document["v"] != GENESIS_VERSION:
         raise GenesisError(
-            f"Unknown supply policy {document['supply_policy']!r}; one of "
-            f"{', '.join(SUPPLY_POLICIES)}.")
-    has_cap = document["supply_cap"] is not None
-    if (document["supply_policy"] == SUPPLY_CAPPED) != has_cap:
+            f"Unknown genesis version {document['v']!r}; this build writes and "
+            f"reads v{GENESIS_VERSION}.")
+    supply = document["total_supply_base_units"]
+    if not isinstance(supply, int) or isinstance(supply, bool) or supply <= 0:
         raise GenesisError(
-            "supply_cap is required exactly when supply_policy is "
-            f"“{SUPPLY_CAPPED}” — a cap on an uncapped policy is a "
-            "contradiction, not a default.")
+            "total_supply_base_units must be a positive integer of base units "
+            "— it is the whole supply that will ever exist, and a float would "
+            "make the identity bytes depend on repr().")
+    decimals = document["decimals"]
+    if not isinstance(decimals, int) or isinstance(decimals, bool) \
+            or not 0 <= decimals <= 19:
+        raise GenesisError("decimals must be an integer between 0 and 19.")
     return document
 
 
@@ -105,8 +118,8 @@ def compute_currency_hash(document: dict) -> str:
 
 
 def build_genesis(*, issuer_fingerprint: str, unit_name: str, name: str,
-                  decimals: int, supply_policy: str, issued_at: str,
-                  supply_cap: int | None = None) -> dict:
+                  decimals: int, total_supply_base_units: int,
+                  issued_at: str) -> dict:
     """A fresh genesis document, nonce included.
 
     The nonce is what makes identically-described currencies distinct: a
@@ -115,13 +128,12 @@ def build_genesis(*, issuer_fingerprint: str, unit_name: str, name: str,
     — a pure module must not read time.
     """
     return _validated({
-        "v": 1,
+        "v": GENESIS_VERSION,
         "issuer_fingerprint": issuer_fingerprint,
         "unit_name": unit_name,
         "name": name,
         "decimals": decimals,
-        "supply_policy": supply_policy,
-        "supply_cap": supply_cap,
+        "total_supply_base_units": total_supply_base_units,
         "genesis_nonce": secrets.token_hex(32),
         "issued_at": issued_at,
     })
