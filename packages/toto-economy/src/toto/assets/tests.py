@@ -25,7 +25,9 @@ from .queries import (
     list_asset_holders,
     verify_asset_ledger,
 )
-from .services.assets import create_asset, reverse_transaction, transfer_asset
+from toto.mint.services import create_currency
+
+from .services.assets import reverse_transaction, transfer_asset
 
 
 # ---------------------------------------------------------------------------
@@ -81,7 +83,7 @@ class AssetCreationTests(TestCase):
         self.reserve = make_account("reserve", "reserve")
 
     def test_asset_created(self):
-        asset = create_asset(
+        asset = create_currency(
             name="Spectrum Credit",
             unit_name="SPC",
             total_supply=Decimal("1000000"),
@@ -94,7 +96,7 @@ class AssetCreationTests(TestCase):
         self.assertEqual(asset.total_supply_base_units, 100000000)
 
     def test_reserve_receives_total_supply(self):
-        asset = create_asset(
+        asset = create_currency(
             name="Spectrum Credit",
             unit_name="SPC",
             total_supply=Decimal("1000"),
@@ -106,7 +108,7 @@ class AssetCreationTests(TestCase):
         self.assertEqual(balance, 100000)
 
     def test_transaction_is_posted(self):
-        create_asset(
+        create_currency(
             name="X", unit_name="X01", total_supply=Decimal("1"), decimals=0,
             reserve_account=self.reserve, reference="x01",
         )
@@ -114,7 +116,7 @@ class AssetCreationTests(TestCase):
         self.assertTrue(tx.posted)
 
     def test_entries_are_balanced(self):
-        asset = create_asset(
+        asset = create_currency(
             name="X", unit_name="X02", total_supply=Decimal("500"), decimals=0,
             reserve_account=self.reserve, reference="x02",
         )
@@ -122,7 +124,7 @@ class AssetCreationTests(TestCase):
         self.assertEqual(total, 0)
 
     def test_hash_attached(self):
-        create_asset(
+        create_currency(
             name="X", unit_name="X03", total_supply=Decimal("1"), decimals=0,
             reserve_account=self.reserve, reference="x03",
         )
@@ -131,32 +133,32 @@ class AssetCreationTests(TestCase):
 
     def test_invalid_supply_raises(self):
         with self.assertRaises(ValidationError):
-            create_asset(
+            create_currency(
                 name="X", unit_name="X04", total_supply=Decimal("0"), decimals=0,
                 reserve_account=self.reserve, reference="x04",
             )
 
     def test_negative_supply_raises(self):
         with self.assertRaises(ValidationError):
-            create_asset(
+            create_currency(
                 name="X", unit_name="X05", total_supply=Decimal("-1"), decimals=0,
                 reserve_account=self.reserve, reference="x05",
             )
 
     def test_invalid_decimals_raises(self):
         with self.assertRaises(ValidationError):
-            create_asset(
+            create_currency(
                 name="X", unit_name="X06", total_supply=Decimal("1"), decimals=20,
                 reserve_account=self.reserve, reference="x06",
             )
 
     def test_duplicate_reference_raises(self):
-        create_asset(
+        create_currency(
             name="X", unit_name="X07", total_supply=Decimal("1"), decimals=0,
             reserve_account=self.reserve, reference="dup-ref",
         )
         with self.assertRaises(Exception):
-            create_asset(
+            create_currency(
                 name="Y", unit_name="Y07", total_supply=Decimal("1"), decimals=0,
                 reserve_account=self.reserve, reference="dup-ref",
             )
@@ -171,7 +173,7 @@ class AssetTransferTests(TestCase):
         self.reserve = make_account("reserve", "reserve")
         self.alice = make_account("alice")
         self.bob = make_account("bob")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Token", unit_name="TKN", total_supply=Decimal("1000"), decimals=2,
             reserve_account=self.reserve, reference="create-tkn",
         )
@@ -461,7 +463,7 @@ class ReversalTests(TestCase):
     def setUp(self):
         self.reserve = make_account("reserve", "reserve")
         self.alice = make_account("alice")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Token", unit_name="RVT", total_supply=Decimal("1000"), decimals=2,
             reserve_account=self.reserve, reference="create-rvt",
         )
@@ -524,7 +526,7 @@ class ReversalTests(TestCase):
 class ImmutabilityTests(TestCase):
     def setUp(self):
         self.reserve = make_account("reserve", "reserve")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Token", unit_name="IMM", total_supply=Decimal("100"), decimals=0,
             reserve_account=self.reserve, reference="create-imm",
         )
@@ -555,7 +557,7 @@ class HashChainTests(TestCase):
     def setUp(self):
         self.reserve = make_account("reserve", "reserve")
         self.alice = make_account("alice")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Token", unit_name="HCH", total_supply=Decimal("1000"), decimals=2,
             reserve_account=self.reserve, reference="create-hch",
         )
@@ -595,7 +597,7 @@ class SupplyTests(TestCase):
         self.reserve = make_account("reserve", "reserve")
         self.alice = make_account("alice")
         self.bob = make_account("bob")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Supply Test", unit_name="SUP", total_supply=Decimal("1000"), decimals=2,
             reserve_account=self.reserve, reference="create-sup",
         )
@@ -732,7 +734,7 @@ class SigningServiceTests(TestCase):
         self.reserve = make_account("sign-reserve", "reserve")
         self.alice = make_account("sign-alice")
         self.bob = make_account("sign-bob")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="SignAsset", unit_name="SGN", total_supply=Decimal("10000"),
             decimals=2, reserve_account=self.reserve, reference="create-sgn",
         )
@@ -807,7 +809,7 @@ class DelegatedSigningTests(TestCase):
         self.user = User.objects.create_user(username="delegated", password="pass")
         self.reserve = make_account("del-reserve", "reserve")
         self.alice = make_account("del-alice")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="DelAsset", unit_name="DEL", total_supply=Decimal("10000"),
             decimals=2, reserve_account=self.reserve, reference="create-del",
         )
@@ -881,7 +883,7 @@ class AuthorizationGrantSigningTests(TestCase):
         User = get_user_model()
         self.user = User.objects.create_user(username="grant-signer", password="pass")
         self.reserve = make_account("grant-reserve", "reserve")
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="GrantAsset", unit_name="GRT", total_supply=Decimal("100"),
             decimals=0, reserve_account=self.reserve, reference="create-grt",
         )

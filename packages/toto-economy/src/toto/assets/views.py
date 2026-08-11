@@ -23,7 +23,7 @@ from .models import (
     TransactionType,
 )
 from .queries import list_asset_holders, verify_asset_ledger
-from .services.assets import create_asset, distribute_asset
+from .services.assets import distribute_asset
 
 
 def assets_render(request, template_name, context):
@@ -70,8 +70,10 @@ def asset_create(request):
                     },
                 )
 
+            from toto.mint.services import create_currency
+
             ref = f"mint-{unit_name.lower()}-{_uuid.uuid4().hex[:8]}"
-            asset = create_asset(
+            asset = create_currency(
                 name=name,
                 unit_name=unit_name,
                 total_supply=total_supply,
@@ -80,8 +82,6 @@ def asset_create(request):
                 reference=ref,
                 description=description,
             )
-            asset.reserve_account = reserve
-            asset.save(update_fields=["reserve_account", "updated_at"])
             messages.success(request, f"Asset {unit_name} minted with total supply of {total_supply}.")
             return redirect("assets:asset_detail", pk=asset.pk)
         except (ValidationError, InvalidOperation) as exc:

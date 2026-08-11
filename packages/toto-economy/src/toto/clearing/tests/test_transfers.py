@@ -15,7 +15,8 @@ from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.assets.models import AccountType, LedgerAccount, to_base_units
 from toto.assets.queries import get_asset_balance, verify_asset_ledger
-from toto.assets.services.assets import create_asset, distribute_asset
+from toto.assets.services.assets import distribute_asset
+from toto.mint.services import create_currency
 
 from toto.clearing.models import (
     ClearingHold,
@@ -133,7 +134,7 @@ class TransferProtocolTests(TestCase):
 
         self.reserve = LedgerAccount.objects.create(
             code="RES3", name="Reserve", account_type=AccountType.RESERVE)
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Bridge Token", unit_name="BRT", total_supply=Decimal("1000"),
             decimals=2, reserve_account=self.reserve, reference="mk-brt")
         self.asset.reserve_account = self.reserve
@@ -214,7 +215,7 @@ class TransferProtocolTests(TestCase):
         # is a SIGNED reject the sender can verify.
         private_reserve = LedgerAccount.objects.create(
             code="PRIV-RES", name="Private reserve", account_type=AccountType.RESERVE)
-        create_asset(name="Private", unit_name="PRV", total_supply=Decimal("10"),
+        create_currency(name="Private", unit_name="PRV", total_supply=Decimal("10"),
                      decimals=2, reserve_account=private_reserve, reference="mk-prv")
         with self.assertRaises(bridge.InboxRefusal) as ctx:
             transfers.apply_prepare(self.peer, {
@@ -310,7 +311,7 @@ class InboxEndpointTests(TestCase):
 
         self.reserve = LedgerAccount.objects.create(
             code="RES4", name="Reserve", account_type=AccountType.RESERVE)
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Endpoint Token", unit_name="EPT", total_supply=Decimal("1000"),
             decimals=2, reserve_account=self.reserve, reference="mk-ept")
         self.asset.reserve_account = self.reserve

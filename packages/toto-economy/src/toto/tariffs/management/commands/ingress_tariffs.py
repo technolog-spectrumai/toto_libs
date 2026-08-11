@@ -33,7 +33,8 @@ from toto.assets.models import (
     to_base_units,
 )
 from toto.assets.queries import get_asset_balance_display
-from toto.assets.services.assets import create_asset, transfer_asset
+from toto.assets.services.assets import transfer_asset
+from toto.mint.services import create_currency
 from toto.ingress import IngressCommand
 from django.conf import settings
 
@@ -102,7 +103,7 @@ def _asset(unit_name, name, decimals=6, total_supply=_DEFAULT_SUPPLY):
     existing = Asset.objects.filter(unit_name=unit_name).first()
 
     if existing is None:
-        asset = create_asset(
+        asset = create_currency(
             name=name,
             unit_name=unit_name,
             total_supply=total_supply,

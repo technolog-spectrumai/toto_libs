@@ -12,11 +12,11 @@ from toto.assets.models import (
     LedgerTransaction,
 )
 from toto.assets.services.assets import (
-    create_asset,
     reverse_transaction,
     transfer_asset,
 )
 from toto.ingress import IngressCommand
+from toto.mint.services import create_currency
 
 # ── Platform currency constants ────────────────────────────────────────────
 # Supplies are frozen at their historical seed values so re-running ingress
@@ -130,7 +130,7 @@ class Command(IngressCommand):
             (getattr(settings, "GAS_ASSET_NAME", ticker), ticker,
              f"{ticker} — what metered work on this platform is billed in."),
         )
-        # One reference per ticker: create_asset is one-shot per reference, and
+        # One reference per ticker: create_currency is one-shot per reference, and
         # that is the whole immutability guarantee for a fixed supply.
         reference = f"create-{ticker.lower()}"
 
@@ -144,7 +144,7 @@ class Command(IngressCommand):
                     "update total_supply manually via a formal correction/reversal if needed."
                 ))
         else:
-            gas = create_asset(
+            gas = create_currency(
                 name=name,
                 unit_name=ticker,
                 total_supply=supply,
@@ -180,7 +180,7 @@ class Command(IngressCommand):
                     "update total_supply manually via a formal correction/reversal if needed."
                 ))
         else:
-            tpln = create_asset(
+            tpln = create_currency(
                 name="Toto Złoty",
                 unit_name="TPLN",
                 total_supply=TPLN_SUPPLY,
@@ -325,7 +325,7 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing asset {spec['unit_name']}"))
             else:
                 try:
-                    asset = create_asset(**spec)
+                    asset = create_currency(**spec)
                     asset.reserve_account = platform_reserve
                     asset.save(update_fields=["reserve_account", "updated_at"])
                     self.stdout.write(f"  +/✓ asset {spec['unit_name']}  supply={spec['total_supply']}")
@@ -406,7 +406,7 @@ class Command(IngressCommand):
                 self.stdout.write(self.style.WARNING(f"  ⚠ skipped existing asset {spec['unit_name']}"))
                 continue
             try:
-                asset = create_asset(**spec)
+                asset = create_currency(**spec)
                 assets[spec["unit_name"]] = asset
                 self.stdout.write(f"  + asset {spec['unit_name']}  supply={spec['total_supply']}")
             except (ValidationError, Exception) as exc:

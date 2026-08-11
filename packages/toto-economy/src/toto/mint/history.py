@@ -37,6 +37,43 @@ def head_hash() -> str:
     return head.event_hash if head is not None else GENESIS_PREV
 
 
+def maximum(asset) -> int:
+    """The most of this currency that can ever exist, in base units.
+
+    Read from the genesis document rather than from a column, because the
+    document is what the currency hash commits to. A column can be edited; the
+    hash cannot, and anyone holding the document can check this number.
+    """
+    return int(asset.genesis_payload["max_supply_base_units"])
+
+
+def supply(asset) -> int:
+    """How much of this currency exists, in base units.
+
+    ``Σ minted − Σ burned`` over the chain, computed every time. There is no
+    cached column: two places to look means two answers that can disagree, and
+    for supply that disagreement is the whole class of bug this design exists
+    to prevent.
+    """
+    from django.db.models import Case, F, IntegerField, Sum, When
+
+    from .chain import BURN, MINT
+    from .models import CurrencyMintEvent
+
+    total = CurrencyMintEvent.objects.filter(
+        currency_hash=asset.currency_hash).aggregate(
+            net=Sum(Case(
+                When(kind=MINT, then="amount_base_units"),
+                When(kind=BURN, then=-F("amount_base_units")),
+                output_field=IntegerField())))["net"]
+    return int(total or 0)
+
+
+def unminted(asset) -> int:
+    """What MINT may still create, in base units."""
+    return maximum(asset) - supply(asset)
+
+
 @dataclass
 class ChainVerdict:
     """Whether the whole history holds together, and where it does not."""

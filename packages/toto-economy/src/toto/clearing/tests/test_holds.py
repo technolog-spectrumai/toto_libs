@@ -12,7 +12,8 @@ from django.utils import timezone
 
 from toto.assets.models import AccountType, LedgerAccount, to_base_units
 from toto.assets.queries import get_asset_balance, verify_asset_ledger
-from toto.assets.services.assets import create_asset, distribute_asset
+from toto.assets.services.assets import distribute_asset
+from toto.mint.services import create_currency
 
 from toto.clearing.models import ClearingHold, LedgerPeer, SharedAsset
 from toto.clearing.services import holds as holds_service
@@ -26,7 +27,7 @@ class TrustlineTests(TestCase):
         self.peer = make_peer(status=LedgerPeer.STATUS_ACTIVE)
         self.reserve = LedgerAccount.objects.create(
             code="RES", name="Reserve", account_type=AccountType.RESERVE)
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Shared Token", unit_name="SHT", total_supply=Decimal("1000"),
             decimals=2, reserve_account=self.reserve, reference="mk-sht")
         self.asset.reserve_account = self.reserve
@@ -79,7 +80,7 @@ class HoldLifecycleTests(TestCase):
         self.peer = make_peer(status=LedgerPeer.STATUS_ACTIVE)
         self.reserve = LedgerAccount.objects.create(
             code="RES2", name="Reserve", account_type=AccountType.RESERVE)
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Hold Token", unit_name="HLT", total_supply=Decimal("1000"),
             decimals=2, reserve_account=self.reserve, reference="mk-hlt")
         self.asset.reserve_account = self.reserve

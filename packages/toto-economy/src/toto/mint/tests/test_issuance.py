@@ -32,12 +32,14 @@ class IssueTests(TestCase):
         self.assertEqual(holding.balance_base_units,
                          asset.total_supply_base_units)
 
-    def test_the_creation_transaction_is_linked(self):
+    def test_the_opening_mint_is_linked(self):
+        # The posting an issuance record points at is the MINT that filled the
+        # reserve. Engraving posts nothing, because it creates nothing.
         issue_asset(name="A", unit_name="AAA", total_supply=Decimal("1"),
                     decimals=0, reason="Because.")
         record = IssuanceRecord.objects.get()
         self.assertEqual(record.ledger_transaction.transaction_type,
-                         TransactionType.ASSET_CREATE)
+                         TransactionType.MINT)
 
     def test_a_reason_is_required(self):
         # It is the only account of why this exists, and it cannot be added
@@ -56,21 +58,52 @@ class IssueTests(TestCase):
         self.assertEqual(IssuanceRecord.objects.count(), 0)
 
 
-class NoInflationTests(TestCase):
-    """The invariant that makes the name safe."""
+class NoSecretInflationTests(TestCase):
+    """The invariant that makes the name safe.
+
+    Supply is not fixed — it is CAPPED, and every change to it is a signed
+    event anyone can read. What remains forbidden is a change nobody can see:
+    an edited column, a raised ceiling, a mint on a branch.
+    """
 
     def setUp(self):
         self.asset = issue_asset(name="Assarion", unit_name="ASR",
                                  total_supply=Decimal("100"), decimals=9,
                                  reason="Gas.")
 
-    def test_there_is_no_mint_or_burn_transaction_type(self):
-        # If this ever fails, the supply commitment in the genesis hash has
-        # become a lie and every asset needs re-issuing. See the note in
-        # toto/assets/currency_hash.py.
+    def test_minting_is_a_transaction_type_of_its_own(self):
+        # Distinct from ASSET_TRANSFER on purpose: a transfer moves units that
+        # already exist. Conflating them would make "how much of this is
+        # there?" a question the ledger could answer two different ways.
         kinds = {choice[0] for choice in TransactionType.choices}
-        self.assertNotIn("mint", kinds)
-        self.assertNotIn("burn", kinds)
+        self.assertIn("mint", kinds)
+        self.assertIn("burn", kinds)
+        self.assertIn("asset_transfer", kinds)
+
+    def test_every_unit_in_existence_came_from_a_signed_event(self):
+        from toto.mint.history import supply, verify_chain
+        from toto.mint.models import CurrencyMintEvent
+
+        self.assertEqual(supply(self.asset), 100 * 10 ** 9)
+        self.assertEqual(
+            CurrencyMintEvent.objects.filter(
+                currency_hash=self.asset.currency_hash).count(), 1)
+        self.assertTrue(verify_chain())
+
+    def test_the_maximum_cannot_be_raised_afterwards(self):
+        # The ceiling is in the currency hash. Moving it would make the
+        # identity describe a promise that was never made.
+        self.asset.total_supply_base_units *= 2
+        with self.assertRaises(ValidationError):
+            self.asset.save()
+
+    def test_minting_past_the_maximum_is_refused(self):
+        from toto.mint.services import mint
+
+        with self.assertRaises(ValidationError) as caught:
+            mint(asset=self.asset, amount=Decimal("1"),
+                 reason="One more, quietly.")
+        self.assertIn("maximum", str(caught.exception))
 
     def test_issuing_the_same_ticker_again_is_a_different_asset(self):
         # Re-issuing is honest; inflating quietly is not. A second ASR is a
@@ -81,11 +114,6 @@ class NoInflationTests(TestCase):
         self.assertNotEqual(again.currency_hash, self.asset.currency_hash)
         self.asset.refresh_from_db()
         self.assertEqual(self.asset.total_supply_display, Decimal("100"))
-
-    def test_the_supply_cannot_be_raised_afterwards(self):
-        self.asset.total_supply_base_units *= 2
-        with self.assertRaises(ValidationError):
-            self.asset.save()
 
     def test_the_record_cannot_be_edited_or_deleted(self):
         record = IssuanceRecord.objects.get()

@@ -76,8 +76,11 @@ class DjangoLedgerBackend(LedgerBackend):
     """
 
     def create_asset(self, **kwargs) -> "Asset":
-        from .services.assets import create_asset
-        return create_asset(**kwargs)
+        # Creating units is the mint's business, and the mint is master-only —
+        # hence the deferred import: this module ships to branches, where
+        # toto.mint is not installed and this method is never reached.
+        from toto.mint.services import create_currency
+        return create_currency(**kwargs)
 
     def transfer_asset(self, **kwargs) -> "LedgerTransaction":
         from .services.assets import transfer_asset

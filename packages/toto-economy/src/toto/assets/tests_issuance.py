@@ -1,7 +1,7 @@
 """Only the master creates assets, and only mirrors arrive on a branch.
 
 Three layers are under test, because one is not enough: every real caller of
-create_asset bypasses the service (views, ingress, trustline), and raw
+create_currency bypasses the service (views, ingress, trustline), and raw
 Asset.objects.create bypasses Python entirely.
 """
 
@@ -15,8 +15,8 @@ from toto.assets import issuer as issuer_module
 from toto.assets.currency_hash import build_genesis, compute_currency_hash
 from toto.assets.issuer import NotTheMaster
 from toto.assets.models import AccountType, Asset, CurrencyIssuer, LedgerAccount
-from toto.assets.services.assets import (create_asset, engrave_currency,
-                                         mirror_asset)
+from toto.assets.services.assets import engrave_currency, mirror_asset
+from toto.mint.services import create_currency
 from toto.assets.testing import LedgerTestCase as TestCase
 
 
@@ -81,7 +81,7 @@ class EngraveTests(TestCase):
     def test_creating_an_asset_is_engraving_plus_a_reserve(self):
         # The old single verb is now the composite, so the identity half is
         # provably the same code path.
-        asset = create_asset(
+        asset = create_currency(
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 
@@ -93,7 +93,7 @@ class EngraveTests(TestCase):
 
 class MasterIssuesTests(TestCase):
     def test_a_created_asset_is_signed_and_verifies(self):
-        asset = create_asset(
+        asset = create_currency(
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 
@@ -103,7 +103,7 @@ class MasterIssuesTests(TestCase):
         self.assertTrue(asset.verify_genesis())
 
     def test_the_hash_commits_the_maximum_not_the_amount(self):
-        asset = create_asset(
+        asset = create_currency(
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 
@@ -114,10 +114,10 @@ class MasterIssuesTests(TestCase):
                          asset.currency_hash)
 
     def test_two_assets_with_the_same_description_get_different_identities(self):
-        one = create_asset(name="A", unit_name="AAA", total_supply=Decimal("1"),
+        one = create_currency(name="A", unit_name="AAA", total_supply=Decimal("1"),
                            decimals=0, reserve_account=_reserve("r1"),
                            reference="c1")
-        two = create_asset(name="A", unit_name="BBB", total_supply=Decimal("1"),
+        two = create_currency(name="A", unit_name="BBB", total_supply=Decimal("1"),
                            decimals=0, reserve_account=_reserve("r2"),
                            reference="c2")
         self.assertNotEqual(one.currency_hash, two.currency_hash)
@@ -131,7 +131,7 @@ class BranchesCreateNothingTests(TestCase):
             private_key_encrypted=None)
 
         with self.assertRaises(NotTheMaster) as caught:
-            create_asset(name="Forged", unit_name="FRG",
+            create_currency(name="Forged", unit_name="FRG",
                          total_supply=Decimal("1"), decimals=0,
                          reserve_account=_reserve(), reference="forge")
         self.assertIn("signed mirrors", str(caught.exception))
@@ -142,7 +142,7 @@ class BranchesCreateNothingTests(TestCase):
         before = Asset.objects.count()
 
         with self.assertRaises(NotTheMaster):
-            create_asset(name="Forged", unit_name="FRG",
+            create_currency(name="Forged", unit_name="FRG",
                          total_supply=Decimal("1"), decimals=0,
                          reserve_account=_reserve(), reference="forge")
 
@@ -170,7 +170,7 @@ class IdentityIsImmutableTests(TestCase):
     """Layer two: once issued, an asset cannot become something else."""
 
     def setUp(self):
-        self.asset = create_asset(
+        self.asset = create_currency(
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 

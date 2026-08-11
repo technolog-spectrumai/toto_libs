@@ -194,6 +194,13 @@ class TransactionType(models.TextChoices):
     ASSET_TRANSFER = "asset_transfer", "Asset Transfer"
     REVERSAL = "reversal", "Reversal"
     ADJUSTMENT = "adjustment", "Adjustment"
+    #: Supply moving. Only toto.mint writes these, and only on the master —
+    #: every one of them has a signed event on the monetary chain beside it.
+    #: Distinct from ASSET_TRANSFER on purpose: a transfer moves units that
+    #: already exist, and conflating the two would make "how much of this is
+    #: there?" a question the ledger could answer two different ways.
+    MINT = "mint", "Mint"
+    BURN = "burn", "Burn"
 
 
 # ---------------------------------------------------------------------------
@@ -267,8 +274,8 @@ class Asset(models.Model):
                 name="assets_ticker_unique_per_issuer"),
             # Every asset has provenance. Unconditional, because there is one
             # kind of asset: an unsigned row is impossible rather than merely
-            # discouraged. Landed with create_asset/mirror_asset, which are the
-            # only two things that produce a hash.
+            # discouraged. Landed with engrave_currency/mirror_asset, which
+            # are the only two things that produce a hash.
             models.CheckConstraint(
                 check=~models.Q(currency_hash="") & models.Q(
                     currency_hash__isnull=False),

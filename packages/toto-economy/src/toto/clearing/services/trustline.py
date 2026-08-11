@@ -77,7 +77,7 @@ def ensure_mirror_asset(*, unit_name: str, decimals: int, peer: LedgerPeer,
     refused — that ticker belongs to a private local asset and sharing it would
     make one name mean two things (the exact bug the old doctrine prevented).
     """
-    from toto.assets.services.assets import create_asset
+    from toto.mint.services import create_currency
 
     existing = Asset.objects.filter(unit_name=unit_name).first()
     if existing is not None:
@@ -91,15 +91,11 @@ def ensure_mirror_asset(*, unit_name: str, decimals: int, peer: LedgerPeer,
     reserve = _account(f"clearing:reserve:{unit_name}",
                        f"Clearing mirror reserve ({unit_name})",
                        AccountType.RESERVE)
-    asset = create_asset(
+    asset = create_currency(
         name=f"{unit_name} (mirror)", unit_name=unit_name,
         total_supply=MIRROR_SUPPLY, decimals=decimals,
         reserve_account=reserve, reference=f"clearing-mirror-{unit_name}",
     )
-    # create_asset credits the reserve holding but leaves the FK unset; the
-    # mirror issuance path (distribute_asset) requires it.
-    asset.reserve_account = reserve
-    asset.save(update_fields=["reserve_account"])
     return open_trustline(asset=asset, peer=peer, issued_here=False,
                           max_owed=max_owed)
 
