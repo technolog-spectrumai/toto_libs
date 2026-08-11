@@ -36,6 +36,7 @@ INSTALLED_APPS = [
     "toto.assets",
     "toto.tariffs",
     "toto.clearing",
+    "toto.mint",
 ]
 
 MIDDLEWARE = [

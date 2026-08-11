@@ -1,0 +1,109 @@
+"""The mint creates new assets. It can never inflate an existing one."""
+
+from decimal import Decimal
+
+from django.core.exceptions import ValidationError
+
+from toto.assets.models import Asset, CurrencyIssuer, TransactionType
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.mint.models import IssuanceRecord
+from toto.mint.services import issue_asset
+
+
+class IssueTests(TestCase):
+    def test_issuing_creates_a_signed_asset_and_a_record(self):
+        asset = issue_asset(name="Assarion", unit_name="ASR",
+                            total_supply=Decimal("100"), decimals=9,
+                            reason="Platform gas.")
+
+        self.assertTrue(asset.verify_genesis())
+        record = IssuanceRecord.objects.get()
+        self.assertEqual(record.asset, asset)
+        self.assertEqual(record.unit_name, "ASR")
+        self.assertEqual(record.reason, "Platform gas.")
+        self.assertEqual(record.currency_hash, asset.currency_hash)
+
+    def test_the_whole_supply_lands_in_the_reserve(self):
+        asset = issue_asset(name="Assarion", unit_name="ASR",
+                            total_supply=Decimal("100"), decimals=2,
+                            reason="Gas.")
+
+        holding = asset.holdings.get(account=asset.reserve_account)
+        self.assertEqual(holding.balance_base_units,
+                         asset.total_supply_base_units)
+
+    def test_the_creation_transaction_is_linked(self):
+        issue_asset(name="A", unit_name="AAA", total_supply=Decimal("1"),
+                    decimals=0, reason="Because.")
+        record = IssuanceRecord.objects.get()
+        self.assertEqual(record.ledger_transaction.transaction_type,
+                         TransactionType.ASSET_CREATE)
+
+    def test_a_reason_is_required(self):
+        # It is the only account of why this exists, and it cannot be added
+        # afterwards — the record is append-only.
+        with self.assertRaises(ValidationError) as caught:
+            issue_asset(name="A", unit_name="AAA", total_supply=Decimal("1"),
+                        decimals=0, reason="   ")
+        self.assertIn("needs a reason", "; ".join(caught.exception.messages))
+
+    def test_a_refused_issuance_writes_nothing(self):
+        before = Asset.objects.count()
+        with self.assertRaises(ValidationError):
+            issue_asset(name="A", unit_name="AAA", total_supply=Decimal("1"),
+                        decimals=0, reason="")
+        self.assertEqual(Asset.objects.count(), before)
+        self.assertEqual(IssuanceRecord.objects.count(), 0)
+
+
+class NoInflationTests(TestCase):
+    """The invariant that makes the name safe."""
+
+    def setUp(self):
+        self.asset = issue_asset(name="Assarion", unit_name="ASR",
+                                 total_supply=Decimal("100"), decimals=9,
+                                 reason="Gas.")
+
+    def test_there_is_no_mint_or_burn_transaction_type(self):
+        # If this ever fails, the supply commitment in the genesis hash has
+        # become a lie and every asset needs re-issuing. See the note in
+        # toto/assets/currency_hash.py.
+        kinds = {choice[0] for choice in TransactionType.choices}
+        self.assertNotIn("mint", kinds)
+        self.assertNotIn("burn", kinds)
+
+    def test_issuing_the_same_ticker_again_is_a_different_asset(self):
+        # Re-issuing is honest; inflating quietly is not. A second ASR is a
+        # second identity, not more of the first.
+        again = issue_asset(name="Assarion", unit_name="ASR2",
+                            total_supply=Decimal("100"), decimals=9,
+                            reason="Another.")
+        self.assertNotEqual(again.currency_hash, self.asset.currency_hash)
+        self.asset.refresh_from_db()
+        self.assertEqual(self.asset.total_supply_display, Decimal("100"))
+
+    def test_the_supply_cannot_be_raised_afterwards(self):
+        self.asset.total_supply_base_units *= 2
+        with self.assertRaises(ValidationError):
+            self.asset.save()
+
+    def test_the_record_cannot_be_edited_or_deleted(self):
+        record = IssuanceRecord.objects.get()
+        record.reason = "something else"
+        with self.assertRaises(ValidationError):
+            record.save()
+        with self.assertRaises(ValidationError):
+            record.delete()
+
+
+class BranchCannotMintTests(TestCase):
+    def test_without_an_issuer_key_the_mint_refuses(self):
+        from toto.assets.issuer import NotTheMaster
+
+        CurrencyIssuer.objects.filter(is_self=True).update(
+            private_key_encrypted=None)
+
+        with self.assertRaises(NotTheMaster):
+            issue_asset(name="Forged", unit_name="FRG",
+                        total_supply=Decimal("1"), decimals=0,
+                        reason="Should never happen.")

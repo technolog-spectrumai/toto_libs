@@ -1,0 +1,97 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Mint" %}{% endblock %}
+
+{% block start_script %}{% include "oya/partials/dim.html" %}{% endblock %}
+
+{% block content %}
+<section :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+         class="min-h-screen px-4 py-10 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-5xl space-y-8">
+
+    <header>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-hammer"></i>{% trans "Mint" %}
+      </h1>
+      <p class="mt-2 text-sm opacity-70">
+        {% trans "Create a new asset with a fixed supply. Supply is created once, into the asset's reserve, and never again — releasing more means transferring from that reserve, and something genuinely new means a new asset." %}
+      </p>
+    </header>
+
+    {% if messages %}
+    <div class="space-y-2">
+      {% for message in messages %}
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+           class="rounded-lg px-4 py-3 text-sm">{{ message }}</div>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    {% if not is_master %}
+    <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
+      <p class="font-bold">{% trans "This platform holds no issuer key." %}</p>
+      <p class="mt-2 text-sm opacity-70">
+        {% trans "Assets are issued on the master platform and arrive here as signed mirrors. Run “manage.py mint_issuer_key” only if this host IS the master." %}
+      </p>
+    </div>
+    {% else %}
+    <section :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
+      <h2 class="mb-4 text-lg font-bold">{% trans "Issue a new asset" %}</h2>
+      <form method="post" action="{% url 'mint:issue' %}" class="grid gap-4 md:grid-cols-2">
+        {% csrf_token %}
+        <label class="text-sm">{% trans "Name" %}
+          <input name="name" required maxlength="255" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm">{% trans "Ticker" %}
+          <input name="unit_name" required maxlength="20" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm">{% trans "Total supply" %}
+          <input name="total_supply" required class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm">{% trans "Decimals" %}
+          <input name="decimals" type="number" min="0" max="19" value="2" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm">{% trans "Display code" %}
+          <input name="code" maxlength="10" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm">{% trans "Symbol" %}
+          <input name="symbol" maxlength="5" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+        <label class="text-sm md:col-span-2">{% trans "Why is this being issued?" %}
+          <textarea name="reason" required rows="2" class="mt-1 w-full rounded-lg px-3 py-2"></textarea></label>
+        <div class="md:col-span-2">
+          <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white">
+            {% trans "Issue" %}</button>
+          <span class="ml-3 text-xs opacity-60">{% trans "Irreversible. The supply you name is the supply that will ever exist." %}</span>
+        </div>
+      </form>
+    </section>
+    {% endif %}
+
+    <section>
+      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>{% trans "Issued here" %}</h2>
+      {% if records %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs uppercase opacity-70">
+            <tr><th class="py-2 pr-4">{% trans "Ticker" %}</th>
+                <th class="py-2 pr-4">{% trans "Supply" %}</th>
+                <th class="py-2 pr-4">{% trans "Identity" %}</th>
+                <th class="py-2 pr-4">{% trans "By" %}</th>
+                <th class="py-2">{% trans "Why" %}</th></tr>
+          </thead>
+          <tbody>
+            {% for record in records %}
+            <tr class="border-t border-current/10">
+              <td class="py-2 pr-4 font-bold">{{ record.unit_name }}</td>
+              <td class="py-2 pr-4">{{ record.asset.total_supply_display }}</td>
+              <td class="py-2 pr-4 font-mono text-xs">{{ record.currency_hash|truncatechars:24 }}</td>
+              <td class="py-2 pr-4">{{ record.actor|default:"—" }}</td>
+              <td class="py-2">{{ record.reason|truncatechars:80 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm opacity-70">{% trans "Nothing issued here yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+</section>
+{% endblock %}

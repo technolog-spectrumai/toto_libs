@@ -87,7 +87,12 @@ def test_migrations_are_packaged(all_names, owner):
     # The first two drifted in unnoticed because dist/ held stale wheels: this
     # assertion only bites once the wheels are rebuilt, so rebuild before
     # trusting it.
-    assert len(apps_with_migrations) == 43, sorted(apps_with_migrations)
+    # 44: toto.mint (toto-economy) — the issuance desk, where new fixed-supply
+    # assets come from. Its own append-only record of who issued what and why.
+    # It is installed on the MASTER only, but it SHIPS in the wheel like every
+    # other app here; what keeps a branch from minting is that the branch does
+    # not install it and holds no issuer key.
+    assert len(apps_with_migrations) == 44, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -98,6 +103,7 @@ def test_migrations_are_packaged(all_names, owner):
     # Clearing rides the same wheel: it imports the ledger directly and the
     # partition must keep the pair together.
     assert owner.get("toto/clearing/migrations/0001_initial.py") == "toto-economy"
+    assert owner.get("toto/mint/migrations/0001_initial.py") == "toto-economy"
     assert owner.get("toto/clearing/testing/settings.py") == "toto-economy"
 
 
