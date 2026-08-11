@@ -775,3 +775,92 @@ class AssetsQuotaPolicy(AbstractQuotaPolicy):
     class Meta(AbstractQuotaPolicy.Meta):
         verbose_name = "Assets quota policy"
         verbose_name_plural = "Assets quota policies"
+
+
+class PlatformKeyManager(models.Manager):
+    def ensure_local(self, *, label: str = ""):
+        """This platform's key, minted on first use."""
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey)
+
+        existing = self.filter(is_self=True).first()
+        if existing is not None:
+            return existing
+
+        key = Ed25519PrivateKey.generate()
+        private_pem = key.private_bytes(
+            serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption())
+        public_pem = key.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+        row = self.model(label=label or "this platform",
+                         fingerprint=hashlib.sha256(
+                             public_pem.encode()).hexdigest(),
+                         public_key_pem=public_pem, is_self=True)
+        row.private_key_encrypted = row._fernet().encrypt(private_pem)
+        row.save()
+        return row
+
+
+class PlatformKey(models.Model):
+    """This platform's own signing key — for saying things, not for making money.
+
+    Distinct from CurrencyIssuer on purpose. A branch must be able to attest
+    to its own books ("here is my chain head, here is what I drew") without
+    that ever amounting to issuing authority. The two are domain-separated by
+    different context strings, the discipline the clearing wire establishes.
+
+    Sealed under FIELD_ENCRYPTION_KEY rather than MONETARY_ISSUER_KEY, and
+    that is safe precisely because holding it grants nothing: a restored
+    backup can sign a statement about a ledger it holds a copy of, which is
+    not a capability worth protecting from itself.
+    """
+
+    label = models.CharField(max_length=200)
+    fingerprint = models.CharField(max_length=64, unique=True, editable=False)
+    public_key_pem = models.TextField()
+    private_key_encrypted = models.BinaryField(blank=True, null=True)
+    is_self = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = PlatformKeyManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["is_self"], condition=models.Q(is_self=True),
+                name="assets_one_local_platform_key"),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.fingerprint[:12]}…)"
+
+    def _fernet(self):
+        import base64 as _b64
+
+        from cryptography.fernet import Fernet
+
+        raw = settings.FIELD_ENCRYPTION_KEY
+        return Fernet(raw.encode() if isinstance(raw, str) else raw)
+
+    def sign(self, message: bytes) -> str:
+        from cryptography.hazmat.primitives import serialization
+
+        key = serialization.load_pem_private_key(
+            self._fernet().decrypt(bytes(self.private_key_encrypted)),
+            password=None)
+        return key.sign(message).hex()
+
+    def verify(self, message: bytes, signature_hex: str) -> bool:
+        try:
+            from cryptography.hazmat.primitives.serialization import (
+                load_pem_public_key)
+
+            load_pem_public_key(self.public_key_pem.encode()).verify(
+                bytes.fromhex(signature_hex), message)
+            return True
+        except Exception:  # noqa: BLE001 - refused, never a 500
+            return False

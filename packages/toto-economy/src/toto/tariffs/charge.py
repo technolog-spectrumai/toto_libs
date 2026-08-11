@@ -38,6 +38,40 @@ logger = logging.getLogger("toto.tariffs")
 # InsufficientBalanceError
 # ---------------------------------------------------------------------------
 
+class MonetaryAuthorityUnreachable(Exception):
+    """The master could not be reached for something only the master can do.
+
+    A SIBLING of InsufficientBalanceError, not a variant of "no price". That
+    distinction is the whole point: toto.quota.charge documents that an
+    unpriced metric and an unbilled host are the same thing to a caller and
+    both mean FREE. Routing an outage through that sentinel would make a
+    branch silently give everything away for the length of the outage, and no
+    call site could tell.
+
+    So this is an exception with its own status code. Every call site already
+    reads ``exc.status_code``, so none of them need editing, and the state
+    stays distinguishable in logs and in UI copy.
+
+    Raised only by things that genuinely need the master — a top-up, a trade.
+    NEVER by ordinary billing, which is local and works perfectly well while
+    the master is down.
+    """
+
+    #: Service Unavailable. Distinct from 402 (you cannot pay) and 429 (you
+    #: are over your cap): the platform cannot answer right now, and the
+    #: honest thing is to say so rather than to improvise.
+    status_code = 503
+
+    def __init__(self, detail: str = ""):
+        self.detail = detail or (
+            "The monetary master cannot be reached, so this cannot be done "
+            "here. Billing and spending are unaffected — they are local.")
+        super().__init__(self.detail)
+
+    def __str__(self):
+        return self.detail
+
+
 class InsufficientBalanceError(Exception):
     """
     Raised when a user cannot afford a metered action.
