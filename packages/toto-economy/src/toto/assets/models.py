@@ -25,6 +25,107 @@ def from_base_units(base_units: int, decimals: int) -> Decimal:
 
 
 # ---------------------------------------------------------------------------
+# Monetary issuer
+# ---------------------------------------------------------------------------
+
+class IssuerStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    RETIRED = "retired", "Retired"
+
+
+class CurrencyIssuerManager(models.Manager):
+    def create_local(self, *, label: str):
+        """Mint this host's own issuer keypair.
+
+        The private half is sealed under MONETARY_ISSUER_KEY — a secret
+        deliberately separate from FIELD_ENCRYPTION_KEY, because assets travel
+        in backups and that key travels in the deploy config. See toto/assets/
+        issuer.py for the full argument.
+        """
+        from cryptography.hazmat.primitives import serialization
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import (
+            Ed25519PrivateKey)
+
+        from .issuer import _issuer_fernet, fingerprint_for
+
+        fernet = _issuer_fernet()      # before generating: fail closed, not half-done
+        key = Ed25519PrivateKey.generate()
+        private_pem = key.private_bytes(
+            serialization.Encoding.PEM,
+            serialization.PrivateFormat.PKCS8,
+            serialization.NoEncryption())
+        public_pem = key.public_key().public_bytes(
+            serialization.Encoding.PEM,
+            serialization.PublicFormat.SubjectPublicKeyInfo).decode()
+
+        return self.create(
+            label=label,
+            fingerprint=fingerprint_for(public_pem),
+            public_key_pem=public_pem,
+            private_key_encrypted=fernet.encrypt(private_pem),
+            is_self=True)
+
+
+class CurrencyIssuer(models.Model):
+    """A monetary authority — normally exactly one row, describing this host.
+
+    A branch has this table and no local row in it, or a row for the MASTER
+    carrying only a public key: that is the pinned trust anchor it verifies
+    genesis documents against. Holding a public key lets you check; only the
+    private half lets you issue.
+    """
+
+    label = models.CharField(max_length=200)
+    #: SHA-256 of the public key PEM. Travels inside every genesis document,
+    #: so it must derive from the public half alone.
+    fingerprint = models.CharField(max_length=64, unique=True, editable=False)
+    public_key_pem = models.TextField()
+    private_key_encrypted = models.BinaryField(blank=True, null=True)
+    #: True on the host this issuer IS. A branch pins its master with False.
+    is_self = models.BooleanField(default=False)
+    status = models.CharField(max_length=16, choices=IssuerStatus.choices,
+                              default=IssuerStatus.ACTIVE)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    objects = CurrencyIssuerManager()
+
+    class Meta:
+        ordering = ["-created_at"]
+        constraints = [
+            # Two local issuers would be two monetary authorities on one host.
+            models.UniqueConstraint(
+                fields=["is_self"], condition=models.Q(is_self=True),
+                name="assets_one_local_issuer"),
+        ]
+
+    def __str__(self):
+        return f"{self.label} ({self.fingerprint[:12]}…)"
+
+    def private_key(self):
+        """The Ed25519 private key, or raise. Only the master can do this."""
+        from cryptography.hazmat.primitives import serialization
+
+        from .issuer import NotTheMaster, _issuer_fernet
+
+        if not self.private_key_encrypted:
+            raise NotTheMaster(
+                f"Issuer {self.fingerprint[:12]}… holds no private key here — "
+                "it is a pinned remote authority, not this host.")
+        raw = _issuer_fernet().decrypt(bytes(self.private_key_encrypted))
+        return serialization.load_pem_private_key(raw, password=None)
+
+    def sign_genesis(self, document: dict) -> str:
+        from .currency_hash import sign_genesis
+
+        return sign_genesis(self.private_key(), document)
+
+    def verify_genesis(self, document: dict, signature: str) -> bool:
+        from .currency_hash import verify_genesis_document
+
+        return verify_genesis_document(self.public_key_pem, document, signature)
+
+
+# ---------------------------------------------------------------------------
 # Choices
 # ---------------------------------------------------------------------------
 
