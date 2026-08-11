@@ -8,6 +8,8 @@ from .api_views import (
 app_name = "assets"
 
 urlpatterns = [
+    # Machine-readable, signed, read-only. See views.attestation.
+    path("attestation.json", views.attestation, name="attestation"),
     # Enigma JSON API
     path("api/wallet/summary/", WalletSummaryApiView.as_view(), name="api_wallet_summary"),
     path("api/wallet/movements/", MovementsApiView.as_view(), name="api_movements"),

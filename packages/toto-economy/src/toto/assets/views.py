@@ -515,3 +515,28 @@ def authorization_list(request):
     return assets_render(request, 'assets/authorization_list.html', {
         'authorizations': authorizations,
     })
+
+
+# --------------------------------------------------------------------------- #
+# Attestation — what this platform says about its own books                     #
+# --------------------------------------------------------------------------- #
+
+def attestation(request):
+    """Read-only, machine-readable, signed with this platform's key.
+
+    Answers the master's audit and the top-up check with the SAME payload, so
+    there is one format rather than two that must agree. Carries no user
+    identities — account codes only, the privacy rule the clearing wire states
+    for the same reason.
+
+    Unauthenticated on purpose: it is signed, so it authenticates itself, and
+    it reveals only aggregates a branch would tell its funder anyway. That
+    also keeps toto-economy free of any dependency on toto-auth.
+    """
+    from django.http import JsonResponse
+
+    from .statement import build_statement, sign_statement
+
+    response = JsonResponse(sign_statement(build_statement()))
+    response["Cache-Control"] = "no-store"
+    return response
