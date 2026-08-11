@@ -9,6 +9,58 @@ from toto.vault.models import VaultDirectory, VaultFile
 from .base import GitvaultTestCase
 
 
+class ArtifactExclusionTests(GitvaultTestCase):
+    """Generated output does not belong in a repository.
+
+    Every surface that gets git also generates files beside the sources: a
+    LaTeX workspace files its PDF and logs into ``build/``, and the document
+    editor saves pdf/html renditions next to the .xml they came from. Both
+    change on every compile and neither is a source, so committing them turns
+    every history into noise and every merge into a conflict over a binary.
+    """
+
+    def test_the_build_directory_is_not_exported(self):
+        build = VaultDirectory.objects.create(
+            bucket=self.bucket, owner=self.user, name="build", parent=self.root)
+        self._file("paper.pdf", b"%PDF-1.4 output\n", build,
+                   key="build-paper-pdf", file_type="pdf")
+        self._file("paper.log", b"This is pdfTeX\n", build, key="build-paper-log")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertNotIn("build/paper.pdf", result["written"])
+        self.assertNotIn("build/paper.log", result["written"])
+        self.assertEqual(sorted(result["written"]), ["notes.txt", "sub/deep.txt"])
+
+    def test_a_generated_sibling_is_not_exported(self):
+        # texlab writes .aux/.log beside a source when it is not using build/.
+        # Explicit keys because both slug to "paper" and VaultFile.save()
+        # refuses a duplicate — the real writers call _unique_file_key.
+        self._file("paper.aux", b"\\relax\n", self.root, key="paper-aux")
+        self._file("paper.tex", b"\\documentclass{article}\n", self.root, key="paper-tex")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertIn("paper.tex", result["written"])
+        self.assertNotIn("paper.aux", result["written"])
+
+    def test_the_source_a_rendition_came_from_still_travels(self):
+        # Only the DERIVED file is skipped. Losing the document itself would
+        # be a far worse bug than versioning its pdf.
+        self._file("report.xml", b"<document/>\n", self.root,
+                   key="report-xml", file_type="document")
+        self._file("report.pdf", b"%PDF-1.4\n", self.root,
+                   key="report-pdf", file_type="pdf")
+
+        result = sync.export_worktree(
+            GitRepo.objects.create(directory=self.root, owner=self.user))
+
+        self.assertIn("report.xml", result["written"])
+        self.assertNotIn("report.pdf", result["written"])
+
+
 class ExportTests(GitvaultTestCase):
     def test_export_layout_and_mapping(self):
         repo = GitRepo.objects.create(directory=self.root, owner=self.user)

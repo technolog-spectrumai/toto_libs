@@ -47,7 +47,11 @@ class GitvaultTestCase(TestCase):
         self.f_deep = self._file("deep.txt", b"deep content\n", self.sub)
         self.f_secret = self._file("secret.txt", b"ciphertext", self.root, encrypted=True)
 
-    def _file(self, title, content, directory, encrypted=False, key=""):
+    def _file(self, title, content, directory, encrypted=False, key="",
+              file_type="text"):
+        # file_type is a parameter because the export engine reads it: a
+        # rendition (report.pdf beside report.xml) is recognised by the pair of
+        # types, not by the extension alone.
         return VaultFile.objects.create(
             owner=self.user,
             title=title,
@@ -56,7 +60,7 @@ class GitvaultTestCase(TestCase):
             directory=directory,
             file=SimpleUploadedFile(title, content),
             is_encrypted=encrypted,
-            file_type="text",
+            file_type=file_type,
         )
 
     def make_repo(self):

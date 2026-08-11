@@ -7,6 +7,7 @@ Invariants:
 - The GitRepoFile mapping is mutated only under the repo lock; export/import
   are idempotent (re-runs converge).
 - Encrypted vault files are invisible to git (never exported).
+- Generated output is invisible to git (see ARTIFACT_DIR / GENERATED_EXTS).
 - ``.git/`` is never touched by export nor read by import.
 """
 
@@ -24,6 +25,47 @@ from toto.vault.models import VaultDirectory, VaultFile
 from toto.vault.storage_backends import get_bucket_storage
 
 from .models import GitRepo, GitRepoFile
+
+
+#: A folder of generated output, never exported. texlab files a compile's PDF
+#: and logs here and marks it read-only in the workspace tree; the name matches
+#: ``toto.ambrosia.filetree.ARTIFACT_DIR`` and ``toto.texlab.latex.ARTIFACT_DIR``.
+#: Kept as a literal rather than imported: gitvault ships in a wheel that must
+#: install on a host with neither app.
+ARTIFACT_DIR = "build"
+
+#: Extensions a compiler leaves beside its sources, plus the renditions the
+#: document editor saves next to the .xml they were rendered from. None is a
+#: source: they change on every run, so versioning them makes each history
+#: mostly noise and turns an ordinary merge into a conflict over a binary.
+GENERATED_EXTS = {
+    ".log", ".aux", ".toc", ".out", ".bbl", ".blg", ".lof", ".lot",
+    ".fls", ".fdb_latexmk", ".synctex.gz", ".nav", ".snm", ".vrb", ".idx",
+    ".ind", ".ilg", ".run.xml", ".bcf",
+}
+
+
+def is_generated(name: str) -> bool:
+    """Whether a filename looks like something a build left behind."""
+    lowered = (name or "").lower()
+    return any(lowered.endswith(ext) for ext in GENERATED_EXTS)
+
+
+def _is_artifact(vault_file, root_full_path: str) -> bool:
+    """Generated output: inside a build/ folder, or a generated filename.
+
+    A rendition (report.pdf beside report.xml) is NOT caught by extension —
+    .pdf is a perfectly good source elsewhere — so it is skipped only when the
+    editor's own marker says so: file_type "pdf"/"html" whose stem matches a
+    sibling document. That test lives in the caller, which has the sibling
+    index; here we answer the two cheap questions.
+    """
+    directory = vault_file.directory
+    while directory is not None:
+        if directory.name == ARTIFACT_DIR and directory.full_path() != root_full_path:
+            return True
+        directory = directory.parent
+    return is_generated(vault_file.title or "")
 
 
 class RepoBusy(Exception):
@@ -109,9 +151,26 @@ def export_worktree(repo: GitRepo) -> dict:
     current_pks = set()
     mappings = {m.vault_file_id: m for m in repo.files.all()}
 
-    for vf in subtree_files(root):
+    files = list(subtree_files(root))
+    # Renditions: the document editor saves report.pdf / report.html beside the
+    # report.xml they came from. A .pdf on its own is a legitimate source (a
+    # figure, a reference), so it is only skipped when a document of the same
+    # stem sits in the same folder — the shape "Save PDF to the vault" makes.
+    _sources = {
+        (vf.directory_id, (vf.title or "").rsplit(".", 1)[0])
+        for vf in files
+        if (vf.file_type or "") in ("document", "presentation")
+    }
+
+    for vf in files:
         if vf.is_encrypted:
             continue
+        if _is_artifact(vf, root_full):
+            continue
+        if (vf.file_type or "") in ("pdf", "html"):
+            stem = (vf.title or "").rsplit(".", 1)[0]
+            if (vf.directory_id, stem) in _sources:
+                continue
         current_pks.add(vf.pk)
         relpath = _relpath_for(vf, root_full, seen_paths)
 
