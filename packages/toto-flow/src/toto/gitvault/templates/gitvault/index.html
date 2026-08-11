@@ -1,0 +1,104 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Git" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="space-y-2">
+      <a href="{% url 'core:dashboard' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Git" %}</p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-code-branch"></i>{% trans "Repositories" %}
+        </h1>
+      </div>
+    </header>
+
+    {% if gitea_enabled %}
+      <a href="{{ gitea_url }}" target="_blank" rel="noopener"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-center gap-4 rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">
+          <i class="fa-solid fa-code"></i>
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block font-bold">{% trans "Codebase" %}</span>
+          <span class="block text-sm opacity-70">{% trans "Browse the hosted repositories in Gitea (staff only)." %}</span>
+        </span>
+        <i class="fa-solid fa-arrow-up-right-from-square opacity-50"></i>
+      </a>
+    {% endif %}
+
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-2xl border p-5 shadow-sm">
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-hard-drive"></i>{% trans "Local repositories" %}
+      </h2>
+
+      {% if repos %}
+        <ul class="divide-y divide-current/10">
+          {% for row in repos %}
+            <li class="flex flex-wrap items-center gap-3 py-3">
+              <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-current/15 opacity-70">
+                {% if row.surface.kind == "workspace" %}<i class="fa-solid fa-flask"></i>
+                {% elif row.surface.kind == "document" %}<i class="fa-solid fa-feather-pointed"></i>
+                {% elif row.surface.kind == "presentation" %}<i class="fa-solid fa-person-chalkboard"></i>
+                {% else %}<i class="fa-solid fa-folder"></i>{% endif %}
+              </span>
+              <span class="min-w-0 flex-1">
+                {% if row.surface.url %}
+                  <a href="{{ row.surface.url }}" class="block truncate font-semibold underline-offset-2 hover:underline">
+                    {{ row.surface.label }}
+                  </a>
+                {% else %}
+                  <span class="block truncate font-semibold">{{ row.surface.label }}</span>
+                {% endif %}
+                <span class="block truncate text-xs opacity-60">
+                  {{ row.repo.directory.bucket.name }} / {{ row.repo.directory.full_path }}
+                  {% if row.branch %}· <i class="fa-solid fa-code-branch text-[10px]"></i> {{ row.branch }}{% endif %}
+                  {% if row.repo.remote_connected %}· <i class="fa-solid fa-cloud text-[10px]"></i>{% trans "remote" %}{% endif %}
+                </span>
+              </span>
+              {% comment %} Read-only on purpose: this page is an overview, not
+              a fifth editing surface. The ctx carries readOnly so the history
+              modal hides its Restore button; writing happens where the work
+              lives, behind the surface link. {% endcomment %}
+              <button type="button"
+                      @click="GitUI.openHistory(window.gitRepoMap[{{ row.repo.pk }}])"
+                      class="rounded-lg border border-current/20 px-3 py-1.5 text-xs font-semibold opacity-80 hover:opacity-100">
+                <i class="fa-solid fa-timeline mr-1"></i>{% trans "History" %}
+              </button>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm opacity-70">
+          {% trans "No repositories yet. Initialize one from a workspace, a document or a presentation — the Git menu in each editor's toolbar." %}
+        </p>
+      {% endif %}
+    </section>
+
+  </div>
+
+  {{ repo_map|json_script:"gitvault-repo-map" }}
+  <script>
+    window.gitRepoMap = JSON.parse(
+      document.getElementById("gitvault-repo-map").textContent);
+  </script>
+  {% include "gitvault/_git_ui.html" %}
+</section>
+{% endblock %}

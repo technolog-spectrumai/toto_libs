@@ -80,6 +80,15 @@ FEATURE_APPS = {
     # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
     # large JS bundle that only the hosts offering sheets need baked into their image.
     "primula": ["toto.primula"],
+    # Local git over vault directories (BUILD_GITVAULT). A zenobia host app until
+    # the workspace apps moved to placidia and had to take their versioning with
+    # them; it ships in TOTO-FLOW so both hosts install the one copy. Not
+    # toto-base, despite the vault dependency: GitRun has a real FK to
+    # workflows.WorkflowRun and its 0002 migration depends on that app, and
+    # toto-flow is the package allowed to hold both edges. Every host that can
+    # want git already pins it. A remote (Gitea, or any custom URL) is optional
+    # and off by default — repository, branches and merges are entirely local.
+    "gitvault": ["toto.gitvault"],
 }
 
 
@@ -124,6 +133,11 @@ TASK_MODULES = [
     # Inert where the ops wheel is absent: Celery's find_related_module swallows
     # a missing package, which is the same reasoning as toto.manta above.
     "toto.monit",
+    # gitvault's run_git_task — the no-workflow fallback path in dispatch.py
+    # enqueues it directly, so a host with celery but without the seeded
+    # gitvault-run workflow still runs its init/push/pull. Inert where the app
+    # is not installed.
+    "toto.gitvault",
 ]
 
 

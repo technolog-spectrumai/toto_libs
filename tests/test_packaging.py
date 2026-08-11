@@ -75,7 +75,19 @@ def test_migrations_are_packaged(all_names, owner):
     # 40 as of 1.45: antaresia was DELETED from toto-works (not moved) — its
     # name now belongs to zenobia's Python workspace host app, ambrosia's
     # successor, and its PythonRun table dies with it.
-    assert len(apps_with_migrations) == 40, sorted(apps_with_migrations)
+    # 43 as of 1.50, and the jump from 40 is three apps, not one:
+    #   * toto.tax     (8/2026, toto-economy) — the levy engine's own tables
+    #   * toto.cyprian (8/2026, toto-works)   — gained a quota/usage pair
+    #   * toto.gitvault(1.50,  toto-flow)     — came IN from the zenobia host
+    #     (the repo, the run, the quota pair, the custom remote). It was
+    #     host-owned while only zenobia had surfaces to version; the workspace
+    #     apps moved to placidia and versioning had to follow them, which a
+    #     host app cannot do. The app LABEL is unchanged, so no deployed
+    #     database notices the move.
+    # The first two drifted in unnoticed because dist/ held stale wheels: this
+    # assertion only bites once the wheels are rebuilt, so rebuild before
+    # trusting it.
+    assert len(apps_with_migrations) == 43, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -193,6 +205,23 @@ def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
     assert owner.get("toto/fileservices/models.py") == "toto-media-ops"
     # Written in 1.21 and never deployed; the app had no run index before it.
     assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
+
+
+def test_toto_flow_ships_gitvault_with_its_assets(payloads, owner):
+    """gitvault is useless as Python alone — its UI is a template and a script.
+
+    It came from a HOST, where templates and static are just files on disk that
+    always exist. In a wheel they ship only if setuptools is told to include
+    them, and a missing one fails at render time on a deployed host rather than
+    in any import. The three files below are the whole user-facing surface: the
+    modal host, the toolbar entry, and the Alpine component that drives both.
+    """
+    assert owner.get("toto/gitvault/git_cli.py") == "toto-flow"
+    assert owner.get("toto/gitvault/templates/gitvault/_git_ui.html") == "toto-flow"
+    assert owner.get("toto/gitvault/templates/gitvault/_git_toolbar_buttons.html") == "toto-flow"
+    assert owner.get("toto/gitvault/templates/gitvault/index.html") == "toto-flow"
+    assert owner.get("toto/gitvault/static/gitvault/git.js") == "toto-flow"
+    assert owner.get("toto/gitvault/migrations/0001_initial.py") == "toto-flow"
 
 
 def test_every_task_module_ships_a_tasks_submodule(owner):
