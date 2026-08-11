@@ -26,21 +26,46 @@ from . import git_cli, integration, permissions
 from .models import GitRepo
 
 
+def _workspace_namespace(workspace) -> str:
+    """The URL namespace of the lab that owns this workspace's kind.
+
+    Asked of ambrosia's registry rather than hardcoded, for the same reason
+    ambrosia itself asks: a build may install the Python lab, the LaTeX lab or
+    both, and gitvault must name none of them. Returns "" when the kind's app
+    is not installed here — then there is no room to link to.
+    """
+    try:
+        from toto.ambrosia import registry
+    except ImportError:
+        return ""
+    app = registry.for_kind(workspace.kind)
+    return app.namespace if app else ""
+
+
 def _surface_link(repo: GitRepo) -> dict:
     """Where this repo is actually USED — the surface that owns its directory.
 
-    The first document or presentation in the subtree names its editor. A repo
-    neither matches renders as a plain label: with git gone from the vault
+    A WORKSPACE first: its root_directory is a OneToOne to the very directory a
+    GitRepo keys on, so the match is exact and needs no scan. Otherwise the
+    first document or presentation in the subtree names its editor. A repo
+    matching neither renders as a plain label: with git gone from the vault
     browser there is nowhere generic left to send anyone, and a dead link is
     worse than none.
 
-    Workspace attribution used to come first here, through the reverse
-    OneToOne from ambrosia.Workspace.root_directory. The workspace apps moved
-    to the placidia host in 8/2026 and gitvault cannot follow (a federation
-    child mounts no local OIDC provider, so deploy.py refuses both gitea and
-    BUILD_GITVAULT on one) — so that branch is dead on both hosts and is gone.
+    Workspace attribution was deleted in 8/2026 on the premise that gitvault
+    could never follow the labs to placidia. It ships in a wheel now and runs
+    there, so the host that owns the workspaces would otherwise be the one host
+    whose repositories all render as unclickable folder paths.
     """
     from .sync import subtree_files
+
+    if django_apps.is_installed("toto.ambrosia"):
+        workspace = getattr(repo.directory, "ambrosia_workspace", None)
+        if workspace is not None:
+            app = _workspace_namespace(workspace)
+            if app:
+                return {"label": workspace.name, "kind": "workspace",
+                        "url": reverse(f"{app}:workspace", args=[workspace.slug])}
 
     for vault_file in subtree_files(repo.directory):
         if vault_file.file_type == "document" and django_apps.is_installed("toto.cyprian"):
