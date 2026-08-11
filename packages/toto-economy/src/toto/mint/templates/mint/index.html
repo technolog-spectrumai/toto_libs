@@ -15,7 +15,7 @@
         <i class="fa-solid fa-hammer"></i>{% trans "Mint" %}
       </h1>
       <p class="mt-2 text-sm opacity-70">
-        {% trans "Create a new asset with a fixed supply. Supply is created once, into the asset's reserve, and never again — releasing more means transferring from that reserve, and something genuinely new means a new asset." %}
+        {% trans "Four verbs, kept apart. ENGRAVE creates a currency's identity and its permanent maximum, and no units at all. MINT brings units into existence, up to that maximum. DISTRIBUTE moves units that already exist and is an ordinary transfer. BURN destroys units nobody holds." %}
       </p>
     </header>
 
@@ -32,19 +32,52 @@
     <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
       <p class="font-bold">{% trans "This platform holds no issuer key." %}</p>
       <p class="mt-2 text-sm opacity-70">
-        {% trans "Assets are issued on the master platform and arrive here as signed mirrors. Run “manage.py mint_issuer_key” only if this host IS the master." %}
+        {% trans "Currencies are engraved and minted on the master platform and arrive here as signed mirrors. Run “manage.py mint_issuer_key” only if this host IS the master." %}
       </p>
     </div>
     {% else %}
+
+    <!-- The chain ------------------------------------------------------- -->
     <section :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
-      <h2 class="mb-4 text-lg font-bold">{% trans "Issue a new asset" %}</h2>
+      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-link mr-2"></i>{% trans "Monetary chain" %}</h2>
+      <div class="grid gap-4 text-sm sm:grid-cols-3">
+        <div><span class="opacity-60">{% trans "Events" %}</span>
+          <div class="font-mono text-lg font-bold">{{ chain.length }}</div></div>
+        <div><span class="opacity-60">{% trans "Next sequence" %}</span>
+          <div class="font-mono text-lg font-bold">#{{ chain.next_sequence }}</div></div>
+        <div><span class="opacity-60">{% trans "Integrity" %}</span>
+          <div class="text-lg font-bold">
+            {% if chain.ok %}
+              <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              <span class="ml-1">{% trans "Verified" %}</span>
+            {% else %}
+              <i class="fa-solid fa-triangle-exclamation text-warn-light"></i>
+              <span class="ml-1 text-warn-light">{% trans "Broken" %}</span>
+            {% endif %}
+          </div></div>
+      </div>
+      <p class="mt-3 break-all font-mono text-xs opacity-60">
+        {% trans "Head" %}: {{ chain.head_hash|default:"(empty chain)" }}</p>
+      {% if not chain.ok %}
+      <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-warn-light">
+        {% for finding in chain.findings %}<li>{{ finding }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </section>
+
+    <!-- ENGRAVE ---------------------------------------------------------- -->
+    <section :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
+      <h2 class="mb-1 text-lg font-bold">{% trans "Engrave a new currency" %}</h2>
+      <p class="mb-4 text-sm opacity-70">
+        {% trans "Creates a permanent identity and mints the whole maximum into its reserve. The maximum can never be raised afterwards." %}
+      </p>
       <form method="post" action="{% url 'mint:issue' %}" class="grid gap-4 md:grid-cols-2">
         {% csrf_token %}
         <label class="text-sm">{% trans "Name" %}
           <input name="name" required maxlength="255" class="mt-1 w-full rounded-lg px-3 py-2"></label>
         <label class="text-sm">{% trans "Ticker" %}
           <input name="unit_name" required maxlength="20" class="mt-1 w-full rounded-lg px-3 py-2"></label>
-        <label class="text-sm">{% trans "Total supply" %}
+        <label class="text-sm">{% trans "Maximum supply" %}
           <input name="total_supply" required class="mt-1 w-full rounded-lg px-3 py-2"></label>
         <label class="text-sm">{% trans "Decimals" %}
           <input name="decimals" type="number" min="0" max="19" value="2" class="mt-1 w-full rounded-lg px-3 py-2"></label>
@@ -52,25 +85,130 @@
           <input name="code" maxlength="10" class="mt-1 w-full rounded-lg px-3 py-2"></label>
         <label class="text-sm">{% trans "Symbol" %}
           <input name="symbol" maxlength="5" class="mt-1 w-full rounded-lg px-3 py-2"></label>
-        <label class="text-sm md:col-span-2">{% trans "Why is this being issued?" %}
+        <label class="text-sm md:col-span-2">{% trans "Why is this being engraved?" %}
           <textarea name="reason" required rows="2" class="mt-1 w-full rounded-lg px-3 py-2"></textarea></label>
         <div class="md:col-span-2">
           <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white">
-            {% trans "Issue" %}</button>
-          <span class="ml-3 text-xs opacity-60">{% trans "Irreversible. The supply you name is the supply that will ever exist." %}</span>
+            {% trans "Engrave" %}</button>
+          <span class="ml-3 text-xs opacity-60">{% trans "Irreversible. The maximum you name is a promise, and a promise you can raise is not one." %}</span>
         </div>
       </form>
     </section>
+
+    <!-- MINT / BURN per currency ----------------------------------------- -->
+    <section class="space-y-4">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-coins mr-2"></i>{% trans "Currencies engraved here" %}</h2>
+      {% for row in currencies %}
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-xl p-6">
+        <div class="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 class="text-base font-bold">{{ row.asset.unit_name }}
+            <span class="ml-2 font-normal opacity-70">{{ row.asset.name }}</span></h3>
+          <span class="break-all font-mono text-xs opacity-60">{{ row.asset.currency_hash }}</span>
+        </div>
+
+        <div class="mt-4 grid gap-4 text-sm sm:grid-cols-4">
+          <div><span class="opacity-60">{% trans "Supply" %}</span>
+            <div class="font-mono font-bold">{{ row.supply }}</div>
+            <div class="text-xs opacity-50">{% trans "minted minus burned" %}</div></div>
+          <div><span class="opacity-60">{% trans "Maximum" %}</span>
+            <div class="font-mono font-bold">{{ row.max_supply }}</div>
+            <div class="text-xs opacity-50">{% trans "in the currency hash" %}</div></div>
+          <div><span class="opacity-60">{% trans "Unminted" %}</span>
+            <div class="font-mono font-bold">{{ row.unminted }}</div>
+            <div class="text-xs opacity-50">{% trans "still mintable" %}</div></div>
+          <div><span class="opacity-60">{% trans "In reserve" %}</span>
+            <div class="font-mono font-bold">{{ row.reserve }}</div>
+            <div class="text-xs opacity-50">{% trans "burnable" %}</div></div>
+        </div>
+
+        <div class="mt-5 grid gap-4 md:grid-cols-2">
+          <form method="post" action="{% url 'mint:mint_units' row.asset.pk %}" class="space-y-2">
+            {% csrf_token %}
+            <p class="text-sm font-bold">{% trans "Mint" %}</p>
+            <input name="amount" required placeholder="{% trans 'Amount' %}"
+                   class="w-full rounded-lg px-3 py-2 text-sm"
+                   {% if row.fully_minted %}disabled{% endif %}>
+            <input name="reason" required placeholder="{% trans 'Why?' %}"
+                   class="w-full rounded-lg px-3 py-2 text-sm"
+                   {% if row.fully_minted %}disabled{% endif %}>
+            <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
+                    {% if row.fully_minted %}disabled{% endif %}>
+              {% trans "Mint into reserve" %}</button>
+            {% if row.fully_minted %}
+            <p class="text-xs opacity-60">{% trans "Fully minted. The maximum cannot be raised — a new currency is the only way to make more." %}</p>
+            {% endif %}
+          </form>
+
+          <form method="post" action="{% url 'mint:burn_units' row.asset.pk %}" class="space-y-2">
+            {% csrf_token %}
+            <p class="text-sm font-bold">{% trans "Burn" %}</p>
+            <input name="amount" required placeholder="{% trans 'Amount' %}"
+                   class="w-full rounded-lg px-3 py-2 text-sm">
+            <input name="reason" required placeholder="{% trans 'Why?' %}"
+                   class="w-full rounded-lg px-3 py-2 text-sm">
+            <button type="submit" class="rounded-lg bg-rose-800 px-4 py-2 text-sm font-bold text-white">
+              {% trans "Burn from reserve" %}</button>
+            <p class="text-xs opacity-60">{% trans "Only units nobody holds. Anything distributed has to be returned first." %}</p>
+          </form>
+        </div>
+      </div>
+      {% empty %}
+      <p class="text-sm opacity-70">{% trans "Nothing engraved here yet." %}</p>
+      {% endfor %}
+    </section>
+
     {% endif %}
 
+    <!-- HISTORY ---------------------------------------------------------- -->
     <section>
-      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>{% trans "Issued here" %}</h2>
+      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-clock-rotate-left mr-2"></i>{% trans "Monetary history" %}</h2>
+      {% if events %}
+      <div class="overflow-x-auto">
+        <table class="w-full text-left text-sm">
+          <thead class="text-xs uppercase opacity-70">
+            <tr><th class="py-2 pr-4">{% trans "Seq" %}</th>
+                <th class="py-2 pr-4">{% trans "Verb" %}</th>
+                <th class="py-2 pr-4">{% trans "Ticker" %}</th>
+                <th class="py-2 pr-4">{% trans "Amount" %}</th>
+                <th class="py-2 pr-4">{% trans "Event" %}</th>
+                <th class="py-2 pr-4">{% trans "By" %}</th>
+                <th class="py-2">{% trans "Why" %}</th></tr>
+          </thead>
+          <tbody>
+            {% for event in events %}
+            <tr class="border-t border-current/10">
+              <td class="py-2 pr-4 font-mono">#{{ event.sequence }}</td>
+              <td class="py-2 pr-4 font-bold">
+                {% if event.kind == "mint" %}
+                  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">{% trans "MINT" %}</span>
+                {% else %}
+                  <span class="text-warn-light">{% trans "BURN" %}</span>
+                {% endif %}
+              </td>
+              <td class="py-2 pr-4">{{ event.asset.unit_name }}</td>
+              <td class="py-2 pr-4 font-mono">{{ event.amount_base_units }}</td>
+              <td class="py-2 pr-4 font-mono text-xs">{{ event.event_hash|truncatechars:24 }}</td>
+              <td class="py-2 pr-4">{{ event.actor|default:"—" }}</td>
+              <td class="py-2">{{ event.reason|truncatechars:60 }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="text-sm opacity-70">{% trans "Nothing minted or burned here yet." %}</p>
+      {% endif %}
+    </section>
+
+    <!-- ENGRAVE RECORD --------------------------------------------------- -->
+    <section>
+      <h2 class="mb-3 text-lg font-bold"><i class="fa-solid fa-stamp mr-2"></i>{% trans "Engraved here" %}</h2>
       {% if records %}
       <div class="overflow-x-auto">
         <table class="w-full text-left text-sm">
           <thead class="text-xs uppercase opacity-70">
             <tr><th class="py-2 pr-4">{% trans "Ticker" %}</th>
-                <th class="py-2 pr-4">{% trans "Supply" %}</th>
+                <th class="py-2 pr-4">{% trans "Maximum" %}</th>
                 <th class="py-2 pr-4">{% trans "Identity" %}</th>
                 <th class="py-2 pr-4">{% trans "By" %}</th>
                 <th class="py-2">{% trans "Why" %}</th></tr>
@@ -89,7 +227,7 @@
         </table>
       </div>
       {% else %}
-      <p class="text-sm opacity-70">{% trans "Nothing issued here yet." %}</p>
+      <p class="text-sm opacity-70">{% trans "Nothing engraved here yet." %}</p>
       {% endif %}
     </section>
   </div>
