@@ -8,10 +8,15 @@ class MintConfig(AppConfig):
     which is why this is a separate app rather than a page inside toto.assets:
     the ledger ships everywhere, the mint does not.
 
-    It creates new fixed-supply assets. It can never increase the supply of an
-    existing one — there is no mint verb in this platform's ledger and never
-    will be. More of something in circulation means releasing from its
-    reserve; something genuinely new means a new asset with a new identity.
+    Three of the four monetary verbs live here: ENGRAVE creates a currency's
+    identity and its permanent maximum, MINT brings units into existence up to
+    that maximum, and BURN destroys units held in the reserve. The fourth,
+    DISTRIBUTE, is an ordinary transfer and belongs to the ledger.
+
+    Every mint and every burn is an immutable signed event on one append-only
+    chain, and supply is the sum over it. There is no supply column anyone can
+    edit, and a maximum can never be raised — needing more than the ceiling
+    means engraving a new currency, because a promise you can raise is not one.
     """
 
     default_auto_field = "django.db.models.BigAutoField"

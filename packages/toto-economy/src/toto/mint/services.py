@@ -8,6 +8,66 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 
 
+def append_event(*, asset, kind: str, amount_base_units: int, reason: str,
+                 actor=None, ledger_transaction=None):
+    """Write one monetary event onto the end of the chain. Master only.
+
+    This is the only writer of ``CurrencyMintEvent``. It reads the head, builds
+    the payload naming that head, signs it and appends — so an event's position
+    in the history is decided here and cannot be supplied by a caller.
+
+    Callers are ``mint()`` and ``burn()``; nothing else has any business
+    creating or destroying units. The ledger posting is passed in rather than
+    made here, because the two records answer different questions and a mint
+    that failed to post must not leave an event claiming it did.
+    """
+    from django.utils import timezone
+
+    from toto.assets.issuer import local_issuer, require_master
+
+    from .chain import KINDS, compute_event_hash, build_event, sign_event
+    from .history import head_hash
+    from .models import CurrencyMintEvent
+
+    require_master(f"{kind} currency")
+    if kind not in KINDS:
+        raise ValidationError(
+            f"“{kind}” is not a monetary verb; there are exactly two.")
+    if not asset.currency_hash:
+        raise ValidationError(
+            f"“{asset.unit_name}” has no genesis hash, so there is nothing to "
+            "mint or burn units of.")
+    reason = (reason or "").strip()
+    if not reason:
+        raise ValidationError(
+            "A monetary event needs a reason — it is the only record of why "
+            "the supply changed, and it cannot be added afterwards.")
+
+    issuer = local_issuer()
+    with transaction.atomic():
+        head = head_hash()
+        sequence = CurrencyMintEvent.objects.count()
+        payload = build_event(
+            issuer_fingerprint=issuer.fingerprint,
+            sequence=sequence,
+            kind=kind,
+            currency_hash=asset.currency_hash,
+            amount_base_units=amount_base_units,
+            prev_hash=head,
+            issued_at=timezone.now().isoformat())
+
+        return CurrencyMintEvent.objects.create(
+            sequence=sequence, kind=kind, asset=asset,
+            currency_hash=asset.currency_hash,
+            amount_base_units=amount_base_units,
+            prev_hash=head,
+            event_hash=compute_event_hash(payload),
+            signature=sign_event(issuer.private_key(), payload),
+            issuer_fingerprint=issuer.fingerprint,
+            payload=payload, actor=actor, reason=reason,
+            ledger_transaction=ledger_transaction)
+
+
 def issue_asset(*, name: str, unit_name: str, total_supply: Decimal,
                 decimals: int, reason: str, actor=None, code: str = "",
                 symbol: str = "", reserve_code: str = "currency-reserve"):
