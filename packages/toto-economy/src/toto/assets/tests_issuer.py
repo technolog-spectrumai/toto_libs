@@ -114,7 +114,7 @@ class SigningTests(TestCase):
         return currency_hash.build_genesis(
             issuer_fingerprint=issuer.fingerprint, unit_name="ASR",
             name="Assarion", decimals=9,
-            total_supply_base_units=6_666_666_666_667,
+            max_supply_base_units=6_666_666_666_667,
             issued_at="2026-08-11T12:00:00+00:00")
 
     def setUp(self):
@@ -142,7 +142,7 @@ class SigningTests(TestCase):
     def test_a_tampered_document_does_not_verify(self):
         document = self._document()
         signature = self.issuer.sign_genesis(document)
-        document["total_supply_base_units"] += 1
+        document["max_supply_base_units"] += 1
         self.assertFalse(self.issuer.verify_genesis(document, signature))
 
 

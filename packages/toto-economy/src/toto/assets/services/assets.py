@@ -74,7 +74,7 @@ def create_asset(
             unit_name=unit_name,
             name=name,
             decimals=decimals,
-            total_supply_base_units=total_supply_base,
+            max_supply_base_units=total_supply_base,
             issued_at=timezone.now().isoformat(),
         )
         asset = Asset.objects.create(
@@ -167,7 +167,7 @@ def mirror_asset(*, genesis_payload: dict, signature: str,
         code=code,
         symbol=symbol,
         decimals=genesis_payload["decimals"],
-        total_supply_base_units=genesis_payload["total_supply_base_units"],
+        total_supply_base_units=genesis_payload["max_supply_base_units"],
         active=True,
         issuer=issuer,
         currency_hash=digest,

@@ -35,13 +35,14 @@ class MasterIssuesTests(TestCase):
         self.assertFalse(asset.is_mirror)
         self.assertTrue(asset.verify_genesis())
 
-    def test_the_hash_commits_the_supply_that_was_created(self):
+    def test_the_hash_commits_the_maximum_not_the_amount(self):
         asset = create_asset(
             name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
             decimals=9, reserve_account=_reserve(), reference="create-asr")
 
-        self.assertEqual(asset.genesis_payload["total_supply_base_units"],
+        self.assertEqual(asset.genesis_payload["max_supply_base_units"],
                          asset.total_supply_base_units)
+        self.assertNotIn("total_supply_base_units", asset.genesis_payload)
         self.assertEqual(compute_currency_hash(asset.genesis_payload),
                          asset.currency_hash)
 
@@ -134,7 +135,7 @@ class MirrorTests(TestCase):
         self.master = issuer_module.local_issuer()
         self.genesis = build_genesis(
             issuer_fingerprint=self.master.fingerprint, unit_name="ASR",
-            name="Assarion", decimals=9, total_supply_base_units=10 ** 11,
+            name="Assarion", decimals=9, max_supply_base_units=10 ** 11,
             issued_at="2026-08-11T12:00:00+00:00")
         self.signature = self.master.sign_genesis(self.genesis)
 
@@ -169,7 +170,7 @@ class MirrorTests(TestCase):
         self.assertEqual(first.pk, again.pk)
 
     def test_a_tampered_document_is_refused(self):
-        tampered = dict(self.genesis, total_supply_base_units=10 ** 12)
+        tampered = dict(self.genesis, max_supply_base_units=10 ** 12)
         with self.assertRaises(ValidationError) as caught:
             mirror_asset(genesis_payload=tampered, signature=self.signature,
                          issuer=self.master)

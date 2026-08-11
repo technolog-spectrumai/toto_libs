@@ -64,7 +64,7 @@ def make_asset(*, unit_name: str, name: str = "", decimals: int = 2,
     genesis = build_genesis(
         issuer_fingerprint=issuer.fingerprint, unit_name=unit_name,
         name=name or unit_name, decimals=decimals,
-        total_supply_base_units=total_supply_base_units,
+        max_supply_base_units=total_supply_base_units,
         issued_at="2026-01-01T00:00:00+00:00")
     return Asset.objects.create(
         name=name or unit_name, unit_name=unit_name, decimals=decimals,

@@ -22,7 +22,7 @@ def _document(**overrides):
         "unit_name": "ASR",
         "name": "Assarion",
         "decimals": 9,
-        "total_supply_base_units": 6_666_666_666_667,
+        "max_supply_base_units": 6_666_666_666_667,
         "genesis_nonce": "b" * 64,
         "issued_at": "2026-08-11T12:00:00+00:00",
     }
@@ -97,7 +97,7 @@ class CurrencyHashTests(SimpleTestCase):
             "unit_name": "TPLN",
             "name": "Toto Zloty",
             "decimals": 2,
-            "total_supply_base_units": 42,
+            "max_supply_base_units": 42,
             "genesis_nonce": "d" * 64,
             "issued_at": "2027-01-01T00:00:00+00:00",
         }
@@ -112,55 +112,65 @@ class CurrencyHashTests(SimpleTestCase):
         # collision with the retired one.
         one = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                             name="Assarion", decimals=9,
-                            total_supply_base_units=10 ** 9,
+                            max_supply_base_units=10 ** 9,
                             issued_at="2026-08-11T12:00:00+00:00")
         two = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                             name="Assarion", decimals=9,
-                            total_supply_base_units=10 ** 9,
+                            max_supply_base_units=10 ** 9,
                             issued_at="2026-08-11T12:00:00+00:00")
         self.assertNotEqual(compute_currency_hash(one),
                             compute_currency_hash(two))
 
-    def test_supply_is_committed_so_the_promise_is_verifiable(self):
-        # The whole point of putting a fixed supply in the preimage: a holder
-        # can tell from the document alone how much will ever exist.
-        few = _document(total_supply_base_units=1000)
-        many = _document(total_supply_base_units=2000)
-        self.assertNotEqual(compute_currency_hash(few),
-                            compute_currency_hash(many))
+    def test_the_maximum_is_committed_so_the_ceiling_is_verifiable(self):
+        # The whole point of putting the maximum in the preimage: a holder can
+        # tell from the document alone how much can ever exist, without
+        # trusting anyone about how much does.
+        low = _document(max_supply_base_units=1000)
+        high = _document(max_supply_base_units=2000)
+        self.assertNotEqual(compute_currency_hash(low),
+                            compute_currency_hash(high))
+
+    def test_the_current_supply_is_deliberately_absent(self):
+        # Identity is the standard, not the amount outstanding. If minted
+        # units were in the preimage the hash would move on every mint, and a
+        # branch's contract — which names a currency by hash — would break on
+        # an act it never took part in.
+        self.assertNotIn("supply_base_units", currency_hash.GENESIS_FIELDS)
+        self.assertNotIn("minted_base_units", currency_hash.GENESIS_FIELDS)
+        with self.assertRaises(GenesisError):
+            compute_currency_hash(_document(minted_base_units=500))
 
 
 class BuildGenesisTests(SimpleTestCase):
     def test_the_builder_fills_version_and_nonce(self):
         document = build_genesis(issuer_fingerprint="a" * 64, unit_name="ASR",
                                  name="Assarion", decimals=9,
-                                 total_supply_base_units=10 ** 9,
+                                 max_supply_base_units=10 ** 9,
                                  issued_at="2026-08-11T12:00:00+00:00")
         self.assertEqual(document["v"], GENESIS_VERSION)
         self.assertEqual(len(document["genesis_nonce"]), 64)
         int(document["genesis_nonce"], 16)  # hex or it raises
 
-    def test_supply_must_be_a_positive_integer_of_base_units(self):
-        # A float would make the identity bytes depend on repr(); zero or
-        # negative is not a currency.
+    def test_the_maximum_must_be_a_positive_integer_of_base_units(self):
+        # A float would make the identity bytes depend on repr(); a ceiling of
+        # zero or less is not a currency anyone could ever mint.
         for bad in (0, -1, 1.5, "1000", True):
-            with self.subTest(supply=bad):
+            with self.subTest(maximum=bad):
                 with self.assertRaises(GenesisError):
                     compute_currency_hash(
-                        _document(total_supply_base_units=bad))
+                        _document(max_supply_base_units=bad))
 
-    def test_a_supply_policy_field_is_malformed_not_ignored(self):
-        # Flexible supply is a future v2 document. A v1 carrying a policy is a
-        # caller confusing the two, and silently dropping it would let two
-        # differing documents share a hash.
+    def test_an_extra_field_is_malformed_not_ignored(self):
+        # Silently dropping an unknown key would let two differing documents
+        # share a hash, which is the one thing an identity may never do.
         document = _document()
         document["supply_policy"] = "issuable"
         with self.assertRaises(GenesisError):
             compute_currency_hash(document)
 
     def test_an_unknown_version_is_refused(self):
-        # v1 means fixed supply by definition. A v2 document means something
-        # this build has not been taught and must not guess at.
+        # v1 means this exact field set. A v2 document means something this
+        # build has not been taught and must not guess at.
         with self.assertRaises(GenesisError):
             compute_currency_hash(_document(v=2))
 

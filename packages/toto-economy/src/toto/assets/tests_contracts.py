@@ -168,7 +168,7 @@ class ImportTests(TestCase):
         Asset.objects.all().delete()
         CurrencyContract.objects.all().delete()
         bad = dict(self.descriptor)
-        bad["genesis"] = dict(bad["genesis"], total_supply_base_units=1)
+        bad["genesis"] = dict(bad["genesis"], max_supply_base_units=1)
 
         with self.assertRaises(ValidationError):
             import_contract(bad)

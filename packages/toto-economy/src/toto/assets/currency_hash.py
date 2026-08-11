@@ -18,22 +18,27 @@ Three deliberate boundaries:
   bytes must never depend on what Python's ``str()`` happens to do to a Decimal
   or a datetime — a non-JSON-native value is a caller bug and is refused.
 
-On supply: the preimage commits the TOTAL SUPPLY, because supply is strictly
-fixed. It is created once by ``create_asset()`` into the asset's reserve
-account and never again — there is no mint verb and no burn verb anywhere on
-the platform, and ``TransactionType`` has no such member. More of something in
-circulation means releasing from the reserve; something genuinely new means a
-new asset with a new identity. So the amount is safe to commit, and committing
-it makes the hash a complete attestation: a holder can verify from the document
-alone exactly how much of this will ever exist.
+On supply: the preimage commits the MAXIMUM, never the current amount. The
+distinction is the point of the whole design — identity is the permanent
+monetary standard, and what has actually been brought into existence under it
+is a separate, signed history.
 
-A branch allocation is a TRANSFER, not an increase. Sending a branch more
-currency moves units out of Zenobia's reserve into the branch's; there is
-visibly more on that branch and exactly as much in the world.
+    supply   = Σ minted − Σ burned      (from toto.mint's event chain)
+    unminted = maximum − supply         (what MINT may still create)
 
-If flexible supply is ever wanted, ``v`` is the upgrade path: ``v1`` *means*
-fixed supply by definition, so a ``v2`` document could carry a policy without
-invalidating or re-hashing a single existing currency.
+So the ceiling is a promise a holder can verify from the document alone, and
+the current supply is a fact they verify from a chain that cannot be rewritten.
+A maximum can never be raised: needing more means engraving a new currency,
+because a promise you can raise is not one.
+
+Committing the maximum rather than the amount is also what keeps this portable.
+An Algorand ASA's ``total`` is immutable and set at creation, and "minting"
+there is release from the reserve — so our maximum maps onto ``total`` and our
+``Σ minted − Σ burned`` maps onto circulating supply.
+
+A branch allocation is a TRANSFER and changes no supply at all: units move out
+of the master's reserve into the branch's. Only MINT and BURN move supply, and
+only the master can perform either.
 """
 
 from __future__ import annotations
@@ -48,8 +53,8 @@ import struct
 #: from every entry in it by construction ("toto/currency/" vs "toto/clearing/").
 GENESIS_CONTEXT = b"toto/currency/v1/genesis"
 
-#: The one document version there is. v1 means fixed supply by definition —
-#: see the note on flexible supply in the module docstring.
+#: The one document version there is. v1 means exactly the field set below;
+#: anything else is a document this build has not been taught to read.
 GENESIS_VERSION = 1
 
 #: Exactly these keys, no more, no fewer. A document with an extra key is
@@ -57,7 +62,7 @@ GENESIS_VERSION = 1
 #: differing documents share a hash.
 GENESIS_FIELDS = frozenset({
     "v", "issuer_fingerprint", "unit_name", "name", "decimals",
-    "total_supply_base_units", "genesis_nonce", "issued_at",
+    "max_supply_base_units", "genesis_nonce", "issued_at",
 })
 
 HASH_PREFIX = "tcur1:"
@@ -98,12 +103,12 @@ def _validated(document: dict) -> dict:
         raise GenesisError(
             f"Unknown genesis version {document['v']!r}; this build writes and "
             f"reads v{GENESIS_VERSION}.")
-    supply = document["total_supply_base_units"]
-    if not isinstance(supply, int) or isinstance(supply, bool) or supply <= 0:
+    maximum = document["max_supply_base_units"]
+    if not isinstance(maximum, int) or isinstance(maximum, bool) or maximum <= 0:
         raise GenesisError(
-            "total_supply_base_units must be a positive integer of base units "
-            "— it is the whole supply that will ever exist, and a float would "
-            "make the identity bytes depend on repr().")
+            "max_supply_base_units must be a positive integer of base units — "
+            "it is the most that can ever exist, and a float would make the "
+            "identity bytes depend on repr().")
     decimals = document["decimals"]
     if not isinstance(decimals, int) or isinstance(decimals, bool) \
             or not 0 <= decimals <= 19:
@@ -118,7 +123,7 @@ def compute_currency_hash(document: dict) -> str:
 
 
 def build_genesis(*, issuer_fingerprint: str, unit_name: str, name: str,
-                  decimals: int, total_supply_base_units: int,
+                  decimals: int, max_supply_base_units: int,
                   issued_at: str) -> dict:
     """A fresh genesis document, nonce included.
 
@@ -133,7 +138,7 @@ def build_genesis(*, issuer_fingerprint: str, unit_name: str, name: str,
         "unit_name": unit_name,
         "name": name,
         "decimals": decimals,
-        "total_supply_base_units": total_supply_base_units,
+        "max_supply_base_units": max_supply_base_units,
         "genesis_nonce": secrets.token_hex(32),
         "issued_at": issued_at,
     })
