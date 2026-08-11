@@ -15,13 +15,80 @@ from toto.assets import issuer as issuer_module
 from toto.assets.currency_hash import build_genesis, compute_currency_hash
 from toto.assets.issuer import NotTheMaster
 from toto.assets.models import AccountType, Asset, CurrencyIssuer, LedgerAccount
-from toto.assets.services.assets import create_asset, mirror_asset
+from toto.assets.services.assets import (create_asset, engrave_currency,
+                                         mirror_asset)
 from toto.assets.testing import LedgerTestCase as TestCase
 
 
 def _reserve(code="res") -> LedgerAccount:
     return LedgerAccount.objects.create(
         code=code, name="Reserve", account_type=AccountType.RESERVE)
+
+
+class EngraveTests(TestCase):
+    """ENGRAVE creates a standard, not money."""
+
+    def test_engraving_creates_an_identity(self):
+        asset = engrave_currency(name="Assarion", unit_name="ASR",
+                                 max_supply=Decimal("100"), decimals=9)
+
+        self.assertTrue(asset.currency_hash.startswith("tcur1:"))
+        self.assertTrue(asset.verify_genesis())
+        self.assertFalse(asset.is_mirror)
+
+    def test_engraving_creates_no_units_at_all(self):
+        from toto.assets.models import (AssetHolding, LedgerEntry,
+                                        LedgerTransaction)
+
+        asset = engrave_currency(name="Assarion", unit_name="ASR",
+                                 max_supply=Decimal("100"), decimals=9)
+
+        # An engraved, unminted currency is a legitimate state: the standard
+        # exists and nobody holds any of it. Nothing was posted, so there is
+        # nothing for a later MINT to double-count.
+        self.assertEqual(AssetHolding.objects.filter(asset=asset).count(), 0)
+        self.assertEqual(LedgerEntry.objects.filter(asset=asset).count(), 0)
+        self.assertEqual(
+            LedgerTransaction.objects.filter(asset=asset).count(), 0)
+
+    def test_the_maximum_is_committed_to_the_identity(self):
+        asset = engrave_currency(name="Assarion", unit_name="ASR",
+                                 max_supply=Decimal("100"), decimals=9)
+
+        self.assertEqual(asset.genesis_payload["max_supply_base_units"],
+                         100 * 10 ** 9)
+        self.assertEqual(compute_currency_hash(asset.genesis_payload),
+                         asset.currency_hash)
+
+    def test_a_branch_cannot_engrave(self):
+        CurrencyIssuer.objects.filter(is_self=True).update(
+            private_key_encrypted=None)
+        before = Asset.objects.count()
+
+        with self.assertRaises(NotTheMaster) as caught:
+            engrave_currency(name="Forged", unit_name="FRG",
+                             max_supply=Decimal("1"), decimals=0)
+        self.assertIn("engrave a currency", str(caught.exception))
+        self.assertEqual(Asset.objects.count(), before)
+
+    def test_a_maximum_of_zero_is_refused(self):
+        for bad in (Decimal("0"), Decimal("-1")):
+            with self.subTest(maximum=bad):
+                with self.assertRaises(ValidationError):
+                    engrave_currency(name="Nothing", unit_name="NIL",
+                                     max_supply=bad, decimals=0)
+
+    def test_creating_an_asset_is_engraving_plus_a_reserve(self):
+        # The old single verb is now the composite, so the identity half is
+        # provably the same code path.
+        asset = create_asset(
+            name="Assarion", unit_name="ASR", total_supply=Decimal("100"),
+            decimals=9, reserve_account=_reserve(), reference="create-asr")
+
+        self.assertEqual(compute_currency_hash(asset.genesis_payload),
+                         asset.currency_hash)
+        self.assertEqual(asset.genesis_payload["max_supply_base_units"],
+                         100 * 10 ** 9)
 
 
 class MasterIssuesTests(TestCase):

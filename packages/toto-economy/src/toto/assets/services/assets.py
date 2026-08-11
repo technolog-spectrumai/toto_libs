@@ -30,6 +30,71 @@ def _get_system_issuance_account() -> LedgerAccount:
     return account
 
 
+def engrave_currency(
+    *,
+    name: str,
+    unit_name: str,
+    max_supply: Decimal,
+    decimals: int,
+    metadata=None,
+    code: str = "",
+    symbol: str = "",
+) -> Asset:
+    """ENGRAVE: create a currency's identity. Master only. No units.
+
+    This is the first of the four verbs (see portal/hierarchical_economy.md).
+    It brings a monetary standard into existence — a name, a scale, a permanent
+    ceiling and the ``currency_hash`` that will identify it forever — and it
+    creates **not one unit**. Bringing units into existence is MINT, a separate
+    verb with its own signed history; moving minted units is DISTRIBUTE; and
+    destroying them is BURN. Keeping the four apart is the whole point: an
+    engraved currency with zero supply is a meaningful, legitimate state.
+
+    The authority check is the FIRST thing that happens: a branch has no
+    business reaching this function at all, and refusing early means a refusal
+    cannot leave half a ledger behind. Mirroring a currency the master engraved
+    is a different verb again — see ``mirror_asset``.
+    """
+    from django.utils import timezone
+
+    from toto.assets.currency_hash import build_genesis, compute_currency_hash
+    from toto.assets.issuer import local_issuer, require_master
+
+    require_master("engrave a currency")
+    issuer = local_issuer()
+
+    with transaction.atomic():
+        if max_supply <= 0:
+            raise ValidationError("max_supply must be positive.")
+        if not (0 <= decimals <= 19):
+            raise ValidationError("decimals must be between 0 and 19.")
+
+        max_supply_base = to_base_units(max_supply, decimals)
+
+        genesis = build_genesis(
+            issuer_fingerprint=issuer.fingerprint,
+            unit_name=unit_name,
+            name=name,
+            decimals=decimals,
+            max_supply_base_units=max_supply_base,
+            issued_at=timezone.now().isoformat(),
+        )
+        return Asset.objects.create(
+            name=name,
+            unit_name=unit_name,
+            code=code,
+            symbol=symbol,
+            decimals=decimals,
+            total_supply_base_units=max_supply_base,
+            active=True,
+            metadata=metadata,
+            issuer=issuer,
+            currency_hash=compute_currency_hash(genesis),
+            genesis_payload=genesis,
+            genesis_signature=issuer.sign_genesis(genesis),
+        )
+
+
 def create_asset(
     *,
     name: str,
@@ -43,55 +108,20 @@ def create_asset(
     code: str = "",
     symbol: str = "",
 ) -> Asset:
-    """Issue a new asset. Master only, fixed supply, signed at birth.
+    """ENGRAVE then fill the reserve, in one act — the old single verb.
 
-    The authority check is the FIRST thing that happens: a branch has no
-    business reaching this function at all, and refusing early means a refusal
-    cannot leave half a ledger behind. Mirroring an asset the master issued is
-    a different verb — see ``mirror_asset``.
-
-    The whole supply is created here and never again. That is what makes it
-    safe to commit the amount to the genesis hash.
+    Kept because every existing caller wants both halves and the ledger posting
+    here is still the pre-chain one. The posting becomes a real ``mint()`` when
+    the monetary event chain lands; until then this is the only path that puts
+    units into a reserve, and it is deliberately the ONLY thing left in this
+    module that does.
     """
-    from django.utils import timezone
-
-    from toto.assets.currency_hash import build_genesis, compute_currency_hash
-    from toto.assets.issuer import local_issuer, require_master
-
-    require_master("issue assets")
-    issuer = local_issuer()
+    asset = engrave_currency(
+        name=name, unit_name=unit_name, max_supply=total_supply,
+        decimals=decimals, metadata=metadata, code=code, symbol=symbol)
 
     with transaction.atomic():
-        if total_supply <= 0:
-            raise ValidationError("total_supply must be positive.")
-        if not (0 <= decimals <= 19):
-            raise ValidationError("decimals must be between 0 and 19.")
-
-        total_supply_base = to_base_units(total_supply, decimals)
-
-        genesis = build_genesis(
-            issuer_fingerprint=issuer.fingerprint,
-            unit_name=unit_name,
-            name=name,
-            decimals=decimals,
-            max_supply_base_units=total_supply_base,
-            issued_at=timezone.now().isoformat(),
-        )
-        asset = Asset.objects.create(
-            name=name,
-            unit_name=unit_name,
-            code=code,
-            symbol=symbol,
-            decimals=decimals,
-            total_supply_base_units=total_supply_base,
-            active=True,
-            metadata=metadata,
-            issuer=issuer,
-            currency_hash=compute_currency_hash(genesis),
-            genesis_payload=genesis,
-            genesis_signature=issuer.sign_genesis(genesis),
-        )
-
+        total_supply_base = asset.total_supply_base_units
         system_account = _get_system_issuance_account()
 
         reserve_holding, _ = AssetHolding.objects.get_or_create(
@@ -136,9 +166,12 @@ def mirror_asset(*, genesis_payload: dict, signature: str,
                  code: str = "", symbol: str = "") -> Asset:
     """Copy an asset the master issued into this platform's ledger.
 
-    The ONLY writer of Asset rows on a branch. ``create_asset`` makes money;
-    this copies a fact, and keeping them separate is what lets the first be
-    refused wholesale on a branch without also breaking the second.
+    The ONLY writer of Asset rows on a branch. ``engrave_currency`` creates an
+    identity; this copies one, and keeping them separate is what lets the first
+    be refused wholesale on a branch without also breaking the second.
+
+    A mirror carries the maximum, never a supply. What the master has actually
+    minted is not a branch's business and is deliberately not replicated here.
 
     Nothing is written until the signature verifies against the pinned issuer
     key: a mirror whose provenance cannot be checked is not a mirror, it is an
