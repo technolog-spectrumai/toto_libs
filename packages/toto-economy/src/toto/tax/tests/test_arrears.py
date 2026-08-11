@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.db import IntegrityError, transaction
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.utils import timezone
 
 from toto.events.models import EventInvite, ScheduledEvent

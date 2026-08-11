@@ -2,7 +2,7 @@
 Tests for toto.assets.prepaid — personal prepaid account helpers.
 """
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.assets.models import AccountType, LedgerAccount
 from toto.assets.prepaid import (

@@ -5,7 +5,7 @@ from decimal import Decimal
 from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.urls import reverse
 from django.utils import timezone
 

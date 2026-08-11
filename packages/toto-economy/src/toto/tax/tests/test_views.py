@@ -7,7 +7,7 @@ redirect — the rate-desk convention.
 
 from decimal import Decimal
 
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.urls import reverse
 
 from ..models import TaxRule

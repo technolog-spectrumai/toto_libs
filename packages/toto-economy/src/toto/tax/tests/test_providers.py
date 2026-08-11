@@ -2,7 +2,7 @@
 
 from decimal import Decimal
 
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.quota.levy import DuplicateLevyProvider, LevyProvider, LevyRegistry, registry
 

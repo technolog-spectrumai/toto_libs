@@ -3,7 +3,7 @@
 import datetime
 from decimal import Decimal
 
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.utils import timezone
 
 from toto.quota.levy import registry as levy_registry

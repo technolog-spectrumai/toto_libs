@@ -1,7 +1,8 @@
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset
 
 from toto.assets.models import Asset, LedgerAccount, AssetHolding, AccountType
 
@@ -9,7 +10,7 @@ User = get_user_model()
 
 
 def _make_asset(unit_name="TST"):
-    return Asset.objects.create(
+    return make_asset(
         name=f"Test Asset {unit_name}",
         unit_name=unit_name,
         decimals=2,

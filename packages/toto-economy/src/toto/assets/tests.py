@@ -1,7 +1,8 @@
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
 
 _SIMPLE_STATIC = "django.contrib.staticfiles.storage.StaticFilesStorage"
 

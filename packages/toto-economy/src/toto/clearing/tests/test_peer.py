@@ -5,7 +5,8 @@ from __future__ import annotations
 import base64
 import json
 
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.clearing.models import LedgerPeer
 from toto.clearing.services import handshake as hs

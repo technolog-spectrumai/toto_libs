@@ -13,7 +13,8 @@ receiving account, and a list of who was nearly out of gas. The split is:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset
 from django.urls import reverse
 
 from toto.assets.models import AccountType, Asset, LedgerAccount, to_base_units
@@ -39,7 +40,7 @@ class TariffVisibilityTests(TestCase):
         cls.bob = User.objects.create_user("bob", password="pw")
         cls.staff = User.objects.create_user("staff", password="pw", is_staff=True)
 
-        cls.asset = Asset.objects.create(
+        cls.asset = make_asset(
             name="Gas", unit_name="GAS", decimals=9,
             total_supply_base_units=10 ** 15, active=True,
         )

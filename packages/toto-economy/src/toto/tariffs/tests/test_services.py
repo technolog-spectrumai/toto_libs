@@ -3,7 +3,9 @@ Tests for tariff calculation and posting services.
 """
 from decimal import Decimal
 
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset as issued_asset
 
 from toto.assets.models import (
     AccountType,
@@ -33,7 +35,7 @@ from toto.tariffs.services import (
 
 
 def make_asset(unit_name, decimals=6):
-    return Asset.objects.create(
+    return issued_asset(
         name=unit_name,
         unit_name=unit_name,
         decimals=decimals,

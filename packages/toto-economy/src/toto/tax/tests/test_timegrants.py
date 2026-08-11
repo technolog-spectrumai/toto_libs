@@ -2,7 +2,8 @@
 
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset
 
 from toto.quota import times
 from toto.quota.times import TimeLimit
@@ -102,7 +103,7 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
 
         from ..models import TaxRule
 
-        Asset.objects.create(name="Gas", unit_name="ASR", decimals=9,
+        make_asset(name="Gas", unit_name="ASR", decimals=9,
                              total_supply_base_units=10 ** 15, active=True)
         upsert_price(metric_registry.get("time.hold"), Decimal("1"))
         TaxRule.objects.create(metric_code="time.hold",

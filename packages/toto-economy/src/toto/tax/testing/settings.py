@@ -82,6 +82,8 @@ LANGUAGE_CODE = "en"
 USE_I18N = True
 USE_TZ = True
 
+# Separate from FIELD_ENCRYPTION_KEY on purpose: see toto/assets/issuer.py.
+MONETARY_ISSUER_KEY = "0Zk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0k="
 FIELD_ENCRYPTION_KEY = "zqx3Wt0nqTfKqBPXCsFtHQOMoO0v8kBn8ZQmFqBLLwo="
 PLATFORM_DOMAIN = "tax.test"
 

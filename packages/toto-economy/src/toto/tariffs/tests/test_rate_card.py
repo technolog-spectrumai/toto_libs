@@ -8,7 +8,9 @@ what anybody pays.
 from decimal import Decimal
 
 from django.core.management import call_command
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset
 
 from toto.assets.models import AccountType, Asset, LedgerAccount, to_base_units
 from toto.quota.metrics import Metric
@@ -30,7 +32,7 @@ class RateCardTests(TestCase):
             code=f"RES-{GAS}", name="Reserve",
             account_type=AccountType.RESERVE, active=True,
         )
-        self.gas = Asset.objects.create(
+        self.gas = make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
             total_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
@@ -116,7 +118,7 @@ class SeederAgreesWithTheGridTests(TestCase):
             code=f"RES-{GAS}", name="Reserve",
             account_type=AccountType.RESERVE, active=True,
         )
-        Asset.objects.create(
+        make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
             total_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
@@ -170,7 +172,7 @@ class PricingCurrencyTests(TestCase):
             code=f"RES-{GAS}", name="Reserve",
             account_type=AccountType.RESERVE, active=True,
         )
-        self.gas = Asset.objects.create(
+        self.gas = make_asset(
             name="Test Gas", unit_name=GAS, decimals=9,
             total_supply_base_units=10 ** 15, active=True,
             reserve_account=reserve,
@@ -179,7 +181,7 @@ class PricingCurrencyTests(TestCase):
             code="RES-COIN", name="Coin reserve",
             account_type=AccountType.RESERVE, active=True,
         )
-        self.coin = Asset.objects.create(
+        self.coin = make_asset(
             name="Side Coin", unit_name="COIN", decimals=2,
             total_supply_base_units=10 ** 9, active=True,
             reserve_account=coin_reserve,

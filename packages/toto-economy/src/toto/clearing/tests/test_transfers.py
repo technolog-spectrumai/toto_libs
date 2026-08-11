@@ -10,7 +10,8 @@ from __future__ import annotations
 import uuid as uuid_lib
 from decimal import Decimal
 
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.assets.models import AccountType, LedgerAccount, to_base_units
 from toto.assets.queries import get_asset_balance, verify_asset_ledger

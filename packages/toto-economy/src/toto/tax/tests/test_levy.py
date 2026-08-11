@@ -3,7 +3,7 @@
 import datetime
 from decimal import Decimal
 
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.utils import timezone
 
 from toto.assets.models import AssetHolding, to_base_units

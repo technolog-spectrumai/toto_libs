@@ -1,6 +1,6 @@
 """The time-limit registry and its economy-degrading façade."""
 
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
 
 from toto.quota import times
 from toto.quota.times import DuplicateTimeLimit, TimeLimit, TimeLimitRegistry

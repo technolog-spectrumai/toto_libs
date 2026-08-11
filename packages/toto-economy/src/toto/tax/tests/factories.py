@@ -1,3 +1,4 @@
+from toto.assets.testing import make_asset
 """Module-level factory helpers, per the tariffs tests' house pattern."""
 
 from decimal import Decimal
@@ -29,7 +30,7 @@ def make_person(user):
 def make_gas_asset(decimals=9):
     """The host billing asset under its default ticker, so rate_card helpers
     resolve it without setting overrides."""
-    return Asset.objects.create(
+    return make_asset(
         name="Gas", unit_name="ASR", decimals=decimals,
         total_supply_base_units=10 ** 15, active=True,
     )

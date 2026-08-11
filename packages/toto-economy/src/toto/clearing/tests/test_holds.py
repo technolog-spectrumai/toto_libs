@@ -6,7 +6,8 @@ from datetime import timedelta
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.test import TestCase, override_settings
+from django.test import override_settings
+from toto.assets.testing import LedgerTestCase as TestCase
 from django.utils import timezone
 
 from toto.assets.models import AccountType, LedgerAccount, to_base_units

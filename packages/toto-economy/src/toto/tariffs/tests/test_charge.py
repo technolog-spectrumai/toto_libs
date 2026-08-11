@@ -11,7 +11,8 @@ Covers:
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from toto.assets.testing import LedgerTestCase as TestCase
+from toto.assets.testing import make_asset as issued_asset
 from django.utils import timezone
 
 from toto.assets.models import (
@@ -39,7 +40,7 @@ User = get_user_model()
 # ---------------------------------------------------------------------------
 
 def make_asset(unit_name="CHARGE", decimals=2):
-    return Asset.objects.create(
+    return issued_asset(
         name=unit_name, unit_name=unit_name, decimals=decimals,
         total_supply_base_units=10 ** 12, active=True,
     )

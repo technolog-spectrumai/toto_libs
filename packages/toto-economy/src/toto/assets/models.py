@@ -212,9 +212,14 @@ class Asset(models.Model):
             models.UniqueConstraint(
                 fields=["issuer", "unit_name"],
                 name="assets_ticker_unique_per_issuer"),
-            # The "every asset has provenance" CheckConstraint lands with the
-            # issuance path that satisfies it, not here — a constraint added
-            # before anything can meet it just breaks every caller.
+            # Every asset has provenance. Unconditional, because there is one
+            # kind of asset: an unsigned row is impossible rather than merely
+            # discouraged. Landed with create_asset/mirror_asset, which are the
+            # only two things that produce a hash.
+            models.CheckConstraint(
+                check=~models.Q(currency_hash="") & models.Q(
+                    currency_hash__isnull=False),
+                name="assets_asset_has_genesis_hash"),
         ]
 
     def __str__(self):
