@@ -4,13 +4,14 @@ Two layers. The arithmetic is pure and tested without a database; the walk
 needs rows, so it gets them.
 """
 
-from decimal import Decimal
+from unittest.mock import patch
 
 from django.core.exceptions import ValidationError
-from django.test import SimpleTestCase, override_settings
+from django.db import IntegrityError, transaction
+from django.test import SimpleTestCase
 
 from toto.assets.testing import LedgerTestCase as TestCase, make_asset
-from toto.mint import chain
+from toto.mint import chain, history
 from toto.mint.chain import (EVENT_VERSION, GENESIS_PREV, MINT_CONTEXT,
                              MintEventError, build_event, compute_event_hash,
                              framed, verify_event)
@@ -256,6 +257,99 @@ class AppendTests(TestCase):
         self.assertEqual(event.backend, "")
 
 
+class SingleHeadTests(TestCase):
+    """A chain is single-headed exactly when no two events share a parent.
+
+    Every assertion here runs against sqlite, which is the point: this is the
+    layer that holds without ``select_for_update``, and sqlite is what the
+    clean-environment gate runs.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.asset = make_asset(unit_name="ASR")
+
+    def _forge(self, *, prev_hash, marker):
+        """Write a well-formed event by hand, bypassing append_event."""
+        return CurrencyMintEvent.objects.create(
+            sequence=900 + marker, kind="mint", asset=self.asset,
+            currency_hash=self.asset.currency_hash, amount_base_units=1,
+            prev_hash=prev_hash,
+            event_hash="tmev1:" + str(marker) * 64,
+            signature="00", issuer_fingerprint="a" * 64,
+            payload={}, reason="forged")
+
+    def test_two_events_cannot_share_a_parent(self):
+        first = append_event(asset=self.asset, kind="mint",
+                             amount_base_units=1000, reason="first")
+        second = append_event(asset=self.asset, kind="mint",
+                              amount_base_units=1000, reason="second")
+        self.assertEqual(second.prev_hash, first.event_hash)
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._forge(prev_hash=first.event_hash, marker=1)
+
+    def test_there_can_only_ever_be_one_root(self):
+        # The root's parent is "", so the same constraint that forbids a fork
+        # forbids a second beginning. No special case anywhere.
+        append_event(asset=self.asset, kind="mint", amount_base_units=1000,
+                     reason="first")
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                self._forge(prev_hash=GENESIS_PREV, marker=2)
+
+    def test_a_loser_lands_after_the_winner_not_beside_it(self):
+        # The race, made deterministic: hand the appender a head that another
+        # worker has already moved past. The insert is refused, and the retry
+        # re-reads and appends after the winner.
+        winner = append_event(asset=self.asset, kind="mint",
+                              amount_base_units=1000, reason="winner")
+
+        real_head = history.chain_head
+        stale = [True]
+
+        def racing(**kwargs):
+            if stale:
+                stale.pop()
+                return None          # the world as it was before `winner`
+            return real_head(**kwargs)
+
+        with patch.object(history, "chain_head", racing):
+            loser = append_event(asset=self.asset, kind="mint",
+                                 amount_base_units=500, reason="loser")
+
+        self.assertEqual(loser.prev_hash, winner.event_hash)
+        self.assertEqual(loser.sequence, winner.sequence + 1)
+        self.assertTrue(verify_chain(), verify_chain().findings)
+
+    def test_a_refused_append_leaves_nothing_behind(self):
+        winner = append_event(asset=self.asset, kind="mint",
+                              amount_base_units=1000, reason="winner")
+
+        def always_stale(**kwargs):
+            return None
+
+        with patch.object(history, "chain_head", always_stale):
+            with self.assertRaises(IntegrityError):
+                append_event(asset=self.asset, kind="mint",
+                             amount_base_units=500, reason="hopeless")
+
+        self.assertEqual(CurrencyMintEvent.objects.count(), 1)
+        self.assertEqual(chain_head().pk, winner.pk)
+
+    def test_the_sequence_is_the_head_plus_one_not_a_row_count(self):
+        # A count would be a second, independent notion of "where we are",
+        # and two notions can disagree. The head is the only one.
+        for n in range(3):
+            append_event(asset=self.asset, kind="mint",
+                         amount_base_units=100, reason=f"m{n}")
+        self.assertEqual(
+            list(CurrencyMintEvent.objects.values_list("sequence", flat=True)),
+            [0, 1, 2])
+
+
 class VerifyChainTests(TestCase):
     def setUp(self):
         super().setUp()
@@ -335,8 +429,10 @@ class VerifyChainTests(TestCase):
         for n in range(3):
             append_event(asset=self.asset, kind="mint",
                          amount_base_units=1000, reason=f"mint {n}")
-        for event in CurrencyMintEvent.objects.all()[1:]:
+        # Distinct bogus parents — the database will not hold two events
+        # claiming the same one, which is Phase 5's guarantee doing its job.
+        for n, event in enumerate(CurrencyMintEvent.objects.all()[1:]):
             CurrencyMintEvent.objects.filter(pk=event.pk).update(
-                prev_hash="tmev1:" + "0" * 64)
+                prev_hash=f"tmev1:{n}" + "0" * 63)
 
         self.assertGreaterEqual(len(verify_chain().findings), 2)

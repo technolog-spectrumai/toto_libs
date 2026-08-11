@@ -12,15 +12,23 @@ from dataclasses import dataclass, field
 from .chain import GENESIS_PREV, compute_event_hash
 
 
-def chain_head():
+def chain_head(*, lock: bool = False):
     """The last monetary event written anywhere, or None.
 
     "Anywhere" is literal: one chain covers every currency, so the head is a
     property of the platform rather than of a currency.
+
+    ``lock=True`` takes a row lock so concurrent appenders serialise. On
+    postgres that is what makes the race rare; on sqlite ``select_for_update``
+    is a **silent no-op**, which is exactly why the real guarantee is the
+    unique constraint on ``prev_hash`` and not this.
     """
     from .models import CurrencyMintEvent
 
-    return CurrencyMintEvent.objects.order_by("-sequence").first()
+    rows = CurrencyMintEvent.objects.order_by("-sequence")
+    if lock:
+        rows = rows.select_for_update()
+    return rows.first()
 
 
 def head_hash() -> str:

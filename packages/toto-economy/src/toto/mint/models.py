@@ -110,6 +110,20 @@ class CurrencyMintEvent(models.Model):
     class Meta:
         ordering = ["sequence"]
         verbose_name = "monetary event"
+        constraints = [
+            # THE guarantee that the chain is single-headed. A chain forks
+            # exactly when two events share a parent, so forbidding that at
+            # the database makes a fork structurally impossible rather than
+            # merely unlikely. It covers the root too — the first event's
+            # parent is "", so there can only ever be one first event.
+            #
+            # This is the layer that matters because it is the only one that
+            # works everywhere: select_for_update is a silent no-op on sqlite,
+            # which is what the gate runs, so a lock alone would prove nothing
+            # there. See toto/mint/services.py::append_event.
+            models.UniqueConstraint(fields=["prev_hash"],
+                                    name="mint_one_child_per_event"),
+        ]
         indexes = [models.Index(fields=["currency_hash", "sequence"],
                                 name="mint_event_currency_idx")]
 

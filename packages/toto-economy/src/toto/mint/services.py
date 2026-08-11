@@ -5,7 +5,12 @@ from __future__ import annotations
 from decimal import Decimal
 
 from django.core.exceptions import ValidationError
-from django.db import transaction
+from django.db import IntegrityError, transaction
+
+#: How many times a losing appender re-reads the head and tries again. Minting
+#: is rare and operator-driven, so a genuine collision is already unlikely and
+#: a third one is a symptom rather than contention.
+APPEND_ATTEMPTS = 5
 
 
 def append_event(*, asset, kind: str, amount_base_units: int, reason: str,
@@ -25,8 +30,9 @@ def append_event(*, asset, kind: str, amount_base_units: int, reason: str,
 
     from toto.assets.issuer import local_issuer, require_master
 
-    from .chain import KINDS, compute_event_hash, build_event, sign_event
-    from .history import head_hash
+    from .chain import (GENESIS_PREV, KINDS, build_event, compute_event_hash,
+                        sign_event)
+    from .history import chain_head
     from .models import CurrencyMintEvent
 
     require_master(f"{kind} currency")
@@ -44,28 +50,44 @@ def append_event(*, asset, kind: str, amount_base_units: int, reason: str,
             "the supply changed, and it cannot be added afterwards.")
 
     issuer = local_issuer()
-    with transaction.atomic():
-        head = head_hash()
-        sequence = CurrencyMintEvent.objects.count()
-        payload = build_event(
-            issuer_fingerprint=issuer.fingerprint,
-            sequence=sequence,
-            kind=kind,
-            currency_hash=asset.currency_hash,
-            amount_base_units=amount_base_units,
-            prev_hash=head,
-            issued_at=timezone.now().isoformat())
+    private_key = issuer.private_key()
 
-        return CurrencyMintEvent.objects.create(
-            sequence=sequence, kind=kind, asset=asset,
-            currency_hash=asset.currency_hash,
-            amount_base_units=amount_base_units,
-            prev_hash=head,
-            event_hash=compute_event_hash(payload),
-            signature=sign_event(issuer.private_key(), payload),
-            issuer_fingerprint=issuer.fingerprint,
-            payload=payload, actor=actor, reason=reason,
-            ledger_transaction=ledger_transaction)
+    for attempt in range(APPEND_ATTEMPTS):
+        try:
+            with transaction.atomic():
+                head = chain_head(lock=True)
+                prev = head.event_hash if head is not None else GENESIS_PREV
+                sequence = (head.sequence + 1) if head is not None else 0
+                payload = build_event(
+                    issuer_fingerprint=issuer.fingerprint,
+                    sequence=sequence,
+                    kind=kind,
+                    currency_hash=asset.currency_hash,
+                    amount_base_units=amount_base_units,
+                    prev_hash=prev,
+                    issued_at=timezone.now().isoformat())
+
+                return CurrencyMintEvent.objects.create(
+                    sequence=sequence, kind=kind, asset=asset,
+                    currency_hash=asset.currency_hash,
+                    amount_base_units=amount_base_units,
+                    prev_hash=prev,
+                    event_hash=compute_event_hash(payload),
+                    signature=sign_event(private_key, payload),
+                    issuer_fingerprint=issuer.fingerprint,
+                    payload=payload, actor=actor, reason=reason,
+                    ledger_transaction=ledger_transaction)
+        except IntegrityError:
+            # Someone else appended between our read of the head and our
+            # insert, so the database refused a second child of that head.
+            # That refusal is the whole guarantee working: re-read and go
+            # after the winner rather than beside it.
+            if attempt == APPEND_ATTEMPTS - 1:
+                raise
+
+    raise ValidationError(  # pragma: no cover - the loop returns or raises
+        "Could not append to the monetary chain; it is being written to "
+        "faster than this can read it.")
 
 
 def issue_asset(*, name: str, unit_name: str, total_supply: Decimal,
