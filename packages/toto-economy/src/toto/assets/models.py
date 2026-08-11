@@ -343,6 +343,13 @@ class LedgerAccount(models.Model):
         default=0,
         help_text="Billing priority for this user's accounts. Higher = checked first.",
     )
+    #: Opt-in, and deliberately narrow. A claim account records value that came
+    #: from OUTSIDE this database — the master that funded this branch — so its
+    #: negative balance is the correct record of what is owed, not an error.
+    #: Everything else is hard-floored at zero, including clearing's vostro,
+    #: whose floor IS its credit control: a peer must not be able to send back
+    #: more than it was ever sent.
+    allows_negative = models.BooleanField(default=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL,
         null=True,
@@ -380,7 +387,12 @@ class AssetHolding(models.Model):
         return f"{self.account.code} / {self.asset.unit_name}: {self.balance_base_units}"
 
     def clean(self):
-        if self.balance_base_units is not None and self.balance_base_units < 0:
+        # A claim account (allows_negative) records value from outside this
+        # database, so a negative there is correct. Everything else, including
+        # clearing's vostro, is floored at zero.
+        if (self.balance_base_units is not None
+                and self.balance_base_units < 0
+                and not self.account.allows_negative):
             raise ValidationError({"balance_base_units": "Balance cannot be negative."})
 
     @property

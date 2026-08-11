@@ -327,7 +327,14 @@ def _transfer_asset_locked(
         holding_map = {h.account_id: h for h in holdings}
 
         sender_holding = holding_map.get(sender_account.pk)
-        if sender_holding is None or sender_holding.balance_base_units < amount_base:
+        # A CLAIM account is the one place a negative balance is correct: the
+        # units genuinely came from outside this database and the row records
+        # what is owed for them. Opt-in per account, never by type — clearing's
+        # vostro is EXTERNAL too, and its zero floor is its credit control.
+        from_outside = sender_account.allows_negative
+        if not from_outside and (
+                sender_holding is None
+                or sender_holding.balance_base_units < amount_base):
             raise ValidationError("Insufficient balance.")
 
         if receiver_account.pk not in holding_map:
@@ -360,6 +367,12 @@ def _transfer_asset_locked(
             amount_base_units=amount_base,
         )
 
+        if sender_holding is None:
+            # Only reachable for an EXTERNAL sender: the first movement out of
+            # a claim account has no prior holding row to decrement.
+            sender_holding, _ = AssetHolding.objects.get_or_create(
+                asset=asset, account=sender_account,
+                defaults={"balance_base_units": 0})
         sender_holding.balance_base_units -= amount_base
         sender_holding.save(update_fields=["balance_base_units", "updated_at"])
 
