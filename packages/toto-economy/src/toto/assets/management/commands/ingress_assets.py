@@ -8,7 +8,6 @@ from django.utils import timezone
 from toto.assets.models import (
     AccountType,
     Asset,
-    Currency,
     LedgerAccount,
     LedgerTransaction,
 )
@@ -163,10 +162,9 @@ class Command(IngressCommand):
             gas.reserve_account = reserve
             gas.save(update_fields=["reserve_account", "updated_at"])
 
-        gas.is_currency = True
         gas.backing_document = "Issued and held by the platform's Currency Reserve account."
         gas.minting_authority = "Currency Reserve"
-        gas.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
+        gas.save(update_fields=["backing_document", "minting_authority", "updated_at"])
         assets[ticker] = gas
         assets["GAS"] = gas          # ticker-agnostic handle for the seeder below
         self.stdout.write(f"  +/✓ asset {ticker} (gas) supply={supply}")
@@ -199,10 +197,9 @@ class Command(IngressCommand):
             tpln.reserve_account = reserve
             tpln.save(update_fields=["reserve_account", "updated_at"])
 
-        tpln.is_currency = True
         tpln.backing_document = "Issued and held by the platform's Currency Reserve account."
         tpln.minting_authority = "Currency Reserve"
-        tpln.save(update_fields=["is_currency", "backing_document", "minting_authority", "updated_at"])
+        tpln.save(update_fields=["backing_document", "minting_authority", "updated_at"])
         assets["TPLN"] = tpln
         self.stdout.write(f"  +/✓ asset TPLN supply={TPLN_SUPPLY}")
 
@@ -210,39 +207,39 @@ class Command(IngressCommand):
         assert Asset.objects.filter(unit_name="TPLN").exists()
         assert gas.decimals == 9
         assert tpln.decimals == 2
-        assert gas.is_currency is True
-        assert tpln.is_currency is True
+        # No is_currency assertion: an asset becomes a currency when a
+        # platform bills in it, which is a contract, not a column.
 
         return assets
 
     # ------------------------------------------------------------------ #
-    # Always-on: Currencies for the gas asset and TPLN                   #
+    # Always-on: display codes for the gas asset and TPLN                 #
     # ------------------------------------------------------------------ #
 
     def _seed_base_currencies(self, assets: dict) -> dict:
+        """Put the display code and symbol on the assets themselves.
+
+        These used to be rows in a separate Currency table. They are fields on
+        the asset now: there is one kind of thing, and what makes it a
+        platform's CURRENCY is that platform's contract, not a second row.
+        """
         gas = assets["GAS"]
         specs = [
-            dict(code=gas.unit_name, name=gas.name, symbol=gas.unit_name,
-                 unit_name=gas.unit_name),
-            dict(code="TPLN", name="Toto Złoty", symbol="tzł", unit_name="TPLN"),
+            dict(unit_name=gas.unit_name, code=gas.unit_name, symbol=gas.unit_name),
+            dict(unit_name="TPLN", code="TPLN", symbol="tzł"),
         ]
-        currencies = {}
+        seeded = {}
         for spec in specs:
-            unit = spec.pop("unit_name")
-            asset = assets[unit]
-            cur, created = Currency.objects.update_or_create(
-                code=spec["code"],
-                defaults={**spec, "asset": asset, "is_active": True},
-            )
-            currencies[spec["code"]] = cur
-            self.stdout.write(f"  +/✓ currency {spec['code']}")
+            asset = assets[spec["unit_name"]]
+            asset.code = spec["code"]
+            asset.symbol = spec["symbol"]
+            asset.save(update_fields=["code", "symbol", "updated_at"])
+            seeded[spec["code"]] = asset
+            self.stdout.write(f"  +/✓ display code {spec['code']}")
 
-        gas_cur = Currency.objects.select_related("asset").get(code=gas.unit_name)
-        tpln_cur = Currency.objects.select_related("asset").get(code="TPLN")
-        assert gas_cur.asset_id == gas.pk
-        assert tpln_cur.asset_id == assets["TPLN"].pk
-
-        return currencies
+        assert assets["GAS"].code == gas.unit_name
+        assert assets["TPLN"].code == "TPLN"
+        return seeded
 
     # ------------------------------------------------------------------ #
     # Full-only: demo tokens (BANANA, MAKARONI)                          #

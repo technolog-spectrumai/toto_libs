@@ -365,20 +365,16 @@ def reverse_transaction(
 
 
 def get_currency_asset(currency_code: str):
-    """Return the Asset for a currency code, or None.
+    """Return the Asset carrying this display code, or None.
 
-    Note: the platform currencies are ASR and TPLN; the legacy "PLN" code
-    no longer resolves (the Currency row is registered as TPLN).
+    The retired Currency model held ``code`` on a row of its own; it now lives
+    on the asset. A lookup by code is still a lookup by LABEL, so it is for
+    display and legacy call sites only — never for identity, which is the
+    genesis hash, and never for "what do we bill in", which is the contract.
     """
-    from toto.assets.models import Currency
-    try:
-        return Currency.objects.select_related('asset').get(
-            code__iexact=currency_code,
-            is_active=True,
-            asset__active=True,
-        ).asset
-    except Currency.DoesNotExist:
-        return None
+    from toto.assets.models import Asset
+
+    return Asset.objects.filter(code__iexact=currency_code, active=True).first()
 
 
 @dataclass(frozen=True)

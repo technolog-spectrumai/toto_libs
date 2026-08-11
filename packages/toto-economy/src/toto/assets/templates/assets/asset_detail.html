@@ -32,11 +32,11 @@
           <span><i class="fa-solid fa-circle-nodes mr-1"></i>{% trans "Decimals" %}: {{ asset.decimals }}</span>
           <span><i class="fa-solid fa-database mr-1"></i>{% trans "Total supply" %}: {{ asset.total_supply_display }} {{ asset.unit_name }}</span>
           <span><i class="fa-solid fa-calendar mr-1"></i>{{ asset.created_at|date:"M d, Y H:i" }}</span>
-          {% if asset.is_currency %}
-          <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-coins mr-1"></i>{% trans "Payment currency" %}</span>
+          {% if asset.code %}
+          <span class="font-semibold" :class="darkMode ? 'text-success-dark' : 'text-success-light'"><i class="fa-solid fa-coins mr-1"></i>{{ asset.code }}{% if asset.symbol %} · {{ asset.symbol }}{% endif %}</span>
           {% endif %}
         </div>
-        {% if asset.is_currency %}
+        {% if asset.minting_authority or asset.backing_document %}
         <div class="space-y-1 text-sm mt-2">
           {% if asset.minting_authority %}
           <p class="opacity-70"><i class="fa-solid fa-stamp mr-1"></i><strong>{% trans "Minting authority" %}:</strong> {{ asset.minting_authority }}</p>

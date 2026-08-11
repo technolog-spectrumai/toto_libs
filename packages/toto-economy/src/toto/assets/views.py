@@ -298,7 +298,7 @@ def ledger_flow(request):
 @login_required
 def wallet(request):
     from django.utils import timezone
-    from .models import Currency, AssetHolding
+    from .models import AssetHolding
     accounts = (
         LedgerAccount.objects.filter(user=request.user, active=True)
         .order_by("-user_priority", "code")
@@ -311,7 +311,8 @@ def wallet(request):
         .select_related('transaction', 'asset', 'account')
         .order_by('-created_at')[:30]
     )
-    currencies = Currency.objects.filter(is_active=True).select_related('asset')
+    # Assets carrying a display code — what the retired Currency table listed.
+    currencies = Asset.objects.filter(active=True).exclude(code="")
     total_holdings = []
     for account in accounts:
         for h in account.holdings.all():

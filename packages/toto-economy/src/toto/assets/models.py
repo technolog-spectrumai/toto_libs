@@ -148,14 +148,46 @@ class TransactionType(models.TextChoices):
 # ---------------------------------------------------------------------------
 
 class Asset(models.Model):
+    """One kind of thing, and one only.
+
+    Every asset is created by the monetary master, carries a genesis hash and
+    an issuer signature, and has a supply fixed once at creation. There is no
+    second category — see portal/hierarchical_economy.md.
+
+    "Currency" is NOT a property here. An asset becomes a platform's currency
+    when that platform bills in it, which is a CurrencyContract pointing at it.
+    The same asset is an ordinary tradeable instrument on the master and *the*
+    currency from a branch's point of view, and a boolean column cannot say
+    something that is true per-platform. Ask ``is_currency_for(node_id)``.
+    """
+
     name = models.CharField(max_length=255)
-    unit_name = models.CharField(max_length=20, unique=True)
+    unit_name = models.CharField(max_length=20)
+    #: The display code and symbol, absorbed from the retired Currency model.
+    code = models.CharField(max_length=10, blank=True)
+    symbol = models.CharField(max_length=5, blank=True)
     decimals = models.PositiveSmallIntegerField()
     total_supply_base_units = models.PositiveBigIntegerField()
     active = models.BooleanField(default=True)
-    is_currency = models.BooleanField(default=False, help_text="Accepted as a payment currency on the platform")
     backing_document = models.TextField(blank=True, help_text="What this asset is backed by (e.g. reserves held by …)")
     minting_authority = models.CharField(max_length=255, blank=True, help_text="Entity authorised to mint this asset")
+
+    # ---- Identity ---------------------------------------------------------
+    #: The permanent cross-platform name of this asset. Never the ticker,
+    #: never the pk. Non-empty on every row, enforced by a CheckConstraint.
+    currency_hash = models.CharField(max_length=71, blank=True, unique=True,
+                                     null=True, editable=False)
+    issuer = models.ForeignKey(
+        "CurrencyIssuer", null=True, blank=True, on_delete=models.PROTECT,
+        related_name="assets")
+    #: The signed document the hash was computed over, kept verbatim so a
+    #: branch can re-verify at any time without asking anyone.
+    genesis_payload = models.JSONField(default=dict, blank=True)
+    genesis_signature = models.TextField(blank=True)
+    origin_platform = models.CharField(max_length=200, blank=True)
+    #: True on a branch: this row is a copy of something issued elsewhere.
+    is_mirror = models.BooleanField(default=False)
+
     reserve_account = models.ForeignKey(
         "LedgerAccount",
         null=True, blank=True,
@@ -167,8 +199,23 @@ class Asset(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    #: Fields the genesis hash commits to. Once hashed, none may move: the
+    #: identity would no longer describe the thing.
+    IDENTITY_FIELDS = ("unit_name", "name", "decimals",
+                       "total_supply_base_units", "currency_hash")
+
     class Meta:
         ordering = ["name"]
+        constraints = [
+            # A ticker is unique per issuer, not globally: it is a label, and
+            # two issuers may legitimately choose the same one.
+            models.UniqueConstraint(
+                fields=["issuer", "unit_name"],
+                name="assets_ticker_unique_per_issuer"),
+            # The "every asset has provenance" CheckConstraint lands with the
+            # issuance path that satisfies it, not here — a constraint added
+            # before anything can meet it just breaks every caller.
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.unit_name})"
@@ -177,9 +224,47 @@ class Asset(models.Model):
         if self.decimals is not None and self.decimals > 19:
             raise ValidationError({"decimals": "Decimals cannot exceed 19."})
 
+    def save(self, *args, **kwargs):
+        """Identity is immutable once the asset has one.
+
+        The LedgerTransaction.save() idiom. Supply is in this set because it
+        is committed to the hash: changing it would make the identity describe
+        an amount that no longer exists.
+        """
+        if self.pk and self.currency_hash:
+            previous = type(self).objects.filter(pk=self.pk).values(
+                *self.IDENTITY_FIELDS).first()
+            if previous:
+                moved = [f for f in self.IDENTITY_FIELDS
+                         if previous[f] != getattr(self, f)]
+                if moved:
+                    raise ValidationError(
+                        f"An asset's identity cannot change once it is issued "
+                        f"({', '.join(moved)}). Issue a new asset instead.")
+        super().save(*args, **kwargs)
+
     @property
     def total_supply_display(self) -> Decimal:
         return from_base_units(self.total_supply_base_units, self.decimals)
+
+    def verify_genesis(self) -> bool:
+        """Does this row still match the document its issuer signed?"""
+        from .currency_hash import compute_currency_hash
+
+        if not (self.genesis_payload and self.genesis_signature and self.issuer_id):
+            return False
+        try:
+            if compute_currency_hash(self.genesis_payload) != self.currency_hash:
+                return False
+        except Exception:  # noqa: BLE001 - malformed payload is simply invalid
+            return False
+        return self.issuer.verify_genesis(self.genesis_payload,
+                                          self.genesis_signature)
+
+    # The honest replacement for the retired ``is_currency`` boolean is
+    # ``is_currency_for(node_id)`` — the answer differs per platform, so it
+    # takes an argument. It arrives with CurrencyContract, which is the thing
+    # that makes an asset a currency at all.
 
 
 # ---------------------------------------------------------------------------
@@ -528,31 +613,6 @@ class LedgerHash(models.Model):
 
     def __str__(self):
         return f"{self.transaction.reference}: {self.hash[:16]}…"
-
-
-# ---------------------------------------------------------------------------
-# Currency
-# ---------------------------------------------------------------------------
-
-class Currency(models.Model):
-    code = models.CharField(max_length=10, unique=True)
-    name = models.CharField(max_length=100)
-    symbol = models.CharField(max_length=5, blank=True)
-    asset = models.OneToOneField(
-        'Asset',
-        on_delete=models.PROTECT,
-        null=True,
-        blank=True,
-        related_name='currency',
-    )
-    is_active = models.BooleanField(default=True)
-
-    class Meta:
-        verbose_name_plural = 'currencies'
-        ordering = ['code']
-
-    def __str__(self):
-        return f"{self.code} — {self.name}"
 
 
 # ---------------------------------------------------------------------------

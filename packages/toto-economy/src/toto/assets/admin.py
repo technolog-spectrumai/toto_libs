@@ -4,7 +4,6 @@ from .hashing import verify_hash_chain
 from .models import (
     Asset,
     AssetHolding,
-    Currency,
     LedgerAccount,
     LedgerAccountKey,
     LedgerAuthorization,
@@ -153,14 +152,6 @@ class LedgerHashAdmin(admin.ModelAdmin):
         return verify_hash_chain()
     chain_valid.boolean = True
     chain_valid.short_description = "Chain valid"
-
-
-@admin.register(Currency)
-class CurrencyAdmin(admin.ModelAdmin):
-    list_display = ('code', 'name', 'symbol', 'asset', 'is_active')
-    list_filter = ('is_active',)
-    search_fields = ('code', 'name')
-    raw_id_fields = ('asset',)
 
 
 @admin.register(LedgerAccountKey)

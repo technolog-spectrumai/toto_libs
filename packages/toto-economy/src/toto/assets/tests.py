@@ -8,7 +8,6 @@ _SIMPLE_STATIC = "django.contrib.staticfiles.storage.StaticFilesStorage"
 from .hashing import attach_hash, calculate_transaction_hash, verify_hash_chain
 from .models import (
     Asset,
-    Currency,
     LedgerAccount,
     LedgerEntry,
     LedgerHash,
@@ -389,20 +388,22 @@ class IngressAssetsTests(TestCase):
         self.assertEqual(tpln.name, "Toto Złoty")
         self.assertEqual(tpln.decimals, 2)
         self.assertEqual(tpln.total_supply_display, Decimal("76658.70"))
-        self.assertTrue(asr.is_currency)
-        self.assertTrue(tpln.is_currency)
+        # The display code lives on the asset now — there is one kind of thing,
+        # and what makes it a platform's CURRENCY is that platform's contract.
+        self.assertEqual(asr.code, "ASR")
+        self.assertEqual(tpln.code, "TPLN")
+        self.assertEqual(tpln.symbol, "tzł")
 
         self.assertFalse(Asset.objects.filter(unit_name="AUR").exists())
         self.assertEqual(
-            sorted(Currency.objects.values_list("code", flat=True)),
+            sorted(Asset.objects.exclude(code="").values_list("code", flat=True)),
             ["ASR", "TPLN"],
         )
-        self.assertEqual(Currency.objects.get(code="TPLN").name, "Toto Złoty")
 
     def test_currency_wording_is_neutral(self):
         self.call()
 
-        for asset in Asset.objects.filter(is_currency=True):
+        for asset in Asset.objects.exclude(code=""):
             # The descriptive text lives on the asset's creation transaction.
             creation = LedgerTransaction.objects.filter(
                 asset=asset, transaction_type=TransactionType.ASSET_CREATE,
@@ -420,7 +421,7 @@ class IngressAssetsTests(TestCase):
 
         self.assertEqual(Asset.objects.filter(unit_name="ASR").count(), 1)
         self.assertEqual(Asset.objects.filter(unit_name="TPLN").count(), 1)
-        self.assertEqual(Currency.objects.count(), 2)
+        self.assertEqual(Asset.objects.exclude(code="").count(), 2)
 
     def test_a_base_build_has_exactly_two_assets(self):
         # ASR is the gas, TPLN is the unit of account. Everything else is demo
@@ -443,10 +444,12 @@ class IngressAssetsTests(TestCase):
         units = set(Asset.objects.values_list("unit_name", flat=True))
         self.assertIn("BANANA", units)
         self.assertIn("MAKARONI", units)
-        # Still not currencies — you cannot pay a bill in bananas by accident.
+        # The demo tokens carry no display code, so nothing quotes a price in
+        # bananas by accident. Whether an asset is anyone's CURRENCY is a
+        # contract question, asked per platform.
         self.assertEqual(
-            sorted(Currency.objects.values_list("code", flat=True)), ["ASR", "TPLN"]
-        )
+            sorted(Asset.objects.exclude(code="").values_list("code", flat=True)),
+            ["ASR", "TPLN"])
 
 
 # ---------------------------------------------------------------------------
