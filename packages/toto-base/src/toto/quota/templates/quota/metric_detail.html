@@ -1,164 +1,483 @@
 {% extends "quota/base.html" %}
 {% load i18n %}
 
+{% comment %}ONE metered thing, and everything about it.
+
+   Disclosure order is the whole design. Always visible: what it is, your usage,
+   its limit, its price, and — when it is a levy — its free allowance. Those are
+   the questions people arrive with. Everything else is behind a <details>: how
+   it is charged, its time dials, its per-user overrides, its advanced pricing,
+   its recent activity. Rare knobs are one click deeper, never gone.
+
+   Both audiences use this URL. A member sees the numbers; staff see the same
+   numbers as editable fields. Hiding is cosmetic — every POST action re-checks
+   is_staff in the view, so a hand-posted field is still refused.
+
+   Money sections are ABSENT on an unbilled host, not blank.{% endcomment %}
+
 {% block quota_title %}{{ metric.label }}{% endblock %}
 {% block quota_heading %}{{ metric.label }}{% endblock %}
-{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="limits" %}{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
+
+{% block quota_subheading %}
+<div class="flex flex-wrap items-center gap-3 text-sm">
+  <a href="{% url 'quota:index' %}" class="opacity-70 underline hover:opacity-100">
+    <i class="fa-solid fa-arrow-left"></i> {% trans "All metered things" %}</a>
+  <code class="rounded border border-current/20 px-2 py-0.5 text-xs opacity-70">{{ metric.code }}</code>
+  {% if row.is_levy %}
+    <span class="rounded-full border border-current/25 px-2 py-0.5 text-xs font-semibold opacity-70">
+      <i class="fa-solid fa-moon"></i> {% trans "nightly levy" %}</span>
+  {% endif %}
+</div>
+{% if metric.description %}
+  <p class="max-w-3xl text-sm opacity-70">{{ metric.description }}</p>
+{% endif %}
+{% endblock %}
 
 {% block quota_content %}
 
-<a href="{% url 'quota:index' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-  <i class="fa-solid fa-arrow-left"></i>{% trans "All limits" %}
-</a>
-
-<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     class="rounded-lg border p-5 shadow-sm space-y-2">
-  <div class="flex flex-wrap items-center gap-3">
-    <code class="rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">{{ metric.code }}</code>
-    <span class="text-xs opacity-60">{% trans "measured in" %} {{ metric.unit }}</span>
-    <span class="text-xs opacity-60">{% trans "owned by" %} {{ metric.app_label }}</span>
-  </div>
-  {% if metric.description %}<p class="text-sm opacity-70">{{ metric.description }}</p>{% endif %}
-  <p class="text-xs opacity-55">
-    {% blocktrans with table=policy_table %}Limits are stored in {{ table }}.{% endblocktrans %}
-    {% if billing_enabled %}
-      <a href="{{ billing_url }}" class="underline hover:opacity-80">{% trans "What it costs is set in prices." %}</a>
-    {% endif %}
-  </p>
-</div>
-
-<!-- Default limit -->
-<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-6 shadow-sm space-y-4">
-  <div>
-    <h2 class="text-lg font-bold">{% trans "Default limit" %}</h2>
-    <p class="mt-1 text-sm opacity-65">
-      {% trans "Applies to everyone without an override. Delete it to make the action unlimited." %}
+{% if row.unpriced_levy and is_staff_view %}
+  <div class="rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-3 text-sm">
+    <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation"></i>
+      {% trans "Measured but not priced" %}</p>
+    <p class="mt-1 opacity-80">
+      {% trans "This levy runs every night, records what people hold, and charges nothing — it has no price. Set one below, or turn the rule off." %}
     </p>
   </div>
+{% endif %}
 
-  <form method="post" class="space-y-4">
-    {% csrf_token %}
-    <input type="hidden" name="action" value="default" />
+{# ═══════════ 1 · Your usage — the reason a member is here ═══════════ #}
+{% if has_table %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-60">
+    {% trans "Your usage" %}</h2>
 
-    <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-      {% for field in form %}
-      <div class="space-y-1">
-        <label for="{{ field.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-70">
-          {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
-        </label>
-        <div class="[&>input]:w-full [&>select]:w-full [&>input]:rounded-lg [&>select]:rounded-lg
-                    [&>input]:border [&>select]:border [&>input]:px-3 [&>select]:px-3
-                    [&>input]:py-2 [&>select]:py-2 [&>input]:text-sm [&>select]:text-sm
-                    [&>input]:bg-transparent [&>select]:bg-transparent
-                    [&>input[type=checkbox]]:w-auto [&>input[type=checkbox]]:mt-2"
-             :class="darkMode ? '[&>input]:border-accent-1 [&>select]:border-accent-1' : '[&>input]:border-accent-2 [&>select]:border-accent-2'">
-          {{ field }}
-        </div>
-        {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
-        {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
+  <div class="flex flex-wrap items-end gap-6">
+    <div>
+      <div class="text-3xl font-bold">
+        {{ row.used|default:"0"|floatformat:"-2" }}<span class="text-base opacity-50">{% if row.limit %} / {{ row.limit|floatformat:"-2" }}{% endif %}</span>
       </div>
-      {% endfor %}
+      <div class="text-xs opacity-60">{{ metric.unit }} · {% trans "this" %} {{ row.period }}</div>
     </div>
-
-    <div class="flex flex-wrap items-center gap-3">
-      <button type="submit"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
-        <i class="fa-solid fa-floppy-disk"></i>{% trans "Save default" %}
-      </button>
-      {% if not default %}
-      <span class="text-xs opacity-55">
-        {% trans "No default set yet — the action is currently unlimited." %}
-      </span>
-      {% endif %}
-    </div>
-  </form>
-</section>
-
-<!-- Per-user overrides -->
-<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-6 shadow-sm space-y-4">
-  <div>
-    <h2 class="text-lg font-bold">{% trans "Per-user overrides" %}</h2>
-    <p class="mt-1 text-sm opacity-65">
-      {% trans "A user's own limit replaces the default entirely — it is not added to it." %}
-    </p>
+    {% if row.limit %}
+      <div>
+        <div class="text-lg font-semibold {% if row.over %}text-red-500{% endif %}">
+          {{ row.remaining|default:"0"|floatformat:"-2" }}</div>
+        <div class="text-xs opacity-60">{% trans "left" %}</div>
+      </div>
+    {% endif %}
+    {% if row.spent %}
+      <div>
+        <div class="text-lg font-semibold">{{ row.spent.amount|floatformat:"-9" }}
+          <span class="text-xs opacity-60">{{ row.spent.asset }}</span></div>
+        <div class="text-xs opacity-60">{% trans "paid so far" %}</div>
+      </div>
+    {% endif %}
   </div>
 
-  {% if overrides %}
-  <div class="overflow-x-auto">
-    <table class="w-full text-sm">
-      <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
-        <tr class="text-left">
-          <th class="py-2 pr-4 font-semibold">{% trans "User" %}</th>
-          <th class="py-2 pr-4 font-semibold">{% trans "Limit" %}</th>
-          <th class="py-2 pr-4 font-semibold">{% trans "Period" %}</th>
-          <th class="py-2 pr-4 font-semibold">{% trans "Mode" %}</th>
-          <th class="py-2 pr-4 font-semibold">{% trans "Active" %}</th>
-          <th class="py-2"></th>
-        </tr>
-      </thead>
-      <tbody>
-      {% for policy in overrides %}
-        <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
-          <td class="py-2 pr-4 font-semibold">{{ policy.user }}</td>
-          <td class="py-2 pr-4 font-mono">{{ policy.limit|floatformat:"-2" }} {{ policy.unit }}</td>
-          <td class="py-2 pr-4">{{ policy.get_period_display }}</td>
-          <td class="py-2 pr-4">{{ policy.get_mode_display }}</td>
-          <td class="py-2 pr-4">
-            {% if policy.active %}<i class="fa-solid fa-check opacity-70"></i>
-            {% else %}<i class="fa-solid fa-xmark opacity-40"></i>{% endif %}
-          </td>
-          <td class="py-2 text-right">
-            <form method="post" action="{% url 'quota:override_delete' metric.code policy.pk %}">
-              {% csrf_token %}
-              <button type="submit"
-                      class="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-80">
-                <i class="fa-solid fa-trash"></i>{% trans "Remove" %}
-              </button>
-            </form>
-          </td>
-        </tr>
-      {% endfor %}
-      </tbody>
-    </table>
-  </div>
+  {% if row.limit %}
+    <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+         class="mt-4 h-2 overflow-hidden rounded-full">
+      <div class="h-full rounded-full {% if row.over %}bg-red-500{% else %}bg-current opacity-60{% endif %}"
+           style="width: {{ row.pct_bar }}%"></div>
+    </div>
   {% else %}
-  <p class="text-sm opacity-55">{% trans "No overrides — everyone gets the default." %}</p>
+    <p class="mt-3 text-xs opacity-55">{% trans "No limit — this is never refused for going over." %}</p>
   {% endif %}
 
-  <details class="pt-2">
-    <summary class="cursor-pointer text-sm font-semibold">{% trans "Add an override" %}</summary>
-    <form method="post" class="mt-4 space-y-4">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="override" />
-      <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {% for field in override_form %}
-        <div class="space-y-1">
-          <label for="{{ field.id_for_label }}" class="block text-xs font-semibold uppercase tracking-wide opacity-70">
-            {{ field.label }}{% if field.field.required %} <span class="text-warn-light">*</span>{% endif %}
-          </label>
-          <div class="[&>input]:w-full [&>select]:w-full [&>input]:rounded-lg [&>select]:rounded-lg
-                      [&>input]:border [&>select]:border [&>input]:px-3 [&>select]:px-3
-                      [&>input]:py-2 [&>select]:py-2 [&>input]:text-sm [&>select]:text-sm
-                      [&>input]:bg-transparent [&>select]:bg-transparent
-                      [&>input[type=checkbox]]:w-auto [&>input[type=checkbox]]:mt-2"
-               :class="darkMode ? '[&>input]:border-accent-1 [&>select]:border-accent-1' : '[&>input]:border-accent-2 [&>select]:border-accent-2'">
-            {{ field }}
-          </div>
-          {% if field.help_text %}<p class="text-xs opacity-55">{{ field.help_text }}</p>{% endif %}
-          {% for error in field.errors %}<p class="text-xs text-warn-light">{{ error }}</p>{% endfor %}
+  {% if my_levy %}
+    <div class="mt-4 border-t border-current/10 pt-3 text-sm">
+      <p>
+        {% trans "You are holding" %}
+        <span class="font-mono font-semibold">{{ my_levy.display|default:my_levy.measured }}</span>{% if not my_levy.display %} {{ row.allowance_unit }}{% endif %}.
+        {% if my_levy.billable %}
+          {% blocktrans with billable=my_levy.billable allowance=my_levy.allowance unit=row.allowance_unit %}The first {{ allowance }} {{ unit }} are free, so {{ billable }} is charged tonight.{% endblocktrans %}
+        {% else %}
+          {% trans "That is under the free allowance, so tonight costs nothing." %}
+        {% endif %}
+      </p>
+      {% if my_levy.estimate %}
+        <p class="mt-1 font-mono text-lg font-semibold">
+          {{ my_levy.estimate.amount|floatformat:"-9" }} {{ my_levy.estimate.asset }}
+          <span class="text-xs font-normal opacity-60">/ {% trans "night" %}</span></p>
+      {% endif %}
+      {% if my_levy.arrears %}
+        <div class="mt-3 rounded border border-red-500/60 bg-red-500/10 p-3 text-sm">
+          <p class="font-bold text-red-500"><i class="fa-solid fa-triangle-exclamation"></i>
+            {% trans "This levy could not be collected." %}</p>
+          {% if my_levy.arrears.deadline_at %}
+            <p class="mt-1">{% blocktrans with deadline=my_levy.arrears.deadline_at|date:"Y-m-d" %}Top up by {{ deadline }}, or{% endblocktrans %}
+              {{ row.levy.consequence|default:_("holdings will be shed automatically") }}.</p>
+          {% endif %}
         </div>
-        {% endfor %}
-      </div>
-      <button type="submit"
-              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition hover:opacity-80">
-        <i class="fa-solid fa-user-plus"></i>{% trans "Add override" %}
-      </button>
-    </form>
-  </details>
+      {% endif %}
+    </div>
+  {% endif %}
 </section>
+{% endif %}
+
+{# ═══════════ 2 · Limit · Price · Free allowance ═══════════ #}
+<div class="grid gap-4 {% if pricing_enabled %}lg:grid-cols-3{% else %}lg:grid-cols-1{% endif %}">
+
+  {# ---- Limit ---- #}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Limit" %}</h2>
+    <p class="mb-3 text-xs opacity-55">{% trans "How often anyone may do this before it is refused." %}</p>
+
+    {% if not has_table %}
+      <p class="text-sm opacity-60">
+        {% blocktrans with app=metric.app_label %}{{ app }} declares this metric but ships no table to store limits in, so it cannot be capped.{% endblocktrans %}</p>
+    {% elif is_staff_view %}
+      <form method="post" class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="default">
+        <div class="flex items-center gap-2">
+          <input type="text" inputmode="decimal" name="limit"
+                 value="{{ row.limit|default_if_none:''|floatformat:'-10' }}" placeholder="{% trans 'no limit' %}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="w-28 rounded border px-3 py-2 font-mono text-sm">
+          <span class="text-xs opacity-60">{{ metric.unit }} / {{ row.period }}</span>
+        </div>
+        <select name="mode"
+                :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                class="w-full rounded border px-2 py-2 text-sm">
+          {% for value, label in modes %}
+            <option value="{{ value }}" {% if row.mode == value %}selected{% endif %}>{{ label }}</option>
+          {% endfor %}
+        </select>
+        {% comment %}Every other field the policy form carries — period, unit,
+           the active window — is rare and lives in the disclosure below, so the
+           common edit is two controls and a button.{% endcomment %}
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded px-3 py-2 text-sm font-bold transition hover:opacity-90">
+          {% trans "Save limit" %}</button>
+        <p class="text-[11px] opacity-55">{% trans "Leave it empty for no limit at all." %}</p>
+      </form>
+    {% elif row.limit %}
+      <p class="font-mono text-2xl font-bold">{{ row.limit|floatformat:"-2" }}</p>
+      <p class="text-xs opacity-60">{{ metric.unit }} / {{ row.period }}</p>
+      {% if row.mode and row.mode != "block" %}
+        <p class="mt-2 text-xs opacity-55">{% trans "Recorded only — going over is not refused." %}</p>
+      {% endif %}
+    {% else %}
+      <p class="text-sm opacity-60">{% trans "No limit." %}</p>
+    {% endif %}
+  </section>
+
+  {# ---- Price ---- #}
+  {% if pricing_enabled %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Price" %}</h2>
+    <p class="mb-3 text-xs opacity-55">
+      {% if row.is_levy %}{% trans "What one billing unit costs, every night." %}
+      {% else %}{% trans "What one of these costs, taken before the work runs." %}{% endif %}
+    </p>
+
+    {% if is_staff_view %}
+      <form method="post" class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="price">
+        <div class="flex items-center gap-2">
+          <input type="text" inputmode="decimal" name="price"
+                 value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
+                 placeholder="{% trans 'free' %}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="w-32 rounded border px-3 py-2 font-mono text-sm">
+          {% if billing_assets %}
+            <select name="asset"
+                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                    class="rounded border px-2 py-2 text-sm">
+              {% for a in billing_assets %}
+                <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+        </div>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded px-3 py-2 text-sm font-bold transition hover:opacity-90">
+          {% trans "Save price" %}</button>
+        <p class="text-[11px] opacity-55">{% trans "Leave it empty to make this free. Free is the absence of a price, not a zero." %}</p>
+      </form>
+    {% elif row.price %}
+      <p class="font-mono text-2xl font-bold">{{ row.price.price_display }}
+        <span class="text-sm opacity-60">{{ row.price.asset }}</span></p>
+      <p class="text-xs opacity-60">{% trans "per" %} {{ row.price.unit_quantity|default:1 }} {{ metric.unit }}</p>
+    {% else %}
+      <p class="text-sm opacity-60">{% trans "Free." %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  {# ---- Free allowance — only a levy has one ---- #}
+  {% if pricing_enabled %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Free allowance" %}</h2>
+
+    {% if not row.is_levy %}
+      {% comment %}The honest line. There is no included-free-quantity field in
+         the tariffs app at all — per-action charging bills from the first unit.
+         Saying so turns an invisible absence into a stated fact.{% endcomment %}
+      <p class="text-sm opacity-60">
+        {% trans "None. Charged from the very first one — per-action pricing has no free tier." %}</p>
+    {% elif not levy_enabled %}
+      <p class="text-sm opacity-60">{% trans "No levy engine runs on this host." %}</p>
+    {% elif is_staff_view %}
+      <p class="mb-3 text-xs opacity-55">{% trans "Held for free. Only what is above this is levied." %}</p>
+      <form method="post" class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="allowance">
+        <div class="flex items-center gap-2">
+          <input type="text" inputmode="decimal" name="allowance"
+                 value="{{ row.allowance|default_if_none:''|floatformat:'-10' }}" placeholder="0"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="w-32 rounded border px-3 py-2 font-mono text-sm">
+          <span class="text-xs opacity-60">{{ row.allowance_unit }}</span>
+        </div>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="checkbox" name="levy_active" {% if row.levy.active or not row.levy.has_rule %}checked{% endif %}>
+          {% trans "Levy is armed" %}
+        </label>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded px-3 py-2 text-sm font-bold transition hover:opacity-90">
+          {% trans "Save allowance" %}</button>
+        <p class="text-[11px] opacity-55">
+          {% trans "Empty means zero here — unlike the limit and the price, a rule with no allowance still levies." %}</p>
+      </form>
+    {% else %}
+      <p class="font-mono text-2xl font-bold">{{ row.allowance|default_if_none:"0"|floatformat:"-4" }}
+        <span class="text-sm opacity-60">{{ row.allowance_unit }}</span></p>
+      <p class="text-xs opacity-60">{% trans "held for free" %}</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</div>
+
+{# ═══════════ 3 · Time dials — only on the thing that bills held time ═══════════ #}
+{% if dials %}
+<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">
+    <i class="fa-solid fa-hourglass-half"></i> {% trans "Your time dials" %}</h2>
+  <p class="mb-4 max-w-3xl text-xs opacity-60">
+    {% trans "Every time limit has a free default. Raising one holds capacity, and you pay for the extension daily whether you use it or not. Reset a dial to stop tomorrow's charge — days already levied are written off, never refunded." %}
+    {% trans "Raise a dial where you use it — in a workspace, on the media builder, on a service run. This is the roll-up of all of them." %}
+  </p>
+
+  {% if dials.rows %}
+    <div class="overflow-x-auto">
+      <table class="w-full text-sm">
+        <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b text-left">
+          <tr>
+            <th class="px-3 py-2">{% trans "Dial" %}</th>
+            <th class="px-3 py-2">{% trans "Free default" %}</th>
+            <th class="px-3 py-2">{% trans "Your limit (seconds)" %}</th>
+            <th class="px-3 py-2">{% trans "Extension" %}</th>
+            <th class="px-3 py-2">{% trans "Per day" %}</th>
+            <th class="px-3 py-2"></th>
+          </tr>
+        </thead>
+        <tbody>
+        {% for d in dials.rows %}
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+            <td class="px-3 py-2">
+              <div class="font-semibold">{{ d.label }}{% if d.scope_label %} — {{ d.scope_label }}{% endif %}</div>
+              <code class="text-xs opacity-55">{{ d.key }}</code>
+            </td>
+            <td class="px-3 py-2 font-mono">{{ d.free_seconds }} s</td>
+            <td class="px-3 py-2">
+              <form method="post" action="{{ dial_set_url }}" class="flex items-center gap-2">
+                {% csrf_token %}
+                <input type="hidden" name="key" value="{{ d.key }}">
+                {% if d.scope_id is not None %}<input type="hidden" name="scope_id" value="{{ d.scope_id }}">{% endif %}
+                <input type="hidden" name="next" value="{% url 'quota:metric_detail' code=metric.code %}">
+                <input type="text" inputmode="numeric" name="seconds" value="{{ d.seconds }}"
+                       min="{{ d.free_seconds }}" max="{{ d.ceiling_seconds }}"
+                       :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                       class="w-28 rounded border px-2 py-1 font-mono">
+                <button type="submit" class="text-xs font-semibold underline hover:opacity-80">{% trans "Save" %}</button>
+              </form>
+            </td>
+            <td class="px-3 py-2 font-mono">{{ d.extension_hours }} h</td>
+            <td class="px-3 py-2 font-mono">
+              {% if d.estimate %}{{ d.estimate.amount|floatformat:"-9" }} {{ d.estimate.asset }}
+              {% else %}<span class="opacity-55">{% trans "free" %}</span>{% endif %}
+            </td>
+            <td class="px-3 py-2">
+              <form method="post" action="{{ dial_set_url }}">
+                {% csrf_token %}
+                <input type="hidden" name="key" value="{{ d.key }}">
+                {% if d.scope_id is not None %}<input type="hidden" name="scope_id" value="{{ d.scope_id }}">{% endif %}
+                <input type="hidden" name="next" value="{% url 'quota:metric_detail' code=metric.code %}">
+                <button type="submit" name="seconds" value=""
+                        class="text-xs font-semibold text-red-500 underline hover:opacity-80">{% trans "Reset to free" %}</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="font-semibold">
+            <td class="px-3 py-2" colspan="3">{% trans "Total held" %}</td>
+            <td class="px-3 py-2 font-mono">{{ dials.total_extension_hours }} h</td>
+            <td class="px-3 py-2 font-mono">
+              {% if dials.total_estimate %}{{ dials.total_estimate.amount|floatformat:"-9" }} {{ dials.total_estimate.asset }}
+              {% else %}<span class="opacity-55">{% trans "free" %}</span>{% endif %}
+            </td>
+            <td></td>
+          </tr>
+          {% if dials.allowance_hours %}
+          <tr class="text-xs opacity-60">
+            <td class="px-3 py-2" colspan="6">
+              {% blocktrans with hours=dials.allowance_hours %}The first {{ hours }} h are free, which is why the total costs less than the rows add up to.{% endblocktrans %}
+            </td>
+          </tr>
+          {% endif %}
+        </tfoot>
+      </table>
+    </div>
+  {% else %}
+    <p class="text-sm opacity-60">
+      {% trans "Every dial is at its free default — you are holding nothing extra." %}</p>
+  {% endif %}
+</section>
+{% endif %}
+
+{# ═══════════ 4 · One click deeper ═══════════ #}
+
+{% comment %}How it is charged. Second-level because most people never need it —
+   but it is the fact no screen used to state anywhere: that a levy bills what
+   you HOLD nightly with a free allowance, and everything else bills the ACTION
+   before it runs, from the first unit.{% endcomment %}
+<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
+    {% trans "How this is charged" %}</summary>
+  <div class="mt-3 max-w-3xl space-y-2 text-sm opacity-80">
+    {% if row.is_levy %}
+      <p>{% trans "A levy. Once a night the platform measures what you hold, subtracts the free allowance, and charges the rest at the price above. Nobody is refused anything in the moment — there is no request to refuse." %}</p>
+      {% if row.levy.consequence %}
+        <p><span class="font-semibold">{% trans "If it cannot be collected:" %}</span> {{ row.levy.consequence }}.</p>
+      {% endif %}
+    {% else %}
+      <p>{% trans "Per action. When you do this, the platform checks your limit, checks you can pay, then charges the price above before the work runs. If you cannot pay, the action does not happen." %}</p>
+      <p class="opacity-70">{% trans "There is no free tier: the first one costs the same as the hundredth." %}</p>
+    {% endif %}
+    <p class="text-xs opacity-60">
+      {% blocktrans with app=metric.app_label unit=metric.unit period=row.period %}Owned by {{ app }} · measured in {{ unit }} · window {{ period }}{% endblocktrans %}
+      {% if policy_table %} · <code>{{ policy_table }}</code>{% endif %}
+    </p>
+    <p><a href="{{ taxes_url }}" class="font-semibold underline hover:opacity-80">
+      {% trans "See every way this platform charges" %}</a></p>
+  </div>
+</details>
+
+{% if is_staff_view and has_table %}
+{# ---- Per-user overrides ---- #}
+<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
+    {% trans "Per-person limits" %}
+    {% if overrides %}<span class="ml-2 rounded-full border border-current/25 px-2 text-xs">{{ overrides|length }}</span>{% endif %}
+  </summary>
+
+  <div class="mt-3 space-y-4">
+    {% if overrides %}
+      <table class="w-full text-sm">
+        <thead class="text-left text-xs uppercase opacity-60">
+          <tr><th class="py-2">{% trans "Person" %}</th><th class="py-2">{% trans "Limit" %}</th>
+              <th class="py-2">{% trans "Window" %}</th><th class="py-2">{% trans "When over" %}</th><th></th></tr>
+        </thead>
+        <tbody>
+        {% for o in overrides %}
+          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
+            <td class="py-2 font-semibold">{{ o.user }}</td>
+            <td class="py-2 font-mono">{{ o.limit|floatformat:"-2" }} <span class="text-xs opacity-60">{{ o.unit }}</span></td>
+            <td class="py-2 text-xs opacity-70">{{ o.get_period_display }}</td>
+            <td class="py-2 text-xs opacity-70">{{ o.get_mode_display }}</td>
+            <td class="py-2 text-right">
+              <form method="post" action="{% url 'quota:override_delete' code=metric.code pk=o.pk %}">
+                {% csrf_token %}
+                <button type="submit" class="text-xs font-semibold text-red-500 underline hover:opacity-80">
+                  {% trans "Remove" %}</button>
+              </form>
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    {% else %}
+      <p class="text-sm opacity-60">{% trans "Nobody has a limit of their own — everyone gets the default above." %}</p>
+    {% endif %}
+
+    <form method="post" class="space-y-3 border-t border-current/10 pt-4">
+      {% csrf_token %}
+      <input type="hidden" name="action" value="override">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Give one person a different limit" %}</p>
+      {{ override_form.as_p }}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded px-4 py-2 text-sm font-bold transition hover:opacity-90">
+        {% trans "Add override" %}</button>
+    </form>
+  </div>
+</details>
+
+{# ---- The full policy form + advanced pricing ---- #}
+<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
+    {% trans "Advanced" %}</summary>
+  <div class="mt-3 grid gap-6 lg:grid-cols-2">
+    <div>
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Every limit field" %}</p>
+      <form method="post" class="space-y-3">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="default">
+        {{ form.as_p }}
+        <button type="submit"
+                class="rounded border border-current/30 px-4 py-2 text-sm font-semibold hover:opacity-80">
+          {% trans "Save" %}</button>
+      </form>
+    </div>
+    {% if advanced_url %}
+    <div>
+      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Every price field" %}</p>
+      <p class="text-sm opacity-70">
+        {% trans "Rounding, the quantity one price covers, a per-event minimum, and which ledger account the money lands in." %}</p>
+      <a href="{{ advanced_url }}"
+         class="mt-2 inline-block rounded border border-current/30 px-4 py-2 text-sm font-semibold hover:opacity-80">
+        {% trans "Open the rate card entry" %} <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i></a>
+    </div>
+    {% endif %}
+  </div>
+</details>
+{% endif %}
+
+{# ---- Recent activity ---- #}
+{% if recent %}
+<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-5 shadow-sm">
+  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
+    {% if is_staff_view %}{% trans "Recent activity — everyone" %}{% else %}{% trans "Your recent activity" %}{% endif %}</summary>
+  <table class="mt-3 w-full text-sm">
+    <tbody>
+    {% for e in recent %}
+      <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
+        {% if is_staff_view %}<td class="py-2 pr-3 font-semibold">{{ e.user|default:"—" }}</td>{% endif %}
+        <td class="py-2 pr-3 font-mono">{{ e.quantity|floatformat:"-2" }} <span class="text-xs opacity-60">{{ e.unit }}</span></td>
+        <td class="py-2 text-xs opacity-60">{{ e.occurred_at }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+</details>
+{% endif %}
 
 {% endblock %}

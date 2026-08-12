@@ -91,7 +91,9 @@ class EconomyTabsTests(TestCase):
             {"active_tab": active_tab, "user": user, "request": request})
 
     def test_the_active_tab_is_marked_for_assistive_tech(self):
-        html = self._render(self.plain, active_tab="fees")
+        # Asked of a chip BOTH roles have: "fees" is staff-only now, so a plain
+        # user renders no chip for it and the strip would carry no aria-current.
+        html = self._render(self.plain, active_tab="usage")
         self.assertIn('aria-current="page"', html)
 
     def test_a_user_sees_their_wallet_where_staff_see_the_ledger(self):
@@ -99,12 +101,18 @@ class EconomyTabsTests(TestCase):
         self.assertIn("Wallet", self._render(self.plain))
         self.assertIn("Assets", self._render(self.staff))
 
-    def test_everyone_gets_the_fees_tab(self):
-        # Fees is one URL with two renderings — hiding it from users would
-        # remove the only page that answers "why was I charged".
-        for user in (self.plain, self.staff):
-            with self.subTest(staff=user.is_staff):
-                self.assertIn("Fees", self._render(user))
+    def test_income_is_an_operator_chip_only(self):
+        """It stopped being one URL with two renderings.
+
+        The user half — "why was I charged" — answered a fair question in the
+        wrong place: the prices and the usage it described live on the metered
+        things, and it now lives there with them. What is left is the platform's
+        income, which is an operator's question about a different object. So the
+        chip is staff-only, and this is the one case where hiding is not merely
+        cosmetic: the page 403s, and a chip that 403s is a broken chip.
+        """
+        self.assertIn("Income", self._render(self.staff))
+        self.assertNotIn("Income", self._render(self.plain))
 
     def test_an_anonymous_visitor_renders_without_raising(self):
         # Several /assets/ pages are still reachable anonymously, so the strip
@@ -113,7 +121,14 @@ class EconomyTabsTests(TestCase):
 
 
 class UsageTabsTests(TestCase):
-    """The sub-nav that merged three apps' navigation into one row."""
+    """The sub-nav, after nine chips collapsed into three.
+
+    Records, My usage, Levies, Time dials, Prices, Limits, Rate desk,
+    Allowances and Metrics were nine destinations keyed by one string — the
+    metric code — so answering a single question about one metered thing meant
+    visiting five of them. What is left is three genuinely different objects:
+    the things, the KINDS of charge, and the billing trail.
+    """
 
     def setUp(self):
         self.factory = RequestFactory()
@@ -128,25 +143,31 @@ class UsageTabsTests(TestCase):
             "oya/_usage_tabs.html",
             {"active_tab": active_tab, "user": user, "request": request})
 
-    def test_setting_a_number_is_staff_only(self):
-        # Hidden rather than shown-then-refused: tariffs/base.html's comment
-        # states the policy — "showing the chips to everyone else just
-        # advertises a 403".
-        plain = self._render(self.plain)
-        for label in ("Rate desk", "Allowances", "Limits", "Metrics"):
-            with self.subTest(label=label):
-                self.assertNotIn(label, plain)
+    def test_the_desks_are_gone_as_destinations(self):
+        """Four chips all answered "where do I set what this costs"."""
+        for user in (self.plain, self.staff):
+            rendered = self._render(user)
+            for label in ("Rate desk", "Allowances", "Limits", "Metrics",
+                          "Prices", "Time dials"):
+                with self.subTest(user=user.username, label=label):
+                    self.assertNotIn(label, rendered)
 
-    def test_staff_get_the_desks(self):
-        staff = self._render(self.staff)
-        self.assertIn("Rate desk", staff)
+    def test_both_roles_get_the_same_three(self):
+        """The role split moved INTO the pages.
 
-    def test_everyone_gets_what_is_theirs(self):
-        plain = self._render(self.plain)
-        self.assertIn("My usage", plain)
+        Hiding every chip that set a number is what forced staff and members
+        onto different pages for the same question. Each page does its own
+        disclosure now — a member sees the numbers, staff see the editors — and
+        every view keeps its own gate, so this was only ever cosmetic.
+        """
+        for user in (self.plain, self.staff):
+            rendered = self._render(user)
+            for label in ("Metered", "charged", "Records"):
+                with self.subTest(user=user.username, label=label):
+                    self.assertIn(label, rendered)
 
     def test_the_active_sub_tab_is_marked(self):
-        self.assertIn('aria-current="page"', self._render(self.plain, "mine"))
+        self.assertIn('aria-current="page"', self._render(self.plain, "metered"))
 
 
 class IncomeBoardTests(TestCase):

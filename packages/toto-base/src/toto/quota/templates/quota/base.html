@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block quota_title %}{% trans "Limits" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block quota_title %}{% trans "Metered" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
 <section
@@ -16,14 +16,15 @@
       </p>
       <h1 class="flex items-center gap-3 text-3xl font-bold">
         <i class="fa-solid fa-gauge-high"></i>
-        {% block quota_heading %}{% trans "Limits" %}{% endblock %}
+        {% block quota_heading %}{% trans "Metered" %}{% endblock %}
       </h1>
+      {% block quota_subheading %}{% endblock %}
     </header>
 
     {% include "oya/_economy_tabs.html" with active_tab="usage" %}
     {% comment %}In a block so a child lights its own sub-tab — a child
        cannot pass a value into a parent's include.{% endcomment %}
-    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="limits" %}{% endblock %}
+    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
 
     {% if messages %}
       {% for msg in messages %}

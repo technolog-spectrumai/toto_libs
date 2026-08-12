@@ -1,120 +1,256 @@
 {% extends "quota/base.html" %}
 {% load i18n %}
 
-{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="limits" %}{% endblock %}
+{% comment %}The collection view: every metered thing, one row each.
+
+   The point of this page is that the answers are IN THE LIST. "What does a
+   document export cost, what is the cap, how much have I got left" used to mean
+   visiting Metrics, Limits, Rate desk, Prices and My usage and holding the
+   answer in your head. Those were five screens keyed by the same string.
+
+   A member reads the row. A staff member edits it in place and saves the whole
+   grid in one POST — which is what the separate rate desk was, at a different
+   address, with a different vocabulary for the same fields.
+
+   Money columns are ABSENT on an unbilled host, not blank: placidia has no rate
+   card, so "what does this cost" is not a question there and the page does not
+   ask it.{% endcomment %}
+
+{% block quota_title %}{% trans "Metered" %}{% endblock %}
+{% block quota_heading %}{% trans "Metered" %}{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
+
+{% block quota_subheading %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% blocktrans count counter=metric_count %}
+    One thing on this platform is metered — everything about it is on this page.
+  {% plural %}
+    {{ counter }} things on this platform are metered. Everything about one of
+    them — its limit, its price, what it has cost you — is on its own page.
+  {% endblocktrans %}
+  <a href="{{ taxes_url }}" class="font-semibold underline hover:opacity-80">{% trans "How you are charged" %}</a>
+</p>
+{% endblock %}
 
 {% block quota_content %}
 
-<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     class="rounded-lg border p-5 shadow-sm">
-  <p class="text-sm opacity-70">
-    {% blocktrans count counter=metric_count %}
-      One action on this platform is metered. A limit caps how often you may
-      take it; crossing one refuses the request until the window resets.
-    {% plural %}
-      {{ counter }} actions on this platform are metered. A limit caps how often
-      you may take them; crossing one refuses the request until the window resets.
-    {% endblocktrans %}
-    {% if billing_enabled %}
-      {% trans "Some also cost gas — the price is set separately." %}
-    {% endif %}
-  </p>
-  <p class="mt-2 text-xs opacity-55">
-    {% trans "An action with no limit is unrestricted. Windows are calendar-aligned, so a daily limit resets at midnight." %}
-  </p>
-</div>
-
-{% for group in groups %}
-<section class="space-y-3">
-  <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
-    <i class="fa-solid fa-cube"></i>{{ group.verbose_name }}
-  </h2>
-
-  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-       class="overflow-hidden rounded-lg border shadow-sm">
-    <div class="overflow-x-auto">
-      <table class="w-full text-sm">
-        <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
-          <tr class="text-left">
-            <th class="px-5 py-3 font-semibold">{% trans "Action" %}</th>
-            <th class="px-5 py-3 font-semibold">{% trans "Limit" %}</th>
-            <th class="px-5 py-3 font-semibold">{% trans "Your use" %}</th>
-            <th class="px-5 py-3 font-semibold">{% trans "Left" %}</th>
-            <th class="px-5 py-3"></th>
-          </tr>
-        </thead>
-        <tbody>
-        {% for row in group.rows %}
-          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
-            <td class="px-5 py-3">
-              <div class="font-semibold">{{ row.metric.label }}</div>
-              <code class="text-xs opacity-55">{{ row.metric.code }}</code>
-              {% if row.metric.description %}
-              <div class="mt-1 max-w-md text-xs opacity-60">{{ row.metric.description }}</div>
-              {% endif %}
-            </td>
-
-            <td class="px-5 py-3">
-              {% if row.limit %}
-                <span class="font-mono">{{ row.limit|floatformat:"-2" }}</span>
-                <span class="text-xs opacity-60">{{ row.metric.unit }} / {{ row.period }}</span>
-                {% if row.mode != "block" %}
-                <div class="text-xs opacity-55">{% trans "recorded only, not enforced" %}</div>
-                {% endif %}
-              {% else %}
-                <span class="text-xs opacity-55">{% trans "unlimited" %}</span>
-              {% endif %}
-            </td>
-
-            <td class="px-5 py-3">
-              {% if row.has_table %}
-                <span class="font-mono">{{ row.used|floatformat:"-2" }}</span>
-                {% if row.pct_used is not None %}
-                <div class="mt-1 h-1.5 w-24 overflow-hidden rounded-full"
-                     :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
-                  <div class="h-full rounded-full"
-                       :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
-                       style="width: {% if row.pct_used > 100 %}100{% else %}{{ row.pct_used|floatformat:0 }}{% endif %}%"></div>
-                </div>
-                {% endif %}
-              {% else %}
-                <span class="text-xs opacity-55">—</span>
-              {% endif %}
-            </td>
-
-            <td class="px-5 py-3">
-              {% if row.remaining is not None %}
-                <span class="font-mono">{{ row.remaining|floatformat:"-2" }}</span>
-              {% else %}
-                <span class="text-xs opacity-55">—</span>
-              {% endif %}
-            </td>
-
-            <td class="px-5 py-3 text-right">
-              {% if is_staff and row.has_table %}
-              <a href="{% url 'quota:metric_detail' row.metric.code %}"
-                 :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-                 class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
-                <i class="fa-solid fa-sliders"></i>{% trans "Set limit" %}
-              </a>
-              {% endif %}
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    </div>
+{% if unpriced_levies %}
+  {% comment %}The silent misconfiguration this area is prone to: a levy that
+     measures nightly, records usage and bills nothing. It used to be announced
+     once by ingress_tax at deploy time and nowhere a person would look.{% endcomment %}
+  <div class="rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-3 text-sm">
+    <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation"></i>
+      {% trans "Measured but not priced" %}</p>
+    <p class="mt-1 opacity-80">
+      {% blocktrans %}These levies run every night, record what people hold, and charge nothing — they have no price. Open one and set it, or turn the rule off.{% endblocktrans %}
+    </p>
+    <p class="mt-1 font-mono text-xs">
+      {% for code in unpriced_levies %}<a href="{% url 'quota:metric_detail' code=code %}"
+        class="underline hover:opacity-80">{{ code }}</a>{% if not forloop.last %} · {% endif %}{% endfor %}
+    </p>
   </div>
-</section>
-{% empty %}
-<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     class="rounded-xl border border-dashed p-12 text-center shadow-sm">
-  <i class="fa-solid fa-gauge-high mb-3 text-3xl opacity-20"></i>
-  <p class="text-sm font-semibold opacity-55">{% trans "Nothing on this platform is metered." %}</p>
-  <p class="mt-1 text-xs opacity-45">
-    {% trans "An app declares what it meters in its own metrics.py." %}
-  </p>
+{% endif %}
+
+{% comment %}The four numbers a person actually arrives wanting. Balance and
+   spend only exist where something bills.{% endcomment %}
+<div class="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+  {% include "quota/partials/_stat_card.html" with label=_("Actions this period") value=kpi_actions %}
+  {% include "quota/partials/_stat_card.html" with label=_("At their limit") value=kpi_at_limit tone=kpi_at_limit_tone %}
+  {% if pricing_enabled %}
+    {% if balance %}{% include "quota/partials/_stat_card.html" with label=_("Gas balance") value=balance.amount suffix=balance.asset href=wallet_url %}{% endif %}
+    {% if kpi_spent %}{% include "quota/partials/_stat_card.html" with label=_("Spent this period") value=kpi_spent.amount suffix=kpi_spent.asset %}{% endif %}
+  {% endif %}
 </div>
-{% endfor %}
+
+<form method="post" x-data="{ q: '' }">
+  {% csrf_token %}
+
+  <div class="mb-4 flex flex-wrap items-center gap-3">
+    <label class="relative flex-1 min-w-[16rem]">
+      <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-50"></i>
+      <input x-model="q" type="search" autocomplete="off"
+             placeholder="{% trans 'Filter — name, code or app' %}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="w-full rounded-lg border py-2 pl-9 pr-3 text-sm focus:outline-none">
+    </label>
+    {% if is_staff_view %}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk mr-1"></i>{% trans "Save all" %}
+      </button>
+    {% endif %}
+  </div>
+
+  {% for group in groups %}
+  <section class="mb-6 space-y-3"
+           x-show="q === '' || $el.querySelectorAll('[data-hit=&quot;1&quot;]').length">
+    <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-cube"></i>{{ group.verbose_name }}
+      {% if not group.installed %}
+        <span class="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold opacity-70">
+          {% trans "not installed here" %}</span>
+      {% endif %}
+    </h2>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-lg border shadow-sm">
+      <div class="overflow-x-auto">
+        <table class="w-full text-sm">
+          <thead :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-b">
+            <tr class="text-left">
+              <th class="px-5 py-3 font-semibold">{% trans "Thing" %}</th>
+              <th class="px-5 py-3 font-semibold">{% trans "Limit" %}</th>
+              {% if levy_enabled %}<th class="px-5 py-3 font-semibold">{% trans "Free" %}</th>{% endif %}
+              {% if pricing_enabled %}<th class="px-5 py-3 font-semibold">{% trans "Price" %}</th>{% endif %}
+              <th class="px-5 py-3 font-semibold">{% trans "Yours" %}</th>
+              <th class="px-5 py-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+          {% for row in group.rows %}
+            <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t"
+                x-show="q === '' || $el.dataset.search.includes(q.toLowerCase())"
+                :data-hit="(q === '' || $el.dataset.search.includes(q.toLowerCase())) ? '1' : '0'"
+                data-search="{{ row.metric.label|lower }} {{ row.metric.code|lower }} {{ group.app_label|lower }}">
+
+              {# ---- what it is ---- #}
+              <td class="px-5 py-3">
+                <a href="{% url 'quota:metric_detail' code=row.metric.code %}"
+                   class="font-semibold underline-offset-2 hover:underline">{{ row.metric.label }}</a>
+                <div><code class="text-xs opacity-55">{{ row.metric.code }}</code></div>
+                {% if row.is_levy %}
+                  <span class="mt-1 inline-block rounded-full border border-current/25 px-2 py-0.5 text-[10px] font-semibold opacity-70">
+                    <i class="fa-solid fa-moon"></i> {% trans "nightly levy" %}</span>
+                {% endif %}
+                {% if row.unpriced_levy and is_staff_view %}
+                  <span class="mt-1 inline-block rounded-full border border-amber-500/60 px-2 py-0.5 text-[10px] font-semibold text-amber-600">
+                    {% trans "charges nothing" %}</span>
+                {% endif %}
+              </td>
+
+              {# ---- limit ---- #}
+              <td class="px-5 py-3">
+                {% if is_staff_view and row.has_table %}
+                  <div class="flex items-center gap-1">
+                    <input type="text" inputmode="decimal" name="limit__{{ row.metric.code }}"
+                           value="{{ row.limit|default_if_none:''|floatformat:'-10' }}"
+                           placeholder="{% trans 'none' %}"
+                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                           class="w-20 rounded border px-2 py-1 font-mono text-xs">
+                    <select name="mode__{{ row.metric.code }}"
+                            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                            class="rounded border px-1 py-1 text-xs">
+                      {% for value, label in modes %}
+                        <option value="{{ value }}" {% if row.mode == value %}selected{% endif %}>{{ label }}</option>
+                      {% endfor %}
+                    </select>
+                  </div>
+                  <div class="mt-0.5 text-[10px] opacity-50">{{ row.metric.unit }} / {{ row.period }}</div>
+                {% elif row.limit %}
+                  <span class="font-mono">{{ row.limit|floatformat:"-2" }}</span>
+                  <span class="text-xs opacity-60">{{ row.metric.unit }} / {{ row.period }}</span>
+                  {% if row.mode and row.mode != "block" %}
+                    <div class="text-[10px] opacity-55">{% trans "recorded only, not enforced" %}</div>
+                  {% endif %}
+                {% else %}
+                  <span class="text-xs opacity-55">{% trans "no limit" %}</span>
+                {% endif %}
+              </td>
+
+              {# ---- free allowance: only levies have one ---- #}
+              {% if levy_enabled %}
+              <td class="px-5 py-3">
+                {% if row.is_levy %}
+                  {% if is_staff_view %}
+                    <input type="text" inputmode="decimal" name="allowance__{{ row.metric.code }}"
+                           value="{{ row.allowance|default_if_none:''|floatformat:'-10' }}" placeholder="0"
+                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                           class="w-20 rounded border px-2 py-1 font-mono text-xs">
+                    <div class="mt-0.5 text-[10px] opacity-50">{{ row.allowance_unit }}</div>
+                  {% else %}
+                    <span class="font-mono">{{ row.allowance|default_if_none:"0"|floatformat:"-4" }}</span>
+                    <span class="text-xs opacity-60">{{ row.allowance_unit }}</span>
+                  {% endif %}
+                {% else %}
+                  <span class="text-xs opacity-40" title="{% trans 'Per-action charging has no free tier — the first unit costs full price.' %}">—</span>
+                {% endif %}
+              </td>
+              {% endif %}
+
+              {# ---- price ---- #}
+              {% if pricing_enabled %}
+              <td class="px-5 py-3">
+                {% if is_staff_view %}
+                  <div class="flex items-center gap-1">
+                    <input type="text" inputmode="decimal" name="price__{{ row.metric.code }}"
+                           value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
+                           placeholder="{% trans 'free' %}"
+                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                           class="w-24 rounded border px-2 py-1 font-mono text-xs">
+                    {% if billing_assets %}
+                      <select name="asset__{{ row.metric.code }}"
+                              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                              class="rounded border px-1 py-1 text-xs">
+                        {% for a in billing_assets %}
+                          <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
+                        {% endfor %}
+                      </select>
+                    {% endif %}
+                  </div>
+                {% elif row.price %}
+                  <span class="font-mono">{{ row.price.price_display }}</span>
+                  <span class="text-xs opacity-60">{{ row.price.asset }}</span>
+                {% else %}
+                  <span class="text-xs opacity-55">{% trans "free" %}</span>
+                {% endif %}
+              </td>
+              {% endif %}
+
+              {# ---- your usage ---- #}
+              <td class="px-5 py-3">
+                {% if row.has_table %}
+                  <div class="flex items-center gap-2">
+                    <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+                         class="h-1.5 w-20 overflow-hidden rounded-full">
+                      <div class="h-full rounded-full {% if row.over %}bg-red-500{% else %}bg-current opacity-60{% endif %}"
+                           style="width: {{ row.pct_bar }}%"></div>
+                    </div>
+                    <span class="font-mono text-xs">{{ row.used|default:"0"|floatformat:"-2" }}{% if row.limit %}<span class="opacity-50">/{{ row.limit|floatformat:"-2" }}</span>{% endif %}</span>
+                  </div>
+                  {% if row.spent %}
+                    <div class="mt-0.5 text-[10px] opacity-55">{% trans "paid" %} {{ row.spent.amount|floatformat:"-9" }} {{ row.spent.asset }}</div>
+                  {% endif %}
+                {% else %}
+                  <span class="text-xs opacity-40">{% trans "not recorded" %}</span>
+                {% endif %}
+              </td>
+
+              <td class="px-5 py-3 text-right">
+                <a href="{% url 'quota:metric_detail' code=row.metric.code %}"
+                   class="text-xs font-semibold underline hover:opacity-80">{% trans "Open" %}</a>
+              </td>
+            </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+  {% endfor %}
+
+  {% if is_staff_view %}
+    <div class="flex items-center justify-between gap-4">
+      <p class="text-xs opacity-55">
+        {% trans "An empty limit means no limit. An empty price means free. An empty allowance means zero — a levy rule with no allowance still levies." %}
+      </p>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-floppy-disk mr-1"></i>{% trans "Save all" %}
+      </button>
+    </div>
+  {% endif %}
+</form>
 
 {% endblock %}

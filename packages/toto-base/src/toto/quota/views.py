@@ -1,13 +1,29 @@
-"""Screens for reading and setting limits.
+"""Metering, organised by the thing being metered.
 
-This is the limits half of metering. What things *cost* lives in the host's
-billing app, which this one cannot import — so where a price would go, these
-pages link out to it, and only when it exists. A host with no ledger gets the
-same screens minus that column.
+This app used to grow one screen per model: a Limits page, a Rate desk, a
+Prices page, a Metrics page, an Allowances page, a Levies page. Six screens,
+one key — every one of them keyed by metric code — so answering "what does a
+document export cost, what is the cap, and how much have I got left" meant
+visiting five of them and holding the answer in your head.
 
-Everything listed comes from the metric registry rather than the database, so a
-metric appears here the moment an app declares it, before anyone has used it or
-set a limit on it.
+The axis here is the **metered thing**. There is a collection view of all of
+them (:func:`index`) and a detail view of one (:func:`metric_detail`), and
+every knob that thing has — its limit, its price, its free allowance, its time
+dials, its per-user overrides — is edited on the thing, in place. The other two
+screens are a read-only explanation of the charging *kinds* (:func:`taxes`) and
+the platform's income (:func:`fees`), which are genuinely different objects.
+
+Both audiences share the same URLs. A member sees their usage, the cap and the
+price; a staff member sees the same plus the editors, inline. Hiding is
+cosmetic — every write path re-checks ``is_staff``, so a hand-posted field is
+still refused.
+
+What things *cost* lives in the host's billing app, which this one cannot
+import. Three façades cross that boundary with plain data only:
+:mod:`~toto.quota.rates` (prices), :mod:`~toto.quota.levies` (free allowances)
+and :mod:`~toto.quota.times` (time dials). On a host with no economy every one
+of them answers empty, and the money columns are then **absent rather than
+blank** — the question does not exist there, so the page does not ask it.
 """
 
 from __future__ import annotations
@@ -26,7 +42,7 @@ from django.utils.translation import gettext_lazy as _
 
 from toto.ui import PageProcessor
 
-from . import rates
+from . import levies, rates, times
 from .api import get_policy, remaining, used
 from .choices import Mode
 from .forms import policy_form_for
@@ -42,52 +58,49 @@ def _staff_only(request):
         raise PermissionDenied
 
 
-def _billing_url(code: str) -> str:
-    """Where this metric's price is set, or "" when nothing bills.
+def _app_config(app_label):
+    """The app config for a metric's owner, or None when it is not installed.
 
-    Prefers the metric's own price row over the rate-card index — landing on a
-    list of every tariff when you asked about one metric was never useful. Falls
-    back to the list while a metric is still free and so has no row to edit.
-
-    The URL arrives as a pre-computed string from :mod:`toto.quota.rates` rather
-    than being reversed here, so no quota template ever names ``tariffs:``.
+    Asks the registry by LABEL rather than testing ``is_installed("toto.<label>")``.
+    The old prefix test disagreed with ``registry.installed()`` — which is what
+    the POST path uses — so the page rendered editable rows for uninstalled apps
+    that saving then silently ignored. It also lost the verbose_name of any app
+    not namespaced under ``toto.``.
     """
-    if not apps.is_installed("toto.tariffs"):
-        return ""
-    if code:
-        specific = rates.advanced_url(code)
-        if specific:
-            return specific
     try:
-        return reverse("tariffs:tariff_list")
-    except Exception:
-        return ""
+        return apps.get_app_config(app_label)
+    except LookupError:
+        return None
 
 
-def _tax_rules_url() -> str:
-    """Where levy allowances are edited, or "" when no levy engine ships."""
-    if not apps.is_installed("toto.tax"):
-        return ""
-    try:
-        return reverse("tax:rules")
-    except Exception:
-        return ""
+def _advanced_url(code: str) -> str:
+    """The tariff item's own editor, for the fields a form cannot express.
+
+    Demoted to one "Advanced" link on the thing's page: the multi-rate-card CRUD
+    still works and is still reachable, it is simply no longer in anybody's way.
+    Pre-computed by :mod:`toto.quota.rates` rather than reversed here, so no
+    quota template ever names ``tariffs:``.
+    """
+    return rates.advanced_url(code) if code else ""
 
 
-def _row(metric, user, *, prices=None, spend=None):
-    """One line of the limits table: what it is, its cap, and your use of it.
+# ---------------------------------------------------------------------------
+# The row — one metered thing, everything about it
+# ---------------------------------------------------------------------------
+
+def _row(metric, user, *, prices=None, spend=None, levy_codes=frozenset()):
+    """One metered thing: what it is, its cap, its price, and your use of it.
 
     ``prices`` and ``spend`` are the whole rate card and the whole spend summary,
-    passed in so a page renders them with one query each rather than one per
-    row. Both are ``{}`` on a host with no economy, and every price key then
-    comes back None — which is the same thing a free metric produces, and
-    deliberately so.
+    passed in so a page renders them with one query each rather than one per row.
+    Both are ``{}`` on a host with no economy, and every price key then comes
+    back None — which is the same thing a free metric produces, deliberately.
     """
     policy_model = policy_model_for(metric.app_label)
     policy = get_policy(policy_model, metric.code, user) if policy_model else None
 
     consumed = left = None
-    if policy_model is not None:
+    if policy_model is not None and user is not None:
         period = policy.period if policy else metric.period
         consumed = used(policy_model, metric.code, user, period=period)
         left = remaining(policy_model, metric.code, user)
@@ -97,9 +110,9 @@ def _row(metric, user, *, prices=None, spend=None):
     if limit:
         pct = min(float(consumed / limit * 100), 999) if consumed is not None else None
 
-    # Clamp for the bar but keep "over" as its own fact, so the bar never
-    # overflows its track while still being able to turn red.
     price = (prices or {}).get(metric.code)
+    is_levy = metric.code in levy_codes
+    levy = levies.of(metric.code) if is_levy else None
     return {
         "metric": metric,
         "policy": policy,
@@ -109,50 +122,64 @@ def _row(metric, user, *, prices=None, spend=None):
         "used": consumed,
         "remaining": left,
         "pct_used": pct,
+        # Clamp for the bar but keep "over" as its own fact, so the bar never
+        # overflows its track while still being able to turn red.
         "pct_bar": min(int(pct), 100) if pct is not None else 0,
         "over": bool(pct is not None and pct > 100),
         "has_table": policy_model is not None,
         "price": price,
         "spent": (spend or {}).get(metric.code),
         "advanced_url": price["advanced_url"] if price else "",
+        # How this thing is charged, which is the fact the old surface never
+        # stated anywhere: a levy bills what you HOLD, nightly, with a free
+        # allowance; everything else bills the ACTION, before it runs, from the
+        # first unit. They were configured on different pages and never
+        # contrasted on any.
+        "is_levy": is_levy,
+        "levy": levy,
+        "allowance": levy["allowance"] if levy else None,
+        "allowance_unit": (levy["unit_label"] if levy else "") or metric.unit,
+        # Armed and earning nothing: measured nightly, recorded, billed zero.
+        "unpriced_levy": bool(is_levy and levy and levy["has_rule"]
+                              and levy["active"] is not False and price is None),
     }
 
 
-@login_required
-def index(request):
-    """Every metric this platform can meter, with your usage against it."""
+def _groups(user, *, prices=None, spend=None):
+    """Every metered thing, grouped by the app that owns it."""
+    levy_codes = levies.levy_codes()
     groups = []
     for app_label, metrics in registry.by_app().items():
-        rows = [_row(m, request.user) for m in metrics]
-        config = apps.get_app_config(app_label) if apps.is_installed(f"toto.{app_label}") else None
+        config = _app_config(app_label)
         groups.append({
             "app_label": app_label,
             "verbose_name": getattr(config, "verbose_name", app_label) if config else app_label,
-            "rows": rows,
+            "installed": config is not None,
+            "rows": [_row(m, user, prices=prices, spend=spend, levy_codes=levy_codes)
+                     for m in metrics],
         })
+    return groups
 
-    return _render(request, "quota/index.html", {
-        "groups": groups,
-        "metric_count": len(registry),
-        "is_staff": request.user.is_staff,
-        "billing_url": _billing_url(""),
-        "billing_enabled": apps.is_installed("toto.tariffs"),
-    })
 
+# ---------------------------------------------------------------------------
+# L1 — the collection view
+# ---------------------------------------------------------------------------
 
 @login_required
-def rate_desk(request):
-    """Every limit and every price on one screen, saved in one POST.
+def index(request):
+    """Every metered thing, with the answers in the list.
 
-    Limits and prices live in different apps and used to be set one metric at a
-    time on two different pages, which made "what does this platform actually
-    cap, and what does it charge for it" a question nobody could answer without
-    clicking through everything.
+    One table, one row per thing. The cap, the price and what is left are
+    columns rather than destinations, so the common question needs no click at
+    all. Staff additionally edit limit, mode, price and allowance in place and
+    save the whole grid in one POST — this replaced the separate rate desk,
+    which was the same grid at a different address.
     """
-    _staff_only(request)
+    is_staff = request.user.is_staff
 
     if request.method == "POST":
-        plan, errors = _parse_desk(request.POST)
+        _staff_only(request)
+        plan, errors = _parse_grid(request.POST)
         if errors:
             # Nothing is written until every row is good: a ValidationError
             # raised mid-loop would roll back but still render as success, and
@@ -161,43 +188,39 @@ def rate_desk(request):
                 messages.error(request, message)
         else:
             with transaction.atomic():
-                _apply_desk(plan)
-            messages.success(request, _("Limits and prices saved."))
-            return redirect("quota:rate_desk")
+                _apply_grid(plan)
+            messages.success(request, _("Saved."))
+            return redirect("quota:index")
 
     prices = rates.rate_card()
-    groups = []
-    for app_label, metrics in registry.by_app().items():
-        rows = [_row(m, None, prices=prices) for m in metrics]
-        config = apps.get_app_config(app_label) if apps.is_installed(f"toto.{app_label}") else None
-        groups.append({
-            "app_label": app_label,
-            "verbose_name": getattr(config, "verbose_name", app_label) if config else app_label,
-            "rows": rows,
-        })
+    spend = rates.spend_by_metric(request.user)
+    groups = _groups(request.user, prices=prices, spend=spend)
+    rows = [r for g in groups for r in g["rows"]]
 
     pricing = rates.pricing_enabled()
-    return _render(request, "quota/rate_desk.html", {
+    at_limit = sum(1 for r in rows if r["over"] or (r["limit"] and r["remaining"] == 0))
+    return _render(request, "quota/index.html", {
         "groups": groups,
         "metric_count": len(registry),
+        "is_staff_view": is_staff,
+        # Money columns are ABSENT on an unbilled host, not blank: the question
+        # does not exist there, so the page must not ask it.
         "pricing_enabled": pricing,
-        # Where the recurring levies' free allowances are set. A pre-computed
-        # string like _billing_url, so no quota template ever names "tax:" —
-        # empty on the hosts that ship no levy engine.
-        "tax_rules_url": _tax_rules_url(),
+        "levy_enabled": levies.levy_enabled(),
         "price_asset": rates.price_asset_symbol(),
-        # Currencies a price may be denominated in. Empty on a host with no
-        # assets app, and the grid then renders no picker — the price column
-        # behaves exactly as it did before per-metric currencies existed.
         "billing_assets": rates.billing_assets() if pricing else [],
-        # The <th> and every <td> read this one flag, so a price column can
-        # never appear as a header with no cells under it.
-        "column_count": 6 if pricing else 4,
-        "modes": Mode.choices,
+        "modes": Mode.editable_choices(),
+        "balance": rates.balance_of(request.user),
+        "wallet_url": rates.wallet_url(),
+        "kpi_actions": sum((r["used"] or 0) for r in rows),
+        "kpi_at_limit": at_limit,
+        "kpi_spent": _total_spend(spend),
+        "unpriced_levies": levies.unpriced_levies() if is_staff else [],
+        "taxes_url": reverse("quota:taxes"),
     })
 
 
-def _parse_desk(post):
+def _parse_grid(post):
     """Read the whole grid before writing any of it.
 
     The field-naming rule, which inverts formica's on purpose:
@@ -210,16 +233,22 @@ def _parse_desk(post):
 
     Absent-versus-blank is what stops a half-rendered form, a browser that
     dropped fields, or a host where tariffs vanished between GET and POST from
-    silently wiping the rate card. Codes are dotted, so `__` separates the
+    silently wiping the rate card. Codes are dotted, so ``__`` separates the
     prefix from the code.
+
+    The one place blank does NOT mean erase is the allowance, and the template
+    says so at the field: a levy rule with no allowance still levies, from zero.
     """
     plan, errors = [], []
     pricing = rates.pricing_enabled()
+    levy_codes = levies.levy_codes()
 
     for metric in registry.installed():
         entry = {"metric": metric}
         limit_key = f"limit__{metric.code}"
+        mode_key = f"mode__{metric.code}"
         price_key = f"price__{metric.code}"
+        allowance_key = f"allowance__{metric.code}"
 
         if limit_key in post:
             raw = (post.get(limit_key) or "").strip()
@@ -237,7 +266,13 @@ def _parse_desk(post):
                                   % {"code": metric.code})
                     continue
                 entry["limit"] = value
-            entry["mode"] = post.get(f"mode__{metric.code}") or Mode.BLOCK
+
+        # Mode is read INDEPENDENTLY of limit. It used to be nested inside the
+        # limit branch, so choosing "Track only" on an unlimited row silently
+        # did nothing, while saving the grid overwrote a mode carefully set on
+        # the detail page with whatever the select happened to show.
+        if mode_key in post:
+            entry["mode"] = post.get(mode_key) or Mode.BLOCK
 
         # Guard one: never even look at a price field on an unbilled host.
         if pricing and price_key in post:
@@ -249,8 +284,7 @@ def _parse_desk(post):
                 entry["price"] = parse_price(post.get(price_key))
                 entry["has_price"] = True
                 # Per-metric currency. Absent or blank keeps the inherited one
-                # (tariff default, else the host gas asset), so a desk that does
-                # not render the column behaves exactly as before.
+                # (tariff default, else the host gas asset).
                 entry["asset_id"] = (post.get(f"asset__{metric.code}") or "").strip() or None
             except ImportError:  # pragma: no cover
                 pass
@@ -258,70 +292,171 @@ def _parse_desk(post):
                 errors.append(f"{metric.code}: {exc}")
                 continue
 
+        if metric.code in levy_codes and allowance_key in post:
+            entry["allowance"] = post.get(allowance_key)
+            entry["has_allowance"] = True
+
         if len(entry) > 1:
             plan.append(entry)
 
     return plan, errors
 
 
-def _apply_desk(plan):
+def _apply_grid(plan):
     """Write a validated plan. Caller owns the transaction."""
     for entry in plan:
         metric = entry["metric"]
-        if "limit" in entry:
-            policy_model = policy_model_for(metric.app_label)
-            if policy_model is not None:
-                _set_default_limit(policy_model, metric, entry["limit"], entry.get("mode"))
+        policy_model = policy_model_for(metric.app_label)
+        if policy_model is not None and ("limit" in entry or "mode" in entry):
+            _set_default_limit(policy_model, metric,
+                               entry.get("limit", _UNSET), entry.get("mode"))
         if entry.get("has_price"):
             # Guard three: set_price is itself a no-op when nothing bills.
             if entry["price"] is None:
                 rates.clear_price(metric.code)
             else:
                 rates.set_price(metric.code, entry["price"], asset_id=entry.get("asset_id"))
+        if entry.get("has_allowance"):
+            try:
+                levies.set_allowance(metric.code, entry["allowance"])
+            except ValueError:
+                # Parsed and reported in _parse_grid for every rendered row;
+                # reaching here means a hand-posted field, which is not worth
+                # failing the whole transaction over.
+                pass
 
 
-def _set_default_limit(policy_model, metric, limit, mode=None):
+#: Distinguishes "the limit field was not in this POST" from "it was, and blank".
+_UNSET = object()
+
+
+def _set_default_limit(policy_model, metric, limit=_UNSET, mode=None):
     """Set or drop the everyone-policy for one metric.
 
     A blank limit deletes the row rather than storing zero — nothing is limited
     until a policy exists, so an absent policy is how "unlimited" is spelled.
+    A mode arriving without a limit still applies to an existing row, which is
+    what makes the mode select work on rows that are unlimited.
     """
     existing = policy_model.objects.filter(metric_code=metric.code, user__isnull=True).first()
+
     if limit is None:
         if existing is not None:
             existing.delete()
+        return
+    if limit is _UNSET and existing is None:
+        # Mode alone, on a metric with no policy: nothing to attach it to, and
+        # inventing an unlimited-but-tracked row would be a limit nobody set.
         return
     if existing is None:
         existing = policy_model(metric_code=metric.code, user=None,
                                 name=metric.label, unit=metric.unit,
                                 period=metric.period)
-    existing.limit = limit
+    if limit is not _UNSET:
+        existing.limit = limit
     if mode:
         existing.mode = mode
     existing.active = True
     existing.save()
 
 
+# ---------------------------------------------------------------------------
+# L2 — one metered thing
+# ---------------------------------------------------------------------------
+
 @login_required
 def metric_detail(request, code):
-    """Set the default limit for one metric, and manage per-user overrides."""
-    _staff_only(request)
+    """Everything about ONE metered thing, in disclosure order.
 
+    Always visible: what it is, your usage, its limit, its price, and — when it
+    is a levy — its free allowance. One click deeper: how it is charged, its
+    time dials, its per-user overrides, its advanced pricing, its recent
+    activity.
+
+    Not staff-only. A member has every reason to be here ("what does this cost
+    me, how much is left"), and sees the numbers without the editors. Each POST
+    action re-checks ``is_staff`` on its own.
+    """
     metric = registry.get(code)
     if metric is None:
         raise Http404(f"No metric registered as {code!r}.")
 
+    is_staff = request.user.is_staff
     policy_model = policy_model_for(metric.app_label)
-    if policy_model is None:
-        raise Http404(
-            f"{metric.app_label} declares {code!r} but ships no quota table to store limits in."
-        )
 
-    default = policy_model.objects.filter(metric_code=code, user__isnull=True).first()
-    form_class = policy_form_for(policy_model)
+    if request.method == "POST":
+        _staff_only(request)
+        response = _detail_post(request, metric, policy_model)
+        if response is not None:
+            return response
 
-    if request.method == "POST" and request.POST.get("action") == "default":
-        form = form_class(request.POST, instance=default)
+    prices = rates.rate_card()
+    row = _row(metric, request.user, prices=prices,
+               spend=rates.spend_by_metric(request.user),
+               levy_codes=levies.levy_codes())
+
+    default = overrides = override_form = form = None
+    if policy_model is not None:
+        default = policy_model.objects.filter(metric_code=code, user__isnull=True).first()
+        if is_staff:
+            form = policy_form_for(policy_model)(
+                instance=default,
+                initial=None if default else {
+                    "unit": metric.unit, "period": metric.period, "active": True},
+            )
+            override_form = policy_form_for(policy_model, include_user=True)(
+                initial={"unit": metric.unit, "period": metric.period, "active": True})
+            overrides = (policy_model.objects
+                         .filter(metric_code=code, user__isnull=False)
+                         .select_related("user")
+                         .order_by("user__username"))
+
+    pricing = rates.pricing_enabled()
+    return _render(request, "quota/metric_detail.html", {
+        "metric": metric,
+        "row": row,
+        "is_staff_view": is_staff,
+        "has_table": policy_model is not None,
+        # Templates cannot read _meta, so hand over the one bit they show.
+        "policy_table": policy_model._meta.db_table if policy_model else "",
+        "default": default,
+        "form": form,
+        "override_form": override_form,
+        "overrides": overrides,
+        "pricing_enabled": pricing,
+        "levy_enabled": levies.levy_enabled(),
+        "price_asset": rates.price_asset_symbol(),
+        "billing_assets": rates.billing_assets() if pricing else [],
+        "modes": Mode.editable_choices(),
+        "advanced_url": _advanced_url(code),
+        "my_levy": levies.my_levy(code, request.user) if row["is_levy"] else None,
+        # The dial roll-up belongs to exactly one metered thing: the one that
+        # bills held time. Everywhere else this is None and the section is gone.
+        "dials": times.dials_for_user(request.user) if code == "time.hold" else None,
+        "dial_set_url": times.set_url(),
+        "recent": _recent_events(metric, policy_model, request.user, is_staff),
+        "balance": rates.balance_of(request.user),
+        "wallet_url": rates.wallet_url(),
+        "taxes_url": reverse("quota:taxes"),
+    })
+
+
+def _detail_post(request, metric, policy_model):
+    """Handle one edit on the thing's page. Returns a redirect, or None."""
+    action = request.POST.get("action")
+    code = metric.code
+
+    if action == "default" and policy_model is not None:
+        default = policy_model.objects.filter(metric_code=code, user__isnull=True).first()
+        # Blank means unlimited, exactly as in the grid. The ModelForm makes
+        # `limit` required, so the detail page could not express "unlimited" at
+        # all while the grid could — the same field, two opposite vocabularies.
+        raw = (request.POST.get("limit") or "").strip()
+        if raw == "":
+            _set_default_limit(policy_model, metric, None)
+            messages.success(request, _("No limit — this is now unlimited."))
+            return redirect("quota:metric_detail", code=code)
+        form = policy_form_for(policy_model)(request.POST, instance=default)
         if form.is_valid():
             policy = form.save(commit=False)
             policy.metric_code = code
@@ -329,50 +464,64 @@ def metric_detail(request, code):
             if not policy.name:
                 policy.name = metric.label
             policy.save()
-            messages.success(request, _("Default limit saved."))
+            messages.success(request, _("Limit saved."))
             return redirect("quota:metric_detail", code=code)
-    else:
-        form = form_class(
-            instance=default,
-            initial=None if default else {
-                "limit": metric.default_limit,
-                "unit": metric.unit,
-                "period": metric.period,
-                "active": True,
-            },
-        )
+        messages.error(request, _("That limit could not be saved."))
+        return None
 
-    override_form = policy_form_for(policy_model, include_user=True)(
-        initial={"unit": metric.unit, "period": metric.period, "active": True}
-    )
-    if request.method == "POST" and request.POST.get("action") == "override":
-        override_form = policy_form_for(policy_model, include_user=True)(request.POST)
-        if override_form.is_valid():
-            policy = override_form.save(commit=False)
+    if action == "override" and policy_model is not None:
+        form = policy_form_for(policy_model, include_user=True)(request.POST)
+        if form.is_valid():
+            policy = form.save(commit=False)
             policy.metric_code = code
             if not policy.name:
                 policy.name = f"{metric.label} — {policy.user}"
             policy.save()
-            messages.success(request, _("Override saved for %(user)s.") % {"user": policy.user})
+            messages.success(request, _("Override saved for %(user)s.")
+                             % {"user": policy.user})
             return redirect("quota:metric_detail", code=code)
+        messages.error(request, _("That override could not be saved."))
+        return None
 
-    overrides = (
-        policy_model.objects.filter(metric_code=code, user__isnull=False)
-        .select_related("user")
-        .order_by("user__username")
-    )
+    if action == "price":
+        raw = request.POST.get("price")
+        asset_id = (request.POST.get("asset") or "").strip() or None
+        try:
+            if (raw or "").strip() == "":
+                rates.clear_price(code)
+                messages.success(request, _("No price — this is now free."))
+            else:
+                rates.set_price(code, raw, asset_id=asset_id)
+                messages.success(request, _("Price saved."))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return None
+        return redirect("quota:metric_detail", code=code)
 
-    return _render(request, "quota/metric_detail.html", {
-        "metric": metric,
-        # Templates cannot read _meta, so hand over the one bit they show.
-        "policy_table": policy_model._meta.db_table,
-        "default": default,
-        "form": form,
-        "override_form": override_form,
-        "overrides": overrides,
-        "billing_url": _billing_url(code),
-        "billing_enabled": apps.is_installed("toto.tariffs"),
-    })
+    if action == "allowance":
+        try:
+            levies.set_allowance(code, request.POST.get("allowance"),
+                                 active=bool(request.POST.get("levy_active")))
+            messages.success(request, _("Free allowance saved."))
+        except ValueError as exc:
+            messages.error(request, str(exc))
+            return None
+        return redirect("quota:metric_detail", code=code)
+
+    return None
+
+
+def _recent_events(metric, policy_model, user, is_staff, limit=10):
+    """The last few usage events for this thing — theirs, or everyone's."""
+    if policy_model is None:
+        return []
+    events = getattr(policy_model, "events", None)
+    if events is None:
+        return []
+    qs = events.objects.filter(metric_code=metric.code)
+    if not is_staff:
+        qs = qs.filter(user=user)
+    return list(qs.select_related("user").order_by("-occurred_at")[:limit])
 
 
 @login_required
@@ -394,12 +543,161 @@ def override_delete(request, code, pk):
     return redirect("quota:metric_detail", code=code)
 
 
+# ---------------------------------------------------------------------------
+# L3 — how you are charged
+# ---------------------------------------------------------------------------
+
+@login_required
+def taxes(request):
+    """Every KIND of charge this platform makes, read-only, with a way to each.
+
+    Information only, deliberately. The knobs live on the things they belong to
+    — a levy's allowance on the levied thing, a price on the priced thing — and
+    duplicating them here would recreate the two-places-to-set-one-number
+    problem this restructure exists to end. What this page adds is the thing no
+    screen ever said: that there are several distinct ways to be charged, that
+    they run at different times, and which is which.
+    """
+    return _render(request, "quota/taxes.html", {
+        "kinds": _charge_kinds(request.user),
+        "is_staff_view": request.user.is_staff,
+        "pricing_enabled": rates.pricing_enabled(),
+    })
+
+
+def _charge_kinds(user):
+    """The charging kinds that exist ON THIS HOST, as plain data.
+
+    Built from the registries rather than written down, so a kind cannot appear
+    on a host that cannot perform it: no levy providers, no levy row; no
+    ``toto.tax``, no holding fee; no ``toto.portfolio``, no tribute.
+    """
+    priced = rates.rate_card()
+    kinds = [{
+        "key": "action",
+        "name": _("Metered action"),
+        "charges": _("A price for each action, taken before the work runs."),
+        "when": _("Per action"),
+        "free": _("Nothing — charged from the first unit."),
+        "things": sorted(code for code in priced if code not in levies.levy_codes()),
+        "edit_label": _("Set prices on each thing"),
+        "edit_url": reverse("quota:index"),
+    }]
+
+    for code in sorted(levies.levy_codes()):
+        metric = registry.get(code)
+        levy = levies.of(code)
+        if metric is None or levy is None:
+            continue
+        kinds.append({
+            "key": f"levy:{code}",
+            "name": _("Levy — %(label)s") % {"label": metric.label},
+            "charges": _("What you hold above the free allowance, every night."),
+            "when": _("Nightly"),
+            "free": (_("%(allowance)s %(unit)s")
+                     % {"allowance": levy["allowance"], "unit": levy["unit_label"] or metric.unit}
+                     if levy["has_rule"] else _("No rule — nothing is levied yet.")),
+            "things": [code],
+            "consequence": levy["consequence"],
+            "edit_label": _("Open %(label)s") % {"label": metric.label},
+            "edit_url": reverse("quota:metric_detail", args=[code]),
+        })
+
+    kinds.extend(_economy_charge_kinds())
+    return kinds
+
+
+def _economy_charge_kinds():
+    """Holding fee and tribute — the two that are not keyed by a metric.
+
+    is_installed BEFORE each import: a host can pin the economy wheel without
+    installing these apps, and importing their models raises RuntimeError out of
+    Django's model metaclass, which ``except ImportError`` never catches.
+    """
+    out = []
+
+    if apps.is_installed("toto.tax"):
+        try:
+            from toto.tax.models import SurplusPolicy
+
+            live = list(SurplusPolicy.objects.filter(active=True)
+                        .select_related("asset")[:20])
+            # Keyed by ASSET, not by metered thing — so unlike a levy allowance
+            # it cannot live on a metered thing, and it is edited on the asset
+            # itself (toto/tax/plugins/asset_plugins.py). The link goes straight
+            # to the first asset that has one rather than to a list: with one
+            # charging asset, which is the normal case, a list is a page nobody
+            # needed to see.
+            first = live[0].asset_id if live else None
+            out.append({
+                "key": "holding",
+                "name": _("Holding fee"),
+                "charges": _("A share of what you hold above a threshold, taken largest-holding first."),
+                "when": _("Per period"),
+                "free": _("Everything up to the threshold."),
+                "things": [p.asset.unit_name for p in live],
+                "edit_label": _("Open the asset") if first else _("All assets"),
+                "edit_url": (_safe_url("assets:asset_detail", first) if first
+                             else _safe_url("assets:asset_list")),
+            })
+        except Exception:  # noqa: BLE001 - an absent table must not break the page
+            pass
+
+    if apps.is_installed("toto.portfolio"):
+        out.append({
+            "key": "tribute",
+            "name": _("Tribute"),
+            "charges": _("A fixed amount a company pays the platform."),
+            "when": _("Per period"),
+            "free": _("Companies with no tribute policy."),
+            "things": [],
+            "edit_label": _("Tribute desk"),
+            "edit_url": _safe_url("portfolio:tribute_desk"),
+        })
+    return out
+
+
+def _safe_url(name: str, *args) -> str:
+    try:
+        return reverse(name, args=[a for a in args if a is not None])
+    except Exception:  # noqa: BLE001 - unmounted namespace is a soft edge
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# L4 — where the platform's money comes from
+# ---------------------------------------------------------------------------
+
+@login_required
+def fees(request):
+    """Income by source — the operator's view of money in.
+
+    Staff only now. This URL used to render two unrelated pages depending on who
+    asked: income and editors for staff, and "what am I charged" for everyone
+    else. The second of those belongs on the metered things themselves, where
+    the prices and the usage are, and it lives there now — so what is left is
+    one page about one object, income sources, which is not a metered thing.
+    """
+    _staff_only(request)
+    from . import feeboard
+
+    board = feeboard.income_board()
+    return _render(request, "quota/fees.html", {
+        "board": board,
+        "income_pie_json": feeboard.income_pie_json(board),
+        "billing_enabled": apps.is_installed("toto.tariffs"),
+        "price_asset": rates.price_asset_symbol(),
+        "taxes_url": reverse("quota:taxes"),
+    })
+
+
 @login_required
 def my_usage(request, app_label=None):
-    """What the signed-in user has consumed, what it cost, and what is left.
+    """One app's metered things, scoped to the signed-in user.
 
-    ``app_label`` narrows it to one app, which is where each metered app's own
-    "Usage" link lands.
+    Kept because every metered app's own "Usage" button lands here, and narrowing
+    to one app is a real need the collection view answers less directly. It is
+    the same rows as :func:`index`, filtered — not a second vocabulary.
     """
     if app_label is not None and not registry.for_app(app_label):
         # A tab pointing at an app that meters nothing would be a dead link;
@@ -409,20 +707,20 @@ def my_usage(request, app_label=None):
     metrics = registry.for_app(app_label) if app_label else registry.all()
     prices = rates.rate_card()
     spend = rates.spend_by_metric(request.user)
-    rows = [r for r in (_row(m, request.user, prices=prices, spend=spend)
+    levy_codes = levies.levy_codes()
+    rows = [r for r in (_row(m, request.user, prices=prices, spend=spend,
+                             levy_codes=levy_codes)
                         for m in metrics) if r["has_table"]]
 
     at_limit = sum(1 for r in rows if r["over"] or (r["limit"] and r["remaining"] == 0))
-    actions = sum((r["used"] or 0) for r in rows)
-
     return _render(request, "quota/my_usage.html", {
         "rows": rows,
         "scope_app": app_label,
-        "billing_enabled": apps.is_installed("toto.tariffs"),
+        "pricing_enabled": rates.pricing_enabled(),
         "price_asset": rates.price_asset_symbol(),
         "balance": rates.balance_of(request.user),
         "wallet_url": rates.wallet_url(),
-        "kpi_actions": actions,
+        "kpi_actions": sum((r["used"] or 0) for r in rows),
         "kpi_at_limit": at_limit,
         "kpi_spent": _total_spend(spend),
         # Labels come from here rather than the template: `{% include with %}`
@@ -434,83 +732,6 @@ def my_usage(request, app_label=None):
         "kpi_balance_label": _("Gas balance"),
         "kpi_spent_label": _("Spent this period"),
     })
-
-
-@login_required
-def fees(request):
-    """Where the platform's money comes from — two renderings, one URL.
-
-    Staff see income by source, the split as a pie, and every price that is
-    denominated in something this platform is not contracted for. A user sees
-    what things cost *them* and what they personally owe.
-
-    Deliberately NOT behind ``_staff_only``. The tab exists for everyone,
-    because "why was I charged" is a fair question and the answer is not
-    sensitive; what differs is the content, not the permission. Every editor
-    this page links to keeps its own independent 403, so nothing here widens
-    access to anything.
-    """
-    from . import feeboard
-
-    is_staff = request.user.is_staff
-    context = {
-        "is_staff_view": is_staff,
-        "billing_enabled": apps.is_installed("toto.tariffs"),
-        "price_asset": rates.price_asset_symbol(),
-        "wallet_url": rates.wallet_url(),
-    }
-
-    if is_staff:
-        board = feeboard.income_board()
-        context.update({
-            "board": board,
-            "income_pie_json": feeboard.income_pie_json(board),
-        })
-    else:
-        # What it costs me, and what I owe — no platform totals, no editors.
-        levy_rows, community_rows = _my_levy_rows(request.user)
-        context.update({
-            "rate_card": sorted(rates.rate_card().items()),
-            "balance": rates.balance_of(request.user),
-            "levy_rows": levy_rows,
-            "community_rows": community_rows,
-        })
-
-    return _render(request, "quota/fees.html", context)
-
-
-def _my_levy_rows(user):
-    """(per-metric levies, community-fee rows) — ([], []) where tax is absent.
-
-    Two lists rather than one, because the two estimators return different
-    shapes and always have: a levy row is keyed on a rule and a metric, a
-    community-fee row on an asset. tax/views.py::my_levies keeps them apart for
-    the same reason, and flattening them here would only move the branch into
-    the template.
-
-    is_installed BEFORE the import: a host can pin the economy wheel without
-    installing toto.tax — placidia does — and importing its models there raises
-    RuntimeError out of Django's model metaclass, which `except ImportError`
-    never catches.
-    """
-    if not apps.is_installed("toto.tax"):
-        return [], []
-    try:
-        from toto.tax import services as tax_services
-        from toto.tax import surplus as tax_surplus
-    except ImportError:
-        return [], []
-
-    levies, community = [], []
-    try:
-        levies = tax_services.estimate_for_user(user) or []
-    except Exception:  # noqa: BLE001 - an estimate must not break the page
-        pass
-    try:
-        community = tax_surplus.estimate_for_user(user) or []
-    except Exception:  # noqa: BLE001
-        pass
-    return levies, community
 
 
 def _total_spend(spend):

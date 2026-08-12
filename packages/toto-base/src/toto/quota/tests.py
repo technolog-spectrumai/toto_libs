@@ -421,12 +421,22 @@ class LimitsUiTests(SampleModels):
             with self.subTest(url=url):
                 self.assertNotEqual(self.client.get(url).status_code, 200)
 
-    def test_only_staff_may_set_a_limit(self):
+    def test_a_thing_is_readable_by_everyone_and_writable_by_staff(self):
+        """The per-thing page serves both roles from one URL.
+
+        It was staff-only, which is why a member had nowhere to read what one
+        action costs them and how much they had left — the two facts they most
+        want. Both roles GET it now; the editors are hidden from a member and
+        every POST action re-checks is_staff, so hiding stays cosmetic.
+        """
         from toto.quota.metrics import registry
 
         code = registry.codes()[0]
         self.client.force_login(self.plain)
-        self.assertEqual(self.client.get(f"/quota/{code}/").status_code, 403)
+        self.assertEqual(self.client.get(f"/quota/{code}/").status_code, 200)
+        self.assertEqual(
+            self.client.post(f"/quota/{code}/",
+                             {"action": "default", "limit": "3"}).status_code, 403)
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get(f"/quota/{code}/").status_code, 200)
 
@@ -436,7 +446,13 @@ class LimitsUiTests(SampleModels):
 
 
 class RateDeskTests(SampleModels):
-    """One screen for every limit and every price."""
+    """The editable grid — now the collection view itself.
+
+    It used to be a separate screen, `/quota/rates/`, which was the same table
+    of the same metrics keyed by the same string as `/quota/`, with a different
+    vocabulary for the same fields. There is one table now and staff edit it in
+    place; these tests followed it there and are otherwise unchanged.
+    """
 
     def setUp(self):
         from toto.core.models import Platform
@@ -453,15 +469,22 @@ class RateDeskTests(SampleModels):
 
         return registry.codes()[0]
 
-    def test_the_desk_is_reachable_and_not_swallowed_by_the_code_route(self):
-        """`rates/` sits above `<str:code>/`, or it 404s as an unknown metric."""
+    def test_taxes_sits_above_the_code_route(self):
+        """A concrete segment declared BELOW `<str:code>/` is swallowed by it —
+        metric codes are dotted, which `<str:>` matches happily. `taxes/` is the
+        newest such segment and the trap the urls.py comment warns about."""
         self.client.force_login(self.staff)
-        self.assertEqual(self.client.get("/quota/rates/").status_code, 200)
+        self.assertEqual(self.client.get("/quota/taxes/").status_code, 200)
 
-    def test_the_desk_is_staff_only(self):
+    def test_a_member_reads_the_grid_but_cannot_write_it(self):
+        """Both roles share the URL; only the editors differ.
+
+        Reading was staff-only while the grid was its own screen. It is the
+        collection view now, and a member has every reason to be there — so the
+        gate moved onto the POST, where it always belonged."""
         self.client.force_login(self.plain)
-        self.assertEqual(self.client.get("/quota/rates/").status_code, 403)
-        self.assertEqual(self.client.post("/quota/rates/", {}).status_code, 403)
+        self.assertEqual(self.client.get("/quota/").status_code, 200)
+        self.assertEqual(self.client.post("/quota/", {}).status_code, 403)
 
     def test_a_limit_is_set_from_the_grid(self):
         from toto.quota.metrics import policy_model_for, registry
@@ -470,7 +493,7 @@ class RateDeskTests(SampleModels):
         model = policy_model_for(registry.get(code).app_label)
         self.client.force_login(self.staff)
 
-        self.client.post("/quota/rates/", {f"limit__{code}": "42"})
+        self.client.post("/quota/", {f"limit__{code}": "42"})
 
         policy = model.objects.get(metric_code=code, user__isnull=True)
         self.assertEqual(policy.limit, Decimal("42"))
@@ -482,9 +505,9 @@ class RateDeskTests(SampleModels):
         code = self._code()
         model = policy_model_for(registry.get(code).app_label)
         self.client.force_login(self.staff)
-        self.client.post("/quota/rates/", {f"limit__{code}": "5"})
+        self.client.post("/quota/", {f"limit__{code}": "5"})
 
-        self.client.post("/quota/rates/", {f"limit__{code}": ""})
+        self.client.post("/quota/", {f"limit__{code}": ""})
 
         self.assertFalse(model.objects.filter(metric_code=code, user__isnull=True).exists())
 
@@ -495,9 +518,9 @@ class RateDeskTests(SampleModels):
         code = self._code()
         model = policy_model_for(registry.get(code).app_label)
         self.client.force_login(self.staff)
-        self.client.post("/quota/rates/", {f"limit__{code}": "7"})
+        self.client.post("/quota/", {f"limit__{code}": "7"})
 
-        self.client.post("/quota/rates/", {})  # nothing submitted at all
+        self.client.post("/quota/", {})  # nothing submitted at all
 
         self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
                          Decimal("7"))
@@ -512,7 +535,7 @@ class RateDeskTests(SampleModels):
         model = policy_model_for(registry.get(good).app_label)
         self.client.force_login(self.staff)
 
-        self.client.post("/quota/rates/", {f"limit__{good}": "9", f"limit__{bad}": "-5"})
+        self.client.post("/quota/", {f"limit__{good}": "9", f"limit__{bad}": "-5"})
 
         self.assertFalse(model.objects.filter(metric_code=good, user__isnull=True).exists())
 
@@ -549,7 +572,7 @@ class PricingBoundaryTests(SampleModels):
             self.assertIsNone(rates.balance_of(self.staff))
             self.assertEqual(rates.wallet_url(), "")
 
-    def test_the_desk_renders_and_saves_limits_with_no_price_column(self):
+    def test_the_grid_renders_and_saves_limits_with_no_price_column(self):
         from unittest.mock import patch
 
         from toto.quota import rates
@@ -560,16 +583,37 @@ class PricingBoundaryTests(SampleModels):
         self.client.force_login(self.staff)
 
         with patch.object(rates, "pricing_enabled", return_value=False):
-            response = self.client.get("/quota/rates/")
+            response = self.client.get("/quota/")
             self.assertEqual(response.status_code, 200)
             self.assertFalse(response.context["pricing_enabled"])
-            # A <th> with no <td> under it would skew the whole table.
-            self.assertEqual(response.context["column_count"], 4)
+            # The columns guard themselves individually now — a single
+            # column_count could not express a table whose Price and Free
+            # columns appear independently. The invariant is stronger and
+            # checked directly: no header, and no input, for money.
+            body = response.content.decode()
+            self.assertNotIn("price__", body)
 
-            self.client.post("/quota/rates/", {f"limit__{code}": "11"})
+            self.client.post("/quota/", {f"limit__{code}": "11"})
 
         self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
                          Decimal("11"))
+
+    def test_the_free_column_follows_the_levy_engine_not_the_rate_card(self):
+        """Two independent guards, deliberately.
+
+        An allowance with no price is a real and supported state — the levy
+        measures nightly and charges nothing — and the collection view calls it
+        out with a banner rather than hiding the field. So the Free column asks
+        "is there a levy engine", which is a different question from "is there a
+        rate card", and a single column_count could never have expressed both.
+        """
+        from unittest.mock import patch
+
+        from toto.quota import levies
+
+        self.client.force_login(self.staff)
+        with patch.object(levies, "levy_enabled", return_value=False):
+            self.assertNotIn("allowance__", self.client.get("/quota/").content.decode())
 
     def test_a_forged_price_field_is_ignored_when_nothing_bills(self):
         """The template omits it, the parser skips it, and set_price refuses."""
@@ -582,7 +626,7 @@ class PricingBoundaryTests(SampleModels):
         self.client.force_login(self.staff)
         with patch.object(rates, "pricing_enabled", return_value=False), \
                 patch.object(rates, "set_price") as set_price:
-            self.client.post("/quota/rates/", {f"price__{code}": "9.99"})
+            self.client.post("/quota/", {f"price__{code}": "9.99"})
         set_price.assert_not_called()
 
     def test_quota_never_imports_tariffs_at_module_scope(self):
