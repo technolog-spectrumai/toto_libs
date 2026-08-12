@@ -65,6 +65,27 @@ class Command(IngressCommand):
             f"({'armed' if hold_rule.active else 'UNARMED'}, per {hold_rule.unit_label})"
         )
 
+        head_rule, head_created = TaxRule.objects.get_or_create(
+            metric_code="civics.head",
+            defaults={
+                "unit_label": "head",
+                "active": False,   # unarmed on creation — see storage.gb_day
+                "description": (
+                    "The head tax: a daily charge for being a member, weighted "
+                    "by how much the platform trusts your communities. A "
+                    "trusted community can carry a weight of 0, which is the "
+                    "exemption is_federal_tribe promised for years. Federal: "
+                    "it funds the platform's offices, and no community ever "
+                    "receives money."
+                ),
+            },
+        )
+        self.stdout.write(
+            f"tax: rule civics.head {'created' if head_created else 'kept'} "
+            f"({'armed' if head_rule.active else 'UNARMED'}, per "
+            f"{head_rule.unit_label})"
+        )
+
         # Repair the billing-unit mirrors the tariffs seeder creates with an
         # empty dimension — these are the platform's capacity×time units and
         # the rate card should say so (precedent: storage.mb_hour in the
@@ -87,7 +108,7 @@ class Command(IngressCommand):
             from toto.quota import rates
 
             card = rates.rate_card()
-            for code in ("storage.gb_day", "time.hold"):
+            for code in ("storage.gb_day", "time.hold", "civics.head"):
                 if code not in card:
                     self.stdout.write(
                         f"tax: {code} has a rule and no price, so it is UNARMED. "

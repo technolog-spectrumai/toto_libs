@@ -12,6 +12,7 @@ from django.utils.text import Truncator
 from django.utils.text import slugify
 
 from toto.core.domain import DomainEntity
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.core.models import Federation
 from toto.locations.models import Address, Territory
 from toto.people.models import Person  # re-exported for backward compat  # noqa: F401
@@ -570,3 +571,25 @@ class ConstitutionSignature(models.Model):
     @property
     def is_cryptographically_signed(self):
         return bool(self.cryptographic_signature and self.signing_payload)
+
+
+# ---------------------------------------------------------------------------
+# Usage metering — the head tax needs somewhere to write its daily trail
+# ---------------------------------------------------------------------------
+# The standard opt-in (see toto.quota.models): each app owns its own pair, so
+# the rows live in this app's tables and go away with it. Socialhub meters
+# exactly one thing, and it is the odd one out on the platform — `civics.head`
+# measures BEING A MEMBER rather than anything anybody did.
+
+class SocialhubUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Socialhub usage event"
+        verbose_name_plural = "Socialhub usage events"
+
+
+class SocialhubQuotaPolicy(AbstractQuotaPolicy):
+    events = SocialhubUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Socialhub quota policy"
+        verbose_name_plural = "Socialhub quota policies"
