@@ -32,6 +32,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 
 from toto.editor.views import BaseFileDisplayView
 from toto.ui import PageProcessor
+from toto.vault import locks, versions
 from toto.vault.filetree import accessible_files
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -375,14 +376,36 @@ def presentation_save(request, file_pk):
                           "Remove or shrink an image and try again."}, status=413)
         return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
 
+    # First line: the editing lock. Someone else holding it means this save
+    # should never have been attempted, and no retry can fix that until they
+    # leave — hence 423 rather than 409.
+    if not locks.may_write(vault_file, request.user):
+        held = locks.holder_of(vault_file)
+        return JsonResponse(
+            {"error": f"{held.holder} is editing this deck.",
+             "locked_by": held.holder.get_username()}, status=423)
+
     # Optimistic concurrency. Autosave fires on a timer, and the same deck can
     # be open in two tabs — without this the slower one silently wins and the
     # other's work is gone with no error anywhere.
     base_hash = payload.get("base_hash")
     if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
+        # Refuse, but keep the work as a version rather than discarding it.
+        rescued = None
+        try:
+            losing = presentation_format.Presentation.from_dict(
+                payload.get("presentation") or payload)
+            rescued = versions.save_conflicting_draft(
+                vault_file,
+                body=presentation_format.dumps(losing).encode("utf-8"),
+                author=request.user)
+        except Exception:                              # noqa: BLE001
+            pass                                       # a 409 must not become a 500
         return JsonResponse(
-            {"error": "This deck changed somewhere else since you opened it.",
-             "content_hash": vault_file.content_hash}, status=409)
+            {"error": "This deck changed somewhere else since you opened it. "
+                      "Your slides were kept as a version so nothing is lost.",
+             "content_hash": vault_file.content_hash,
+             "kept_as_version": rescued.number if rescued else None}, status=409)
 
     document = payload.get("presentation") or payload
     presentation = presentation_format.Presentation.from_dict(document)

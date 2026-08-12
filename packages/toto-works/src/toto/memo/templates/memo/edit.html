@@ -20,6 +20,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
+  {# Versions + the editing lock, shared across the three editors. #}
+  <script defer src="{% static 'oya/file_versions.js' %}"></script>
   <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
@@ -689,6 +691,20 @@ old one carried 210 lines of inline Alpine that no test could reach.
   </div>
 
 </section>
+
+  {# Versions and the editing lock — the same partial primula and cyprian use.
+     Its own Alpine scope, so it cannot collide with the editor's state. #}
+  <div x-data="{ showVersions: false }" class="mx-auto w-full max-w-5xl px-4 pb-8">
+    <button type="button" @click="showVersions = !showVersions"
+            class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}</button>
+    <div x-show="showVersions" x-cloak
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="mt-3 rounded-xl border p-4">
+      {% include "oya/_file_versions.html" with file_pk=vault_file.pk %}
+    </div>
+  </div>
+
 {% endblock %}
 
 {% block end_script %}

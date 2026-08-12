@@ -33,6 +33,7 @@ from django.views.decorators.http import require_POST
 from toto.editor.views import BaseFileDisplayView
 from toto.memo.media import clean_svg_markup, image_bytes_to_data_uri
 from toto.ui import PageProcessor
+from toto.vault import locks, versions
 from toto.vault.filetree import accessible_files
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -536,13 +537,39 @@ def document_save(request, file_pk):
                           "Remove or shrink an image and try again."}, status=413)
         return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
 
+    # The editing lock is the first line: someone else holding it means this
+    # save should never have been attempted. 423, not 409 — a retry cannot
+    # succeed until they leave, so inviting one would be a lie.
+    if not locks.may_write(vault_file, request.user):
+        held = locks.holder_of(vault_file)
+        return JsonResponse(
+            {"error": f"{held.holder} is editing this document.",
+             "locked_by": held.holder.get_username()}, status=423)
+
     # Optimistic concurrency: autosave fires on a timer and the same document
     # can be open twice. Without this the slower writer silently wins.
     base_hash = payload.get("base_hash")
     if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
+        # Refuse the write, but KEEP the work. Refusing alone is what the user
+        # experiences as "it lost my paragraph" — and these documents cannot be
+        # merged (the whole body is one CDATA line), so the honest answer is
+        # two versions and a human, which is what every other document product
+        # settled on too.
+        rescued = None
+        try:
+            document = document_format.Document.from_dict(
+                payload.get("document") or payload)
+            rescued = versions.save_conflicting_draft(
+                vault_file,
+                body=document_format.dumps(document).encode("utf-8"),
+                author=request.user)
+        except Exception:                              # noqa: BLE001
+            pass                                       # never turn a 409 into a 500
         return JsonResponse(
-            {"error": "This document changed somewhere else since you opened it.",
-             "content_hash": vault_file.content_hash}, status=409)
+            {"error": "This document changed somewhere else since you opened it. "
+                      "Your text was kept as a version so nothing is lost.",
+             "content_hash": vault_file.content_hash,
+             "kept_as_version": rescued.number if rescued else None}, status=409)
 
     document = document_format.Document.from_dict(
         payload.get("document") or payload)
