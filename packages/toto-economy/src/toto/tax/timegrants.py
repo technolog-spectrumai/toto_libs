@@ -117,6 +117,10 @@ def rows_for_user(user) -> dict:
         "rows": rows,
         "price": price,
         "total_extra_hours": round(total_extra / 3600, 4),
+        # Surfaced so the roll-up can SHOW the free part rather than only
+        # subtracting it silently — the per-row estimates stay marginal, so
+        # without this the total looks arbitrarily smaller than the rows.
+        "allowance_hours": round(allowance_seconds / 3600, 4),
         "total_estimate": _estimate(price, billable_extra),
     }
 

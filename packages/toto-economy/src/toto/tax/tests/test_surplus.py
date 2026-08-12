@@ -50,6 +50,15 @@ class ModelTests(TestCase):
 
 
 class DeskTests(TestCase):
+    """The holding fee, edited on the asset it belongs to.
+
+    It used to be the bottom half of a page called "Allowances" whose top half
+    configured levy allowances — two unrelated objects behind one save button,
+    which is why saving one felt like it might touch the other. A holding fee is
+    keyed by ASSET, so unlike a levy allowance it cannot live on a metered
+    thing; it lives on the asset, with everything else true of that asset.
+    """
+
     @classmethod
     def setUpTestData(cls):
         from toto.core.models import Platform
@@ -64,18 +73,19 @@ class DeskTests(TestCase):
     def setUp(self):
         self.asset = make_gas_asset(decimals=9)
 
+    def _url(self):
+        return reverse("tax:holding_fee_set", args=[self.asset.pk])
+
     def test_staff_only(self):
         self.client.force_login(self.alice)
-        self.assertEqual(self.client.get(reverse("tax:rules")).status_code, 403)
+        self.assertEqual(self.client.post(self._url(), {}).status_code, 403)
 
     def test_create_update_and_delete_policy(self):
         self.client.force_login(self.staff)
 
-        response = self.client.post(reverse("tax:rules"), {
-            f"threshold__{self.asset.pk}": "100",
-            f"rate_pct__{self.asset.pk}": "2",
-            f"period__{self.asset.pk}": "monthly",
-            f"surplus_active__{self.asset.pk}": "on",
+        response = self.client.post(self._url(), {
+            "threshold": "100", "rate_pct": "2",
+            "period": "monthly", "active": "on",
         })
         self.assertEqual(response.status_code, 302)
         policy = SurplusPolicy.objects.get(asset=self.asset)
@@ -83,43 +93,42 @@ class DeskTests(TestCase):
         self.assertEqual(policy.threshold_base_units, 100 * ASR)
         self.assertEqual(policy.period, "monthly")
 
-        # Blank threshold deletes.
-        self.client.post(reverse("tax:rules"), {
-            f"threshold__{self.asset.pk}": "",
-        })
+        # Blank threshold still deletes — the rule the grid used, kept so an
+        # operator's muscle memory survives the move.
+        self.client.post(self._url(), {"threshold": ""})
         self.assertFalse(SurplusPolicy.objects.exists())
 
     def test_bad_rate_is_rejected_without_a_write(self):
         self.client.force_login(self.staff)
 
-        response = self.client.post(reverse("tax:rules"), {
-            f"threshold__{self.asset.pk}": "100",
-            f"rate_pct__{self.asset.pk}": "30",
-            f"period__{self.asset.pk}": "monthly",
+        response = self.client.post(self._url(), {
+            "threshold": "100", "rate_pct": "30", "period": "monthly",
         })
 
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, 302)  # back to the asset, with an error
         self.assertFalse(SurplusPolicy.objects.exists())
 
-    def test_both_grids_post_together(self):
+    def test_the_two_objects_are_saved_separately(self):
+        """One save button used to write a levy allowance AND a holding fee.
+
+        They are different objects with different keys — a metric code and an
+        asset — so they are now two forms on two pages, and writing one cannot
+        touch the other.
+        """
         from ..models import TaxRule
 
         TaxRule.objects.create(metric_code="storage.gb_day",
                                allowance=Decimal("1"), unit_label="GB")
         self.client.force_login(self.staff)
 
-        response = self.client.post(reverse("tax:rules"), {
-            "allowance__storage.gb_day": "3",
-            "active__storage.gb_day": "on",
-            f"threshold__{self.asset.pk}": "50",
-            f"rate_pct__{self.asset.pk}": "1",
-            f"period__{self.asset.pk}": "weekly",
-            f"surplus_active__{self.asset.pk}": "on",
+        self.client.post(self._url(), {
+            "threshold": "50", "rate_pct": "1", "period": "weekly", "active": "on",
         })
 
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(SurplusPolicy.objects.get(asset=self.asset).period, "weekly")
+        # Untouched by the holding-fee save.
         self.assertEqual(TaxRule.objects.get(metric_code="storage.gb_day").allowance,
-                         Decimal("3"))
+                         Decimal("1"))
         self.assertEqual(SurplusPolicy.objects.get(asset=self.asset).period, "weekly")
 
 
@@ -341,24 +350,43 @@ class VisibilityTests(TestCase):
         fee_map = surplus.wallet_fee_map(self.alice)
         self.assertIn(self.asset.pk, fee_map)
 
-    def test_my_levies_renders_the_community_section(self):
+    def test_the_fee_reads_on_the_asset_it_is_charged_in(self):
+        """It was on a page listing every levy; it belongs to the asset."""
         self.client.force_login(self.alice)
-        content = self.client.get(reverse("tax:my_levies")).content.decode()
-        self.assertIn("Community fee", content)
+        content = self.client.get(
+            reverse("assets:asset_detail", args=[self.asset.pk])).content.decode()
+        self.assertIn("Holding fee", content)
         self.assertIn("prevents idle accounts", content)
 
     def test_wallet_renders_the_fee_line(self):
         self.client.force_login(self.alice)
         content = self.client.get(reverse("assets:wallet")).content.decode()
-        self.assertIn("Community fee", content)
+        self.assertIn("Community fee", content)  # the wallet hint keeps its wording
 
-    def test_asset_detail_plugin_present_only_with_a_policy(self):
+    def test_a_member_sees_the_section_only_while_it_charges(self):
         url = reverse("assets:asset_detail", args=[self.asset.pk])
+        self.client.force_login(self.alice)
         content = self.client.get(url).content.decode()
-        self.assertIn("Community fee", content)
+        self.assertIn("Holding fee", content)
         self.assertIn("prevents idle accounts", content)
 
         self.policy.active = False
         self.policy.save()
-        content = self.client.get(url).content.decode()
-        self.assertNotIn("Community fee", content)
+        self.assertNotIn("Holding fee", self.client.get(url).content.decode())
+
+    def test_staff_see_the_section_even_with_no_fee_at_all(self):
+        """Otherwise there is nowhere to create one.
+
+        The old allowances desk was the only screen that could, and a PAUSED
+        fee vanished from the one page that could un-pause it.
+        """
+        from toto.tax.models import SurplusPolicy
+
+        staff = make_user("fee-staff", is_staff=True)
+        SurplusPolicy.objects.all().delete()
+        self.client.force_login(staff)
+        content = self.client.get(
+            reverse("assets:asset_detail", args=[self.asset.pk])).content.decode()
+        self.assertIn("Holding fee", content)
+        self.assertIn("No holding fee on this asset", content)
+        self.assertIn(reverse("tax:holding_fee_set", args=[self.asset.pk]), content)

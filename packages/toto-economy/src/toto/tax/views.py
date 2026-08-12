@@ -1,78 +1,33 @@
-"""The two levy screens: yours, and the staff desk for allowances.
+"""What is left of this app's own screens: the one door every time dial writes
+through, and the redirects that keep old links alive.
 
-Prices are deliberately not editable here — the rate desk at /quota/rates/ is
-the one place a number becomes a charge, and this page links to it. What the
-desk cannot express is the allowance, which is this app's own knob.
+There were three pages here — my levies, the allowances desk, and the demurrage
+tab — and all three were organised by MODEL rather than by the thing being
+metered. A levy needed two of them plus a third in another app to configure, and
+none was sufficient alone: the allowance lived here, the price on the rate desk,
+and filling in only one produced a levy that looked armed and charged nothing.
+
+Every one of those knobs now sits on the metered thing it belongs to, at
+``quota:metric_detail``. The dial roll-up is a section of ``time.hold``; a
+levy's allowance is a field on the levied thing. What could not move is
+:func:`time_grant_set`: it is the single POST target for every Time card in
+every app, so it stays exactly where it was, at the URL they already post to.
 """
 
 from __future__ import annotations
 
-from decimal import Decimal, InvalidOperation
-
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.db import transaction
-from django.shortcuts import redirect, render
-from django.urls import reverse
+from django.shortcuts import redirect
 from django.utils.http import url_has_allowed_host_and_scheme
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
-
-from toto.quota import rates
-from toto.quota.levy import registry as levy_registry
-from toto.quota.metrics import registry as metric_registry
-from toto.ui import PageProcessor
-
-from . import services
-from .models import TaxRule
-
-
-def _render(request, template, context):
-    return render(request, template, PageProcessor().decorate(context, request))
 
 
 def _staff_only(request):
     if not request.user.is_staff:
         raise PermissionDenied
-
-
-@login_required
-def my_levies(request):
-    """What you hold, what of it is free, and what tonight's levy will cost."""
-    from . import surplus
-
-    return _render(request, "tax/my_levies.html", {
-        "rows": services.estimate_for_user(request.user),
-        "community_rows": surplus.estimate_for_user(request.user),
-        "wallet_url": rates.wallet_url(),
-        "balance": rates.balance_of(request.user),
-    })
-
-
-@login_required
-def demurrage(request):
-    """Every raised time dial you hold, what it costs per day, and the edits.
-
-    The central editor — the per-app Time cards are thin because full editing
-    lives here, and every card posts to the same door (time_grant_set)."""
-    from . import services, timegrants
-    from .models import ArrearsStatus, TaxArrearsCase, TaxRule
-
-    data = timegrants.rows_for_user(request.user)
-    hold_rule = TaxRule.objects.filter(metric_code="time.hold").first()
-    case = None
-    if hold_rule is not None:
-        case = (TaxArrearsCase.objects
-                .filter(user=request.user, rule=hold_rule,
-                        status__in=[ArrearsStatus.OPEN, ArrearsStatus.WARNED])
-                .first())
-    return _render(request, "tax/demurrage.html", {
-        **data,
-        "case": case,
-        "wallet_url": rates.wallet_url(),
-        "balance": rates.balance_of(request.user),
-    })
 
 
 @login_required
@@ -110,172 +65,100 @@ def time_grant_set(request):
             next_url, allowed_hosts={request.get_host()},
             require_https=request.is_secure()):
         return redirect(next_url)
-    return redirect("tax:demurrage")
+    # The dial roll-up lives on the thing that bills held time.
+    return redirect("quota:metric_detail", code="time.hold")
+
+
+# ---------------------------------------------------------------------------
+# Retired pages
+# ---------------------------------------------------------------------------
+# my_levies, demurrage and rules are gone as destinations, not as features. Each
+# was one model's CRUD screen; what they edited now lives on the metered thing.
+# These redirects exist because a live host has them bookmarked, they are named
+# in the manual, and `next=` on a dial form could still carry one.
+
+
+@login_required
+def my_levies(request):
+    """Superseded by the metered things themselves — every levy is one of them."""
+    return redirect("quota:index")
+
+
+@login_required
+def demurrage(request):
+    """Superseded by the ``time.hold`` thing, which carries the dial roll-up."""
+    return redirect("quota:metric_detail", code="time.hold")
 
 
 @login_required
 def rules(request):
-    """One row per registered levy provider: its rule, allowance and price."""
+    """Superseded: an allowance is a field on the thing it makes free."""
     _staff_only(request)
-
-    if request.method == "POST":
-        plan, errors = _parse_rules(request.POST)
-        surplus_plan, surplus_errors = _parse_surplus(request.POST)
-        if errors or surplus_errors:
-            for message in [*errors, *surplus_errors]:
-                messages.error(request, message)
-        else:
-            with transaction.atomic():
-                _apply_rules(plan)
-                _apply_surplus(surplus_plan)
-            messages.success(request, _("Allowances saved."))
-            return redirect("tax:rules")
-
-    card = rates.rate_card()
-    rules_by_code = {rule.metric_code: rule for rule in TaxRule.objects.all()}
-    rows = []
-    for provider in levy_registry.all():
-        metric = metric_registry.get(provider.metric_code)
-        rows.append({
-            "provider": provider,
-            "metric": metric,
-            "rule": rules_by_code.get(provider.metric_code),
-            "price": card.get(provider.metric_code),
-        })
-    return _render(request, "tax/rules.html", {
-        "rows": rows,
-        "rate_desk_url": reverse("quota:rate_desk"),
-        "price_asset": rates.price_asset_symbol(),
-        "surplus_rows": _surplus_rows(),
-        "surplus_periods": _surplus_period_choices(),
-    })
+    return redirect("quota:index")
 
 
-def _surplus_period_choices():
-    from .models import SurplusPeriod
+@login_required
+@require_POST
+def holding_fee_set(request, asset_id: int):
+    """Set (or clear) one asset's holding fee.
 
-    return SurplusPeriod.choices
+    A holding fee is a property of an ASSET — a share of what you hold above a
+    threshold — so it is edited on the asset, beside everything else that is
+    true of that asset. It used to be the bottom half of a page called
+    "Allowances" whose top half configured something else entirely: the free
+    allowances of recurring levies, which are keyed by metric and now live on
+    the metered things themselves. Two grids, two objects, one screen, one save
+    button; splitting them is the point.
 
+    Blank threshold deletes the policy — the rule the grid already used, kept so
+    an operator's muscle memory survives the move.
+    """
+    from decimal import Decimal, InvalidOperation
 
-def _surplus_rows():
-    """One row per active asset — the tax is on holdings, so every asset is
-    armable; staff choosing which to arm IS the filter."""
+    from django.shortcuts import get_object_or_404
+
     from toto.assets.models import Asset
 
-    from .models import SurplusPolicy
+    from .models import SurplusPeriod, SurplusPolicy
 
-    policies = {p.asset_id: p for p in SurplusPolicy.objects.all()}
-    rows = []
-    for asset in Asset.objects.filter(active=True).order_by("unit_name"):
-        policy = policies.get(asset.pk)
-        from .surplus import rate_pct_text
+    _staff_only(request)
+    asset = get_object_or_404(Asset, pk=asset_id)
+    back = redirect("assets:asset_detail", pk=asset.pk)
 
-        rows.append({
-            "asset": asset,
-            "policy": policy,
-            # The grid speaks PERCENT; the model stores the fraction.
-            "rate_pct": rate_pct_text(policy.rate) if policy else "",
-        })
-    return rows
+    raw_threshold = (request.POST.get("threshold") or "").strip()
+    if raw_threshold == "":
+        SurplusPolicy.objects.filter(asset=asset).delete()
+        messages.success(request, _("Holding fee removed."))
+        return back
 
+    try:
+        threshold = Decimal(raw_threshold)
+        rate_pct = Decimal((request.POST.get("rate_pct") or "0").strip() or "0")
+    except (InvalidOperation, ValueError):
+        messages.error(request, _("The threshold and rate must be numbers."))
+        return back
+    if threshold < 0:
+        messages.error(request, _("The threshold cannot be negative."))
+        return back
+    # Percent in the UI, fraction in the database — one conversion, in one
+    # place. The model's own validator checks the fraction and was never
+    # reached from the grid, which had no ModelForm; this bound stays here and
+    # the two now agree because there is only one writer.
+    if not (Decimal("0") <= rate_pct <= Decimal("25")):
+        messages.error(request, _("The rate must be between 0 and 25 percent."))
+        return back
+    period = (request.POST.get("period") or "").strip()
+    if period not in SurplusPeriod.values:
+        messages.error(request, _("Pick a period."))
+        return back
 
-def _parse_rules(post):
-    """Read the whole grid before writing any of it — the rate-desk shape."""
-    plan, errors = [], []
-    for provider in levy_registry.all():
-        code = provider.metric_code
-        key = f"allowance__{code}"
-        if key not in post:
-            continue
-        raw = (post.get(key) or "").strip()
-        try:
-            allowance = Decimal(raw) if raw != "" else Decimal("0")
-        except (InvalidOperation, ValueError):
-            errors.append(_("%(code)s: %(value)r is not a number.")
-                          % {"code": code, "value": raw})
-            continue
-        if allowance < 0:
-            errors.append(_("%(code)s: an allowance cannot be negative.") % {"code": code})
-            continue
-        plan.append({
-            "code": code,
-            "allowance": allowance,
-            "active": bool(post.get(f"active__{code}")),
-        })
-    return plan, errors
-
-
-def _apply_rules(plan):
-    """Write a validated plan. Caller owns the transaction."""
-    for entry in plan:
-        rule = TaxRule.objects.filter(metric_code=entry["code"]).first()
-        if rule is None:
-            rule = TaxRule(metric_code=entry["code"])
-        rule.allowance = entry["allowance"]
-        rule.active = entry["active"]
-        rule.save()
-
-
-def _parse_surplus(post):
-    """The community-fee grid: read the whole thing before writing any of it.
-    Key absent = row not rendered, leave alone; blank threshold = delete the
-    policy; valued = upsert. Rates are typed as percent, stored as fraction."""
-    from .models import SurplusPeriod
-
-    plan, errors = [], []
-    from toto.assets.models import Asset
-
-    for asset in Asset.objects.filter(active=True):
-        key = f"threshold__{asset.pk}"
-        if key not in post:
-            continue
-        raw_threshold = (post.get(key) or "").strip()
-        if raw_threshold == "":
-            plan.append({"asset": asset, "delete": True})
-            continue
-        raw_rate = (post.get(f"rate_pct__{asset.pk}") or "").strip()
-        period = (post.get(f"period__{asset.pk}") or "").strip()
-        try:
-            threshold = Decimal(raw_threshold)
-            rate_pct = Decimal(raw_rate or "0")
-        except (InvalidOperation, ValueError):
-            errors.append(_("%(asset)s: the threshold and rate must be numbers.")
-                          % {"asset": asset.unit_name})
-            continue
-        if threshold < 0:
-            errors.append(_("%(asset)s: the threshold cannot be negative.")
-                          % {"asset": asset.unit_name})
-            continue
-        if not (Decimal("0") <= rate_pct <= Decimal("25")):
-            errors.append(_("%(asset)s: the rate must be between 0 and 25 percent.")
-                          % {"asset": asset.unit_name})
-            continue
-        if period not in SurplusPeriod.values:
-            errors.append(_("%(asset)s: pick a period.") % {"asset": asset.unit_name})
-            continue
-        plan.append({
-            "asset": asset, "delete": False,
-            "threshold": threshold,
-            "rate": rate_pct / Decimal("100"),
-            "period": period,
-            "active": bool(post.get(f"surplus_active__{asset.pk}")),
-        })
-    return plan, errors
-
-
-def _apply_surplus(plan):
-    """Write a validated community-fee plan. Caller owns the transaction."""
-    from .models import SurplusPolicy
-
-    for entry in plan:
-        if entry["delete"]:
-            SurplusPolicy.objects.filter(asset=entry["asset"]).delete()
-            continue
-        policy = SurplusPolicy.objects.filter(asset=entry["asset"]).first()
-        if policy is None:
-            policy = SurplusPolicy(asset=entry["asset"])
-        policy.threshold_display = entry["threshold"]
-        policy.rate = entry["rate"]
-        policy.period = entry["period"]
-        policy.active = entry["active"]
-        policy.save()
+    # Built unsaved rather than get_or_create: threshold_display is NOT NULL,
+    # so the implicit INSERT would fail before the fields are assigned.
+    policy = SurplusPolicy.objects.filter(asset=asset).first() or SurplusPolicy(asset=asset)
+    policy.threshold_display = threshold
+    policy.rate = rate_pct / Decimal("100")
+    policy.period = period
+    policy.active = bool(request.POST.get("active"))
+    policy.save()
+    messages.success(request, _("Holding fee saved."))
+    return back

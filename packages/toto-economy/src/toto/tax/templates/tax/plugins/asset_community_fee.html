@@ -1,25 +1,90 @@
 {% load i18n %}
+{% comment %}The holding fee, on the asset it is a property of.
+
+   A holding fee is keyed by ASSET — a share of what you hold above a threshold
+   — so unlike a levy allowance it cannot live on a metered thing. It lives
+   here, where everything else true of this asset lives, and staff edit it in
+   place. It used to be the bottom half of a page called "Allowances" whose top
+   half configured levy allowances: two unrelated objects, one save button.
+
+   A member sees the section only when the fee is ACTIVE. Staff always see it,
+   so one can be created — and so a paused fee does not vanish from the only
+   page that could un-pause it.{% endcomment %}
 <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      class="rounded-xl border shadow-sm overflow-hidden">
   <div class="flex items-center justify-between border-b px-5 py-4"
        :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
     <h2 class="font-semibold flex items-center gap-2">
       <i class="{{ asset_plugin_icon }} opacity-60"></i>
-      {% trans "Community fee" %}
+      {% trans "Holding fee" %}
+      {% if fee_policy and not fee_active %}
+        <span class="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold opacity-70">
+          {% trans "paused" %}</span>
+      {% endif %}
     </h2>
-    <span class="text-xs opacity-60 font-mono">
-      {{ fee_rate_pct }}% / {{ fee_policy.period }}
-    </span>
+    {% if fee_policy %}
+      <span class="text-xs opacity-60 font-mono">{{ fee_rate_pct }}% / {{ fee_policy.period }}</span>
+    {% endif %}
   </div>
-  <div class="px-5 py-5 space-y-2 text-sm">
-    <p class="leading-6 opacity-80">
-      {% blocktrans with threshold=fee_threshold unit=fee_policy.asset.unit_name rate=fee_rate_pct period=fee_policy.period %}Holdings above {{ threshold }} {{ unit }} are charged {{ rate }}% per {{ period }}, automatically, in the same currency — taken from the largest holding first.{% endblocktrans %}
-      <span class="font-semibold">{% trans "It prevents idle accounts: money should move." %}</span>
-    </p>
-    {% if fee_mine %}
-      <p class="text-xs opacity-70">
-        {% blocktrans with total=fee_mine.total|floatformat:"-9" surplus=fee_mine.surplus|floatformat:"-9" estimate=fee_mine.estimate|floatformat:"-9" unit=fee_policy.asset.unit_name period=fee_policy.period %}You hold {{ total }} {{ unit }} — surplus {{ surplus }}, next fee ≈ {{ estimate }} {{ unit }} / {{ period }}.{% endblocktrans %}
+
+  <div class="px-5 py-5 space-y-3 text-sm">
+    {% if fee_policy %}
+      <p class="leading-6 opacity-80">
+        {% blocktrans with threshold=fee_threshold unit=fee_asset.unit_name rate=fee_rate_pct period=fee_policy.period %}Holdings above {{ threshold }} {{ unit }} are charged {{ rate }}% per {{ period }}, automatically, in the same currency — taken from the largest holding first.{% endblocktrans %}
+        <span class="font-semibold">{% trans "It prevents idle accounts: money should move." %}</span>
       </p>
+      {% if fee_mine %}
+        <p class="text-xs opacity-70">
+          {% blocktrans with total=fee_mine.total|floatformat:"-9" surplus=fee_mine.surplus|floatformat:"-9" estimate=fee_mine.estimate|floatformat:"-9" unit=fee_asset.unit_name period=fee_policy.period %}You hold {{ total }} {{ unit }} — surplus {{ surplus }}, next fee ≈ {{ estimate }} {{ unit }} / {{ period }}.{% endblocktrans %}
+        </p>
+      {% endif %}
+    {% elif fee_can_edit %}
+      <p class="leading-6 opacity-70">
+        {% trans "No holding fee on this asset — nothing is charged for holding it." %}</p>
+    {% endif %}
+
+    {% if fee_can_edit %}
+      <form method="post" action="{% url 'tax:holding_fee_set' asset_id=fee_asset.pk %}"
+            class="space-y-3 border-t border-current/10 pt-4">
+        {% csrf_token %}
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+          {% trans "Set the holding fee" %}</p>
+        <div class="flex flex-wrap items-end gap-3">
+          <label class="text-xs">
+            <span class="mb-1 block opacity-60">{% trans "Free below" %}</span>
+            <input type="text" inputmode="decimal" name="threshold" value="{{ fee_threshold }}"
+                   placeholder="{% trans 'none' %}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-28 rounded border px-2 py-1 font-mono">
+          </label>
+          <label class="text-xs">
+            <span class="mb-1 block opacity-60">{% trans "Rate %" %}</span>
+            <input type="text" inputmode="decimal" name="rate_pct" value="{{ fee_rate_pct }}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-20 rounded border px-2 py-1 font-mono">
+          </label>
+          <label class="text-xs">
+            <span class="mb-1 block opacity-60">{% trans "Every" %}</span>
+            <select name="period"
+                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                    class="rounded border px-2 py-1">
+              {% for value, label in fee_periods %}
+                <option value="{{ value }}" {% if fee_period == value %}selected{% endif %}>{{ label }}</option>
+              {% endfor %}
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="active" {% if fee_active or not fee_policy %}checked{% endif %}>
+            {% trans "Charging" %}
+          </label>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+            {% trans "Save" %}</button>
+        </div>
+        <p class="text-[11px] opacity-55">
+          {% trans "Leave the threshold empty to remove the fee entirely. The rate is a percentage, between 0 and 25." %}</p>
+      </form>
     {% endif %}
   </div>
 </div>

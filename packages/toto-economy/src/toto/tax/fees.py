@@ -21,7 +21,7 @@ class CommunityFee(FeeSource):
     description = _(
         "A periodic percentage of holdings above a threshold, deducted in the "
         "same asset it is held in.")
-    settings_url = "tax:rules"
+    settings_url = "quota:index"
     icon = "fa-solid fa-scale-balanced"
 
 
