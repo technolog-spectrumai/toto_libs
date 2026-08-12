@@ -134,54 +134,31 @@ def _effective_price_per_unit(item) -> Decimal:
 
 def get_tariff_for_user(user, app_label: str) -> "Tariff | None":
     """
-    Find the best (lowest effective rate) active Tariff for this user and app.
+    Find the Tariff that binds this user for this app.
 
     Resolution order:
-      1. Community-specific tariffs across all of the user's active communities —
-         pick the one with the lowest effective price for the first active item
-         that matches app_label.
-      2. Platform-default tariff: source_type="" or source_type="platform",
-         code starts with app_label.
-      3. None — caller decides whether to proceed or block.
+      1. Platform-default tariff: source_type "" or "platform".
+      2. Any active tariff with a matching item — the last-resort fallback.
 
-    Comparison is asset-aware: only tariffs charging in the same asset as the
-    user's prepaid account are considered comparable.  Tariffs in a different
-    asset are still returned if no same-asset tariff exists.
+    **There is no per-user or per-community branch, deliberately.** Prices do
+    not vary by who is asking: one rate card, one treasury, and what varies is
+    the QUANTITY a levy reports (a community's head weight) and the LIMIT a
+    person may reach (an office's headroom). A price that changed per payer
+    would put a second, thinner rating mechanism beside this one and make "what
+    does this cost" a question with no single answer.
+
+    History worth knowing: there WAS a community branch, and it was dead code
+    from the day it was written. It filtered ``person.communities.filter(
+    is_active=True)`` — a field ``Community`` has never had — so it raised
+    FieldError on every call, swallowed by a bare ``except Exception``, and no
+    community tariff ever applied to anybody on any host. It also matched items
+    by metric-code PREFIX while every other branch matches
+    ``metric__app_label``, so it could not have resolved for vault even if it
+    ran. Nothing depended on it, because nothing could.
     """
     from toto.tariffs.models import Tariff, TariffStatus
 
-    # 1. Collect community-specific tariffs
-    community_tariffs: list["Tariff"] = []
-    try:
-        person = user.community_profile
-        communities = person.communities.filter(is_active=True) if hasattr(person.communities, 'filter') else person.communities.all()
-        for community in communities:
-            qs = Tariff.objects.filter(
-                status=TariffStatus.ACTIVE,
-                source_type="socialhub.Community",
-                source_id=str(community.pk),
-            ).filter(
-                items__metric__code__startswith=app_label.split(".")[0],
-                items__active=True,
-            ).distinct()
-            community_tariffs.extend(qs)
-    except Exception:
-        pass
-
-    if community_tariffs:
-        # Sort by lowest effective price on any item matching app_label
-        def _min_price(tariff):
-            items = tariff.active_items.filter(
-                metric__code__startswith=app_label.split(".")[0]
-            )
-            if not items.exists():
-                return Decimal("999999999")
-            return min(_effective_price_per_unit(i) for i in items)
-
-        community_tariffs.sort(key=_min_price)
-        return community_tariffs[0]
-
-    # 2. Platform default
+    # 1. Platform default
     platform_tariff = (
         Tariff.objects
         .filter(status=TariffStatus.ACTIVE)
@@ -193,7 +170,7 @@ def get_tariff_for_user(user, app_label: str) -> "Tariff | None":
     if platform_tariff:
         return platform_tariff
 
-    # 3. Fallback: any active tariff with matching metric app_label
+    # 2. Fallback: any active tariff with matching metric app_label
     return (
         Tariff.objects
         .filter(status=TariffStatus.ACTIVE, items__metric__app_label=app_label, items__active=True)

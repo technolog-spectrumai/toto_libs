@@ -1,7 +1,9 @@
 import random
 import uuid
+from decimal import Decimal
 
 from django.contrib.auth.models import User
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.urls import reverse
 from django.utils.html import strip_tags
@@ -77,7 +79,14 @@ class Community(DomainEntity):
                                      help_text="Indicates whether this federation originates outside the local jurisdiction")
     is_federal_tribe = models.BooleanField(
         default=False,
-        help_text="Members of this community are exempt from all poll taxes (federal tax exemption).",
+        help_text=(
+            "DEPRECATED as a live flag. It promised 'members are exempt from "
+            "all poll taxes' for years while no poll tax existed; there is one "
+            "now, and what a community's members owe is its CommunityPrivilege "
+            "head_weight (0 is the exemption this always meant). Kept because "
+            "aurelian's mobilization app reads it by name for responder "
+            "eligibility. Retiring it is an aurelian follow-up."
+        ),
     )
     def __str__(self):
         return self.name
@@ -109,6 +118,204 @@ class Community(DomainEntity):
         on_delete=models.SET_NULL,
         related_name="communities"
     )
+
+
+class CommunityPrivilege(models.Model):
+    """What one community grants its members. First-class, and ADMIN-ONLY.
+
+    A community GRANTS; a person HOLDS the union across every community they
+    belong to — **highest privilege always**. That is the granting mechanism,
+    not a loophole: membership is invite-gated (``MembershipApplication`` →
+    accepted → ``communities.add`` is the only door), so admitting someone to a
+    community *is* the grant and expelling them *is* the revocation.
+
+    **Rights are held by institutions, never by persons.** A community grants to
+    every member; a :class:`Station` grants to whoever currently holds it. A
+    person's rights are the union of the communities they belong to and the
+    offices they hold, and both are revoked the same way — leave the community,
+    or vacate the office. There is no way to give one named individual a right
+    that their successor will not inherit, and that is the whole rule.
+
+    **Never rendered outside Django admin.** No page shows or edits these — not
+    the community page, not the profile, not the metering pages. The gates that
+    consume them simply work or refuse. Admin is the one editor, which is why
+    this is its own model rather than booleans on ``Community``: one changelist
+    of every grant on the platform, filterable and bulk-editable, instead of
+    flags scattered through a 30-field community form.
+
+    A community without a row grants nothing and taxes at the ordinary rate —
+    the commoner default, free to resolve.
+
+    Each flag is honoured somewhere concrete — ``PRIVILEGES.md`` maps every
+    field to the gate that reads it, and :mod:`toto.socialhub.privileges` is the
+    ONE resolver everything asks.
+    """
+
+    community = models.OneToOneField(
+        Community, on_delete=models.CASCADE, related_name="privilege")
+
+    head_weight = models.DecimalField(
+        max_digits=6, decimal_places=2, default=Decimal("1"),
+        help_text=(
+            "How many heads a member of this community counts as when the "
+            "federal head tax is levied. 1 is ordinary; 0 exempts them "
+            "entirely; 2 or 3 says this community is trusted less. Across "
+            "several communities the LOWEST weight wins — belonging to a good "
+            "community is what makes you cheap to tax. The tax itself is "
+            "federal: this sets what a member owes, never who receives it."
+        ),
+    )
+    may_see_community_chain = models.BooleanField(
+        default=False,
+        help_text="Members may open the platform-wide community chain graph.",
+    )
+    may_administer_communities = models.BooleanField(
+        default=False,
+        help_text="Members may open the Administrata view of any community.",
+    )
+    may_manage_community_news = models.BooleanField(
+        default=False,
+        help_text=(
+            "Members may publish news in ANY community, without being its "
+            "head or a senior member."
+        ),
+    )
+    may_operate_mint = models.BooleanField(
+        default=False,
+        help_text=(
+            "Members may operate the mint on a host that IS the monetary "
+            "master. This does not grant minting authority: the master check "
+            "asks whether the MACHINE holds an issuer private key and takes "
+            "no user argument, so on a branch host this still refuses."
+        ),
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["community__name"]
+
+    def __str__(self):
+        return f"privileges of {self.community.name}"
+
+
+class Station(models.Model):
+    """A federal office — persistent, named, and larger than whoever holds it.
+
+    The office exists whether or not anyone holds it; holders change, the office
+    does not. Where a community grants to all its members, a station grants to
+    its one current holder, and vacating it revokes exactly as leaving a
+    community does. Both are institutions; neither is a person.
+
+    **Every station is federal.** ``serves`` records which community an office
+    works FOR, never who pays it: the federal treasury pays every stipend, is
+    appointed from Django admin, and lists every office on one roster. A
+    community that paid its own officers would be a community with its own
+    budget, its own payroll and its own loyalty — so the design does not offer
+    that, and a community that wants an office funded asks the federation for
+    it, informally, and an admin creates one here.
+
+    The constitution this platform seeds has promised these for as long as it
+    has existed — *"Executive decisions may be delegated to appointed
+    Magistrates"* — and :func:`toto.people.civic.is_committed_citizen` has
+    promised "eligibility for non-enforcement public roles" for just as long.
+    This is that office, and citizenship is what qualifies a holder for it.
+
+    **The roster is public; the capabilities are not.** Which offices exist, what
+    they are for and who holds them are the point of an institution and render
+    freely. What an office GRANTS and what it PAYS stay in admin, exactly as
+    :class:`CommunityPrivilege` does.
+    """
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(unique=True, blank=True)
+    charter = models.TextField(
+        blank=True,
+        help_text="What this office is responsible for. Shown on the public roster.",
+    )
+    holder = models.ForeignKey(
+        "people.Person", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stations",
+        help_text="Empty means VACANT: the office keeps existing and pays nobody.",
+    )
+    serves = models.ForeignKey(
+        Community, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="stations",
+        help_text=(
+            "Which community this office works for, if any. Attribution only — "
+            "the federal treasury pays every station and a community never "
+            "pays anyone."
+        ),
+    )
+    since = models.DateField(
+        null=True, blank=True,
+        help_text="When the current holder took office.",
+    )
+    active = models.BooleanField(default=True)
+
+    # ---- capabilities: ADMIN-ONLY, rendered nowhere -----------------------
+    may_see_community_chain = models.BooleanField(default=False)
+    may_administer_communities = models.BooleanField(default=False)
+    may_manage_community_news = models.BooleanField(default=False)
+    may_operate_mint = models.BooleanField(default=False)
+
+    limit_multiplier = models.DecimalField(
+        max_digits=8, decimal_places=2, default=Decimal("1"),
+        help_text=(
+            "Multiplies every quota limit for the holder, so an office has the "
+            "headroom its work needs. HEADROOM ONLY: prices and the head tax "
+            "are untouched, and a holder pays exactly what anyone else pays "
+            "for the same action."
+        ),
+    )
+    stipend = models.DecimalField(
+        max_digits=30, decimal_places=10, default=Decimal("0"),
+        help_text=(
+            "Paid per period by the federal treasury, in the host's billing "
+            "asset. 0 is an unpaid office, which is an ordinary thing to be."
+        ),
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["serves__name", "name"]
+
+    def __str__(self):
+        return self.name
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            base = slugify(self.name) or "station"
+            slug, n = base, 1
+            while Station.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                n += 1
+                slug = f"{base}-{n}"
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        super().clean()
+        if self.holder_id is None:
+            return
+        # A paid office must be reachable from a billing account. Person.user is
+        # nullable and nothing creates a Person on signup, so a user-less Person
+        # is an ordinary row here — and paying one is impossible rather than
+        # merely awkward: there is no account to credit.
+        if self.stipend and not self.holder.user_id:
+            raise ValidationError({
+                "holder": "A paid office needs a holder with a login — there is "
+                          "no account to pay otherwise.",
+            })
+        from toto.people.civic import is_committed_citizen
+
+        if not is_committed_citizen(self.holder):
+            raise ValidationError({
+                "holder": "Only a committed citizen may hold an office. They "
+                          "must sign a community constitution first.",
+            })
 
 
 class CommunityNewsTopic(AbstractTag):

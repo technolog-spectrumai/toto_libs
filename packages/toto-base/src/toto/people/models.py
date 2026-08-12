@@ -47,7 +47,16 @@ class Person(DomainEntity):
     phone = models.CharField(max_length=50, blank=True, null=True)
     is_federal_agent = models.BooleanField(
         default=False,
-        help_text="Federal agents are exempt from community poll taxes.",
+        help_text=(
+            "DEPRECATED as a live flag — superseded by community privileges. "
+            "It always meant two things at once: the old help text claimed an "
+            "exemption from poll taxes (never implemented), while the code "
+            "used it as a cross-community admin permission. Both live on the "
+            "seeded 'Federal Agents' community now (CommunityPrivilege), and "
+            "every holder of this flag was admitted to it by migration. Kept "
+            "only because aurelian's mobilization templates read it; retiring "
+            "it is an aurelian follow-up."
+        ),
     )
     digital_signature = models.TextField(
         blank=True,

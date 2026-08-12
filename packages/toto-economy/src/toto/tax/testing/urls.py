@@ -17,6 +17,7 @@ urlpatterns = [
     path("quota/", include("toto.quota.urls", namespace="quota")),
     path("tariffs/", include("toto.tariffs.urls", namespace="tariffs")),
     path("tax/", include("toto.tax.urls", namespace="tax")),
+    path("mint/", include("toto.mint.urls", namespace="mint")),
     # What the manual's sections reverse on this host's feature set — the
     # suite renders /manual/ to prove the storage-fee section's links resolve.
     path("assets/", include("toto.assets.urls", namespace="assets")),

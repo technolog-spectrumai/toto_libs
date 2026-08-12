@@ -23,6 +23,7 @@ from toto.socialhub.views.application import membership_application_view, applic
     verification_success_view, reference_request_view, reference_next, verify_application_view, reference_accept, \
     reference_reject
 from toto.socialhub.views.constitution import constitution_detail, constitution_sign
+from toto.socialhub.views.stations import station_list
 
 app_name = "socialhub"
 
@@ -39,6 +40,8 @@ urlpatterns = [
     path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
+    # Public: an office nobody can see is not an institution.
+    path("stations/", station_list, name="station_list"),
     path("communities/<slug:community_slug>/news/new/", community_news_create, name="community_news_create"),
     path("communities/<slug:slug>/", CommunityDetailView.as_view(), name="community_detail"),
     path("communities/<slug:slug>/administrata/", AdministrataView.as_view(), name="administrata"),

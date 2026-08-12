@@ -37,6 +37,10 @@ INSTALLED_APPS = [
     "toto.assets",
     "toto.tariffs",
     "toto.tax",
+    # For test_privileges.MintHonestyTests: may_operate_mint must admit a
+    # community member to the page and the page must still answer "not the
+    # master" — the user half and the host half of the gate, kept distinct.
+    "toto.mint",
 ]
 
 MIDDLEWARE = [

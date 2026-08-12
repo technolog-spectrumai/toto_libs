@@ -30,8 +30,19 @@ from .summary import chain_summary, currency_rows, history
 def _staff_only(request):
     # PermissionDenied, never a redirect: a 302 to the login page turns a
     # refusal into an HTML 200 for anything polling this.
-    if not (request.user.is_staff or request.user.is_superuser):
-        raise PermissionDenied("The mint is staff only.")
+    #
+    # may_operate_mint is the USER half of the gate and only that half.
+    # _master_only below is the host half — is_monetary_master() takes no user
+    # argument, it asks whether this MACHINE holds a decryptable issuer key —
+    # so on a branch host the privilege still refuses with NotTheMaster. The
+    # privilege admits a person to the button; it cannot make the button work.
+    if request.user.is_staff or request.user.is_superuser:
+        return
+    from toto.socialhub.privileges import has_privilege
+
+    if has_privilege(request.user, "may_operate_mint"):
+        return
+    raise PermissionDenied("The mint is staff only.")
 
 
 def _master_only(request):

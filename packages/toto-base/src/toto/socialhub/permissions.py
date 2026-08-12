@@ -26,4 +26,12 @@ def can_manage_community_news(request, community):
     if community.head_id == person.pk:
         return True
 
-    return community.senior_members.filter(pk=person.pk).exists()
+    if community.senior_members.filter(pk=person.pk).exists():
+        return True
+
+    # A community privilege reaches ACROSS communities: membership of any
+    # community granting may_manage_community_news publishes anywhere. Checked
+    # last because it is the rarest and costs a query.
+    from toto.socialhub import privileges
+
+    return privileges.has_privilege(request.user, "may_manage_community_news")

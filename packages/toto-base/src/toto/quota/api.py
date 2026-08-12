@@ -117,6 +117,36 @@ def get_policy(policy_model, metric_code: str, user=None):
     return base.filter(user__isnull=True).first()
 
 
+def effective_limit(policy, user=None) -> Decimal:
+    """The limit that actually applies to this user: the policy's, times the
+    headroom their offices buy them.
+
+    A :class:`~toto.socialhub.models.Station` carries a ``limit_multiplier``, so
+    an office has the room its work needs — the archivist uploads more than a
+    member because the job requires it. **Headroom only.** No price and no tax
+    reads this: a holder pays exactly what anyone else pays for the same action,
+    which is the whole of "extra limits, same taxes".
+
+    Read through one function rather than at each comparison so the answer
+    cannot drift between what a page displays and what the gate enforces.
+    Degrades to the plain limit on any failure, and never raises: a quota check
+    that blew up on a missing socialhub row would take down every metered
+    action on the host.
+    """
+    limit = Decimal(policy.limit)
+    if user is None or not getattr(user, "pk", None):
+        return limit
+    try:
+        from toto.socialhub import privileges
+
+        multiplier = privileges.limit_multiplier_for(user)
+    except Exception:  # noqa: BLE001 - no office is the commoner answer
+        return limit
+    if multiplier == 1:
+        return limit
+    return limit * Decimal(multiplier)
+
+
 def used(policy_model, metric_code: str, user=None, *, period=Period.LIFETIME, at=None) -> Decimal:
     """How much of this metric the user has consumed in the current window."""
     events = _event_model(policy_model)
@@ -135,7 +165,7 @@ def remaining(policy_model, metric_code: str, user=None) -> Decimal | None:
     if policy is None:
         return None
     consumed = used(policy_model, metric_code, user, period=policy.period)
-    return max(Decimal("0"), Decimal(policy.limit) - consumed)
+    return max(Decimal("0"), effective_limit(policy, user) - consumed)
 
 
 # ---------------------------------------------------------------------------
@@ -152,9 +182,10 @@ def check_quota(policy_model, metric_code: str, quantity=1, user=None) -> None:
     if policy is None or policy.mode != Mode.BLOCK:
         return
 
+    limit = effective_limit(policy, user)
     consumed = used(policy_model, metric_code, user, period=policy.period)
-    if consumed + Decimal(str(quantity)) > Decimal(policy.limit):
-        raise QuotaExceeded(policy, consumed, Decimal(policy.limit))
+    if consumed + Decimal(str(quantity)) > limit:
+        raise QuotaExceeded(policy, consumed, limit)
 
 
 def record_usage(
@@ -221,7 +252,10 @@ def usage_summary(policy_model, user=None, metric_codes=None) -> list[dict]:
         policy = policies.get(code)
         period = policy.period if policy else Period.LIFETIME
         total = used(policy_model, code, user, period=period)
-        limit = Decimal(policy.limit) if policy else None
+        # The same number check_quota will enforce, office headroom included —
+        # a dashboard quoting the bare policy limit would tell a station holder
+        # they are at 100% while uploads keep succeeding.
+        limit = effective_limit(policy, user) if policy else None
         rows.append({
             "metric_code": code,
             "unit": policy.unit if policy else "",

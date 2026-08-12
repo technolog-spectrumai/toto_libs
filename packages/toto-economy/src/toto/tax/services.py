@@ -113,8 +113,15 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
     from django.contrib.auth import get_user_model
 
     samples = list(provider.sample())
-    users = get_user_model().objects.in_bulk([user_id for user_id, _raw in samples])
+    ids = [user_id for user_id, _raw in samples]
+    users = get_user_model().objects.in_bulk(ids)
 
+    # No per-user resolution happens here any more. A community's standing used
+    # to arrive as an exemption and an allowance override, both prefetched
+    # beside this in_bulk; both are gone. What a community's standing is worth
+    # is now expressed as the QUANTITY its provider reports — the head tax
+    # samples one weighted head per person — so this loop bills whatever it is
+    # handed and knows nothing about who anyone is.
     for user_id, raw in samples:
         user = users.get(user_id)
         if user is None:
@@ -148,10 +155,12 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
     return summary
 
 
-def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool, event_model) -> str:
+def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
+              event_model) -> str:
     """Levy one user for one day. Returns an :class:`Outcome` string."""
+    allowance = rule.allowance
     measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-    billable = measured - rule.allowance
+    billable = measured - allowance
     if billable <= 0:
         # Under the allowance nothing is chargeable and nothing enforceable —
         # shedding files (or a kind admin deleting them) resolves a case the
@@ -164,7 +173,7 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool, even
         unit=metric.unit,
         idempotency_key=idempotency_key(rule, user.pk, day),
         source_type="tax.TaxRule", source_id=str(rule.pk),
-        metadata={"measured_raw": raw, "allowance": str(rule.allowance)},
+        metadata={"measured_raw": raw, "allowance": str(allowance)},
     )
     if event is None:
         # Already levied today (or the write failed, which record_usage keeps
@@ -194,7 +203,7 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool, even
         case = arrears.open_or_touch_case(
             user, rule,
             stored_raw=raw,
-            allowance_raw=int(rule.allowance * provider.raw_per_unit),
+            allowance_raw=int(allowance * provider.raw_per_unit),
             shortfall=shortfall, asset=asset,
         )
         arrears.enforce_if_due(case, provider)
@@ -228,7 +237,8 @@ def estimate_for_user(user) -> list[dict]:
             continue
         raw = provider.measure(user)
         measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-        billable = max(Decimal("0"), measured - rule.allowance)
+        allowance = rule.allowance
+        billable = max(Decimal("0"), measured - allowance)
         price = card.get(rule.metric_code)
         estimate = None
         if price is not None:
@@ -253,6 +263,7 @@ def estimate_for_user(user) -> list[dict]:
             # template falls back to filesizeformat when this is None.
             "display": provider.format_raw(raw),
             "billable": billable,
+            "allowance": allowance,
             "price": price,
             "estimate": estimate,
             "case": case,

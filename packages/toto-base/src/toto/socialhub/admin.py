@@ -7,11 +7,29 @@ from .models import (
     Community,
     CommunityNewsPost,
     CommunityNewsTopic,
+    CommunityPrivilege,
     Constitution,
     ConstitutionSignature,
     MembershipApplication,
     ReferenceRequest,
+    Station,
 )
+
+
+class CommunityPrivilegeInline(admin.StackedInline):
+    """The grant, editable where the community is edited."""
+    model = CommunityPrivilege
+    can_delete = True
+    extra = 0
+
+
+class StationInline(admin.TabularInline):
+    """Offices that serve this community — listed here, paid federally."""
+    model = Station
+    fk_name = "serves"
+    extra = 0
+    fields = ("name", "holder", "active", "limit_multiplier", "stipend")
+    autocomplete_fields = ("holder",)
 
 
 @admin.register(Community)
@@ -45,6 +63,7 @@ class CommunityAdmin(TotoModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     filter_horizontal = ('senior_members',)
     autocomplete_fields = ('parent',)
+    inlines = (CommunityPrivilegeInline, StationInline)
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
@@ -154,3 +173,52 @@ class ConstitutionSignatureAdmin(TotoModelAdmin):
     @admin.display(boolean=True, description="Crypto signed")
     def is_cryptographically_signed_display(self, obj):
         return obj.is_cryptographically_signed
+
+
+@admin.register(CommunityPrivilege)
+class CommunityPrivilegeAdmin(TotoModelAdmin):
+    """The ONLY editor for what communities grant. Deliberately admin-only.
+
+    No page in the product renders or edits privileges — the gates that consume
+    them simply work or refuse, and this changelist is where an operator sees
+    every grant on the platform at once. A person holds the UNION across their
+    communities (highest privilege always), and membership is invite-gated, so
+    admitting someone to a listed community IS the grant.
+    """
+
+    list_display = ("community", "head_weight", "may_see_community_chain",
+                    "may_administer_communities", "may_manage_community_news",
+                    "may_operate_mint")
+    list_editable = ("head_weight", "may_see_community_chain",
+                     "may_administer_communities", "may_manage_community_news",
+                     "may_operate_mint")
+    list_filter = ("head_weight", "may_see_community_chain",
+                   "may_administer_communities", "may_manage_community_news",
+                   "may_operate_mint")
+    search_fields = ("community__name", "community__slug")
+    autocomplete_fields = ("community",)
+
+
+@admin.register(Station)
+class StationAdmin(TotoModelAdmin):
+    """The ONLY editor for offices — who holds one, what it grants, what it pays.
+
+    Appointing is setting `holder`; vacating is clearing it; rotation is one
+    edit. There is no election and no request workflow: a community that wants
+    an office funded asks the federation, and an admin who agrees creates the
+    row here.
+
+    Every station is federal however local its work — `serves` says who an
+    office works for, never who pays it. The public roster shows the name, the
+    charter and the holder; the capabilities, the multiplier and the stipend are
+    visible only here.
+    """
+
+    list_display = ("name", "serves", "holder", "active", "limit_multiplier",
+                    "stipend", "since")
+    list_editable = ("holder", "active", "limit_multiplier", "stipend")
+    list_filter = ("active", "serves", "may_operate_mint",
+                   "may_administer_communities")
+    search_fields = ("name", "slug", "charter", "holder__display_name")
+    prepopulated_fields = {"slug": ("name",)}
+    autocomplete_fields = ("holder", "serves")

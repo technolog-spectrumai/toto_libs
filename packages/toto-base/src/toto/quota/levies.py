@@ -207,7 +207,9 @@ def my_levy(metric_code: str, user) -> dict | None:
             "display": row["display"],
             "billable": row["billable"],
             "estimate": row["estimate"],
-            "allowance": row["rule"].allowance,
+            # The resolved, per-user value from the estimator — a community
+            # rate where one applies — not the platform rule's field.
+            "allowance": row.get("allowance", row["rule"].allowance),
             "unit_label": row["rule"].unit_label,
             # Flattened: a template holding a TaxArrearsCase is exactly what
             # this module exists to prevent.
@@ -239,3 +241,12 @@ def unpriced_levies() -> list[str]:
         if code not in card:
             out.append(code)
     return out
+
+
+# Nothing about communities crosses here any more. The per-person side of a levy
+# used to be an exemption and an allowance override, both resolved through this
+# module so `toto.tax` never imported socialhub. Both are gone: there are no
+# allowances (the free tier is the absence of a price, not a per-metric band a
+# friend can spend for you), and the head tax expresses a community's standing
+# as the QUANTITY it reports, resolved inside its own provider in socialhub —
+# which needs no façade, because it lives on the socialhub side of the line.

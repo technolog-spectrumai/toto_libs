@@ -41,8 +41,13 @@ class CommunityDetailView(DetailView):
             community=community,
             base_context=context,
         )
-        person = current_person(self.request)
-        context["viewer_is_federal_agent"] = bool(person and person.is_federal_agent)
+        from toto.socialhub import privileges
+
+        # The template flag keeps its name (it only shows the Administrata
+        # button); what grants it is a community privilege now — held by
+        # membership of a granting community, not by a flag on the person.
+        context["viewer_is_federal_agent"] = privileges.has_privilege(
+            self.request.user, "may_administer_communities")
         return context
 
 
@@ -69,8 +74,9 @@ def community_org_chart_data_by_slug(request, company_slug):
 
 
 def community_chain_graph_data(request, slug):
-    person = current_person(request)
-    if not (person and person.is_federal_agent):
+    from toto.socialhub import privileges
+
+    if not privileges.has_privilege(request.user, "may_see_community_chain"):
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
 
@@ -123,8 +129,9 @@ class AdministrataView(DetailView):
     slug_url_kwarg = "slug"
 
     def dispatch(self, request, *args, **kwargs):
-        person = current_person(request)
-        if not (person and person.is_federal_agent):
+        from toto.socialhub import privileges
+
+        if not privileges.has_privilege(request.user, "may_administer_communities"):
             from django.http import HttpResponseForbidden
             return HttpResponseForbidden()
         return super().dispatch(request, *args, **kwargs)

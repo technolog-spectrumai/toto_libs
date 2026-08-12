@@ -47,6 +47,33 @@ register(SyncPolicy(
 ))
 
 register(SyncPolicy(
+    "socialhub.CommunityPrivilege", stage=STAGE_COMMUNITIES, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "Authorization by data transfer. A privilege row grants real rights — the "
+        "chain graph, the administrata view, publishing news anywhere, operating "
+        "the mint — to every member of its community, and sets what they owe in "
+        "head tax. "
+        "datalink already refuses auth.User and auth.Group with the words "
+        "'is_staff/is_superuser would be privilege escalation by data transfer', "
+        "and this row is the same substance one level up: replicating it would "
+        "let a peer's admin grant rights on THIS host by editing their own "
+        "database. Each host decides its own grants, in its own admin."
+    ),
+))
+register(SyncPolicy(
+    "socialhub.Station", stage=STAGE_COMMUNITIES, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "An office is authorization and a salary, and both are local. A station "
+        "grants the same rights a privilege row does — to one named holder — and "
+        "carries a stipend the FEDERAL TREASURY OF THIS HOST pays: replicating "
+        "one would let a peer appoint an officer here, and have us pay them. "
+        "Each host appoints its own, in its own admin. (It also names a Person "
+        "and a Community, so it would need a stage after both; refusing costs "
+        "nothing because there is nothing to sync.)"
+    ),
+))
+
+register(SyncPolicy(
     "socialhub.CommunityNewsTopic", stage=STAGE_CONTENT, identity=IDENTITY_UID,
     unique_guards=(("name",), ("slug",)),
     fields=("name", "slug"), bulk_safe=True,
