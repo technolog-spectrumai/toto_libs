@@ -1,6 +1,7 @@
 import hashlib
 import os
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.contrib.auth.models import User
 from django.utils.text import slugify
@@ -139,7 +140,6 @@ class Bucket(models.Model):
         # Model-level belt for the host contract: whatever code path tries to
         # persist a non-local bucket on a local-only host must fail loudly.
         if self.storage_backend != StorageBackend.LOCAL and not external_buckets_allowed():
-            from django.core.exceptions import ValidationError
             raise ValidationError("External buckets are disabled on this host.")
 
     def get_connection_url(self) -> str:
@@ -472,6 +472,178 @@ class VaultDirectory(models.Model):
         return self.allowed_users.filter(pk=user.pk).exists()
 
 
+
+# ---------------------------------------------------------------------------
+# Version history
+# ---------------------------------------------------------------------------
+# Editors (cyprian, memo, primula) autosave straight onto the live VaultFile.
+# A VERSION is something else: a deliberate act by a person who decided this
+# state was worth keeping and gave it a name. That distinction is the whole
+# design — versions number in the handful, not the hundreds, which is what makes
+# a plain table sufficient where a delta-compressing engine would otherwise be
+# needed.
+#
+# Lives in vault rather than in the three editors because a version of a vault
+# file is a vault concept: vault owns the storage backends, the access rules and
+# the bytes. Putting it here also makes every file type versionable rather than
+# only those three.
+
+
+def version_blob_path(instance, filename):
+    """``vault/versions/ab/abcdef…`` — the digest IS the address.
+
+    Fanned out by the first two hex characters so no single directory holds
+    every blob a busy host ever wrote; the same shape git uses for loose
+    objects, and for the same reason.
+    """
+    digest = instance.content_hash or "unknown"
+    return f"vault/versions/{digest[:2]}/{digest}"
+
+
+class VersionBlob(models.Model):
+    """One immutable body, stored once no matter how many versions cite it.
+
+    The repo's first content-addressed store. Everything else that hashes bytes
+    here — ``VaultFile.content_hash``, the backup manifest, the ledger chain —
+    keeps the digest *beside* a path-addressed object; this keys the object BY
+    the digest, which is what makes dedupe possible at all.
+
+    What that buys, concretely: restoring v3 and saving again creates a new
+    version pointing at v3's existing blob and writes no bytes. Saving twice
+    without changing anything is free. Documents here carry base64 images inline
+    by design, so an unchanged 8 MB illustration is exactly the thing that must
+    not be stored twice.
+    """
+
+    content_hash = models.CharField(
+        max_length=64, unique=True,
+        help_text="sha256 of the bytes. Unique — this is the dedupe.")
+    data = models.FileField(upload_to=version_blob_path)
+    size_bytes = models.PositiveBigIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = "Version blob"
+        verbose_name_plural = "Version blobs"
+
+    def __str__(self):
+        return f"{self.content_hash[:12]}… ({self.size_bytes} B)"
+
+    def save(self, *args, **kwargs):
+        # Immutable by construction: a blob's identity IS its content, so an
+        # edited blob would be a different blob. Guarding here rather than
+        # trusting callers, the LedgerTransaction idiom.
+        if self.pk is not None:
+            raise ValidationError(
+                "A version blob is addressed by its own digest and cannot be "
+                "edited — write a new one.")
+        super().save(*args, **kwargs)
+
+
+
+class FileLock(models.Model):
+    """Who is editing this file right now. One holder, enforced by the database.
+
+    The FIRST of three layers. This one prevents the collision; the editors'
+    ``base_hash`` check detects the ones that slip past it (an expired lock, two
+    tabs of one person); and a conflicting draft rescues whatever the first two
+    missed. Each layer is allowed to fail because the next one catches it —
+    the same arrangement the mint chain uses for its single head.
+
+    ``OneToOneField`` is the guarantee, not the service: two people cannot both
+    hold a file because the database will not store two rows for it.
+
+    HARD. A non-holder gets the document read-only and their save is refused
+    with 423 by the server, not merely hidden by the template. A lock only the
+    UI respects is advice.
+
+    SHORT-LIVED. The open editor refreshes ``expires_at`` on a heartbeat; a
+    closed laptop therefore frees the document within a couple of minutes and
+    nobody ever has to break a lock by hand. Expiry is checked on read rather
+    than swept, so a stale row is simply not a lock.
+
+    Not to be confused with the "edit lock" in vault/tests.py, which is about
+    encrypted files being barred from editors entirely.
+    """
+
+    file = models.OneToOneField(VaultFile, on_delete=models.CASCADE,
+                                related_name="edit_lock")
+    holder = models.ForeignKey(User, on_delete=models.CASCADE,
+                               related_name="held_file_locks")
+    acquired_at = models.DateTimeField(auto_now_add=True)
+    expires_at = models.DateTimeField(db_index=True)
+
+    class Meta:
+        verbose_name = "File editing lock"
+        verbose_name_plural = "File editing locks"
+
+    def __str__(self):
+        return f"{self.file.title} held by {self.holder}"
+
+    @property
+    def is_live(self) -> bool:
+        from django.utils import timezone
+
+        return self.expires_at > timezone.now()
+
+
+class FileVersion(models.Model):
+    """One saved state of a vault file, and who decided to save it.
+
+    ONE LINEAR HISTORY PER FILE. There is no branching and no merge: the three
+    editors' formats are not mergeable (cyprian's whole body is a single CDATA
+    line, primula's whole workbook is a single JSON line), and every product
+    that ships rich-document editing answers concurrency with either real-time
+    collaboration or a conflicting copy — never a merge UI. ``author`` is
+    attribution, not a branch.
+
+    APPEND-ONLY. Restoring v3 writes the live file and records v8 "restored
+    from v3"; it never rewinds ``number``. History is not rewritten here for the
+    same reason it is not rewritten in the ledger or the mint chain.
+    """
+
+    file = models.ForeignKey(VaultFile, on_delete=models.CASCADE,
+                             related_name="versions")
+    #: What the user sees: v1, v2, v3. Per file, monotonic, never reused.
+    number = models.PositiveIntegerField()
+    blob = models.ForeignKey(VersionBlob, on_delete=models.PROTECT,
+                             related_name="versions")
+    #: A name the author gave it. A LABELLED version is never auto-pruned — it
+    #: was a conscious act, and silently deleting it would break the very idea
+    #: the feature rests on.
+    label = models.CharField(max_length=200, blank=True)
+    author = models.ForeignKey(User, null=True, blank=True,
+                               on_delete=models.SET_NULL,
+                               related_name="file_versions")
+    #: True when this body LOST an optimistic-concurrency check and was kept
+    #: rather than thrown away. Exempt from pruning like any labelled version.
+    is_conflict = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-number"]
+        verbose_name = "File version"
+        verbose_name_plural = "File versions"
+        constraints = [
+            # Two versions numbered v4 on one file would make "restore v4"
+            # ambiguous, which is the one thing the UI must never be.
+            models.UniqueConstraint(fields=["file", "number"],
+                                    name="vault_one_version_per_number"),
+        ]
+        indexes = [models.Index(fields=["file", "-number"],
+                                name="vault_version_file_idx")]
+
+    def __str__(self):
+        return f"{self.file.title} v{self.number}"
+
+    @property
+    def is_pinned(self) -> bool:
+        """Never auto-pruned: somebody named it, or it is rescued work."""
+        return bool(self.label) or self.is_conflict
+
+    def read(self) -> bytes:
+        with self.blob.data.open("rb") as handle:
+            return handle.read()
 
 # ---------------------------------------------------------------------------
 # Usage metering
