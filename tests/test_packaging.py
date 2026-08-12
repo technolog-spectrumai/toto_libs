@@ -87,11 +87,11 @@ def test_migrations_are_packaged(all_names, owner):
     # The first two drifted in unnoticed because dist/ held stale wheels: this
     # assertion only bites once the wheels are rebuilt, so rebuild before
     # trusting it.
-    # 44: toto.mint (toto-economy) — the issuance desk, where new fixed-supply
-    # assets come from. Its own append-only record of who issued what and why.
-    # It is installed on the MASTER only, but it SHIPS in the wheel like every
-    # other app here; what keeps a branch from minting is that the branch does
-    # not install it and holds no issuer key.
+    # 44: toto.mint (toto-economy) — where currencies are engraved, minted and
+    # burned, and where the append-only chain of monetary events lives. It is
+    # installed on the MASTER only, but it SHIPS in the wheel like every other
+    # app here; what keeps a branch from minting is that the branch does not
+    # install it and holds no issuer key.
     assert len(apps_with_migrations) == 44, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.

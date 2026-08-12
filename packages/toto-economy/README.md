@@ -18,10 +18,31 @@ those stay local — but the money itself does not belong to it.
 
 **One issuer, many ledgers.** Zenobia is the only monetary master: it is the
 only place a currency is created, and the only place assets are traded. Every
-currency it issues carries a permanent genesis hash that identifies it on every
-platform — never a ticker, never a name, never a row id. A branch mirrors that
-catalogue read-only, bills in exactly one currency Zenobia assigned it, and
-cannot issue, re-identify or trade anything.
+currency it engraves carries a permanent genesis hash that identifies it on
+every platform — never a ticker, never a name, never a row id. A branch mirrors
+that catalogue read-only, bills in exactly one currency Zenobia assigned it, and
+cannot engrave, mint, burn, re-identify or trade anything.
+
+**Four verbs, kept strictly apart** (`toto.mint`, master only):
+
+| verb | what it does | supply |
+|---|---|---|
+| **ENGRAVE** | create a currency identity and its permanent maximum | unchanged (zero) |
+| **MINT** | create units of an engraved currency, into its reserve | **+** |
+| **DISTRIBUTE** | move units that already exist — an ordinary transfer | unchanged |
+| **BURN** | destroy units held in the reserve | **−** |
+
+The genesis hash commits the **maximum**, never the amount outstanding. What
+exists is `Σ minted − Σ burned` over an append-only chain of signed monetary
+events, computed on demand — there is no supply column anywhere, because two
+places to look would be two answers that can disagree. The chain is single
+-headed by a unique constraint on `prev_hash`, so a fork is structurally
+impossible rather than merely unlikely.
+
+A maximum can never be raised. Needing more than the ceiling means engraving a
+new currency, because a promise you can raise is not one. And because contracts
+name a currency by hash and never by supply, minting again disturbs no branch:
+no new contract, no tariff pass, no conversion, no migration.
 
 This reverses the older rule that each host should name its own gas. That rule
 existed because two ledgers that could not exchange must not use one name for
@@ -58,6 +79,8 @@ app — a price nothing meters can never be charged, so pricing one fails the se
 rather than shipping as fiction. The corollary matters when apps move between
 hosts: **a host may only price what it meters.**
 
-An asset's supply is minted once and there is no mint path, so the starting
-grant and the prices have to be sized against each other and against the whole
-user base before the first seed.
+Sizing is still a real decision, but it is no longer irreversible. The starting
+grant and the prices should be sized against each other and against the expected
+user base — and if the seed proves too small, the master can MINT again from the
+same identity up to the engraved maximum, with no change on any branch. What
+cannot be undone is the maximum itself.
