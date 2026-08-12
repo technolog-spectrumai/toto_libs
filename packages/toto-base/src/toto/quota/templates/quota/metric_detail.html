@@ -36,6 +36,8 @@
 
 {% block quota_content %}
 
+{% include "oya/_thing_tabs.html" with thing_label=metric.label has_usage=has_table has_money=pricing_enabled has_dials=dials has_people=is_staff_view has_advanced=is_staff_view has_activity=recent %}
+
 {% if row.unpriced_levy and is_staff_view %}
   <div class="rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-3 text-sm">
     <p class="font-semibold"><i class="fa-solid fa-triangle-exclamation"></i>
@@ -48,7 +50,7 @@
 
 {# ═══════════ 1 · Your usage — the reason a member is here ═══════════ #}
 {% if has_table %}
-<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<section id="usage" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <h2 class="mb-3 text-sm font-semibold uppercase tracking-wide opacity-60">
     {% trans "Your usage" %}</h2>
@@ -118,7 +120,7 @@
 {% endif %}
 
 {# ═══════════ 2 · Limit · Price · Free allowance ═══════════ #}
-<div class="grid gap-4 {% if pricing_enabled %}lg:grid-cols-3{% else %}lg:grid-cols-1{% endif %}">
+<div id="limit" class="grid gap-4 {% if pricing_enabled %}lg:grid-cols-3{% else %}lg:grid-cols-1{% endif %}">
 
   {# ---- Limit ---- #}
   <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -167,8 +169,11 @@
     {% endif %}
   </section>
 
-  {# ---- Price ---- #}
-  {% if pricing_enabled %}
+  {% comment %}Price. For a levy it lives in the combined card below instead:
+     arming and pricing are one decision, and splitting them is what let a rule
+     be armed and unpriced. A member still sees a read-only Price card either
+     way — it is only the staff EDITOR that merges.{% endcomment %}
+  {% if pricing_enabled and not row.is_levy or pricing_enabled and not is_staff_view %}
   <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-lg border p-5 shadow-sm">
     <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Price" %}</h2>
@@ -217,7 +222,8 @@
   {% if pricing_enabled %}
   <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-lg border p-5 shadow-sm">
-    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">{% trans "Free allowance" %}</h2>
+    <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">
+      {% if row.is_levy and is_staff_view %}{% trans "Levy" %}{% else %}{% trans "Free allowance" %}{% endif %}</h2>
 
     {% if not row.is_levy %}
       {% comment %}The honest line. There is no included-free-quantity field in
@@ -228,27 +234,54 @@
     {% elif not levy_enabled %}
       <p class="text-sm opacity-60">{% trans "No levy engine runs on this host." %}</p>
     {% elif is_staff_view %}
-      <p class="mb-3 text-xs opacity-55">{% trans "Held for free. Only what is above this is levied." %}</p>
+      {% comment %}The allowance, the price and the switch, in ONE form.
+
+         They used to be two forms on two screens in two apps, and neither was
+         sufficient alone — fill in only the allowance and you get a levy that
+         looks armed and charges nothing, every night, silently. The view writes
+         the price first so that arming without one can be refused.{% endcomment %}
+      <p class="mb-3 text-xs opacity-55">
+        {% trans "Held for free, and what the rest costs. Only what is above the allowance is levied." %}</p>
       <form method="post" class="space-y-2">
         {% csrf_token %}
-        <input type="hidden" name="action" value="allowance">
+        <input type="hidden" name="action" value="levy">
         <div class="flex items-center gap-2">
           <input type="text" inputmode="decimal" name="allowance"
                  value="{{ row.allowance|default_if_none:''|floatformat:'-10' }}" placeholder="0"
                  :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                 class="w-32 rounded border px-3 py-2 font-mono text-sm">
-          <span class="text-xs opacity-60">{{ row.allowance_unit }}</span>
+                 class="w-24 rounded border px-3 py-2 font-mono text-sm">
+          <span class="text-xs opacity-60">{{ row.allowance_unit }} {% trans "free" %}</span>
+        </div>
+        <div class="flex items-center gap-2">
+          <input type="text" inputmode="decimal" name="price"
+                 value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
+                 placeholder="{% trans 'price' %}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="w-24 rounded border px-3 py-2 font-mono text-sm">
+          {% if billing_assets %}
+            <select name="asset"
+                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                    class="rounded border px-2 py-2 text-sm">
+              {% for a in billing_assets %}
+                <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
+              {% endfor %}
+            </select>
+          {% endif %}
+          <span class="text-xs opacity-60">/ {{ row.allowance_unit }}</span>
         </div>
         <label class="flex items-center gap-2 text-sm">
-          <input type="checkbox" name="levy_active" {% if row.levy.active or not row.levy.has_rule %}checked{% endif %}>
+          <input type="checkbox" name="levy_active"
+                 {% if row.levy.active or not row.levy.has_rule %}checked{% endif %}
+                 :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'"
+                 class="h-4 w-4 rounded border">
           {% trans "Levy is armed" %}
         </label>
         <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
                 class="w-full rounded px-3 py-2 text-sm font-bold transition hover:opacity-90">
-          {% trans "Save allowance" %}</button>
+          {% trans "Save levy" %}</button>
         <p class="text-[11px] opacity-55">
-          {% trans "Empty means zero here — unlike the limit and the price, a rule with no allowance still levies." %}</p>
+          {% trans "An empty allowance means zero — a rule with no allowance still levies. An empty price cannot be armed: it would measure every night and charge nothing." %}</p>
       </form>
     {% else %}
       <p class="font-mono text-2xl font-bold">{{ row.allowance|default_if_none:"0"|floatformat:"-4" }}
@@ -261,7 +294,7 @@
 
 {# ═══════════ 3 · Time dials — only on the thing that bills held time ═══════════ #}
 {% if dials %}
-<section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<section id="dials" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <h2 class="mb-1 text-sm font-semibold uppercase tracking-wide opacity-60">
     <i class="fa-solid fa-hourglass-half"></i> {% trans "Your time dials" %}</h2>
@@ -355,7 +388,7 @@
    but it is the fact no screen used to state anywhere: that a levy bills what
    you HOLD nightly with a free allowance, and everything else bills the ACTION
    before it runs, from the first unit.{% endcomment %}
-<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<details id="charging" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
     {% trans "How this is charged" %}</summary>
@@ -380,7 +413,7 @@
 
 {% if is_staff_view and has_table %}
 {# ---- Per-user overrides ---- #}
-<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<details id="people" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
     {% trans "Per-person limits" %}
@@ -420,7 +453,7 @@
       {% csrf_token %}
       <input type="hidden" name="action" value="override">
       <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Give one person a different limit" %}</p>
-      {{ override_form.as_p }}
+      {% include "oya/_form_fields.html" with form=override_form %}
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="rounded px-4 py-2 text-sm font-bold transition hover:opacity-90">
@@ -430,7 +463,7 @@
 </details>
 
 {# ---- The full policy form + advanced pricing ---- #}
-<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<details id="advanced" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
     {% trans "Advanced" %}</summary>
@@ -440,7 +473,7 @@
       <form method="post" class="space-y-3">
         {% csrf_token %}
         <input type="hidden" name="action" value="default">
-        {{ form.as_p }}
+        {% include "oya/_form_fields.html" with form=form %}
         <button type="submit"
                 class="rounded border border-current/30 px-4 py-2 text-sm font-semibold hover:opacity-80">
           {% trans "Save" %}</button>
@@ -462,7 +495,7 @@
 
 {# ---- Recent activity ---- #}
 {% if recent %}
-<details :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+<details id="activity" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="rounded-lg border p-5 shadow-sm">
   <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
     {% if is_staff_view %}{% trans "Recent activity — everyone" %}{% else %}{% trans "Your recent activity" %}{% endif %}</summary>
