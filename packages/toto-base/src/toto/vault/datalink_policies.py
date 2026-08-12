@@ -50,3 +50,40 @@ for _label in ("vault.BucketCopyLog", "vault.VaultUsageEvent", "vault.VaultQuota
             "against the receiver's limits."
         ),
     ))
+
+# Version history and editing locks. Refused for three separate reasons, any one
+# of which would be sufficient.
+#
+# FileVersion hangs off a VaultFile, which is itself refused — so a version
+# copied to a receiver would point at a file that is not there. Its author is an
+# auth.User FK, out of scope like every other one here.
+#
+# VersionBlob is the bytes. VaultFile's own bytes never travel (see the module
+# docstring); a version's are the same bytes at an earlier moment, and there is
+# no reading under which the copy is allowed but the original is not.
+#
+# FileLock is host-local by definition: it says who is typing into a document on
+# THIS server right now. Replicating it would export a fact that is already
+# false by the time it lands, and could only ever lock a receiver's users out of
+# their own documents.
+register(SyncPolicy(
+    "vault.FileVersion", stage=STAGE_INFRA, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "History of a refused VaultFile, authored by a refused auth.User. The "
+        "row would reference two things the receiver does not have."
+    ),
+))
+register(SyncPolicy(
+    "vault.VersionBlob", stage=STAGE_INFRA, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "Document bytes at an earlier moment. VaultFile bytes never travel, and "
+        "a version's are the same bytes — see this module's docstring."
+    ),
+))
+register(SyncPolicy(
+    "vault.FileLock", stage=STAGE_INFRA, identity=IDENTITY_REFUSE,
+    refuse_reason=(
+        "Says who is editing a document on THIS host right now. It is stale the "
+        "moment it lands and could only lock the receiver's users out."
+    ),
+))

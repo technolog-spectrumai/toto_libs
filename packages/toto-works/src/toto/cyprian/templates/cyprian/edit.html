@@ -14,9 +14,9 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
 {% block title %}{{ vault_file.title }} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-  {# block.super, not a replacement: cyprian/base.html loads the shared
-     document stylesheet and the editor's modules in this block, and silently
-     overriding it left the writer with no CSS. #}
+  {% comment %}block.super, not a replacement: cyprian/base.html loads the
+     shared document stylesheet and the editor's modules in this block, and
+     silently overriding it left the writer with no CSS.{% endcomment %}
   {{ block.super }}
   {# Versions + the editing lock, shared across the three editors. #}
   <script defer src="{% static 'oya/file_versions.js' %}"></script>
@@ -713,8 +713,9 @@ missing — the menu rendered and every item threw "GitUI is not defined". The
 toolbar partial's own docstring demands the pair. {% endcomment %}
 {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
 
-  {# Versions and the editing lock — the same partial primula and memo use.
-     Its own Alpine scope, so it cannot collide with the editor's state. #}
+  {% comment %}Versions and the editing lock — the same partial primula and
+     memo use. Its own Alpine scope, so it cannot collide with the editor's
+     state.{% endcomment %}
   <div x-data="{ showVersions: false }" class="mx-auto w-full max-w-5xl px-4 pb-8">
     <button type="button" @click="showVersions = !showVersions"
             class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">

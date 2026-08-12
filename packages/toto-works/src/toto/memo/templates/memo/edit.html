@@ -692,8 +692,9 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 </section>
 
-  {# Versions and the editing lock — the same partial primula and cyprian use.
-     Its own Alpine scope, so it cannot collide with the editor's state. #}
+  {% comment %}Versions and the editing lock — the same partial primula and
+     cyprian use. Its own Alpine scope, so it cannot collide with the editor's
+     state.{% endcomment %}
   <div x-data="{ showVersions: false }" class="mx-auto w-full max-w-5xl px-4 pb-8">
     <button type="button" @click="showVersions = !showVersions"
             class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">

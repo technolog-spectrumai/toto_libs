@@ -5,8 +5,9 @@
 {% block title %}{{ sheet.title }} | {% trans "Primula" %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
-  {# Versions + the editing lock. Shared with cyprian and memo — the heartbeat
-     interval comes from the server so it cannot drift from the lock's TTL. #}
+  {% comment %}Versions + the editing lock. Shared with cyprian and memo — the
+     heartbeat interval comes from the server so it cannot drift from the lock's
+     TTL.{% endcomment %}
   <script defer src="{% static 'oya/file_versions.js' %}"></script>
   <style>[x-cloak] { display: none !important; }</style>
   <link rel="stylesheet" href="{% static 'vendor/univer/preset-sheets-core.css' %}">
