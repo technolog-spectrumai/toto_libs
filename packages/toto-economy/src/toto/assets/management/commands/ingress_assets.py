@@ -47,6 +47,28 @@ class Command(IngressCommand):
         self.stdout.write("🪙  Seeding assets ledger…")
 
         reserve_accounts = self._seed_reserve_accounts()
+
+        # A BRANCH MIRRORS; IT DOES NOT SEED. Everything below engraves a
+        # currency, and engraving calls require_master() — so on a host with no
+        # issuer keypair this raised NotTheMaster out of the middle of a deploy,
+        # after the reserve account had already been written. The ledger itself
+        # is legitimate on a branch (that is where its allocated balance lives),
+        # which is why the accounts above are still seeded; what a branch must
+        # never do is invent money. Its currency arrives with a contract:
+        #   manage.py export_contract          # on the master
+        #   manage.py import_currency_contract # here
+        # See portal/hierarchical_economy.md, "How an asset reaches a vassal".
+        from toto.assets.issuer import is_monetary_master
+
+        if not is_monetary_master():
+            self.stdout.write(self.style.SUCCESS(
+                "✅  Reserve accounts ready. No currency seeded: this host is "
+                "not the monetary master, so it mirrors what the master issued "
+                "rather than engraving its own. Import a currency contract to "
+                "give it something to bill in."
+            ))
+            return
+
         currency_assets = self._seed_base_currency_assets(reserve_accounts)
         self._seed_base_currencies(currency_assets)
 
