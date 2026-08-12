@@ -194,7 +194,7 @@ PRICES = {
     "storage.transfer_mb": CHEAP,
     # storage.gb_day is deliberately absent: it is levied nightly by toto.tax
     # for data already sitting on disk, and an automatic recurring charge must
-    # be armed by a person at /quota/rates/, never by a deploy.
+    # be armed by a person at /quota/<metric>/, never by a deploy.
     # Compute — a worker is occupied for real time.
     "texlab.compile": NORMAL,
     "workflows.run": NORMAL,
@@ -219,7 +219,7 @@ def host_prices() -> dict:
     a float would put binary rounding inside a billing path.
 
     This only seeds. The rate card lives in the database and staff edit it at
-    /quota/rates/ afterwards; re-running ingress does not undo their edits.
+    /quota/<metric>/ afterwards; re-running ingress does not undo their edits.
 
     ``TARIFF_SEED_PRICES = False`` seeds **no** prices at all, which is how a
     host brings the economy up without charging anyone yet: the caps still
