@@ -20,9 +20,27 @@ class Period(models.TextChoices):
 
 
 class Mode(models.TextChoices):
+    """What happens when a limit is passed.
+
+    ``WARN`` is **retained but never offered**. ``api.check_quota`` reads
+    ``policy.mode != Mode.BLOCK: return`` — so WARN and TRACK are byte-identical
+    at runtime and nothing anywhere warns. It stayed in the picker for a long
+    time as a third option with no behaviour, which is worse than a missing
+    feature: an operator would choose it and believe something had been armed.
+
+    The value survives so rows already storing it keep loading and rendering,
+    and so a future warning path can adopt it without a migration. It simply
+    cannot be *chosen* any more — see :meth:`editable_choices`.
+    """
+
     TRACK = "track", "Track only"
     WARN = "warn", "Warn"
     BLOCK = "block", "Block"
+
+    @classmethod
+    def editable_choices(cls):
+        """The modes a person may pick — everything that actually does something."""
+        return [(value, label) for value, label in cls.choices if value != cls.WARN]
 
 
 class EventStatus(models.TextChoices):

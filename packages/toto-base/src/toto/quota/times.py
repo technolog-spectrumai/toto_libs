@@ -212,10 +212,71 @@ def dial(key: str, *, user=None, scope_id=None) -> dict:
         "extension_hours": round(extension_seconds / 3600, 4),
         "display_unit": decl.display_unit,
         "set_url": _tax_url("tax:time_set"),
-        "manage_url": _tax_url("tax:demurrage"),
+        # The roll-up of every dial is a section of the thing that bills held
+        # time, so a card links there rather than at a page of its own.
+        "manage_url": _quota_url("quota:metric_detail", "time.hold"),
         "priced": _hold_price() is not None,
         "daily_estimate": _daily_estimate(extension_seconds),
     }
+
+
+def dials_for_user(user) -> dict:
+    """Every dial this user holds above its free default, as plain data.
+
+    The roll-up behind the ``time.hold`` section of the per-thing page: what am
+    I holding across everything, and what does it cost me tonight. Lifted here
+    from ``tax.timegrants.rows_for_user`` so the page that renders it needs no
+    tax import — the same move ``rates.py`` made for prices.
+
+    ``{"rows": [], "total_extension_hours": 0, "total_estimate": None}`` on a
+    host with no economy, which renders as "no dials raised" rather than as an
+    error. The per-app Time cards are unaffected: they call :func:`dial` for one
+    key and POST to the same door, and this is only the summary of all of them.
+    """
+    empty = {"rows": [], "total_extension_hours": 0,
+             "total_estimate": None, "allowance_hours": 0}
+    from django.apps import apps
+
+    if not apps.is_installed("toto.tax"):     # before the import — see above
+        return empty
+    if user is None or not getattr(user, "is_authenticated", False):
+        return empty
+    try:
+        from toto.tax import timegrants
+    except ImportError:  # pragma: no cover
+        return empty
+    try:
+        data = timegrants.rows_for_user(user)
+    except DatabaseError:
+        return empty
+
+    rows = []
+    for row in data.get("rows") or []:
+        decl, grant = row["decl"], row["grant"]
+        rows.append({
+            # Flattened deliberately: a TimeGrant reaching a quota template is
+            # what this façade exists to prevent.
+            "key": grant.key,
+            "scope_id": grant.scope_id,
+            "seconds": grant.seconds,
+            "label": decl.label,
+            "scope_label": row["scope_label"],
+            "free_seconds": decl.free_seconds,
+            "ceiling_seconds": decl.ceiling_seconds,
+            "extension_hours": row["extra_hours"],
+            "estimate": row["estimate"],
+        })
+    return {
+        "rows": rows,
+        "total_extension_hours": data.get("total_extra_hours") or 0,
+        "total_estimate": data.get("total_estimate"),
+        "allowance_hours": data.get("allowance_hours") or 0,
+    }
+
+
+def set_url() -> str:
+    """The one POST door every dial writes through, "" where none exists."""
+    return _tax_url("tax:time_set")
 
 
 def clear_scope(scope_model: str, scope_id: int) -> int:
@@ -253,6 +314,21 @@ def _tax_url(name: str) -> str:
         from django.urls import reverse
 
         return reverse(name)
+    except Exception:  # noqa: BLE001 - unmounted namespace is a soft edge
+        return ""
+
+
+def _quota_url(name: str, *args) -> str:
+    """A url in this app's own namespace, "" when it is not mounted.
+
+    Guarded despite being local: a host can install toto.quota without giving
+    it a URL prefix, and a Time card must degrade to no link rather than to a
+    500 on somebody's workspace page.
+    """
+    try:
+        from django.urls import reverse
+
+        return reverse(name, args=args)
     except Exception:  # noqa: BLE001 - unmounted namespace is a soft edge
         return ""
 
