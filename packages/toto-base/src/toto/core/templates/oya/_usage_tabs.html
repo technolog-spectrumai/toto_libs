@@ -1,26 +1,56 @@
 {% load i18n app_tags %}
-{% comment %}Sub-nav of the Usage super-tab: records | limits | rate desk | prices | levies.
-   Caller passes active_tab = records | limits | rates | prices | levies | demurrage.
+{% comment %}Sub-nav of the Usage super-tab: metered | how you're charged | records.
+   Caller passes active_tab = metered | taxes | records.
 
-   These five destinations live in THREE apps across TWO packages — toto.quota
-   (toto-base), toto.tariffs and toto.tax (toto-economy) — which is the whole
-   reason they were three separate navigation roots before. Prices and the rate
-   desk used to be dashboard tiles of their own; they are sub-tabs here now, and
-   nothing else changed about them: every URL and url-name is exactly what it was.
+   This strip carried NINE chips: Records, My usage, Levies, Time dials, Prices,
+   Limits, Rate desk, Allowances, Metrics. Four of them — Limits, Rate desk,
+   Prices, Metrics — all plausibly answered "where do I set what this costs", and
+   the one most people meant lived in a different app from the tab that named it.
+   They were nine screens keyed by one string, the metric code, so answering a
+   single question meant visiting five and holding the answer in your head.
+
+   They are now one destination, "Metered", where each thing carries its own
+   limit, price, free allowance, dials and usage. Levies and Time dials are
+   sections of the things they belong to (storage.gb_day and time.hold); the
+   rate desk, the allowances desk and the metrics dashboard are gone as places.
+
+   The three that remain are genuinely different objects:
+     * Metered  — the things, and everything about each one.
+     * Charges  — the KINDS of charge, read-only, each linking to its knob.
+     * Records  — the ledger trail: what was actually billed, and when.
 
    Guarded per entry the same way oya/_economy_tabs.html is, and for a sharper
-   reason: placidia installs toto.assets and toto.tariffs but NOT toto.tax, so
+   reason: placidia installs toto.quota and toto.tariffs but NOT toto.tax, so
    this bar genuinely renders with a hole in it on a real host.
 
-   STAFF vs USER. A user sees what is theirs — their consumption and their
-   levies. Everything that SETS a number (limits, rate desk, allowances) is
-   staff-only, and hidden rather than shown-then-refused: the
-   tariffs/base.html comment states the policy, "showing the chips to everyone
-   else just advertises a 403". Hiding stays cosmetic — every view keeps its own
-   gate, so a typed URL is still refused.
+   STAFF vs USER. Both roles get the same destinations now. The old split —
+   hiding every chip that SET a number — is what forced staff and members onto
+   different pages for the same question; each page does the disclosure itself
+   instead, showing a member the numbers and staff the editors. Hiding was
+   always cosmetic anyway: every view keeps its own gate, so a typed URL is
+   still refused. "Records" stays staff-first because a member's own records are
+   already on the thing.
 
    Active state is decided server-side; dark/light stays Alpine (darkMode).{% endcomment %}
 <nav class="flex flex-wrap gap-1 -mt-2 mb-4" aria-label="{% trans 'Usage navigation' %}">
+
+  {% if "toto.quota"|app_installed %}{% url 'quota:index' as metered_url %}{% if metered_url %}
+  <a href="{{ metered_url }}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+            {% if active_tab == 'metered' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'metered' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-gauge-high"></i>{% trans "Metered" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.quota"|app_installed %}{% url 'quota:taxes' as taxes_url %}{% if taxes_url %}
+  <a href="{{ taxes_url }}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+            {% if active_tab == 'taxes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'taxes' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-scale-balanced"></i>{% trans "How you're charged" %}</a>
+  {% endif %}{% endif %}
 
   {% if "toto.tariffs"|app_installed %}{% url 'tariffs:usage_list' as records_url %}{% if records_url %}
   <a href="{{ records_url }}"
@@ -30,82 +60,5 @@
      {% if active_tab == 'records' %}aria-current="page"{% endif %}>
     <i class="fa-solid fa-bolt"></i>{% trans "Records" %}</a>
   {% endif %}{% endif %}
-
-  {% if "toto.quota"|app_installed %}{% url 'quota:my_usage' as mine_url %}{% if mine_url %}
-  <a href="{{ mine_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'mine' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'mine' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-user-clock"></i>{% trans "My usage" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tax"|app_installed %}{% url 'tax:my_levies' as levies_url %}{% if levies_url %}
-  <a href="{{ levies_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'levies' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'levies' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-coins"></i>{% trans "Levies" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tax"|app_installed %}{% url 'tax:demurrage' as demurrage_url %}{% if demurrage_url %}
-  <a href="{{ demurrage_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'demurrage' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'demurrage' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-hourglass-half"></i>{% trans "Time dials" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tariffs"|app_installed %}{% url 'tariffs:tariff_list' as prices_url %}{% if prices_url %}
-  <a href="{{ prices_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'prices' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'prices' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-gas-pump"></i>{% trans "Prices" %}</a>
-  {% endif %}{% endif %}
-
-  {% if user.is_staff %}
-  <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-        class="mx-1 self-center h-5 border-l opacity-30"></span>
-
-  {% if "toto.quota"|app_installed %}{% url 'quota:index' as limits_url %}{% if limits_url %}
-  <a href="{{ limits_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'limits' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'limits' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-list-check"></i>{% trans "Limits" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.quota"|app_installed %}{% url 'quota:rate_desk' as rates_url %}{% if rates_url %}
-  <a href="{{ rates_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'rates' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'rates' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-sliders"></i>{% trans "Rate desk" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tax"|app_installed %}{% url 'tax:rules' as allowances_url %}{% if allowances_url %}
-  <a href="{{ allowances_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'allowances' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'allowances' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-scale-balanced"></i>{% trans "Allowances" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tariffs"|app_installed %}{% url 'tariffs:metrics' as metrics_url %}{% if metrics_url %}
-  <a href="{{ metrics_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'metrics' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'metrics' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-gauge-high"></i>{% trans "Metrics" %}</a>
-  {% endif %}{% endif %}
-  {% endif %}
 
 </nav>

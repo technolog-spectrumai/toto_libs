@@ -122,7 +122,7 @@
     ustala go obsługa platformy. Opłata naliczana jest raz dziennie, za każdy gigabajt ponad limit;
     aktualna stawka i waluta, w której jest pobierana, publikowane są w
     <a href="{% url 'tariffs:tariff_list' %}" class="font-semibold underline hover:opacity-80">cenniku</a>,
-    a strona <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
+    a strona <a href="{% url 'quota:index' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
     pokazuje, ile przechowujesz i ile wyniesie najbliższa opłata.
     <span class="font-semibold">Opłata pobierana jest z Twojego konta automatycznie — bez pytania
     o zgodę.</span> To zasada platformy, ta sama, która dotyczy każdej płatnej operacji.
@@ -147,7 +147,7 @@
     czas, nie miejsce — jak długo bezczynny kernel Pythona pozostaje uruchomiony, jak długo może
     trwać kompilacja, zadanie multimedialne albo krok przepływu pracy. Każdy limit ma darmową wartość domyślną, którą
     możesz podnieść w danej aplikacji albo centralnie na stronie
-    <a href="{% url 'tax:demurrage' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
+    <a href="{% url 'quota:metric_detail' code='time.hold' %}" class="font-semibold underline hover:opacity-80">Demurrage</a>;
     utrzymywanie podniesionego limitu kosztuje niewielką dzienną opłatę (demurrage), pobieraną
     automatycznie za każdą godzinę rozszerzenia — niezależnie od tego, czy z niego korzystasz.
     Jeśli opłaty nie uda się pobrać, obowiązuje to samo ostrzeżenie i tydzień na zapłatę — z tą
@@ -163,7 +163,7 @@
     salda, sumowane ze wszystkich Twoich kont. Niczego nie trzeba potwierdzać i nic nie może
     zabraknąć: opłata jest zawsze mniejsza niż nadwyżka, którą obciąża. Pieniądz powinien krążyć.
     Progi i stawki publikowane są na stronie
-    <a href="{% url 'tax:my_levies' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
+    <a href="{% url 'quota:index' %}" class="font-semibold underline hover:opacity-80">Moje opłaty</a>
     oraz na stronie każdej waluty.
   </p>
 </section>
