@@ -68,9 +68,13 @@ class HeadTax(LevyProvider):
                 best[user_id] = weight
 
         for user_id, weight in best.items():
-            raw = int(weight * RAW_PER_HEAD)
-            if raw > 0:      # a weight of 0 is an exemption: not sampled at all
-                yield user_id, raw
+            # Weight 0 is yielded too, as a zero. It reads like a wasted row —
+            # it is not: the engine adds the anti-concentration term to whatever
+            # the provider reports, and a member of a trusted community is
+            # exactly the holder who must not be able to shelter a fortune
+            # behind an exemption. Zero plus nothing stays zero and writes no
+            # event, so an ordinary exempt member still costs nothing.
+            yield user_id, int(weight * RAW_PER_HEAD)
 
     def measure(self, user) -> int:
         """This user's own head, for the estimate on their page."""

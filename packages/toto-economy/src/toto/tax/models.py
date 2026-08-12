@@ -41,6 +41,18 @@ class TaxRule(models.Model):
         help_text="How the billing unit is written for people, e.g. 'GB'.",
     )
     active = models.BooleanField(default=True)
+    concentration_k = models.DecimalField(
+        max_digits=12, decimal_places=4, default=Decimal("0"),
+        help_text=(
+            "Anti-concentration dial. Adds k × share² billing units to what each "
+            "holder owes, where share is their holdings ÷ what all users hold "
+            "between them. Quadratic so it is negligible for ordinary members "
+            "and acute at real concentration, and continuous so there is no "
+            "threshold to sit just under: at k=100 a 1% holder pays +0.01, a "
+            "10% holder +1, a 50% holder +25. 0 switches it off entirely, which "
+            "is the default and costs the nightly run nothing."
+        ),
+    )
     description = models.TextField(blank=True)
     metadata = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)

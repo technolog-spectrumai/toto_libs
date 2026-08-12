@@ -12,7 +12,9 @@ class TimeGrantAdmin(admin.ModelAdmin):
 
 @admin.register(TaxRule)
 class TaxRuleAdmin(admin.ModelAdmin):
-    list_display = ("metric_code", "unit_label", "active", "updated_at")
+    list_display = ("metric_code", "unit_label", "active", "concentration_k",
+                    "updated_at")
+    list_editable = ("active", "concentration_k")
     list_filter = ("active",)
     search_fields = ("metric_code",)
 

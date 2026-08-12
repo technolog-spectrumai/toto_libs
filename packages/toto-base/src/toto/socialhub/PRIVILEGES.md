@@ -52,6 +52,12 @@ the same account (`platform-usage-fees`).
   counts as an ordinary `1` — so belonging to one plain community is itself a way
   out of a heavy one. Someone in no community pays the ordinary rate: this is a
   tax on everyone, not a penalty for being unaffiliated.
+- **Concentration is charged on top, and a community cannot shelter it.** The
+  head-tax rule carries `concentration_k`; each holder owes `k × share²` heads
+  in addition, where share is their holdings over what all users hold between
+  them. It is **added** to the head weight, not multiplied, so `head_weight = 0`
+  buys a cheap head and not immunity — a Gini regulator you can escape by
+  joining the right community would not be one. Default `k = 0` is off.
 - **A community never receives anything.** It has no wallet, no treasurer and no
   payroll, and needs none — the *user* is billed for platform use, never the
   community. `head_weight` sets what a member owes; it never says who is paid.

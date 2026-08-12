@@ -92,6 +92,77 @@ def run_daily_levy(day=None) -> list[LevySummary]:
     return summaries
 
 
+def _concentration_heads(rule, share) -> Decimal:
+    """The anti-concentration term: ``k × share²``, in billing units.
+
+    Quadratic on purpose. A flat percentage above a threshold — which is what
+    the retired surplus tax did — punishes an ordinary saver, and is escaped by
+    holding just under the line. A quadratic is negligible at ordinary holdings,
+    acute at real concentration, and continuous, so there is no line to sit
+    under and nothing to game by splitting.
+
+    It is ADDED to what the provider measured rather than multiplying it, so a
+    community that pays no head tax at all (``head_weight = 0``) still pays this
+    if its member has accumulated. Trust buys a cheap head, not permission to
+    dominate the platform.
+    """
+    if share is None:
+        return Decimal("0")
+    k = rule.concentration_k or Decimal("0")
+    if k <= 0:
+        return Decimal("0")
+    return k * (Decimal(share) ** 2)
+
+
+def _concentration_shares(rule, user_ids) -> dict:
+    """``{user_id: share}`` for a whole run. Two queries, or none when off.
+
+    ``share`` is each holder's fraction of what ALL users hold between them —
+    circulating supply, not the engraved maximum. The reserve holds most of the
+    supply early on, so a share of the total would keep the dial asleep for
+    years and then wake abruptly as grants drain the vault; a share of what
+    people actually hold is self-normalising as the platform grows.
+
+    Summed across every one of a user's accounts, so splitting a balance over
+    several of your own changes nothing — the lesson the retired surplus tax had
+    already learned and written down.
+
+    Degrades to ``{}`` on any failure. A levy that could not run because the
+    ledger was briefly unreadable would be a far worse outcome than a night
+    without the concentration term.
+    """
+    if (rule.concentration_k or 0) <= 0 or not user_ids:
+        return {}
+    try:
+        from django.db.models import Sum
+
+        from toto.assets.models import AccountType, AssetHolding
+        from toto.tariffs.rate_card import gas_asset
+
+        asset = gas_asset()
+        if asset is None:
+            return {}
+
+        held = AssetHolding.objects.filter(
+            asset=asset, account__account_type=AccountType.USER)
+
+        circulating = held.aggregate(total=Sum("balance_base_units"))["total"] or 0
+        if circulating <= 0:
+            return {}
+
+        rows = (held.filter(account__user_id__in=list(user_ids))
+                .values("account__user_id")
+                .annotate(total=Sum("balance_base_units")))
+    except Exception:  # noqa: BLE001 - never take the nightly run down
+        logger.exception("tax: could not resolve concentration shares for %s",
+                         rule.metric_code)
+        return {}
+
+    denominator = Decimal(circulating)
+    return {row["account__user_id"]: Decimal(row["total"] or 0) / denominator
+            for row in rows if row["account__user_id"] is not None}
+
+
 def levy_rule(rule: TaxRule, day=None) -> LevySummary:
     """One rule, one day, every holder of the resource."""
     day = day or timezone.localdate()
@@ -124,19 +195,23 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
     ids = [user_id for user_id, _raw in samples]
     users = get_user_model().objects.in_bulk(ids)
 
-    # No per-user resolution happens here any more. A community's standing used
-    # to arrive as an exemption and a free-band override, both prefetched
-    # beside this in_bulk; both are gone. What a community's standing is worth
-    # is now expressed as the QUANTITY its provider reports — the head tax
-    # samples one weighted head per person — so this loop bills whatever it is
-    # handed and knows nothing about who anyone is.
+    # WHO you are is the provider's business — a community's standing arrives as
+    # the quantity it reports, and this loop knows nothing about communities.
+    # WHAT you hold is ours: socialhub cannot import toto.assets, and it cannot
+    # read the dial either, so the concentration term is resolved here. Two
+    # queries for the whole run, beside the in_bulk, in the slot the old
+    # allowance prefetch used — never per user, or a fixed-cost run becomes an
+    # N-query one.
+    shares = _concentration_shares(rule, ids)
+
     for user_id, raw in samples:
         user = users.get(user_id)
         if user is None:
             continue
         try:
             outcome = levy_user(rule, metric, provider, user, raw, day,
-                                priced=priced, event_model=event_model)
+                                priced=priced, event_model=event_model,
+                                share=shares.get(user_id))
         except Exception as exc:  # noqa: BLE001 - one bad row must not stall the levy
             # ... except the worker telling us to stop: swallowing the soft
             # time limit here would keep looping until the hard SIGKILL.
@@ -164,21 +239,37 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
 
 
 def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
-              event_model) -> str:
-    """Levy one user for one day. Returns an :class:`Outcome` string."""
-    billable = Decimal(raw) / Decimal(provider.raw_per_unit)
+              event_model, share=None) -> str:
+    """Levy one user for one day. Returns an :class:`Outcome` string.
+
+    ``share`` is this holder's fraction of what all users hold between them,
+    prefetched for the whole run. It adds ``k × share²`` billing units on top of
+    what the provider measured — the anti-concentration term. None (the common
+    case, and every rule with ``concentration_k == 0``) adds nothing.
+    """
+    measured = Decimal(raw) / Decimal(provider.raw_per_unit)
+    extra = _concentration_heads(rule, share)
+    billable = measured + extra
     if billable <= 0:
         # Holding nothing costs nothing, and shedding everything is a way out
         # of arrears — the same way paying is.
         arrears.resolve_case(user, rule, reason=arrears.REASON_NOTHING_HELD)
         return Outcome.NOTHING_HELD
 
+    metadata = {"measured_raw": raw}
+    if extra:
+        # A bill larger than what the provider measured needs to explain itself,
+        # or it reads as a bug in the levy rather than as the dial doing its job.
+        metadata["concentration_share"] = str(share)
+        metadata["concentration_extra"] = str(extra)
+        metadata["concentration_k"] = str(rule.concentration_k)
+
     event = record_usage(
         event_model, rule.metric_code, billable, user,
         unit=metric.unit,
         idempotency_key=idempotency_key(rule, user.pk, day),
         source_type="tax.TaxRule", source_id=str(rule.pk),
-        metadata={"measured_raw": raw},
+        metadata=metadata,
     )
     if event is None:
         # Already levied today (or the write failed, which record_usage keeps
@@ -237,7 +328,11 @@ def estimate_for_user(user) -> list[dict]:
             continue
         raw = provider.measure(user)
         measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-        billable = measured
+        # The same term the sweep will add, or this page quotes a bill the night
+        # does not charge — the lie this whole area keeps being cured of.
+        extra = _concentration_heads(
+            rule, _concentration_shares(rule, [user.pk]).get(user.pk))
+        billable = measured + extra
         price = card.get(rule.metric_code)
         estimate = None
         if price is not None:
@@ -262,6 +357,8 @@ def estimate_for_user(user) -> list[dict]:
             # template falls back to filesizeformat when this is None.
             "display": provider.format_raw(raw),
             "billable": billable,
+            # Surfaced so a bill bigger than what is held has a visible reason.
+            "concentration_extra": extra,
             "price": price,
             "estimate": estimate,
             "case": case,
