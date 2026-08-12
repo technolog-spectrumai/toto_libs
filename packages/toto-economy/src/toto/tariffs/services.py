@@ -89,7 +89,15 @@ def calculate_tariff_charge(
     from django.db.models import Q as _Q
     qs = tariff.active_items.filter(metric__code=metric_code)
     if unit:
-        qs = qs.filter(_Q(unit__isnull=True) | _Q(unit__code=unit))
+        # Case-INSENSITIVE, and that is a bug fix rather than a nicety. Units are
+        # seeded from `Metric.unit` ("mb"), while call sites pass whatever string
+        # they hold — vault charges `unit="MB"`. On the configured backends
+        # (postgis / spatialite) an exact match then found no item, which the
+        # check path read as "free, allow" and the post path as FAILED with a
+        # bare ValueError. The money silently did not move, and no test covered
+        # it. Storing the canonical case is the deeper fix; matching loosely
+        # here is what stops a charge from turning on a call site's spelling.
+        qs = qs.filter(_Q(unit__isnull=True) | _Q(unit__code__iexact=unit))
     items = qs.select_related("metric", "charged_asset", "receiving_account", "unit")
     drafts = []
     for item in items:
@@ -219,7 +227,7 @@ def post_usage_record(
     reference: str | None = None,
     description: str | None = None,
     pre_post_hook=None,
-) -> LedgerTransaction:
+) -> LedgerTransaction | None:
     """
     Drain payer holdings and credit receiving accounts via immutable ledger.
     Atomic and idempotent: if the usage_record is already POSTED, returns
@@ -260,10 +268,24 @@ def post_usage_record(
         usage_record.charges.select_related("charged_asset", "payer_account", "receiving_account")
     )
     if not charges:
-        usage_record.status = UsageStatus.FAILED
-        usage_record.error_message = "No matching tariff items found."
+        # FREE, not failed — and the two halves of the pipeline now agree.
+        #
+        # `check_can_afford` returns (True, "") on exactly this state, with the
+        # comment "no matching tariff items -> no charge -> allow", and
+        # `metering_mixins.metered_action` calls it a free pass. This branch used
+        # to call the same state a failure and raise a bare ValueError that
+        # `charge_user` did not translate (it only recognises "insufficient"), so
+        # an unpriced metric passed the gate and then blew up in the view. Only
+        # toto.tax guarded against it, by pre-checking the rate card, and its
+        # comment says so.
+        #
+        # An unpriced metric is the ordinary state of most metrics on most
+        # hosts: free is the ABSENCE of a TariffItem, which is what makes
+        # "delete the row" mean "make it free" on the rate grid.
+        usage_record.status = UsageStatus.POSTED
+        usage_record.error_message = ""
         usage_record.save(update_fields=["status", "error_message", "updated_at"])
-        raise ValueError("No matching tariff items found for this usage record.")
+        return None
 
     # Group charges by (payer_account, asset): total debit needed
     debit_totals: dict[tuple[int, int], int] = {}

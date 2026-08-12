@@ -366,7 +366,12 @@ def usage_post(request, uuid):
         return redirect("tariffs:usage_detail", uuid=record.uuid)
     try:
         tx = post_usage_record(record)
-        messages.success(request, _("Usage posted. Transaction: %(ref)s") % {"ref": tx.reference})
+        if tx is None:
+            # Nothing was priced, so nothing moved and there is no transaction
+            # to name. Posted, not failed — free is the absence of a price.
+            messages.success(request, _("Usage posted. Nothing was charged — this metric is free."))
+        else:
+            messages.success(request, _("Usage posted. Transaction: %(ref)s") % {"ref": tx.reference})
     except ValueError as exc:
         messages.error(request, str(exc))
     except Exception as exc:
