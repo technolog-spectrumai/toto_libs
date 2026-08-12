@@ -271,9 +271,8 @@ def post_usage_record(
         # FREE, not failed — and the two halves of the pipeline now agree.
         #
         # `check_can_afford` returns (True, "") on exactly this state, with the
-        # comment "no matching tariff items -> no charge -> allow", and
-        # `metering_mixins.metered_action` calls it a free pass. This branch used
-        # to call the same state a failure and raise a bare ValueError that
+        # comment "no matching tariff items -> no charge -> allow". This branch
+        # used to call the same state a failure and raise a bare ValueError that
         # `charge_user` did not translate (it only recognises "insufficient"), so
         # an unpriced metric passed the gate and then blew up in the view. Only
         # toto.tax guarded against it, by pre-checking the rate card, and its

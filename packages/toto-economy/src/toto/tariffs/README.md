@@ -241,7 +241,7 @@ Response (201):
 ## Demo Data
 
 ```bash
-python manage.py create_demo_tariffs
+python manage.py ingress_tariffs --full   # demo prices in BANANA / MAKARONI
 ```
 
 Creates three active tariffs:
