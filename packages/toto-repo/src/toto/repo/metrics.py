@@ -8,7 +8,7 @@ would misprice both. `repo.run` is init/push/pull: a worktree export, a
 network conversation with the remote, and a celery worker held for the duration.
 `repo.op` is everything that shells out to git inside the request —
 commit, branch, checkout, merge, log — which is cheap per call and therefore
-the one worth hammering, so it gets the larger allowance and the tighter watch.
+the one worth hammering, so it gets the larger limit and the tighter watch.
 """
 
 from toto.quota.metrics import Metric, registry

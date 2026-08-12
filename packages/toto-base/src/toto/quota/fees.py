@@ -5,7 +5,8 @@ A levy provider says "here is a resource that can be taxed"; a fee source says
 "here is a way this platform earns, and here is the account it lands in".
 
 Four sources exist today and they are stored three different ways: metered usage
-writes ``UsageCharge`` rows, the capacity levy writes ``SurplusCharge.fee_base``,
+writes ``UsageCharge`` rows, the capacity levies bill through that same
+pipeline,
 tribute writes ``TributeCharge``, and the exchange commission writes **nothing at
 all** — it exists only as ledger entries. Two of the four also live in zenobia's
 own portion of the tree, which toto-economy must never import.

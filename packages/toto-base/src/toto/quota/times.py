@@ -234,7 +234,7 @@ def dials_for_user(user) -> dict:
     key and POST to the same door, and this is only the summary of all of them.
     """
     empty = {"rows": [], "total_extension_hours": 0,
-             "total_estimate": None, "allowance_hours": 0}
+             "total_estimate": None}
     from django.apps import apps
 
     if not apps.is_installed("toto.tax"):     # before the import — see above
@@ -270,7 +270,6 @@ def dials_for_user(user) -> dict:
         "rows": rows,
         "total_extension_hours": data.get("total_extra_hours") or 0,
         "total_estimate": data.get("total_estimate"),
-        "allowance_hours": data.get("allowance_hours") or 0,
     }
 
 
@@ -340,9 +339,9 @@ def _hold_price() -> dict | None:
 
 
 def _daily_estimate(extension_seconds: int) -> dict | None:
-    # MARGINAL cost of this one dial's extension: any time.hold allowance is
-    # applied to the user's total, not per dial, so the demurrage tab's total
-    # is where the allowance is subtracted.
+    # The MARGINAL cost of this one dial's extension. Every raised second is
+    # billable, so the roll-up on the metered thing is exactly the sum of the
+    # rows — the two can no longer disagree.
     price = _hold_price()
     if price is None or extension_seconds <= 0:
         return None
