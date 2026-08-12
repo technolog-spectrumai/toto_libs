@@ -20,38 +20,10 @@
       </h1>
     </header>
 
-    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="flex flex-wrap gap-1 border-b pb-0">
-      <a href="{% url 'quota:index' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_index %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-list-check"></i>{% trans "All limits" %}
-      </a>
-      <a href="{% url 'quota:my_usage' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_mine %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-user-clock"></i>{% trans "My usage" %}
-      </a>
-      {% if user.is_staff %}
-      <a href="{% url 'quota:rate_desk' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_rates %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-sliders"></i>{% trans "Rate desk" %}
-      </a>
-      {% endif %}
-      {% if billing_enabled %}
-      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-            class="mx-1 self-center h-5 border-l opacity-30"></span>
-      <a href="{% url 'tariffs:tariff_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition opacity-50">
-        <i class="fa-solid fa-gas-pump"></i>{% trans "Prices" %}
-      </a>
-      {% endif %}
-    </nav>
+    {% include "oya/_economy_tabs.html" with active_tab="usage" %}
+    {% comment %}In a block so a child lights its own sub-tab — a child
+       cannot pass a value into a parent's include.{% endcomment %}
+    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="limits" %}{% endblock %}
 
     {% if messages %}
       {% for msg in messages %}

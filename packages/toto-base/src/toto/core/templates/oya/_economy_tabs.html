@@ -1,0 +1,103 @@
+{% load i18n app_tags %}
+{% comment %}Shared super-tabs for the Economy section: assets | usage | fees.
+   Caller passes active_tab = assets | usage | fees.
+
+   ONE strip for the whole economy. Before this there were four, and two of them
+   stacked: tariffs/base.html extended assets/base.html, so every tariffs page
+   rendered the ten-tab assets bar AND a second chip row underneath, while
+   quota/base.html and tax/base.html were separate roots cross-linked by
+   {% templatetag openblock %} if HAS_TARIFFS {% templatetag closeblock %} guards.
+   The mint had no navigation at all and was reachable only by typing its URL.
+
+   Sub-tabs stay where they are — each app's own base.html keeps its
+   {% templatetag openblock %} block tab_x {% templatetag closeblock %} row. This
+   is only the top level.
+
+   Each entry is doubly guarded, and both guards are load-bearing (the
+   oya/_media_tabs.html reasoning, which applies here with more force because the
+   economy spans three packages):
+
+     * `|app_installed` hides the tab when the app is not in INSTALLED_APPS;
+     * the `url … as` form swallows NoReverseMatch, so an app that is installed
+       but mounted at no URL degrades to no tab rather than a 500.
+
+   It lives in toto-base/oya/ and not in toto.assets for the same two reasons
+   _media_tabs.html records. Django loads template dirs only for INSTALLED apps,
+   and this bar must render on placidia — which pins toto-economy but installs
+   only assets and tariffs — and on any host that has toto.quota and nothing else.
+   And .gitignore carries a `media/` rule that matches at any depth, so a shared
+   partial must not live under a templates/media/ path; oya/ is where core's
+   shared templates already live.
+
+   The strip spans four packages: toto.assets and toto.tax (toto-economy),
+   toto.quota (toto-base, on every host), and toto.bourse / toto.portfolio
+   (zenobia's own portion). That spread is exactly why this is an included
+   partial rather than a base template with blocks — a base template would have
+   to live in one of those packages and would vanish with it.
+
+   ROLE SPLIT. Staff and users get the same three tabs pointing at different
+   places, because the destinations differ in kind rather than in permission:
+   a user's "Usage" is their own consumption, staff's is the platform's records.
+   Fees is one URL for both — the view renders income and editors for staff, and
+   "what am I charged, and why" for everyone else. Hiding a tab is cosmetic; every
+   destination enforces its own gate, so a hand-typed URL is still refused.
+
+   Active state is decided server-side; dark/light stays Alpine (darkMode).
+
+   Written as a comment tag rather than a hash-brace comment because that form is
+   single-line only — spanning one over several lines makes Django render the whole
+   block as visible page text.{% endcomment %}
+<nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Economy navigation' %}">
+
+  {% if "toto.assets"|app_installed %}
+  {% if user.is_staff %}{% url 'assets:asset_list' as assets_url %}{% else %}{% url 'assets:wallet' as assets_url %}{% endif %}
+  {% if assets_url %}
+  <a href="{{ assets_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'assets' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-coins"></i>{% if user.is_staff %}{% trans "Assets" %}{% else %}{% trans "Wallet" %}{% endif %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.quota"|app_installed %}
+  {% if user.is_staff %}{% url 'tariffs:usage_list' as usage_url %}{% endif %}
+  {% if not usage_url %}{% url 'quota:my_usage' as usage_url %}{% endif %}
+  {% if usage_url %}
+  <a href="{{ usage_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'usage' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-gauge-high"></i>{% if user.is_staff %}{% trans "Usage" %}{% else %}{% trans "My usage" %}{% endif %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.quota"|app_installed %}{% url 'quota:fees' as fees_url %}{% if fees_url %}
+  <a href="{{ fees_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'fees' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-receipt"></i>{% trans "Fees" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.bourse"|app_installed %}{% url 'bourse:exchange_center' as bourse_url %}{% if bourse_url %}
+  <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+        class="mx-1 self-center h-5 border-l opacity-30"></span>
+  <a href="{{ bourse_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'bourse' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-chart-line"></i>{% trans "Bourse" %}</a>
+  {% endif %}{% endif %}
+
+</nav>

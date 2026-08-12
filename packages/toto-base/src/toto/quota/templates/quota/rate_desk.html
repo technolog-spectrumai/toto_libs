@@ -3,7 +3,7 @@
 
 {% block quota_title %}{% trans "Rate desk" %}{% endblock %}
 {% block quota_heading %}{% trans "Rate desk" %}{% endblock %}
-{% block tab_rates %}border-b-2 border-current -mb-px{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="rates" %}{% endblock %}
 
 {% block quota_content %}
 

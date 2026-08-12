@@ -3,7 +3,7 @@
 
 {% block tax_title %}{% trans "Demurrage" %}{% endblock %}
 {% block tax_heading %}{% trans "Demurrage" %}{% endblock %}
-{% block tab_demurrage %}border-b-2 border-current -mb-px{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="demurrage" %}{% endblock %}
 
 {% block tax_content %}
 

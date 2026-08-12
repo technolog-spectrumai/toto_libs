@@ -3,7 +3,7 @@
 
 {% block tax_title %}{% trans "Allowances" %}{% endblock %}
 {% block tax_heading %}{% trans "Allowances" %}{% endblock %}
-{% block tab_rules %}border-b-2 border-current -mb-px{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="allowances" %}{% endblock %}
 
 {% block tax_content %}
 

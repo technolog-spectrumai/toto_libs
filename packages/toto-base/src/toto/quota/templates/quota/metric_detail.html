@@ -3,7 +3,7 @@
 
 {% block quota_title %}{{ metric.label }}{% endblock %}
 {% block quota_heading %}{{ metric.label }}{% endblock %}
-{% block tab_index %}border-b-2 border-current -mb-px{% endblock %}
+{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="limits" %}{% endblock %}
 
 {% block quota_content %}
 

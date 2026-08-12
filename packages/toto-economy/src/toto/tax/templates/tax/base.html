@@ -20,29 +20,8 @@
       </h1>
     </header>
 
-    <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-         class="flex flex-wrap gap-1 border-b pb-0">
-      <a href="{% url 'tax:my_levies' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_mine %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-user-clock"></i>{% trans "My levies" %}
-      </a>
-      <a href="{% url 'tax:demurrage' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_demurrage %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-hourglass-half"></i>{% trans "Demurrage" %}
-      </a>
-      {% if user.is_staff %}
-      <a href="{% url 'tax:rules' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_rules %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-sliders"></i>{% trans "Allowances" %}
-      </a>
-      {% endif %}
-    </nav>
+    {% include "oya/_economy_tabs.html" with active_tab="usage" %}
+    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="levies" %}{% endblock %}
 
     {% if messages %}
       <div class="space-y-2">

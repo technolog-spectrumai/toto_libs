@@ -1,5 +1,5 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n app_tags %}
 
 {% block title %}{% block assets_title %}Assets{% endblock %} | {{ platform.site_name }}{% endblock %}
 
@@ -28,7 +28,19 @@
       </h1>
     </header>
 
-    <!-- Tab nav -->
+    {% comment %}Economy super-tabs, shared with quota/tax/tariffs/mint. Lives in
+       toto-base because this bar must also render on hosts that install quota
+       and nothing else — see the partial's own header.
+
+       Wrapped in a block, not inlined, because bourse/base.html extends this
+       template for its chrome while being a PEER in the strip rather than part
+       of the ledger. It overrides this block to light its own tab. A child
+       cannot pass a value into a parent's {% templatetag openblock %} include …
+       with {% templatetag closeblock %}, so replacing the whole line is the
+       only way.{% endcomment %}
+    {% block economy_tabs %}{% include "oya/_economy_tabs.html" with active_tab="assets" %}{% endblock %}
+
+    <!-- Ledger sub-nav -->
     <nav :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
          class="flex flex-wrap gap-1 border-b pb-0">
       <a href="{% url 'assets:asset_list' %}"
@@ -80,37 +92,19 @@
         <i class="fa-solid fa-key"></i>
         {% trans "Authorizations" %}
       </a>
-      {% if HAS_BOURSE or HAS_TARIFFS %}
-      <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
-            class="mx-1 self-center h-5 border-l opacity-30"></span>
-      {% endif %}
-      {% if HAS_BOURSE %}
-      <a href="{% url 'bourse:exchange_center' %}"
+      {% comment %}The mint had no navigation anywhere until now — it was
+         reachable only by typing /mint/. Doubly guarded like the super-tabs: the
+         app ships in the wheel but installs on the master only, and the view
+         refuses anyone who is not staff AND not holding an issuer key.{% endcomment %}
+      {% if user.is_staff and "toto.mint"|app_installed %}{% url 'mint:index' as mint_url %}{% if mint_url %}
+      <a href="{{ mint_url }}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_bourse %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-chart-line"></i>
-        {% trans "Bourse" %}
+                {% block tab_mint %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-hammer"></i>
+        {% trans "Mint" %}
       </a>
-      {% endif %}
-      {% if HAS_TARIFFS %}
-      <a href="{% url 'tariffs:tariff_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_tariffs %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-gas-pump"></i>
-        {% trans "Tariffs" %}
-      </a>
-      {% endif %}
-      {% if HAS_TAX %}
-      <a href="{% url 'tax:my_levies' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% block tab_tax %}opacity-50{% endblock %}">
-        <i class="fa-solid fa-coins"></i>
-        {% trans "Levies" %}
-      </a>
-      {% endif %}
+      {% endif %}{% endif %}
     </nav>
 
     {% block assets_content %}{% endblock %}
