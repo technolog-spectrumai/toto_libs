@@ -1,7 +1,7 @@
 """Who may read and set what on the tax pages.
 
 The user page is owner-scoped by construction (it renders only the signed-in
-user's numbers); the allowance desk is staff-only with a hard 403, never a
+user's numbers); the levy desk is staff-only with a hard 403, never a
 redirect — the rate-desk convention.
 """
 
@@ -29,7 +29,7 @@ class TaxViewTests(TestCase):
         cls.staff = make_user("staff", is_staff=True)
 
     def setUp(self):
-        self.rule = make_rule(allowance="1")
+        self.rule = make_rule()
 
     def test_my_levies_requires_login(self):
         response = self.client.get(reverse("tax:my_levies"))
@@ -38,8 +38,8 @@ class TaxViewTests(TestCase):
     def test_a_levy_reads_on_the_thing_it_bills(self):
         """What you hold, what is free, and what tonight costs — all on one page.
 
-        This used to need three: "My levies" for the measurement, the
-        allowances desk for the free part, and the rate desk for the price.
+        This used to need three: "My levies" for the measurement, the rules
+        desk for the levy itself, and the rate desk for the price.
         """
         make_vault_file(self.alice, 2 * GB)
         self.client.force_login(self.alice)
@@ -53,42 +53,30 @@ class TaxViewTests(TestCase):
         # The storage provider's format_raw returns None (it is byte-shaped),
         # so the page states the measurement in BILLING units beside its label
         # rather than filesizeformat-ing the raw bytes: the number you are
-        # charged on, in the unit the allowance is written in.
+        # charged on, in the unit the levy is written in.
         self.assertIn("You are holding", content)
         self.assertIn("GB", content)
-        self.assertIn("are free", content)
-        self.assertIn("Free allowance", content)
+        self.assertIn("is charged tonight", content)
+        self.assertIn("Levy", content)
 
     def test_the_retired_levy_pages_still_resolve(self):
         """Bookmarked, and named in the manual — so they redirect, not 404."""
         self.client.force_login(self.alice)
         self.assertEqual(self.client.get(reverse("tax:my_levies")).status_code, 302)
 
-    def test_staff_updates_allowance_and_active(self):
-        """Allowance, price and the switch are ONE form on the levied thing."""
+    def test_staff_disarms_the_levy(self):
+        """Price and the switch are ONE form on the levied thing."""
         self.client.force_login(self.staff)
 
         response = self.client.post(
             reverse("quota:metric_detail", args=["storage.gb_day"]),
-            {"action": "levy", "allowance": "5", "price": ""},
+            {"action": "levy", "price": ""},
             # levy_active omitted → switched off
         )
 
         self.assertEqual(response.status_code, 302)
         self.rule.refresh_from_db()
-        self.assertEqual(self.rule.allowance, Decimal("5"))
         self.assertFalse(self.rule.active)
-
-    def test_negative_allowance_is_rejected_without_a_write(self):
-        self.client.force_login(self.staff)
-
-        response = self.client.post(
-            reverse("quota:metric_detail", args=["storage.gb_day"]),
-            {"action": "levy", "allowance": "-3", "levy_active": "on"})
-
-        self.assertEqual(response.status_code, 200)
-        self.rule.refresh_from_db()
-        self.assertEqual(self.rule.allowance, Decimal("1"))
 
     def test_manual_renders_the_storage_fee_section(self):
         """The platform-rule text must render — and its links must reverse —
@@ -101,7 +89,6 @@ class TaxViewTests(TestCase):
         content = response.content.decode()
         self.assertIn("Storage fee", content)
         self.assertIn("automatically", content)
-        self.assertIn("chosen at random", content)
         self.assertIn("one week", content)
 
     def test_saving_creates_a_rule_for_a_ruleless_provider(self):
@@ -113,11 +100,10 @@ class TaxViewTests(TestCase):
         make_gas_asset()
 
         self.client.post(reverse("quota:metric_detail", args=["storage.gb_day"]),
-                         {"action": "levy", "allowance": "2.5",
-                          "price": "0.0001", "levy_active": "on"})
+                         {"action": "levy", "price": "0.0001",
+                          "levy_active": "on"})
 
         rule = TaxRule.objects.get(metric_code="storage.gb_day")
-        self.assertEqual(rule.allowance, Decimal("2.5"))
         self.assertTrue(rule.active)
 
     def test_arming_a_levy_with_no_price_is_refused(self):
@@ -125,7 +111,7 @@ class TaxViewTests(TestCase):
 
         A rule that is active and unpriced measures every user every night,
         writes a usage event and bills zero. It used to be one tick away,
-        because the allowance and the price lived on two screens in two apps and
+        because the rule and the price lived on two screens in two apps and
         neither was sufficient alone — the only warning was a deploy-time log
         line nobody reads twice.
         """
@@ -136,13 +122,13 @@ class TaxViewTests(TestCase):
 
         response = self.client.post(
             reverse("quota:metric_detail", args=["storage.gb_day"]),
-            {"action": "levy", "allowance": "1", "price": "", "levy_active": "on"})
+            {"action": "levy", "price": "", "levy_active": "on"})
 
         self.assertEqual(response.status_code, 200)   # redisplayed with the error
         rule = TaxRule.objects.filter(metric_code="storage.gb_day").first()
         self.assertTrue(rule is None or not rule.active)
-        self.assertRaises(levies.UnpricedLevy, levies.set_allowance,
-                          "storage.gb_day", "1", active=True)
+        self.assertRaises(levies.UnpricedLevy, levies.set_armed,
+                          "storage.gb_day", True)
 
 
 class DemurrageViewTests(TestCase):

@@ -117,13 +117,13 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-coins"></i>Storage fee</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    Keeping files on this server costs a small daily fee. Everyone has a
-    <span class="font-semibold">free allowance</span> — an amount of storage you can use at no charge,
-    set by the platform staff. Only storage above the allowance is charged, once a day, per gigabyte;
-    the current rate and the currency it is charged in are published on the
+    Keeping files on this server costs a small daily fee, charged once a day per gigabyte from the
+    first byte. There is <span class="font-semibold">no free allowance</span> — and that is the
+    simpler deal it sounds like: a free band would be per-metric and use-it-or-lose-it, and the way
+    to use someone else's is to ask them to upload your files. What is free here is anything with no
+    price set at all. The current rate and the currency it is charged in are published on the
     <a href="{% url 'quota:metric_detail' code='storage.gb_day' %}" class="font-semibold underline hover:opacity-80">Storage held</a>
-    page, which also shows what you store and what tonight's charge will be — the allowance, the
-    price and your own usage are all on it.
+    page, which also shows what you store and what tonight's charge will be.
     <span class="font-semibold">The fee is taken from your account automatically — you are not asked
     to confirm it.</span> This is a platform rule, the same one that applies to every metered action.
   </p>
@@ -134,12 +134,12 @@
       builds up — a day that could not be charged is written off and is never collected later.</li>
     <li><span class="font-semibold">To close the case</span>, add funds to your
       <a href="{% url 'assets:wallet' %}" class="font-semibold underline hover:opacity-80">wallet</a>
-      (ask an administrator, or trade on the bourse). The next successful daily charge — or shrinking
-      your storage back under the allowance — resolves it.</li>
-    <li><span class="font-semibold">If the week passes unpaid</span>, the server deletes files from
-      your storage, <span class="font-semibold">chosen at random</span>, until you are back within the
-      free allowance. <span class="font-semibold">Deleted files are deleted forever</span> — neither
-      you nor the staff can recover them.</li>
+      (ask an administrator, or trade on the bourse). The next successful daily charge — or deleting
+      enough of your own files that there is nothing left to charge for — resolves it.</li>
+    <li><span class="font-semibold">If the week passes unpaid</span>, your account stops accepting
+      new uploads until the debt clears. <span class="font-semibold">Nothing you have stored is
+      ever deleted</span> to settle a bill — not by staff, not automatically. You keep every file
+      you have; you simply cannot add more until you pay or make room.</li>
   </ul>
   <p class="mt-3 text-sm leading-6 opacity-80">
     <span class="font-semibold">Time limits work the same way.</span> Some things are bounded by time
@@ -149,18 +149,18 @@
     <a href="{% url 'quota:metric_detail' code='time.hold' %}" class="font-semibold underline hover:opacity-80">Extended time held</a>;
     holding a raised limit costs a small daily fee, charged automatically per hour of
     extension, whether you use it or not. If the fee cannot be collected, the same warning and
-    one-week rule applies — except nothing is deleted: your time limits are simply reset to the free
-    defaults. Housekeeping runs regardless: idle kernels stop automatically once their limit passes
+    one-week rule applies: you cannot raise anything further until it clears, and the limits you
+    have already raised keep working. Housekeeping runs regardless: idle kernels stop automatically once their limit passes
     (variables are cleared, files are untouched), and background jobs that die without reporting are
     closed as failed within a few hours.
   </p>
   <p class="mt-3 text-sm leading-6 opacity-80">
-    <span class="font-semibold">The community fee works the same way.</span> It prevents idle
-    accounts: money held above a per-currency threshold is charged a small percentage each period,
-    automatically, in the same currency — taken from your largest holding first, summed across all
-    your accounts. Nothing to confirm and nothing to run out of: the fee is always smaller than the
-    surplus it taxes. Money should move. The threshold and rate are published on each currency's own
-    page, and every way this platform charges is listed on
+    <span class="font-semibold">Everyone pays a head tax</span> — a small daily charge for being a
+    member, whoever you are and whatever you hold. What you pay depends on your communities: a
+    trusted one can carry a rate of zero, an ordinary one pays the standard rate, and a community the
+    platform trusts less pays more. If you belong to several, the best rate wins. The tax is federal:
+    it funds the platform's offices, and no community ever receives money.
+    Every way this platform charges is listed on
     <a href="{% url 'quota:taxes' %}" class="font-semibold underline hover:opacity-80">How you are charged</a>.
   </p>
 </section>

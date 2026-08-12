@@ -22,41 +22,52 @@ from .factories import (
 class LevyTests(TestCase):
     def setUp(self):
         self.asset = make_gas_asset(decimals=9)
-        self.rule = make_rule(allowance="1")
+        self.rule = make_rule()
 
     # -- nothing billable ---------------------------------------------------
 
-    def test_under_allowance_writes_nothing(self):
+    def test_the_first_byte_is_billable(self):
+        """There is no free band: half a gigabyte is charged for."""
         user = make_user("alice")
         make_vault_file(user, GB // 2)
+        price_gb_day("0.5")
+        fund_prepaid(user, self.asset, to_base_units(Decimal("1"), self.asset.decimals))
+
+        summary = services.levy_rule(self.rule)
+
+        self.assertEqual(summary.counts, {services.Outcome.LEVIED: 1})
+        self.assertEqual(VaultUsageEvent.objects.get().quantity, Decimal("0.5"))
+
+    def test_holding_nothing_writes_nothing(self):
+        """Someone with no files is not in the sample and is never charged."""
+        make_user("alice")
         price_gb_day("0.5")
 
         summary = services.levy_rule(self.rule)
 
-        self.assertEqual(summary.counts, {services.Outcome.UNDER_ALLOWANCE: 1})
+        self.assertEqual(summary.counts, {})
         self.assertEqual(VaultUsageEvent.objects.count(), 0)
         self.assertEqual(UsageRecord.objects.count(), 0)
 
-    def test_at_allowance_exactly_is_free(self):
+    def test_shedding_everything_resolves_an_open_case(self):
+        """The way out of arrears, other than paying: hold nothing.
+
+        Someone who sheds every file drops out of the sample entirely, so the
+        run has to notice them separately — otherwise their case would keep its
+        deadline ticking over holdings that no longer exist.
+        """
         user = make_user("alice")
-        make_vault_file(user, GB)
-        price_gb_day("0.5")
+        vault_file = make_vault_file(user, 3 * GB)
+        case = TaxArrearsCase.objects.create(
+            user=user, rule=self.rule, status=ArrearsStatus.WARNED)
+        vault_file.delete()
 
         summary = services.levy_rule(self.rule)
 
-        self.assertEqual(summary.counts, {services.Outcome.UNDER_ALLOWANCE: 1})
-        self.assertEqual(VaultUsageEvent.objects.count(), 0)
-
-    def test_under_allowance_resolves_an_open_case(self):
-        user = make_user("alice")
-        make_vault_file(user, GB // 2)
-        case = TaxArrearsCase.objects.create(user=user, rule=self.rule)
-
-        services.levy_rule(self.rule)
-
         case.refresh_from_db()
         self.assertEqual(case.status, ArrearsStatus.RESOLVED)
-        self.assertEqual(case.resolution_reason, "under_allowance")
+        self.assertEqual(case.resolution_reason, "nothing_held")
+        self.assertEqual(summary.counts, {services.Outcome.NOTHING_HELD: 1})
 
     # -- the priced happy path ----------------------------------------------
 
@@ -64,8 +75,8 @@ class LevyTests(TestCase):
         user = make_user("alice")
         make_vault_file(user, 3 * GB)
         price_gb_day("0.5")
-        # 2 GB over allowance × 0.5 ASR = 1 ASR = 1e9 base units.
-        expected = 2 * to_base_units(Decimal("0.5"), self.asset.decimals)
+        # 3 GB × 0.5 ASR = 1.5 ASR, billed from the first byte.
+        expected = 3 * to_base_units(Decimal("0.5"), self.asset.decimals)
         fund_prepaid(user, self.asset, 2 * expected)
 
         summary = services.levy_rule(self.rule)
@@ -73,7 +84,7 @@ class LevyTests(TestCase):
         self.assertEqual(summary.counts, {services.Outcome.LEVIED: 1})
         event = VaultUsageEvent.objects.get()
         self.assertEqual(event.metric_code, "storage.gb_day")
-        self.assertEqual(event.quantity, Decimal("2"))
+        self.assertEqual(event.quantity, Decimal("3"))
         self.assertEqual(event.unit, "gb_day")
         self.assertEqual(
             event.idempotency_key,
@@ -172,7 +183,7 @@ class LevyTests(TestCase):
         self.assertEqual(VaultUsageEvent.objects.count(), 0)
 
     def test_rule_without_provider_is_skipped_cleanly(self):
-        rule = make_rule(allowance="0", metric_code="nothing.registered")
+        rule = make_rule(metric_code="nothing.registered")
 
         summary = services.levy_rule(rule)
 
@@ -228,9 +239,9 @@ class LevyTests(TestCase):
         row = rows[0]
         self.assertEqual(row["measured_raw"], 3 * GB)
         self.assertEqual(row["measured"], Decimal("3"))
-        self.assertEqual(row["billable"], Decimal("2"))
+        self.assertEqual(row["billable"], Decimal("3"))
         self.assertEqual(row["estimate"]["asset"], "ASR")
-        self.assertEqual(row["estimate"]["amount"], Decimal("1.000000000"))
+        self.assertEqual(row["estimate"]["amount"], Decimal("1.500000000"))
         self.assertIsNone(row["case"])
 
     def test_estimate_without_price_has_no_amount(self):

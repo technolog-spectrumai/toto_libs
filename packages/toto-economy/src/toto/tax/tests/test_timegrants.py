@@ -92,9 +92,10 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
             timegrants.set_grant(actor=self.alice, key="test.bucket_dial",
                                  seconds=500, scope_id=999999)
 
-    def test_total_estimate_subtracts_the_hold_allowance(self):
-        # Review finding: the levy bills only the excess above the time.hold
-        # rule's allowance; the tab's total must not overstate the bill.
+    def test_the_total_is_exactly_the_sum_of_the_rows(self):
+        # There is no allowance to subtract, so the roll-up and the rows can
+        # no longer disagree — they could when the rows were marginal and the
+        # total was net of a free band.
         from decimal import Decimal
 
         from toto.assets.models import Asset
@@ -107,7 +108,7 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
                              max_supply_base_units=10 ** 15, active=True)
         upsert_price(metric_registry.get("time.hold"), Decimal("1"))
         TaxRule.objects.create(metric_code="time.hold",
-                               allowance=Decimal("1"), unit_label="h")
+                               unit_label="h")
         times.registry.register(TimeLimit(
             key="test.wide", label="Wide dial", app_label="tax", scope="user",
             free_seconds=0, ceiling_seconds=10 * 3600,
@@ -117,10 +118,10 @@ class SetGrantTests(RegistrySnapshotMixin, TestCase):
 
         data = timegrants.rows_for_user(self.alice)
 
-        # 2h held − 1h allowance = 1h billable at 1 ASR/h·day.
+        # 2h held, all of it billable at 1 ASR/h·day.
         self.assertEqual(data["total_extra_hours"], 2.0)
-        self.assertEqual(data["total_estimate"]["amount"], Decimal("1.000000000"))
-        # The per-row estimate stays marginal (documented).
+        self.assertEqual(data["total_estimate"]["amount"], Decimal("2.000000000"))
+        # And the single row says exactly the same thing.
         self.assertEqual(data["rows"][0]["estimate"]["amount"],
                          Decimal("2.000000000"))
 

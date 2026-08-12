@@ -59,6 +59,28 @@ class QuotaExceeded(Exception):
         )
 
 
+class InArrears(Exception):
+    """Raised by :func:`check_quota` when the user is past an arrears deadline.
+
+    A separate exception from :class:`QuotaExceeded` on purpose: "you are over
+    a rate limit, try later" and "a recurring fee went unpaid, top up" are
+    different problems with different fixes, and a caller that renders one
+    message for both would tell half its users the wrong thing.
+
+    402 rather than 429 for the same reason — this is a payment problem. It is
+    the whole consequence of falling behind: nothing is deleted, nothing is
+    taken back, the account simply stops accepting new metered work until the
+    debt clears (by paying, or by shedding what is held).
+    """
+
+    status_code = 402
+
+    def __str__(self) -> str:
+        return ("A recurring platform fee went unpaid past its deadline. "
+                "Top up your wallet, or reduce what you hold, to continue. "
+                "Nothing you have stored has been deleted.")
+
+
 # ---------------------------------------------------------------------------
 # Periods
 # ---------------------------------------------------------------------------
@@ -178,6 +200,14 @@ def check_quota(policy_model, metric_code: str, quantity=1, user=None) -> None:
     Silent when no policy exists or the policy is not in block mode. The test
     is prospective — consuming exactly up to the limit is allowed.
     """
+    # The freeze comes FIRST, and applies whether or not this metric has a
+    # policy: an unpaid levy stops new metered work everywhere, and checking it
+    # only for capped metrics would leave the uncapped ones as a way around it.
+    from . import levies
+
+    if levies.user_is_frozen(user):
+        raise InArrears()
+
     policy = get_policy(policy_model, metric_code, user)
     if policy is None or policy.mode != Mode.BLOCK:
         return

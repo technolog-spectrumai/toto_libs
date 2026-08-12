@@ -36,7 +36,7 @@ class OfficeChangesNoCharge(TestCase):
     """Extra limits, same taxes — asserted on the money, not on the intent."""
 
     def setUp(self):
-        self.rule = make_rule(allowance="0")
+        self.rule = make_rule()
         make_gas_asset()
         price_gb_day("0.5")
 

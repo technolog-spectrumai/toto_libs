@@ -1,4 +1,4 @@
-"""The arrears lifecycle: open → warn → resolve / week → enforce."""
+"""The arrears lifecycle: open → warn → resolve, or a week → frozen."""
 
 import datetime
 from decimal import Decimal
@@ -11,22 +11,19 @@ from django.utils import timezone
 from toto.events.models import EventInvite, ScheduledEvent
 
 from .. import arrears
-from ..models import (
-    ArrearsStatus, EnforcementAction, TaxArrearsCase, TaxEnforcementAction,
-)
-from .factories import GB, FakeProvider, make_person, make_rule, make_user
+from ..models import ArrearsStatus, TaxArrearsCase
+from .factories import GB, make_person, make_rule, make_user
 
 
 def open_case(user, rule, **kwargs):
-    defaults = {"stored_raw": 3 * GB, "allowance_raw": GB,
-                "shortfall": Decimal("1"), "asset": "ASR"}
+    defaults = {"stored_raw": 3 * GB, "shortfall": Decimal("1"), "asset": "ASR"}
     defaults.update(kwargs)
     return arrears.open_or_touch_case(user, rule, **defaults)
 
 
 class WarningTests(TestCase):
     def setUp(self):
-        self.rule = make_rule(allowance="1")
+        self.rule = make_rule()
         self.user = make_user("alice")
         self.person = make_person(self.user)
 
@@ -42,7 +39,11 @@ class WarningTests(TestCase):
         self.assertEqual(event.owner, self.person)
         self.assertEqual(event.category.name, "Platform notices")
         self.assertNotIn("alice", event.title)  # neutral title, details inside
-        self.assertIn("permanently deleted", event.description)
+        # The notice used to promise permanent deletion of randomly chosen
+        # files. It now promises the opposite, and says so in the provider's
+        # own words — asserted here because it is the whole change.
+        self.assertIn("nothing you have stored is deleted", event.description)
+        self.assertNotIn("deleted to", event.description)
         self.assertTrue(EventInvite.objects.filter(event=event, person=self.person).exists())
 
     def test_rerun_same_day_is_idempotent(self):
@@ -109,12 +110,13 @@ class WarningTests(TestCase):
                 TaxArrearsCase.objects.create(user=self.user, rule=self.rule)
 
 
-class EnforcementTests(TestCase):
+class FreezeTests(TestCase):
+    """Past the deadline, new usage stops. Nothing is ever taken away."""
+
     def setUp(self):
-        self.rule = make_rule(allowance="1")
+        self.rule = make_rule()
         self.user = make_user("alice")
         self.person = make_person(self.user)
-        self.provider = FakeProvider({self.user.pk: 5 * GB})
 
     def _warned_case(self, days_past_deadline=0):
         case = open_case(self.user, self.rule)
@@ -123,49 +125,35 @@ class EnforcementTests(TestCase):
             case.save(update_fields=["deadline_at"])
         return case
 
-    def test_no_enforcement_before_the_deadline(self):
-        case = self._warned_case()
+    def test_not_frozen_before_the_deadline(self):
+        self._warned_case()
+        self.assertFalse(arrears.is_frozen(self.user))
 
-        self.assertIsNone(arrears.enforce_if_due(case, self.provider))
-        self.assertEqual(self.provider.enforce_calls, [])
+    def test_frozen_past_the_deadline(self):
+        self._warned_case(days_past_deadline=1)
+        self.assertTrue(arrears.is_frozen(self.user))
 
-    def test_enforces_to_the_current_allowance_past_deadline(self):
-        case = self._warned_case(days_past_deadline=1)
+    def test_paying_thaws(self):
+        self._warned_case(days_past_deadline=1)
+        arrears.resolve_case(self.user, self.rule, reason=arrears.REASON_PAID)
+        self.assertFalse(arrears.is_frozen(self.user))
 
-        result = arrears.enforce_if_due(case, self.provider)
+    def test_shedding_everything_thaws(self):
+        self._warned_case(days_past_deadline=1)
+        arrears.resolve_case(self.user, self.rule,
+                             reason=arrears.REASON_NOTHING_HELD)
+        self.assertFalse(arrears.is_frozen(self.user))
 
-        self.assertEqual(self.provider.enforce_calls, [(self.user.pk, GB)])
-        self.assertTrue(result.reached_target)
-        case.refresh_from_db()
-        self.assertEqual(case.status, ArrearsStatus.ENFORCED)
-        self.assertTrue(case.reached_target)
-        self.assertEqual(case.enforcement_summary["deleted_count"], 4)
-        self.assertEqual(case.enforcement_summary["final_raw"], GB)
-        self.assertEqual(
-            TaxEnforcementAction.objects.filter(
-                case=case, action=EnforcementAction.DELETED).count(),
-            4,
-        )
-        # Warning gone; the after-the-fact notice is on the calendar instead.
-        self.assertFalse(ScheduledEvent.objects.filter(pk=case.warning_event_uid).exists())
-        notice = ScheduledEvent.objects.get()
-        self.assertIn("storage reduced", notice.title.lower())
+    def test_a_stranger_is_never_frozen(self):
+        self._warned_case(days_past_deadline=1)
+        self.assertFalse(arrears.is_frozen(make_user("bob")))
 
-    def test_partial_enforcement_is_terminal_and_flagged(self):
-        self.provider.protect_all = True
-        case = self._warned_case(days_past_deadline=1)
+    def test_an_anonymous_visitor_is_never_frozen(self):
+        from django.contrib.auth.models import AnonymousUser
 
-        result = arrears.enforce_if_due(case, self.provider)
-
-        self.assertFalse(result.reached_target)
-        case.refresh_from_db()
-        self.assertEqual(case.status, ArrearsStatus.ENFORCED)
-        self.assertFalse(case.reached_target)
-        self.assertEqual(
-            TaxEnforcementAction.objects.filter(
-                case=case, action=EnforcementAction.SKIPPED_PROTECTED).count(),
-            1,
-        )
+        self._warned_case(days_past_deadline=1)
+        self.assertFalse(arrears.is_frozen(AnonymousUser()))
+        self.assertFalse(arrears.is_frozen(None))
 
     def test_reoffense_after_resolution_gets_a_fresh_case_and_week(self):
         first = open_case(self.user, self.rule)
@@ -177,11 +165,63 @@ class EnforcementTests(TestCase):
         self.assertEqual(second.failed_days, 1)
         self.assertEqual(second.status, ArrearsStatus.WARNED)
 
-    def test_reoffense_after_enforcement_gets_a_fresh_case(self):
-        case = self._warned_case(days_past_deadline=1)
-        arrears.enforce_if_due(case, self.provider)
 
-        fresh = open_case(self.user, self.rule)
+class FreezeStopsNewUsageTests(TestCase):
+    """End to end: the debt stops NEW work and touches nothing that exists."""
 
-        self.assertNotEqual(fresh.pk, case.pk)
-        self.assertEqual(fresh.status, ArrearsStatus.WARNED)
+    def setUp(self):
+        self.rule = make_rule()
+        self.user = make_user("alice")
+        make_person(self.user)
+
+    def test_a_frozen_user_cannot_add_but_keeps_everything(self):
+        from toto.quota.api import InArrears, check_quota
+        from toto.vault.models import VaultFile, VaultQuotaPolicy
+
+        from .factories import make_vault_file
+
+        make_vault_file(self.user, 3 * GB)
+        make_vault_file(self.user, 2 * GB)
+        before = set(VaultFile.objects.filter(owner=self.user)
+                     .values_list("pk", flat=True))
+
+        # Before the deadline: warned, but still working.
+        case = open_case(self.user, self.rule)
+        check_quota(VaultQuotaPolicy, "storage.request", 1, self.user)
+
+        # Past it: new work refuses…
+        case.deadline_at = timezone.now() - datetime.timedelta(days=1)
+        case.save(update_fields=["deadline_at"])
+        with self.assertRaises(InArrears) as caught:
+            check_quota(VaultQuotaPolicy, "storage.request", 1, self.user)
+        self.assertEqual(caught.exception.status_code, 402)
+
+        # …and EVERY file is still there. This is the whole change: the old
+        # code deleted files at random one week after a missed payment.
+        after = set(VaultFile.objects.filter(owner=self.user)
+                    .values_list("pk", flat=True))
+        self.assertEqual(after, before)
+
+    def test_clearing_the_debt_restores_writes(self):
+        from toto.quota.api import InArrears, check_quota
+        from toto.vault.models import VaultQuotaPolicy
+
+        case = open_case(self.user, self.rule)
+        case.deadline_at = timezone.now() - datetime.timedelta(days=1)
+        case.save(update_fields=["deadline_at"])
+        with self.assertRaises(InArrears):
+            check_quota(VaultQuotaPolicy, "storage.request", 1, self.user)
+
+        arrears.resolve_case(self.user, self.rule, reason=arrears.REASON_PAID)
+
+        check_quota(VaultQuotaPolicy, "storage.request", 1, self.user)
+
+    def test_one_debtor_does_not_freeze_the_platform(self):
+        from toto.quota.api import check_quota
+        from toto.vault.models import VaultQuotaPolicy
+
+        case = open_case(self.user, self.rule)
+        case.deadline_at = timezone.now() - datetime.timedelta(days=1)
+        case.save(update_fields=["deadline_at"])
+
+        check_quota(VaultQuotaPolicy, "storage.request", 1, make_user("bob"))

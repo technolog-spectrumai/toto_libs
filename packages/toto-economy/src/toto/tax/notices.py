@@ -41,24 +41,18 @@ def _category():
 
 
 def create_warning_event(user, *, deadline, shortfall=None, asset: str = "",
-                         allowance_text: str = "",
                          consequence: str = "") -> ScheduledEvent | None:
     """The one-week warning. Returns the event, or None when the user has no
     Person profile. Sits on the deadline day so the calendar shows the date
-    that matters. ``consequence`` states what enforcement means for the levied
-    resource; empty keeps the storage-deletion wording."""
+    that matters. ``consequence`` states what falling behind means for the
+    levied resource, in that provider's own words; empty gets the default."""
     person = _person_for(user)
     if person is None:
         return None
 
     short_text = f"{shortfall} {asset}".strip() if shortfall is not None else "the amount due"
     if not consequence:
-        consequence = (
-            "files chosen at random will be permanently deleted from your "
-            "storage until it is back within the free allowance"
-            f"{f' of {allowance_text}' if allowance_text else ''}. "
-            "Deleted files cannot be recovered by anyone"
-        )
+        consequence = "you will not be able to add anything new until it clears"
     description = (
         "A recurring platform fee could not be collected from your "
         f"account (short by {short_text}).\n"
@@ -78,53 +72,7 @@ def create_warning_event(user, *, deadline, shortfall=None, asset: str = "",
     )
     EventInvite.objects.create(
         event=event, person=person,
-        note="A platform storage fee is overdue. Top up before the deadline "
-             "or stored files will be permanently deleted.",
-    )
-    return event
-
-
-def create_enforcement_event(user, *, deleted_count: int, deleted_raw: int,
-                             freed_text: str = "",
-                             summary: str = "") -> ScheduledEvent | None:
-    """The after-the-fact notice: what was shed. ``freed_text`` renders the
-    amount in the resource's own unit (a provider's format_raw); ``summary``
-    replaces the whole storage-worded sentence. Defaults keep the storage
-    wording."""
-    person = _person_for(user)
-    if person is None:
-        return None
-
-    from django.utils import timezone
-
-    now = timezone.now()
-    if not freed_text:
-        freed_text = f"{deleted_raw / 2 ** 30:.2f} GB"
-    title_suffix = "storage reduced"
-    if summary:
-        title_suffix = "limits reduced"
-    else:
-        summary = (
-            f"{deleted_count} file(s) ({freed_text}) chosen at random were "
-            "permanently deleted to bring your storage back within the free "
-            "allowance. Deleted files cannot be recovered."
-        )
-    description = (
-        "The unpaid fee deadline passed. "
-        f"{summary}\n"
-        "Details: /tax/."
-    )
-    event = ScheduledEvent.objects.create(
-        title=f"Account notice — {title_suffix}",
-        description=description,
-        start_time=now,
-        end_time=now + timedelta(hours=1),
-        owner=person,
-        category=_category(),
-        public=False,
-    )
-    EventInvite.objects.create(
-        event=event, person=person,
-        note=f"{deleted_count} file(s) were permanently deleted for an unpaid storage fee.",
+        note="A recurring platform fee is overdue. Top up before the deadline, "
+             "or reduce what you hold — nothing you have is deleted either way.",
     )
     return event

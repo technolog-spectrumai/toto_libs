@@ -1,19 +1,24 @@
-"""The arrears state machine: failed levy → warning → week → enforcement.
+"""The arrears state machine: failed levy → warning → week → new usage stops.
 
 The lifecycle the daily engine drives, one call per user per day:
 
 * charge failed → :func:`open_or_touch_case` (idempotent per day; delivers the
   warning once, and the week runs from that delivery);
-* charge succeeded, or the user dropped back under the allowance →
-  :func:`resolve_case`;
-* case still unpaid past its deadline → :func:`enforce_if_due` sheds holdings
-  down to the rule's *current* allowance.
+* charge succeeded, or nothing left to charge for → :func:`resolve_case`;
+* case still unpaid past its deadline → :func:`is_frozen` answers True, and
+  every metered write on the host refuses until it clears.
 
-Nothing here creates debt. A case records that days went unpaid, never what
-they would have cost — those days are written off. RESOLVED and ENFORCED are
-terminal, so the next failure after either starts a fresh case and a fresh
-week; the partial unique constraint on the model makes that shape impossible
-to get wrong under a double-running beat.
+**Nothing is ever destroyed here.** Past the deadline this used to call an
+enforcement pass that deleted the user's files — randomly chosen, permanently,
+to force their holdings back under an allowance. That is gone. A bill the
+platform cannot collect stops NEW usage; what someone already has is theirs,
+and shedding it themselves is always the way out.
+
+Nothing here creates debt either. A case records that days went unpaid, never
+what they would have cost — those days are written off. RESOLVED is terminal,
+so the next failure after it starts a fresh case and a fresh week; the partial
+unique constraint on the model makes that shape impossible to get wrong under a
+double-running beat.
 """
 
 from __future__ import annotations
@@ -26,12 +31,12 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from . import notices
-from .models import ArrearsStatus, EnforcementAction, TaxArrearsCase, TaxEnforcementAction
+from .models import ArrearsStatus, TaxArrearsCase
 
 logger = logging.getLogger("toto.tax")
 
 REASON_PAID = "paid"
-REASON_UNDER_ALLOWANCE = "under_allowance"
+REASON_NOTHING_HELD = "nothing_held"
 # The metric lost its price: nothing is being charged, so nothing is owed —
 # a case left WARNED across an unpriced interlude would otherwise enforce
 # instantly (stale deadline) on the first failure after re-pricing.
@@ -68,7 +73,7 @@ def _active_case(user, rule):
     ).first()
 
 
-def open_or_touch_case(user, rule, *, stored_raw: int, allowance_raw: int,
+def open_or_touch_case(user, rule, *, stored_raw: int,
                        shortfall=None, asset: str = "") -> TaxArrearsCase:
     """Record today's failed levy, warning the user if not yet warned.
 
@@ -87,9 +92,7 @@ def open_or_touch_case(user, rule, *, stored_raw: int, allowance_raw: int,
             try:
                 with transaction.atomic():
                     case = TaxArrearsCase.objects.create(
-                        user=user, rule=rule, opened_at=now,
-                        allowance_raw_at_open=allowance_raw,
-                    )
+                        user=user, rule=rule, opened_at=now)
             except IntegrityError:
                 # A concurrent run won the constraint race; use its case.
                 case = _active_case(user, rule)
@@ -132,7 +135,6 @@ def _deliver_warning(case, rule, *, shortfall, asset, now) -> None:
             case.user,
             deadline=deadline,
             shortfall=shortfall, asset=asset,
-            allowance_text=f"{_trim(rule.allowance)} {rule.unit_label}".strip(),
             consequence=_provider_consequence(rule),
         )
     except Exception:  # noqa: BLE001 - warning must not sink the levy run
@@ -183,84 +185,27 @@ def _delete_warning_event(case) -> None:
         logger.warning("tax: could not delete warning event %s", case.warning_event_uid)
 
 
-def enforce_if_due(case, provider, *, now=None):
-    """Shed the user's holdings if the warned week has run out. Else no-op.
+def is_frozen(user) -> bool:
+    """True when this user has run past an arrears deadline and owes still.
 
-    The target is the rule's *current* allowance — the staff threshold as it
-    stands today, per the platform rule. Each shed item commits atomically
-    with its audit row inside the provider, so a crash mid-walk resumes
-    tomorrow (the case is still WARNED and still past deadline) and simply
-    continues toward the target. Only after the walk does the case flip to
-    ENFORCED, which is terminal even when the target was not reached — the
-    remainder was protected, and re-deleting daily is exactly what the fresh-
-    case-fresh-week rule exists to prevent.
+    The consequence of not paying, and the whole of it: metered writes refuse
+    until the case clears. Deliberately a QUESTION rather than an action —
+    there is no enforcement pass, no scheduled deletion and nothing to undo, so
+    paying (or shedding holdings, which resolves the case on the next sweep)
+    lifts it with no further machinery.
+
+    Cheap and safe to call on the request path: one indexed query, and any
+    failure answers False. Refusing to serve someone because the arrears table
+    was briefly unreadable would be the worst possible failure mode.
     """
-    now = now or timezone.now()
-    if case.status != ArrearsStatus.WARNED or case.deadline_at is None:
-        return None
-    if now < case.deadline_at:
-        return None
-
-    rule = case.rule
-    target_raw = int(rule.allowance * provider.raw_per_unit)
-
-    def on_deleted(info):
-        TaxEnforcementAction.objects.create(
-            case=case, action=EnforcementAction.DELETED,
-            item_pk=info["pk"], item_label=info.get("title", ""),
-            item_key=info.get("key", ""), container=info.get("bucket", ""),
-            size_raw=info.get("size", 0),
-        )
-
-    def on_skipped(info):
-        TaxEnforcementAction.objects.create(
-            case=case, action=EnforcementAction.SKIPPED_PROTECTED,
-            item_pk=info["pk"], item_label=info.get("title", ""),
-            item_key=info.get("key", ""), container=info.get("bucket", ""),
-            size_raw=info.get("size", 0),
-        )
-
-    result = provider.enforce(case.user, target_raw,
-                              on_deleted=on_deleted, on_skipped=on_skipped)
-
-    case.status = ArrearsStatus.ENFORCED
-    case.enforced_at = now
-    case.reached_target = result.reached_target
-    case.enforcement_summary = {
-        "deleted_count": result.deleted_count,
-        "deleted_raw": result.deleted_raw,
-        "skipped_count": result.skipped_count,
-        "final_raw": result.final_raw,
-        "target_raw": target_raw,
-    }
-    case.save(update_fields=[
-        "status", "enforced_at", "reached_target", "enforcement_summary", "updated_at",
-    ])
-    if not result.reached_target:
-        logger.warning(
-            "tax: enforcement on case %s stopped above target — "
-            "%s item(s) protected, %s raw units remain (target %s)",
-            case.uuid, result.skipped_count, result.final_raw, target_raw,
-        )
-    _delete_warning_event(case)
-
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
     try:
-        freed_text = provider.format_raw(result.deleted_raw) or ""
-        summary = ""
-        if getattr(provider, "consequence_text", ""):
-            # A non-storage levy words its own outcome instead of the
-            # deleted-files default.
-            summary = (f"{result.deleted_count} item(s) "
-                       f"({freed_text or result.deleted_raw}) were shed: "
-                       f"{provider.consequence_text}.")
-        notices.create_enforcement_event(
-            case.user,
-            deleted_count=result.deleted_count,
-            deleted_raw=result.deleted_raw,
-            freed_text=freed_text,
-            summary=summary,
-        )
-    except Exception:  # noqa: BLE001 - the deed is done; only the notice failed
-        logger.exception("tax: could not create enforcement notice for case %s", case.uuid)
-
-    return result
+        return TaxArrearsCase.objects.filter(
+            user=user,
+            status=ArrearsStatus.WARNED,
+            deadline_at__lt=timezone.now(),
+        ).exists()
+    except Exception:  # noqa: BLE001 - never refuse service over a read failure
+        logger.exception("tax: could not read arrears for user %s", getattr(user, "pk", None))
+        return False

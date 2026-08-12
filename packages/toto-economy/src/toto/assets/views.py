@@ -319,19 +319,6 @@ def wallet(request):
             if h.balance_base_units > 0:
                 total_holdings.append(h)
 
-    # The community fee must be visible where the money sits. Lazy + guarded:
-    # inert on any host without the levy engine.
-    from django.apps import apps as django_apps
-    if django_apps.is_installed("toto.tax"):
-        try:
-            from toto.tax.surplus import wallet_fee_map
-
-            fee_map = wallet_fee_map(request.user)
-        except Exception:  # noqa: BLE001 - a fee hint must never sink the wallet
-            fee_map = {}
-        for h in total_holdings:
-            h.community_fee = fee_map.get(h.asset_id)
-
     now = timezone.now()
     from toto.assets.wallet_pin import has_wallet_pin
     return assets_render(request, 'assets/wallet.html', {

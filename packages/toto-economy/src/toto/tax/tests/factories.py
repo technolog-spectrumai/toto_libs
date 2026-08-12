@@ -65,15 +65,6 @@ def fund_account(account, asset, base_units: int):
     return holding
 
 
-def make_surplus_policy(asset, threshold="100", rate="0.02", period="monthly",
-                        active=True):
-    from ..models import SurplusPolicy
-
-    return SurplusPolicy.objects.create(
-        asset=asset, threshold_display=Decimal(threshold),
-        rate=Decimal(rate), period=period, active=active,
-    )
-
 
 def fund_prepaid(user, asset, base_units: int):
     account, _created = get_or_create_prepaid_account(user)
@@ -86,10 +77,10 @@ def fund_prepaid(user, asset, base_units: int):
     return account
 
 
-def make_rule(allowance="1", metric_code="storage.gb_day", active=True):
+def make_rule(metric_code="storage.gb_day", active=True, unit_label="GB"):
+    """An armed levy rule. There is no allowance: everything held is billed."""
     return TaxRule.objects.create(
-        metric_code=metric_code, allowance=Decimal(allowance),
-        unit_label="GB", active=active,
+        metric_code=metric_code, unit_label=unit_label, active=active,
     )
 
 

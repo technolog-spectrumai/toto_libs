@@ -32,8 +32,8 @@ logger = logging.getLogger("toto.tax")
 
 class Outcome:
     LEVIED = "levied"                    # charged and posted
-    FREE = "free"                        # over allowance, but the metric has no price
-    UNDER_ALLOWANCE = "under_allowance"  # nothing billable
+    FREE = "free"                        # holds some, but the metric has no price
+    NOTHING_HELD = "nothing_held"        # holds none of the resource
     ALREADY = "already"                  # today's event exists; nothing to do
     FAILED = "failed"                    # insufficient balance; arrears touched
     ERROR = "error"                      # unexpected, logged, run continued
@@ -64,23 +64,17 @@ def _is_soft_time_limit(exc: Exception) -> bool:
 
 
 def run_daily_levy(day=None) -> list[LevySummary]:
-    """Levy every active rule, then sweep the community fee. The beat task
-    calls this and nothing else."""
+    """Levy every active rule. The beat task calls this and nothing else.
+
+    One clock. There used to be a second sweep riding this beat — a demurrage
+    on token holdings, collected into its own account — and it is gone: a head
+    tax and a fee on savings do the same job, and the head tax is the one that
+    can be explained in a sentence.
+    """
     summaries = [levy_rule(rule, day=day) for rule in TaxRule.objects.filter(active=True)]
     for summary in summaries:
         logger.info("tax: %s %s — %s", summary.metric_code, summary.day,
                     summary.skipped_reason or summary.counts)
-
-    # The community fee rides the same daily beat but is its own idempotent
-    # sweep — isolate it so neither half can take the other down.
-    try:
-        from . import surplus
-
-        logger.info("tax: community fee — %s", surplus.run_surplus_sweep())
-    except Exception as exc:  # noqa: BLE001
-        if _is_soft_time_limit(exc):
-            raise
-        logger.exception("tax: community-fee sweep failed; levy run unaffected")
     return summaries
 
 
@@ -117,7 +111,7 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
     users = get_user_model().objects.in_bulk(ids)
 
     # No per-user resolution happens here any more. A community's standing used
-    # to arrive as an exemption and an allowance override, both prefetched
+    # to arrive as an exemption and a free-band override, both prefetched
     # beside this in_bulk; both are gone. What a community's standing is worth
     # is now expressed as the QUANTITY its provider reports — the head tax
     # samples one weighted head per person — so this loop bills whatever it is
@@ -150,30 +144,27 @@ def levy_rule(rule: TaxRule, day=None) -> LevySummary:
                  .exclude(user_id__in=sampled_ids)
                  .select_related("user"))
     for case in lingering:
-        arrears.resolve_case(case.user, rule, reason=arrears.REASON_UNDER_ALLOWANCE)
-        summary.add(Outcome.UNDER_ALLOWANCE)
+        arrears.resolve_case(case.user, rule, reason=arrears.REASON_NOTHING_HELD)
+        summary.add(Outcome.NOTHING_HELD)
     return summary
 
 
 def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
               event_model) -> str:
     """Levy one user for one day. Returns an :class:`Outcome` string."""
-    allowance = rule.allowance
-    measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-    billable = measured - allowance
+    billable = Decimal(raw) / Decimal(provider.raw_per_unit)
     if billable <= 0:
-        # Under the allowance nothing is chargeable and nothing enforceable —
-        # shedding files (or a kind admin deleting them) resolves a case the
-        # same way paying does.
-        arrears.resolve_case(user, rule, reason=arrears.REASON_UNDER_ALLOWANCE)
-        return Outcome.UNDER_ALLOWANCE
+        # Holding nothing costs nothing, and shedding everything is a way out
+        # of arrears — the same way paying is.
+        arrears.resolve_case(user, rule, reason=arrears.REASON_NOTHING_HELD)
+        return Outcome.NOTHING_HELD
 
     event = record_usage(
         event_model, rule.metric_code, billable, user,
         unit=metric.unit,
         idempotency_key=idempotency_key(rule, user.pk, day),
         source_type="tax.TaxRule", source_id=str(rule.pk),
-        metadata={"measured_raw": raw, "allowance": str(allowance)},
+        metadata={"measured_raw": raw},
     )
     if event is None:
         # Already levied today (or the write failed, which record_usage keeps
@@ -200,13 +191,8 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
         # day's audit trail. Its exception carries no numbers, so re-derive
         # the shortfall from the read-only check for the warning text.
         shortfall, asset = _shortfall_info(user, tariff, rule.metric_code, billable, metric.unit)
-        case = arrears.open_or_touch_case(
-            user, rule,
-            stored_raw=raw,
-            allowance_raw=int(allowance * provider.raw_per_unit),
-            shortfall=shortfall, asset=asset,
-        )
-        arrears.enforce_if_due(case, provider)
+        arrears.open_or_touch_case(
+            user, rule, stored_raw=raw, shortfall=shortfall, asset=asset)
         return Outcome.FAILED
 
     arrears.resolve_case(user, rule, reason=arrears.REASON_PAID)
@@ -237,8 +223,7 @@ def estimate_for_user(user) -> list[dict]:
             continue
         raw = provider.measure(user)
         measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-        allowance = rule.allowance
-        billable = max(Decimal("0"), measured - allowance)
+        billable = measured
         price = card.get(rule.metric_code)
         estimate = None
         if price is not None:
@@ -263,7 +248,6 @@ def estimate_for_user(user) -> list[dict]:
             # template falls back to filesizeformat when this is None.
             "display": provider.format_raw(raw),
             "billable": billable,
-            "allowance": allowance,
             "price": price,
             "estimate": estimate,
             "case": case,

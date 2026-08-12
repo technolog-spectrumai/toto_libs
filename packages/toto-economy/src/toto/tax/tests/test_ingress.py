@@ -32,7 +32,7 @@ class IngressTaxTests(TestCase):
         output = run_ingress()
 
         rule = TaxRule.objects.get(metric_code="storage.gb_day")
-        self.assertEqual(rule.allowance, Decimal("1"))
+        self.assertEqual(rule.unit_label, "GB")
         self.assertEqual(rule.unit_label, "GB")
         self.assertFalse(rule.active)
         self.assertIn("UNARMED", output)
@@ -40,12 +40,12 @@ class IngressTaxTests(TestCase):
     def test_rerun_preserves_a_staff_edit(self):
         run_ingress()
         TaxRule.objects.filter(metric_code="storage.gb_day").update(
-            allowance=Decimal("5"))
+            unit_label="TB")
 
         run_ingress()
 
         rule = TaxRule.objects.get(metric_code="storage.gb_day")
-        self.assertEqual(rule.allowance, Decimal("5"))
+        self.assertEqual(rule.unit_label, "TB")
 
     def test_repairs_the_billing_unit_mirror(self):
         # What billing_unit_for() creates when the tariffs seeder mirrors the
@@ -63,7 +63,7 @@ class IngressTaxTests(TestCase):
         output = run_ingress()
 
         rule = TaxRule.objects.get(metric_code="time.hold")
-        self.assertEqual(rule.allowance, Decimal("0"))
+        self.assertEqual(rule.unit_label, "h")
         self.assertEqual(rule.unit_label, "h")
         self.assertFalse(rule.active)
         self.assertIn("time.hold", output)

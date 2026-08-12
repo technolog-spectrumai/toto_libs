@@ -101,7 +101,7 @@
             <tr class="text-left">
               <th class="px-5 py-3 font-semibold">{% trans "Thing" %}</th>
               <th class="px-5 py-3 font-semibold">{% trans "Limit" %}</th>
-              {% if levy_enabled %}<th class="px-5 py-3 font-semibold">{% trans "Free" %}</th>{% endif %}
+              {% if levy_enabled %}<th class="px-5 py-3 font-semibold">{% trans "Levied" %}</th>{% endif %}
               {% if pricing_enabled %}<th class="px-5 py-3 font-semibold">{% trans "Price" %}</th>{% endif %}
               <th class="px-5 py-3 font-semibold">{% trans "Yours" %}</th>
               <th class="px-5 py-3"></th>
@@ -158,22 +158,27 @@
                 {% endif %}
               </td>
 
-              {# ---- free allowance: only levies have one ---- #}
+              {% comment %}Armed or not — a levy has no number here. It bills
+                 everything held, from the first unit; the free tier is the
+                 absence of a price, which is the column to its left.
+              {% endcomment %}
               {% if levy_enabled %}
               <td class="px-5 py-3">
                 {% if row.is_levy %}
                   {% if is_staff_view %}
-                    <input type="text" inputmode="decimal" name="allowance__{{ row.metric.code }}"
-                           value="{{ row.allowance|default_if_none:''|floatformat:'-10' }}" placeholder="0"
-                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                           class="w-20 rounded border px-2 py-1 font-mono text-xs">
-                    <div class="mt-0.5 text-[10px] opacity-50">{{ row.allowance_unit }}</div>
+                    <label class="inline-flex items-center gap-2 text-xs">
+                      <input type="checkbox" name="armed__{{ row.metric.code }}"
+                             {% if row.levy.active %}checked{% endif %}
+                             class="rounded border">
+                      <span class="opacity-70">{{ row.levy_unit }}{% trans " / night" %}</span>
+                    </label>
+                  {% elif row.levy.active %}
+                    <span class="text-xs">{% trans "nightly" %}</span>
                   {% else %}
-                    <span class="font-mono">{{ row.allowance|default_if_none:"0"|floatformat:"-4" }}</span>
-                    <span class="text-xs opacity-60">{{ row.allowance_unit }}</span>
+                    <span class="text-xs opacity-55">{% trans "not armed" %}</span>
                   {% endif %}
                 {% else %}
-                  <span class="text-xs opacity-40" title="{% trans 'Per-action charging has no free tier — the first unit costs full price.' %}">—</span>
+                  <span class="text-xs opacity-40" title="{% trans 'Charged per action, when you do it.' %}">—</span>
                 {% endif %}
               </td>
               {% endif %}
@@ -242,7 +247,7 @@
   {% if is_staff_view %}
     <div class="flex items-center justify-between gap-4">
       <p class="text-xs opacity-55">
-        {% trans "An empty limit means no limit. An empty price means free. An empty allowance means zero — a levy rule with no allowance still levies." %}
+        {% trans "An empty limit means no limit. An empty price means free — for everyone, since there are no per-person allowances. A levy bills everything held, so arming one without a price is refused." %}
       </p>
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"

@@ -15,8 +15,8 @@ hidden — it is reported separately as drift, below.
 
 *One billing currency is only half enforced.* The database guarantees one active
 local ``CurrencyContract``, so there is exactly one contractual asset. It does
-NOT constrain ``TariffItem.charged_asset`` or ``SurplusPolicy.asset``, both of
-which the staff screens will happily set to anything active. So the page states
+NOT constrain ``TariffItem.charged_asset``, which the staff screens will
+happily set to anything active. So the page states
 what the platform is contracted for and lists everything priced against
 something else, with a link to fix each one.
 
@@ -207,20 +207,6 @@ def off_contract_rows(asset) -> list:
     # and the card silently stopped counting it.
     rows.extend(_misrouted_rows())
 
-    try:
-        from toto.tax.models import SurplusPolicy
-    except ImportError:
-        return rows
-
-    policies = (SurplusPolicy.objects.filter(active=True)
-                .exclude(asset=asset).select_related("asset"))
-    for policy in policies:
-        rows.append(DriftRow(
-            kind="community fee",
-            what=policy.asset.unit_name,
-            asset=policy.asset.unit_name,
-            fix_url=_url_or_blank("quota:index"),
-        ))
     return rows
 
 

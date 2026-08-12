@@ -13,9 +13,8 @@ levy inherits rather than fixes: a copy keeps the source file's owner, and
 
 from __future__ import annotations
 
-import random
 
-from toto.quota.levy import EnforcementResult, LevyProvider, registry
+from toto.quota.levy import LevyProvider, registry
 
 
 class StorageLevy(LevyProvider):
@@ -42,61 +41,13 @@ class StorageLevy(LevyProvider):
         agg = VaultFile.objects.filter(owner=user).aggregate(total=Sum("file_size_bytes"))
         return int(agg["total"] or 0)
 
-    def enforce(self, user, target_raw: int, *, rng=None,
-                on_deleted=None, on_skipped=None) -> EnforcementResult:
-        """Delete randomly chosen files until the user holds ≤ ``target_raw``.
 
-        Random in Python over ``(pk, size)`` pairs rather than ``order_by("?")``
-        — a seeded ``rng`` makes the selection testable, and the table is not
-        sorted server-side on every attempt. Each file's row delete and its
-        audit callback commit atomically together (the blob follows on commit
-        via :func:`~toto.vault.purge.purge_file`), so a crash mid-walk loses
-        nothing: the next run re-measures and continues toward the target.
-        Files pinned by a PROTECT FK are skipped and another is drawn.
-        """
-        from django.db import transaction
-        from django.db.models import ProtectedError
-
-        from .models import VaultFile
-        from .purge import purge_file
-
-        result = EnforcementResult()
-        rows = list(VaultFile.objects.filter(owner=user)
-                    .values_list("pk", "file_size_bytes"))
-        (rng or random.SystemRandom()).shuffle(rows)
-
-        remaining = sum(size for _pk, size in rows)
-        for pk, size in rows:
-            if remaining <= target_raw:
-                break
-            vault_file = VaultFile.objects.filter(pk=pk).first()
-            if vault_file is None:  # deleted underneath us; its bytes are gone
-                remaining -= size
-                continue
-            info = {
-                "pk": pk,
-                "title": vault_file.title,
-                "key": vault_file.key,
-                "bucket": getattr(vault_file.bucket, "slug", "") or "",
-                "size": size,
-            }
-            try:
-                with transaction.atomic():
-                    purge_file(vault_file)
-                    if on_deleted is not None:
-                        on_deleted(info)
-            except ProtectedError:
-                result.skipped_count += 1
-                if on_skipped is not None:
-                    on_skipped(info)
-                continue
-            result.deleted_count += 1
-            result.deleted_raw += size
-            remaining -= size
-
-        result.final_raw = self.measure(user)
-        result.reached_target = result.final_raw <= target_raw
-        return result
-
+# What falling behind means here. It used to mean permanent deletion of
+# randomly chosen files, one week after a missed payment; it now means the
+# vault stops accepting new ones. Nothing anybody uploaded is ever destroyed to
+# settle a bill.
+StorageLevy.consequence_text = (
+    "no new uploads until it clears — nothing you have stored is deleted"
+)
 
 registry.register(StorageLevy())

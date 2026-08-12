@@ -11,46 +11,30 @@ provider in ``<app>/taxes.py``, and the economy-side engine autodiscovers
 those modules on the hosts where it is installed. On every other host no
 ``taxes.py`` is ever imported and this module is inert.
 
-A provider answers three questions and nothing else:
+A provider answers two questions and nothing else:
 
 * how much of the resource each user holds right now (:meth:`~LevyProvider.sample`
   / :meth:`~LevyProvider.measure`), in the resource's own raw integer unit —
   bytes for storage;
 * how many raw units make one billing unit (``raw_per_unit`` — ``2**30`` for
-  a GB-day metric);
-* how to shed one user's holdings down to a target when the platform enforces
-  (:meth:`~LevyProvider.enforce`).
+  a GB-day metric).
 
-No prices, no allowances, no arrears — those live on the engine's side of the
-boundary. Like the metric registry, registration must stay pure: a provider
+No prices, no arrears, and **no enforcement**: a provider used to carry an
+``enforce()`` that shed a user's holdings down to a target, and for storage that
+meant deleting randomly chosen files, permanently, one week after a missed
+payment. Nothing on this platform destroys a person's data to settle a bill. A
+debt that cannot be paid stops NEW usage and leaves what exists alone. Like the metric registry, registration must stay pure: a provider
 module is imported at app-registry time and may not touch the database until
 one of its methods is called.
 """
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Callable, Iterator
+from typing import Iterator
 
 
 class DuplicateLevyProvider(Exception):
     """Two apps claimed the same levy metric code."""
-
-
-@dataclass
-class EnforcementResult:
-    """What one enforcement run actually did, as plain data.
-
-    ``reached_target`` is False when the provider ran out of things it was
-    allowed to shed while the user was still over target — the engine records
-    that as a partial enforcement rather than retrying forever.
-    """
-
-    deleted_count: int = 0
-    deleted_raw: int = 0
-    skipped_count: int = 0
-    final_raw: int = 0
-    reached_target: bool = False
 
 
 class LevyProvider:
@@ -65,9 +49,9 @@ class LevyProvider:
     code: str = ""
     metric_code: str = ""
     raw_per_unit: int = 1
-    #: What enforcement means for THIS resource, for the warning notice —
-    #: e.g. "your raised time limits will be reset to their free defaults".
-    #: Empty means the engine's default (permanent random deletion) wording.
+    #: What falling behind means for THIS resource, in the provider's own
+    #: words, for the arrears notice — e.g. "no new uploads until it clears".
+    #: Empty means the engine's default wording.
     consequence_text: str = ""
 
     def format_raw(self, raw: int) -> str | None:
@@ -83,26 +67,6 @@ class LevyProvider:
 
     def measure(self, user) -> int:
         """This one user's current holdings in raw units, for live display."""
-        raise NotImplementedError
-
-    def enforce(
-        self,
-        user,
-        target_raw: int,
-        *,
-        rng=None,
-        on_deleted: Callable[[dict], None] | None = None,
-        on_skipped: Callable[[dict], None] | None = None,
-    ) -> EnforcementResult:
-        """Permanently shed the user's holdings down to ``target_raw``.
-
-        Selection is the provider's business (storage sheds random files); the
-        contract is only that shedding is permanent, that each shed item is
-        reported through ``on_deleted`` (and each refusal through
-        ``on_skipped``) with a plain-data dict, and that the walk stops as
-        soon as holdings are at or under target. ``rng`` accepts a seeded
-        ``random.Random`` so tests can pin the selection.
-        """
         raise NotImplementedError
 
 

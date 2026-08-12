@@ -10,10 +10,7 @@ from toto.quota.levy import registry as levy_registry
 from toto.quota.times import TimeLimit, registry as time_registry
 
 from .. import arrears, services
-from ..models import (
-    ArrearsStatus, EnforcementAction, TaxArrearsCase, TaxEnforcementAction,
-    TaxUsageEvent, TimeGrant,
-)
+from ..models import ArrearsStatus, TaxArrearsCase, TaxUsageEvent, TimeGrant
 from .factories import fund_prepaid, make_gas_asset, make_user
 from .test_times import RegistrySnapshotMixin
 
@@ -40,7 +37,7 @@ def make_time_rule():
     from ..models import TaxRule
 
     return TaxRule.objects.create(metric_code="time.hold",
-                                  allowance=Decimal("0"), unit_label="h",
+                                  unit_label="h",
                                   active=True)
 
 
@@ -80,35 +77,6 @@ class ProviderTests(RegistrySnapshotMixin, TestCase):
         self.assertEqual(self.provider.measure(self.alice), 0)
         self.assertEqual(TimeGrant.objects.count(), 0)
 
-    def test_enforce_sheds_largest_first_down_to_target(self):
-        TimeGrant.objects.create(user=self.alice, key="test.a",
-                                 seconds=2 * HOUR)   # extra 1h
-        big = TimeGrant.objects.create(user=self.alice, key="test.b",
-                                       seconds=5 * HOUR)  # extra 5h
-        deleted = []
-
-        result = self.provider.enforce(
-            self.alice, 2 * HOUR,
-            on_deleted=lambda info: deleted.append(info))
-
-        # Shedding the 5h grant alone reaches the 2h target.
-        self.assertEqual(result.deleted_count, 1)
-        self.assertEqual(deleted[0]["pk"], big.pk)
-        self.assertEqual(deleted[0]["size"], 5 * HOUR)
-        self.assertEqual(result.final_raw, HOUR)
-        self.assertTrue(result.reached_target)
-        self.assertTrue(TimeGrant.objects.filter(key="test.a").exists())
-
-    def test_enforce_to_zero_clears_everything(self):
-        TimeGrant.objects.create(user=self.alice, key="test.a", seconds=2 * HOUR)
-        TimeGrant.objects.create(user=self.alice, key="test.b", seconds=5 * HOUR)
-
-        result = self.provider.enforce(self.alice, 0)
-
-        self.assertEqual(result.deleted_count, 2)
-        self.assertEqual(TimeGrant.objects.count(), 0)
-        self.assertTrue(result.reached_target)
-
 
 class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
     def setUp(self):
@@ -147,7 +115,9 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
         services.levy_rule(self.rule, day=tomorrow)
         self.assertEqual(TaxUsageEvent.objects.count(), 2)
 
-    def test_broke_user_gets_case_then_enforcement_resets_dials(self):
+    def test_a_broke_user_is_warned_then_frozen_and_keeps_their_dials(self):
+        from .. import arrears
+
         price_time_hold("0.25")
         fund_prepaid(self.alice, self.asset, 1)
 
@@ -156,26 +126,21 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
         self.assertEqual(summary.counts, {services.Outcome.FAILED: 1})
         case = TaxArrearsCase.objects.get(user=self.alice)
         self.assertEqual(case.status, ArrearsStatus.WARNED)
+        self.assertFalse(arrears.is_frozen(self.alice))
 
-        # Force the deadline past and let the next failed day enforce.
+        # Past the deadline, the next failed day changes nothing except that
+        # new usage now refuses. The grants are untouched.
         case.deadline_at = timezone.now() - datetime.timedelta(hours=1)
         case.save(update_fields=["deadline_at"])
         tomorrow = timezone.localdate() + datetime.timedelta(days=1)
         services.levy_rule(self.rule, day=tomorrow)
 
         case.refresh_from_db()
-        self.assertEqual(case.status, ArrearsStatus.ENFORCED)
-        self.assertTrue(case.reached_target)
-        self.assertEqual(TimeGrant.objects.count(), 0)
-        action = TaxEnforcementAction.objects.get()
-        self.assertEqual(action.action, EnforcementAction.DELETED)
-        self.assertEqual(action.item_key, "test.a")
-        # Every dial is back at its free default: the next day levies nothing.
-        day_after = tomorrow + datetime.timedelta(days=1)
-        final = services.levy_rule(self.rule, day=day_after)
-        self.assertEqual(final.counts, {})
+        self.assertEqual(case.status, ArrearsStatus.WARNED)
+        self.assertTrue(arrears.is_frozen(self.alice))
+        self.assertEqual(TimeGrant.objects.count(), 1)
 
-    def test_under_allowance_after_manual_reset_resolves_case(self):
+    def test_resetting_the_dial_resolves_the_case(self):
         price_time_hold("0.25")
         fund_prepaid(self.alice, self.asset, 1)
         services.levy_rule(self.rule)
@@ -188,7 +153,7 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
 
         case = TaxArrearsCase.objects.get(user=self.alice)
         self.assertEqual(case.status, ArrearsStatus.RESOLVED)
-        self.assertEqual(case.resolution_reason, arrears.REASON_UNDER_ALLOWANCE)
+        self.assertEqual(case.resolution_reason, arrears.REASON_NOTHING_HELD)
 
     def test_estimate_row_uses_hour_display(self):
         rows = services.estimate_for_user(self.alice)
@@ -197,9 +162,9 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
         self.assertEqual(row["display"], "4 h")
         self.assertEqual(row["billable"], Decimal("4"))
 
-    def test_warning_and_enforcement_notices_speak_time_not_storage(self):
+    def test_the_warning_speaks_time_not_storage(self):
         # Review finding: the notices were hardcoded for storage — the time
-        # levy must warn about dial resets, never about deleting files.
+        # levy must describe its own consequence, never file deletion.
         from toto.events.models import ScheduledEvent
         from toto.people.models import Person
 
@@ -210,17 +175,7 @@ class TimeLevyEndToEndTests(RegistrySnapshotMixin, TestCase):
         services.levy_rule(self.rule)
 
         warning = ScheduledEvent.objects.get()
-        self.assertIn("reset to their free defaults", warning.description)
-        self.assertNotIn("permanently deleted", warning.description)
-
-        case = TaxArrearsCase.objects.get(user=self.alice)
-        case.deadline_at = timezone.now() - datetime.timedelta(hours=1)
-        case.save(update_fields=["deadline_at"])
-        tomorrow = timezone.localdate() + datetime.timedelta(days=1)
-        services.levy_rule(self.rule, day=tomorrow)
-
-        # The warning was deleted on enforcement; only the notice remains.
-        notice = ScheduledEvent.objects.get()
-        self.assertIn("limits reduced", notice.title.lower())
-        self.assertIn("4 h", notice.description)
-        self.assertNotIn("GB", notice.description)
+        self.assertIn("no new raised time limits", warning.description)
+        self.assertIn("the ones you have keep working", warning.description)
+        self.assertNotIn("deleted", warning.description)
+        self.assertNotIn("GB", warning.description)

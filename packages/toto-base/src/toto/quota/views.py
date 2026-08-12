@@ -8,7 +8,7 @@ visiting five of them and holding the answer in your head.
 
 The axis here is the **metered thing**. There is a collection view of all of
 them (:func:`index`) and a detail view of one (:func:`metric_detail`), and
-every knob that thing has — its limit, its price, its free allowance, its time
+every knob that thing has — its limit, its price, whether it is armed, its time
 dials, its per-user overrides — is edited on the thing, in place. The other two
 screens are a read-only explanation of the charging *kinds* (:func:`taxes`) and
 the platform's income (:func:`fees`), which are genuinely different objects.
@@ -20,7 +20,7 @@ still refused.
 
 What things *cost* lives in the host's billing app, which this one cannot
 import. Three façades cross that boundary with plain data only:
-:mod:`~toto.quota.rates` (prices), :mod:`~toto.quota.levies` (free allowances)
+:mod:`~toto.quota.rates` (prices), :mod:`~toto.quota.levies` (levies)
 and :mod:`~toto.quota.times` (time dials). On a host with no economy every one
 of them answers empty, and the money columns are then **absent rather than
 blank** — the question does not exist there, so the page does not ask it.
@@ -139,14 +139,13 @@ def _row(metric, user, *, prices=None, spend=None, levy_codes=frozenset()):
         "spent": (spend or {}).get(metric.code),
         "advanced_url": price["advanced_url"] if price else "",
         # How this thing is charged, which is the fact the old surface never
-        # stated anywhere: a levy bills what you HOLD, nightly, with a free
-        # allowance; everything else bills the ACTION, before it runs, from the
-        # first unit. They were configured on different pages and never
-        # contrasted on any.
+        # stated anywhere: a levy bills what you HOLD, nightly; everything else
+        # bills the ACTION, before it runs. Either way from the first unit —
+        # there is no free band anywhere, and a metric with no price is free
+        # for everyone.
         "is_levy": is_levy,
         "levy": levy,
-        "allowance": levy["allowance"] if levy else None,
-        "allowance_unit": (levy["unit_label"] if levy else "") or metric.unit,
+        "levy_unit": (levy["unit_label"] if levy else "") or metric.unit,
         # Armed and earning nothing: measured nightly, recorded, billed zero.
         "unpriced_levy": bool(is_levy and levy and levy["has_rule"]
                               and levy["active"] is not False and price is None),
@@ -179,7 +178,7 @@ def index(request):
 
     One table, one row per thing. The cap, the price and what is left are
     columns rather than destinations, so the common question needs no click at
-    all. Staff additionally edit limit, mode, price and allowance in place and
+    all. Staff additionally edit limit, mode, price and arming in place and
     save the whole grid in one POST — this replaced the separate rate desk,
     which was the same grid at a different address.
     """
@@ -244,8 +243,8 @@ def _parse_grid(post):
     silently wiping the rate card. Codes are dotted, so ``__`` separates the
     prefix from the code.
 
-    The one place blank does NOT mean erase is the allowance, and the template
-    says so at the field: a levy rule with no allowance still levies, from zero.
+    Levies have no number to blank at all: a levy is armed or it is not, and
+    what it bills is everything held, from the first unit.
     """
     plan, errors = [], []
     pricing = rates.pricing_enabled()
@@ -256,7 +255,7 @@ def _parse_grid(post):
         limit_key = f"limit__{metric.code}"
         mode_key = f"mode__{metric.code}"
         price_key = f"price__{metric.code}"
-        allowance_key = f"allowance__{metric.code}"
+        armed_key = f"armed__{metric.code}"
 
         if limit_key in post:
             raw = (post.get(limit_key) or "").strip()
@@ -300,9 +299,9 @@ def _parse_grid(post):
                 errors.append(f"{metric.code}: {exc}")
                 continue
 
-        if metric.code in levy_codes and allowance_key in post:
-            entry["allowance"] = post.get(allowance_key)
-            entry["has_allowance"] = True
+        if metric.code in levy_codes and armed_key in post:
+            entry["armed"] = post.get(armed_key) == "on"
+            entry["has_armed"] = True
 
         if len(entry) > 1:
             plan.append(entry)
@@ -324,13 +323,14 @@ def _apply_grid(plan):
                 rates.clear_price(metric.code)
             else:
                 rates.set_price(metric.code, entry["price"], asset_id=entry.get("asset_id"))
-        if entry.get("has_allowance"):
+        if entry.get("has_armed"):
             try:
-                levies.set_allowance(metric.code, entry["allowance"])
-            except ValueError:
-                # Parsed and reported in _parse_grid for every rendered row;
-                # reaching here means a hand-posted field, which is not worth
-                # failing the whole transaction over.
+                levies.set_armed(metric.code, entry["armed"])
+            except levies.UnpricedLevy:
+                # Refused on purpose: armed and unpriced measures every night
+                # and bills zero. Reported per row by _parse_grid; reaching
+                # here means a hand-posted field, not worth failing the whole
+                # transaction over.
                 pass
 
 
@@ -377,7 +377,7 @@ def metric_detail(request, code):
     """Everything about ONE metered thing, in disclosure order.
 
     Always visible: what it is, your usage, its limit, its price, and — when it
-    is a levy — its free allowance. One click deeper: how it is charged, its
+    is a levy — whether it is armed. One click deeper: how it is charged, its
     time dials, its per-user overrides, its advanced pricing, its recent
     activity.
 
@@ -507,14 +507,14 @@ def _detail_post(request, metric, policy_model):
         return redirect("quota:metric_detail", code=code)
 
     if action == "levy":
-        # Allowance AND price, in one form, in one save — because for a levy
-        # they are one decision. Splitting them is what let a rule be armed and
+        # Arming AND price, in one form, in one save — because for a levy they
+        # are one decision. Splitting them is what let a rule be armed and
         # unpriced: measured every night, recorded, billed nothing. The two
         # knobs lived on two screens in two apps and neither was sufficient
         # alone, and the only warning was a deploy-time log line.
         #
-        # The price is written FIRST so `set_allowance` can see it: its guard
-        # reads the rate card, and arming without one is refused.
+        # The price is written FIRST so `set_armed` can see it: its guard reads
+        # the rate card, and arming without one is refused.
         try:
             raw_price = request.POST.get("price")
             if (raw_price or "").strip() == "":
@@ -522,8 +522,7 @@ def _detail_post(request, metric, policy_model):
             else:
                 rates.set_price(code, raw_price,
                                 asset_id=(request.POST.get("asset") or "").strip() or None)
-            levies.set_allowance(code, request.POST.get("allowance"),
-                                 active=bool(request.POST.get("levy_active")))
+            levies.set_armed(code, bool(request.POST.get("levy_active")))
         except levies.UnpricedLevy as exc:
             messages.error(request, str(exc))
             return None
@@ -577,7 +576,7 @@ def taxes(request):
     """Every KIND of charge this platform makes, read-only, with a way to each.
 
     Information only, deliberately. The knobs live on the things they belong to
-    — a levy's allowance on the levied thing, a price on the priced thing — and
+    — a levy's arming on the levied thing, a price on the priced thing — and
     duplicating them here would recreate the two-places-to-set-one-number
     problem this restructure exists to end. What this page adds is the thing no
     screen ever said: that there are several distinct ways to be charged, that
@@ -617,10 +616,10 @@ def _charge_kinds(user):
         kinds.append({
             "key": f"levy:{code}",
             "name": _("Levy — %(label)s") % {"label": metric.label},
-            "charges": _("What you hold above the free allowance, every night."),
+            "charges": _("Everything you hold, every night."),
             "when": _("Nightly"),
-            "free": (_("%(allowance)s %(unit)s")
-                     % {"allowance": levy["allowance"], "unit": levy["unit_label"] or metric.unit}
+            "free": (_("Nothing — it is billed from the first %(unit)s.")
+                     % {"unit": levy["unit_label"] or metric.unit}
                      if levy["has_rule"] else _("No rule — nothing is levied yet.")),
             "things": [code],
             "consequence": levy["consequence"],
@@ -641,32 +640,6 @@ def _economy_charge_kinds():
     """
     out = []
 
-    if apps.is_installed("toto.tax"):
-        try:
-            from toto.tax.models import SurplusPolicy
-
-            live = list(SurplusPolicy.objects.filter(active=True)
-                        .select_related("asset")[:20])
-            # Keyed by ASSET, not by metered thing — so unlike a levy allowance
-            # it cannot live on a metered thing, and it is edited on the asset
-            # itself (toto/tax/plugins/asset_plugins.py). The link goes straight
-            # to the first asset that has one rather than to a list: with one
-            # charging asset, which is the normal case, a list is a page nobody
-            # needed to see.
-            first = live[0].asset_id if live else None
-            out.append({
-                "key": "holding",
-                "name": _("Holding fee"),
-                "charges": _("A share of what you hold above a threshold, taken largest-holding first."),
-                "when": _("Per period"),
-                "free": _("Everything up to the threshold."),
-                "things": [p.asset.unit_name for p in live],
-                "edit_label": _("Open the asset") if first else _("All assets"),
-                "edit_url": (_safe_url("assets:asset_detail", first) if first
-                             else _safe_url("assets:asset_list")),
-            })
-        except Exception:  # noqa: BLE001 - an absent table must not break the page
-            pass
 
     if apps.is_installed("toto.portfolio"):
         out.append({

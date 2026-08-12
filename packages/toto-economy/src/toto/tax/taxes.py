@@ -5,17 +5,16 @@ above its free default, summed across their grants. Deliberately
 entitlement-based rather than usage-based: the bill is predictable, the free
 default costs nothing, and lowering a dial stops the next day's charge.
 
-Enforcement sheds grants LARGEST-EXTENSION-FIRST rather than randomly. The
-platform's random rule exists so storage enforcement cannot be gamed toward
-keeping favorites while data must be destroyed; deleting a grant destroys
-nothing — it resets a dial to the free default — so randomness buys no
-fairness here, while largest-first reaches the target with the fewest audit
-rows.
+Falling behind stops NEW dials from being raised; the ones already raised keep
+working and nothing is taken back. (There used to be an enforcement pass that
+deleted grants to force dials back down. It went with storage's random file
+deletion — a levy collects money, and when it cannot, the answer is to stop
+extending credit rather than to take things away.)
 """
 
 from __future__ import annotations
 
-from toto.quota.levy import EnforcementResult, LevyProvider, registry
+from toto.quota.levy import LevyProvider, registry
 from toto.quota.times import registry as time_registry
 
 
@@ -23,8 +22,8 @@ class TimeHoldLevy(LevyProvider):
     code = "tax.time"
     metric_code = "time.hold"
     raw_per_unit = 3600  # raw = extension seconds; billing unit = hours
-    consequence_text = ("your raised time limits will be reset to their free "
-                        "defaults (nothing is deleted)")
+    consequence_text = ("no new raised time limits until it clears — the ones "
+                        "you have keep working")
 
     def format_raw(self, raw: int) -> str:
         return f"{raw / 3600:g} h"
@@ -88,67 +87,6 @@ class TimeHoldLevy(LevyProvider):
 
         grants = self._prune_stale_scopes(list(TimeGrant.objects.filter(user=user)))
         return sum(extra for _grant, extra in self._extras(grants))
-
-    # ------------------------------------------------------------------
-    # Enforcement — reset dials, largest extension first
-    # ------------------------------------------------------------------
-
-    def enforce(self, user, target_raw: int, *, rng=None,
-                on_deleted=None, on_skipped=None) -> EnforcementResult:
-        from django.db import transaction
-
-        from .models import TimeGrant
-
-        result = EnforcementResult()
-        grants = self._prune_stale_scopes(list(TimeGrant.objects.filter(user=user)))
-        rows = sorted(self._extras(grants), key=lambda pair: pair[1], reverse=True)
-        remaining = sum(extra for _grant, extra in rows)
-
-        for grant, extra in rows:
-            if remaining <= target_raw:
-                break
-            info = {
-                "pk": grant.pk,
-                "title": self._grant_title(grant),
-                "key": grant.key,
-                "bucket": self._scope_label(grant),
-                "size": extra,
-            }
-            with transaction.atomic():
-                grant.delete()
-                if on_deleted is not None:
-                    on_deleted(info)
-            result.deleted_count += 1
-            result.deleted_raw += extra
-            remaining -= extra
-
-        result.final_raw = self.measure(user)
-        result.reached_target = result.final_raw <= target_raw
-        return result
-
-    # ------------------------------------------------------------------
-    # Labels
-    # ------------------------------------------------------------------
-
-    def _scope_label(self, grant) -> str:
-        decl = time_registry.get(grant.key)
-        if decl is None or grant.scope_id is None or not decl.scope_model:
-            return ""
-        from django.apps import apps
-
-        try:
-            obj = apps.get_model(decl.scope_model).objects.filter(pk=grant.scope_id).first()
-        except LookupError:
-            return f"#{grant.scope_id}"
-        if obj is None:
-            return "(deleted)"
-        return getattr(obj, "name", None) or str(obj)
-
-    def _grant_title(self, grant) -> str:
-        decl = time_registry.get(grant.key)
-        label = decl.label if decl else grant.key
-        scope = self._scope_label(grant)
-        return f"{label} — {scope}" if scope else f"{label} — account"
 
 
 registry.register(TimeHoldLevy())

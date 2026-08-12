@@ -6,8 +6,6 @@ automatic levy must be armed by a person at /quota/<metric>/, never by a deploy.
 Until then the nightly run measures and records, and charges nothing.
 """
 
-from decimal import Decimal
-
 from django.apps import apps
 
 from toto.ingress import IngressCommand
@@ -22,7 +20,6 @@ class Command(IngressCommand):
         rule, created = TaxRule.objects.get_or_create(
             metric_code="storage.gb_day",
             defaults={
-                "allowance": Decimal("1"),
                 "unit_label": "GB",
                 # UNARMED on creation, and this is the whole point. A rule that
                 # arrives active with no price measures every user every night,
@@ -32,40 +29,40 @@ class Command(IngressCommand):
                 # person, never by a deploy"), so seeding the rule ACTIVE was
                 # the deploy doing exactly the half it was told not to.
                 #
-                # The rule still arrives, with its allowance and its wording, so
-                # there is something to arm. Arming it is one tick and a price,
-                # in one form, on the metered thing — and `levies.set_allowance`
-                # refuses to arm it without one.
+                # The rule still arrives, with its wording, so there is
+                # something to arm. Arming it is one tick and a price, in one
+                # form, on the metered thing — and `levies.set_armed` refuses
+                # to arm it without one.
                 "active": False,
                 "description": (
-                    "Daily fee on stored data. Everyone keeps the allowance "
-                    "for free; only the excess is charged, per GB per day."
+                    "Daily fee on stored data, charged per GB per day from "
+                    "the first byte. There is no free allowance anywhere: a "
+                    "metric with no price is free, for everyone."
                 ),
             },
         )
         self.stdout.write(
             f"tax: rule storage.gb_day {'created' if created else 'kept'} "
-            f"(free ≤ {rule.allowance} {rule.unit_label})"
+            f"({'armed' if rule.active else 'UNARMED'}, per {rule.unit_label})"
         )
 
         hold_rule, hold_created = TaxRule.objects.get_or_create(
             metric_code="time.hold",
             defaults={
-                "allowance": Decimal("0"),
                 "unit_label": "h",
                 "active": False,   # unarmed on creation — see storage.gb_day above
 
                 "description": (
-                    "Demurrage on raised time dials. Every limit has a free "
+                    "Rent on raised time dials. Every limit has a free "
                     "default; the extension above it is charged per hour per "
-                    "day, whether used or not. Allowance 0 is deliberate: an "
-                    "extension is an opt-in above an already-free default."
+                    "day, whether used or not. The free default IS the free "
+                    "tier — it costs nothing and needs no allowance."
                 ),
             },
         )
         self.stdout.write(
             f"tax: rule time.hold {'created' if hold_created else 'kept'} "
-            f"(allowance {hold_rule.allowance} {hold_rule.unit_label})"
+            f"({'armed' if hold_rule.active else 'UNARMED'}, per {hold_rule.unit_label})"
         )
 
         # Repair the billing-unit mirrors the tariffs seeder creates with an
@@ -94,17 +91,6 @@ class Command(IngressCommand):
                 if code not in card:
                     self.stdout.write(
                         f"tax: {code} has a rule and no price, so it is UNARMED. "
-                        "Set an allowance and a price together at "
+                        "Set a price and tick it armed, in one form, at "
                         "/quota/<metric>/ to start levying."
                     )
-
-        # Community-fee policies are never seeded — armed by a person, per
-        # asset, at each asset's own page.
-        from ...models import SurplusPolicy
-
-        if not SurplusPolicy.objects.exists():
-            self.stdout.write(
-                "tax: no community-fee policies — arm one per asset at "
-                "each asset's own page (threshold, %/period; collected into "
-                "platform-community-fees)."
-            )
