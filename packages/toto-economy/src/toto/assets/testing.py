@@ -17,6 +17,12 @@ from __future__ import annotations
 from django.test import TestCase as DjangoTestCase
 from django.test import TransactionTestCase as DjangoTransactionTestCase
 
+#: A Fernet key for tests, and only for tests. Host settings read the real one
+#: from the environment, so a host suite that mints assets has to say which key
+#: it is minting under — see the note about not manufacturing a monetary
+#: authority by accident.
+TEST_ISSUER_KEY = "0Zk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0mQ0m0YlZk8Yl1ZQ0k="
+
 
 def ensure_local_issuer(label: str = "Test master"):
     """The local monetary issuer, minted if this host has none yet."""

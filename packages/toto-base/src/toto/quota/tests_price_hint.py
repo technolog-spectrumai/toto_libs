@@ -12,7 +12,7 @@ from django.template import Context, Template
 import unittest
 
 from django.core.management import call_command
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from unittest import mock
 
 
@@ -150,7 +150,22 @@ class PriceHintLiveTests(TestCase):
 
         if not django_apps.is_installed("toto.tariffs"):
             raise unittest.SkipTest("no economy on this host")
+
+        # Seeding ENGRAVES the gas asset, which is a monetary act, so the host
+        # has to hold an issuer key for it. Imported lazily and behind the skip
+        # above, so toto-base still has no dependency on the economy wheel.
+        from toto.assets.testing import TEST_ISSUER_KEY
+
+        issuer_key = override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
+        issuer_key.enable()
+        cls.addClassCleanup(issuer_key.disable)
         super().setUpClass()
+
+    def setUp(self):
+        from toto.assets.testing import ensure_local_issuer
+
+        ensure_local_issuer()
+        super().setUp()
 
     def test_a_price_seeded_through_the_real_rate_card_reaches_a_template(self):
         from toto.quota import rates
