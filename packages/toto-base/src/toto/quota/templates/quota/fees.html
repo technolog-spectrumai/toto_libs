@@ -1,0 +1,217 @@
+{% extends "quota/base.html" %}
+{% load i18n static %}
+
+{% block quota_title %}{% trans "Fees" %}{% endblock %}
+{% block quota_heading %}{% trans "Fees" %}{% endblock %}
+
+{% comment %}Fees is a super-tab, not a sub-tab of Usage — so it replaces both
+   strips rather than lighting one of the Usage chips.{% endcomment %}
+{% block usage_tabs %}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}Chart.js is vendored locally by <host>/scripts/download_vendor.py —
+   no template in this repo ever loads a CDN. dim.html is not optional:
+   oya/partials/chart.html calls dim() unconditionally, so omitting it is a JS
+   error rather than a degraded chart.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
+
+{% block quota_content %}
+
+{% if is_staff_view %}
+
+  {% comment %}Staff: where the money comes from. Everything below is in ONE
+     asset — the contractual one — because there is no exchange rate anywhere in
+     the ledger and a total mixing two currencies would be meaningless.{% endcomment %}
+
+  {% if not board.billing %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border p-6">
+    <p class="font-bold">{% trans "This platform does not bill." %}</p>
+    <p class="mt-2 text-sm opacity-70">
+      {% trans "No currency is contracted here, or no app declares a fee source. Metered actions still count against their limits; nothing is charged for them." %}
+    </p>
+  </div>
+  {% else %}
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="text-lg font-bold">
+        <i class="fa-solid fa-chart-pie mr-2"></i>{% trans "Income by source" %}
+      </h2>
+      <p class="font-mono text-lg font-bold">{{ board.total }} {{ board.asset_unit }}</p>
+    </div>
+    <p class="mt-1 text-xs opacity-60">
+      {% blocktrans with asset=board.asset_unit %}Everything this platform has earned in {{ asset }}, the currency it is contracted to bill in.{% endblocktrans %}
+    </p>
+
+    {% if income_pie_json %}
+    <div class="mt-5 grid gap-6 md:grid-cols-2 md:items-center">
+      {% comment %}The wrapper must have a height: the shared partial sets
+         maintainAspectRatio false, so an unsized parent collapses it.{% endcomment %}
+      <div class="h-64">
+        {% include "oya/partials/chart.html" with chart_id="fees_income" data=income_pie_json %}
+      </div>
+
+      {% comment %}The bars are not a duplicate of the pie. They carry the exact
+         figures, they print, and they are the only half that renders where JS is
+         blocked — the Tor onion being the case core/views.py already records for
+         QR codes.{% endcomment %}
+      <div class="space-y-3">
+        {% for row in board.earning_rows %}
+        <div>
+          <div class="flex items-baseline justify-between gap-2 text-sm">
+            <span class="font-semibold"><i class="{{ row.icon }} mr-1.5 opacity-70"></i>{{ row.label }}</span>
+            <span class="font-mono">{{ row.percent }}%&nbsp;&nbsp;{{ row.amount }}</span>
+          </div>
+          <div class="mt-1 h-2 overflow-hidden rounded-full"
+               :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'">
+            <div class="h-full rounded-full"
+                 :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                 style="width: {{ row.percent }}%"></div>
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <p class="mt-4 text-sm opacity-70">{% trans "Nothing has been earned yet." %}</p>
+    {% endif %}
+  </section>
+
+  <!-- Every source, earning or not ---------------------------------------- -->
+  <section class="space-y-3">
+    <h2 class="text-lg font-bold">
+      <i class="fa-solid fa-list mr-2"></i>{% trans "How the platform earns" %}
+    </h2>
+    <div class="grid gap-3 md:grid-cols-2">
+      {% for row in board.rows %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-4">
+        <div class="flex items-baseline justify-between gap-2">
+          <h3 class="font-bold"><i class="{{ row.icon }} mr-1.5 opacity-70"></i>{{ row.label }}</h3>
+          <span class="font-mono text-sm">{{ row.amount }} {{ board.asset_unit }}</span>
+        </div>
+        <p class="mt-1 text-sm opacity-70">{{ row.description }}</p>
+        <p class="mt-2 font-mono text-xs opacity-50">{{ row.account_code }}</p>
+        {% if row.settings_url %}
+        <a href="{{ row.settings_url }}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold hover:opacity-80">
+          <i class="fa-solid fa-sliders"></i>{% trans "Settings" %}</a>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  <!-- Drift ---------------------------------------------------------------- -->
+  {% if board.drift %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-6">
+    <h2 class="text-lg font-bold text-warn-light">
+      <i class="fa-solid fa-triangle-exclamation mr-2"></i>{% trans "Priced off-contract" %}
+    </h2>
+    <p class="mt-1 text-sm opacity-70">
+      {% blocktrans with asset=board.asset_unit %}These are denominated in something other than {{ asset }}. They still charge, but there is no exchange rate anywhere in the ledger, so what they earn cannot be added to the figures above.{% endblocktrans %}
+    </p>
+    <ul class="mt-3 space-y-2 text-sm">
+      {% for row in board.drift %}
+      <li class="flex flex-wrap items-baseline justify-between gap-2">
+        <span><span class="opacity-60">{{ row.kind }}</span> <span class="font-mono">{{ row.what }}</span></span>
+        <span class="flex items-baseline gap-3">
+          <span class="font-mono font-bold text-warn-light">{{ row.asset }}</span>
+          {% if row.fix_url %}
+          <a href="{{ row.fix_url }}"
+             :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+             class="text-xs font-semibold hover:opacity-80">{% trans "fix" %}</a>
+          {% endif %}
+        </span>
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% endif %}
+
+{% else %}
+
+  {% comment %}A signed-in user: what things cost them, and what they owe. No
+     platform totals and no editors — the tab is the same, the content is not.{% endcomment %}
+
+  {% if balance %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-6">
+    <div class="flex flex-wrap items-baseline justify-between gap-2">
+      <h2 class="text-lg font-bold"><i class="fa-solid fa-wallet mr-2"></i>{% trans "Your balance" %}</h2>
+      <p class="font-mono text-lg font-bold">{{ balance.amount }} {{ balance.asset }}</p>
+    </div>
+    {% if wallet_url %}
+    <a href="{{ wallet_url }}"
+       :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="mt-2 inline-flex items-center gap-1.5 text-sm font-semibold hover:opacity-80">
+      <i class="fa-solid fa-arrow-right"></i>{% trans "Open wallet" %}</a>
+    {% endif %}
+  </section>
+  {% endif %}
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-6">
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-gas-pump mr-2"></i>{% trans "What things cost" %}</h2>
+    {% if rate_card %}
+    <div class="mt-3 overflow-x-auto">
+      <table class="w-full text-left text-sm">
+        <thead class="text-xs uppercase opacity-70">
+          <tr><th class="py-2 pr-4">{% trans "Action" %}</th>
+              <th class="py-2 pr-4">{% trans "Price" %}</th>
+              <th class="py-2">{% trans "Per" %}</th></tr>
+        </thead>
+        <tbody>
+          {% for code, price in rate_card %}
+          <tr class="border-t border-current/10">
+            <td class="py-2 pr-4 font-mono text-xs">{{ code }}</td>
+            <td class="py-2 pr-4 font-mono">{{ price.price_display }} {{ price.asset }}</td>
+            <td class="py-2 opacity-70">{{ price.unit_quantity }} {{ price.unit_code }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="mt-2 text-sm opacity-70">
+      {% trans "Nothing on this platform is priced. Metered actions still count against their limits, but they are free." %}
+    </p>
+    {% endif %}
+  </section>
+
+  {% if levy_rows or community_rows %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-6">
+    <h2 class="text-lg font-bold"><i class="fa-solid fa-coins mr-2"></i>{% trans "What you are charged regularly" %}</h2>
+
+    {% for row in levy_rows %}
+    <div class="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-current/10 pt-3 text-sm">
+      <span class="font-semibold">{{ row.metric.label }}</span>
+      <span class="font-mono">
+        {% if row.estimate %}{{ row.estimate.amount }} {{ row.estimate.asset }}{% else %}{% trans "free" %}{% endif %}
+      </span>
+    </div>
+    {% endfor %}
+
+    {% for row in community_rows %}
+    <div class="mt-3 flex flex-wrap items-baseline justify-between gap-2 border-t border-current/10 pt-3 text-sm">
+      <span class="font-semibold">{% trans "Community fee" %} · {{ row.unit }}
+        <span class="opacity-60">({{ row.rate_pct }} {{ row.period }})</span></span>
+      <span class="font-mono">{{ row.estimate }} {{ row.unit }}</span>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+{% endif %}
+
+{% endblock %}

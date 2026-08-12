@@ -436,6 +436,83 @@ def my_usage(request, app_label=None):
     })
 
 
+@login_required
+def fees(request):
+    """Where the platform's money comes from — two renderings, one URL.
+
+    Staff see income by source, the split as a pie, and every price that is
+    denominated in something this platform is not contracted for. A user sees
+    what things cost *them* and what they personally owe.
+
+    Deliberately NOT behind ``_staff_only``. The tab exists for everyone,
+    because "why was I charged" is a fair question and the answer is not
+    sensitive; what differs is the content, not the permission. Every editor
+    this page links to keeps its own independent 403, so nothing here widens
+    access to anything.
+    """
+    from . import feeboard
+
+    is_staff = request.user.is_staff
+    context = {
+        "is_staff_view": is_staff,
+        "billing_enabled": apps.is_installed("toto.tariffs"),
+        "price_asset": rates.price_asset_symbol(),
+        "wallet_url": rates.wallet_url(),
+    }
+
+    if is_staff:
+        board = feeboard.income_board()
+        context.update({
+            "board": board,
+            "income_pie_json": feeboard.income_pie_json(board),
+        })
+    else:
+        # What it costs me, and what I owe — no platform totals, no editors.
+        levy_rows, community_rows = _my_levy_rows(request.user)
+        context.update({
+            "rate_card": sorted(rates.rate_card().items()),
+            "balance": rates.balance_of(request.user),
+            "levy_rows": levy_rows,
+            "community_rows": community_rows,
+        })
+
+    return _render(request, "quota/fees.html", context)
+
+
+def _my_levy_rows(user):
+    """(per-metric levies, community-fee rows) — ([], []) where tax is absent.
+
+    Two lists rather than one, because the two estimators return different
+    shapes and always have: a levy row is keyed on a rule and a metric, a
+    community-fee row on an asset. tax/views.py::my_levies keeps them apart for
+    the same reason, and flattening them here would only move the branch into
+    the template.
+
+    is_installed BEFORE the import: a host can pin the economy wheel without
+    installing toto.tax — placidia does — and importing its models there raises
+    RuntimeError out of Django's model metaclass, which `except ImportError`
+    never catches.
+    """
+    if not apps.is_installed("toto.tax"):
+        return [], []
+    try:
+        from toto.tax import services as tax_services
+        from toto.tax import surplus as tax_surplus
+    except ImportError:
+        return [], []
+
+    levies, community = [], []
+    try:
+        levies = tax_services.estimate_for_user(user) or []
+    except Exception:  # noqa: BLE001 - an estimate must not break the page
+        pass
+    try:
+        community = tax_surplus.estimate_for_user(user) or []
+    except Exception:  # noqa: BLE001
+        pass
+    return levies, community
+
+
 def _total_spend(spend):
     """Everything spent this period, when it is all in one asset.
 
