@@ -122,13 +122,17 @@ def ceiling_seconds(key: str) -> int:
 
 def _grant_seconds(key: str, *, user=None, scope_id=None):
     """The raw granted seconds, or None. Lazy and failure-tolerant."""
+    from django.apps import apps
+
+    # is_installed FIRST. A host can pin the economy wheel without installing
+    # toto.tax — placidia does — and importing its models there raises
+    # RuntimeError out of Django's model metaclass ("doesn't declare an
+    # explicit app_label"), which `except ImportError` never catches.
+    if not apps.is_installed("toto.tax"):
+        return None
     try:
         from toto.tax.models import TimeGrant
     except ImportError:
-        return None
-    from django.apps import apps
-
-    if not apps.is_installed("toto.tax"):
         return None
     try:
         qs = TimeGrant.objects.filter(key=key)
@@ -165,13 +169,13 @@ def bulk_effective_seconds(key: str, *, scope_ids=None, user_ids=None) -> dict[i
     decl = registry.get(key)
     if decl is None:
         return {}
+    from django.apps import apps
+
+    if not apps.is_installed("toto.tax"):     # before the import — see above
+        return {}
     try:
         from toto.tax.models import TimeGrant
     except ImportError:
-        return {}
-    from django.apps import apps
-
-    if not apps.is_installed("toto.tax"):
         return {}
     try:
         if scope_ids is not None:
@@ -217,13 +221,13 @@ def dial(key: str, *, user=None, scope_id=None) -> dict:
 def clear_scope(scope_model: str, scope_id: int) -> int:
     """Drop every grant hanging off one scoped object (workspace teardown).
     Returns how many were removed; 0 when the economy is absent."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.tax"):     # before the import — see above
+        return 0
     try:
         from toto.tax.models import TimeGrant
     except ImportError:
-        return 0
-    from django.apps import apps
-
-    if not apps.is_installed("toto.tax"):
         return 0
     keys = [t.key for t in registry.all() if t.scope_model == scope_model]
     if not keys:
