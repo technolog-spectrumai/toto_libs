@@ -28,19 +28,19 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
         return {}
 
     @staticmethod
-    def gitvault_context(vault_file, user) -> dict:
+    def repo_context(vault_file, user) -> dict:
         """Git toolbar context (commit/push/pull/history) when the file lives
         inside a git-enabled vault directory AND the user passes the git
         access gate — {} otherwise. Shared by the editor surfaces
         (memo/cyprian) too."""
         from django.apps import apps as django_apps
 
-        if not django_apps.is_installed("toto.gitvault"):
+        if not django_apps.is_installed("toto.repo"):
             return {}
-        from toto.gitvault.integration import context_for_file
+        from toto.repo.integration import context_for_file
 
         ctx = context_for_file(vault_file, user)
-        return {"gitvault_ctx": ctx} if ctx else {}
+        return {"repo_ctx": ctx} if ctx else {}
 
     def get(self, request, file_pk):
         from django.urls import reverse
@@ -73,7 +73,7 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 "wrap_lines": "true" if self.wrap_lines else "false",
                 "save_url": reverse(self.save_url_name, args=[file_pk]),
                 "delete_url": reverse(self.delete_url_name, args=[file_pk]),
-                # gitvault_context deliberately NOT merged here any more: the
+                # repo_context deliberately NOT merged here any more: the
                 # generic editor is the vault's own surface and git left the
                 # vault UI. The helper stays — memo and cyprian still call it.
                 **self.get_extra_context(vault_file),

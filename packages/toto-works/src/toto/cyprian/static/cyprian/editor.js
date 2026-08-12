@@ -167,7 +167,7 @@
         // The git toolbar's commit flush. save() is fire-and-forget, so this
         // fires it and then waits out the inflight flag — the commit modal
         // reads repo status only after the buffer has actually landed.
-        global.gitvaultFlushSave = function () {
+        global.repoFlushSave = function () {
           self.save(false);
           return new Promise(function (resolve) {
             (function wait(tries) {

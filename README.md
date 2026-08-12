@@ -86,6 +86,7 @@ The package boundaries and what each holds:
 | [`toto-media`](packages/toto-media/README.md) | base, flow | `manta`, `transcription`, `vod`, `fileservices` — the ffmpeg/Whisper video-media stack (`BUILD_MEDIA`). |
 | [`toto-chat`](packages/toto-chat/README.md) | base | `forum` (persistent, full-text-searchable Channels chat). |
 | [`toto-ops`](packages/toto-ops/README.md) | base | `monit` (read-only operations/monitoring dashboard and collectors). |
+| [`toto-repo`](packages/toto-repo/README.md) | base, flow | `repo` (local git over a vault directory — commit, branch, merge, history, push to any URL) and `gitea` (the co-deployed forge's per-user accounts and repository list). Two apps because two hosts: `repo` needs no OIDC provider, `gitea` needs the sidecar that does. `repo` is the reason the wheel depends on flow — `GitRun` FKs `workflows.WorkflowRun`. |
 | [`toto-ai`](packages/toto-ai/README.md) | base | `sabbia` (headless agent backend, GraphRAG), `steven` (site-wide Ask-AI widget), `vicuna` (Ollama deployment registry). |
 | [`toto-graph`](packages/toto-graph/README.md) | base, flow, ai | `ravioli` (the sole Neo4j boundary), `sql_neo4j_sync`, `bento`, `ingestor`, `neo_editor`, `ocr`, `connectors`, `formica`. |
 
@@ -516,7 +517,7 @@ fails loudly with `No installed app with label '<app>'`.
   GIS-on. See "Making GIS optional" above.
 
 The current split: **zenobia** pins all ten packages and carries
-`zenobia/toto/{notarius,polls,sketch,travels,texlab,gitvault}`; **faros** pins
+`zenobia/toto/{notarius,polls,sketch,travels,texlab}`; **faros** pins
 `toto-base`, `toto-auth`, `toto-flow`, `toto-chat`, `toto-ops` and carries
 `faros/toto/{aster,nomad}`.
 

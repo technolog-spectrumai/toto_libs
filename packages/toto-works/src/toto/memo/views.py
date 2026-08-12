@@ -256,8 +256,8 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),
                 "export_zip_url": reverse("memo:export_zip", args=[file_pk]),
                 # The git toolbar moved here from the retired source page — a
-                # deck under gitvault keeps its history buttons (staff only).
-                **BaseFileDisplayView.gitvault_context(vault_file, request.user),
+                # deck under version control keeps its history buttons (staff only).
+                **BaseFileDisplayView.repo_context(vault_file, request.user),
             },
             request,
         )

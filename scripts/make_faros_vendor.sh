@@ -16,7 +16,7 @@ cd "$REPO_ROOT"
 SOURCE_BRANCH="${1:-faros}"
 VENDOR_BRANCH="faros_vendor"
 # Everything the faros host does not install stays out of its vendored tree.
-EXCLUDE=(toto-ai toto-chat toto-geo toto-graph toto-media toto-works)
+EXCLUDE=(toto-ai toto-chat toto-geo toto-graph toto-media toto-works toto-repo)
 
 src_commit=$(git rev-parse --verify "$SOURCE_BRANCH^{commit}")
 

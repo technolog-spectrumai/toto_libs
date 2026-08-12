@@ -52,7 +52,7 @@ def test_kanban_is_independent_of_every_other_feature():
     # nor be pulled in by anything. Turning the whole platform on must leave a
     # BUILD_KANBAN=0 host without kanban.
     everything = resolve(
-        BUILD_STUDIO=1, BUILD_MEDIA=1, BUILD_GITVAULT=1,
+        BUILD_STUDIO=1, BUILD_MEDIA=1, BUILD_REPO=1,
         BUILD_TRAVELS=1, BUILD_MONIT=1, BUILD_KANBAN=0,
     )
     assert everything.kanban is False

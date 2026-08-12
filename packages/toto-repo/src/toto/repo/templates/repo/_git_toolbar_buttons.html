@@ -1,0 +1,98 @@
+{% load i18n quota_tags %}
+{% comment %}
+Git entry for editor toolbars: a single "Git" button that opens a dropdown
+(Commit / Push / Pull / History / Repository), or — when the file's directory
+has no repo yet — an "Initialize repository" entry. Renders nothing without
+`repo_ctx` (no directory, or app off). The host page must also
+`{% include "repo/_git_ui.html" %}` once at the end of its content block.
+Drives window.GitUI (the gitUI() Alpine component).
+
+Two ctx shapes, from integration.context_for_directory: a repo yields
+{repo_pk, repo_name, urls}; a repo-less directory yields {init_url, dir_name}.
+The init entry lives HERE because the vault browser's per-directory dropdown —
+which used to be the only way to create a repo — is gone: git belongs to the
+surfaces now, so each surface carries its own way in.
+
+If the page defines a JS `saveFile()` (all editors do) or registers
+window.repoFlushSave, it is flushed before the commit modal opens so the
+commit sees the buffer's latest state.
+{% endcomment %}
+{% if repo_ctx %}
+  {{ repo_ctx|json_script:"repo-ctx" }}
+  <script>
+    (function () {
+      const raw = JSON.parse(document.getElementById("repo-ctx").textContent);
+      window.GitUIPendingCtx = {
+        repoPk: raw.repo_pk, repoName: raw.repo_name, urls: raw.urls,
+        initUrl: raw.init_url, dirName: raw.dir_name,
+      };
+      window.GitUIBeforeCommit = async function () {
+        // Pages may register a custom flush (e.g. a workspace's saveActive());
+        // otherwise the conventional global saveFile() is used when present.
+        const flush = window.repoFlushSave
+          || (typeof saveFile === "function" ? saveFile : null);
+        if (flush) { await flush(); }
+      };
+    })();
+  </script>
+  <style>
+    /* Same rules the editor pages define locally — a harmless duplicate there,
+       the styling source for toolbars that lack .toolbar-btn (memo/cyprian). */
+    .toolbar-btn {
+      display: inline-flex; align-items: center; justify-content: center;
+      gap: 0.375rem; min-width: 2rem; height: 2rem; padding: 0 0.5rem;
+      border-radius: 0.5rem; font-size: 0.8rem; font-weight: 600;
+      transition: opacity 0.15s;
+      border: 1px solid color-mix(in srgb, currentColor 20%, transparent);
+    }
+    .toolbar-btn:hover { opacity: 0.7; }
+    /* .git-menu-item lives in _git_ui.html (included once on every git page)
+       so the dropdown menus are styled there too. */
+  </style>
+  <div class="h-5 w-px opacity-20 bg-current"></div>
+  <div class="relative" x-data="{ gitOpen: false }" @keydown.escape.window="gitOpen = false">
+    <button type="button" @click="gitOpen = !gitOpen"
+            class="toolbar-btn" title="{% trans 'Git' %}">
+      <i class="fa-solid fa-code-branch"></i>
+    </button>
+    <div x-show="gitOpen" x-cloak @click.outside="gitOpen = false"
+         class="absolute right-0 z-50 mt-1 w-48 overflow-hidden rounded-lg border shadow-xl"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'">
+      {% if repo_ctx.repo_pk %}
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openCommit(window.GitUIPendingCtx)">
+          <i class="fa-solid fa-code-commit"></i>{% trans "Commit…" %}
+          {% price_hint "repo.op" %}
+        </button>
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openAndRun(window.GitUIPendingCtx, 'push')">
+          <i class="fa-solid fa-cloud-arrow-up"></i>{% trans "Push" %}
+          {% price_hint "repo.run" %}
+        </button>
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openAndRun(window.GitUIPendingCtx, 'pull')">
+          <i class="fa-solid fa-cloud-arrow-down"></i>{% trans "Pull" %}
+          {% price_hint "repo.run" %}
+        </button>
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openHistory(window.GitUIPendingCtx)">
+          <i class="fa-solid fa-timeline"></i>{% trans "History" %}
+        </button>
+        <div class="h-px bg-current opacity-10"></div>
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openPanel(window.GitUIPendingCtx)">
+          <i class="fa-solid fa-sliders"></i>{% trans "Repository…" %}
+        </button>
+      {% else %}
+        {% comment %} No repo above this file's directory yet. One entry: make
+        one. The modal explains what that means and offers the remote/advanced
+        options; the page reloads with the full menu on success. {% endcomment %}
+        <button type="button" class="git-menu-item"
+                @click="gitOpen = false; GitUI.openInit(window.GitUIPendingCtx.initUrl, window.GitUIPendingCtx.dirName)">
+          <i class="fa-solid fa-code-branch"></i>{% trans "Initialize repository" %}
+          {% price_hint "repo.run" %}
+        </button>
+      {% endif %}
+    </div>
+  </div>
+{% endif %}

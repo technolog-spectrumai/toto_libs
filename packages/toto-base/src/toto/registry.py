@@ -80,15 +80,25 @@ FEATURE_APPS = {
     # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
     # large JS bundle that only the hosts offering sheets need baked into their image.
     "primula": ["toto.primula"],
-    # Local git over vault directories (BUILD_GITVAULT). A zenobia host app until
-    # the workspace apps moved to placidia and had to take their versioning with
-    # them; it ships in TOTO-FLOW so both hosts install the one copy. Not
-    # toto-base, despite the vault dependency: GitRun has a real FK to
-    # workflows.WorkflowRun and its 0002 migration depends on that app, and
-    # toto-flow is the package allowed to hold both edges. Every host that can
-    # want git already pins it. A remote (Gitea, or any custom URL) is optional
-    # and off by default — repository, branches and merges are entirely local.
-    "gitvault": ["toto.gitvault"],
+    # Version control, in TOTO-REPO — two apps, and a host installs whichever
+    # half it can actually use.
+    #
+    # "repo" (BUILD_REPO) is local git over vault directories: init, commit,
+    # branch, merge, history, restore, and push to any URL. It carries the FK
+    # into workflows.WorkflowRun, which is why toto.features forces the engine
+    # on with it and why toto-repo depends on toto-flow.
+    #
+    # "gitea" (BUILD_GITEA) is the co-deployed forge: per-user accounts, a
+    # repository list, and the credentials the local half asks for when a remote
+    # belongs to it. No workflow engine, no celery — just the sidecar, which a
+    # consumer host cannot run at all (deploy.py refuses services.gitea there).
+    #
+    # They were one app, toto.gitvault, until the hosts diverged: zenobia hosts
+    # code and versions documents through toto.vault, placidia versions
+    # workspaces on its own disk and mounts no OIDC provider to sign a sidecar
+    # in with. One flag could not say that.
+    "repo": ["toto.repo"],
+    "gitea": ["toto.gitea"],
 }
 
 
@@ -133,11 +143,12 @@ TASK_MODULES = [
     # Inert where the ops wheel is absent: Celery's find_related_module swallows
     # a missing package, which is the same reasoning as toto.manta above.
     "toto.monit",
-    # gitvault's run_git_task — the no-workflow fallback path in dispatch.py
+    # toto.repo's run_git_task — the no-workflow fallback path in dispatch.py
     # enqueues it directly, so a host with celery but without the seeded
-    # gitvault-run workflow still runs its init/push/pull. Inert where the app
-    # is not installed.
-    "toto.gitvault",
+    # repo-run workflow still runs its init/push/pull. Inert where the app is
+    # not installed. No toto.gitea entry: that half has no celery task at all,
+    # which is the same line that keeps it off the workflows closure.
+    "toto.repo",
 ]
 
 

@@ -1,7 +1,7 @@
 """View decorators that turn a quota or funding refusal into an HTTP answer.
 
 Stacked below the auth decorator and any method guard, closest to the view —
-the same shape as gitvault's ``_json_errors``::
+the same shape as toto.repo's ``_json_errors``::
 
     @login_required
     @require_POST

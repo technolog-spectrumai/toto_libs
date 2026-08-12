@@ -1265,7 +1265,7 @@ class PresentationVaultIntegrationTests(TestCase):
     def test_the_raw_xml_editor_is_gone(self):
         """Edit opens the block editor; there is no angle-bracket surface left.
 
-        It carried the gitvault toolbar, which moved onto the editor rather than
+        It carried the git toolbar, which moved onto the editor rather than
         being lost with it.
         """
         from django.urls import NoReverseMatch
@@ -1277,29 +1277,29 @@ class PresentationVaultIntegrationTests(TestCase):
     def test_the_editor_carries_the_git_toolbar(self):
         """The history buttons moved here rather than dying with the XML page.
 
-        gitvault is a host app and is not installed under memo's own settings,
-        so `gitvault_context` correctly returns nothing here — patching it is
+        toto.repo is not installed under memo's own settings,
+        so `repo_context` correctly returns nothing here — patching it is
         what proves the editor asks for it at all.
         """
         from toto.editor.views import BaseFileDisplayView
 
         vf = self._make_presentation()
         self.client.force_login(self.alice)
-        # A marker key rather than `gitvault_ctx` itself: the template's include
-        # of gitvault's partial is guarded on that name, and forcing it truthy
-        # on a host where gitvault is not installed would fail on a missing
+        # A marker key rather than `repo_ctx` itself: the template's include
+        # of toto.repo's partial is guarded on that name, and forcing it truthy
+        # on a host where that app is not installed would fail on a missing
         # template — which is the guard doing its job, not a bug.
-        with mock.patch.object(BaseFileDisplayView, "gitvault_context",
+        with mock.patch.object(BaseFileDisplayView, "repo_context",
                                return_value={"git_probe": "consulted"}):
             res = self.client.get(reverse("memo:edit", args=[vf.pk]))
         self.assertEqual(res.context["git_probe"], "consulted")
 
     def test_the_editor_guards_the_git_include(self):
-        # A host with memo but without gitvault must still render the editor.
+        # A host with memo but without toto.repo must still render the editor.
         from django.template.loader import get_template
 
         source = get_template("memo/edit.html").template.source
-        self.assertIn("{% if gitvault_ctx %}", source)
+        self.assertIn("{% if repo_ctx %}", source)
 
     def test_a_plain_xml_file_still_belongs_to_the_generic_editor(self):
         """The assertion that stops memo hijacking every XML file in the vault."""

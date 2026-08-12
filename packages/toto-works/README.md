@@ -80,7 +80,7 @@ See `src/toto/memo/README.md` for the full picture. In brief:
 - **URLs** (`urls.py`): `memo:index` (gallery, paginated, real thumbnails),
   `memo:create`, `memo:import`, `memo:present`, `memo:edit`, `memo:save`,
   `memo:export_pdf`, `memo:export_zip`, `memo:media_embed`, `memo:media_upload`.
-  The raw-XML source editor is **retired**; its gitvault toolbar moved onto the
+  The raw-XML source editor is **retired**; its git toolbar moved onto the
   editor.
 - **Export.** PDF via WeasyPrint, lazily imported and gated by
   `BUILD_WEASYPRINT` (the shape `toto.notarius.render` uses); ZIP as
@@ -97,7 +97,7 @@ See `src/toto/memo/README.md` for the full picture. In brief:
 - **Tests.** `testing/settings.py` makes the suite runnable, and zenobia's
   clean-env gate runs it against the installed wheels.
 - **Dependency.** `vault` (the file and the play/editor plugins), `editor` (the
-  gitvault toolbar context).
+  git toolbar context).
 
 ### Cross-cutting design notes
 - **File-as-source-of-truth.** antaresia, memo and primula store no user content of their own beyond run records: antaresia's `PythonRun` points at a vault file, and memo and primula keep everything in the vault file itself. All integrate with the vault through its plugin system rather than owning storage.

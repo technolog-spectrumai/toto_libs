@@ -131,9 +131,9 @@ old one carried 210 lines of inline Alpine that no test could reach.
               <i class="fa-solid fa-file-zipper w-4 opacity-60"></i> {% trans "Export archive" %}
             </a>
           {% endif %}
-          {% if gitvault_ctx %}
+          {% if repo_ctx %}
             <div class="my-1 border-t border-current/10"></div>
-            {% include "gitvault/_git_toolbar_buttons.html" %}
+            {% include "repo/_git_toolbar_buttons.html" %}
           {% endif %}
           <div class="my-1 border-t border-current/10"></div>
           <button type="button" @click="open = false; destroyFile()"
@@ -709,7 +709,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% endblock %}
 
 {% block end_script %}
-  {% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
+  {% if repo_ctx %}{% include "repo/_git_ui.html" %}{% endif %}
   {% comment %} ACE, for the code box, vendored under core/static/vendor and
      listed in every host's download_vendor.py. The prose field is TipTap, at
      the bottom of this block — it is an ES module and has to come last.

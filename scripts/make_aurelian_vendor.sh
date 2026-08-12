@@ -18,7 +18,7 @@ cd "$REPO_ROOT"
 SOURCE_BRANCH="${1:-aurelian}"
 VENDOR_BRANCH="aurelian_vendor"
 # Everything the aurelian host does not install stays out of its vendored tree.
-EXCLUDE=(toto-ai toto-chat toto-geo toto-graph toto-media toto-ops)
+EXCLUDE=(toto-ai toto-chat toto-geo toto-graph toto-media toto-ops toto-repo)
 
 src_commit=$(git rev-parse --verify "$SOURCE_BRANCH^{commit}")
 

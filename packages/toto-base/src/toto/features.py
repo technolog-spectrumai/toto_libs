@@ -50,7 +50,11 @@ class Features:
     steven: bool
     sabbia: bool
     travels: bool
-    gitvault: bool
+    # Version control, two halves that go to different hosts. repo is local git
+    # over vault directories; gitea is the hosted forge and its per-user
+    # accounts. Neither implies the other — see toto-repo's README.
+    repo: bool
+    gitea: bool
     primula: bool
     monit: bool
     jess: bool          # toto.jess — the mail transport and outbox
@@ -128,14 +132,16 @@ def resolve_features(get) -> Features:
     weather = flag(get, "BUILD_WEATHER", tier_realtime)       # toto.weather (FKs workflows.WorkflowRun)
 
     # Editing features (standalone — each enabled on its own; no labs tier).
-    # sketch, canasta, travels, gitvault, antaresia and texlab are host-owned
-    # apps (see the suite README): the flags stay here because they are part of
-    # the host contract — needs_channels depends on sketch and canasta, the
-    # workflows closure on gitvault and texlab, realtime on antaresia — but
+    # sketch, canasta, travels, antaresia and texlab are host-owned apps (see
+    # the suite README): the flags stay here because they are part of the host
+    # contract — needs_channels depends on sketch and canasta, the workflows
+    # closure on repo and texlab, realtime on antaresia — but
     # registry.FEATURE_APPS deliberately has no entry for them, since the host
     # supplies the INSTALLED_APPS line from its own portion. (BUILD_LATEX left
     # in 1.46 with the workspace split; the labs joined here in 1.47 so their
-    # closures hold for ANY config, not just builder-written ones.)
+    # closures hold for ANY config, not just builder-written ones. gitvault was
+    # in that list until it moved into a wheel and then split into repo+gitea,
+    # both of which FEATURE_APPS now names like any other packaged app.)
     sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — collaborative whiteboard
     # The pre-split alias: BUILD_AMBROSIA means both labs, and an explicit "0"
     # on a specific flag still wins over it.
@@ -192,7 +198,11 @@ def resolve_features(get) -> Features:
     steven = flag(get, "BUILD_STEVEN")                        # floating chat-widget UI (implies sabbia)
     sabbia = steven or flag(get, "BUILD_SABBIA")              # headless chat-agent backend (WebSocket)
     travels = flag(get, "BUILD_TRAVELS")                      # toto.travels — travel & visit log
-    gitvault = flag(get, "BUILD_GITVAULT")                    # toto.gitvault — git repos over vault dirs
+    repo = flag(get, "BUILD_REPO")                            # toto.repo — git repos over vault dirs
+    # toto.gitea — the co-deployed forge's accounts and repository list. Only
+    # the flag lives here; the sidecar itself is services.gitea in the deploy
+    # config, and deploy.py refuses that pair on a consumer host.
+    gitea = flag(get, "BUILD_GITEA")
     primula = flag(get, "BUILD_PRIMULA")                      # toto.primula — Univer spreadsheets (vault-backed)
     # Lightweight read-only monitoring dashboard (grafana alternative). No
     # closure: the live panel works everywhere; snapshot HISTORY needs the
@@ -224,9 +234,14 @@ def resolve_features(get) -> Features:
         )
 
     # Dependency closure — a feature pulls in what it cannot run without.
-    # weather, fileservices and gitvault all have a model FK to
+    # weather, fileservices and repo all have a model FK to
     # workflows.WorkflowRun, so they require the workflows app —
     # else Django's system check fails with fields.E300/E307.
+    #
+    # gitea is NOT here, and the difference between the two halves of the old
+    # gitvault flag is exactly that FK: GitRun lives with the LOCAL half, so a
+    # host that only hosts code in Gitea needs no workflow engine, no celery
+    # and no kernel image to do it.
     # texlab is here for a dispatch edge, not an FK: every compile runs as a
     # workflow (`ambrosia-compile-latex`), so without the engine the Compile
     # button can only refuse.
@@ -240,7 +255,7 @@ def resolve_features(get) -> Features:
     # manta is NOT here either, though it is in the same package as fileservices: it
     # has exactly one FK (FileJob.owner → User) and names workflows nowhere. What it
     # needs is celery, which the realtime tier below installs.
-    if weather or fileservices or gitvault or texlab:
+    if weather or fileservices or repo or texlab:
         workflows = True
     # connectors / formica feed or curate the ingestor → bento/ravioli graph.
     #
@@ -339,7 +354,8 @@ def resolve_features(get) -> Features:
         steven=steven,
         sabbia=sabbia,
         travels=travels,
-        gitvault=gitvault,
+        repo=repo,
+        gitea=gitea,
         primula=primula,
         geo=geo,
         kanban=kanban,

@@ -1,0 +1,101 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Code" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode
+    ? 'bg-primary-bg-dark text-text-main-dark'
+    : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="space-y-2">
+      <a href="{% url 'core:dashboard' %}"
+         class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Dashboard" %}
+      </a>
+      <div>
+        <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs font-semibold uppercase tracking-wide">{% trans "Code" %}</p>
+        <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
+          <i class="fa-solid fa-code"></i>{% trans "Repositories" %}
+        </h1>
+      </div>
+    </header>
+
+    {% if not gitea_enabled %}
+      {% comment %} A supported state, not a broken one: the app can be
+      installed on a host whose sidecar is off or not yet up. Say so plainly
+      rather than showing an empty list that reads as "you have none". {% endcomment %}
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+        <p class="flex items-start gap-3 text-sm opacity-80">
+          <i class="fa-solid fa-plug-circle-xmark mt-0.5 opacity-70"></i>
+          <span>{% trans "Code hosting is not running on this deployment. An operator enables it with the gitea service in the deploy configuration." %}</span>
+        </p>
+      </div>
+    {% else %}
+
+      <a href="{{ gitea_url }}" target="_blank" rel="noopener"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-center gap-4 rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+        <span class="inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl"
+              :class="darkMode ? 'bg-accent-dark/20 text-accent-dark' : 'bg-accent-light/15 text-accent-light'">
+          <i class="fa-solid fa-code"></i>
+        </span>
+        <span class="min-w-0 flex-1">
+          <span class="block font-bold">{% trans "Open the code host" %}</span>
+          <span class="block text-sm opacity-70">
+            {% trans "Browse, review and manage repositories. You are signed in automatically." %}
+            {% if account %}<span class="font-mono">{{ account.username }}</span>{% endif %}
+          </span>
+        </span>
+        <i class="fa-solid fa-arrow-up-right-from-square opacity-50"></i>
+      </a>
+
+      {% if error %}
+        <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+           class="text-sm font-semibold">
+          <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ error }}
+        </p>
+      {% endif %}
+
+      <section
+        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="rounded-2xl border p-5 shadow-sm">
+        <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-book"></i>{% trans "Your repositories" %}
+        </h2>
+
+        {% if repos %}
+          <ul class="divide-y divide-current/10">
+            {% for repo in repos %}
+              <li class="flex flex-wrap items-center gap-3 py-3">
+                <span class="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-current/15 opacity-70">
+                  <i class="fa-solid fa-book-bookmark"></i>
+                </span>
+                <span class="min-w-0 flex-1">
+                  <a href="{{ repo.browse_url }}" target="_blank" rel="noopener"
+                     class="block truncate font-semibold underline-offset-2 hover:underline">
+                    {{ repo.full_name }}
+                  </a>
+                  <span class="block truncate font-mono text-xs opacity-60">{{ repo.clone_url }}</span>
+                </span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% else %}
+          <p class="text-sm opacity-70">
+            {% trans "No repositories yet. Create one in the code host — your account is already provisioned." %}
+          </p>
+        {% endif %}
+      </section>
+
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

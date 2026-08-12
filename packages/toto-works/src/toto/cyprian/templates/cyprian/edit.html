@@ -195,9 +195,9 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
             <i class="fa-solid fa-file-code w-4 opacity-60"></i>
             {% trans "Save HTML to the vault" %}
           </button>
-          {% if gitvault_ctx %}
+          {% if repo_ctx %}
             <div class="my-1 border-t border-current/10"></div>
-            {% include "gitvault/_git_toolbar_buttons.html" %}
+            {% include "repo/_git_toolbar_buttons.html" %}
           {% endif %}
           {% comment %} Owner only. destroyFile posts to the vault's own
           delete endpoint, which is owner-scoped — offering it to a team member
@@ -711,7 +711,7 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
 {% comment %} The gitUI host the Git menu above drives. This include was
 missing — the menu rendered and every item threw "GitUI is not defined". The
 toolbar partial's own docstring demands the pair. {% endcomment %}
-{% if gitvault_ctx %}{% include "gitvault/_git_ui.html" %}{% endif %}
+{% if repo_ctx %}{% include "repo/_git_ui.html" %}{% endif %}
 
   {% comment %}Versions and the editing lock — the same partial primula and
      memo use. Its own Alpine scope, so it cannot collide with the editor's

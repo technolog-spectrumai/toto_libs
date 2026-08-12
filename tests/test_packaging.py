@@ -92,7 +92,13 @@ def test_migrations_are_packaged(all_names, owner):
     # installed on the MASTER only, but it SHIPS in the wheel like every other
     # app here; what keeps a branch from minting is that the branch does not
     # install it and holds no issuer key.
-    assert len(apps_with_migrations) == 44, sorted(apps_with_migrations)
+    # 45: toto.gitvault SPLIT into toto.repo + toto.gitea and moved to the new
+    # toto-repo wheel. A package→package MOVE would have left this alone (see
+    # the 1.21 media split above); it is the split that costs one, because one
+    # app label became two. Zenobia installs the gitea half, placidia the repo
+    # half, and neither installs both — which one flag could not express and is
+    # the whole reason for the change.
+    assert len(apps_with_migrations) == 45, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -213,21 +219,27 @@ def test_the_processing_tier_ships_in_toto_media_ops(payloads, owner):
     assert owner.get("toto/fileservices/templates/fileservices/run_list.html") == "toto-media-ops"
 
 
-def test_toto_flow_ships_gitvault_with_its_assets(payloads, owner):
-    """gitvault is useless as Python alone — its UI is a template and a script.
+def test_toto_repo_ships_both_apps_with_their_assets(payloads, owner):
+    """toto.repo is useless as Python alone — its UI is a template and a script.
 
     It came from a HOST, where templates and static are just files on disk that
     always exist. In a wheel they ship only if setuptools is told to include
     them, and a missing one fails at render time on a deployed host rather than
-    in any import. The three files below are the whole user-facing surface: the
-    modal host, the toolbar entry, and the Alpine component that drives both.
+    in any import. The files below are the whole user-facing surface: the modal
+    host, the toolbar entry, the landing page, and the Alpine component that
+    drives all three.
     """
-    assert owner.get("toto/gitvault/git_cli.py") == "toto-flow"
-    assert owner.get("toto/gitvault/templates/gitvault/_git_ui.html") == "toto-flow"
-    assert owner.get("toto/gitvault/templates/gitvault/_git_toolbar_buttons.html") == "toto-flow"
-    assert owner.get("toto/gitvault/templates/gitvault/index.html") == "toto-flow"
-    assert owner.get("toto/gitvault/static/gitvault/git.js") == "toto-flow"
-    assert owner.get("toto/gitvault/migrations/0001_initial.py") == "toto-flow"
+    assert owner.get("toto/repo/git_cli.py") == "toto-repo"
+    assert owner.get("toto/repo/templates/repo/_git_ui.html") == "toto-repo"
+    assert owner.get("toto/repo/templates/repo/_git_toolbar_buttons.html") == "toto-repo"
+    assert owner.get("toto/repo/templates/repo/index.html") == "toto-repo"
+    assert owner.get("toto/repo/static/repo/git.js") == "toto-repo"
+    assert owner.get("toto/repo/migrations/0001_initial.py") == "toto-repo"
+    # The other half of the same wheel, and the reason there are two app labels:
+    # a host installs whichever it can use, and zenobia's is this one.
+    assert owner.get("toto/gitea/client.py") == "toto-repo"
+    assert owner.get("toto/gitea/templates/gitea/index.html") == "toto-repo"
+    assert owner.get("toto/gitea/migrations/0001_initial.py") == "toto-repo"
 
 
 def test_every_task_module_ships_a_tasks_submodule(owner):

@@ -497,7 +497,7 @@ class DocumentEditView(LoginRequiredMixin, View):
             "tiptap_import_map": tiptap.import_map_json(),
             "read_url": reverse("cyprian:read", args=[file_pk]),
             "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]),
-            **BaseFileDisplayView.gitvault_context(vault_file, request.user),
+            **BaseFileDisplayView.repo_context(vault_file, request.user),
         }, request)
         return render(request, self.template_name, context)
 
