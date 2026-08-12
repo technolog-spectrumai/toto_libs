@@ -14,7 +14,7 @@ class MeteredUsageFee(FeeSource):
     description = _(
         "Charged per action, before the work runs: a price on the rate card "
         "times the quantity consumed.")
-    settings_url = "quota:rate_desk"
+    settings_url = "quota:index"
     icon = "fa-solid fa-gas-pump"
 
 

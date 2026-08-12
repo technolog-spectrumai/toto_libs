@@ -196,8 +196,16 @@ def off_contract_rows(asset) -> list:
             kind="price",
             what=item.metric.code if item.metric_id else item.name,
             asset=item.charged_asset.unit_name,
-            fix_url=_url_or_blank("quota:rate_desk"),
+            fix_url=_url_or_blank("quota:index"),
         ))
+
+    # Income retargeted away from the account its source counts. The most
+    # fragile configurable thing in the area and the least visible: a
+    # TariffItem's receiving_account is editable on an "advanced" page most
+    # operators never open, FeeSource.account_code is a frozen constant, and
+    # nothing validated that the two still agree — so the money kept arriving
+    # and the card silently stopped counting it.
+    rows.extend(_misrouted_rows())
 
     try:
         from toto.tax.models import SurplusPolicy
@@ -211,9 +219,35 @@ def off_contract_rows(asset) -> list:
             kind="community fee",
             what=policy.asset.unit_name,
             asset=policy.asset.unit_name,
-            fix_url=_url_or_blank("tax:rules"),
+            fix_url=_url_or_blank("quota:index"),
         ))
     return rows
+
+
+def _misrouted_rows() -> list:
+    """Priced metrics crediting an account no registered source counts."""
+    out: list = []
+    try:
+        from toto.tariffs.models import TariffItem
+    except ImportError:
+        return out
+
+    known = {source.account_code for source in registry.all() if source.account_code}
+    if not known:
+        return out
+    items = (TariffItem.objects.filter(active=True)
+             .exclude(receiving_account__code__in=known)
+             .select_related("metric", "receiving_account", "charged_asset"))
+    for item in items:
+        if item.receiving_account_id is None:
+            continue
+        out.append(DriftRow(
+            kind="misrouted income",
+            what=(item.metric.code if item.metric_id else item.name),
+            asset=item.receiving_account.code,
+            fix_url=_url_or_blank("quota:index"),
+        ))
+    return out
 
 
 def income_pie_json(board: FeeBoard) -> str:
