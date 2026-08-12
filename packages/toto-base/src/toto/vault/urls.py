@@ -6,6 +6,7 @@ from .api_views import (
     BucketTreeApiView, FileContentApiView, FileCreateApiView,
     DirectoryCreateApiView, DirectoryDeleteApiView,
 )
+from . import version_views
 from .views import (
     PublicFileListView, VaultFileDownloadView,
     FileGatewayPageView, FileGatewayUploadView,
@@ -56,4 +57,15 @@ urlpatterns = [
     path("file/create/", CreateEmptyFileView.as_view(), name="create_file"),
     path("directory/zip/", CreateZipView.as_view(), name="create_zip"),
     path("directory/zip/status/", ZipStatusView.as_view(), name="zip_status"),
+
+    # Versions and editing locks. One surface for every editor — cyprian, memo
+    # and primula all drive these rather than each growing their own, which is
+    # how primula ended up with a scheme the other two never got.
+    path("file/<int:pk>/versions/", version_views.version_list, name="version_list"),
+    path("file/<int:pk>/versions/save/", version_views.version_save, name="version_save"),
+    path("file/<int:pk>/versions/<int:version_pk>/restore/",
+         version_views.version_restore, name="version_restore"),
+    path("file/<int:pk>/lock/", version_views.lock_acquire, name="lock_acquire"),
+    path("file/<int:pk>/lock/beat/", version_views.lock_heartbeat, name="lock_heartbeat"),
+    path("file/<int:pk>/lock/release/", version_views.lock_release, name="lock_release"),
 ]

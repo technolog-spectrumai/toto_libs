@@ -1,0 +1,97 @@
+{% load i18n %}
+{% comment %}Versions panel + editing-lock banner, shared by every vault editor.
+   Caller passes: file_pk, and optionally can_write (defaults to true).
+
+   Lives in oya/ rather than in cyprian, memo or primula for the reason
+   oya/_media_tabs.html records: Django loads template dirs only for INSTALLED
+   apps, so a partial living in one editor's templates vanishes on a host that
+   does not install that editor — and this one is included by three of them,
+   none of which is guaranteed present. .gitignore's `media/` rule matching at
+   any depth is the second reason a shared partial cannot live just anywhere.
+
+   Everything here talks to toto.vault's endpoints. The editors supply only the
+   file id; they do not each reimplement heartbeat, release or restore, which is
+   precisely how primula ended up with versioning the other two never got.
+
+   Dark/light stays Alpine; state comes from the server.{% endcomment %}
+
+<div x-data="fileVersions({{ file_pk }})" x-init="init()" class="space-y-3">
+
+  {# ---- Lock banner. Only rendered once the server has answered. ---- #}
+  <template x-if="lock.locked && !lock.mine">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
+      <i class="fa-solid fa-lock mt-0.5 text-warn-light"></i>
+      <div>
+        <p class="font-semibold">
+          <span x-text="lock.holder"></span> {% trans "is editing this right now." %}
+        </p>
+        <p class="mt-1 opacity-70">
+          {% trans "You can read it, but not save. It frees up automatically a couple of minutes after they close it." %}
+        </p>
+      </div>
+    </div>
+  </template>
+
+  {# ---- Save version ---- #}
+  <div class="flex flex-wrap items-center gap-2">
+    <input x-model="label" type="text" maxlength="200"
+           placeholder="{% trans 'Name this version (optional)' %}"
+           :disabled="lock.locked && !lock.mine"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="min-w-0 flex-1 rounded-lg border px-3 py-2 text-sm disabled:opacity-50">
+    <button @click="saveVersion()" type="button"
+            :disabled="busy || (lock.locked && !lock.mine)"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40">
+      <i class="fa-solid fa-bookmark"></i>{% trans "Save version" %}
+    </button>
+  </div>
+  <p class="text-xs opacity-60">
+    {% trans "Your work is saved continuously. A version is a point you choose to be able to come back to." %}
+  </p>
+
+  <template x-if="error">
+    <p class="text-sm font-semibold text-warn-light" x-text="error"></p>
+  </template>
+
+  {# ---- History ---- #}
+  <div x-show="items.length" class="overflow-x-auto">
+    <table class="w-full text-left text-sm">
+      <thead class="text-xs uppercase opacity-70">
+        <tr><th class="py-2 pr-3">{% trans "Version" %}</th>
+            <th class="py-2 pr-3">{% trans "Name" %}</th>
+            <th class="py-2 pr-3">{% trans "By" %}</th>
+            <th class="py-2 pr-3">{% trans "When" %}</th>
+            <th class="py-2"></th></tr>
+      </thead>
+      <tbody>
+        <template x-for="item in items" :key="item.id">
+          <tr class="border-t border-current/10">
+            <td class="py-2 pr-3 font-mono font-semibold">v<span x-text="item.number"></span></td>
+            <td class="py-2 pr-3">
+              <span x-text="item.label"></span>
+              <template x-if="item.is_conflict">
+                <i class="fa-solid fa-code-branch ml-1 text-warn-light"
+                   title="{% trans 'Kept because two people saved at once' %}"></i>
+              </template>
+            </td>
+            <td class="py-2 pr-3 opacity-70" x-text="item.author || '—'"></td>
+            <td class="py-2 pr-3 opacity-70" x-text="when(item.created_at)"></td>
+            <td class="py-2 text-right">
+              <button @click="restore(item)" type="button"
+                      :disabled="busy || (lock.locked && !lock.mine)"
+                      class="text-xs font-semibold hover:opacity-80 disabled:opacity-40"
+                      :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
+                {% trans "Restore" %}
+              </button>
+            </td>
+          </tr>
+        </template>
+      </tbody>
+    </table>
+  </div>
+  <p x-show="!items.length" class="text-sm opacity-70">
+    {% trans "No versions yet." %}
+  </p>
+</div>
