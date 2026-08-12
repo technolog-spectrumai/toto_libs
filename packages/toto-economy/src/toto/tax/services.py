@@ -16,6 +16,7 @@ import logging
 from dataclasses import dataclass, field
 from decimal import Decimal
 
+from django.conf import settings
 from django.utils import timezone
 
 from toto.quota import levy as levy_registry_mod
@@ -75,6 +76,19 @@ def run_daily_levy(day=None) -> list[LevySummary]:
     for summary in summaries:
         logger.info("tax: %s %s — %s", summary.metric_code, summary.day,
                     summary.skipped_reason or summary.counts)
+
+    # The other direction, on the same clock. Isolated so neither half can take
+    # the other down, and OFF by default: collecting is safe to switch on by
+    # deploy, paying is not.
+    if getattr(settings, "STIPEND_PAYOUT", False):
+        try:
+            from . import payroll
+
+            logger.info("tax: payroll — %s", payroll.run_payroll())
+        except Exception as exc:  # noqa: BLE001
+            if _is_soft_time_limit(exc):
+                raise
+            logger.exception("tax: payroll failed; the levy run is unaffected")
     return summaries
 
 

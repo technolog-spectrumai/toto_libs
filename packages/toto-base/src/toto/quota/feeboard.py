@@ -78,6 +78,15 @@ class FeeBoard:
     total: Decimal = Decimal("0")
     billing: bool = False          # does this platform bill at all?
 
+    # The other direction. This board was income-only for its whole life, on a
+    # platform where nothing ever debited a fee account — so it showed a number
+    # that could only grow and never said where any of it went. It goes to the
+    # payroll, and now the page says so.
+    paid_out_base_units: int = 0
+    paid_out: Decimal = Decimal("0")
+    held_base_units: int = 0
+    held: Decimal = Decimal("0")
+
     @property
     def earning_rows(self) -> list:
         return [r for r in self.rows if r.has_income]
@@ -168,8 +177,48 @@ def income_board(*, since=None, until=None) -> FeeBoard:
             row.percent = round(100 * row.base_units / board.total_base_units, 1)
 
     board.rows.sort(key=lambda r: (-r.base_units, r.code))
+    _add_outgoings(board, asset, since=since, until=until)
     board.drift = off_contract_rows(asset)
     return board
+
+
+def _add_outgoings(board, asset, *, since=None, until=None) -> None:
+    """What the treasury paid out, and what it is still holding.
+
+    Read from the ledger rather than from ``StipendPayment``, for the same
+    reason income is: the ledger is the thing that actually moved, and a row
+    that says PAID while no entry exists would be the one lie this page must
+    never tell.
+    """
+    from django.db.models import Sum
+
+    from toto.assets.models import LedgerAccount, LedgerEntry, from_base_units
+    from toto.assets.queries import get_asset_balance
+
+    try:
+        from toto.tariffs.rate_card import REVENUE_ACCOUNT_CODE
+    except ImportError:  # pragma: no cover - no tariffs, no treasury
+        return
+
+    treasury = LedgerAccount.objects.filter(code=REVENUE_ACCOUNT_CODE).first()
+    if treasury is None:
+        return
+
+    out = LedgerEntry.objects.filter(
+        asset=asset, account=treasury, transaction__posted=True,
+        amount_base_units__lt=0)
+    if since is not None:
+        out = out.filter(created_at__gte=since)
+    if until is not None:
+        out = out.filter(created_at__lt=until)
+
+    total = int(out.aggregate(total=Sum("amount_base_units"))["total"] or 0)
+    board.paid_out_base_units = abs(total)
+    board.paid_out = from_base_units(abs(total), asset.decimals)
+
+    held = get_asset_balance(asset, treasury)
+    board.held_base_units = held
+    board.held = from_base_units(held, asset.decimals)
 
 
 def off_contract_rows(asset) -> list:

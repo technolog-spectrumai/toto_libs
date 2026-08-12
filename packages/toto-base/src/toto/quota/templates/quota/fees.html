@@ -49,6 +49,27 @@
       {% blocktrans with asset=board.asset_unit %}Everything this platform has earned in {{ asset }}, the currency it is contracted to bill in.{% endblocktrans %}
     </p>
 
+    {% comment %}The loop, on one line. This board was income-only for its whole
+       life — on a platform where nothing ever debited a fee account, so the
+       number could only grow and the page never said where any of it went. It
+       goes to the payroll: the treasury pays the platform's offices out of what
+       it collected, which is what stops a fixed supply from piling up in an
+       account nobody can spend from.{% endcomment %}
+    <dl class="mt-4 grid grid-cols-3 gap-3 text-center text-sm">
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">
+        <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Collected" %}</dt>
+        <dd class="mt-1 font-mono font-bold">{{ board.total }} {{ board.asset_unit }}</dd>
+      </div>
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">
+        <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Paid to offices" %}</dt>
+        <dd class="mt-1 font-mono font-bold">{{ board.paid_out }} {{ board.asset_unit }}</dd>
+      </div>
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">
+        <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Held" %}</dt>
+        <dd class="mt-1 font-mono font-bold">{{ board.held }} {{ board.asset_unit }}</dd>
+      </div>
+    </dl>
+
     {% if income_pie_json %}
     <div class="mt-5 grid gap-6 md:grid-cols-2 md:items-center">
       {% comment %}The wrapper must have a height: the shared partial sets
