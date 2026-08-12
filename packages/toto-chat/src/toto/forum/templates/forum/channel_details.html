@@ -1152,7 +1152,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             </div>
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ user.username }}</p>
-              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
             </div>
             {% if user.type == "ai_agent" %}
               <span class="rounded border border-current/15 px-1.5 py-0.5 text-xs opacity-60">{% trans "AI" %}</span>
@@ -1212,7 +1211,6 @@ document.addEventListener("DOMContentLoaded", async () => {
             {% endif %}
             <div class="min-w-0 flex-1">
               <p class="truncate text-sm font-semibold">{{ user.username }}</p>
-              <p class="text-xs opacity-50">{% if user.type == "ai_agent" %}{% trans "AI agent" %}{% else %}{% trans "Human" %}{% endif %}</p>
             </div>
           </div>
         {% empty %}

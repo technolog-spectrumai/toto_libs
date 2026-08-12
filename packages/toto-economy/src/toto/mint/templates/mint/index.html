@@ -78,19 +78,26 @@
       <form method="post" action="{% url 'mint:issue' %}" class="grid gap-4 md:grid-cols-2">
         {% csrf_token %}
         <label class="text-sm">{% trans "Name" %}
-          <input name="name" required maxlength="255" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="name" required maxlength="255" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm">{% trans "Ticker" %}
-          <input name="unit_name" required maxlength="20" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="unit_name" required maxlength="20" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm">{% trans "Maximum supply" %}
-          <input name="total_supply" required class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="total_supply" required :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm">{% trans "Decimals" %}
-          <input name="decimals" type="number" min="0" max="19" value="2" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="decimals" type="number" min="0" max="19" value="2" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm">{% trans "Display code" %}
-          <input name="code" maxlength="10" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="code" maxlength="10" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm">{% trans "Symbol" %}
-          <input name="symbol" maxlength="5" class="mt-1 w-full rounded-lg px-3 py-2"></label>
+          <input name="symbol" maxlength="5" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></label>
         <label class="text-sm md:col-span-2">{% trans "Why is this being engraved?" %}
-          <textarea name="reason" required rows="2" class="mt-1 w-full rounded-lg px-3 py-2"></textarea></label>
+          <textarea name="reason" required rows="2" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded-lg border px-3 py-2"></textarea></label>
         <div class="md:col-span-2">
           <button type="submit" class="rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white">
             {% trans "Engrave" %}</button>
@@ -130,10 +137,12 @@
             {% csrf_token %}
             <p class="text-sm font-bold">{% trans "Mint" %}</p>
             <input name="amount" required placeholder="{% trans 'Amount' %}"
-                   class="w-full rounded-lg px-3 py-2 text-sm"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm"
                    {% if row.fully_minted %}disabled{% endif %}>
             <input name="reason" required placeholder="{% trans 'Why?' %}"
-                   class="w-full rounded-lg px-3 py-2 text-sm"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm"
                    {% if row.fully_minted %}disabled{% endif %}>
             <button type="submit" class="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
                     {% if row.fully_minted %}disabled{% endif %}>
@@ -147,9 +156,11 @@
             {% csrf_token %}
             <p class="text-sm font-bold">{% trans "Burn" %}</p>
             <input name="amount" required placeholder="{% trans 'Amount' %}"
-                   class="w-full rounded-lg px-3 py-2 text-sm">
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
             <input name="reason" required placeholder="{% trans 'Why?' %}"
-                   class="w-full rounded-lg px-3 py-2 text-sm">
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
             <button type="submit" class="rounded-lg bg-rose-800 px-4 py-2 text-sm font-bold text-white">
               {% trans "Burn from reserve" %}</button>
             <p class="text-xs opacity-60">{% trans "Only units nobody holds. Anything distributed has to be returned first." %}</p>
