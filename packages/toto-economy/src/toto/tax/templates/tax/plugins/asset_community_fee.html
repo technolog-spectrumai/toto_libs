@@ -74,7 +74,9 @@
             </select>
           </label>
           <label class="flex items-center gap-2 text-xs">
-            <input type="checkbox" name="active" {% if fee_active or not fee_policy %}checked{% endif %}>
+            <input type="checkbox" name="active" {% if fee_active or not fee_policy %}checked{% endif %}
+                   :class="darkMode ? 'accent-accent-dark' : 'accent-accent-light'"
+                   class="h-4 w-4 rounded border">
             {% trans "Charging" %}
           </label>
           <button type="submit"

@@ -1,0 +1,33 @@
+{% load i18n %}
+{% comment %}Django-rendered form fields, made theme-aware.
+
+   Caller passes: form. Optionally submit_label (default "Save") and
+   submit_name/submit_value for a hidden action field.
+
+   WHY THIS EXISTS. `{{ form.as_p }}` emits bare widgets with no classes at all.
+   Tailwind's preflight sets `color: inherit` on form controls but leaves
+   `<input>` with the user agent's own background — white — so on a dark page
+   every Django-rendered field is light text in a white box. Nothing about that
+   is visible in the template that renders it, which is why it keeps coming
+   back: the bug is in what Django writes, not in what anybody typed.
+
+   The fix is the one tariffs/tariff_form.html found: an Alpine-bound wrapper
+   carrying the colours, and arbitrary-variant selectors telling the widgets
+   inside to inherit them. `bg-inherit`/`text-inherit`/`border-inherit` is what
+   makes it work — a static class could not follow `darkMode`, and the widgets
+   cannot carry an `:class` because Django writes them.
+
+   Any template rendering a whole Django form should include this rather than
+   calling `.as_p` itself, so the next one cannot reintroduce it.{% endcomment %}
+<div
+  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+  class="space-y-3
+         [&_input]:w-full [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm [&_input]:bg-inherit [&_input]:text-inherit [&_input]:border-inherit [&_input]:outline-none
+         [&_select]:w-full [&_select]:rounded-lg [&_select]:border [&_select]:px-3 [&_select]:py-2 [&_select]:text-sm [&_select]:bg-inherit [&_select]:text-inherit [&_select]:border-inherit [&_select]:outline-none
+         [&_textarea]:w-full [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:px-3 [&_textarea]:py-2 [&_textarea]:text-sm [&_textarea]:bg-inherit [&_textarea]:text-inherit [&_textarea]:border-inherit [&_textarea]:outline-none
+         [&_input[type=checkbox]]:w-4 [&_input[type=checkbox]]:h-4 [&_input[type=checkbox]]:inline
+         [&_label]:text-sm [&_label]:font-semibold
+         [&_.helptext]:block [&_.helptext]:text-xs [&_.helptext]:font-normal [&_.helptext]:opacity-60
+         [&_ul.errorlist]:text-xs [&_ul.errorlist]:text-warn-light [&_ul.errorlist]:list-none [&_ul.errorlist]:pl-0">
+  {{ form.as_p }}
+</div>
