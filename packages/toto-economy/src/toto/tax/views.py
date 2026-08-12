@@ -47,7 +47,6 @@ def my_levies(request):
         "community_rows": surplus.estimate_for_user(request.user),
         "wallet_url": rates.wallet_url(),
         "balance": rates.balance_of(request.user),
-        "is_staff": request.user.is_staff,
     })
 
 

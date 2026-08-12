@@ -550,6 +550,8 @@ def api_post(request):
 def api_metrics(request):
     """The JSON half of the metrics page, and gated the same way."""
     _require_manage(request.user)
+    from toto.assets.models import from_base_units
+
     from .models import UsageCharge
     data = {
         "usage_total": UsageRecord.objects.count(),
@@ -557,10 +559,18 @@ def api_metrics(request):
         "usage_pending": UsageRecord.objects.filter(status=UsageStatus.PENDING).count(),
         "usage_failed": UsageRecord.objects.filter(status=UsageStatus.FAILED).count(),
         "active_tariffs": Tariff.objects.filter(status=TariffStatus.ACTIVE).count(),
-        "charges_by_asset": list(
-            UsageCharge.objects.values("charged_asset__unit_name")
+        # Carry decimals through the aggregate and convert, the same way the
+        # HTML view does. Without them "total" is raw base units and no caller
+        # can render it — the exact bug the note at the top of `metrics` records,
+        # which lived on here after the page was fixed.
+        "charges_by_asset": [
+            {**row,
+             "total_display": str(from_base_units(
+                 row["total"] or 0, row.get("charged_asset__decimals") or 0))}
+            for row in UsageCharge.objects
+            .values("charged_asset__unit_name", "charged_asset__decimals")
             .annotate(total=Sum("amount_base_units"))
-        ),
+        ],
     }
     return JsonResponse(data)
 
