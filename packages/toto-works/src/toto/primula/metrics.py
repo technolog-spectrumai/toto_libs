@@ -3,7 +3,7 @@
 Imported from QuotaConfig.ready(), so this module stays pure data — no models,
 no database, no settings.
 
-A save rewrites the sheet file and appends a SheetVersion, so it is worth
+A save rewrites the whole sheet file, so it is worth
 counting — but note the seeded policy uses TRACK, not BLOCK, and carries no
 price. Refusing a save loses the work in the user's browser, and with no
 self-service top-up that is not recoverable without an admin. Counting it tells

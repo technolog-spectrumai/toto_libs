@@ -19,7 +19,8 @@ from toto.vault.models import VaultFile
 from toto.vault.plugins import VaultEditorPlugin
 
 from . import sheet_format
-from .models import SheetVersion
+from toto.vault import versions as vault_versions
+from toto.vault.models import FileVersion
 from .views import _read_raw
 
 
@@ -41,6 +42,10 @@ def make_sheet(owner, title="test-sheet", is_public=False, rows=None):
     vf.file.save(f"{title}.json", ContentFile(text.encode("utf-8")), save=False)
     vf.content_hash = vf.create_hash()
     vf.save()
+    # SheetCreateView cuts a named v1, and this helper claims to seed a sheet
+    # the way that view does — so it has to do the same, or every test built on
+    # it starts from a state the application can never actually produce.
+    vault_versions.save_version(vf, author=owner, label="created")
     return vf
 
 
@@ -82,8 +87,8 @@ class SheetLifecycleTests(TestCase):
         self.assertEqual(vf.owner, self.user)
         self.assertEqual(vf.title, "budget.json")
         self.assertTrue(sheet_format.is_sheet(_read_raw(vf)))
-        self.assertEqual(vf.sheet_versions.count(), 1)
-        self.assertEqual(vf.sheet_versions.get().note, "created")
+        self.assertEqual(vf.versions.count(), 1)
+        self.assertEqual(vf.versions.get().label, "created")
 
     def test_index_lists_own_and_public_only(self):
         mine = make_sheet(self.user, "mine")
@@ -144,7 +149,8 @@ class SheetLifecycleTests(TestCase):
         on_disk = json.loads(_read_raw(vf))
         self.assertEqual(on_disk["sheets"]["sheet-1"]["cellData"]["0"]["0"]["v"], "saved")
         self.assertEqual(vf.file_size_bytes, len(sheet_format.dumps(snap).encode("utf-8")))
-        self.assertEqual(vf.sheet_versions.count(), 1)
+        # Still 1: the creation version. A save writes the file, not history.
+        self.assertEqual(vf.versions.count(), 1)
 
     def test_save_rejects_non_workbook_json(self):
         vf = make_sheet(self.user, "grid")
@@ -177,44 +183,85 @@ class SheetLifecycleTests(TestCase):
         )
         self.assertEqual(resp.status_code, 404)
 
-    def test_version_cap_prunes_oldest(self):
+    def test_saving_no_longer_cuts_a_version_on_every_write(self):
+        # This is the behaviour change: primula used to append a snapshot on
+        # EVERY save and keep 50. That is an autosave log, not a history — it
+        # buried the two saves anyone cared about under fifty they did not.
+        # A version is now something a person asks for.
         vf = make_sheet(self.user, "grid")
-        with mock.patch("toto.primula.views.VERSION_CAP", 3):
-            for i in range(5):
-                snap = sheet_format.workbook_from_rows("grid", [[f"v{i}"]])
-                self.client.post(
-                    reverse("primula:save", args=[vf.pk]),
-                    data=json.dumps(snap),
-                    content_type="application/json",
-                )
-        self.assertEqual(vf.sheet_versions.count(), 3)
-        newest = vf.sheet_versions.first()
-        self.assertIn("v4", newest.snapshot)
+        before = vf.versions.count()
+        for i in range(5):
+            snap = sheet_format.workbook_from_rows("grid", [[f"v{i}"]])
+            self.client.post(
+                reverse("primula:save", args=[vf.pk]),
+                data=json.dumps(snap), content_type="application/json")
 
-    def test_restore_rewrites_file_and_records_version(self):
-        vf = make_sheet(self.user, "grid")
-        old = sheet_format.dumps(sheet_format.workbook_from_rows("grid", [["old"]]))
-        version = SheetVersion.objects.create(sheet_file=vf, snapshot=old, created_by=self.user)
-        resp = self.client.post(reverse("primula:restore", args=[vf.pk, version.pk]))
-        self.assertRedirects(resp, reverse("primula:edit", args=[vf.pk]))
-        self.assertIn("old", _read_raw(vf))
-        self.assertEqual(vf.sheet_versions.count(), 2)
-        self.assertIn("restored from", vf.sheet_versions.first().note)
+        self.assertEqual(vf.versions.count(), before)
+        self.assertIn("v4", _read_raw(vf))          # the file itself still moved
 
-    def test_versions_page_lists(self):
+    def test_a_new_sheet_gets_a_named_first_version(self):
+        # Creating a sheet IS a deliberate act, so it earns a v1 to come back to.
         vf = make_sheet(self.user, "grid")
-        SheetVersion.objects.create(sheet_file=vf, snapshot="{}", created_by=self.user, note="x")
-        resp = self.client.get(reverse("primula:versions", args=[vf.pk]))
-        self.assertEqual(resp.status_code, 200)
-        self.assertEqual(len(resp.context["versions"]), 1)
+        self.assertEqual(vf.versions.count(), 1)
+        self.assertEqual(vf.versions.first().number, 1)
+
+    def test_a_version_is_cut_on_request_and_restores(self):
+        from toto.vault import versions as vault_versions
+
+        vf = make_sheet(self.user, "grid")
+        original = _read_raw(vf)
+        first = vf.versions.first()
+
+        self.client.post(
+            reverse("primula:save", args=[vf.pk]),
+            data=json.dumps(sheet_format.workbook_from_rows("grid", [["later"]])),
+            content_type="application/json")
+        self.assertIn("later", _read_raw(vf))
+
+        vault_versions.restore_version(first, actor=self.user)
+        vf.refresh_from_db()
+
+        self.assertEqual(_read_raw(vf), original)
+        # Forward, never backward: the restore is itself the newest version.
+        self.assertEqual(vf.versions.count(), 2)
+        self.assertEqual(vf.versions.first().number, 2)
+
+    def test_a_stale_save_is_refused_and_the_work_is_kept(self):
+        # Primula had NO concurrency control at all — two tabs silently
+        # overwrote each other. Now the loser is refused AND rescued.
+        vf = make_sheet(self.user, "grid")
+        snap = sheet_format.workbook_from_rows("grid", [["mine"]])
+        snap["base_hash"] = "a-hash-from-before-somebody-else-saved"
+
+        resp = self.client.post(
+            reverse("primula:save", args=[vf.pk]),
+            data=json.dumps(snap), content_type="application/json")
+
+        self.assertEqual(resp.status_code, 409)
+        self.assertNotIn("mine", _read_raw(vf))     # the file did not move
+        rescued = vf.versions.filter(is_conflict=True).first()
+        self.assertIsNotNone(rescued)               # but the work survived
+        self.assertIn("mine", rescued.read().decode())
+
+    def test_a_sheet_someone_else_is_editing_refuses_the_save(self):
+        from toto.vault import locks
+
+        vf = make_sheet(self.user, "grid")
+        locks.acquire(vf, self.other)
+
+        resp = self.client.post(
+            reverse("primula:save", args=[vf.pk]),
+            data=json.dumps(sheet_format.workbook_from_rows("grid", [["x"]])),
+            content_type="application/json")
+
+        self.assertEqual(resp.status_code, 423)
 
     def test_delete_removes_file_and_versions(self):
         vf = make_sheet(self.user, "grid")
-        SheetVersion.objects.create(sheet_file=vf, snapshot="{}", created_by=self.user)
         resp = self.client.post(reverse("primula:delete", args=[vf.pk]))
         self.assertRedirects(resp, reverse("primula:index"))
         self.assertFalse(VaultFile.objects.filter(pk=vf.pk).exists())
-        self.assertFalse(SheetVersion.objects.exists())
+        self.assertFalse(FileVersion.objects.filter(file_id=vf.pk).exists())
 
     def test_delete_denied_for_non_owner(self):
         vf = make_sheet(self.other, "theirs", is_public=True)
@@ -248,7 +295,7 @@ class IngressTests(TestCase):
         self.assertEqual(sheets.count(), 2)
         for vf in sheets:
             self.assertTrue(sheet_format.is_sheet(_read_raw(vf)))
-            self.assertEqual(vf.sheet_versions.count(), 1)
+            self.assertEqual(vf.versions.count(), 1)
         # Re-run skips the existing files instead of duplicating them.
         call_command("ingress_primula", "--full", verbosity=0)
         self.assertEqual(VaultFile.objects.filter(file_type="sheet").count(), 2)

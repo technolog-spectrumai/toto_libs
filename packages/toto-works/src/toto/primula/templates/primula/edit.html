@@ -5,6 +5,10 @@
 {% block title %}{{ sheet.title }} | {% trans "Primula" %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
+  {# Versions + the editing lock. Shared with cyprian and memo — the heartbeat
+     interval comes from the server so it cannot drift from the lock's TTL. #}
+  <script defer src="{% static 'oya/file_versions.js' %}"></script>
+  <style>[x-cloak] { display: none !important; }</style>
   <link rel="stylesheet" href="{% static 'vendor/univer/preset-sheets-core.css' %}">
   <style>
     /* Univer needs a sized container; keep the grid below the app chrome. */
@@ -25,6 +29,7 @@
 
 {% block content %}
 <section
+  x-data="{ showVersions: false }"
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="flex flex-col transition-colors duration-300">
 
@@ -38,8 +43,9 @@
       </h1>
     </div>
     <div class="flex items-center gap-3">
-      <a href="{{ versions_url }}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
-        <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}</a>
+      <button type="button" @click="showVersions = !showVersions"
+              class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}</button>
       {% if can_edit %}
         <span id="save-status" class="text-xs opacity-60"></span>
         <button type="button" id="save-btn"
@@ -155,4 +161,12 @@
   });
 })();
 </script>
+
+  {# Versions and the editing lock, shared with cyprian and memo. #}
+  <div x-show="showVersions" x-cloak
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="mx-auto mt-4 max-w-5xl rounded-xl border p-4">
+    {% include "oya/_file_versions.html" with file_pk=sheet.pk %}
+  </div>
+
 {% endblock %}

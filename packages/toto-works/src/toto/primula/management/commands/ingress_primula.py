@@ -2,7 +2,7 @@
 
 Each sheet is a self-contained Univer workbook snapshot (JSON) stored in the vault,
 exactly like the app creates them — so ``--full`` gives a fresh platform something to
-open in Primula. An initial :class:`~toto.primula.models.SheetVersion` is recorded for
+open in Primula. An initial vault FileVersion is recorded for
 each, matching what a real save does.
 """
 
@@ -14,7 +14,7 @@ from django.utils.text import slugify
 
 from toto.ingress import IngressCommand
 from toto.primula import sheet_format
-from toto.primula.models import SheetVersion
+from toto.vault import versions
 from toto.vault.models import Bucket, VaultDirectory, VaultFile
 
 
@@ -85,7 +85,7 @@ class Command(IngressCommand):
         vault_file.content_hash = vault_file.create_hash()
         vault_file.save()
 
-        SheetVersion.objects.create(sheet_file=vault_file, snapshot=text, created_by=user, note="seed")
+        versions.save_version(vault_file, author=user, label="seed")
 
         self.stdout.write(self.style.SUCCESS(
             f"📊 Created sheet '{title}' ({len(rows)} rows)."

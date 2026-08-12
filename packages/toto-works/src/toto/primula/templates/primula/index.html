@@ -59,8 +59,6 @@
             <div class="flex flex-wrap gap-3 text-sm">
               <a href="{{ s.edit_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
                 <i class="fa-solid fa-pen"></i> {% trans "Open" %}</a>
-              <a href="{{ s.versions_url }}" class="inline-flex items-center gap-2 underline hover:opacity-80">
-                <i class="fa-solid fa-clock-rotate-left"></i> {% trans "Versions" %}</a>
               {% if s.is_owner %}
                 <form method="post" action="{{ s.delete_url }}"
                       onsubmit="return confirm('{% trans "Delete this sheet and all its versions?" %}');"

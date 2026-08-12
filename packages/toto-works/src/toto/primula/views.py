@@ -3,9 +3,11 @@
 Each sheet is a single ``vault.VaultFile`` of ``file_type="sheet"`` whose bytes are a
 Univer workbook snapshot JSON (see :mod:`toto.primula.sheet_format`). These views never
 keep sheet content in the database — the vault file is the single source of truth,
-exactly like memo's ``.pml`` presentations. The only DB model is
-:class:`~toto.primula.models.SheetVersion`, the primitive versioning: every save appends
-a snapshot and the newest :data:`VERSION_CAP` per sheet are kept.
+exactly like memo's XML presentations. There is no DB model for content and none for
+history either: versions live in :mod:`toto.vault.versions`, shared with cyprian and
+memo, so all three editors keep history the same way. Primula used to carry its own
+``SheetVersion`` that snapshotted on EVERY save — which is an autosave log, not a
+history, and it was the only one of the three apps to have anything at all.
 """
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from toto.ui import PageProcessor
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 from toto.primula.models import PrimulaQuotaPolicy, PrimulaUsageEvent
+from toto.vault import locks, versions
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -37,10 +40,29 @@ from toto.vault.views import (
 )
 
 from . import sheet_format
-from .models import SheetVersion
 
-# Keep the newest this-many snapshots per sheet; older are pruned on each save.
-VERSION_CAP = 50
+#: Ceiling on a saved workbook. Django's DATA_UPLOAD_MAX_MEMORY_SIZE is 2.5 MB
+#: and no host raises it, so without _read_json_body below a workbook past that
+#: could not be saved AT ALL — the request died before the view ran. cyprian and
+#: memo both learned this; primula never did until now.
+MAX_SHEET_BYTES = 32 * 1024 * 1024
+
+
+def _read_json_body(request, limit: int):
+    """The request body as JSON, without Django's 2.5 MB form ceiling.
+
+    Same helper cyprian and memo carry, for the same reason: autosave would turn
+    a rare failure into a constant one.
+    """
+    import json as _json
+
+    body = request.body
+    if len(body) > limit:
+        raise ValueError("too-big")
+    try:
+        return _json.loads(body or b"{}")
+    except (ValueError, TypeError) as exc:
+        raise ValueError(str(exc)) from exc
 
 
 # ---------------------------------------------------------------------------
@@ -82,22 +104,6 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     )
 
 
-def snapshot_version(vault_file: VaultFile, snapshot_text: str, user, note: str = "") -> None:
-    """Append a version and prune to the newest :data:`VERSION_CAP` for this sheet."""
-    SheetVersion.objects.create(
-        sheet_file=vault_file,
-        snapshot=snapshot_text,
-        created_by=user if getattr(user, "is_authenticated", False) else None,
-        note=note[:200],
-    )
-    keep = list(
-        SheetVersion.objects.filter(sheet_file=vault_file)
-        .order_by("-created_at", "-id")
-        .values_list("pk", flat=True)[:VERSION_CAP]
-    )
-    SheetVersion.objects.filter(sheet_file=vault_file).exclude(pk__in=keep).delete()
-
-
 # ---------------------------------------------------------------------------
 # Index
 # ---------------------------------------------------------------------------
@@ -114,7 +120,7 @@ class SheetIndexView(LoginRequiredMixin, View):
             VaultFile.objects.filter(file_type="sheet", is_encrypted=False)
             .filter(Q(is_public=True) | Q(owner=request.user))
             .select_related("owner", "bucket", "directory")
-            .annotate(version_count=Count("sheet_versions"))
+            .annotate(version_count=Count("versions"))
             .order_by("-uploaded_at", "title")[: self.LIST_CAP]
         )
 
@@ -129,7 +135,6 @@ class SheetIndexView(LoginRequiredMixin, View):
                 "versions": f.version_count,
                 "edit_url": reverse("primula:edit", args=[f.pk]),
                 "delete_url": reverse("primula:delete", args=[f.pk]),
-                "versions_url": reverse("primula:versions", args=[f.pk]),
             }
             for f in qs
         ]
@@ -186,7 +191,9 @@ class SheetCreateView(LoginRequiredMixin, View):
         vault_file.file_size_bytes = len(data)
         vault_file.save()
 
-        snapshot_version(vault_file, text, request.user, note="created")
+        # A new sheet is itself a deliberate act, so it gets a named v1.
+        versions.save_version(vault_file, author=request.user,
+                              label="created")
         return redirect(reverse("primula:edit", args=[vault_file.pk]))
 
 
@@ -222,7 +229,6 @@ class SheetEditView(LoginRequiredMixin, View):
                 "can_edit": can_edit,
                 "save_url": reverse("primula:save", args=[vault_file.pk]),
                 "index_url": reverse("primula:index"),
-                "versions_url": reverse("primula:versions", args=[vault_file.pk]),
             },
             request,
         )
@@ -241,12 +247,44 @@ def sheet_save(request, file_pk):
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
+    # Django's DATA_UPLOAD_MAX_MEMORY_SIZE defaults to 2.5 MB and no host raises
+    # it, so reading request.body directly made any workbook past that
+    # UNSAVEABLE — it raised before the view ran. cyprian and memo both route
+    # around this; primula never did. Same helper, same reasoning.
     try:
-        snapshot = json.loads(request.body or b"{}")
-    except (ValueError, TypeError) as exc:
+        snapshot = _read_json_body(request, MAX_SHEET_BYTES)
+    except ValueError as exc:
+        if str(exc) == "too-big":
+            return JsonResponse(
+                {"error": f"That workbook is larger than "
+                          f"{MAX_SHEET_BYTES // (1024 * 1024)} MB."}, status=413)
         return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
     if not (isinstance(snapshot, dict) and isinstance(snapshot.get("sheets"), dict)):
         return JsonResponse({"error": "Not a Univer workbook snapshot."}, status=400)
+
+    # Primula had NO concurrency control at all: two tabs silently overwrote
+    # each other with no error anywhere. It was the one app with versioning and
+    # the one app that could lose work without saying so.
+    if not locks.may_write(vault_file, request.user):
+        held = locks.holder_of(vault_file)
+        return JsonResponse(
+            {"error": f"{held.holder} is editing this sheet.",
+             "locked_by": held.holder.get_username()}, status=423)
+
+    base_hash = snapshot.pop("base_hash", None)
+    if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
+        rescued = None
+        try:
+            rescued = versions.save_conflicting_draft(
+                vault_file, body=sheet_format.dumps(snapshot).encode("utf-8"),
+                author=request.user)
+        except Exception:                              # noqa: BLE001
+            pass
+        return JsonResponse(
+            {"error": "This sheet changed somewhere else since you opened it. "
+                      "Your workbook was kept as a version so nothing is lost.",
+             "content_hash": vault_file.content_hash,
+             "kept_as_version": rescued.number if rescued else None}, status=409)
 
     # After the is_authenticated check above, not before: check_funds resolves a
     # billing account off the user, and handing it AnonymousUser raises rather
@@ -280,10 +318,10 @@ def sheet_save(request, file_pk):
     record_usage(PrimulaUsageEvent, "primula.save", 1, request.user, **_src)
     charge(request.user, tariff, "primula.save", 1, **_src)
 
-    snapshot_version(vault_file, text, request.user)
-    return JsonResponse(
-        {"status": "ok", "versions": SheetVersion.objects.filter(sheet_file=vault_file).count()}
-    )
+    # No version is cut here. A version is something a person decides to keep
+    # and name (toto.vault.versions); snapshotting every autosave produced 50
+    # rows of noise per sheet and buried the two saves anyone cared about.
+    return JsonResponse({"status": "ok", "content_hash": vault_file.content_hash})
 
 
 @login_required
@@ -294,61 +332,3 @@ def sheet_delete(request, file_pk):
     vault_file.file.delete(save=False)
     vault_file.delete()
     return redirect(reverse("primula:index"))
-
-
-# ---------------------------------------------------------------------------
-# Versions
-# ---------------------------------------------------------------------------
-
-class SheetVersionsView(LoginRequiredMixin, View):
-    """List a sheet's saved versions; the owner can restore one."""
-
-    login_url = reverse_lazy("core:login")
-    template_name = "primula/versions.html"
-
-    def get(self, request, file_pk):
-        vault_file = _get_readable_file(request, file_pk)
-        is_owner = vault_file.owner_id == request.user.id
-        rows = [
-            {
-                "pk": v.pk,
-                "created_at": v.created_at,
-                "created_by": v.created_by.username if v.created_by else "—",
-                "note": v.note,
-                "size": len(v.snapshot),
-                "restore_url": reverse("primula:restore", args=[vault_file.pk, v.pk]),
-            }
-            for v in vault_file.sheet_versions.select_related("created_by").all()[:VERSION_CAP]
-        ]
-        context = PageProcessor().decorate(
-            {
-                "sheet": vault_file,
-                "versions": rows,
-                "is_owner": is_owner,
-                "edit_url": reverse("primula:edit", args=[vault_file.pk]),
-                "index_url": reverse("primula:index"),
-            },
-            request,
-        )
-        return render(request, self.template_name, context)
-
-
-@login_required
-@require_POST
-def sheet_restore(request, file_pk, version_pk):
-    """Write a chosen version's snapshot back to the sheet, recording a new version."""
-    vault_file = _get_owned_file(request, file_pk)
-    if vault_file.is_encrypted:
-        return HttpResponseForbidden("File is encrypted.")
-
-    version = get_object_or_404(SheetVersion, pk=version_pk, sheet_file=vault_file)
-    text = version.snapshot
-    data = text.encode("utf-8")
-    with vault_file.file.open("w") as f:
-        f.write(text)
-    vault_file.content_hash = hashlib.sha256(data).hexdigest()
-    vault_file.file_size_bytes = len(data)
-    vault_file.save(update_fields=["content_hash", "file_size_bytes"])
-
-    snapshot_version(vault_file, text, request.user, note=f"restored from #{version_pk}")
-    return redirect(reverse("primula:edit", args=[vault_file.pk]))
