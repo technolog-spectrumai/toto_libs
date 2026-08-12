@@ -60,6 +60,17 @@ register(SyncPolicy(
         "database. Each host decides its own grants, in its own admin."
     ),
 ))
+for _label in ("socialhub.SocialhubUsageEvent", "socialhub.SocialhubQuotaPolicy"):
+    register(SyncPolicy(
+        _label, stage=STAGE_COMMUNITIES, identity=IDENTITY_REFUSE,
+        refuse_reason=(
+            "Host-local metering, refused for the same reason vault's pair is: "
+            "a usage event is the only record that something was charged, so "
+            "copying one would bill the receiver's member for the peer's day. "
+            "This pair exists solely to carry the head tax's daily trail."
+        ),
+    ))
+
 register(SyncPolicy(
     "socialhub.Station", stage=STAGE_COMMUNITIES, identity=IDENTITY_REFUSE,
     refuse_reason=(
