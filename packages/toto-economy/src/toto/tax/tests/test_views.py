@@ -11,7 +11,8 @@ from toto.assets.testing import LedgerTestCase as TestCase
 from django.urls import reverse
 
 from ..models import TaxRule
-from .factories import GB, make_rule, make_user, make_vault_file
+from .factories import (GB, make_gas_asset, make_rule, make_user,
+                        make_vault_file, price_gb_day)
 
 
 class TaxViewTests(TestCase):
@@ -64,12 +65,12 @@ class TaxViewTests(TestCase):
         self.assertEqual(self.client.get(reverse("tax:my_levies")).status_code, 302)
 
     def test_staff_updates_allowance_and_active(self):
-        """The allowance is a field on the levied thing now."""
+        """Allowance, price and the switch are ONE form on the levied thing."""
         self.client.force_login(self.staff)
 
         response = self.client.post(
             reverse("quota:metric_detail", args=["storage.gb_day"]),
-            {"action": "allowance", "allowance": "5"},
+            {"action": "levy", "allowance": "5", "price": ""},
             # levy_active omitted → switched off
         )
 
@@ -83,7 +84,7 @@ class TaxViewTests(TestCase):
 
         response = self.client.post(
             reverse("quota:metric_detail", args=["storage.gb_day"]),
-            {"action": "allowance", "allowance": "-3", "levy_active": "on"})
+            {"action": "levy", "allowance": "-3", "levy_active": "on"})
 
         self.assertEqual(response.status_code, 200)
         self.rule.refresh_from_db()
@@ -107,13 +108,41 @@ class TaxViewTests(TestCase):
         TaxRule.objects.all().delete()
         self.client.force_login(self.staff)
 
+        # A price needs a gas asset to be denominated in; without one
+        # `rates.set_price` writes nothing and arming is (correctly) refused.
+        make_gas_asset()
+
         self.client.post(reverse("quota:metric_detail", args=["storage.gb_day"]),
-                         {"action": "allowance", "allowance": "2.5",
-                          "levy_active": "on"})
+                         {"action": "levy", "allowance": "2.5",
+                          "price": "0.0001", "levy_active": "on"})
 
         rule = TaxRule.objects.get(metric_code="storage.gb_day")
         self.assertEqual(rule.allowance, Decimal("2.5"))
         self.assertTrue(rule.active)
+
+    def test_arming_a_levy_with_no_price_is_refused(self):
+        """The state this whole change exists to make unreachable.
+
+        A rule that is active and unpriced measures every user every night,
+        writes a usage event and bills zero. It used to be one tick away,
+        because the allowance and the price lived on two screens in two apps and
+        neither was sufficient alone — the only warning was a deploy-time log
+        line nobody reads twice.
+        """
+        from toto.quota import levies
+
+        TaxRule.objects.all().delete()
+        self.client.force_login(self.staff)
+
+        response = self.client.post(
+            reverse("quota:metric_detail", args=["storage.gb_day"]),
+            {"action": "levy", "allowance": "1", "price": "", "levy_active": "on"})
+
+        self.assertEqual(response.status_code, 200)   # redisplayed with the error
+        rule = TaxRule.objects.filter(metric_code="storage.gb_day").first()
+        self.assertTrue(rule is None or not rule.active)
+        self.assertRaises(levies.UnpricedLevy, levies.set_allowance,
+                          "storage.gb_day", "1", active=True)
 
 
 class DemurrageViewTests(TestCase):

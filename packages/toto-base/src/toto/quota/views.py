@@ -54,7 +54,15 @@ def _render(request, template, context):
 
 
 def _staff_only(request):
-    if not request.user.is_staff:
+    """The operator gate. `is_staff OR is_superuser`, like every other gate here.
+
+    It used to test bare `is_staff`, which made this — the one desk that sets
+    what things cost — the single place in the platform that refused a
+    superuser. Django's two flags are independent and `is_superuser` does not
+    imply `is_staff`, a point half a dozen modules in this tree carry a comment
+    about; this one had the comment's lesson and not its code.
+    """
+    if not (request.user.is_staff or request.user.is_superuser):
         raise PermissionDenied
 
 
@@ -498,14 +506,31 @@ def _detail_post(request, metric, policy_model):
             return None
         return redirect("quota:metric_detail", code=code)
 
-    if action == "allowance":
+    if action == "levy":
+        # Allowance AND price, in one form, in one save — because for a levy
+        # they are one decision. Splitting them is what let a rule be armed and
+        # unpriced: measured every night, recorded, billed nothing. The two
+        # knobs lived on two screens in two apps and neither was sufficient
+        # alone, and the only warning was a deploy-time log line.
+        #
+        # The price is written FIRST so `set_allowance` can see it: its guard
+        # reads the rate card, and arming without one is refused.
         try:
+            raw_price = request.POST.get("price")
+            if (raw_price or "").strip() == "":
+                rates.clear_price(code)
+            else:
+                rates.set_price(code, raw_price,
+                                asset_id=(request.POST.get("asset") or "").strip() or None)
             levies.set_allowance(code, request.POST.get("allowance"),
                                  active=bool(request.POST.get("levy_active")))
-            messages.success(request, _("Free allowance saved."))
+        except levies.UnpricedLevy as exc:
+            messages.error(request, str(exc))
+            return None
         except ValueError as exc:
             messages.error(request, str(exc))
             return None
+        messages.success(request, _("Levy saved."))
         return redirect("quota:metric_detail", code=code)
 
     return None

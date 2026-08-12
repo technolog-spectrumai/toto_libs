@@ -2,7 +2,7 @@
 
 ``get_or_create`` throughout: re-running ingress never undoes a staff edit —
 the same discipline as ``ingress_tariffs``. Deliberately seeds NO price: an
-automatic levy must be armed by a person at /quota/rates/, never by a deploy.
+automatic levy must be armed by a person at /quota/<metric>/, never by a deploy.
 Until then the nightly run measures and records, and charges nothing.
 """
 
@@ -16,7 +16,7 @@ from ...models import TaxRule
 
 
 class Command(IngressCommand):
-    help = "Seed levy rules (allowances only — prices stay a deliberate staff act)."
+    help = "Seed levy rules, UNARMED (arming is a deliberate staff act, with a price)."
 
     def process(self):
         rule, created = TaxRule.objects.get_or_create(
@@ -24,7 +24,19 @@ class Command(IngressCommand):
             defaults={
                 "allowance": Decimal("1"),
                 "unit_label": "GB",
-                "active": True,
+                # UNARMED on creation, and this is the whole point. A rule that
+                # arrives active with no price measures every user every night,
+                # writes a usage event, and bills zero — armed to all
+                # appearances and earning nothing. `ingress_tariffs` leaves both
+                # levy metrics out of its seed on purpose ("must be armed by a
+                # person, never by a deploy"), so seeding the rule ACTIVE was
+                # the deploy doing exactly the half it was told not to.
+                #
+                # The rule still arrives, with its allowance and its wording, so
+                # there is something to arm. Arming it is one tick and a price,
+                # in one form, on the metered thing — and `levies.set_allowance`
+                # refuses to arm it without one.
+                "active": False,
                 "description": (
                     "Daily fee on stored data. Everyone keeps the allowance "
                     "for free; only the excess is charged, per GB per day."
@@ -41,7 +53,8 @@ class Command(IngressCommand):
             defaults={
                 "allowance": Decimal("0"),
                 "unit_label": "h",
-                "active": True,
+                "active": False,   # unarmed on creation — see storage.gb_day above
+
                 "description": (
                     "Demurrage on raised time dials. Every limit has a free "
                     "default; the extension above it is charged per hour per "
@@ -80,17 +93,18 @@ class Command(IngressCommand):
             for code in ("storage.gb_day", "time.hold"):
                 if code not in card:
                     self.stdout.write(
-                        f"tax: {code} is metered but FREE — price it at "
-                        "/quota/rates/ to arm the levy."
+                        f"tax: {code} has a rule and no price, so it is UNARMED. "
+                        "Set an allowance and a price together at "
+                        "/quota/<metric>/ to start levying."
                     )
 
         # Community-fee policies are never seeded — armed by a person, per
-        # asset, at /tax/rules/.
+        # asset, at each asset's own page.
         from ...models import SurplusPolicy
 
         if not SurplusPolicy.objects.exists():
             self.stdout.write(
                 "tax: no community-fee policies — arm one per asset at "
-                "/tax/rules/ (threshold, %/period; collected into "
+                "each asset's own page (threshold, %/period; collected into "
                 "platform-community-fees)."
             )

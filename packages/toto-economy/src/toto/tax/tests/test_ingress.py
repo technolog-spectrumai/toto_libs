@@ -18,14 +18,24 @@ def run_ingress():
 
 
 class IngressTaxTests(TestCase):
-    def test_seeds_the_storage_rule_and_reports_it_free(self):
+    def test_seeds_the_storage_rule_UNARMED(self):
+        """The rule arrives; the charging does not.
+
+        It used to arrive `active=True` with no price, which meant a deploy
+        produced a levy that measured every user every night and billed zero —
+        armed to all appearances, earning nothing. `ingress_tariffs` leaves both
+        levy metrics out of its price seed on purpose ("armed by a person, never
+        by a deploy"), so seeding the rule active was the deploy doing exactly
+        the half it was told not to do. Arming is now one tick and a price, in
+        one form, on the metered thing.
+        """
         output = run_ingress()
 
         rule = TaxRule.objects.get(metric_code="storage.gb_day")
         self.assertEqual(rule.allowance, Decimal("1"))
         self.assertEqual(rule.unit_label, "GB")
-        self.assertTrue(rule.active)
-        self.assertIn("FREE", output)
+        self.assertFalse(rule.active)
+        self.assertIn("UNARMED", output)
 
     def test_rerun_preserves_a_staff_edit(self):
         run_ingress()
@@ -49,13 +59,13 @@ class IngressTaxTests(TestCase):
         self.assertEqual(unit.label, "Gigabyte-day")
         self.assertEqual(unit.dimension, "storage_time")
 
-    def test_seeds_the_time_hold_rule(self):
+    def test_seeds_the_time_hold_rule_UNARMED(self):
         output = run_ingress()
 
         rule = TaxRule.objects.get(metric_code="time.hold")
         self.assertEqual(rule.allowance, Decimal("0"))
         self.assertEqual(rule.unit_label, "h")
-        self.assertTrue(rule.active)
+        self.assertFalse(rule.active)
         self.assertIn("time.hold", output)
 
     def test_repairs_the_hour_day_unit(self):

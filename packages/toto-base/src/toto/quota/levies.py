@@ -114,6 +114,10 @@ def of(metric_code: str) -> dict | None:
     return row
 
 
+class UnpricedLevy(ValueError):
+    """Refusal to arm a levy that would measure nightly and charge nothing."""
+
+
 def set_allowance(metric_code: str, raw, *, active=None) -> bool:
     """Set one levy's free allowance from a raw form value.
 
@@ -126,9 +130,30 @@ def set_allowance(metric_code: str, raw, *, active=None) -> bool:
     price DELETES the row because free is an absence there, while blanking an
     allowance means zero — a rule with no allowance still levies. The pages say
     so at the point of edit rather than leaving it to be discovered.
+
+    **Arming requires a price.** A rule that is active and unpriced measures
+    every user every night, writes a usage event, and bills zero — armed to all
+    appearances and earning nothing. It was reachable because the allowance and
+    the price lived on two screens in two apps and neither was sufficient alone;
+    now they are one form, and this is the guard that keeps them one decision.
+    The price must already be set when this is called, which is why the caller
+    writes it first.
+
+    A deploy still cannot start a recurring charge: ``ingress_tariffs`` leaves
+    both levy metrics out of its seed on purpose, and arming remains something a
+    person does. This only refuses arming it *badly*.
     """
     if not levy_enabled() or metric_code not in levy_codes():
         return False
+
+    if active:
+        from . import rates
+
+        if metric_code not in rates.rate_card():
+            raise UnpricedLevy(
+                "A levy with no price measures every night and charges nothing. "
+                "Set a price, or leave the rule unarmed."
+            )
 
     text = (raw or "").strip() if isinstance(raw, str) else raw
     if text in ("", None):
