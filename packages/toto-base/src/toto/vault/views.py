@@ -5,7 +5,9 @@ from io import BytesIO
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.apps import apps
 from django.conf import settings
+from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
@@ -91,11 +93,12 @@ class PublicFileListView(TemplateView):
             except NoReverseMatch:
                 return ""
 
-        try:
-            from toto.fileservices.plugin import FileServicePlugin
-            _fs_plugins = FileServicePlugin.all()
-        except Exception:
-            _fs_plugins = []
+        # The registry lives here now (toto.vault.plugins), so this no longer
+        # reaches into a wheel most hosts do not pin — and the wand finally
+        # appears on the host that owns the editors.
+        from toto.vault.plugins import FileServicePlugin
+
+        _fs_plugins = FileServicePlugin.all()
 
         def _has_services(f):
             return any(p.accepts(f) for p in _fs_plugins)
@@ -254,13 +257,17 @@ class PublicFileListView(TemplateView):
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
 
-        # File-service (wand) endpoints — only when the fileservices app is installed.
+        # The wand. LISTING is the vault's own endpoint, so it works on every
+        # host; RUNNING is fileservices' — its run substrate is ffmpeg-shaped and
+        # stays in toto-media-ops. A builder-backed service needs neither: it
+        # redirects to its own page, which is how the assistant offers a
+        # whole-file action on a host with no media wheel at all.
+        context["services_url_tpl"] = reverse(
+            "vault:file_services", kwargs={"file_pk": 0})
         try:
-            context["services_url_tpl"] = reverse("fileservices:services_for_file", kwargs={"file_pk": 0})
             context["run_service_url_tpl"] = reverse("fileservices:run_service", kwargs={"file_pk": 0})
             context["open_service_url_tpl"] = reverse("fileservices:open_primary", kwargs={"file_pk": 0})
         except Exception:
-            context["services_url_tpl"] = ""
             context["run_service_url_tpl"] = ""
             context["open_service_url_tpl"] = ""
 
@@ -334,6 +341,39 @@ class VaultFileDownloadView(View):
             as_attachment=True,
             filename=file_obj.file.name
         )
+
+
+@login_required
+def file_services(request, file_pk):
+    """Which services apply to this file — the vault's own listing.
+
+    fileservices had one of these, but it lives in a wheel most hosts do not
+    pin, so on zenobia the wand modal fetched a URL that did not reverse and the
+    whole affordance was invisible. The registry moved into
+    ``toto.vault.plugins``; this is the read half moving with it.
+
+    Access-checked, because it returns the file's TITLE: unchecked, it reads
+    other people's filenames by walking primary keys. 404 rather than 403 for
+    the same reason the download view does.
+
+    ``builder`` on each row is what the modal needs to know: a builder service
+    redirects to its own page and works anywhere, while a non-builder one needs
+    fileservices' run endpoint and is therefore only offerable where that app is
+    installed.
+    """
+    from toto.vault.plugins import FileServicePlugin
+
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk)
+    if not access.may_read(request.user, vault_file):
+        raise Http404("No such file.")
+
+    runnable = apps.is_installed("toto.fileservices")
+    services = [
+        plugin.to_dict() for plugin in FileServicePlugin.for_file(vault_file)
+        if plugin.builder or runnable
+    ]
+    return JsonResponse({"services": services, "file_title": vault_file.title})
 
 
 class FileGatewayPageView(LoginRequiredMixin, DetailView):
@@ -1163,8 +1203,7 @@ class EncryptFileView(LoginRequiredMixin, View):
         return wf
 
     def post(self, request):
-        from django.apps import apps
-
+        
         file_pk = request.POST.get("file_pk", "").strip()
         password = request.POST.get("password", "").strip()
         owner_password = request.POST.get("owner_password", "").strip() or None

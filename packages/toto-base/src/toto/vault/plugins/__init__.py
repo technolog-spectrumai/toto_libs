@@ -47,3 +47,93 @@ class VaultEditorPlugin(BasePlugin):
 
     def get_editor_url(self, vault_file) -> str:
         raise NotImplementedError
+
+
+class FileServicePlugin(BasePlugin):
+    """A background operation somebody can run over a VaultFile.
+
+    **Moved here from `toto.fileservices` in 1.51, and the move is the point.**
+    The class is 78 lines with no media imports at all, but it lived in
+    **toto-media-ops** — a wheel only placidia pins. So the vault, which owns
+    every file, could not name the registry describing what may be done to one:
+    `vault/views.py` reached for it inside a bare `try/except`, and on zenobia —
+    the host with all six editors — the whole "run something over this file"
+    affordance silently did not exist.
+
+    The registry belongs with the files. The RUN SUBSTRATE does not, and stays
+    where it is: `FileServiceRun`, its dispatch and its runner are ffmpeg-shaped
+    and remain in toto-media-ops. That split is why `builder` matters — a
+    builder plugin never touches the run model, it redirects to its own page,
+    so an app in any wheel can offer a file action on any host.
+    """
+
+    """
+    Base for *file services* — background operations a user can run over a
+    VaultFile (ffmpeg, ffprobe, …).
+
+    Each subclass declares which file types it accepts and implements
+    ``execute(run)`` which performs the work, writes any output VaultFiles, and
+    records stdout/stderr on the run.  Discovery happens via
+    ``autodiscover_plugins("plugins.file_service_plugins")`` from
+    FileservicesConfig.ready().
+    """
+
+    registry: ClassVar[dict[str, "FileServicePlugin"]] = {}
+
+    #: VaultFile.file_type values this service accepts. Empty/None = any type.
+    accepted_file_types: ClassVar[list[str] | None] = None
+
+    #: UI hints
+    icon: ClassVar[str] = "fa-solid fa-wand-magic-sparkles"
+    description: ClassVar[str] = ""
+    args_label: ClassVar[str] = "Arguments"
+    args_placeholder: ClassVar[str] = ""
+    args_required: ClassVar[bool] = False
+
+    #: When True, selecting this service redirects to a builder UI (see
+    #: ``builder_url``) that collects arguments on its own page rather than
+    #: running from a free-text arg string.
+    builder: ClassVar[bool] = False
+
+    #: When False, the service is hidden from the file's service menu but stays
+    #: registered (e.g. for direct/workflow execution).
+    listed: ClassVar[bool] = True
+
+    def builder_url(self, vault_file) -> str | None:
+        """Redirect target for builder services. Override in subclasses."""
+        return None
+
+    def accepts(self, vault_file) -> bool:
+        if vault_file.is_encrypted:
+            return False
+        if not self.accepted_file_types:
+            return True
+        return vault_file.file_type in self.accepted_file_types
+
+    @classmethod
+    def for_file(cls, vault_file) -> list["FileServicePlugin"]:
+        return [p for p in cls.all() if p.listed and p.accepts(vault_file)]
+
+    def to_dict(self) -> dict:
+        return {
+            "key": self.get_key(),
+            "title": self.get_title(),
+            "icon": self.icon,
+            "description": self.description,
+            "args_label": self.args_label,
+            "args_placeholder": self.args_placeholder,
+            "args_required": self.args_required,
+            "builder": self.builder,
+        }
+
+    # ------------------------------------------------------------------
+    # Subclasses implement this.
+    # ------------------------------------------------------------------
+    def execute(self, run) -> list[int]:
+        """
+        Perform the service over ``run.input_file`` using ``run.args``.
+
+        Must return a list of created VaultFile primary keys and may set
+        ``run.stdout`` / ``run.stderr``.  Raise on failure.
+        """
+        raise NotImplementedError

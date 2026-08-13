@@ -518,7 +518,13 @@ class SurfaceSeamTests(TestCase):
 
 @override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
 class EditorButtonTests(TestCase):
-    """The button appears where a surface exists, and nowhere else."""
+    """The button appears where a surface exists, and nowhere else.
+
+    Every test here is about an app that may not be installed — the surfaces
+    come from `toto.editor` and `toto.cyprian`, which are flag-gated and live in
+    two different wheels. Skipping is the honest answer: asserting a surface for
+    an absent editor would be asserting a promise nothing keeps.
+    """
 
     @classmethod
     def setUpTestData(cls):
@@ -528,12 +534,20 @@ class EditorButtonTests(TestCase):
     def setUp(self):
         self.client.force_login(self.user)
 
+    def _require(self, app_label):
+        from django.apps import apps
+
+        if not apps.is_installed(app_label):
+            self.skipTest(f"{app_label} is not installed on this host")
+
     def test_a_latex_file_gets_the_latex_surface(self):
+        self._require("toto.editor")
         from toto.editor.views import LatexFileDisplayView
 
         self.assertEqual(LatexFileDisplayView.steven_surface, "editor-latex")
 
     def test_an_html_file_gets_the_markup_surface_which_is_screened(self):
+        self._require("toto.editor")
         from toto.editor.views import HtmlFileDisplayView
         from toto.core.ai_surfaces import registry
 
@@ -543,12 +557,14 @@ class EditorButtonTests(TestCase):
     def test_a_plain_text_file_is_not_screened_as_markup(self):
         """A paragraph that merely MENTIONS <script> is not a threat, and
         refusing it would teach people to ignore the real alarm."""
+        self._require("toto.editor")
         from toto.core.ai_surfaces import registry
 
         self.assertEqual(registry.get("editor-text").file_type, "")
         self.assertEqual(registry.get("editor-code").file_type, "")
 
     def test_the_svg_editor_offers_nothing(self):
+        self._require("toto.editor")
         """SVG has its own editor with its own source view; a prose assistant
         on raw drawing markup is the wrong tool in the wrong place."""
         from toto.editor.views import SvgFileDisplayView
@@ -562,10 +578,138 @@ class EditorButtonTests(TestCase):
 
         from toto.core.ai_surfaces import registry
 
-        if not apps.is_installed("toto.cyprian"):
-            self.skipTest("cyprian is not installed on this host")
+        self._require("toto.cyprian")
 
         surface = registry.get("cyprian")
         self.assertIsNotNone(surface)
         self.assertEqual(surface.file_type, "html")
         self.assertIn("improve", {a.key for a in surface.actions})
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE,
+                   MEDIA_ROOT=__import__("tempfile").mkdtemp(prefix="steven-wand-"))
+class FileWandTests(TestCase):
+    """The whole-file action, and the access rule it borrows."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.vault.models import Bucket
+
+        _platform()
+        cls.owner = User.objects.create_user("owner", password="pw")
+        cls.stranger = User.objects.create_user("stranger", password="pw")
+        cls.bucket = Bucket.objects.create(name="Mine", slug="mine",
+                                           owner=cls.owner)
+
+    def setUp(self):
+        vault.clear_cache()
+        provider = AiProvider.objects.create(label="test", active=True)
+        provider.secret = vault.store_secret("sk-test", name="wand-key")
+        provider.save(update_fields=["secret"])
+        self.file = self._file()
+
+    def _file(self, body=b"the whole document", file_type="text"):
+        from django.core.files.base import ContentFile
+
+        from toto.vault.models import VaultFile
+
+        vault_file = VaultFile(owner=self.owner, title="notes.txt",
+                               file_type=file_type, bucket=self.bucket)
+        vault_file.file.save("notes.txt", ContentFile(body), save=False)
+        vault_file.save()
+        return vault_file
+
+    def _url(self):
+        return reverse("steven:file_ask", args=[self.file.pk])
+
+    def test_a_stranger_cannot_ask_about_your_file(self):
+        """It borrows the vault's rule rather than inventing a second one."""
+        self.client.force_login(self.stranger)
+
+        self.assertEqual(self.client.get(self._url()).status_code, 404)
+
+    def test_the_owner_gets_the_page(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.get(self._url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "notes.txt")
+
+    def test_asking_sends_the_file_and_starts_a_run(self):
+        self.client.force_login(self.owner)
+
+        with mock.patch("toto.steven.dispatch.dispatch_run",
+                        side_effect=lambda run: run):
+            response = self.client.post(self._url(), {"action": "summarise"})
+
+        self.assertEqual(response.status_code, 200)
+        run = AiRun.objects.get()
+        self.assertEqual(run.surface, "file")
+        self.assertEqual(run.source_text, "the whole document")
+
+    def test_a_long_file_is_truncated_and_says_so(self):
+        """Refusing would make the feature useless on exactly the documents
+        somebody most wants summarised; truncating in silence would let the
+        answer describe a document nobody sent."""
+        from toto.steven.views import MAX_FILE_CHARS
+
+        self.file = self._file(body=b"x" * (MAX_FILE_CHARS + 500))
+        self.client.force_login(self.owner)
+
+        with mock.patch("toto.steven.dispatch.dispatch_run",
+                        side_effect=lambda run: run):
+            response = self.client.post(self._url(), {"action": "summarise"})
+
+        self.assertTrue(response.json()["truncated"])
+        self.assertEqual(len(AiRun.objects.get().source_text), MAX_FILE_CHARS)
+
+    def test_an_action_needing_a_question_says_so(self):
+        self.client.force_login(self.owner)
+
+        response = self.client.post(self._url(), {"action": "ask"})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(AiRun.objects.count(), 0)
+
+    def test_an_encrypted_file_is_not_readable_at_all(self):
+        self.file.is_encrypted = True
+        self.file.save(update_fields=["is_encrypted"])
+        self.client.force_login(self.owner)
+
+        self.assertEqual(self.client.get(self._url()).status_code, 404)
+
+    def test_the_wand_is_registered_as_a_builder_service(self):
+        """Builder-backed on purpose: a non-builder plugin needs
+        FileServiceRun, which lives in a wheel zenobia does not pin."""
+        from toto.vault.plugins import FileServicePlugin
+
+        plugin = FileServicePlugin.get("steven")
+        self.assertIsNotNone(plugin)
+        self.assertTrue(plugin.builder)
+        self.assertTrue(plugin.accepts(self.file))
+
+    def test_it_does_not_offer_itself_for_a_video(self):
+        """A prompt over bytes nobody can read is a lie in a menu."""
+        from toto.vault.plugins import FileServicePlugin
+
+        video = self._file(body=b"\x00\x00", file_type="video")
+        self.assertFalse(FileServicePlugin.get("steven").accepts(video))
+
+    def test_the_vault_lists_it_without_the_media_wheel(self):
+        """The point of moving the registry: zenobia pins no toto-media-ops."""
+        self.client.force_login(self.owner)
+
+        response = self.client.get(
+            reverse("vault:file_services", args=[self.file.pk]))
+
+        keys = {s["key"] for s in response.json()["services"]}
+        self.assertIn("steven", keys)
+
+    def test_a_stranger_cannot_list_the_services_for_your_file(self):
+        self.client.force_login(self.stranger)
+
+        response = self.client.get(
+            reverse("vault:file_services", args=[self.file.pk]))
+
+        self.assertEqual(response.status_code, 404)

@@ -1,0 +1,156 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}Ask the assistant about a whole file.
+
+   Reached from the vault's wand. Deliberately its own page rather than a modal
+   in the listing: a whole-file answer is a paragraph or a list, and a 320px
+   popover is the wrong place to read one.
+
+   The answers here READ — summarise, explain, review, ask. Nothing writes back
+   to the file, which is why there is no Accept button: rewriting a 40-page
+   document from a proposal nobody can review would be the one thing this
+   platform's editors are careful never to do.
+{% endcomment %}
+
+{% block title %}{% trans "Ask the assistant" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8"
+  x-data="fileAsk()">
+
+  <div class="mx-auto max-w-3xl space-y-5">
+
+    <header class="space-y-2">
+      <a href="{% url 'vault:public_list' %}" class="text-sm underline opacity-70 hover:opacity-100">
+        <i class="fa-solid fa-arrow-left"></i> {% trans "Storage" %}</a>
+      <h1 class="flex items-center gap-3 text-2xl font-bold">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>
+        <span class="min-w-0 truncate">{{ vault_file.title }}</span>
+      </h1>
+    </header>
+
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-3 rounded-2xl border p-5 shadow-sm">
+      <div class="flex flex-wrap gap-2">
+        {% for action in actions %}
+          <button type="button" @click="choose('{{ action.key|escapejs }}', {{ action.needs_instruction|yesno:'true,false' }})"
+                  :class="chosen === '{{ action.key|escapejs }}'
+                          ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light')
+                          : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-85">
+            <i class="{{ action.icon }}"></i>{{ action.label }}
+          </button>
+        {% endfor %}
+      </div>
+
+      <template x-if="needsInstruction">
+        <input type="text" x-model="instruction" @keydown.enter.prevent="run()"
+               placeholder="{% trans 'Your question' %}"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded border px-3 py-2 text-sm">
+      </template>
+
+      <p x-show="error" x-text="error" x-cloak
+         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+         class="text-sm font-semibold"></p>
+
+      <div class="flex items-center gap-3">
+        <button type="button" @click="run()" :disabled="!chosen || busy"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-40">
+          <span x-show="!busy"><i class="fa-solid fa-play mr-1"></i>{% trans "Ask" %}</span>
+          <span x-show="busy" x-cloak><i class="fa-solid fa-spinner fa-spin"></i></span>
+        </button>
+        <span x-show="truncated" x-cloak class="text-xs opacity-60">
+          {% trans "Only the beginning of this file was sent — it is long." %}</span>
+      </div>
+    </article>
+
+    <article x-show="answer" x-cloak
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-2 rounded-2xl border p-5 shadow-sm">
+      <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Answer" %}</h2>
+      <div class="whitespace-pre-wrap text-sm leading-relaxed" x-text="answer"></div>
+      <p class="text-xs opacity-50">
+        <span x-text="tokens"></span> {% trans "tokens" %} —
+        {% trans "the file itself is untouched" %}
+      </p>
+    </article>
+  </div>
+</section>
+
+<script>
+function fileAsk() {
+  return {
+    chosen: "", needsInstruction: false, instruction: "",
+    busy: false, error: "", answer: "", tokens: 0, truncated: false,
+    _runId: null, _polls: 0,
+
+    choose(key, needsInstruction) {
+      this.chosen = key;
+      this.needsInstruction = needsInstruction;
+      this.error = "";
+      this.answer = "";
+    },
+
+    csrf() {
+      var m = document.cookie.match(/(^|;\s*)csrftoken=([^;]+)/);
+      return m ? decodeURIComponent(m[2]) : "";
+    },
+
+    run() {
+      if (!this.chosen || this.busy) return;
+      if (this.needsInstruction && !this.instruction.trim()) {
+        this.error = "{% trans 'Type a question first.' %}";
+        return;
+      }
+      var self = this;
+      this.busy = true; this.error = ""; this.answer = ""; this._polls = 0;
+
+      var body = new URLSearchParams();
+      body.append("action", this.chosen);
+      body.append("instruction", this.instruction);
+
+      fetch(window.location.pathname, {
+        method: "POST", body: body, credentials: "same-origin",
+        headers: { "X-CSRFToken": this.csrf() },
+      })
+        .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+        .then(function (res) {
+          if (!res.ok) { self.busy = false; self.error = res.data.error || "That did not work."; return; }
+          self.truncated = !!res.data.truncated;
+          self._runId = res.data.run_id;
+          self.poll();
+        })
+        .catch(function () { self.busy = false; self.error = "{% trans 'Could not reach the server.' %}"; });
+    },
+
+    poll() {
+      var self = this;
+      setTimeout(function () {
+        self._polls += 1;
+        if (self._polls > 240) { self.busy = false; self.error = "{% trans 'This is taking too long.' %}"; return; }
+        fetch("/steven/runs/" + self._runId + "/", { credentials: "same-origin" })
+          .then(function (r) { return r.json(); })
+          .then(function (d) {
+            if (!d.finished) { self.poll(); return; }
+            self.busy = false;
+            self.tokens = d.tokens || 0;
+            if (d.status === "success") { self.answer = d.result || ""; }
+            else { self.error = d.error || "{% trans 'The assistant could not answer.' %}"; }
+          })
+          .catch(function () { self.poll(); });
+      }, 1500);
+    },
+  };
+}
+</script>
+{% endblock %}

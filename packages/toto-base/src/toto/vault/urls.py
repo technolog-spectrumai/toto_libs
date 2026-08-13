@@ -1,4 +1,6 @@
 from django.urls import path
+
+from . import views
 from django.views.generic import RedirectView
 from .api_views import (
     FileListApiView, FileUploadApiView, FileDetailApiView, FileDownloadApiView,
@@ -39,6 +41,9 @@ urlpatterns = [
     path("", RedirectView.as_view(pattern_name="vault:public_list", permanent=False), name="root"),
     path("public/", PublicFileListView.as_view(), name="public_list"),
     path("public/<slug:bucket_slug>/<slug:key>/", VaultFileDownloadView.as_view(), name="public_file"),
+    # The wand's listing half. In the vault because the registry is, and
+    # because a host without toto-media-ops still has files to act on.
+    path("files/<int:file_pk>/services/", views.file_services, name="file_services"),
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),

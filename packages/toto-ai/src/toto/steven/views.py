@@ -29,6 +29,11 @@ from .surfaces import registry
 MAX_SELECTION = 20_000
 
 
+def _render(request, template_name, context):
+    return render(request, template_name,
+                  PageProcessor().decorate(context, request))
+
+
 @login_required
 @require_POST
 def ask(request):
@@ -113,7 +118,7 @@ def console(request):
     runs = AiRun.objects.filter(owner=request.user)[:25]
 
     card = rates.rate_card()
-    return render(request, "steven/console.html", PageProcessor().decorate({
+    return _render(request, "steven/console.html", {
         "provider": provider,
         "configured": bool(provider and provider.secret_id),
         "surfaces": list(registry.all()),
@@ -122,7 +127,97 @@ def console(request):
         "price_tokens": card.get("ai.tokens_1k"),
         "spend": (rates.spend_by_metric(request.user) or {}),
         "balance": rates.balance_of(request.user),
-    }, request))
+    })
+
+
+#: How much of a file may be read into a prompt. Bigger than a selection because
+#: the whole point is the whole file, and small enough that one press cannot
+#: cost a fortune — at roughly four characters per token this is about 15k
+#: tokens, which the wallet check below reserves before anything runs.
+MAX_FILE_CHARS = 60_000
+
+
+@login_required
+def file_ask(request, file_pk: int):
+    """Ask about a whole file. The wand's page.
+
+    Reached from the vault listing through the ``steven`` file-service plugin,
+    which is builder-backed precisely so this works on a host with no
+    toto-media-ops: the assistant runs on its own ``AiRun``, not on a
+    ``FileServiceRun``.
+
+    **Read access is the vault's rule, not a second one** — the same
+    ``may_read`` the download view uses. GET renders the page; POST starts a run
+    and hands back an id to poll, exactly like the editor path.
+    """
+    from toto.vault.access import may_read
+    from toto.vault.models import VaultFile
+
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk)
+    if not may_read(request.user, vault_file):
+        raise Http404("No such file.")
+    if vault_file.is_encrypted:
+        raise Http404("Encrypted files cannot be read.")
+
+    surface = registry.get("file")
+    if surface is None:
+        raise Http404("The assistant has no file surface on this host.")
+
+    if request.method != "POST":
+        return _render(request, "steven/file_ask.html", {
+            "vault_file": vault_file,
+            "surface": surface,
+            "actions": surface.actions,
+        })
+
+    action = surface.action((request.POST.get("action") or "").strip())
+    if action is None:
+        return JsonResponse({"error": "Unknown action."}, status=400)
+    instruction = (request.POST.get("instruction") or "").strip()
+    if action.needs_instruction and not instruction:
+        return JsonResponse({"error": "This action needs a question."}, status=400)
+
+    try:
+        with vault_file.file.open("rb") as handle:
+            text = handle.read().decode("utf-8")
+    except (OSError, ValueError, UnicodeDecodeError):
+        return JsonResponse(
+            {"error": "That file could not be read as text."}, status=400)
+
+    if len(text) > MAX_FILE_CHARS:
+        # Truncated rather than refused, and SAID so: refusing a long file makes
+        # the feature useless on exactly the documents somebody most wants
+        # summarised, and silently truncating would let the answer describe a
+        # document nobody sent.
+        text = text[:MAX_FILE_CHARS]
+        truncated = True
+    else:
+        truncated = False
+
+    try:
+        provider = services.active_provider()
+    except services.NotConfigured as exc:
+        return JsonResponse({"error": str(exc)}, status=503)
+    try:
+        services.check_affordable(request.user, provider, text)
+    except Exception as exc:  # noqa: BLE001 - QuotaExceeded / InsufficientFunds
+        status = getattr(exc, "status_code", None)
+        if status is None:
+            raise
+        return JsonResponse({"error": str(exc)}, status=status)
+
+    run = dispatch.create_run(user=request.user, surface="file",
+                              action=action.key, source_text=text,
+                              instruction=instruction)
+    try:
+        dispatch.dispatch_run(run)
+    except dispatch.CannotQueue as exc:
+        dispatch.fail_run(run, str(exc))
+        return JsonResponse({"error": str(exc), "run_id": run.pk}, status=503)
+
+    return JsonResponse({"run_id": run.pk, "status": run.status,
+                         "truncated": truncated})
 
 
 @login_required

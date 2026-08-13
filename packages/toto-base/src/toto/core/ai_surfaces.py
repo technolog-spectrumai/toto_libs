@@ -192,3 +192,42 @@ def build_messages(surface: AiSurface, action: Action, *, selection: str,
         {"role": "system", "content": action.system or _PROSE_SYSTEM},
         {"role": "user", "content": user},
     ]
+
+
+# ---------------------------------------------------------------------------
+# The whole-file surface
+# ---------------------------------------------------------------------------
+# Registered here rather than in an app's ai_surfaces.py because the vault is
+# the app that owns files, and the wand is offered from its listing. Its actions
+# READ rather than rewrite: an answer about a 40-page document is a paragraph,
+# not a replacement for the document, and offering "improve" over a whole file
+# would propose something nobody can review in a modal.
+
+registry.register(AiSurface(
+    key="file",
+    label="A whole file",
+    kind="prose",
+    icon="fa-solid fa-file-circle-question",
+    description="Summarise, explain or check a whole file.",
+    actions=(
+        Action("summarise", "Summarise", "fa-solid fa-compress",
+               system=("You summarise documents. Answer in prose, briefly. This "
+                       "is NOT a replacement for the document."),
+               template="Summarise this file:\n\n{selection}"),
+        Action("explain", "Explain", "fa-solid fa-circle-question",
+               system=("You explain documents and code. Answer in prose, "
+                       "briefly. This is NOT a replacement for the file."),
+               template="Explain what this file is and what it does:\n\n{selection}"),
+        Action("review", "Find problems", "fa-solid fa-bug",
+               system=("You review documents and code and report problems. "
+                       "Answer in prose as a short list. Say so plainly if you "
+                       "find nothing."),
+               template="What is wrong or missing in this file?\n\n{selection}"),
+        Action("ask", "Ask about it…", "fa-solid fa-comment",
+               system=("You answer questions about a document. Answer in prose, "
+                       "briefly, and only from what you were shown."),
+               needs_instruction=True,
+               instruction_placeholder="who signed this? what does line 40 do?",
+               template="{instruction}\n\nThe file:\n\n{selection}"),
+    ),
+))
