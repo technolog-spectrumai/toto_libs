@@ -306,3 +306,40 @@ class MembershipApplicationUsernameTests(TestCase):
         )
         self.assertEqual(res.status_code, 200)  # re-renders with a form error
         self.assertFalse(MembershipApplication.objects.filter(email="new@example.com").exists())
+
+
+class StationListChromeTests(TestCase):
+    """The offices roster renders as a platform page, not a bare template.
+
+    ``PageProcessor.decorate`` is what supplies ``platform``, ``theme``,
+    ``font``, ``logo`` and the header navigation. The theme on this platform is
+    a database record rather than a stylesheet, so a template extending
+    ``oya/base.html`` rendered through a bare ``render()`` comes out with no
+    palette at all — which is exactly how this page looked. Every other view
+    module in socialhub already went through the decorator; this one did not.
+    """
+
+    def setUp(self):
+        Platform.objects.get_or_create(
+            site_name="Test Platform",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+
+    def test_the_page_carries_the_platform_context(self):
+        response = self.client.get(reverse("socialhub:station_list"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIsNotNone(response.context["platform"])
+        self.assertEqual(response.context["platform"]["site_name"],
+                         "Test Platform")
+
+    def test_the_theme_reaches_the_template(self):
+        """The palette is the thing that was missing."""
+        response = self.client.get(reverse("socialhub:station_list"))
+
+        self.assertIn("theme", response.context)
+        self.assertIn("font", response.context)
+
+    def test_it_is_still_public(self):
+        """An institution nobody can see is not an institution."""
+        self.assertEqual(
+            self.client.get(reverse("socialhub:station_list")).status_code, 200)

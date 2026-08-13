@@ -601,3 +601,54 @@ class ManualTests(TestCase):
         body = self.client.get(reverse("core:manual")).content.decode()
 
         self.assertIn("nothing is deleted if you stop paying", body)
+
+
+class NavigationTests(TestCase):
+    """Subscriptions is a place in the economy strip, not a one-way trip.
+
+    The strip's chip pointed here and the pages carried none of it back, so the
+    only way out of the plan browser was the browser's own Back button. The chip
+    also used to be one of TWO: "Plans" beside a "Fees" chip whose staff half
+    rendered the Metered catalogue with input boxes on — the same page under a
+    different name.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.free, cls.standard, cls.studio = make_plans()
+        cls.user = member("browser")
+
+    def test_the_plans_page_carries_the_economy_strip(self):
+        body = self.client.get(reverse("subscriptions:plans")).content.decode()
+
+        self.assertIn(reverse("quota:my_usage"), body)
+
+    def test_the_strip_marks_subscriptions_as_where_you_are(self):
+        body = self.client.get(reverse("subscriptions:plans")).content.decode()
+
+        self.assertIn("Subscriptions", body)
+        self.assertIn('aria-current="page"', body)
+
+    def test_the_apps_own_sub_nav_still_works_beside_it(self):
+        """`with` scopes to the include, so the outer active_tab is untouched
+        and Plans/My subscription still highlight independently."""
+        self.client.force_login(self.user)
+
+        plans = self.client.get(reverse("subscriptions:plans"))
+        mine = self.client.get(reverse("subscriptions:mine"))
+
+        self.assertEqual(plans.context["active_tab"], "plans")
+        self.assertEqual(mine.context["active_tab"], "mine")
+
+    def test_you_can_browse_and_subscribe_from_the_page_the_chip_points_at(self):
+        """The whole ask: the chip leads somewhere you can actually act."""
+        self.client.force_login(self.user)
+
+        body = self.client.get(reverse("subscriptions:plans")).content.decode()
+
+        self.assertIn(reverse("subscriptions:subscribe", args=["standard"]),
+                      body)
+        self.assertIn(reverse("subscriptions:subscribe", args=["studio"]), body)

@@ -53,6 +53,24 @@ A levy is never charged for being a member. What you pay to be here is a subscri
   {% endblocktrans %}
   <a href="{{ taxes_url }}" class="font-semibold underline hover:opacity-80">{% trans "How you are charged" %}</a>
 </p>
+{% comment %}The desk's only door, now that the Fees chip is gone.
+
+   A link rather than a chip, and only for staff reading the read-only page:
+   navigation could not carry the difference between this catalogue and the same
+   catalogue with input boxes, but a line that says "change what these cost"
+   can. `editable` is what distinguishes the two views, so this never renders on
+   the desk itself — there is nothing to link to from there.
+
+   Nothing here changes for a non-staff visitor.{% endcomment %}
+{% if is_staff_view and not editable %}
+  {% url 'quota:fees_desk' as fees_desk_url %}
+  {% if fees_desk_url %}
+    <p class="text-sm">
+      <a href="{{ fees_desk_url }}" class="font-semibold underline hover:opacity-80">
+        <i class="fa-solid fa-sliders"></i> {% trans "Change what these cost" %}</a>
+    </p>
+  {% endif %}
+{% endif %}
 {% endblock %}
 
 {% block quota_content %}

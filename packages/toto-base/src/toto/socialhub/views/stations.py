@@ -14,7 +14,23 @@ admin-only, exactly as :class:`~toto.socialhub.models.CommunityPrivilege` is.
 from django.shortcuts import render
 from django.utils.translation import gettext_lazy as _
 
+from toto.ui import PageProcessor
+
 from ..models import Station
+
+
+def _render(request, template_name, context):
+    """Every page on this platform goes through the decorator.
+
+    ``PageProcessor.decorate`` is what supplies ``platform``, ``theme``,
+    ``font``, ``logo`` and the header navigation. A template extending
+    ``oya/base.html`` rendered without it loses the entire palette — the theme
+    is a database record, not a stylesheet, so the page comes out unstyled
+    rather than merely unbranded. This module was the only one in socialhub
+    calling ``render`` bare, which is exactly how it looked.
+    """
+    return render(request, template_name,
+                  PageProcessor().decorate(context, request))
 
 
 def station_list(request):
@@ -29,7 +45,7 @@ def station_list(request):
     federal = [s for s in stations if s.serves_id is None]
     local = [s for s in stations if s.serves_id is not None]
 
-    return render(request, "socialhub/station_list.html", {
+    return _render(request, "socialhub/station_list.html", {
         "station_groups": [
             {
                 "title": _("Offices of the platform"),

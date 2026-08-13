@@ -173,15 +173,66 @@ class UsageTabsTests(TestCase):
             with self.subTest(user=user.username):
                 self.assertIn(f'href="{mine}"', self._render(user))
 
-    def test_the_fees_chip_goes_where_the_role_can_actually_go(self):
-        """A chip that 403s is a broken chip."""
+    def test_the_fees_chip_is_gone_for_both_roles(self):
+        """It pointed staff at the SAME page the Metered chip does.
+
+        quota:fees_desk renders quota/index.html, exactly as quota:index does,
+        differing only by ``editable`` — so the two chips led to two pages
+        indistinguishable unless you noticed one had input boxes. Navigation
+        cannot carry that difference. The desk is a link on the Metered page
+        now, next to the catalogue it edits.
+        """
         from django.urls import reverse
 
-        self.assertIn(f'href="{reverse("quota:fees_desk")}"',
-                      self._render(self.staff))
-        self.assertIn(f'href="{reverse("quota:taxes")}"',
-                      self._render(self.plain))
-        self.assertNotIn(reverse("quota:fees_desk"), self._render(self.plain))
+        for user in (self.staff, self.plain):
+            with self.subTest(user=user.username):
+                self.assertNotIn(reverse("quota:fees_desk"), self._render(user))
+
+    def test_the_desk_is_reachable_from_the_metered_page_by_staff_alone(self):
+        """Removing a chip must not orphan the only price editor on the host."""
+        from django.urls import reverse
+
+        from toto.core.models import Platform
+        Platform.objects.get_or_create(
+            site_name="Test", defaults={"author": "t", "publication_year": 2026,
+                                        "active": True})
+
+        self.client.force_login(self.staff)
+        staff_page = self.client.get(reverse("quota:index"))
+        self.client.force_login(self.plain)
+        plain_page = self.client.get(reverse("quota:index"))
+
+        self.assertContains(staff_page, reverse("quota:fees_desk"))
+        self.assertNotContains(plain_page, reverse("quota:fees_desk"))
+
+    def test_the_desk_does_not_link_to_itself(self):
+        """``editable`` is the whole difference; there is nowhere to go from it."""
+        from django.urls import reverse
+
+        from toto.core.models import Platform
+        Platform.objects.get_or_create(
+            site_name="Test", defaults={"author": "t", "publication_year": 2026,
+                                        "active": True})
+
+        self.client.force_login(self.staff)
+
+        self.assertNotContains(self.client.get(reverse("quota:fees_desk")),
+                               "Change what these cost")
+
+    def test_how_you_are_charged_is_still_reachable(self):
+        """quota:taxes was the non-staff half of the removed chip. It is linked
+        from the Metered page's own subheading, so it is not orphaned either."""
+        from django.urls import reverse
+
+        from toto.core.models import Platform
+        Platform.objects.get_or_create(
+            site_name="Test", defaults={"author": "t", "publication_year": 2026,
+                                        "active": True})
+
+        self.client.force_login(self.plain)
+
+        self.assertContains(self.client.get(reverse("quota:index")),
+                            reverse("quota:taxes"))
 
     def test_the_desks_are_gone_as_destinations(self):
         """Four chips all answered "where do I set what this costs"."""
@@ -202,12 +253,28 @@ class UsageTabsTests(TestCase):
         """
         for user in (self.plain, self.staff):
             rendered = self._render(user)
-            for label in ("Metered", "Records", "Fees"):
+            for label in ("Metered", "Records"):
                 with self.subTest(user=user.username, label=label):
                     self.assertIn(label, rendered)
 
     def test_the_active_sub_tab_is_marked(self):
         self.assertIn('aria-current="page"', self._render(self.plain, "metered"))
+
+    def test_subscriptions_is_one_chip_not_two(self):
+        """It replaced Fees and it absorbed the old "Plans" chip, which pointed
+        at the same URL — two chips to one page is a duplicate, not navigation."""
+        rendered = self._render(self.plain)
+
+        self.assertEqual(rendered.count("Subscriptions"), 1)
+        self.assertNotIn(">Plans<", rendered)
+
+    def test_the_subscriptions_chip_is_marked_from_either_word(self):
+        """The subscriptions app calls its own sub-nav "plans", so a page there
+        passes that word up; the strip has to recognise both."""
+        for value in ("subscriptions", "plans"):
+            with self.subTest(active_tab=value):
+                self.assertIn('aria-current="page"',
+                              self._render(self.plain, active_tab=value))
 
 
 class IncomeBoardTests(TestCase):

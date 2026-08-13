@@ -1,7 +1,11 @@
 {% load i18n app_tags %}
 {% comment %}ONE strip for the whole economy — wallet, usage and everything under it.
 
-   Caller passes active_tab = assets | usage | bourse | metered | records | fees.
+   Caller passes active_tab = assets | usage | bourse | subscriptions | metered
+                            | records.
+
+   `plans` is still accepted as an alias for `subscriptions` — the subscriptions
+   app uses that word for its own sub-navigation, and a page there passes both.
 
    It used to be TWO strips on two lines: this file, plus oya/_usage_tabs.html
    included underneath it by quota/base.html, with `-mt-2` pulling the second row
@@ -83,15 +87,27 @@
     <i class="fa-solid fa-chart-line"></i>{% trans "Bourse" %}</a>
   {% endif %}{% endif %}
 
+  {% comment %}Subscriptions — browse the plans and subscribe. Called that rather
+     than "Plans" because it is where you go to CHANGE what you pay, not just to
+     read a list, and because it replaced the "Fees" chip that used to sit in the
+     right-hand group. That chip pointed staff at quota:fees_desk, which renders
+     the same catalogue as the Metered chip with the dials switched on — two
+     chips, one page, indistinguishable to anybody not looking for input boxes.
+     The desk is now reached from a staff-only link on the Metered page itself,
+     which is where somebody who wants to reprice a thing is already standing.
+
+     It sits in the LEFT group because it is a destination, not a view of
+     metering. There is deliberately only one subscriptions chip: it was briefly
+     going to be two.{% endcomment %}
   {% if "toto.subscriptions"|app_installed %}{% url 'subscriptions:plans' as plans_url %}{% if plans_url %}
   <a href="{{ plans_url }}"
      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
-     {% if active_tab == 'plans' %}aria-current="page"
+     {% if active_tab == 'subscriptions' or active_tab == 'plans' %}aria-current="page"
        :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
      {% else %}
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      {% endif %}>
-    <i class="fa-solid fa-id-card"></i>{% trans "Plans" %}</a>
+    <i class="fa-solid fa-id-card"></i>{% trans "Subscriptions" %}</a>
   {% endif %}{% endif %}
 
   {% comment %}The divider, and the reason this is one strip and not two: to the
@@ -120,25 +136,19 @@
     <i class="fa-solid fa-bolt"></i>{% trans "Records" %}</a>
   {% endif %}{% endif %}
 
-  {% comment %}Fees — the details/edit surface, and the other half of the fix.
-     "Metered" used to be the only chip and it led straight to the edit view,
-     which then replaced the usage page: the tab that looked like where you were
-     was a link somewhere else, with no way back. Metered is now a place you can
-     stay, and the editing lives here.
+  {% comment %}The "Fees" chip used to be here, and it is gone.
 
-     Role-dependent destination, the same pattern the Wallet/Assets chip uses:
-     staff get the desk that edits prices, everybody else gets the read-only
-     explanation of every kind of charge. A chip that 403s is a broken chip.
+     It was role-dependent: staff got quota:fees_desk, everybody else got
+     quota:taxes. The staff half was the problem — fees_desk renders
+     quota/index.html, the SAME template the Metered chip renders, differing
+     only by `editable`. Two chips side by side led to two pages that look
+     identical unless you notice that one has input boxes, which is not a
+     distinction navigation can carry.
+
+     Neither destination is orphaned. The desk is a staff-only link in the
+     Metered page's own subheading, next to the catalogue it edits; quota:taxes
+     is linked from that same subheading as "How you are charged", and from
+     metric_detail.html and fees.html besides.
   {% endcomment %}
-  {% if "toto.quota"|app_installed %}
-  {% if user.is_staff %}{% url 'quota:fees_desk' as fees_url %}{% else %}{% url 'quota:taxes' as fees_url %}{% endif %}
-  {% if fees_url %}
-  <a href="{{ fees_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-semibold transition
-            {% if active_tab == 'fees' %}underline underline-offset-4{% else %}opacity-55 hover:opacity-100{% endif %}"
-     {% if active_tab == 'fees' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-sliders"></i>{% trans "Fees" %}</a>
-  {% endif %}{% endif %}
 
 </nav>

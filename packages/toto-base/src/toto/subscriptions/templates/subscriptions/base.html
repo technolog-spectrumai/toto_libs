@@ -30,6 +30,16 @@
       {% block sub_lede %}{% endblock %}
     </header>
 
+    {% comment %}The platform strip, then this app's own two views.
+
+       Without the first one these pages were a dead end: the Subscriptions chip
+       took you here and the economy navigation vanished, so getting back to the
+       wallet meant the browser's Back button. `active_tab` is fixed to
+       "subscriptions" for the include ONLY — the outer active_tab is plans/mine
+       and still drives the sub-nav below, because `with` scopes to the include.
+    {% endcomment %}
+    {% include "oya/_economy_tabs.html" with active_tab="subscriptions" %}
+
     <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Subscription navigation' %}">
       {% url 'subscriptions:plans' as plans_url %}
       <a href="{{ plans_url }}"

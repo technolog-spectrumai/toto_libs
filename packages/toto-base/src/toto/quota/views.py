@@ -266,7 +266,7 @@ def fees_desk(request):
         "kpi_spent": _total_spend(spend),
         "unpriced_levies": levies.unpriced_levies(),
         "taxes_url": reverse("quota:taxes"),
-        "economy_tab": "fees",
+        "economy_tab": "metered",
         "editable": True,
     })
 
@@ -512,7 +512,7 @@ def taxes(request):
     they run at different times, and which is which.
     """
     return _render(request, "quota/taxes.html", {
-        "economy_tab": "fees",
+        "economy_tab": "metered",
         "kinds": _charge_kinds(request.user),
         "is_staff_view": request.user.is_staff,
         "pricing_enabled": rates.pricing_enabled(),
@@ -601,7 +601,7 @@ def fees(request):
 
     board = feeboard.income_board()
     return _render(request, "quota/fees.html", {
-        "economy_tab": "fees",
+        "economy_tab": "metered",
         "board": board,
         "income_pie_json": feeboard.income_pie_json(board),
         "billing_enabled": apps.is_installed("toto.tariffs"),
