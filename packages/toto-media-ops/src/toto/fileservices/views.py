@@ -9,6 +9,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
 from toto.ui import PageProcessor
+from toto.vault.access import may_read
 from toto.vault.models import VaultFile
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -28,8 +29,15 @@ PRIMARY_SERVICE_BY_TYPE = {"video": "manta", "audio": "manta"}
 
 @login_required
 def services_for_file(request, file_pk):
-    """JSON list of services applicable to a given vault file."""
-    vault_file = get_object_or_404(VaultFile, pk=file_pk)
+    """JSON list of services applicable to a given vault file.
+
+    Access-checked like the runner: this returns a file's TITLE, so an unchecked
+    version is a way to read the name of anybody's file by walking primary keys.
+    """
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk)
+    if not may_read(request.user, vault_file):
+        raise Http404
     services = [p.to_dict() for p in FileServicePlugin.for_file(vault_file)]
     return JsonResponse({"services": services, "file_title": vault_file.title})
 
@@ -40,8 +48,7 @@ def open_primary_service(request, file_pk):
     vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory"), pk=file_pk,
     )
-    from .access import user_can_access_vault_file
-    if not user_can_access_vault_file(request.user, vault_file):
+    if not may_read(request.user, vault_file):
         raise Http404
     key = PRIMARY_SERVICE_BY_TYPE.get(vault_file.file_type)
     plugin = FileServicePlugin.get(key) if key else None
@@ -62,6 +69,20 @@ def run_service(request, file_pk):
     vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory"), pk=file_pk,
     )
+
+    # BEFORE the plugin is even resolved, and for every plugin — not only the
+    # builder-backed ones. This check used to sit inside `if plugin.builder:`,
+    # which meant ffmpeg, ffprobe and transcription skipped it entirely: a POST
+    # naming somebody else's file pk staged their bytes into a temp dir, ran a
+    # lossless remux over them, and filed the OUTPUT as a VaultFile owned by the
+    # CALLER — a copy-anybody's-video primitive, with ffprobe and transcription
+    # as the metadata and transcript variants.
+    #
+    # 404, not 403: a 403 confirms the file exists and turns pk-walking into an
+    # enumeration oracle.
+    if not may_read(request.user, vault_file):
+        raise Http404
+
     service_key = request.POST.get("service_key", "").strip()
     args = request.POST.get("args", "")
 
@@ -69,12 +90,8 @@ def run_service(request, file_pk):
     if plugin is None or not plugin.accepts(vault_file):
         return JsonResponse({"error": "Service is not available for this file."}, status=400)
 
-    # Builder-backed services collect arguments on a dedicated app page; we just
-    # verify access and hand the user off there.
+    # Builder-backed services collect arguments on a dedicated app page.
     if plugin.builder:
-        from .access import user_can_access_vault_file
-        if not user_can_access_vault_file(request.user, vault_file):
-            return JsonResponse({"error": "You do not have access to this file."}, status=403)
         url = plugin.builder_url(vault_file)
         if url:
             return JsonResponse({"status": "redirect", "redirect_url": url})

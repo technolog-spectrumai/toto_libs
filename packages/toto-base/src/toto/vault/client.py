@@ -29,7 +29,9 @@ class VaultClient:
             "id": str(file.id),
             "title": file.title,
             "key": file.key,
-            "file_url": file.file.url if file.file else None,
+            # The authorized view, not the storage path — vault bytes are not
+            # web-served and `.file.url` raises by design.
+            "file_url": file.get_public_url() if file.file else None,
             "bucket": file.bucket.name if file.bucket else None,
             "uploaded_at": file.uploaded_at.isoformat() if file.uploaded_at else None,
             "is_public": file.is_public,

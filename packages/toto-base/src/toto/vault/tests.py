@@ -920,6 +920,7 @@ class VaultPlayPluginRegistryTests(TestCase):
         self.assertIsNone(plugin)
 
 
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="vault-play-"))
 class FlatItemsPlayUrlTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("flat_owner", password="pass")
@@ -1113,6 +1114,10 @@ class CreateZipViewTests(TestCase):
         self.assertEqual(zips.first().title, "Docs.zip")
 
     def test_non_owner_denied(self):
+        # Its siblings all guard, and this one never did — so on a build without
+        # the workflow engine it got 400 ("archiving is not available") and read
+        # as an authorization failure.
+        self._skip_if_no_workflows()
         self.client.login(username="cz_bob", password="pass")
         resp = self.client.post(reverse("vault:create_zip"), {
             "source_directory_id": self.docs.pk,

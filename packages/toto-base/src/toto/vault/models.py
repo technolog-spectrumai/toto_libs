@@ -13,6 +13,9 @@ from toto.vault.strategy.text import TextStrategy
 from django.urls import reverse
 
 
+from .storage import private_storage
+
+
 class StorageBackend(models.TextChoices):
     LOCAL = "local", "Local"
     S3 = "s3", "S3-compatible"
@@ -253,7 +256,10 @@ class VaultFile(models.Model):
     title = models.CharField(max_length=255)
     key = models.SlugField(max_length=255, blank=True)
     content_hash = models.CharField(max_length=64, blank=True, db_index=True)
-    file = models.FileField(upload_to='vault/files/')
+    # Private storage, not the default one: MEDIA_ROOT is web-served and this is
+    # not web-servable. Same location, so no file moves; no base_url, so nothing
+    # can mint a link to it. See toto/vault/storage.py.
+    file = models.FileField(upload_to='vault/files/', storage=private_storage)
     file_type = models.CharField(max_length=16, choices=FILE_TYPES)
     uploaded_at = models.DateTimeField(auto_now_add=True)
     is_encrypted = models.BooleanField(default=False)

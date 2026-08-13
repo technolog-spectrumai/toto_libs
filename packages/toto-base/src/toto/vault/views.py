@@ -9,7 +9,7 @@ from django.conf import settings
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, JsonResponse, HttpResponseForbidden
+from django.http import FileResponse, Http404, JsonResponse, HttpResponseForbidden
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -22,7 +22,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
-from . import scanning
+from . import access, scanning
 from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 from .storage_backends import get_bucket_storage
 
@@ -298,25 +298,36 @@ class PublicFileListView(TemplateView):
 
 
 class VaultFileDownloadView(View):
-    """
-    Download a file; respects public/private visibility.
+    """Download a file, if it is yours to download.
+
+    This is the URL ``VaultFile.get_public_url()`` hands out everywhere, so it is
+    the door most of the platform links to.
+
+    **It used to check only whether you were logged in.** The docstring said it
+    "respects public/private visibility" and the two branches returned an
+    identical ``FileResponse`` — so any authenticated account could fetch any
+    private file by guessing a bucket slug and a key, and neither is secret:
+    bucket slugs are listed on the metrics pages and a key is the slug of a
+    title. It now applies the same five-clause rule ``accessible_files`` applies
+    to a listing, from :func:`toto.vault.access.may_read`.
+
+    **404, not 403, on a refusal.** A 403 confirms the file exists, which turns
+    this into an oracle for enumerating other people's filenames. The only
+    exception is an anonymous request for a private file, which is told to log
+    in — there the existence is already implied by the caller having a link.
     """
     def get(self, request, bucket_slug, key):
         file_obj = get_object_or_404(
-            VaultFile.objects.select_related("bucket"),
+            VaultFile.objects.select_related("bucket", "directory"),
             bucket__slug=bucket_slug,
             key=key
         )
 
-        if file_obj.is_public:
-            return FileResponse(
-                file_obj.file.open(),
-                as_attachment=True,
-                filename=file_obj.file.name
-            )
-
-        if not request.user.is_authenticated:
-            return HttpResponseForbidden("You must be logged in to access this file.")
+        if not access.may_read(request.user, file_obj):
+            if not request.user.is_authenticated:
+                return HttpResponseForbidden(
+                    "You must be logged in to access this file.")
+            raise Http404("No such file.")
 
         return FileResponse(
             file_obj.file.open(),

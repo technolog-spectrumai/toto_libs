@@ -2,7 +2,7 @@ import hashlib
 import json
 import os
 
-from django.http import JsonResponse, HttpResponseRedirect
+from django.http import FileResponse, JsonResponse, HttpResponseRedirect
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
 from django.utils.text import slugify
@@ -21,7 +21,11 @@ MAX_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB
 
 def _file_to_dict(request, vf):
     try:
-        download_url = request.build_absolute_uri(vf.file.url) if vf.file else None
+        # The authorized door, never the raw storage path. `vf.file.url` used to
+        # go here and it handed every desktop client a /media/... link that
+        # nginx served to anybody — the leak this endpoint was teaching people.
+        _public = vf.get_public_url()
+        download_url = request.build_absolute_uri(_public) if _public else None
     except Exception:
         download_url = None
     return {
@@ -381,7 +385,11 @@ class FileDownloadApiView(CorsApiView):
             vf = VaultFile.objects.get(key=key, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
-        return HttpResponseRedirect(vf.file.url)
+        # Streamed through Django, not redirected at storage. A redirect to
+        # `vf.file.url` sent the client to a path with no auth on it at all;
+        # there is now no such path, and `.url` raises by design.
+        return FileResponse(vf.file.open("rb"), as_attachment=True,
+                            filename=vf.title or vf.key)
 
 
 @method_decorator(csrf_exempt, name="dispatch")

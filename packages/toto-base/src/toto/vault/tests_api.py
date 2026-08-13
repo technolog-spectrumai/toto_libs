@@ -1,8 +1,9 @@
+import tempfile
 import json
 
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from toto.vault.models import VaultFile, Bucket, VaultDirectory
 
@@ -11,6 +12,15 @@ User = get_user_model()
 SMALL_TXT = b"hello vault"
 
 
+
+# MEDIA_ROOT, not the host's: the real media dir is a root-owned docker bind
+# mount, so every file-creating test here died on PermissionError before it
+# asserted anything. The classes that already scoped their own temp dir
+# (CopyFilesToBucketTest and friends in tests.py) are why the idiom exists;
+# these ones never got it.
+_MEDIA = tempfile.mkdtemp(prefix="vault-test-")
+
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileListApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="vaultuser", password="pass")
@@ -43,6 +53,7 @@ class FileListApiTests(TestCase):
         self.assertEqual(data["files"][0]["title"], "Mine")
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileUploadApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="uploader", password="pass")
@@ -75,6 +86,7 @@ class FileUploadApiTests(TestCase):
         self.assertEqual(res.json()["file_type"], "image")
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileDeleteApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="deleter", password="pass")
@@ -119,6 +131,7 @@ class FileDeleteApiTests(TestCase):
         self.assertEqual(res.status_code, 404)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileListDirectoryFieldsTests(TestCase):
     """The list endpoint must surface directory_id + is_editable for the tree."""
 
@@ -148,6 +161,7 @@ class FileListDirectoryFieldsTests(TestCase):
         self.assertFalse(files["photo"]["is_editable"])  # image is not text-editable
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class BucketTreeApiTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user(username="treeowner", password="pass")
@@ -187,6 +201,7 @@ class BucketTreeApiTests(TestCase):
         self.assertNotIn("theirs", slugs)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileContentApiTests(TestCase):
     """Round-trip the Ace editor read/write endpoints."""
 
@@ -247,6 +262,7 @@ class FileContentApiTests(TestCase):
         self.assertEqual(res.status_code, 401)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class DirectoryCreateApiTests(TestCase):
     """POST /vault/api/directories/ — the Enigma Cloud mkdir endpoint."""
 
@@ -354,6 +370,7 @@ class DirectoryCreateApiTests(TestCase):
         self.assertEqual(res.status_code, 400)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class DirectoryDeleteApiTests(TestCase):
     """DELETE /vault/api/directories/<pk>/ — the Enigma Cloud rmdir endpoint."""
 
@@ -414,6 +431,7 @@ class DirectoryDeleteApiTests(TestCase):
         self.assertEqual(res.status_code, 404)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileUploadDirectoryApiTests(TestCase):
     """Upload with the optional directory_id form field."""
 
@@ -512,6 +530,7 @@ class FileUploadDirectoryApiTests(TestCase):
             self.assertEqual(self.client.get(f"/vault/api/files/{k}/").status_code, 200)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class FileMoveApiTests(TestCase):
     """PATCH /vault/api/files/<key>/ with directory_id — move between folders."""
 

@@ -1,3 +1,4 @@
+import tempfile
 """purge_file — the driver-aware permanent delete, and who is allowed to call it.
 
 ``purge_file`` still exists and still deletes: a person deleting their own file
@@ -14,7 +15,7 @@ from unittest.mock import MagicMock, patch
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db.models import ProtectedError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from toto.vault.models import Bucket, VaultFile
 from toto.vault.purge import purge_file
@@ -32,6 +33,15 @@ def make_file(owner, size, bucket=None):
     )
 
 
+
+# MEDIA_ROOT, not the host's: the real media dir is a root-owned docker bind
+# mount, so every file-creating test here died on PermissionError before it
+# asserted anything. The classes that already scoped their own temp dir
+# (CopyFilesToBucketTest and friends in tests.py) are why the idiom exists;
+# these ones never got it.
+_MEDIA = tempfile.mkdtemp(prefix="vault-test-")
+
+@override_settings(MEDIA_ROOT=_MEDIA)
 class PurgeFileTests(TestCase):
     def setUp(self):
         self.user = User.objects.create_user("alice", password="pw")
@@ -80,6 +90,7 @@ class PurgeFileTests(TestCase):
         self.assertTrue(os.path.exists(path))
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class NoEnforcementTests(TestCase):
     """The levy provider cannot shed anything, and there is no way to ask it to.
 

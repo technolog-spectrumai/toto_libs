@@ -50,7 +50,24 @@ server {
         add_header Cache-Control "public";
     }
 
-    # Serve media files
+    # Vault bytes are NOT web-served. This block is the second half of the fix
+    # in toto/vault/storage.py, and both halves are load-bearing: the storage
+    # stops anything MINTING a /media/vault/ link, and this stops nginx honouring
+    # one that already exists in somebody's history or bookmark.
+    #
+    # It used to be served with `Cache-Control: public` and no auth, so
+    # /media/vault/files/<name> returned anybody's file to anybody — and the
+    # name is guessable, because Django only suffixes a filename on collision.
+    # Every permission check in the platform was bypassable by typing a URL.
+    #
+    # Reading a vault file goes through vault:public_file, which asks
+    # toto.vault.access.may_read first.
+    location /media/vault/ {
+        return 404;
+    }
+
+    # Everything else under media/ — avatars, logos, the things that really are
+    # public — stays as it was.
     location /media/ {
         alias /mediafiles/;
         expires 30d;
