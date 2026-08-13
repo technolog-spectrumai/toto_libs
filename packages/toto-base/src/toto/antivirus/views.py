@@ -28,13 +28,23 @@ def _render(request, template_name, context):
 
 
 def _my_files(user):
-    """Files this person may scan.
+    """Files this person may scan — and the ONE definition of that.
 
     `accessible_files` minus its public arm: a stranger's public file is
     readable, but it is not this person's to screen, and letting anyone queue
     work against anyone's files is how a scan button becomes an amplifier.
+
+    That was the intent before and the code did not carry it:
+    ``.exclude(owner__isnull=True)`` drops files with NO owner, not files owned
+    by somebody else, so every public file in the vault was scannable by anyone.
+    The exclusion now happens where the access rule lives.
+
+    Encrypted files are dropped here too, because ``scan_file`` refuses them —
+    and the index builds its tree FROM THIS QUERYSET, so a row can no longer
+    appear with a button the endpoint will 404.
     """
-    return (accessible_files(user, file_types=list(SCANNABLE_TYPES))
+    return (accessible_files(user, file_types=list(SCANNABLE_TYPES),
+                             include_public=False)
             .filter(is_encrypted=False)
             .exclude(owner__isnull=True))
 
@@ -48,7 +58,9 @@ def index(request):
     results = ScanResult.objects.filter(file_id__in=my_ids)
     threats = results.filter(verdict=ScanVerdict.REFUSED)
 
-    tree = build_file_tree(request.user, file_types=list(SCANNABLE_TYPES))
+    # The same queryset the scan endpoint accepts. Anything else lists rows
+    # whose button cannot work.
+    tree = build_file_tree(request.user, queryset=mine)
     clean_ids = engine.clean_file_ids(mine)
 
     return _render(request, "antivirus/index.html", {

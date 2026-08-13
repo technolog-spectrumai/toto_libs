@@ -129,11 +129,25 @@ function antivirus() {
     },
     async scan(pk) {
       this.results[pk] = {busy: true};
-      const res = await fetch(`/antivirus/scan/${pk}/`, {
-        method: "POST", credentials: "same-origin",
-        headers: {"X-CSRFToken": this._csrf()},
-      });
-      const data = await res.json().catch(() => ({ok: false}));
+      /* Built from the named route rather than a hardcoded "/antivirus/…":
+         the app's mount point is a host decision, and a literal here works
+         until the day somebody moves it and then fails silently. */
+      const url = "{% url 'antivirus:scan_file' 0 %}".replace("/0/", `/${pk}/`);
+      let data;
+      try {
+        const res = await fetch(url, {
+          method: "POST", credentials: "same-origin",
+          headers: {"X-CSRFToken": this._csrf()},
+        });
+        data = await res.json();
+        if (!res.ok) data = {ok: false, error: data.error || res.statusText};
+      } catch (e) {
+        data = {ok: false, error: "{% trans 'The scan could not be run.' %}"};
+      }
+      /* A failed REQUEST is not a verdict. Without ok:false reaching the row,
+         `clean` is simply absent and the template's `!clean` branch renders —
+         so a 404 read on screen as "Refused", which says a file is hostile
+         when what actually happened is that it was never scanned. */
       this.results[pk] = {busy: false, ...data};
     },
   };

@@ -600,3 +600,107 @@ class ListingTickTests(TestCase):
         files = list(VaultFile.objects.filter(owner=self.user))
         with self.assertNumQueries(1):
             self.assertEqual(len(clean_file_ids(files)), 6)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="antivirus-panel-"))
+class ScanPanelTests(TestCase):
+    """The panel lists exactly what the button can scan.
+
+    The bug this pins: the tree was built from ``accessible_files`` while the
+    endpoint accepted ``_my_files``, so encrypted files were listed with a Scan
+    button that 404s — and the client rendered that HTTP failure through the
+    ``!clean`` branch, so a file nothing had read reported itself as "Refused".
+    """
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.user = User.objects.create_user("panel", password="pw")
+        self.other = User.objects.create_user("other", password="pw")
+        self.bucket = Bucket.objects.create(name="Mine", slug="panel-mine",
+                                            owner=self.user)
+        self.their_bucket = Bucket.objects.create(name="Theirs",
+                                                  slug="panel-theirs",
+                                                  owner=self.other)
+        self.client.force_login(self.user)
+
+    def _file(self, *, owner=None, bucket=None, title="a.svg",
+              public=False, encrypted=False):
+        vault_file = VaultFile(owner=owner or self.user, title=title,
+                               file_type="svg", bucket=bucket or self.bucket,
+                               is_public=public, is_encrypted=encrypted)
+        vault_file.file.save(title, ContentFile(b"<svg><rect/></svg>"),
+                             save=False)
+        vault_file.save()
+        return vault_file
+
+    def _listed(self):
+        import re
+
+        body = self.client.get(reverse("antivirus:index")).content.decode()
+        return {int(pk) for pk in re.findall(r'@click="scan\((\d+)\)"', body)}
+
+    def test_every_listed_file_can_actually_be_scanned(self):
+        """The invariant. A row with a button the endpoint refuses is a dead
+        control, and nothing on the page could explain it."""
+        self._file(title="ok.svg")
+        self._file(title="enc.svg", encrypted=True)
+        self._file(owner=self.other, bucket=self.their_bucket,
+                   title="theirs.svg", public=True)
+
+        for pk in self._listed():
+            with self.subTest(pk=pk):
+                response = self.client.post(
+                    reverse("antivirus:scan_file", args=[pk]))
+                self.assertEqual(response.status_code, 200)
+
+    def test_an_encrypted_file_is_not_offered(self):
+        """scan_file refuses it, so listing it promises something untrue."""
+        encrypted = self._file(title="enc.svg", encrypted=True)
+
+        self.assertNotIn(encrypted.pk, self._listed())
+
+    def test_a_strangers_public_file_is_neither_listed_nor_scannable(self):
+        """Readable is not mine. Letting anyone queue work against anyone's
+        files is how a scan button becomes an amplifier — the docstring said so
+        while the code allowed it."""
+        theirs = self._file(owner=self.other, bucket=self.their_bucket,
+                            title="theirs.svg", public=True)
+
+        self.assertNotIn(theirs.pk, self._listed())
+        self.assertEqual(
+            self.client.post(
+                reverse("antivirus:scan_file", args=[theirs.pk])).status_code,
+            404)
+
+    def test_a_file_in_my_bucket_owned_by_someone_else_is_still_mine(self):
+        """Dropping the public arm must not drop the bucket claim with it."""
+        theirs_here = self._file(owner=self.other, title="guest.svg")
+
+        self.assertIn(theirs_here.pk, self._listed())
+
+    def test_my_own_file_is_listed(self):
+        mine = self._file(title="mine.svg")
+
+        self.assertIn(mine.pk, self._listed())
+
+    def test_the_client_builds_the_url_from_the_route(self):
+        """A hardcoded "/antivirus/…" works until the app is mounted elsewhere,
+        and then fails silently."""
+        body = self.client.get(reverse("antivirus:index")).content.decode()
+
+        self.assertIn(reverse("antivirus:scan_file", args=[0]), body)
+
+    def test_a_failed_request_is_not_rendered_as_a_verdict(self):
+        """`ok === false` has to be its own branch. Without it a 404 falls
+        through to `!clean` and the row says the file was refused."""
+        import pathlib
+
+        row = (pathlib.Path(__file__).parent / "templates" / "antivirus"
+               / "_scan_row.html").read_text()
+
+        self.assertIn("ok === false", row)
+        self.assertIn("ok !== false", row)

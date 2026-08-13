@@ -12,15 +12,24 @@
 
   <span class="text-[0.65rem] uppercase opacity-40">{{ file.file_type }}</span>
 
+  {% comment %}Three outcomes, not two. A scan that could not RUN is neither
+     clean nor refused, and rendering it as refused tells somebody their file is
+     hostile when nothing ever read it.{% endcomment %}
   <template x-if="results[{{ file.id }}] && !results[{{ file.id }}].busy">
     <span class="text-xs"
-          :class="results[{{ file.id }}].clean
-                    ? (darkMode ? 'text-success-dark' : 'text-success-light')
-                    : (darkMode ? 'text-warn-dark' : 'text-warn-light')">
-      <template x-if="results[{{ file.id }}].clean">
+          :class="results[{{ file.id }}].ok === false
+                    ? 'opacity-70'
+                    : (results[{{ file.id }}].clean
+                        ? (darkMode ? 'text-success-dark' : 'text-success-light')
+                        : (darkMode ? 'text-warn-dark' : 'text-warn-light'))">
+      <template x-if="results[{{ file.id }}].ok === false">
+        <span><i class="fa-solid fa-circle-question"></i>
+          <span x-text="results[{{ file.id }}].error || '{% trans "Could not scan" %}'"></span></span>
+      </template>
+      <template x-if="results[{{ file.id }}].ok !== false && results[{{ file.id }}].clean">
         <span><i class="fa-solid fa-circle-check"></i> {% trans "Nothing found" %}</span>
       </template>
-      <template x-if="!results[{{ file.id }}].clean">
+      <template x-if="results[{{ file.id }}].ok !== false && !results[{{ file.id }}].clean">
         <span><i class="fa-solid fa-triangle-exclamation"></i>
           <span x-text="results[{{ file.id }}].detail || '{% trans "Refused" %}'"></span></span>
       </template>
