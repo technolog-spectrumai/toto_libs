@@ -32,13 +32,25 @@
   }
 
   var surfaces = {};
+  var currentKey = "";
 
+  /* handlers: { read, write, document? }
+   *
+   * `read` returns the SELECTION and `write` replaces it — that is the toolbar.
+   * `document` is optional and returns the whole thing; the side panel uses it,
+   * and an editor that does not supply one simply gets no panel rather than a
+   * panel that quietly asks about a selection the user forgot they made. */
   function register(key, handlers) {
     surfaces[key] = handlers || {};
+    currentKey = key;
   }
 
   function handlersFor(key) {
     return surfaces[key] || {};
+  }
+
+  function current() {
+    return currentKey;
   }
 
   /* The Alpine component every editor's toolbar include instantiates. */
@@ -206,6 +218,102 @@
     };
   }
 
-  global.StevenActions = { register: register, handlersFor: handlersFor };
+  /* ---- the side panel ---------------------------------------------------
+   * A drawer that asks about the WHOLE document, docked to whatever editor is
+   * on the page. It shares everything with the toolbar — the same endpoint, the
+   * same run, the same polling — and differs in exactly two ways: it sends
+   * `document()` instead of `read()`, and it never writes anything back. An
+   * answer here is something to read, not a proposal to apply; the toolbar is
+   * where edits come from, and keeping that line sharp is why this has no
+   * Accept button.
+   */
+  function stevenDrawer(config) {
+    return {
+      askUrl: config.askUrl,
+      open: false,
+      question: "",
+      busy: false,
+      error: "",
+      answer: "",
+      tokens: 0,
+      _runId: null,
+      _polls: 0,
+
+      /* Nothing to ask about, nothing to show. An editor registers a
+         `document` handler to opt in; the others get no drawer at all. */
+      get available() {
+        var handlers = handlersFor(current());
+        return typeof handlers.document === "function";
+      },
+
+      toggle: function () { this.open = !this.open; },
+
+      run: function () {
+        var self = this;
+        if (this.busy) return;
+        if (!this.question.trim()) { this.error = "Type a question first."; return; }
+
+        var handlers = handlersFor(current());
+        var text = "";
+        try { text = handlers.document ? handlers.document() || "" : ""; }
+        catch (e) { text = ""; }
+        if (!text.trim()) { this.error = "There is nothing in this document yet."; return; }
+
+        this.busy = true; this.error = ""; this.answer = ""; this._polls = 0;
+
+        fetch(this.askUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            surface: current(),
+            action: "ask",
+            selection: text,
+            instruction: this.question,
+          }),
+        })
+          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
+          .then(function (res) {
+            if (!res.ok) {
+              self.busy = false;
+              self.error = (res.data && res.data.error) || "That did not work.";
+              return;
+            }
+            self._runId = res.data.run_id;
+            self.poll();
+          })
+          .catch(function () { self.busy = false; self.error = "Could not reach the server."; });
+      },
+
+      poll: function () {
+        var self = this;
+        setTimeout(function () {
+          self._polls += 1;
+          if (self._polls > MAX_POLLS) {
+            self.busy = false;
+            self.error = "This is taking too long.";
+            return;
+          }
+          fetch("/steven/runs/" + self._runId + "/", { credentials: "same-origin" })
+            .then(function (r) { return r.json(); })
+            .then(function (d) {
+              if (!d.finished) { self.poll(); return; }
+              self.busy = false;
+              self.tokens = d.tokens || 0;
+              if (d.status === "success") { self.answer = d.result || ""; }
+              else { self.error = d.error || "The assistant could not answer."; }
+            })
+            .catch(function () { self.poll(); });
+        }, POLL_MS);
+      },
+    };
+  }
+
+  global.StevenActions = {
+    register: register,
+    handlersFor: handlersFor,
+    current: current,
+  };
   global.stevenPanel = stevenPanel;
+  global.stevenDrawer = stevenDrawer;
 })(window);

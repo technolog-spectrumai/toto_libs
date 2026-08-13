@@ -540,19 +540,28 @@ class EditorButtonTests(TestCase):
         if not apps.is_installed(app_label):
             self.skipTest(f"{app_label} is not installed on this host")
 
-    def test_a_latex_file_gets_the_latex_surface(self):
+    def test_the_surface_comes_from_the_file_type_not_the_view(self):
+        """`.py` has no view of its own and opens through `text_display`, so a
+        class-level answer would offer PROSE actions on Python."""
         self._require("toto.editor")
-        from toto.editor.views import LatexFileDisplayView
+        from toto.editor.views import BaseFileDisplayView, TextFileDisplayView
 
-        self.assertEqual(LatexFileDisplayView.steven_surface, "editor-latex")
+        view = TextFileDisplayView()
+        for file_type, expected in (("python", "editor-code"),
+                                    ("latex", "editor-latex"),
+                                    ("html", "editor-markup"),
+                                    ("text", "editor-text")):
+            with self.subTest(file_type=file_type):
+                stub = type("F", (), {"file_type": file_type})()
+                self.assertEqual(view.resolve_steven_surface(stub), expected)
+        self.assertIn("python", BaseFileDisplayView.STEVEN_SURFACE_BY_TYPE)
 
-    def test_an_html_file_gets_the_markup_surface_which_is_screened(self):
+    def test_an_html_answer_is_screened_and_a_text_one_is_not(self):
         self._require("toto.editor")
-        from toto.editor.views import HtmlFileDisplayView
         from toto.core.ai_surfaces import registry
 
-        self.assertEqual(HtmlFileDisplayView.steven_surface, "editor-markup")
         self.assertEqual(registry.get("editor-markup").file_type, "html")
+        self.assertEqual(registry.get("editor-text").file_type, "")
 
     def test_a_plain_text_file_is_not_screened_as_markup(self):
         """A paragraph that merely MENTIONS <script> is not a threat, and
@@ -713,3 +722,100 @@ class FileWandTests(TestCase):
             reverse("vault:file_services", args=[self.file.pk]))
 
         self.assertEqual(response.status_code, 404)
+
+
+class AllSurfacesTests(TestCase):
+    """Every editor's declaration, and the rules that differ between them."""
+
+    def _surface(self, key, app_label):
+        from django.apps import apps
+
+        from toto.core.ai_surfaces import registry
+
+        if not apps.is_installed(app_label):
+            self.skipTest(f"{app_label} is not installed on this host")
+        surface = registry.get(key)
+        self.assertIsNotNone(surface, f"{key} was not registered")
+        return surface
+
+    def test_memo_is_screened_because_a_block_is_html(self):
+        self.assertEqual(self._surface("memo", "toto.memo").file_type, "html")
+
+    def test_primula_has_its_own_vocabulary(self):
+        """A range is not prose. "Improve this text" over a column of numbers
+        is the wrong question, so primula declares its own actions rather than
+        reusing the shared ones and making them mean less everywhere."""
+        surface = self._surface("primula", "toto.primula")
+
+        keys = {a.key for a in surface.actions}
+        self.assertIn("formula", keys)
+        self.assertNotIn("shorten", keys)
+
+    def test_primula_is_not_screened_as_a_workbook(self):
+        """What comes back is a formula somebody pastes into a cell — it never
+        becomes the file, so screening it as one checks the wrong thing."""
+        self.assertEqual(self._surface("primula", "toto.primula").file_type, "")
+
+    def test_notebooks_get_python_code_actions(self):
+        surface = self._surface("mandragora", "toto.mandragora")
+
+        self.assertEqual(surface.kind, "code")
+        self.assertIn("docstring", {a.key for a in surface.actions})
+
+    def test_every_surface_can_be_asked_a_question(self):
+        """The side panel needs ONE action it can count on, whatever editor it
+        is docked to."""
+        from toto.core.ai_surfaces import registry
+
+        for surface in registry.all():
+            with self.subTest(surface=surface.key):
+                self.assertIsNotNone(surface.action("ask"),
+                                     f"{surface.key} has no 'ask' action")
+
+    def test_an_action_that_needs_a_question_says_so(self):
+        from toto.core.ai_surfaces import registry
+
+        for surface in registry.all():
+            action = surface.action("ask")
+            with self.subTest(surface=surface.key):
+                self.assertTrue(action.needs_instruction)
+
+
+class DrawerTests(TestCase):
+    """The side panel, and the block that used to hide it."""
+
+    def test_it_is_registered_as_a_floating_plugin(self):
+        from toto.core.plugin import FloatingPlugin
+
+        self.assertIn("steven_drawer", FloatingPlugin.registry)
+
+    def test_it_is_hidden_from_anonymous_visitors(self):
+        from django.contrib.auth.models import AnonymousUser
+        from django.test import RequestFactory
+
+        from toto.steven.plugins.floating_plugins import StevenDrawerPlugin
+
+        request = RequestFactory().get("/")
+        request.user = AnonymousUser()
+        self.assertFalse(StevenDrawerPlugin().visible_for_request(request))
+
+    def test_no_editor_still_blanks_the_floating_block(self):
+        """Four editors used to render nothing there, which silenced every
+        floating plugin — including the gas pump, so the apps that actually
+        charge were the only ones never saying what they cost."""
+        import pathlib
+
+        # Source trees only. build/, site-packages and the test venv all hold
+        # stale copies of the same templates, and a fix that has not been
+        # reinstalled would fail this for the wrong reason.
+        packages = pathlib.Path(__file__).resolve().parents[4]
+        skip = ("/build/", "/limbo/", "site-packages", ".venv", "/dist/")
+        blank = "{" + "% block floating_widgets %" + "}{" + "% endblock %" + "}"
+
+        offenders = [
+            str(template)
+            for template in packages.rglob("*/src/toto/**/*.html")
+            if not any(part in str(template) for part in skip)
+            and blank in template.read_text(errors="ignore")
+        ]
+        self.assertEqual(offenders, [])

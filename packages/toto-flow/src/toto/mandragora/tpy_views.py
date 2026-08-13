@@ -26,6 +26,7 @@ from django.urls import reverse, reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
 
@@ -236,6 +237,8 @@ class TpyDisplayView(LoginRequiredMixin, View):
                 "start_url": reverse("mandragora:tpy_start_kernel", args=[file_pk]),
                 "stop_url": reverse("mandragora:tpy_stop_kernel", args=[file_pk]),
                 "status_url": reverse("mandragora:tpy_kernel_status", args=[file_pk]),
+                # "" without the assistant, and the template renders nothing.
+                "steven_surface": assistant.surface_for("mandragora"),
             },
             request,
         )

@@ -493,6 +493,9 @@
               .insertContentAt({ from: sel.from, to: sel.to }, text)
               .run();
           },
+          /* The side panel's half: the whole document as text, never HTML.
+             Markup would be most of the tokens and none of the meaning. */
+          document: function () { return editor.getText(); },
         });
       },
 

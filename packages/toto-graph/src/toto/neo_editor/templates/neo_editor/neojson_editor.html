@@ -339,4 +339,9 @@ if (new URLSearchParams(window.location.search).get("view") === "graph") {
 </script>
 {% endblock %}
 
-{% block floating_widgets %}{% endblock %}
+{% comment %}block.super, not a blank: this used to render nothing, which
+   silenced EVERY floating plugin on the page — including the gas pump, so the
+   apps that actually charge you were the only ones that never told you what
+   they cost. The assistant's side panel arrives the same way.
+{% endcomment %}
+{% block floating_widgets %}{{ block.super }}{% endblock %}

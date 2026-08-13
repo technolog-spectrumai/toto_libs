@@ -630,6 +630,55 @@
           onSelection: function (editor) { self.syncProse(editor); }
         });
         this.syncProse(prose);
+        this.registerAssistant();
+      },
+
+      /* ---- the assistant ---------------------------------------------------
+       * Memo's unit is a BLOCK, not a caret range, and that is the honest one:
+       * a slide's text is a few lines and "improve this block" is what somebody
+       * actually means. So an empty selection reads the whole block rather than
+       * refusing — the opposite of cyprian, where a document is long and acting
+       * on all of it would be a surprise.
+       *
+       * Registered per mount because `prose` is created when the block dialog
+       * opens and destroyed when it closes.
+       */
+      registerAssistant: function () {
+        if (!global.StevenActions) return;
+        global.StevenActions.register("memo", {
+          read: function () {
+            if (!prose) return "";
+            var sel = prose.state.selection;
+            if (!sel.empty) {
+              return prose.state.doc.textBetween(sel.from, sel.to, "\n\n");
+            }
+            return prose.getText();
+          },
+          write: function (text) {
+            if (!prose) return;
+            var sel = prose.state.selection;
+            var chain = prose.chain().focus();
+            if (sel.empty) chain.selectAll();
+            chain.insertContent(text).run();
+          },
+          /* The side panel asks about the DECK, not the open block — from the
+             model rather than the DOM, so it works with the dialog closed. */
+          document: function () {
+            var out = [];
+            (self.state.slides || []).forEach(function (slide, index) {
+              out.push("--- slide " + (index + 1) +
+                       (slide.title ? ": " + slide.title : "") + " ---");
+              (slide.blocks || []).forEach(function (block) {
+                var payload = block.payload || "";
+                if (typeof payload !== "string") return;
+                var text = payload.replace(/<[^>]*>/g, " ")
+                                  .replace(/\s+/g, " ").trim();
+                if (text) out.push(text);
+              });
+            });
+            return out.join("\n");
+          },
+        });
       },
 
       teardownProse: function () {

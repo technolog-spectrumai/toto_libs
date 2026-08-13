@@ -27,12 +27,35 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
     delete_url_name: str = ""
     login_url = reverse_lazy("core:login")
 
-    #: Which assistant surface this editor's file type belongs to. The split
-    #: matters: an answer bound for an .html file is markup this platform
-    #: renders and is screened like an upload, while one bound for a .py or a
-    #: .txt file is neither. "" means the assistant is not offered here at all.
-    #: See toto/editor/ai_surfaces.py.
-    steven_surface: str = "editor-text"
+    #: Which assistant surface a file type belongs to. Keyed on the FILE's type
+    #: rather than the view class, because the two do not agree: `.py` has no
+    #: view of its own and opens through `text_display`, so a class-level answer
+    #: would offer prose actions on Python. A subclass may still override
+    #: `steven_surface` to force one — SvgFileDisplayView sets "" because sketch
+    #: owns drawings and a prose assistant on raw SVG is the wrong tool.
+    #:
+    #: The split that matters: an answer bound for an .html file is markup this
+    #: platform renders and is screened like an upload; one bound for a .py or a
+    #: .txt file is neither.
+    STEVEN_SURFACE_BY_TYPE = {
+        "python": "editor-code",
+        "json": "editor-code",
+        "yaml": "editor-code",
+        "csv": "editor-code",
+        "bib": "editor-code",
+        "latex": "editor-latex",
+        "html": "editor-markup",
+        "xml": "editor-markup",
+        "text": "editor-text",
+    }
+
+    #: Set on a subclass to override the table above. "" means never offered.
+    steven_surface: str | None = None
+
+    def resolve_steven_surface(self, vault_file) -> str:
+        if self.steven_surface is not None:
+            return self.steven_surface
+        return self.STEVEN_SURFACE_BY_TYPE.get(vault_file.file_type, "editor-text")
 
     def get_extra_context(self, vault_file) -> dict:
         return {}
@@ -86,7 +109,8 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 # "" on a host without the assistant, and the template renders
                 # nothing at all — toto.core.assistant is the seam, so this app
                 # never names the wheel that ships it.
-                "steven_surface": assistant.surface_for(self.steven_surface),
+                "steven_surface": assistant.surface_for(
+                    self.resolve_steven_surface(vault_file)),
                 # repo_context deliberately NOT merged here any more: the
                 # generic editor is the vault's own surface and git left the
                 # vault UI. The helper stays — memo and cyprian still call it.
@@ -166,7 +190,6 @@ class TextFileDisplayView(BaseFileDisplayView):
 
 class JsonFileDisplayView(BaseFileDisplayView):
     ace_mode = "json"
-    steven_surface = "editor-code"
     ws_path = "editor"
     save_url_name = "editor:json_save"
     delete_url_name = "editor:json_delete"
@@ -174,7 +197,6 @@ class JsonFileDisplayView(BaseFileDisplayView):
 
 class YamlFileDisplayView(BaseFileDisplayView):
     ace_mode = "yaml"
-    steven_surface = "editor-code"
     ws_path = "editor"
     save_url_name = "editor:yaml_save"
     delete_url_name = "editor:yaml_delete"
@@ -190,7 +212,6 @@ class SvgFileDisplayView(BaseFileDisplayView):
 
 class XmlFileDisplayView(BaseFileDisplayView):
     ace_mode = "xml"
-    steven_surface = "editor-markup"
     ws_path = "editor"
     save_url_name = "editor:xml_save"
     delete_url_name = "editor:xml_delete"
@@ -198,7 +219,6 @@ class XmlFileDisplayView(BaseFileDisplayView):
 
 class HtmlFileDisplayView(BaseFileDisplayView):
     ace_mode = "html"
-    steven_surface = "editor-markup"
     ws_path = "editor"
     save_url_name = "editor:html_save"
     delete_url_name = "editor:html_delete"
@@ -214,7 +234,6 @@ class CsvFileDisplayView(BaseFileDisplayView):
 
 
 class LatexFileDisplayView(BaseFileDisplayView):
-    steven_surface = "editor-latex"
     # LaTeX source (.tex/.sty/.cls) edited with Ace's latex highlighting.
     # Compilation is the separate TeX Compiler workflow (toto.texlab) — when that
     # app is installed the toolbar gets a Compile button that dispatches it.
@@ -241,7 +260,6 @@ class LatexFileDisplayView(BaseFileDisplayView):
 
 
 class BibFileDisplayView(BaseFileDisplayView):
-    steven_surface = "editor-code"
     # BibTeX bibliography (.bib) edited with Ace's bibtex highlighting.
     ace_mode = "bibtex"
     ws_path = "editor"

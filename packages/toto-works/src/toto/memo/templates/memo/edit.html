@@ -534,6 +534,11 @@ old one carried 210 lines of inline Alpine that no test could reach.
                 </button>
               </template>
 
+              {% if steven_surface %}
+                <span class="mx-1 h-4 w-px bg-current/20"></span>
+                {% include "steven/_actions.html" with surface=steven_surface %}
+              {% endif %}
+
               <span class="mx-1 h-4 w-px bg-current/20"></span>
 
               <button type="button" @click="setProseLink()" title="{% trans 'Link' %}"
@@ -709,6 +714,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% endblock %}
 
 {% block end_script %}
+  {% if steven_surface %}{% include "steven/_head.html" %}{% endif %}
   {% if repo_ctx %}{% include "repo/_git_ui.html" %}{% endif %}
   {% comment %} ACE, for the code box, vendored under core/static/vendor and
      listed in every host's download_vendor.py. The prose field is TipTap, at
@@ -750,4 +756,9 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% comment %} An editor is a place to concentrate; the floating plugin widgets are not part
    of that. The same choice the ACE file editor already makes.{% endcomment %}
-{% block floating_widgets %}{% endblock %}
+{% comment %}block.super, not a blank: this used to render nothing, which
+   silenced EVERY floating plugin on the page — including the gas pump, so the
+   apps that actually charge you were the only ones that never told you what
+   they cost. The assistant's side panel arrives the same way.
+{% endcomment %}
+{% block floating_widgets %}{{ block.super }}{% endblock %}

@@ -9,6 +9,7 @@
      heartbeat interval comes from the server so it cannot drift from the lock's
      TTL.{% endcomment %}
   <script defer src="{% static 'oya/file_versions.js' %}"></script>
+  {% if steven_surface %}{% include "steven/_head.html" %}{% endif %}
   <style>[x-cloak] { display: none !important; }</style>
   <link rel="stylesheet" href="{% static 'vendor/univer/preset-sheets-core.css' %}">
   <style>
@@ -44,6 +45,12 @@
       </h1>
     </div>
     <div class="flex items-center gap-3">
+      {% if steven_surface %}
+        {% comment %}Translated into a variable first: {% templatetag openblock %} include with
+           {% templatetag closeblock %} cannot call gettext.{% endcomment %}
+        {% trans "Assistant" as ai_label %}
+        {% include "steven/_actions.html" with surface=steven_surface label=ai_label %}
+      {% endif %}
       <button type="button" @click="showVersions = !showVersions"
               class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
         <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}</button>
@@ -124,6 +131,60 @@
   // sheet API without fishing in a closure. Same practice as window.MemoModel.
   window.univerAPI = univerAPI;
   univerAPI.createWorkbook(snapshot);
+
+  {% if steven_surface %}
+  /* The assistant, over a selected range.
+   *
+   * Serialised as TSV — rows of tab-separated cells — because that is what a
+   * spreadsheet range IS to anything outside the grid, and it is what somebody
+   * would paste into one. Sending the Univer snapshot instead would ship the
+   * styling, the merges and the formulas of a whole sheet to answer a question
+   * about nine cells, and the token bill is the reason that matters.
+   *
+   * Write puts the answer in the FIRST cell of the selection and nowhere else.
+   * A formula belongs in one cell; spreading an answer across a range the user
+   * did not choose is the kind of edit a spreadsheet cannot show you before it
+   * happens.
+   */
+  if (window.StevenActions) {
+    window.StevenActions.register("{{ steven_surface|escapejs }}", {
+      read: function () {
+        try {
+          var range = univerAPI.getActiveWorkbook().getActiveSheet().getActiveRange();
+          if (!range) return "";
+          var values = range.getValues() || [];
+          return values.map(function (row) {
+            return row.map(function (cell) {
+              return cell === null || cell === undefined ? "" : String(cell);
+            }).join("\t");
+          }).join("\n").trim();
+        } catch (e) { return ""; }
+      },
+      write: function (text) {
+        try {
+          var range = univerAPI.getActiveWorkbook().getActiveSheet().getActiveRange();
+          if (!range) return;
+          range.getCell(0, 0).setValue(text);
+        } catch (e) { /* the grid refused it; the answer is still on screen */ }
+      },
+      /* The side panel asks about the SHEET — its used range as TSV, not the
+         snapshot. A workbook snapshot is styling and merges and formulas, which
+         would be most of the tokens and none of the question. */
+      document: function () {
+        try {
+          var sheet = univerAPI.getActiveWorkbook().getActiveSheet();
+          var used = sheet.getDataRange ? sheet.getDataRange() : null;
+          if (!used) return "";
+          return (used.getValues() || []).map(function (row) {
+            return row.map(function (cell) {
+              return cell === null || cell === undefined ? "" : String(cell);
+            }).join("\t");
+          }).join("\n").trim();
+        } catch (e) { return ""; }
+      },
+    });
+  }
+  {% endif %}
 
   if (!canEdit) return;
 

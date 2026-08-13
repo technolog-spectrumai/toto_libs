@@ -30,3 +30,6 @@ class StevenConfig(AppConfig):
         # four of the six editors blank the block it renders into, so a global
         # overlay was never going to be where this feature lived.
         autodiscover_plugins("ai_surfaces")
+        # The side panel. A floating plugin now that the editors have stopped
+        # blanking the block it renders into.
+        from .plugins import floating_plugins  # noqa: F401

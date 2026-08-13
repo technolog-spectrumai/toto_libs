@@ -5,6 +5,10 @@
 {% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
 
 {% block start_script %}
+{% if steven_surface %}
+<style>[x-cloak]{display:none!important}</style>
+{% include "steven/_head.html" %}
+{% endif %}
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
 <script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
@@ -66,6 +70,11 @@
           class="toolbar-btn-primary">
           <i class="fa-solid fa-stop"></i><span class="hidden sm:inline">{% trans "Stop" %}</span>
         </button>
+
+        {% if steven_surface %}
+          <div class="h-5 w-px opacity-20 bg-current"></div>
+          {% include "steven/_actions.html" with surface=steven_surface %}
+        {% endif %}
 
         <div class="h-5 w-px opacity-20 bg-current"></div>
 
@@ -196,6 +205,43 @@ const state = {
 if (state.cells.length === 0) state.cells.push(newCell("code"));
 
 const editors = {};   // uid -> ace editor
+let focusedCellUid = "";   // which cell the caret was last in
+
+{% if steven_surface %}
+/* The assistant, per CELL — the unit this app already had. `tpy_run_cell` takes
+   one cell's source and writes a result back into it, which is the only true
+   fragment endpoint on the platform; an AI action wants exactly that shape, so
+   it borrows the addressing rather than inventing a second one.
+   With nothing selected it takes the whole focused cell, which is what somebody
+   means by "explain this". */
+if (window.StevenActions) {
+  window.StevenActions.register("{{ steven_surface|escapejs }}", {
+    read: function () {
+      const editor = editors[focusedCellUid];
+      if (!editor) return "";
+      const selected = editor.getSelectedText();
+      return selected.trim() ? selected : editor.getValue();
+    },
+    write: function (text) {
+      const editor = editors[focusedCellUid];
+      if (!editor) return;
+      const range = editor.getSelectionRange();
+      if (range.isEmpty()) { editor.setValue(text, -1); }
+      else { editor.session.replace(range, text); }
+      editor.focus();
+    },
+    /* The side panel asks about the NOTEBOOK. Cells are labelled so the model
+       can refer to one by number, which is what somebody asking "where does
+       this break" actually wants back. */
+    document: function () {
+      syncSources();
+      return state.cells.map((cell, index) =>
+        `# --- cell ${index + 1} (${cell.cell_type}) ---\n${cell.source || ""}`
+      ).join("\n\n");
+    },
+  });
+}
+{% endif %}
 let dirty = false;
 function markDirty() { dirty = true; document.getElementById("dirty-badge").classList.remove("hidden"); }
 function markClean() { dirty = false; document.getElementById("dirty-badge").classList.add("hidden"); }
@@ -274,6 +320,10 @@ function mountEditor(cell) {
   editor.setOptions({ fontSize: "13px", showPrintMargin: false, wrap: true, maxLines: 40, minLines: 4 });
   editor.session.on("change", () => { cell.source = editor.getValue(); markDirty(); });
   editors[cell.uid] = editor;
+  // Which cell the assistant acts on. Tracked on focus because the toolbar
+  // button lives outside every cell and the caret is the only thing that says
+  // which one somebody meant.
+  editor.on("focus", () => { focusedCellUid = cell.uid; });
 }
 
 function syncSources() { state.cells.forEach(c => { if (editors[c.uid]) c.source = editors[c.uid].getValue(); }); }
@@ -497,4 +547,9 @@ setInterval(checkStatus, 5000);
 </script>
 {% endblock %}
 
-{% block floating_widgets %}{% endblock %}
+{% comment %}block.super, not a blank: this used to render nothing, which
+   silenced EVERY floating plugin on the page — including the gas pump, so the
+   apps that actually charge you were the only ones that never told you what
+   they cost. The assistant's side panel arrives the same way.
+{% endcomment %}
+{% block floating_widgets %}{{ block.super }}{% endblock %}

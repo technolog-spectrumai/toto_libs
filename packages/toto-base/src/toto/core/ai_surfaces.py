@@ -148,6 +148,14 @@ def prose_actions() -> tuple:
                system=("You explain text. Answer in prose, briefly. This answer "
                        "is NOT a replacement for the text."),
                template="Explain this, briefly:\n\n{selection}"),
+        # Every vocabulary carries "ask", because the side panel needs ONE
+        # action it can count on being there whatever editor it is docked to.
+        Action("ask", "Ask about it…", "fa-solid fa-comment",
+               system=("You answer questions about a document. Answer in prose, "
+                       "briefly, and only from what you were shown."),
+               needs_instruction=True,
+               instruction_placeholder="what is this about?",
+               template="{instruction}\n\nThe text:\n\n{selection}"),
     )
 
 
@@ -175,6 +183,12 @@ def code_actions(language: str = "") -> tuple:
                system=_CODE_SYSTEM, needs_instruction=True,
                instruction_placeholder="a list comprehension, async…",
                template="Rewrite this{0} code as {{instruction}}:\n\n{{selection}}".format(what)),
+        Action("ask", "Ask about it…", "fa-solid fa-comment",
+               system=(f"You answer questions about{what} code. Answer in prose, "
+                       "briefly, and only from what you were shown."),
+               needs_instruction=True,
+               instruction_placeholder="what does this return?",
+               template="{instruction}\n\nThe code:\n\n{selection}"),
     )
 
 

@@ -27,6 +27,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -229,6 +230,8 @@ class SheetEditView(LoginRequiredMixin, View):
                 "can_edit": can_edit,
                 "save_url": reverse("primula:save", args=[vault_file.pk]),
                 "index_url": reverse("primula:index"),
+                # "" without the assistant, and the template renders nothing.
+                "steven_surface": assistant.surface_for("primula"),
             },
             request,
         )

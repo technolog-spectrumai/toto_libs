@@ -31,6 +31,7 @@ from django.views.decorators.http import require_POST
 from django.contrib.auth.mixins import LoginRequiredMixin
 
 from toto.editor.views import BaseFileDisplayView
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import locks, versions
 from toto.vault.filetree import accessible_files
@@ -257,6 +258,8 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "export_zip_url": reverse("memo:export_zip", args=[file_pk]),
                 # The git toolbar moved here from the retired source page — a
                 # deck under version control keeps its history buttons (staff only).
+                # "" without the assistant, and the template renders nothing.
+                "steven_surface": assistant.surface_for("memo"),
                 **BaseFileDisplayView.repo_context(vault_file, request.user),
             },
             request,

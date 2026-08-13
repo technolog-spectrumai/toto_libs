@@ -1,3 +1,4 @@
+import tempfile
 """The Primula suite — run against ``toto.primula.testing.settings``.
 
 Covers the whole sheet lifecycle (create → list → edit → save → versions → restore →
@@ -11,7 +12,7 @@ from unittest import mock
 from django.contrib.auth.models import User
 from django.core.files.base import ContentFile
 from django.core.management import call_command
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from toto.core.models import Platform
@@ -49,6 +50,13 @@ def make_sheet(owner, title="test-sheet", is_public=False, rows=None):
     return vf
 
 
+
+# MEDIA_ROOT, not the host's: the real media dir is a root-owned docker bind
+# mount, so every test here that creates a sheet died on PermissionError before
+# it asserted anything. memo's suite already scoped its own; primula's never did.
+_MEDIA = tempfile.mkdtemp(prefix="primula-test-")
+
+@override_settings(MEDIA_ROOT=_MEDIA)
 class SheetFormatTests(TestCase):
     def test_new_workbook_is_a_sheet(self):
         wb = sheet_format.new_workbook("Budget")
@@ -72,6 +80,7 @@ class SheetFormatTests(TestCase):
         self.assertEqual(list(cells["1"].keys()), ["2"])
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class SheetLifecycleTests(TestCase):
     def setUp(self):
         # PageProcessor 404s without an active Platform (ui/page.py:34).
@@ -270,6 +279,7 @@ class SheetLifecycleTests(TestCase):
         self.assertTrue(VaultFile.objects.filter(pk=vf.pk).exists())
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class VaultRoutingTests(TestCase):
     """The vault "open" button routes sheet files into Primula, not raw ACE."""
 
@@ -287,6 +297,7 @@ class VaultRoutingTests(TestCase):
         self.assertNotIn("primula", plugin.__class__.__module__)
 
 
+@override_settings(MEDIA_ROOT=_MEDIA)
 class IngressTests(TestCase):
     def test_full_seeds_sample_sheets_idempotently(self):
         User.objects.create_user("admin", password="pw")
