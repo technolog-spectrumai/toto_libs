@@ -200,6 +200,12 @@ PRICES = {
     # Compute — a worker is occupied for real time.
     "texlab.compile": NORMAL,
     "workflows.run": NORMAL,
+    # A Jinja pass and one WeasyPrint render on a worker. NORMAL because it is
+    # the same engine cyprian.pdf and memo.pdf use; what makes it heavier than
+    # those is that it is ASYNCHRONOUS — nobody waits for it — which is why its
+    # metric caps at 20 a period rather than their 50. Raise it at the rate desk
+    # if a fleet of invoice runs proves costlier than a document export.
+    "aralia.render": NORMAL,
     # Lookups — cheap to serve, but they cost someone else's goodwill.
     "assets.chain.verify": CHEAP,
 }
