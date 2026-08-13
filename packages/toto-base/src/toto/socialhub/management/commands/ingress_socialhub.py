@@ -1,11 +1,19 @@
 import os
 import random
+from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
 from toto.ingress import IngressCommand
 from toto.people.models import Person
-from toto.socialhub.models import Community, CommunityNewsPost, CommunityNewsTopic, Constitution
+from toto.socialhub.models import (
+    Community,
+    CommunityNewsPost,
+    CommunityNewsTopic,
+    Constitution,
+    ConstitutionSignature,
+    Station,
+)
 from toto.locations.models import Address
 
 
@@ -74,6 +82,7 @@ class Command(IngressCommand):
         self.assign_senior_members(community, tester_person, members)
         self.create_community_news(community, tester_person)
         self.create_constitution(community)
+        self.create_stations(community, tester_person, members)
 
         self.stdout.write(self.style.NOTICE("🏘 Creating child communities..."))
         child_a = self.create_community(
@@ -392,3 +401,91 @@ class Command(IngressCommand):
             )
             topics[name] = topic
         return topics
+
+    # ---------------------------------------------------------
+    # Offices (--full)
+    # ---------------------------------------------------------
+
+    #: Three offices, chosen to show the three things a station varies:
+    #: what it is FOR (charter), what it is PAID, and how much headroom it
+    #: carries. Capabilities stay at their defaults — those are admin's to
+    #: grant, and a seeder handing out `may_operate_mint` would be a seeder
+    #: granting itself the mint.
+    STATIONS = [
+        {
+            "name": "Registrar",
+            "charter": "Keeps the roll of members and the record of who signed "
+                       "what. Answers questions about standing.",
+            "stipend": Decimal("0.05"),
+            "limit_multiplier": Decimal("3"),
+        },
+        {
+            "name": "Community Editor",
+            "charter": "Publishes the community's news and keeps its noticeboard "
+                       "current.",
+            "stipend": Decimal("0.02"),
+            "limit_multiplier": Decimal("2"),
+            "may_manage_community_news": True,
+        },
+        {
+            "name": "Ombudsman",
+            "charter": "Hears complaints from members and reports to the "
+                       "assembly. Unpaid, and deliberately so.",
+            "stipend": Decimal("0"),
+            "limit_multiplier": Decimal("1"),
+        },
+    ]
+
+    def create_stations(self, community, tester_person, members):
+        """Seed the offices, and the citizenship that makes them holdable.
+
+        `Station.clean()` refuses a holder who has not signed an active
+        constitution, so the signature is not decoration here — without it the
+        seed produces three vacant offices and no roster worth looking at.
+        """
+        constitution = Constitution.objects.filter(
+            community=community, is_active=True).first()
+        if constitution is None:
+            self.stdout.write(self.style.WARNING(
+                "⚠ no active constitution — offices would have no eligible holder"))
+            return
+
+        candidates = [p for p in ([tester_person] + list(members)) if p is not None]
+        for spec, holder in zip(self.STATIONS, candidates):
+            self._sign_constitution(constitution, holder)
+            station, created = Station.objects.get_or_create(
+                name=spec["name"],
+                defaults={**{k: v for k, v in spec.items() if k != "name"},
+                          "serves": community,
+                          "holder": holder,
+                          "since": timezone.now().date(),
+                          "active": True},
+            )
+            verb = "Created" if created else "Kept"
+            self.stdout.write(self.style.SUCCESS(
+                f"✔ {verb} office: {station.name} — {holder.display_name}"))
+
+        # One vacant office, because a station outlives its holder and the
+        # roster has to be able to say so.
+        vacant, created = Station.objects.get_or_create(
+            name="Treasurer",
+            defaults={
+                "charter": "Watches what the treasury collects and what it pays "
+                           "out. Currently vacant.",
+                "serves": community,
+                "holder": None,
+                "active": True,
+            },
+        )
+        if created:
+            self.stdout.write(self.style.SUCCESS(f"✔ Created office: {vacant.name} (vacant)"))
+
+    @staticmethod
+    def _sign_constitution(constitution, person):
+        """`signed_at` is nullable and an unsigned row does not make a citizen."""
+        signature, _ = ConstitutionSignature.objects.get_or_create(
+            constitution=constitution, person=person)
+        if signature.signed_at is None:
+            signature.signed_at = timezone.now()
+            signature.save(update_fields=["signed_at"])
+        return signature

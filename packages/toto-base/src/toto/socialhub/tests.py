@@ -12,7 +12,12 @@ from toto.core.auth_cooldown import CAPTCHA_RETRY_COOLDOWN_SESSION_KEY
 from toto.core.models import Platform
 from toto.people.models import Person
 from toto.socialhub.captcha import generate_code_captcha
-from toto.socialhub.models import Community, MembershipApplication, ReferenceRequest
+from toto.socialhub.models import (
+    Community,
+    MembershipApplication,
+    ReferenceRequest,
+    Station,
+)
 
 User = get_user_model()
 
@@ -67,6 +72,61 @@ class DefaultCommunityIngressTests(TestCase):
         self._run_ingress(community="Our-community")
         community = Community.objects.get(name="Our-community")
         self.assertEqual(community.members.count(), 0)
+
+
+class StationIngressTests(TestCase):
+    """`--full` seeds the offices, and the citizenship that makes them holdable.
+
+    `Station.clean()` refuses a holder who has not signed an active
+    constitution, so a seed that forgot the signature would quietly produce a
+    roster of vacancies — which looks like working code and is not.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        with patch.dict(os.environ, {"DEFAULT_COMMUNITY": "", "ADMIN_USERNAME": ""}):
+            call_command("ingress_socialhub", full=True, verbosity=0)
+
+    def test_the_roster_is_not_empty(self):
+        self.assertGreaterEqual(Station.objects.count(), 4)
+
+    def test_every_holder_is_a_committed_citizen(self):
+        """The requirement the model enforces — asserted on the seed itself."""
+        from toto.people.civic import is_committed_citizen
+
+        held = Station.objects.filter(holder__isnull=False)
+        self.assertTrue(held.exists())
+        for station in held:
+            with self.subTest(station=station.name):
+                self.assertTrue(is_committed_citizen(station.holder))
+
+    def test_a_seeded_station_would_survive_its_own_validation(self):
+        for station in Station.objects.filter(holder__isnull=False):
+            with self.subTest(station=station.name):
+                station.full_clean(exclude=["slug"])
+
+    def test_one_office_is_vacant_because_an_office_outlives_its_holder(self):
+        self.assertTrue(
+            Station.objects.filter(holder__isnull=True, active=True).exists())
+
+    def test_an_office_carries_headroom_without_touching_what_it_pays(self):
+        """A station grants LIMITS, never a discount — the whole design rests
+        on a holder paying exactly what anyone else pays."""
+        from toto.socialhub.privileges import limit_multiplier_for
+
+        registrar = Station.objects.get(name="Registrar")
+        self.assertGreater(registrar.limit_multiplier, 1)
+        self.assertEqual(limit_multiplier_for(registrar.holder.user),
+                         registrar.limit_multiplier)
+
+    def test_an_unpaid_office_is_an_ordinary_thing_to_be(self):
+        self.assertTrue(Station.objects.filter(stipend=0, holder__isnull=False).exists())
+
+    def test_running_it_twice_does_not_duplicate_the_roster(self):
+        before = Station.objects.count()
+        with patch.dict(os.environ, {"DEFAULT_COMMUNITY": "", "ADMIN_USERNAME": ""}):
+            call_command("ingress_socialhub", full=True, verbosity=0)
+        self.assertEqual(Station.objects.count(), before)
 
 
 class ApplicationSuccessViewTests(TestCase):

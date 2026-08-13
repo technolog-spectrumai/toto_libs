@@ -11,7 +11,12 @@ from decimal import Decimal
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import AnonymousUser
 from django.template.loader import render_to_string
-from django.test import RequestFactory, SimpleTestCase, TestCase
+from django.test import (
+    RequestFactory,
+    SimpleTestCase,
+    TestCase,
+    override_settings,
+)
 
 from toto.quota.fees import DuplicateFeeSource, FeeRegistry, FeeSource
 
@@ -147,11 +152,11 @@ class UsageTabsTests(TestCase):
         for user in (self.plain, self.staff):
             rendered = self._render(user)
             for label in ("Rate desk", "Allowances", "Limits", "Metrics",
-                          "Prices", "Time dials"):
+                          "Prices", "Time dials", "How it's charged"):
                 with self.subTest(user=user.username, label=label):
                     self.assertNotIn(label, rendered)
 
-    def test_both_roles_get_the_same_three(self):
+    def test_both_roles_get_the_same_destinations(self):
         """The role split moved INTO the pages.
 
         Hiding every chip that set a number is what forced staff and members
@@ -161,9 +166,19 @@ class UsageTabsTests(TestCase):
         """
         for user in (self.plain, self.staff):
             rendered = self._render(user)
-            for label in ("Metered", "charged", "Records"):
+            for label in ("Metered", "Records"):
                 with self.subTest(user=user.username, label=label):
                     self.assertIn(label, rendered)
+
+    def test_tribute_is_the_one_staff_only_chip(self):
+        """Not a leftover of the old split: the tribute DESK is staff-only, and
+        a chip that 403s is a broken chip."""
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.portfolio"):
+            self.skipTest("no tribute on this host")
+        self.assertIn("Tribute", self._render(self.staff))
+        self.assertNotIn("Tribute", self._render(self.plain))
 
     def test_the_active_sub_tab_is_marked(self):
         self.assertIn('aria-current="page"', self._render(self.plain, "metered"))
@@ -321,3 +336,85 @@ class IncomeBoardLiveTests(TestCase):
 
         self.assertEqual(
             [d for d in feeboard.income_board().drift if d.kind == "price"], [])
+
+
+class DemoIncomeIngressTests(TestCase):
+    """`ingress_tariffs --full` leaves the fees board with something to show.
+
+    The board reads posted ledger entries, so a seed that only wrote UsageRecord
+    rows — or only moved money without recording the usage — would produce a
+    page whose chart and whose tables disagree. These assert both halves.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest
+
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.tariffs"):
+            raise unittest.SkipTest("no economy on this host")
+
+        # Seeding ENGRAVES the gas asset, a monetary act, so the host has to
+        # hold an issuer key — the gate does not export one for this stanza.
+        from toto.assets.testing import TEST_ISSUER_KEY
+
+        issuer_key = override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
+        issuer_key.enable()
+        cls.addClassCleanup(issuer_key.disable)
+        super().setUpClass()
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.core.management import call_command
+
+        from toto.assets.testing import ensure_local_issuer
+
+        ensure_local_issuer()
+        call_command("ingress_assets", full=True, verbosity=0)
+        call_command("ingress_tariffs", full=True, verbosity=0)
+
+    def test_the_board_has_income(self):
+        from toto.quota import feeboard
+
+        board = feeboard.income_board()
+        usage = next(r for r in board.rows if r.code == "tariffs.usage")
+        self.assertTrue(usage.has_income, "the fees pie would render empty")
+
+    def test_the_pie_is_drawable(self):
+        from toto.quota import feeboard
+
+        self.assertNotEqual(feeboard.income_pie_json(feeboard.income_board()), "")
+
+    def test_the_income_is_backed_by_posted_usage_records(self):
+        """Not a transfer dressed up as revenue: real rated, posted charges."""
+        from toto.tariffs.models import UsageRecord, UsageStatus
+
+        records = UsageRecord.objects.filter(source_type="ingress.demo")
+        self.assertTrue(records.exists())
+        for record in records:
+            with self.subTest(metric=record.metric_code):
+                self.assertEqual(record.status, UsageStatus.POSTED)
+                self.assertIsNotNone(record.ledger_transaction_id)
+
+    def test_the_demo_prices_never_reach_a_real_user(self):
+        """The load-bearing one.
+
+        `get_tariff_for_user` falls back to "any ACTIVE tariff with a matching
+        item", so an active demo tariff would start charging everybody for
+        storage — exactly what this host's TARIFF_SEED_PRICES=False prevents.
+        """
+        from toto.tariffs.models import Tariff, TariffStatus
+
+        demo = Tariff.objects.get(code="demo-usage")
+        self.assertEqual(demo.status, TariffStatus.DRAFT)
+
+    def test_re_running_does_not_inflate_the_treasury(self):
+        from django.core.management import call_command
+
+        from toto.quota import feeboard
+
+        before = feeboard.income_board().earning_rows[0].base_units
+        call_command("ingress_tariffs", full=True, verbosity=0)
+        after = feeboard.income_board().earning_rows[0].base_units
+        self.assertEqual(before, after)

@@ -24,6 +24,7 @@ import uuid
 from decimal import Decimal
 
 from django.db.models import Sum
+from django.utils import timezone
 
 from toto.assets.models import (
     AccountType,
@@ -57,6 +58,7 @@ _DEFAULT_SUPPLY = Decimal("1000000000")
 CHEAP = Decimal("0.00001")     # a lookup: geocoding, a chain verify
 NORMAL = Decimal("0.0001")     # a real job: a compile, a workflow run
 EXPENSIVE = Decimal("0.001")   # minutes of CPU: ffmpeg, transcription
+
 
 
 def _bu(code, label, dimension=""):
@@ -316,6 +318,8 @@ class Command(IngressCommand):
 
         self._seed_demo_tariffs(rate_card.revenue_account(),
                                 _bu("request", "Request", "count"))
+        self._seed_demo_income(gas, rate_card.revenue_account(),
+                               _bu("request", "Request", "count"))
         self.stdout.write(self.style.SUCCESS("✅  Tariffs ingress complete."))
 
     # ------------------------------------------------------------------ #
@@ -356,3 +360,100 @@ class Command(IngressCommand):
                              app_label="demo", default_unit=request_unit)
             _item(tariff, metric, "Graph query", makaroni, Decimal("1"), request_unit, revenue)
             self.stdout.write("  +/✓ demo price demo.graph_query = 1 MAKARONI/request")
+
+    # ------------------------------------------------------------------ #
+    # Full-only: a little history, so the fees board has something to show #
+    # ------------------------------------------------------------------ #
+
+    #: What the demo pretends people did. Deliberately more than one metric —
+    #: the point of the income pie is that income has SOURCES, and a pie with
+    #: one slice is a circle.
+    DEMO_USAGE = [
+        ("alice", "storage.request", 4200),
+        ("alice", "assets.chain.verify", 90),
+        ("bob", "storage.request", 1800),
+        ("bob", "storage.transfer_mb", 650),
+        ("carol", "storage.transfer_mb", 240),
+    ]
+
+    def _seed_demo_income(self, gas, revenue, request_unit):
+        """Post real charges from the demo accounts, so the treasury is not empty.
+
+        Real in the sense that matters: these go through `rate_usage_record`
+        and `post_usage_record`, so what the fees board reads is genuine posted
+        ledger entries and the usage tables agree with the pie. A seeder that
+        moved the money directly would show income the charge history could not
+        account for.
+
+        The prices live on a **DRAFT** tariff, and that is the load-bearing
+        detail. `get_tariff_for_user` falls back to "any ACTIVE tariff with a
+        matching item", so an active demo tariff would quietly start charging
+        real users for storage — which is precisely what this host's
+        TARIFF_SEED_PRICES=False exists to prevent. Draft is never selected;
+        rating a record against one explicitly still works.
+        """
+        from toto.tariffs.models import UsageRecord, UsageStatus
+        from toto.tariffs.services import post_usage_record, rate_usage_record
+
+        accounts = {code: LedgerAccount.objects.filter(code=code).first()
+                    for code, _, _ in self.DEMO_USAGE}
+        if not any(accounts.values()):
+            self.stdout.write(self.style.WARNING(
+                "  ⚠ no demo accounts — run ingress_assets --full for the history."))
+            return
+
+        tariff, _ = _tariff(
+            "demo-usage",
+            "Demo usage pricing",
+            "What the demo accounts were charged, so the fees board has a "
+            "history to draw. Draft: it must never price a real user.",
+            status=TariffStatus.DRAFT,
+        )
+
+        # A metric absent from the registry on this host is simply skipped —
+        # the same rule the rate card follows above.
+        by_code = {spec.code: spec for spec in registry.all()}
+        for code in {code for _, code, _ in self.DEMO_USAGE}:
+            spec = by_code.get(code)
+            if spec is None:
+                continue
+            # Priced at exactly what the real rate card would charge, so the
+            # demo history is what this platform WOULD have collected rather
+            # than a number chosen to look good on a chart.
+            _item(tariff, rate_card.billing_metric_for(spec), spec.label or code,
+                  gas, PRICES.get(code, CHEAP), rate_card.billing_unit_for(spec),
+                  revenue)
+
+        posted = 0
+        for account_code, metric_code, quantity in self.DEMO_USAGE:
+            account = accounts.get(account_code)
+            if account is None or metric_code not in by_code:
+                continue
+            # Idempotent by construction: one record per (account, metric), so
+            # re-running ingress does not keep inflating the treasury.
+            record, created = UsageRecord.objects.get_or_create(
+                tariff=tariff,
+                payer_account=account,
+                metric_code=metric_code,
+                source_type="ingress.demo",
+                source_id=f"{account_code}:{metric_code}",
+                defaults={"quantity": Decimal(quantity),
+                          "unit": by_code[metric_code].unit or "",
+                          "occurred_at": timezone.now()},
+            )
+            if not created and record.status == UsageStatus.POSTED:
+                continue
+            _fund(account, gas, Decimal("5"))
+            try:
+                rate_usage_record(record)
+                post_usage_record(record, reference=f"ingress-demo-{record.uuid.hex[:8]}",
+                                  description="Ingress seed: demo usage")
+            except Exception as exc:  # noqa: BLE001 - demo data is not worth a failed deploy
+                self.stdout.write(self.style.WARNING(
+                    f"  ⚠ demo charge {metric_code} for {account_code}: {exc}"))
+                continue
+            posted += 1
+
+        if posted:
+            self.stdout.write(self.style.SUCCESS(
+                f"  +/✓ {posted} demo charges posted — the fees board has income."))
