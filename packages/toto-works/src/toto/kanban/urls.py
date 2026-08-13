@@ -34,7 +34,6 @@ from .views import (
     relation_delete,
     MissionCreateView,
     MissionUpdateView,
-    mission_budget,
     mission_event_link,
     mission_event_create,
     task_event_link,
@@ -193,11 +192,6 @@ urlpatterns = [
         name="mission_edit",
     ),
 
-    path(
-        "mission/<int:pk>/budget/",
-        mission_budget,
-        name="mission_budget",
-    ),
 
     path(
         "mission/<int:pk>/event/link/",

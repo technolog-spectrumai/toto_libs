@@ -143,19 +143,13 @@ class MissionAttachmentInline(admin.TabularInline):
 class MissionAdmin(admin.ModelAdmin):
     form = MissionAdminForm
     list_display = ("title", "campaign", "visibility", "urgency", "impact", "owner",
-                    "budget", "task_count")
+                    "task_count")
     list_filter = ("visibility", "campaign", "urgency", "impact")
     search_fields = ("title", "description")
     ordering = ("campaign", "title")
     filter_horizontal = ("visible_to",)
     raw_id_fields = ("owner", "location", "route", "zone", "calendar_event")
     inlines = [TaskInlineForMission, MissionAttachmentInline]
-
-    def budget(self, obj):
-        if obj.budget_amount is None:
-            return "—"
-        return f"{obj.budget_amount} {obj.budget_currency}"
-    budget.short_description = "Budget"
 
     def task_count(self, obj):
         return obj.tasks.count()

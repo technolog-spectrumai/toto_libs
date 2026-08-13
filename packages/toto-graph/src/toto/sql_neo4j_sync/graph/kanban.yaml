@@ -36,10 +36,6 @@ nodes:
       metadata:
         source: metadata
         transform: default_dict
-      budget_amount:
-        source: budget_amount
-        transform: str
-      budget_currency: budget_currency
 
   - label: KanbanSprint
     model: toto.kanban.models.Sprint

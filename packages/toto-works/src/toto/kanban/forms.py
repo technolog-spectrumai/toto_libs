@@ -201,8 +201,6 @@ class MissionForm(forms.ModelForm):
             "visibility",
             "visible_to",
             "calendar_event",
-            "budget_amount",
-            "budget_currency",
         ]
 
         _input = "w-full px-4 py-2 rounded border focus:outline-none focus:ring-2 transition duration-300"
@@ -233,18 +231,6 @@ class MissionForm(forms.ModelForm):
                 "size": 6,
             }),
             "calendar_event": forms.Select(attrs={"class": _input, "x-bind:class": _dark}),
-            "budget_amount": forms.NumberInput(attrs={
-                "class": _input,
-                "x-bind:class": _dark,
-                "step": "0.01",
-                "min": "0",
-                "placeholder": "No budget",
-            }),
-            "budget_currency": forms.TextInput(attrs={
-                "class": _input,
-                "x-bind:class": _dark,
-                "placeholder": "ASR",
-            }),
         }
 
 
@@ -346,32 +332,3 @@ class WikiPageForm(forms.ModelForm):
             .order_by("title"))
 
 
-class MissionBudgetForm(forms.ModelForm):
-    """Just the budget, for the box on the mission page.
-
-    A separate form rather than sending people to the full mission editor: the
-    budget is the one number on that page anybody changes twice, and making them
-    walk past zone containment and a visible_to multi-select to do it is how a
-    field ends up permanently wrong.
-
-    ModelForm, so ``Mission.clean`` runs through ``full_clean`` and the
-    amount-without-currency rule is enforced in exactly one place.
-    """
-
-    class Meta:
-        model = Mission
-        fields = ["budget_amount", "budget_currency"]
-        widgets = {
-            "budget_amount": forms.NumberInput(attrs={
-                "step": "0.01",
-                "min": "0",
-                "placeholder": "No budget",
-                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none",
-                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
-            }),
-            "budget_currency": forms.TextInput(attrs={
-                "placeholder": "ASR",
-                "class": "w-full rounded-lg border px-3 py-2 text-sm outline-none",
-                "x-bind:class": "darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'",
-            }),
-        }

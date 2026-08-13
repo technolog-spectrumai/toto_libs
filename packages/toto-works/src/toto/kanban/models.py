@@ -164,41 +164,8 @@ class Mission(DomainEntity):
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
 
-    # ── Budget ───────────────────────────────────────────────────────────────
-    # One number and a currency, per MISSION. Deliberately not per task: a task
-    # is a unit of work, not a unit of spend, and pricing every card would turn
-    # the board into a spreadsheet nobody keeps current. The mission is the
-    # smallest thing anyone actually budgets.
-    #
-    # Null means "not budgeted", which is different from a budget of zero — so
-    # the field is nullable rather than defaulting to 0, and the templates say
-    # "No budget set" rather than showing a misleading 0.00.
-    budget_amount = models.DecimalField(
-        max_digits=14,
-        decimal_places=2,
-        null=True,
-        blank=True,
-        help_text="What this mission is budgeted at. Leave empty for no budget.",
-    )
-    # A SYMBOL, not a foreign key. The obvious modelling would be an FK to
-    # assets.Asset, and it is not available: that model ships in toto-economy,
-    # which only zenobia pins — studio and aurelian install kanban from this same
-    # wheel and would be left with a migration they cannot build and a package
-    # edge check_package_graph.py forbids (toto-works depends on toto-base and
-    # nothing else). A short symbol costs those hosts nothing, and a host that
-    # does run the ledger can still match it against Asset.symbol for display.
-    budget_currency = models.CharField(
-        max_length=12,
-        blank=True,
-        help_text="Currency symbol or code, e.g. ASR, EUR, PLN.",
-    )
-
     def __str__(self):
         return f"{self.title} ({self.campaign.name})"
-
-    @property
-    def has_budget(self) -> bool:
-        return self.budget_amount is not None
 
     @property
     def urgency_label(self):
@@ -218,34 +185,6 @@ class Mission(DomainEntity):
 
     def clean(self):
         self._validate_zone_containment()
-        self._validate_budget()
-
-    def _validate_budget(self):
-        """A budget is a number AND a currency, or it is nothing.
-
-        Normalises the symbol on the way through, so "eur" and "EUR" cannot both
-        end up in the column and make two missions look like they are budgeted in
-        different things.
-        """
-        self.budget_currency = (self.budget_currency or "").strip().upper()
-
-        if self.budget_amount is None:
-            if self.budget_currency:
-                raise ValidationError({
-                    "budget_currency": _(
-                        "Set a budget amount, or clear the currency."),
-                })
-            return
-
-        if self.budget_amount < 0:
-            raise ValidationError({
-                "budget_amount": _("A budget cannot be negative."),
-            })
-        if not self.budget_currency:
-            raise ValidationError({
-                "budget_currency": _(
-                    "Say what currency the budget is in."),
-            })
 
     def _validate_zone_containment(self):
         """Refuse a mission zone that lies outside its campaign's zone.

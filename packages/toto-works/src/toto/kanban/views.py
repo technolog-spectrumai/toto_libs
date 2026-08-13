@@ -19,7 +19,7 @@ from toto.api.cors import render_access_denied
 from toto.ui import PageProcessor
 from toto.kanban.forms import (
     TaskCreateForm, TaskRelationForm, MissionForm, LinkedEventCreateForm,
-    MissionBudgetForm, WikiPageForm, _linkable_events,
+    WikiPageForm, _linkable_events,
 )
 from toto.kanban.metrics import (
     SprintMetricsCalculator, MissionMetricsCalculator, summarize_tasks,
@@ -822,7 +822,6 @@ class MissionDetailView(LoginRequiredMixin, DetailView):
             "file_tree": file_tree,
             "linkable_events": _linkable_events(mission),
             "event_create_form": LinkedEventCreateForm(),
-            "budget_form": MissionBudgetForm(instance=mission),
             **summarize_tasks(tasks),
         })
         context["mission_plugin_sections"] = MissionPlugin.render_all(
@@ -1179,40 +1178,6 @@ def _load_visible_mission(request, pk, project=None):
     if project is not None:
         qs = qs.filter(campaign__project=project)
     return get_object_or_404(qs, pk=pk)
-
-
-@login_required
-@require_POST
-def mission_budget(request, pk):
-    """Set or clear this mission's budget — one number and a currency.
-
-    Per mission, and only per mission. Tasks have no budget field and are not
-    getting one: a task is a unit of work, not a unit of spend, and a board where
-    every card carries a number is a board whose numbers are stale by Thursday.
-
-    Clearing both fields is a supported answer, not an error — "we no longer
-    budget this" has to be sayable, and null is distinct from a budget of zero.
-    """
-    mission = _load_visible_mission(request, pk)
-    if not can_manage_tasks(request.user, mission.campaign.project):
-        return HttpResponseForbidden("You cannot edit missions in this project.")
-
-    form = MissionBudgetForm(request.POST, instance=mission)
-    if form.is_valid():
-        form.save()
-        if mission.budget_amount is None:
-            messages.success(request, "Budget cleared.")
-        else:
-            messages.success(
-                request,
-                f"Budget set to {mission.budget_amount} {mission.budget_currency}.")
-    else:
-        # Surfaced as a message rather than by re-rendering the whole mission
-        # page with a bound form: the box is one of a dozen panels there, and
-        # rebuilding all of them to show one field error is not worth it.
-        for error in form.errors.values():
-            messages.error(request, "; ".join(error))
-    return redirect("kanban:mission_detail", pk=mission.pk)
 
 
 @login_required
