@@ -67,7 +67,6 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
                 {
                     "username": m.display_name,
                     "avatar_url": m.avatar_url,
-                    "type": m.participant_type,
                 }
                 for m in members_qs
             ]

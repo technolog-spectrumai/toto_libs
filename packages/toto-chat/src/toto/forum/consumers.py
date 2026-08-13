@@ -377,7 +377,6 @@ class ChatConsumer(AsyncWebsocketConsumer):
                     else ""
                 ),
                 "avatar_url": self.absolute_url(member.avatar_url),
-                "type": member.participant_type,
             }
             for member in members_qs
         ]

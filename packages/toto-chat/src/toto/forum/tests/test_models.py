@@ -43,7 +43,6 @@ class ForumMemberTests(TestCase):
             is_active=True,
         )
         self.assertEqual(member.display_name, self.person.full_name)
-        self.assertEqual(member.participant_type, "human")
         self.assertTrue(str(member).endswith("in Lobby"))
 
     def test_member_clean_requires_person(self):
@@ -60,3 +59,33 @@ class ForumMemberTests(TestCase):
     def test_avatar_url_fallback(self):
         member = ForumMember(channel=self.channel, person=self.person)
         self.assertIn("default.png", member.avatar_url)
+
+
+class ParticipantTypeRemovedTests(TestCase):
+    """There is no human/non-human label on a member, and no room for one.
+
+    ``participant_type`` returned the string ``"human"`` unconditionally, for
+    every member, forever — the model's own CheckConstraint requires a person,
+    so there was never a second value it could take. It was serialised into
+    three payloads (the REST roster, the page context and the websocket
+    ``room_participants`` frame) and read in exactly one place: a sidebar badge
+    guarded on ``type == "ai_agent"``, a value nothing could produce.
+    """
+
+    def test_a_member_has_no_participant_type(self):
+        self.assertFalse(hasattr(ForumMember, "participant_type"))
+
+    def test_no_payload_still_ships_a_type(self):
+        import inspect
+
+        from toto.forum import api_views, consumers, views
+
+        for module in (api_views, consumers, views):
+            with self.subTest(module=module.__name__):
+                self.assertNotIn("participant_type", inspect.getsource(module))
+
+    def test_the_person_requirement_survives_the_label(self):
+        """The constraint was never the label. A member still needs a person."""
+        member = ForumMember(channel=None, person=None)
+        with self.assertRaises(ValidationError):
+            member.clean()

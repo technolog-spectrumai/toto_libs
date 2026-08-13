@@ -101,7 +101,7 @@ class ForumMember(models.Model):
     def clean(self):
         super().clean()
         if not self.person_id:
-            raise ValidationError("Members must be human users (person required).")
+            raise ValidationError("A member must have a person profile.")
 
     @property
     def display_name(self):
@@ -114,11 +114,6 @@ class ForumMember(models.Model):
         if self.person and self.person.avatar:
             return self.person.avatar.url
         return "/static/img/avatars/default.png"
-
-    @property
-    def participant_type(self):
-        return "human"
-
 
 class ForumMessage(models.Model):
     """A persisted forum message, stored in plaintext.

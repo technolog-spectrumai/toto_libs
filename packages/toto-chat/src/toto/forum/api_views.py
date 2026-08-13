@@ -46,7 +46,6 @@ def _member_to_dict(request, member):
         "name": member.display_name,
         "username": _member_username(member),
         "avatar_url": _absolute_url(request, member.avatar_url),
-        "type": member.participant_type,
     }
 
 
