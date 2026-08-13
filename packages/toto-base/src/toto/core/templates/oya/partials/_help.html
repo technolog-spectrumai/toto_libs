@@ -1,0 +1,78 @@
+{% load i18n %}
+{% comment %}A question mark that opens one screen of prose. Nothing else.
+
+   Lives in oya/ because that is the one templates directory every host loads,
+   the same reason oya/_economy_tabs.html lives there.
+
+   This is the sanctioned way to bring back an explanation whose TAB was
+   deleted. A chip is navigation and competes for the reader's attention on
+   every page load; a question mark costs nothing until someone wants it. It
+   must not become navigation again — quota/tests_fees.py asserts the removed
+   chip's wording never returns to the tab strip.
+
+   Parameters, all passed ALREADY TRANSLATED because {% templatetag openblock %} include with
+   {% templatetag closeblock %} cannot call gettext:
+
+     title      required  the heading, and the button's accessible name
+     body       required  the prose; newlines are honoured (whitespace-pre-line)
+     body_extra optional  a second paragraph, so a caller can add sentences that
+                          are only TRUE under a condition without duplicating
+                          the ones that always are
+     more_url   optional  a link at the foot for the full page
+     more_label optional  its wording
+
+   Usage:
+
+     {% templatetag openblock %} translate "How you are charged" as help_title {% templatetag closeblock %}
+     {% templatetag openblock %} blocktranslate asvar help_body {% templatetag closeblock %}…{% templatetag openblock %} endblocktranslate {% templatetag closeblock %}
+     {% templatetag openblock %} include "oya/partials/_help.html" with title=help_title body=help_body {% templatetag closeblock %}
+
+   Needs an [x-cloak] rule on the page, or the panel flashes open before Alpine
+   boots. quota/base.html declares one.
+{% endcomment %}
+<span class="inline-flex" x-data="{ helpOpen: false }"
+      @keydown.escape.window="helpOpen = false">
+
+  <button type="button" @click="helpOpen = true"
+          class="inline-flex items-center justify-center text-base opacity-40 transition hover:opacity-90 focus:opacity-90 focus:outline-none"
+          aria-label="{% trans "Help" %}: {{ title }}">
+    <i class="fa-regular fa-circle-question"></i>
+  </button>
+
+  <div x-show="helpOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/60" @click="helpOpen = false"></div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+         class="relative w-full max-w-md overflow-hidden rounded-2xl border shadow-lg">
+
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+           class="flex items-center gap-3 px-5 py-3">
+        <i class="fa-solid fa-circle-info"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        <h2 class="flex-1 text-xs font-semibold uppercase tracking-wide opacity-70">{{ title }}</h2>
+        <button type="button" @click="helpOpen = false"
+                class="opacity-50 transition hover:opacity-100 focus:outline-none"
+                aria-label="{% trans "Close" %}">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="whitespace-pre-line px-5 py-4 text-sm leading-relaxed">{{ body }}</div>
+      {% if body_extra %}
+        <div class="whitespace-pre-line px-5 pb-4 text-sm leading-relaxed">{{ body_extra }}</div>
+      {% endif %}
+
+      <div class="flex items-center justify-between gap-3 px-5 pb-4">
+        {% if more_url %}
+          <a href="{{ more_url }}" class="text-sm font-semibold underline hover:opacity-80">{{ more_label }}</a>
+        {% else %}
+          <span></span>
+        {% endif %}
+        <button type="button" @click="helpOpen = false"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded px-3 py-1.5 text-sm font-bold transition hover:opacity-90">
+          {% trans "Got it" %}</button>
+      </div>
+    </div>
+  </div>
+</span>

@@ -418,3 +418,116 @@ class DemoIncomeIngressTests(TestCase):
         call_command("ingress_tariffs", full=True, verbosity=0)
         after = feeboard.income_board().earning_rows[0].base_units
         self.assertEqual(before, after)
+
+
+class HelpPartialTests(TestCase):
+    """The question mark that replaced the deleted tab.
+
+    Rendered directly, the way UsageTabsTests renders the tab strip: what
+    matters is what the markup contains, and a view would only add a login.
+    """
+
+    def _render(self, **params):
+        params.setdefault("title", "How you are charged")
+        params.setdefault("body", "The cap is the real limit.")
+        return render_to_string("oya/partials/_help.html", params)
+
+    def test_it_renders_a_trigger_and_a_panel(self):
+        html = self._render()
+        self.assertIn("fa-circle-question", html)
+        self.assertIn("The cap is the real limit.", html)
+        self.assertIn("How you are charged", html)
+
+    def test_the_panel_starts_hidden(self):
+        """x-cloak AND x-show: without the cloak it renders open on first paint."""
+        html = self._render()
+        self.assertIn("x-cloak", html)
+        self.assertIn('x-show="helpOpen"', html)
+
+    def test_it_closes_three_ways(self):
+        """Escape, the backdrop and a button — a modal with one exit is a trap."""
+        html = self._render()
+        self.assertIn("@keydown.escape.window", html)
+        self.assertIn('@click="helpOpen = false"', html)
+        self.assertIn("Got it", html)
+
+    def test_the_trigger_says_what_it_opens(self):
+        self.assertIn('aria-label="Help: How you are charged"', self._render())
+
+    def test_the_second_paragraph_is_optional(self):
+        without = self._render()
+        self.assertNotIn("Only sometimes true.", without)
+        with_extra = self._render(body_extra="Only sometimes true.")
+        self.assertIn("Only sometimes true.", with_extra)
+
+    def test_the_footer_link_is_optional(self):
+        self.assertNotIn("<a href", self._render())
+        linked = self._render(more_url="/quota/taxes/", more_label="Every kind")
+        self.assertIn('href="/quota/taxes/"', linked)
+        self.assertIn("Every kind", linked)
+
+    def test_it_carries_both_themes(self):
+        """A panel defined in one theme only is invisible in the other."""
+        html = self._render()
+        self.assertIn("bg-bubble-bg-dark", html)
+        self.assertIn("bg-bubble-bg-light", html)
+
+
+class MeteredHelpTests(TestCase):
+    """The affordance is on the page, and it did NOT come back as a tab."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.user = User.objects.create_user(username="metered-reader")
+
+    def _get(self):
+        from django.urls import reverse
+
+        self.client.force_login(self.user)
+        return self.client.get(reverse("quota:index"))
+
+    def test_the_metered_page_offers_the_explanation(self):
+        body = self._get().content.decode()
+        self.assertEqual(self._get().status_code, 200)
+        self.assertIn("fa-circle-question", body)
+        self.assertIn("How you are charged", body)
+
+    def test_the_copy_is_true_where_nothing_is_priced(self):
+        """This platform's actual state: a real, empty rate card.
+
+        Copy that asserted "you are charged" would be false on every host in
+        the tree today, which is why the sentence is about the CAP.
+        """
+        body = self._get().content.decode()
+        self.assertIn("the cap is the real limit", body.lower())
+        self.assertIn("An action with no price is free", body)
+
+    def test_the_levy_sentences_only_appear_where_a_levy_engine_exists(self):
+        """placidia and aurelian install no toto.tax; the head tax is not a
+        thing there and the modal must not describe one."""
+        from unittest.mock import patch
+
+        from toto.quota import levies
+
+        with patch.object(levies, "levy_enabled", return_value=False):
+            body = self._get().content.decode()
+        self.assertNotIn("The head tax is a flat charge", body)
+
+        with patch.object(levies, "levy_enabled", return_value=True):
+            body = self._get().content.decode()
+        self.assertIn("The head tax is a flat charge", body)
+
+    def test_the_deleted_chip_did_not_come_back(self):
+        """The modal is the sanctioned replacement precisely because it is not
+        navigation. Re-adding the chip would undo a deliberate simplification."""
+        body = self._get().content.decode()
+        self.assertNotIn("How it's charged", body)
+
+    def test_the_page_declares_the_cloak_rule(self):
+        """Without it the panel — and the edit modal — flash open on load."""
+        self.assertIn("[x-cloak]", self._get().content.decode())

@@ -28,7 +28,7 @@
 <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
   {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-bolt" label=kpi_actions_label value=kpi_actions|floatformat:"-2" tone="accent" %}
   {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-triangle-exclamation" label=kpi_at_limit_label value=kpi_at_limit tone=kpi_at_limit_tone %}
-  {% if billing_enabled %}
+  {% if pricing_enabled %}
     {% if balance %}
       {% include "quota/partials/_stat_card.html" with icon="fa-solid fa-gas-pump" label=kpi_balance_label value=balance.amount|floatformat:"-9" tone="accent" %}
     {% endif %}
@@ -75,7 +75,7 @@
       <p class="text-xs opacity-55">{% trans "No limit on this action." %}</p>
     {% endif %}
 
-    {% if billing_enabled %}
+    {% if pricing_enabled %}
       <div class="flex items-baseline justify-between border-t pt-2 text-xs"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
         <span class="opacity-60">
@@ -104,7 +104,7 @@
 {% endfor %}
 </div>
 
-{% if billing_enabled and wallet_url %}
+{% if pricing_enabled and wallet_url %}
   <p class="text-xs opacity-60">
     <i class="fa-solid fa-wallet mr-1"></i>
     <a href="{{ wallet_url }}" class="underline">{% trans "Your wallet and every transaction behind these numbers." %}</a>

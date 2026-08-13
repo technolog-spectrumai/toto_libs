@@ -18,6 +18,30 @@
 
 {% block quota_title %}{% trans "Metered" %}{% endblock %}
 {% block quota_heading %}{% trans "Metered" %}{% endblock %}
+
+{% block quota_help %}
+{% comment %}The replacement for the deleted "How it's charged" tab — an
+   affordance, not a destination. Every sentence has to be true on a host where
+   NOTHING is priced, which is this platform today: the rate card is real and
+   empty, so the caps do the whole job. The levy sentences are the ones that
+   are conditionally true, so they go in body_extra.
+{% endcomment %}
+{% trans "How you are charged" as help_title %}
+{% blocktrans asvar help_body %}Every metered action has a cap, and the cap is the real limit — it applies whether or not anything costs money.
+
+A price applies only where one has been set. An action with no price is free, and most are.
+
+An office raises your caps and never changes your price: a holder pays exactly what anyone else pays for the same action.{% endblocktrans %}
+{% if levy_enabled %}
+  {% blocktrans asvar help_extra %}A levy is different from a price. A price is charged for something you did; a levy is charged nightly for something you are still holding.
+
+The head tax is a flat charge per person. Your communities decide the rate, and the lowest one you belong to is the one you pay.{% endblocktrans %}
+{% else %}
+  {% trans "" as help_extra %}
+{% endif %}
+{% trans "Every kind of charge" as help_more %}
+{% include "oya/partials/_help.html" with title=help_title body=help_body body_extra=help_extra more_url=taxes_url more_label=help_more %}
+{% endblock %}
 {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
 
 {% block quota_subheading %}
