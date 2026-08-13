@@ -1382,12 +1382,23 @@ class DocumentAskViewTests(TestCase):
     def test_a_hostile_rewrite_is_refused_by_the_scanner(self):
         """The answer is bound for an .html document, so it is untrusted
         third-party content — screened before anybody is offered it, and a
-        refusal costs the user nothing."""
+        refusal costs the user nothing.
+
+        The scanner is PATCHED rather than relied upon, like the selection-scope
+        test above: ``toto.vault.scanning`` is a façade that degrades to an
+        empty answer on a host with no toto.antivirus, and placidia is such a
+        host. What is under test is that a refusal fails the run — not whether
+        this particular host happens to screen.
+        """
+        from toto.vault.scanning import Verdict
+
         self._post()
         run = AiRun.objects.get()
 
         with mock.patch("toto.steven.client.complete",
-                        return_value=_answer("<script>alert(1)</script>")):
+                        return_value=_answer("<script>alert(1)</script>")), \
+             mock.patch("toto.vault.scanning.scan",
+                        return_value=Verdict.refused("active-content", "<script>")):
             services.execute(run)
 
         run.refresh_from_db()
