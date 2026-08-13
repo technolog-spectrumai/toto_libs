@@ -1,0 +1,142 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}The whole app, for now: two counters, what was found, and the files
+   you can scan. It grows from here.
+{% endcomment %}
+
+{% block title %}{% trans "Antivirus" %} – {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div x-data="antivirus()"
+     :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <div>
+      <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+        <i class="fa-solid fa-shield-virus"></i>{% trans "Antivirus" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Files are screened on the way in, and you can scan anything you own on demand. A scan never changes a file." %}</p>
+    </div>
+
+    {% comment %}Two counters. vault/metrics.html's shape.{% endcomment %}
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+               class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+            <i class="fa-solid fa-shield-virus text-sm"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          </div>
+          <div>
+            <div class="text-2xl font-bold">{{ threats_found }}</div>
+            <div class="text-xs opacity-60">{% trans "Threats found" %}</div>
+          </div>
+        </div>
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-4 shadow-sm">
+        <div class="flex items-center gap-3">
+          <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+               class="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg">
+            <i class="fa-solid fa-file-circle-check text-sm"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          </div>
+          <div>
+            <div class="text-2xl font-bold">{{ files_scanned }}</div>
+            <div class="text-xs opacity-60">{% trans "Files scanned" %}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if threats %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <h2 class="mb-1 text-lg font-bold">{% trans "What was found" %}</h2>
+      <p class="mb-3 text-sm opacity-70">
+        {% trans "These files are untouched and still yours to open or download. Nothing was removed." %}</p>
+      <ul class="space-y-2 text-sm">
+        {% for threat in threats %}
+          <li :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="rounded-lg border px-4 py-2">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="font-semibold">{{ threat.file.title }}</span>
+              <span class="text-xs opacity-60">{{ threat.scanned_at|date:"Y-m-d H:i" }}</span>
+            </div>
+            <p class="mt-1 text-xs opacity-80">
+              {{ threat.detail }}{% if threat.line %} <span class="opacity-60">({% blocktrans with line=threat.line %}line {{ line }}{% endblocktrans %})</span>{% endif %}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+    </section>
+    {% endif %}
+
+    {% comment %}The automatic-scan policy: four plain checkboxes, this person's
+       own files only.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Scan automatically" %}</h2>
+      <p class="mb-3 text-sm opacity-70">
+        {% trans "Which of your own files are screened as they are saved or uploaded. The Scan button below always works, whatever you choose here." %}</p>
+      <div class="flex flex-wrap gap-4 text-sm">
+        {% for type in scannable_types %}
+          <label class="inline-flex items-center gap-2">
+            <input type="checkbox" value="{{ type }}"
+                   @change="savePreference()"
+                   x-model="autoTypes">
+            <span class="uppercase">{{ type }}</span>
+          </label>
+        {% endfor %}
+        <span class="text-xs opacity-60" x-show="saved" x-cloak>{% trans "Saved." %}</span>
+      </div>
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Your files" %}</h2>
+      <p class="mb-3 text-sm opacity-70">
+        {% trans "Everything here is a type we know how to read. Pictures, video and sound are not listed — there is nothing in them a text scanner can honestly judge." %}</p>
+
+      {% include "antivirus/_scan_tree.html" %}
+    </section>
+
+  </div>
+</div>
+
+<script>
+function antivirus() {
+  return {
+    autoTypes: JSON.parse(`{{ auto_types_json|escapejs }}`),
+    saved: false,
+    results: {},
+    _csrf() {
+      return document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
+    },
+    async savePreference() {
+      const body = new FormData();
+      this.autoTypes.forEach(t => body.append("types", t));
+      await fetch("{% url 'antivirus:set_preference' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: {"X-CSRFToken": this._csrf()}, body: body,
+      });
+      this.saved = true;
+      setTimeout(() => { this.saved = false; }, 2000);
+    },
+    async scan(pk) {
+      this.results[pk] = {busy: true};
+      const res = await fetch(`/antivirus/scan/${pk}/`, {
+        method: "POST", credentials: "same-origin",
+        headers: {"X-CSRFToken": this._csrf()},
+      });
+      const data = await res.json().catch(() => ({ok: false}));
+      this.results[pk] = {busy: false, ...data};
+    },
+  };
+}
+</script>
+{% endblock %}

@@ -1,0 +1,20 @@
+{% load i18n %}
+{% comment %}A green tick, and nothing else, ever.
+
+   Included from file listings. It renders a mark ONLY for a file that was
+   scanned and came back clean for the bytes it holds right now.
+
+   An unscanned file renders NOTHING — not a grey dash, not a question mark.
+   That is the whole rule. Marking everything unknown would put a symbol on
+   almost every row on day one, and a warning that is always on is a warning
+   nobody reads. Absence means "not looked at", and it looks exactly like the
+   interface did before this app existed.
+
+   Expects: file (a VaultFile) and clean_ids (a set of pks, from
+   toto.vault.scanning.clean_file_ids). Both absent is fine — it renders
+   nothing, which is what a host without antivirus should see.
+{% endcomment %}
+{% if file.pk in clean_ids %}<i class="fa-solid fa-circle-check ml-1 text-[0.7rem]"
+   :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+   title="{% trans 'Scanned, nothing found' %}"
+   aria-label="{% trans 'Scanned, nothing found' %}"></i>{% endif %}

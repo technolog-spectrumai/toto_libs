@@ -72,6 +72,12 @@ FEATURE_APPS = {
     "steven": ["toto.steven"],
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],
+    # Content screening (BUILD_ANTIVIRUS). Flag-gated rather than core because
+    # scanning is a policy a host adopts, not a fact of storage — but note what
+    # OFF means: content is written unscreened and silently. toto.vault.scanning
+    # is the seam, and it degrades to clean-and-UNSCANNED so nothing marks a
+    # file as checked when nobody checked it.
+    "antivirus": ["toto.antivirus"],
     "monit": ["toto.monit"],    # read-only monitoring dashboard (BUILD_MONIT)
     # The mail transport (BUILD_JESS). Flag-gated rather than core because it queues
     # every send: a host with no celery worker would have an email service whose

@@ -1,0 +1,41 @@
+{% load i18n %}
+{% comment %}One file: its name, its tick if it has one, and a Scan button.
+
+   The result appears in place — no page reload, no toast that scrolls away
+   from the row it was about.
+{% endcomment %}
+<div class="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm">
+  <i class="fa-solid fa-file text-xs opacity-40"></i>
+  <span class="min-w-0 flex-1 truncate">{{ file.title }}</span>
+
+  {% include "antivirus/_clean_tick.html" %}
+
+  <span class="text-[0.65rem] uppercase opacity-40">{{ file.file_type }}</span>
+
+  <template x-if="results[{{ file.id }}] && !results[{{ file.id }}].busy">
+    <span class="text-xs"
+          :class="results[{{ file.id }}].clean
+                    ? (darkMode ? 'text-success-dark' : 'text-success-light')
+                    : (darkMode ? 'text-warn-dark' : 'text-warn-light')">
+      <template x-if="results[{{ file.id }}].clean">
+        <span><i class="fa-solid fa-circle-check"></i> {% trans "Nothing found" %}</span>
+      </template>
+      <template x-if="!results[{{ file.id }}].clean">
+        <span><i class="fa-solid fa-triangle-exclamation"></i>
+          <span x-text="results[{{ file.id }}].detail || '{% trans "Refused" %}'"></span></span>
+      </template>
+    </span>
+  </template>
+
+  <button type="button" @click="scan({{ file.id }})"
+          :disabled="results[{{ file.id }}] && results[{{ file.id }}].busy"
+          :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+          class="rounded border px-2 py-0.5 text-xs font-semibold transition disabled:opacity-50">
+    <template x-if="results[{{ file.id }}] && results[{{ file.id }}].busy">
+      <i class="fa-solid fa-spinner fa-spin"></i>
+    </template>
+    <template x-if="!(results[{{ file.id }}] && results[{{ file.id }}].busy)">
+      <span>{% trans "Scan" %}</span>
+    </template>
+  </button>
+</div>

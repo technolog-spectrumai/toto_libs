@@ -73,6 +73,7 @@ class Features:
     texlab: bool
     # Derived.
     editor: bool
+    antivirus: bool
     vicuna: bool
     sabbia_openai: bool
     sabbia_ollama: bool
@@ -278,6 +279,8 @@ def resolve_features(get) -> Features:
     # to default from BUILD_LATEX, and that flag left with the workspace split —
     # the hosts that want the editors (all of them, today) say BUILD_EDITOR=1.
     editor = flag(get, "BUILD_EDITOR")
+    # toto.antivirus — screens file content at the doors and on demand.
+    antivirus = flag(get, "BUILD_ANTIVIRUS")
     # Channels/ASGI back every WebSocket consumer.
     needs_channels = chat or sketch or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
@@ -362,6 +365,7 @@ def resolve_features(get) -> Features:
         antaresia=antaresia,
         texlab=texlab,
         editor=editor,
+        antivirus=antivirus,
         vicuna=vicuna,
         sabbia_openai=sabbia_openai,
         sabbia_ollama=sabbia_ollama,
