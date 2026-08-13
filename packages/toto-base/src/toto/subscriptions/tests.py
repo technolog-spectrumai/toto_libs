@@ -574,3 +574,30 @@ class IngressTests(TestCase):
         self._seed()
 
         self.assertFalse(is_entitled(user, "aralia"))
+
+
+class ManualTests(TestCase):
+    """The long-form explanation, gated on the app being installed."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.user = member("reader")
+
+    def test_the_manual_describes_plans_where_the_app_exists(self):
+        self.client.force_login(self.user)
+
+        body = self.client.get(reverse("core:manual")).content.decode()
+
+        self.assertIn("Your plan", body)
+        self.assertIn("Your communities decide what you pay", body)
+
+    def test_it_says_nothing_is_deleted(self):
+        """The promise the code keeps, written where somebody will read it."""
+        self.client.force_login(self.user)
+
+        body = self.client.get(reverse("core:manual")).content.decode()
+
+        self.assertIn("nothing is deleted if you stop paying", body)
