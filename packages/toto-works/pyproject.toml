@@ -35,5 +35,11 @@ namespaces = true
 "*" = [
     "templates/**/*",
     "static/**/*",
+    # sketch is the first app in the suite to carry its own catalogues (they
+    # came with it from delta). Django picks up <app>/locale/ automatically for
+    # every installed app, but only if the .mo files are actually IN the wheel —
+    # without this line they exist in the source tree, vanish at build time, and
+    # the editor is silently English on a Polish host.
+    "locale/**/*",
     "graph/*.yaml",
 ]

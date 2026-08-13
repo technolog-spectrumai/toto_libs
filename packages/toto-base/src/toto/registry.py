@@ -86,6 +86,11 @@ FEATURE_APPS = {
     # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
     # large JS bundle that only the hosts offering sheets need baked into their image.
     "primula": ["toto.primula"],
+    # The SVG editor (BUILD_SKETCH). Flag-gated like the other editors, with one
+    # extra rule enforced by a system check in toto.sketch.apps: a host that sets
+    # this MUST also set BUILD_ANTIVIRUS. Sketch renders SVG inline, in our
+    # origin, and it has no screening of its own any more.
+    "sketch": ["toto.sketch"],
     # Version control, in TOTO-REPO — two apps, and a host installs whichever
     # half it can actually use.
     #
