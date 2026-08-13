@@ -98,7 +98,14 @@ def test_migrations_are_packaged(all_names, owner):
     # app label became two. Zenobia installs the gitea half, placidia the repo
     # half, and neither installs both — which one flag could not express and is
     # the whole reason for the change.
-    assert len(apps_with_migrations) == 45, sorted(apps_with_migrations)
+    # 46: toto.antivirus (toto-base) — the scan verdict cache and the per-user
+    # "which types are screened automatically" row. Note what did NOT move this
+    # number in the same release: toto.sketch shipped in toto-works alongside it
+    # and is not counted, because it has no models at all (the vault file IS the
+    # drawing) and so carries no migrations package. An empty one arrived with it
+    # from delta and was deleted — boilerplate that would have inflated exactly
+    # this tripwire.
+    assert len(apps_with_migrations) == 46, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"

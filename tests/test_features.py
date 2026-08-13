@@ -291,8 +291,21 @@ def test_realtime_is_derived_not_merely_echoed():
     # zenobia still installs it after the split — it keeps workflows.
     assert resolve(BUILD_WORKFLOWS=1).realtime is True
     assert resolve(BUILD_CHAT=1).realtime is True
-    assert resolve(BUILD_SKETCH=1).realtime is True     # via needs_channels
+    assert resolve(BUILD_CANASTA=1).realtime is True    # via needs_channels
     assert resolve().realtime is False
+
+
+def test_sketch_does_not_buy_channels():
+    """BUILD_SKETCH used to imply realtime. It must not any more.
+
+    The flag named zenobia/limbo/sketch — a Yjs collaborative whiteboard with a
+    live socket — until 1.51, when it was handed to the packaged SVG editor in
+    toto-works, which has no WebSocket at all. Leaving it in needs_channels
+    would make every host that wants a drawing editor install daphne and the
+    whole realtime pip layer for a feature that never opens a socket.
+    """
+    f = resolve(BUILD_SKETCH=1)
+    assert (f.sketch, f.needs_channels, f.realtime) == (True, False, False)
 
 
 def test_canasta_buys_channels_and_nothing_else():
