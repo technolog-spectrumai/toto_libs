@@ -116,6 +116,12 @@ FEATURE_APPS = {
 # tasks_direct, so without that module the worker never registers it.
 TASK_MODULES = [
     "toto.workflows",
+    # toto.weather's auto_refresh_weather. schedules.beat_schedule(weather=True)
+    # has enqueued it every 30 minutes since the realtime layer existed, and
+    # this entry was missing the whole time — so the worker answered KeyError
+    # twice an hour and discarded the job, the identical failure the monit note
+    # below describes. Inert where the app is not installed.
+    "toto.weather",
     "toto.vault",       # encrypt_workflow_run (vault-encrypt workflow)
     "toto.mandragora",
     "toto.ravioli",
