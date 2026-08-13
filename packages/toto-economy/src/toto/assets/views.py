@@ -295,6 +295,134 @@ def ledger_flow(request):
     })
 
 
+#: How far back the wallet's balance history looks.
+BALANCE_HISTORY_DAYS = 30
+
+
+def _balance_history_json(user, account_pks, *, days=BALANCE_HISTORY_DAYS) -> str:
+    """Daily closing balance per asset, as a Chart.js line series.
+
+    **Anchored on today's holding and walked BACKWARDS, not summed forwards
+    from zero.** That is the whole design, and it is not the obvious choice, so:
+
+    ``AssetHolding.balance_base_units`` is not a projection of the ledger. It is
+    a cache, maintained by hand next to each entry write in four different
+    modules, and there is no signal, no trigger and no recompute-from-entries
+    anywhere. It can also be set directly in the Django admin with no entry
+    written at all. So summing entries forwards from zero would produce a curve
+    whose last point disagrees with the balance card printed directly above this
+    chart — by a constant, forever, invisibly.
+
+    Walking backwards from the holding makes the last point equal that card **by
+    construction**. The history behind it is the best reconstruction the
+    immutable entries allow, which is the right way round: the number somebody
+    checks is exact, and the shape leading to it is honest about coming from
+    movements.
+
+    Scoped to ``account_pks`` — the same active accounts whose holdings the cards
+    above are drawn from — so the chart and the cards cannot disagree about
+    whose money this is.
+    """
+    import json
+    from collections import defaultdict
+    from datetime import timedelta
+
+    from django.db.models import Sum
+    from django.db.models.functions import TruncDate
+    from django.utils import timezone
+
+    from .models import from_base_units
+
+    account_pks = list(account_pks)
+    if not account_pks:
+        return ""
+
+    today = timezone.localdate()
+    since = today - timedelta(days=days - 1)
+
+    entries = LedgerEntry.objects.filter(account_id__in=account_pks)
+
+    # Per (asset, day) movement over the window.
+    #
+    # The trailing .order_by("day") is load-bearing: LedgerEntry.Meta declares
+    # ordering = ["created_at"], and Django appends an ORDER BY column to the
+    # GROUP BY — which would silently return one row per ENTRY rather than one
+    # per day, and every bucket would be a single movement.
+    deltas: dict[int, dict] = defaultdict(dict)
+    rows = (entries
+            .filter(created_at__date__gte=since)
+            .annotate(day=TruncDate("created_at"))
+            .values("asset_id", "day")
+            .annotate(total=Sum("amount_base_units"))
+            .order_by("day"))
+    for row in rows:
+        deltas[row["asset_id"]][row["day"]] = int(row["total"] or 0)
+
+    # The anchor: what each asset is worth right now, summed over those
+    # accounts. Grouped by the ENTRY's asset elsewhere and by the HOLDING's
+    # asset here — never by LedgerTransaction.asset, which is null on every
+    # tariff charge and would drop all metered spending from the picture.
+    anchors: dict[int, int] = defaultdict(int)
+    holdings = (AssetHolding.objects
+                .filter(account_id__in=account_pks)
+                .select_related("asset"))
+    assets = {}
+    for holding in holdings:
+        anchors[holding.asset_id] += holding.balance_base_units
+        assets[holding.asset_id] = holding.asset
+
+    # An asset spent down to nothing has movements and no holding row. Its line
+    # belongs on the chart — "you had some and now you do not" is exactly what
+    # somebody opens a history for.
+    missing = set(deltas) - set(assets)
+    if missing:
+        for asset in Asset.objects.filter(pk__in=missing):
+            assets[asset.pk] = asset
+
+    if not assets:
+        return ""
+
+    labels = [(since + timedelta(days=i)).strftime("%m-%d") for i in range(days)]
+    palette = ["#4f5fa1", "#5fa38c", "#d9a441", "#b45f8f", "#4a8f7a", "#c0603a"]
+
+    datasets = []
+    for index, asset_id in enumerate(sorted(assets, key=lambda pk: str(assets[pk]))):
+        asset = assets[asset_id]
+        by_day = deltas.get(asset_id, {})
+
+        # Backwards from today: the balance at the end of a day, less what moved
+        # during it, is the balance at the end of the day before.
+        closing = [0] * days
+        running = anchors.get(asset_id, 0)
+        for offset in range(days - 1, -1, -1):
+            closing[offset] = running
+            running -= by_day.get(since + timedelta(days=offset), 0)
+
+        # float, not Decimal: Django's JSON encoder writes a Decimal as a
+        # STRING, and Chart.js will not plot a string. Kept in integer base
+        # units until this last step so nothing rounds on the way.
+        datasets.append({
+            "label": asset.code or asset.name,
+            "data": [float(from_base_units(units, asset.decimals))
+                     for units in closing],
+            "borderColor": palette[index % len(palette)],
+            "backgroundColor": palette[index % len(palette)],
+            "tension": 0.25,
+            "pointRadius": 0,
+            "borderWidth": 2,
+        })
+
+    # Only options.scales survives oya/partials/chart.html — it rebuilds
+    # options.plugins wholesale, so a legend setting passed here would be
+    # dropped without a word.
+    return json.dumps({
+        "chart_type": "line",
+        "labels": labels,
+        "datasets": datasets,
+        "options": {"scales": {"y": {"beginAtZero": False}}},
+    })
+
+
 @login_required
 def wallet(request):
     from django.utils import timezone
@@ -328,6 +456,8 @@ def wallet(request):
         'currencies': currencies,
         'now': now,
         'has_wallet_pin': has_wallet_pin(request.user),
+        'balance_history_json': _balance_history_json(request.user, account_pks),
+        'balance_history_days': BALANCE_HISTORY_DAYS,
     })
 
 

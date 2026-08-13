@@ -1,8 +1,24 @@
 {% extends "assets/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block assets_title %}{% trans "My Wallet" %}{% endblock %}
 {% block tab_wallet %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}block.super, not a replacement: assets/base.html declares the
+   [x-cloak] rule this app's Alpine-hidden elements need, and dropping it makes
+   them flash open on first paint.
+
+   Chart.js is vendored locally by scripts/download_vendor.py, never a CDN. This
+   is the first chart in toto-economy, so nothing upstream loads it.
+
+   oya/partials/dim.html is NOT optional: the shared chart partial calls dim()
+   unconditionally to shade the grid, and omitting it is a ReferenceError that
+   kills the whole inline script, not a chart that looks plainer.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
 
 {% block assets_content %}
 <div class="space-y-6">
@@ -62,6 +78,33 @@
     <i class="fa-solid fa-wallet text-3xl opacity-30 mb-3"></i>
     <p class="text-sm opacity-60">{% trans "No balances yet. Ask an admin to link your account and fund it." %}</p>
   </div>
+  {% endif %}
+
+  <!-- Balance history -->
+  {% if balance_history_json %}
+  <section
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="rounded-2xl border p-5 shadow-sm">
+    <div class="mb-4 flex flex-wrap items-baseline justify-between gap-2">
+      <h3 class="font-bold flex items-center gap-2">
+        <i class="fa-solid fa-chart-line opacity-60 text-sm"></i>{% trans "Balance history" %}</h3>
+      <p class="text-xs opacity-50">
+        {% blocktrans count counter=balance_history_days %}The last day{% plural %}The last {{ counter }} days{% endblocktrans %}
+      </p>
+    </div>
+    {% comment %}The wrapper's height is required, not decorative: the shared
+       partial sets maintainAspectRatio:false and its own wrapper is
+       height:auto, so an unsized parent collapses the canvas to nothing. The
+       id is prefixed by app — it lands in both the DOM id and the
+       getElementById, so a collision would draw two charts on one canvas.
+    {% endcomment %}
+    <div class="h-64">
+      {% include "oya/partials/chart.html" with chart_id="wallet_balance_history" data=balance_history_json %}
+    </div>
+    <p class="mt-3 text-xs opacity-50">
+      {% trans "Reconstructed from your movements, ending at the balances above." %}
+    </p>
+  </section>
   {% endif %}
 
   <!-- Accounts detail (sorted by user_priority desc, then code) -->
