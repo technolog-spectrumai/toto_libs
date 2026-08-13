@@ -9,6 +9,7 @@ from django.urls import reverse_lazy
 from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault.models import VaultFile
 
@@ -25,6 +26,13 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
     save_url_name: str = ""
     delete_url_name: str = ""
     login_url = reverse_lazy("core:login")
+
+    #: Which assistant surface this editor's file type belongs to. The split
+    #: matters: an answer bound for an .html file is markup this platform
+    #: renders and is screened like an upload, while one bound for a .py or a
+    #: .txt file is neither. "" means the assistant is not offered here at all.
+    #: See toto/editor/ai_surfaces.py.
+    steven_surface: str = "editor-text"
 
     def get_extra_context(self, vault_file) -> dict:
         return {}
@@ -75,6 +83,10 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 "wrap_lines": "true" if self.wrap_lines else "false",
                 "save_url": reverse(self.save_url_name, args=[file_pk]),
                 "delete_url": reverse(self.delete_url_name, args=[file_pk]),
+                # "" on a host without the assistant, and the template renders
+                # nothing at all — toto.core.assistant is the seam, so this app
+                # never names the wheel that ships it.
+                "steven_surface": assistant.surface_for(self.steven_surface),
                 # repo_context deliberately NOT merged here any more: the
                 # generic editor is the vault's own surface and git left the
                 # vault UI. The helper stays — memo and cyprian still call it.
@@ -154,6 +166,7 @@ class TextFileDisplayView(BaseFileDisplayView):
 
 class JsonFileDisplayView(BaseFileDisplayView):
     ace_mode = "json"
+    steven_surface = "editor-code"
     ws_path = "editor"
     save_url_name = "editor:json_save"
     delete_url_name = "editor:json_delete"
@@ -161,12 +174,14 @@ class JsonFileDisplayView(BaseFileDisplayView):
 
 class YamlFileDisplayView(BaseFileDisplayView):
     ace_mode = "yaml"
+    steven_surface = "editor-code"
     ws_path = "editor"
     save_url_name = "editor:yaml_save"
     delete_url_name = "editor:yaml_delete"
 
 
 class SvgFileDisplayView(BaseFileDisplayView):
+    steven_surface = ""
     ace_mode = "svg"
     ws_path = "editor"
     save_url_name = "editor:svg_save"
@@ -175,6 +190,7 @@ class SvgFileDisplayView(BaseFileDisplayView):
 
 class XmlFileDisplayView(BaseFileDisplayView):
     ace_mode = "xml"
+    steven_surface = "editor-markup"
     ws_path = "editor"
     save_url_name = "editor:xml_save"
     delete_url_name = "editor:xml_delete"
@@ -182,6 +198,7 @@ class XmlFileDisplayView(BaseFileDisplayView):
 
 class HtmlFileDisplayView(BaseFileDisplayView):
     ace_mode = "html"
+    steven_surface = "editor-markup"
     ws_path = "editor"
     save_url_name = "editor:html_save"
     delete_url_name = "editor:html_delete"
@@ -197,6 +214,7 @@ class CsvFileDisplayView(BaseFileDisplayView):
 
 
 class LatexFileDisplayView(BaseFileDisplayView):
+    steven_surface = "editor-latex"
     # LaTeX source (.tex/.sty/.cls) edited with Ace's latex highlighting.
     # Compilation is the separate TeX Compiler workflow (toto.texlab) — when that
     # app is installed the toolbar gets a Compile button that dispatches it.
@@ -223,6 +241,7 @@ class LatexFileDisplayView(BaseFileDisplayView):
 
 
 class BibFileDisplayView(BaseFileDisplayView):
+    steven_surface = "editor-code"
     # BibTeX bibliography (.bib) edited with Ace's bibtex highlighting.
     ace_mode = "bibtex"
     ws_path = "editor"

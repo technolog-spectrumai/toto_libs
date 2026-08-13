@@ -32,6 +32,7 @@ from django.views.decorators.http import require_POST
 
 from toto.editor.views import BaseFileDisplayView
 from toto.memo.media import clean_svg_markup, image_bytes_to_data_uri
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import locks, versions
 from toto.vault.filetree import accessible_files
@@ -497,6 +498,10 @@ class DocumentEditView(LoginRequiredMixin, View):
             "tiptap_import_map": tiptap.import_map_json(),
             "read_url": reverse("cyprian:read", args=[file_pk]),
             "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]),
+            # "" on a host without the assistant, and the template renders
+            # nothing at all — see toto.core.assistant, which is why cyprian
+            # never names toto-ai.
+            "steven_surface": assistant.surface_for("cyprian"),
             **BaseFileDisplayView.repo_context(vault_file, request.user),
         }, request)
         return render(request, self.template_name, context)

@@ -479,3 +479,86 @@ class FailRunTests(TestCase):
 
         run.refresh_from_db()
         self.assertEqual(run.status, RunStatus.SUCCESS)
+
+
+class SurfaceSeamTests(TestCase):
+    """`toto.core.assistant` — the one thing an editor is allowed to know."""
+
+    def test_it_answers_the_key_when_everything_is_in_place(self):
+        from toto.core import assistant
+
+        _register_test_surfaces()
+        self.assertEqual(assistant.surface_for("tests"), "tests")
+
+    def test_an_unregistered_surface_answers_nothing(self):
+        """An editor that has not declared one gets no button, not a crash."""
+        from toto.core import assistant
+
+        self.assertEqual(assistant.surface_for("no-such-editor"), "")
+
+    def test_an_uninstalled_assistant_answers_nothing(self):
+        """The degradation the whole façade exists for: a host without toto-ai
+        renders every editor exactly as it did before."""
+        from toto.core import assistant
+
+        with mock.patch("django.apps.apps.is_installed", return_value=False):
+            self.assertEqual(assistant.surface_for("tests"), "")
+
+    def test_an_unmounted_app_answers_nothing(self):
+        """Installed-but-unmounted is a real state here — zenobia keeps
+        toto.mandragora installed for an FK and serves it at no URL."""
+        from django.urls import NoReverseMatch
+
+        from toto.core import assistant
+
+        _register_test_surfaces()
+        with mock.patch("django.urls.reverse", side_effect=NoReverseMatch):
+            self.assertEqual(assistant.surface_for("tests"), "")
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
+class EditorButtonTests(TestCase):
+    """The button appears where a surface exists, and nowhere else."""
+
+    @classmethod
+    def setUpTestData(cls):
+        _platform()
+        cls.user = User.objects.create_user("writer", password="pw")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_a_latex_file_gets_the_latex_surface(self):
+        from toto.editor.views import LatexFileDisplayView
+
+        self.assertEqual(LatexFileDisplayView.steven_surface, "editor-latex")
+
+    def test_an_html_file_gets_the_markup_surface_which_is_screened(self):
+        from toto.editor.views import HtmlFileDisplayView
+        from toto.steven.surfaces import registry
+
+        self.assertEqual(HtmlFileDisplayView.steven_surface, "editor-markup")
+        self.assertEqual(registry.get("editor-markup").file_type, "html")
+
+    def test_a_plain_text_file_is_not_screened_as_markup(self):
+        """A paragraph that merely MENTIONS <script> is not a threat, and
+        refusing it would teach people to ignore the real alarm."""
+        from toto.steven.surfaces import registry
+
+        self.assertEqual(registry.get("editor-text").file_type, "")
+        self.assertEqual(registry.get("editor-code").file_type, "")
+
+    def test_the_svg_editor_offers_nothing(self):
+        """SVG has its own editor with its own source view; a prose assistant
+        on raw drawing markup is the wrong tool in the wrong place."""
+        from toto.editor.views import SvgFileDisplayView
+
+        self.assertEqual(SvgFileDisplayView.steven_surface, "")
+
+    def test_cyprian_declares_a_screened_prose_surface(self):
+        from toto.steven.surfaces import registry
+
+        surface = registry.get("cyprian")
+        self.assertIsNotNone(surface)
+        self.assertEqual(surface.file_type, "html")
+        self.assertIn("improve", {a.key for a in surface.actions})

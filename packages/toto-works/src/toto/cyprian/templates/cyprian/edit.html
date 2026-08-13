@@ -247,6 +247,11 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
                 class="cy-tool">H<span x-text="lvl"></span></button>
       </template>
 
+      {% if steven_surface %}
+        <span class="cy-tool-sep"></span>
+        {% include "steven/_actions.html" with surface=steven_surface %}
+      {% endif %}
+
       <span class="cy-tool-sep"></span>
 
       <button type="button" @click="toggleMark('bold')" title="{% trans 'Bold' %}"
@@ -730,6 +735,7 @@ toolbar partial's own docstring demands the pair. {% endcomment %}
 {% endblock %}
 
 {% block end_script %}
+  {% if steven_surface %}{% include "steven/_head.html" %}{% endif %}
   <script src="{% static 'vendor/katex/katex.min.js' %}"></script>
   {% comment %} ACE, and the files it cannot fetch for itself.
 

@@ -5,6 +5,15 @@
 {% block title %}{{ vault_file.title }} – {{ directory_name }}{% endblock %}
 
 {% block start_script %}
+{% comment %}oya/base.html declares no [x-cloak] rule, so a page carrying an
+   Alpine-hidden element declares its own — the assistant panel is one. Without
+   it the panel renders fully open on first paint and collapses when Alpine
+   boots, which is the same trap quota/base.html and every editor already
+   documents.{% endcomment %}
+{% if steven_surface %}
+<style>[x-cloak]{display:none!important}</style>
+{% include "steven/_head.html" %}
+{% endif %}
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
 {% if ace_mode == "python" %}
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
@@ -75,6 +84,14 @@
         <button id="toggle-readonly" title="{% trans 'Toggle read-only' %}" class="toolbar-btn border">
           <i id="lock-icon" class="fa-solid fa-lock-open"></i>
         </button>
+
+        {% comment %}The assistant, when this host has one and this file type has
+           a surface. Alpine-scoped inside its own span, so it coexists with a
+           page whose other controls are plain id handles.{% endcomment %}
+        {% if steven_surface %}
+          <div class="h-5 w-px opacity-20 bg-current"></div>
+          {% include "steven/_actions.html" with surface=steven_surface %}
+        {% endif %}
 
         <button id="toggle-sync" title="{% trans 'Toggle live sync' %}" class="toolbar-btn border">
           <i id="sync-icon" class="fa-solid fa-arrows-rotate"></i>
@@ -235,6 +252,28 @@ editor.session.setMode("ace/mode/{{ ace_mode }}");
 editor.setValue(`{{ content|escapejs }}`, -1);
 editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: {{ wrap_lines }}, readOnly: false });
 window.VaultEditor = editor;
+
+{% if steven_surface %}
+/* The assistant's two functions, and the whole of this editor's part in it.
+   ACE has had `getSelectedText` and `session.replace` all along; nothing in
+   this repo read a selection until now.
+
+   The write goes through the session so it lands on ACE's own undo stack — the
+   assistant's edit must be undoable exactly like a typed one. It also fires the
+   change event the websocket sync listens to, so the replacement propagates and
+   is screened by the antivirus door on its way to disk, like any other edit. */
+if (window.StevenActions) {
+  window.StevenActions.register("{{ steven_surface|escapejs }}", {
+    read: function () { return editor.getSelectedText() || ""; },
+    write: function (text) {
+      var range = editor.getSelectionRange();
+      if (range.isEmpty()) return;
+      editor.session.replace(range, text);
+      editor.focus();
+    },
+  });
+}
+{% endif %}
 
 EditorSync.initBaseline(editor);
 

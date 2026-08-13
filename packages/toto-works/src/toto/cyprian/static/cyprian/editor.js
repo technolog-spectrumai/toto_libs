@@ -392,8 +392,13 @@
         editorFor = "document";
         this.ui.marks += 1;
         this.renderFormulas(host);
+        this.registerAssistant();
       },
 
+      /* Registered here rather than in boot(): `editor` is created in
+         mountEditor and replaced whenever the document is rebuilt (undo, redo,
+         Apply from source), and the handlers close over it. Re-registering on
+         every mount keeps them pointed at the live instance. */
       teardownEditor: function () {
         if (editor) {
           // Take the HTML back before the instance goes: a destroy mid-keystroke
@@ -459,6 +464,35 @@
         this.cmd(function (c) {
           if (!href) { c.unsetLink().run(); return; }
           c.extendMarkRange("link").setLink({ href: href }).run();
+        });
+      },
+
+      /* ---- the assistant --------------------------------------------------
+       * Two functions, and the whole of cyprian's part in it. Registered on
+       * boot so steven/actions.js — which knows nothing about TipTap — can read
+       * what is selected and put an accepted answer back.
+       *
+       * The write goes through `chain()`, exactly like every toolbar button, so
+       * the undo stack, the dirty flag and the conflict hash behave as they do
+       * for a human edit. Replacing the node directly would produce a change
+       * the writer could not undo, which is the one thing an assistant must
+       * never do.
+       */
+      registerAssistant: function () {
+        if (!global.StevenActions || !editor) return;
+        global.StevenActions.register("cyprian", {
+          read: function () {
+            var sel = editor.state.selection;
+            if (sel.empty) return "";
+            return editor.state.doc.textBetween(sel.from, sel.to, "\n\n");
+          },
+          write: function (text) {
+            var sel = editor.state.selection;
+            if (sel.empty) return;
+            editor.chain().focus()
+              .insertContentAt({ from: sel.from, to: sel.to }, text)
+              .run();
+          },
         });
       },
 
