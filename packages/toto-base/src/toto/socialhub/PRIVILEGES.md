@@ -1,4 +1,4 @@
-# Privileges, offices and the head tax
+# Privileges and offices
 
 **Rights are held by institutions, never by persons.** There are two, and they
 grant in two different shapes:
@@ -16,9 +16,8 @@ Neither can hand one named individual a right their successor will not inherit,
 which is the property the whole design preserves.
 
 `socialhub/privileges.py` is the one resolver everything asks. Every function in
-it degrades to the commoner answer (no rights, ordinary rate, no headroom)
-rather than raising: a gate failing open would be escalation, and a levy raising
-would stop the nightly run for everyone.
+it degrades to the commoner answer (no rights, no headroom) rather than
+raising: a gate failing open would be escalation.
 
 ## Every field, and the gate that honours it
 
@@ -28,7 +27,6 @@ would stop the nightly run for everyone.
 | `may_administer_communities` | both | `AdministrataView.dispatch`, and the button on the community page |
 | `may_manage_community_news` | both | `socialhub/permissions.py::can_manage_community_news` — joins head and senior members, reaching across communities |
 | `may_operate_mint` | both | `mint/views.py::_staff_only` — the **user half only** (see below) |
-| `head_weight` | community | the `civics.head` levy: what a member owes the federation |
 | `limit_multiplier` | station | `quota/api.py::effective_limit`, read by `check_quota`, `remaining` and `usage_summary` |
 | `stipend` | station | the payroll sweep — paid by the federal treasury |
 
@@ -46,21 +44,20 @@ make the button work. Asserted in `tax/tests/test_privileges.py::MintHonestyTest
 officers. There is one receiver of taxes and one payer of salaries, and they are
 the same account (`platform-usage-fees`).
 
-- **`head_weight`** — how many heads a member counts as for the head tax. `1` is
-  ordinary, `0` exempts, `2`–`3` says a community is trusted less. Across a
-  person's communities the **lowest** wins, and a community with no privilege row
-  counts as an ordinary `1` — so belonging to one plain community is itself a way
-  out of a heavy one. Someone in no community pays the ordinary rate: this is a
-  tax on everyone, not a penalty for being unaffiliated.
-- **Concentration is charged on top, and a community cannot shelter it.** The
-  head-tax rule carries `concentration_k`; each holder owes `k × share²` heads
-  in addition, where share is their holdings over what all users hold between
-  them. It is **added** to the head weight, not multiplied, so `head_weight = 0`
-  buys a cheap head and not immunity — a Gini regulator you can escape by
-  joining the right community would not be one. Default `k = 0` is off.
-- **A community never receives anything.** It has no wallet, no treasurer and no
-  payroll, and needs none — the *user* is billed for platform use, never the
-  community. `head_weight` sets what a member owes; it never says who is paid.
+- **A community never receives anything, and this file no longer sets what its
+  members owe.** It has no wallet, no treasurer and no payroll, and needs none —
+  the *user* is billed for platform use, never the community. What a community
+  does to a member's bill is a **discount on a subscription plan**
+  (`toto.subscriptions.CommunityPlanDiscount`), and the highest discount across
+  a person's communities wins. That replaced `head_weight`, which said the same
+  thing in the opposite direction (lowest weight won) for a head tax that no
+  longer exists.
+- **Concentration is charged on top, and no concession shelters it.** A levy
+  rule carries `concentration_k`; each holder owes `k × share²` in addition,
+  where share is their holdings over what all users hold between them. It is
+  **added** to what the provider measured rather than multiplying it, so a
+  concession on a resource never becomes immunity from this — a Gini regulator
+  you could escape would not be one. Default `k = 0` is off.
 - **`limit_multiplier`** — headroom, never money. An office gets the room its
   work needs, and **pays exactly what anyone else pays for the same action**.
   Asserted directly on the ledger, because that is the constraint.
@@ -80,10 +77,12 @@ and no approval workflow, deliberately.
 ## What this generalises
 
 - `Community.is_federal_tribe` — promised *"members are exempt from all poll
-  taxes"* while no poll tax existed. There is one now, and migration
-  `socialhub/0004` gives every flagged community `head_weight = 0` — the
-  exemption it always meant. The boolean stays, deprecated, because **aurelian**
-  reads it by name for responder eligibility.
+  taxes"* while no poll tax existed. One briefly did (the head tax), and
+  migration `socialhub/0004` gave every flagged community `head_weight = 0`,
+  the exemption it always meant. Both the tax and the weight have since been
+  removed, and `0004` remains untouched because a historical migration describes
+  what happened, not what is true. The boolean stays, deprecated, because
+  **aurelian** reads it by name for responder eligibility.
 - `Person.is_federal_agent` — help text about taxes, code about two admin views.
   Those two rights are now an **office**: the migration creates a *Federal Agent*
   station holding them, with the flagged person as holder. If several held the

@@ -238,10 +238,10 @@ def user_is_frozen(user) -> bool:
         return False
 
 
-# Nothing about communities crosses here any more. The per-person side of a levy
-# used to be an exemption and an allowance override, both resolved through this
-# module so `toto.tax` never imported socialhub. Both are gone: there are no
-# allowances (the free tier is the absence of a price, not a per-metric band a
-# friend can spend for you), and the head tax expresses a community's standing
-# as the QUANTITY it reports, resolved inside its own provider in socialhub —
-# which needs no façade, because it lives on the socialhub side of the line.
+# Nothing about communities crosses here any more, and nothing about people
+# either. The per-person side of a levy used to be an exemption and an allowance
+# override, both resolved through this module so `toto.tax` never imported
+# socialhub. Both are gone: there are no allowances (the free tier is the absence
+# of a price, not a per-metric band a friend can spend for you), and a community
+# no longer changes what a levy charges at all — what it changes is the price of
+# a subscription, which is a different mechanism in a different app.

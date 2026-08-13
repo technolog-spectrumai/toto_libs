@@ -508,19 +508,19 @@ class MeteredHelpTests(TestCase):
         self.assertIn("An action with no price is free", body)
 
     def test_the_levy_sentences_only_appear_where_a_levy_engine_exists(self):
-        """placidia and aurelian install no toto.tax; the head tax is not a
-        thing there and the modal must not describe one."""
+        """placidia and aurelian install no toto.tax; a levy is not a thing
+        there and the modal must not describe one."""
         from unittest.mock import patch
 
         from toto.quota import levies
 
         with patch.object(levies, "levy_enabled", return_value=False):
             body = self._get().content.decode()
-        self.assertNotIn("The head tax is a flat charge", body)
+        self.assertNotIn("charged nightly for something you are still holding", body)
 
         with patch.object(levies, "levy_enabled", return_value=True):
             body = self._get().content.decode()
-        self.assertIn("The head tax is a flat charge", body)
+        self.assertIn("charged nightly for something you are still holding", body)
 
     def test_the_deleted_chip_did_not_come_back(self):
         """The modal is the sanctioned replacement precisely because it is not

@@ -67,10 +67,12 @@ def _is_soft_time_limit(exc: Exception) -> bool:
 def run_daily_levy(day=None) -> list[LevySummary]:
     """Levy every active rule. The beat task calls this and nothing else.
 
-    One clock. There used to be a second sweep riding this beat — a demurrage
-    on token holdings, collected into its own account — and it is gone: a head
-    tax and a fee on savings do the same job, and the head tax is the one that
-    can be explained in a sentence.
+    One clock. Two things have ridden this beat and left: a demurrage on token
+    holdings, collected into its own account, and the head tax — a daily charge
+    for being a member. What replaced the second one is not on this clock at
+    all: a monthly subscription in ``toto.subscriptions``, which people can be
+    told the price of in advance. What is left here charges for what you HOLD,
+    which is the only thing a nightly sample can honestly measure.
     """
     summaries = [levy_rule(rule, day=day) for rule in TaxRule.objects.filter(active=True)]
     for summary in summaries:
@@ -92,7 +94,7 @@ def run_daily_levy(day=None) -> list[LevySummary]:
     return summaries
 
 
-def _concentration_heads(rule, share) -> Decimal:
+def _concentration_extra(rule, share) -> Decimal:
     """The anti-concentration term: ``k × share²``, in billing units.
 
     Quadratic on purpose. A flat percentage above a threshold — which is what
@@ -102,9 +104,8 @@ def _concentration_heads(rule, share) -> Decimal:
     under and nothing to game by splitting.
 
     It is ADDED to what the provider measured rather than multiplying it, so a
-    community that pays no head tax at all (``head_weight = 0``) still pays this
-    if its member has accumulated. Trust buys a cheap head, not permission to
-    dominate the platform.
+    concession on the underlying resource never becomes an exemption from this.
+    A discount buys a cheaper bill, not permission to dominate the platform.
     """
     if share is None:
         return Decimal("0")
@@ -248,7 +249,7 @@ def levy_user(rule, metric, provider, user, raw: int, day, *, priced: bool,
     case, and every rule with ``concentration_k == 0``) adds nothing.
     """
     measured = Decimal(raw) / Decimal(provider.raw_per_unit)
-    extra = _concentration_heads(rule, share)
+    extra = _concentration_extra(rule, share)
     billable = measured + extra
     if billable <= 0:
         # Holding nothing costs nothing, and shedding everything is a way out
@@ -330,7 +331,7 @@ def estimate_for_user(user) -> list[dict]:
         measured = Decimal(raw) / Decimal(provider.raw_per_unit)
         # The same term the sweep will add, or this page quotes a bill the night
         # does not charge — the lie this whole area keeps being cured of.
-        extra = _concentration_heads(
+        extra = _concentration_extra(
             rule, _concentration_shares(rule, [user.pk]).get(user.pk))
         billable = measured + extra
         price = card.get(rule.metric_code)

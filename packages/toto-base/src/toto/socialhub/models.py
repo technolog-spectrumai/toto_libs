@@ -82,11 +82,12 @@ class Community(DomainEntity):
         default=False,
         help_text=(
             "DEPRECATED as a live flag. It promised 'members are exempt from "
-            "all poll taxes' for years while no poll tax existed; there is one "
-            "now, and what a community's members owe is its CommunityPrivilege "
-            "head_weight (0 is the exemption this always meant). Kept because "
-            "aurelian's mobilization app reads it by name for responder "
-            "eligibility. Retiring it is an aurelian follow-up."
+            "all poll taxes' for years; the poll tax that briefly existed (the "
+            "head tax) has been removed, and what a community now does to what "
+            "its members pay is a discount on a subscription plan — see "
+            "toto.subscriptions.CommunityPlanDiscount. Kept because aurelian's "
+            "mobilization app reads it by name for responder eligibility. "
+            "Retiring it is an aurelian follow-up."
         ),
     )
     def __str__(self):
@@ -144,13 +145,14 @@ class CommunityPrivilege(models.Model):
     ``Community``: one changelist of every grant on the platform, filterable and
     bulk-editable, instead of flags scattered through a 30-field community form.
 
-    ``head_weight`` is the exception, and deliberately so: it is not a right, it
-    is a bill. A member is entitled to know what their communities cost them,
-    so the head weight is announced on the profile (``HeadTaxProfilePlugin``)
-    while every other field here stays admin-only.
+    Every field here is admin-only. It used to carry one exception — a
+    ``head_weight`` announced on the profile, because a member is entitled to
+    know what their communities cost them. The head tax is gone and so is that
+    field; what a community does to a member's bill is now a discount on a
+    subscription plan, and it is announced on the plans page instead.
 
-    A community without a row grants nothing and taxes at the ordinary rate —
-    the commoner default, free to resolve.
+    A community without a row grants nothing — the commoner default, free to
+    resolve.
 
     Each flag is honoured somewhere concrete — ``PRIVILEGES.md`` maps every
     field to the gate that reads it, and :mod:`toto.socialhub.privileges` is the
@@ -160,17 +162,6 @@ class CommunityPrivilege(models.Model):
     community = models.OneToOneField(
         Community, on_delete=models.CASCADE, related_name="privilege")
 
-    head_weight = models.DecimalField(
-        max_digits=6, decimal_places=2, default=Decimal("1"),
-        help_text=(
-            "How many heads a member of this community counts as when the "
-            "federal head tax is levied. 1 is ordinary; 0 exempts them "
-            "entirely; 2 or 3 says this community is trusted less. Across "
-            "several communities the LOWEST weight wins — belonging to a good "
-            "community is what makes you cheap to tax. The tax itself is "
-            "federal: this sets what a member owes, never who receives it."
-        ),
-    )
     may_see_community_chain = models.BooleanField(
         default=False,
         help_text="Members may open the platform-wide community chain graph.",
@@ -273,7 +264,7 @@ class Station(models.Model):
         max_digits=8, decimal_places=2, default=Decimal("1"),
         help_text=(
             "Multiplies every quota limit for the holder, so an office has the "
-            "headroom its work needs. HEADROOM ONLY: prices and the head tax "
+            "headroom its work needs. HEADROOM ONLY: prices "
             "are untouched, and a holder pays exactly what anyone else pays "
             "for the same action."
         ),
@@ -579,25 +570,3 @@ class ConstitutionSignature(models.Model):
     @property
     def is_cryptographically_signed(self):
         return bool(self.cryptographic_signature and self.signing_payload)
-
-
-# ---------------------------------------------------------------------------
-# Usage metering — the head tax needs somewhere to write its daily trail
-# ---------------------------------------------------------------------------
-# The standard opt-in (see toto.quota.models): each app owns its own pair, so
-# the rows live in this app's tables and go away with it. Socialhub meters
-# exactly one thing, and it is the odd one out on the platform — `civics.head`
-# measures BEING A MEMBER rather than anything anybody did.
-
-class SocialhubUsageEvent(AbstractUsageEvent):
-    class Meta(AbstractUsageEvent.Meta):
-        verbose_name = "Socialhub usage event"
-        verbose_name_plural = "Socialhub usage events"
-
-
-class SocialhubQuotaPolicy(AbstractQuotaPolicy):
-    events = SocialhubUsageEvent
-
-    class Meta(AbstractQuotaPolicy.Meta):
-        verbose_name = "Socialhub quota policy"
-        verbose_name_plural = "Socialhub quota policies"

@@ -186,13 +186,13 @@ class CommunityPrivilegeAdmin(TotoModelAdmin):
     admitting someone to a listed community IS the grant.
     """
 
-    list_display = ("community", "head_weight", "may_see_community_chain",
+    list_display = ("community", "may_see_community_chain",
                     "may_administer_communities", "may_manage_community_news",
                     "may_operate_mint")
-    list_editable = ("head_weight", "may_see_community_chain",
+    list_editable = ("may_see_community_chain",
                      "may_administer_communities", "may_manage_community_news",
                      "may_operate_mint")
-    list_filter = ("head_weight", "may_see_community_chain",
+    list_filter = ("may_see_community_chain",
                    "may_administer_communities", "may_manage_community_news",
                    "may_operate_mint")
     search_fields = ("community__name", "community__slug")

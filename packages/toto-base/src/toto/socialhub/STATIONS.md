@@ -49,7 +49,7 @@ place limits are resolved (`quota/api.py::effective_limit`, read by
 `check_quota`, `remaining` and `usage_summary`). The Archivist gets 10× the
 upload cap because the job needs it.
 
-**Prices and the head tax are untouched.** An office is trusted with more room,
+**Prices are untouched.** An office is trusted with more room,
 never with cheaper money, and a test asserts the holder's charge for the same
 action is byte-identical to a commoner's. A multiplier below 1 is ignored: an
 office adds headroom and can never take it away.
@@ -138,6 +138,6 @@ appoints its own, in its own admin.
 
 ## See also
 
-- `PRIVILEGES.md` — the other shape of grant, and the head tax that pays for
+- `PRIVILEGES.md` — the other shape of grant, and the money that pays for
   these offices.
 - `zenobia/gas.md` — what is metered, what it costs, and how you get gas.

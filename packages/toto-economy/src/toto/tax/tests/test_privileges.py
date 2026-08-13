@@ -86,26 +86,6 @@ class OfficeChangesNoCharge(TestCase):
         check_quota(VaultQuotaPolicy, "storage.request", 50, officer)
 
 
-class HeadWeightOnTheSweep(TestCase):
-    """A community's standing arrives as the QUANTITY its provider reports."""
-
-    def test_the_weight_resolves_the_way_the_page_says_it_does(self):
-        from toto.socialhub import privileges
-        from toto.socialhub.models import Community, CommunityPrivilege
-
-        trusted = Community.objects.create(name="Trusted")
-        CommunityPrivilege.objects.create(community=trusted, head_weight=Decimal("0"))
-        suspect = Community.objects.create(name="Suspect")
-        CommunityPrivilege.objects.create(community=suspect, head_weight=Decimal("3"))
-
-        member = make_user("member")
-        _citizen(member, suspect)
-        self.assertEqual(privileges.head_weight_for(member), Decimal("3"))
-
-        member.community_profile.communities.add(trusted)
-        self.assertEqual(privileges.head_weight_for(member), Decimal("0"))
-
-
 class MintHonestyTests(TestCase):
     """may_operate_mint is the USER half only — the machine half still refuses.
 

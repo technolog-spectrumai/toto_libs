@@ -3,14 +3,13 @@
 **Rights are held by institutions, never by persons.** There are two, and they
 grant in two different shapes:
 
-* a **community** grants to *every member* — its privilege row, and the head
-  weight that decides what its members owe the federation;
+* a **community** grants to *every member* — its privilege row;
 * a **station** grants to *whoever currently holds it* — a federal office, and
   the headroom that office needs to do its work.
 
 A person HOLDS the union of both. **Highest privilege always**: any community
-granting a right grants it, any office granting a right grants it, the lowest
-head weight wins, and the largest limit multiplier wins. That is not a loophole,
+granting a right grants it, any office granting a right grants it, and the
+largest limit multiplier wins. That is not a loophole,
 it is the granting mechanism — membership is invite-gated
 (``MembershipApplication`` → accepted → ``communities.add`` is the only door)
 and an office is appointed in admin, so admitting or appointing someone *is* the
@@ -31,13 +30,15 @@ and three ad-hoc re-implementations of "get from a user to their communities",
 one of which had never worked at all.
 
 **Everything degrades to the commoner.** No person, anonymous, a database
-mid-migrate — every failure answers "no rights, ordinary rate, no headroom" and
-never raises. A gate failing open on a missing row would be privilege
-escalation; a levy raising on one would stop the nightly run for everyone.
+mid-migrate — every failure answers "no rights, no headroom" and never raises. A
+gate failing open on a missing row would be privilege escalation.
 
-**Bulk first.** The nightly levy walks every holder on the platform with one
-``in_bulk``; a per-user lookup would turn a two-query run into N. The
-``*_for_users`` twins resolve a whole run in a fixed number of queries.
+**What used to be here.** A ``head_weight`` per community, and a bulk twin that
+resolved a whole nightly levy run in two queries, because the head tax asked
+this module for every user on the platform once a night. The head tax is gone —
+what a community does to what its members owe now lives in
+``toto.subscriptions`` as a discount on a plan, and nothing in this module is
+called in bulk any more.
 """
 
 from __future__ import annotations
@@ -48,20 +49,15 @@ from django.db import DatabaseError
 
 #: Every named right an institution can grant — field names carried by BOTH
 #: CommunityPrivilege and Station, so the two stay in step and a right cannot be
-#: added to one and forgotten on the other. The money dials are deliberately not
-#: in here: ``head_weight`` and ``limit_multiplier`` are numbers, not access, and
-#: are asked through their own functions below.
+#: added to one and forgotten on the other. The money dial is deliberately not
+#: in here: ``limit_multiplier`` is a number, not access, and is asked through
+#: its own function below.
 RIGHTS = (
     "may_see_community_chain",
     "may_administer_communities",
     "may_manage_community_news",
     "may_operate_mint",
 )
-
-#: The head weight of someone who belongs to no community, and of a community
-#: with no privilege row. One head, the ordinary rate.
-ORDINARY_HEAD_WEIGHT = Decimal("1")
-
 
 def _person_of(user):
     if user is None or not getattr(user, "is_authenticated", False):
@@ -105,41 +101,12 @@ def has_privilege(user, right: str) -> bool:
         return False
 
 
-def head_weight_for(user) -> Decimal:
-    """How many heads this user counts as for the federal head tax.
-
-    The LOWEST weight across their communities wins: belonging to a trusted
-    community is what makes you cheap to tax, and belonging to a second one can
-    only help. Someone in no community pays the ordinary rate — this is a tax on
-    everyone, not a penalty for being unaffiliated.
-
-    Offices do not enter into it. A station holder pays exactly what anyone else
-    in their community pays, which is the whole of "extra limits, same taxes".
-    """
-    person = _person_of(user)
-    if person is None:
-        return ORDINARY_HEAD_WEIGHT
-    try:
-        weights = list(person.communities
-                       .values_list("privilege__head_weight", flat=True))
-    except DatabaseError:
-        return ORDINARY_HEAD_WEIGHT
-    if not weights:
-        # Nobody's community, so nobody's rate but the ordinary one. This is a
-        # tax on everyone, not a penalty for being unaffiliated.
-        return ORDINARY_HEAD_WEIGHT
-    # A community with no privilege row IS an ordinary community, and belonging
-    # to one is itself a way out of a heavy one — so it enters the comparison
-    # as a 1 rather than being skipped. Lowest wins.
-    return min(ORDINARY_HEAD_WEIGHT if w is None else w for w in weights)
-
-
 def limit_multiplier_for(user) -> Decimal:
     """How much headroom this user's offices buy them, as a multiplier.
 
     The LARGEST across every office they hold, and never below 1 — an office
     adds room and can never take it away. This multiplies quota LIMITS only;
-    prices and the head tax never see it.
+    prices never see it.
     """
     person = _person_of(user)
     if person is None:
@@ -157,54 +124,3 @@ def limit_multiplier_for(user) -> Decimal:
     if best is None:
         return Decimal("1")
     return max(best, Decimal("1"))
-
-
-# ---------------------------------------------------------------------------
-# Bulk twin — the nightly run resolves a whole host in a fixed query count
-# ---------------------------------------------------------------------------
-
-def head_weights_for_users(user_ids) -> dict:
-    """``{user_id: head_weight}`` for a whole levy run. Two queries.
-
-    Only ids that differ from :data:`ORDINARY_HEAD_WEIGHT` appear; the caller
-    uses the ordinary weight for everyone else, so the common case — no
-    community setting a weight at all — costs two cheap queries and adds no rows.
-    """
-    ids = list(user_ids)
-    if not ids:
-        return {}
-    try:
-        from toto.people.models import Person
-
-        from .models import CommunityPrivilege
-
-        # Which communities set a weight other than the ordinary one? Usually
-        # none or few, and reading them first keeps the join below small.
-        weighted = dict(CommunityPrivilege.objects
-                        .exclude(head_weight=ORDINARY_HEAD_WEIGHT)
-                        .values_list("community_id", "head_weight"))
-        if not weighted:
-            return {}
-        memberships = (Person.objects
-                       .filter(user_id__in=ids)
-                       .values_list("user_id", "communities"))
-    except DatabaseError:
-        return {}
-
-    best: dict = {}
-    seen_ordinary: set = set()
-    for uid, cid in memberships:
-        if uid is None:
-            continue
-        weight = weighted.get(cid)
-        if weight is None:
-            # A community with no weight of its own is an ordinary one, and
-            # belonging to it caps this person at the ordinary rate however
-            # heavy their other communities are. Lowest wins.
-            seen_ordinary.add(uid)
-            continue
-        if uid not in best or weight < best[uid]:
-            best[uid] = weight
-
-    return {uid: weight for uid, weight in best.items()
-            if uid not in seen_ordinary and weight != ORDINARY_HEAD_WEIGHT}
