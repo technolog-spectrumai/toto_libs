@@ -136,11 +136,18 @@ def authorize(request):
             code_challenge_method=code_challenge_method,
         )
 
-    return render(request, "sso/consent.html", {
+    # Decorated, like every other page. sso/consent.html extends oya/base.html,
+    # and the palette lives in the Platform record rather than a stylesheet — so
+    # a bare render left the consent screen unstyled, and its own
+    # `{{ platform.site_name }}` blank. That is the one page where a visitor is
+    # being asked to trust this site with their identity.
+    from toto.ui import PageProcessor
+
+    return render(request, "sso/consent.html", PageProcessor().decorate({
         "client": client,
         "scope_items": scope.split(),
         "query_string": request.META.get("QUERY_STRING", ""),
-    })
+    }, request))
 
 
 @login_required

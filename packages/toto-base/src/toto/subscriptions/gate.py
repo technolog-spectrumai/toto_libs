@@ -148,11 +148,39 @@ class SubscriptionGateMiddleware:
                  "entitlement": code, "plans_url": self._plans_url()},
                 status=PAYMENT_REQUIRED,
             )
-        return render(request, "subscriptions/locked.html", {
+        context = {
             "message": message,
             "entitlement": entitlement,
             "plans_url": self._plans_url(),
-        }, status=PAYMENT_REQUIRED)
+        }
+        return render(request, "subscriptions/locked.html",
+                      self._decorate(context, request),
+                      status=PAYMENT_REQUIRED)
+
+    @staticmethod
+    def _decorate(context: dict, request) -> dict:
+        """The platform's page context, and never at the cost of the refusal.
+
+        ``locked.html`` extends ``oya/base.html``, whose palette comes from the
+        Platform record rather than a stylesheet — so rendering this bare gave
+        an unstyled 402 on the one page whose job is to persuade somebody to
+        subscribe. Imported here rather than reusing ``views._render`` because
+        this is middleware and that module imports back into this one.
+
+        **The fallback is the point.** ``PageProcessor()`` raises ``Http404``
+        when no Platform row is active, which in middleware would turn a 402
+        refusal into a 404 — a host mid-setup would answer "no such page" to
+        every gated write. An ugly refusal beats a wrong one, so a missing
+        platform costs the styling and nothing else.
+        """
+        from django.http import Http404
+
+        from toto.ui import PageProcessor
+
+        try:
+            return PageProcessor().decorate(context, request)
+        except Http404:
+            return context
 
     @staticmethod
     def _plans_url() -> str:

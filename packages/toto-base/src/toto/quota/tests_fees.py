@@ -260,9 +260,24 @@ class UsageTabsTests(TestCase):
     def test_the_active_sub_tab_is_marked(self):
         self.assertIn('aria-current="page"', self._render(self.plain, "metered"))
 
+    def _require_subscriptions(self):
+        """This module ships in toto-base, to hosts that have no subscriptions.
+
+        BUILD_SUBSCRIPTIONS is off by default; placidia and aurelian install
+        toto.quota without it, and placidia already runs toto.quota tests. The
+        chip is behind ``|app_installed``, so on those hosts these must skip
+        rather than fail. Same guard as
+        ``test_the_real_registry_found_the_shipped_sources``.
+        """
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.subscriptions"):
+            self.skipTest("no subscriptions on this host")
+
     def test_subscriptions_is_one_chip_not_two(self):
         """It replaced Fees and it absorbed the old "Plans" chip, which pointed
         at the same URL — two chips to one page is a duplicate, not navigation."""
+        self._require_subscriptions()
         rendered = self._render(self.plain)
 
         self.assertEqual(rendered.count("Subscriptions"), 1)
@@ -271,6 +286,7 @@ class UsageTabsTests(TestCase):
     def test_the_subscriptions_chip_is_marked_from_either_word(self):
         """The subscriptions app calls its own sub-nav "plans", so a page there
         passes that word up; the strip has to recognise both."""
+        self._require_subscriptions()
         for value in ("subscriptions", "plans"):
             with self.subTest(active_tab=value):
                 self.assertIn('aria-current="page"',

@@ -652,3 +652,54 @@ class NavigationTests(TestCase):
         self.assertIn(reverse("subscriptions:subscribe", args=["standard"]),
                       body)
         self.assertIn(reverse("subscriptions:subscribe", args=["studio"]), body)
+
+
+class LockedPageChromeTests(TestCase):
+    """The 402 page renders as a platform page.
+
+    ``locked.html`` extends ``oya/base.html``, and the palette on this platform
+    is a Platform record rather than a stylesheet — so a bare ``render`` here
+    produced an unstyled refusal on the one page whose whole job is to persuade
+    somebody to subscribe. The gate is middleware, so it cannot reach
+    ``views._render`` without importing a module that imports it back.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.free, cls.standard, cls.studio = make_plans()
+        cls.user = member("locked-out")
+
+    def _refuse(self):
+        factory = RequestFactory()
+        middleware = SubscriptionGateMiddleware(lambda request: None)
+        request = factory.post("/aralia/")
+        request.user = self.user
+        request.resolver_match = type("M", (), {"app_name": "aralia"})()
+        return middleware.process_view(request, None, (), {})
+
+    def test_the_refusal_carries_the_platform_and_theme(self):
+        response = self._refuse()
+
+        self.assertEqual(response.status_code, 402)
+        body = response.content.decode()
+        self.assertIn("Test", body)
+
+    def test_it_is_still_a_402_and_still_names_the_plans_page(self):
+        response = self._refuse()
+
+        self.assertEqual(response.status_code, 402)
+        self.assertIn(reverse("subscriptions:plans"),
+                      response.content.decode())
+
+    def test_a_missing_platform_costs_the_styling_and_not_the_refusal(self):
+        """PageProcessor raises Http404 with no active Platform row. In
+        middleware that would answer "no such page" to every gated write on a
+        host that is still being set up."""
+        Platform.objects.update(active=False)
+
+        response = self._refuse()
+
+        self.assertEqual(response.status_code, 402)

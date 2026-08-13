@@ -1,7 +1,7 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{% block title %}{% block sub_title %}{% trans "Plans" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+{% block title %}{% block sub_title %}{% trans "Subscriptions" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
 
 {% block start_script %}
 {{ block.super }}
@@ -24,7 +24,14 @@
       </p>
       <h1 class="flex items-center gap-3 text-3xl font-bold">
         <i class="fa-solid fa-id-card"></i>
-        {% block sub_heading %}{% trans "Plans" %}{% endblock %}
+        {% comment %}"Subscriptions" is the name of the PLACE — the chip, the
+           dashboard tile, the browser title and this heading all say it, and
+           the landing page inherits it rather than overriding. "Plans" survives
+           one level down as the name of a view WITHIN it, in the sub-nav below,
+           beside "My subscription" — which does still name itself, because it
+           answers a different question. This had four names for one
+           destination.{% endcomment %}
+        {% block sub_heading %}{% trans "Subscriptions" %}{% endblock %}
         {% block sub_help %}{% endblock %}
       </h1>
       {% block sub_lede %}{% endblock %}
