@@ -10,7 +10,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 # Apps that intentionally have no migrations (non-model / base apps).
-NO_MIGRATION_APPS = {"editor", "neo_editor", "sso_core", "steven"}
+NO_MIGRATION_APPS = {"editor", "neo_editor", "sso_core"}
 # Non-app packages inside toto/ (no AppConfig, no migrations expected).
 NON_APP_PACKAGES = {"ui", "ingress"}
 # The shared host API every host imports; all of it lives in toto-base.
@@ -111,7 +111,12 @@ def test_migrations_are_packaged(all_names, owner):
     # neither owned an app: the head tax was a metric plus a levy provider
     # inside socialhub, and the company tribute was two models inside zenobia's
     # host-owned portfolio, which does not ship in any wheel.
-    assert len(apps_with_migrations) == 47, sorted(apps_with_migrations)
+    # 48: toto.steven (toto-ai) — the assistant's provider row and its run log.
+    # The app existed before and was NOT counted: it was 235 lines of floating
+    # chat widget with no models at all, which is why it appears in
+    # NO_MIGRATION_APPS at the top of this file. Rewriting it gave it tables, so
+    # that exemption went with the rewrite.
+    assert len(apps_with_migrations) == 48, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"

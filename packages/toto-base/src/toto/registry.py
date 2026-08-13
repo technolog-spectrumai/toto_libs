@@ -69,6 +69,13 @@ FEATURE_APPS = {
     "connectors": ["toto.connectors"],
     "formica": ["toto.formica"],
     "sabbia": ["toto.sabbia"],
+    # The assistant (BUILD_STEVEN_AI). No TASK_MODULES entry, deliberately: its
+    # worker entry point is a workflow PREDEFINED TASK, which WorkflowsConfig
+    # autodiscovers — so it cannot become the kind of task beat enqueues and the
+    # worker answers KeyError to. Same choice texlab and aralia made.
+    "steven_ai": ["toto.steven"],
+    # LEGACY key for the retired chat widget. The app name is the same because
+    # toto.steven was REWRITTEN in place; a host must not set both flags.
     "steven": ["toto.steven"],
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],

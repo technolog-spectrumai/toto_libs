@@ -1,0 +1,138 @@
+"""Configuring the assistant, and never showing its key.
+
+The provider form carries a write-only key field that is NOT a model field, so
+nothing round-trips; ``secret`` is read-only so nobody can point a provider at
+another app's secret (which the AEAD would refuse at read time, confusingly);
+and the "test this" action names its row explicitly so a provider can be proven
+BEFORE it is switched on. All three come from ``jess/admin.py``, which is the
+only place in the tree that had already solved this.
+"""
+
+from django import forms
+from django.contrib import admin, messages
+
+from .models import AiProvider, AiRun, StevenQuotaPolicy
+from .vault import VaultUnavailable, vault
+
+
+class AiProviderForm(forms.ModelForm):
+    """The provider form, plus one field that is not on the model."""
+
+    new_api_key = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False,
+                                   attrs={"autocomplete": "new-password"}),
+        label="Set / replace API key",
+        help_text=("Leave blank to keep the current one. Stored encrypted in "
+                   "Steven's vault and never displayed again — not even here."),
+    )
+
+    class Meta:
+        model = AiProvider
+        fields = ("label", "base_url", "model", "temperature",
+                  "max_output_tokens", "timeout", "active")
+
+
+@admin.register(AiProvider)
+class AiProviderAdmin(admin.ModelAdmin):
+    form = AiProviderForm
+    list_display = ("label", "model", "base_url", "active", "secret_status",
+                    "updated_at")
+    list_filter = ("active",)
+    search_fields = ("label", "model", "base_url")
+    # `secret` is managed only through the write-only field: an editable FK would
+    # let somebody point a provider at another app's secret, which fails at read
+    # time as an opaque cryptographic error.
+    readonly_fields = ("secret", "secret_status", "created_at", "updated_at")
+    actions = ["test_provider"]
+
+    def save_model(self, request, obj, form, change):
+        super().save_model(request, obj, form, change)
+        new_value = (form.cleaned_data.get("new_api_key") or "").strip()
+        if not new_value:
+            return
+        try:
+            old = obj.secret
+            secret = vault.store_secret(
+                new_value,
+                name=vault.unique_secret_name(f"steven-{obj.pk}"),
+                purpose="ai_api_key",
+            )
+            obj.secret = secret
+            obj.save(update_fields=["secret"])
+            vault.retire_secret(old)
+            vault.log_secret_event(
+                request.user, "set_ai_api_key", secret,
+                reason=f"set via admin for AI provider #{obj.pk}")
+            messages.success(request, "API key stored, encrypted.")
+        except VaultUnavailable as exc:
+            messages.error(request, f"Vault unavailable — the key was NOT changed: {exc}")
+        except Exception as exc:  # noqa: BLE001 — surface it, never echo the value
+            messages.error(request, f"Could not store the key: {exc}")
+
+    @admin.display(description="API key")
+    def secret_status(self, obj):
+        secret = getattr(obj, "secret", None)
+        if not secret:
+            return "— none"
+        rotated = f" · rotated {secret.rotated_at:%Y-%m-%d}" if secret.rotated_at else ""
+        return f"set · {secret.state}{rotated}"
+
+    @admin.action(description="Test this provider")
+    def test_provider(self, request, queryset):
+        """Prove a provider works BEFORE switching it on.
+
+        Names the selected row explicitly rather than using whichever is active,
+        because proving-then-switching is the sequence an operator actually
+        wants. Synchronous on purpose: the point is an immediate pass or fail,
+        independent of whether a worker is running.
+        """
+        if queryset.count() != 1:
+            messages.error(request, "Select exactly one provider.")
+            return
+        provider = queryset.first()
+        if not provider.secret_id:
+            messages.error(request, "That provider has no API key stored yet.")
+            return
+
+        from .client import ProviderError, complete
+
+        try:
+            key = vault.read_secret(provider.secret)
+        except VaultUnavailable as exc:
+            messages.error(request, f"Vault: {exc}")
+            return
+
+        try:
+            answer = complete(
+                base_url=provider.base_url, api_key=key, model=provider.model,
+                messages=[{"role": "user", "content": "Reply with the single word: ok"}],
+                temperature=0, max_tokens=8, timeout=min(provider.timeout, 30))
+        except ProviderError as exc:
+            messages.error(request, f"{provider.label} did not answer: {exc}")
+            return
+
+        used = (answer.get("usage") or {}).get("total_tokens", "?")
+        messages.success(
+            request,
+            f"{provider.label} answered \"{answer['text'].strip()[:40]}\" "
+            f"as {answer['model']} ({used} tokens).")
+
+
+@admin.register(AiRun)
+class AiRunAdmin(admin.ModelAdmin):
+    list_display = ("owner", "surface", "action", "status", "total_tokens",
+                    "model_used", "created_at")
+    list_filter = ("status", "surface", "action")
+    search_fields = ("owner__username", "surface", "action")
+    # Everything: a run is a record of what happened, and an editable one is not
+    # a record. Charges are keyed on its pk, so an edited row would misprice.
+    readonly_fields = [f.name for f in AiRun._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+
+@admin.register(StevenQuotaPolicy)
+class StevenQuotaPolicyAdmin(admin.ModelAdmin):
+    list_display = ("metric_code", "limit", "period", "mode", "active")

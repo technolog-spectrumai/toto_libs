@@ -1,0 +1,138 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Assistant" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Studio" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Assistant" %}
+        {% trans "What the assistant costs" as help_title %}
+        {% blocktrans asvar help_body %}The assistant works on what you have SELECTED, not on your whole document. That is the billing model, not a limitation: you pay by the token, and sending a whole file to fix one sentence is the difference between a free action and an expensive one.
+
+Two things are metered. A small charge per request, and the real token count from the provider's own reply — which is why this is the one charge on the platform taken after the work rather than before: nobody knows the size of an answer until it arrives.
+
+A request that fails costs nothing at all. There is no work to pay for, so there is nothing to refund.
+
+Nothing the assistant proposes is ever applied on its own. You accept it or you reject it.{% endblocktrans %}
+        {% include "oya/partials/_help.html" with title=help_title body=help_body %}
+      </h1>
+    </header>
+
+    {% comment %}The honest line first: is this thing on at all?{% endcomment %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-2 rounded-2xl border p-5 shadow-sm">
+      {% if configured %}
+        <p class="flex items-center gap-2 text-sm font-semibold">
+          <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          {% blocktrans with model=provider.model %}Ready, answering as {{ model }}.{% endblocktrans %}
+        </p>
+        <p class="text-xs opacity-60">{{ provider.label }} — {{ provider.base_url }}</p>
+      {% else %}
+        <p class="flex items-center gap-2 text-sm font-semibold">
+          <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          {% trans "Not configured on this server." %}
+        </p>
+        <p class="text-xs opacity-70">
+          {% if provider %}
+            {% blocktrans with label=provider.label %}The provider "{{ label }}" is switched on but has no API key stored. An administrator sets one in the admin.{% endblocktrans %}
+          {% else %}
+            {% trans "No provider is switched on. An administrator adds one in the admin, under AI providers." %}
+          {% endif %}
+        </p>
+      {% endif %}
+    </article>
+
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-3 rounded-2xl border p-5 shadow-sm">
+      <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Where you can use it" %}</h2>
+      <ul class="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+        {% for surface in surfaces %}
+          <li class="flex items-start gap-2">
+            <i class="{{ surface.icon }} mt-0.5 w-4 shrink-0 text-xs opacity-50"></i>
+            <span>
+              <span class="font-semibold">{{ surface.label }}</span>
+              {% if surface.description %}<span class="block opacity-65">{{ surface.description }}</span>{% endif %}
+            </span>
+          </li>
+        {% empty %}
+          <li class="opacity-60">{% trans "No editor on this server has registered a surface yet." %}</li>
+        {% endfor %}
+      </ul>
+    </article>
+
+    {% comment %}Money, and only where money exists. On a host with an empty rate
+       card the whole block is absent rather than showing zeroes.{% endcomment %}
+    {% if price_request or price_tokens %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-2 rounded-2xl border p-5 shadow-sm text-sm">
+        <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What it costs you" %}</h2>
+        {% if price_request %}
+          <p>{% trans "Per request" %}: <span class="font-semibold tabular-nums">{{ price_request.price_display }} {{ price_request.asset }}</span></p>
+        {% endif %}
+        {% if price_tokens %}
+          <p>{% trans "Per 1000 tokens" %}: <span class="font-semibold tabular-nums">{{ price_tokens.price_display }} {{ price_tokens.asset }}</span></p>
+        {% endif %}
+        {% if balance %}
+          <p class="opacity-70">{% blocktrans with amount=balance.amount asset=balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}</p>
+        {% endif %}
+      </article>
+    {% endif %}
+
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="overflow-hidden rounded-2xl border shadow-sm">
+      <h2 class="px-5 pt-5 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What you have asked" %}</h2>
+      <div class="overflow-x-auto px-5 pb-5 pt-2">
+        <table class="w-full min-w-[34rem] text-sm">
+          <thead>
+            <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+              <th class="py-2 pr-4">{% trans "When" %}</th>
+              <th class="py-2 pr-4">{% trans "Where" %}</th>
+              <th class="py-2 pr-4">{% trans "What" %}</th>
+              <th class="py-2 pr-4 text-right">{% trans "Tokens" %}</th>
+              <th class="py-2">{% trans "Result" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for run in runs %}
+              <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+                <td class="py-2 pr-4 whitespace-nowrap opacity-70">{{ run.created_at|date:"Y-m-d H:i" }}</td>
+                <td class="py-2 pr-4">{{ run.surface }}</td>
+                <td class="py-2 pr-4">{{ run.action }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ run.total_tokens }}</td>
+                <td class="py-2">
+                  {% if run.status == "success" %}
+                    <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+                      <i class="fa-solid fa-circle-check"></i> {{ run.get_status_display }}</span>
+                  {% elif run.status == "failed" %}
+                    <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold"
+                          title="{{ run.error }}">
+                      <i class="fa-solid fa-triangle-exclamation"></i> {{ run.get_status_display }}</span>
+                  {% else %}
+                    <span class="opacity-70">{{ run.get_status_display }}</span>
+                  {% endif %}
+                </td>
+              </tr>
+            {% empty %}
+              <tr><td colspan="5" class="py-3 opacity-60">
+                {% trans "Nothing yet. Select something in an editor and press the wand." %}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </article>
+  </div>
+</section>
+{% endblock %}

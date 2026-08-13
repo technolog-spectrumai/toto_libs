@@ -1,0 +1,124 @@
+{% load i18n static %}
+{% comment %}The assistant, in an editor's toolbar. One include per editor.
+
+   Params:
+     surface — REQUIRED, an AiSurface key (see toto/steven/surfaces.py)
+     label   — optional button label; the icon alone by default
+
+   The editor supplies two functions and nothing else:
+
+     window.StevenActions.register("{{ surface }}", {
+       read:  function () { return <the selected text>; },
+       write: function (text) { <replace the selection with text> },
+     });
+
+   Everything else — the action list, the request, the polling, the proposal —
+   is steven/actions.js, shared by all six editors.
+
+   Include `steven/_head.html` in the page's script block first, or this renders
+   a button that does nothing.
+
+   A page carrying this needs an [x-cloak] rule; oya/base.html declares none, so
+   every editor already has its own for the same reason.
+{% endcomment %}
+
+<span class="relative inline-flex" x-data="stevenPanel({
+        surface: '{{ surface|escapejs }}',
+        askUrl: '{% url 'steven:ask' %}',
+        actionsUrl: '{% url 'steven:surface_actions' surface %}'
+      })" @keydown.escape.window="open = false">
+
+  <button type="button" @click="toggle()"
+          :class="open ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-60 hover:opacity-100'"
+          class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm font-semibold transition"
+          title="{% trans 'Ask the assistant about the selection' %}">
+    <i class="fa-solid fa-wand-magic-sparkles"></i>{% if label %}<span class="hidden sm:inline">{{ label }}</span>{% endif %}
+  </button>
+
+  <div x-show="open" x-cloak @click.outside="open = false"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="absolute right-0 top-full z-50 mt-2 w-80 rounded-xl border p-3 shadow-lg">
+
+    {% comment %}Step one: which action. The list comes from the server so six
+       toolbars cannot drift into six vocabularies.{% endcomment %}
+    <template x-if="!chosen && !result">
+      <div class="space-y-1">
+        <p class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-50">
+          {% trans "On the selection" %}</p>
+        <template x-for="a in actions" :key="a.key">
+          <button type="button" @click="choose(a)"
+                  :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+                  class="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-sm transition">
+            <i :class="a.icon + ' w-4 text-center text-xs opacity-60'"></i>
+            <span x-text="a.label"></span>
+          </button>
+        </template>
+        <p x-show="loaded && actions.length === 0" class="px-2 py-1 text-xs opacity-60">
+          {% trans "Nothing is configured for this editor." %}</p>
+      </div>
+    </template>
+
+    {% comment %}Step two: run it, and wait. Deliberately no cost estimate — the
+       price is not knowable until the answer arrives, which is the whole reason
+       this charge happens afterwards.{% endcomment %}
+    <template x-if="chosen && !result">
+      <div class="space-y-2">
+        <p class="flex items-center gap-2 text-sm font-semibold">
+          <i :class="chosen.icon + ' opacity-60'"></i><span x-text="chosen.label"></span>
+        </p>
+
+        <template x-if="chosen.needs_instruction">
+          <input type="text" x-model="instruction" :placeholder="chosen.placeholder"
+                 @keydown.enter.prevent="run()"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded border px-2 py-1.5 text-sm">
+        </template>
+
+        <p x-show="error" x-text="error"
+           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+           class="text-xs font-semibold"></p>
+
+        <div class="flex gap-2">
+          <button type="button" @click="run()" :disabled="busy"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="flex-1 rounded px-3 py-1.5 text-sm font-bold transition hover:opacity-90 disabled:opacity-50">
+            <span x-show="!busy"><i class="fa-solid fa-play mr-1"></i>{% trans "Run" %}</span>
+            <span x-show="busy"><i class="fa-solid fa-spinner fa-spin"></i></span>
+          </button>
+          <button type="button" @click="reset()"
+                  class="rounded px-3 py-1.5 text-sm font-semibold opacity-60 transition hover:opacity-100">
+            {% trans "Back" %}</button>
+        </div>
+      </div>
+    </template>
+
+    {% comment %}Step three: the proposal. Never applied until Accept — the same
+       contract sketch keeps with an imported drawing.{% endcomment %}
+    <template x-if="result">
+      <div class="space-y-2">
+        <p class="text-[10px] font-semibold uppercase tracking-wide opacity-50">
+          {% trans "Proposed replacement" %}</p>
+        <div :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="max-h-56 overflow-y-auto whitespace-pre-wrap rounded border px-2 py-1.5 text-sm"
+             x-text="result"></div>
+        <p class="text-[10px] opacity-50">
+          <span x-text="tokens"></span> {% trans "tokens" %} —
+          {% trans "nothing is changed until you accept" %}
+        </p>
+        <div class="flex gap-2">
+          <button type="button" @click="accept()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="flex-1 rounded px-3 py-1.5 text-sm font-bold transition hover:opacity-90">
+            <i class="fa-solid fa-check mr-1"></i>{% trans "Accept" %}</button>
+          <button type="button" @click="reject()"
+                  class="rounded px-3 py-1.5 text-sm font-semibold opacity-60 transition hover:opacity-100">
+            {% trans "Reject" %}</button>
+        </div>
+      </div>
+    </template>
+
+    <p x-show="error && !chosen && !result" x-text="error"
+       :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+       class="px-1 pt-1 text-xs font-semibold"></p>
+  </div>
+</span>

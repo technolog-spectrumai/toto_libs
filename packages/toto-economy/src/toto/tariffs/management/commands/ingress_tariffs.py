@@ -208,6 +208,12 @@ PRICES = {
     "aralia.render": NORMAL,
     # Lookups — cheap to serve, but they cost someone else's goodwill.
     "assets.chain.verify": CHEAP,
+    # The assistant. Two codes because the two things vary independently: how
+    # often somebody asks, and how big each ask turns out to be. The token price
+    # is the one that matters — a 60-page paste and a one-line question are the
+    # same number of requests and are not remotely the same cost.
+    "ai.request": CHEAP,
+    "ai.tokens_1k": NORMAL,
     # A month of a subscription plan. The QUANTITY is the plan's size (Standard
     # is 200 units, Studio 600) less the best community discount, so this is the
     # price of one unit and not of a plan — see subscriptions/services.py for

@@ -48,6 +48,7 @@ class Features:
     formica: bool
     # Standalone features (opt-in only).
     steven: bool
+    steven_ai: bool
     sabbia: bool
     travels: bool
     # Version control, two halves that go to different hosts. repo is local git
@@ -204,7 +205,15 @@ def resolve_features(get) -> Features:
     formica = flag(get, "BUILD_FORMICA")                      # toto.formica — colony curating the graph (opt-in)
 
     # Standalone features (no tier; opt-in only).
-    steven = flag(get, "BUILD_STEVEN")                        # floating chat-widget UI (implies sabbia)
+    # The assistant, rewritten in 1.51 and DELIBERATELY not wired to the two
+    # flags below it. `steven_ai` installs toto.steven, which queues work on a
+    # celery worker and never opens a socket; `sabbia` is the older headless
+    # chat backend, and it implies needs_channels — so tying them together would
+    # drag daphne, channels_redis and the whole realtime pip layer onto every
+    # host that wanted an assistant. They are separate features that happen to
+    # live in the same wheel.
+    steven_ai = flag(get, "BUILD_STEVEN_AI")                  # toto.steven — the selection assistant (worker-backed)
+    steven = flag(get, "BUILD_STEVEN")                        # LEGACY: the retired chat-widget UI (implies sabbia)
     sabbia = steven or flag(get, "BUILD_SABBIA")              # headless chat-agent backend (WebSocket)
     travels = flag(get, "BUILD_TRAVELS")                      # toto.travels — travel & visit log
     repo = flag(get, "BUILD_REPO")                            # toto.repo — git repos over vault dirs
@@ -364,6 +373,7 @@ def resolve_features(get) -> Features:
         monit=monit,
         jess=jess,
         steven=steven,
+        steven_ai=steven_ai,
         sabbia=sabbia,
         travels=travels,
         repo=repo,
