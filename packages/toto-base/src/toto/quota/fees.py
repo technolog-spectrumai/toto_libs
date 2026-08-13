@@ -4,17 +4,16 @@ The sibling of :mod:`toto.quota.levy`, and the same shape for the same reason.
 A levy provider says "here is a resource that can be taxed"; a fee source says
 "here is a way this platform earns, and here is the account it lands in".
 
-Four sources exist today and they are stored three different ways: metered usage
-writes ``UsageCharge`` rows, the capacity levies bill through that same
-pipeline,
-tribute writes ``TributeCharge``, and the exchange commission writes **nothing at
-all** — it exists only as ledger entries. Two of the four also live in zenobia's
-own portion of the tree, which toto-economy must never import.
+Sources are stored in different ways and that is the point: metered usage,
+the capacity levies and subscriptions all write ``UsageCharge`` rows through one
+pipeline, while the exchange commission writes **nothing at all** and exists only
+as ledger entries. One of them also lives in zenobia's own portion of the tree,
+which toto-economy must never import.
 
 So a source declares no amounts. It declares WHERE its money lands, and the
 Fees view sums the ledger credits into that account. The ledger is the only
-thing all four have in common, and it means adding a fifth source is one small
-file with no aggregation code in it. The registry supplies meaning; the ledger
+thing they have in common, and it means adding another source is one small file
+with no aggregation code in it. The registry supplies meaning; the ledger
 supplies money.
 
 Like the levy contract this lives in toto-base, not in toto-economy, because a

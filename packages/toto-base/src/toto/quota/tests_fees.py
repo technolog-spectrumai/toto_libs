@@ -170,16 +170,6 @@ class UsageTabsTests(TestCase):
                 with self.subTest(user=user.username, label=label):
                     self.assertIn(label, rendered)
 
-    def test_tribute_is_the_one_staff_only_chip(self):
-        """Not a leftover of the old split: the tribute DESK is staff-only, and
-        a chip that 403s is a broken chip."""
-        from django.apps import apps as django_apps
-
-        if not django_apps.is_installed("toto.portfolio"):
-            self.skipTest("no tribute on this host")
-        self.assertIn("Tribute", self._render(self.staff))
-        self.assertNotIn("Tribute", self._render(self.plain))
-
     def test_the_active_sub_tab_is_marked(self):
         self.assertIn('aria-current="page"', self._render(self.plain, "metered"))
 

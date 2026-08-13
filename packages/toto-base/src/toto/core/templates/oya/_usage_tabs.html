@@ -43,18 +43,6 @@
     <i class="fa-solid fa-gauge-high"></i>{% trans "Metered" %}</a>
   {% endif %}{% endif %}
 
-  {% comment %}Tribute is a recurring charge like the levies, so it belongs with
-     them rather than as an eleventh tab inside one company's page. Staff-only,
-     because the desk is: a chip that 403s is a broken chip.{% endcomment %}
-  {% if user.is_staff %}{% if "toto.portfolio"|app_installed %}{% url 'portfolio:tribute_desk' as tribute_url %}{% if tribute_url %}
-  <a href="{{ tribute_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'tribute' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'tribute' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-hand-holding-dollar"></i>{% trans "Tribute" %}</a>
-  {% endif %}{% endif %}{% endif %}
-
   {% if "toto.tariffs"|app_installed %}{% url 'tariffs:usage_list' as records_url %}{% if records_url %}
   <a href="{{ records_url }}"
      :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"

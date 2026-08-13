@@ -474,7 +474,7 @@ def _charge_kinds(user):
 
     Built from the registries rather than written down, so a kind cannot appear
     on a host that cannot perform it: no levy providers, no levy row; no
-    ``toto.tax``, no holding fee; no ``toto.portfolio``, no tribute.
+    ``toto.tax``, no holding fee.
     """
     priced = rates.rate_card()
     kinds = [{
@@ -512,27 +512,17 @@ def _charge_kinds(user):
 
 
 def _economy_charge_kinds():
-    """Holding fee and tribute — the two that are not keyed by a metric.
+    """Charges that are not keyed by a metric.
+
+    Empty today, and kept as a seam rather than deleted: the tribute a company
+    paid the platform lived here, and the subscription that replaced it is keyed
+    by a metric, so it arrives through the loop above like everything else.
 
     is_installed BEFORE each import: a host can pin the economy wheel without
     installing these apps, and importing their models raises RuntimeError out of
     Django's model metaclass, which ``except ImportError`` never catches.
     """
-    out = []
-
-
-    if apps.is_installed("toto.portfolio"):
-        out.append({
-            "key": "tribute",
-            "name": _("Tribute"),
-            "charges": _("A fixed amount a company pays the platform."),
-            "when": _("Per period"),
-            "free": _("Companies with no tribute policy."),
-            "things": [],
-            "edit_label": _("Tribute desk"),
-            "edit_url": _safe_url("portfolio:tribute_desk"),
-        })
-    return out
+    return []
 
 
 def _safe_url(name: str, *args) -> str:
