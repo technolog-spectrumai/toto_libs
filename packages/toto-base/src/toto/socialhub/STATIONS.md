@@ -88,6 +88,14 @@ test asserts none of them reach the page. Every row states *"Paid by the
 federal treasury"*, including the ones serving a community — that is the fact a
 reader is most likely to get wrong.
 
+A holder's profile page also lists the offices they hold, with the same public
+wording. **One exception to "admin-only": a holder sees their own stipend on
+their own profile**, and nobody else's — the profile shows any person to any
+logged-in user, so it is gated on `is_own_profile` and on the host billing at
+all. That is the disclosure the wallet plugin already makes about a person's
+money to themselves. The multiplier and the capabilities stay admin-only
+everywhere, including there.
+
 ## The pay
 
 `tax/payroll.py` — weekly, calendar-aligned, hung off the daily levy beat so

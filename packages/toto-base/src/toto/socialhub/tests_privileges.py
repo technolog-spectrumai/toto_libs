@@ -364,3 +364,288 @@ class RosterTests(TestCase):
         response = self.client.get(reverse("socialhub:station_list"))
 
         self.assertNotContains(response, "Abolished office")
+
+
+class ProfileOfficeTests(TestCase):
+    """The profile lists the offices a person holds — and only their own pay.
+
+    The roster's privacy is pinned above, but that test targets
+    `socialhub:station_list` alone, so it would keep passing while this page
+    leaked. The mirror below is what actually guards the profile.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.guild = Community.objects.create(name="Weavers")
+        cls.holder = make_citizen("archivist", cls.guild)
+        cls.onlooker = make_member("onlooker", cls.guild)
+        cls.station = Station.objects.create(
+            name="Archivist", charter="Keeps the books.",
+            holder=cls.holder.community_profile, serves=cls.guild,
+            since=timezone.now().date(),
+            limit_multiplier=Decimal("10"), stipend=Decimal("7.5"),
+            may_operate_mint=True, may_administer_communities=True)
+
+    def _get(self, as_user, person=None):
+        from django.urls import reverse
+
+        self.client.force_login(as_user)
+        person = person or self.holder.community_profile
+        return self.client.get(
+            reverse("socialhub:profile_details", args=[person.slug]))
+
+    def test_the_office_appears_on_the_holders_profile(self):
+        response = self._get(self.onlooker)
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Archivist")
+        self.assertContains(response, "Keeps the books.")
+        # The fact a reader is most likely to get wrong, worded as the roster
+        # words it so the two surfaces cannot drift.
+        self.assertContains(response, "Paid by the federal treasury")
+
+    def test_another_persons_pay_and_powers_never_reach_the_page(self):
+        body = self._get(self.onlooker).content.decode()
+
+        for secret in ("7.5", "may_operate_mint", "may_administer_communities",
+                       "limit_multiplier"):
+            self.assertNotIn(secret, body, secret)
+
+    def test_a_holder_sees_their_own_stipend(self):
+        from unittest.mock import patch
+
+        from toto.quota import rates
+
+        with patch.object(rates, "pricing_enabled", return_value=True), \
+             patch.object(rates, "price_asset_symbol", return_value="ASR"):
+            body = self._get(self.holder).content.decode()
+
+        self.assertIn("7.5", body)
+        self.assertIn("ASR", body)
+
+    def test_the_multiplier_stays_hidden_even_from_its_own_holder(self):
+        """The carve-out is the stipend and nothing else."""
+        from unittest.mock import patch
+
+        from toto.quota import rates
+
+        with patch.object(rates, "pricing_enabled", return_value=True), \
+             patch.object(rates, "price_asset_symbol", return_value="ASR"):
+            body = self._get(self.holder).content.decode()
+
+        for secret in ("limit_multiplier", "may_operate_mint"):
+            self.assertNotIn(secret, body, secret)
+
+    def test_an_unbilled_host_shows_the_office_and_no_amount(self):
+        """aurelian pins no economy wheel at all; the office is still real."""
+        from unittest.mock import patch
+
+        from toto.quota import rates
+
+        with patch.object(rates, "pricing_enabled", return_value=False):
+            body = self._get(self.holder).content.decode()
+
+        self.assertIn("Archivist", body)
+        self.assertNotIn("7.5", body)
+
+    def test_a_person_holding_no_office_gets_no_offices_section(self):
+        plain = make_member("nobody", self.guild)
+        body = self._get(plain, person=plain.community_profile).content.decode()
+        self.assertNotIn("Offices", body)
+
+    def test_a_vacated_office_leaves_the_profile(self):
+        self.station.holder = None
+        self.station.save(update_fields=["holder"])
+        body = self._get(self.onlooker).content.decode()
+        self.assertNotIn("Archivist", body)
+
+    def test_a_deactivated_office_is_not_shown(self):
+        self.station.active = False
+        self.station.save(update_fields=["active"])
+        body = self._get(self.onlooker).content.decode()
+        self.assertNotIn("Archivist", body)
+
+    def test_a_second_office_costs_no_extra_query(self):
+        """The Prefetch works: offices do not cost one query each."""
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.urls import reverse
+
+        self.client.force_login(self.onlooker)
+        url = reverse("socialhub:profile_details",
+                      args=[self.holder.community_profile.slug])
+        self.client.get(url)                       # warm session and caches
+
+        with CaptureQueriesContext(connection) as one_office:
+            self.client.get(url)
+
+        Station.objects.create(
+            name="Second office", charter="Also real.",
+            holder=self.holder.community_profile, serves=self.guild)
+
+        with CaptureQueriesContext(connection) as two_offices:
+            self.client.get(url)
+
+        self.assertEqual(
+            len(two_offices.captured_queries), len(one_office.captured_queries),
+            "a second office cost extra queries — the Prefetch is not in effect")
+
+    def test_the_profile_row_is_fetched_once(self):
+        """get_context_data must read `self.object`, not call get_object().
+
+        get_object() re-runs the whole queryset — prefetches included — so the
+        page still renders correctly and the N+1 test above still passes. What
+        it costs is a second full fetch of the person and every prefetch on
+        every request, which is invisible until it is measured.
+        """
+        from django.db import connection
+        from django.test.utils import CaptureQueriesContext
+        from django.urls import reverse
+
+        self.client.force_login(self.onlooker)
+        url = reverse("socialhub:profile_details",
+                      args=[self.holder.community_profile.slug])
+        self.client.get(url)                       # warm session and caches
+
+        with CaptureQueriesContext(connection) as captured:
+            self.client.get(url)
+
+        # Narrowed to the SLUG lookup on purpose. The page chrome fetches the
+        # REQUESTER's own person by user_id as well, which is a different query
+        # and not the one this test is about.
+        table = Person._meta.db_table
+        fetches = [q for q in captured.captured_queries
+                   if f'FROM "{table}"' in q["sql"] and '"slug" =' in q["sql"]]
+        self.assertEqual(
+            len(fetches), 1,
+            f"the viewed profile was fetched {len(fetches)} times; "
+            f"get_context_data is re-running the queryset")
+
+
+class HeadTaxPanelTests(TestCase):
+    """The head tax, announced on the profile through the plugin registry.
+
+    The wording is the substance here. A community never pays and never
+    receives; its members do. A panel that said otherwise would teach exactly
+    the separatism the design refuses.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.trusted = Community.objects.create(name="Trusted Guild")
+        cls.watched = Community.objects.create(name="Watched Circle")
+        CommunityPrivilege.objects.create(
+            community=cls.trusted, head_weight=Decimal("1"))
+        CommunityPrivilege.objects.create(
+            community=cls.watched, head_weight=Decimal("3"))
+        cls.member = make_member("taxed", cls.watched)
+
+    def _get(self, person=None, as_user=None):
+        from django.urls import reverse
+
+        self.client.force_login(as_user or self.member)
+        person = person or self.member.community_profile
+        return self.client.get(
+            reverse("socialhub:profile_details", args=[person.slug]))
+
+    def _with_levy(self, active=True):
+        """The head tax exists only where a levy engine registered its provider."""
+        from unittest.mock import patch
+
+        from toto.quota import levies
+
+        return patch.object(levies, "of", return_value={
+            "code": "civics.head", "metric_code": "civics.head",
+            "active": active, "has_rule": True})
+
+    def test_the_panel_announces_the_rate(self):
+        with self._with_levy():
+            body = self._get().content.decode()
+
+        self.assertIn("Head tax", body)
+        self.assertIn("Watched Circle", body)
+        self.assertIn("3", body)
+
+    def test_it_says_members_pay_and_never_that_the_community_does(self):
+        with self._with_levy():
+            body = self._get().content.decode()
+
+        self.assertIn("members pay more than ordinary", body)
+        # The sentence the whole design exists to prevent.
+        self.assertNotIn("this community pays", body.lower())
+
+    def test_a_second_better_community_lowers_the_effective_rate(self):
+        """The lowest weight wins — belonging to a good community is the way out."""
+        from toto.socialhub.privileges import head_weight_for
+
+        self.member.community_profile.communities.add(self.trusted)
+
+        self.assertEqual(head_weight_for(self.member), Decimal("1"))
+        with self._with_levy():
+            body = self._get().content.decode()
+        self.assertIn("Trusted Guild", body)
+        self.assertIn("members pay the ordinary rate", body)
+
+    def test_an_exempt_community_says_so(self):
+        CommunityPrivilege.objects.filter(community=self.watched).update(
+            head_weight=Decimal("0"))
+        with self._with_levy():
+            body = self._get().content.decode()
+        self.assertIn("members pay nothing", body)
+
+    def test_a_community_with_no_privilege_row_is_ordinary_not_free(self):
+        """A missing row is the commoner default, not an exemption."""
+        plain = Community.objects.create(name="Plain Company")
+        person = make_member("plainly", plain)
+
+        with self._with_levy():
+            body = self._get(person=person.community_profile,
+                             as_user=person).content.decode()
+
+        self.assertIn("members pay the ordinary rate", body)
+        self.assertNotIn("members pay nothing", body)
+
+    def test_an_unarmed_levy_says_it_is_not_being_collected(self):
+        with self._with_levy(active=False):
+            body = self._get().content.decode()
+        self.assertIn("not currently being levied", body)
+
+    def test_a_host_with_no_levy_engine_shows_no_panel(self):
+        """aurelian and placidia never register the provider at all."""
+        from unittest.mock import patch
+
+        from toto.quota import levies
+
+        with patch.object(levies, "of", return_value=None):
+            body = self._get().content.decode()
+
+        self.assertNotIn("Head tax", body)
+
+    def test_a_person_in_no_community_gets_no_panel(self):
+        loner = make_member("loner")
+        with self._with_levy():
+            body = self._get(person=loner.community_profile,
+                             as_user=loner).content.decode()
+        self.assertNotIn("Head tax", body)
+
+    def test_the_other_privileges_still_never_render(self):
+        """The carve-out is head_weight alone; the rights stay admin-only."""
+        CommunityPrivilege.objects.filter(community=self.watched).update(
+            may_operate_mint=True, may_administer_communities=True)
+
+        with self._with_levy():
+            body = self._get().content.decode()
+
+        for secret in ("may_operate_mint", "may_administer_communities",
+                       "may_see_community_chain"):
+            self.assertNotIn(secret, body, secret)

@@ -137,12 +137,17 @@ class CommunityPrivilege(models.Model):
     or vacate the office. There is no way to give one named individual a right
     that their successor will not inherit, and that is the whole rule.
 
-    **Never rendered outside Django admin.** No page shows or edits these — not
-    the community page, not the profile, not the metering pages. The gates that
-    consume them simply work or refuse. Admin is the one editor, which is why
-    this is its own model rather than booleans on ``Community``: one changelist
-    of every grant on the platform, filterable and bulk-editable, instead of
-    flags scattered through a 30-field community form.
+    **The RIGHTS are never rendered outside Django admin.** No page shows or
+    edits the ``may_*`` flags — not the community page, not the profile, not the
+    metering pages. The gates that consume them simply work or refuse. Admin is
+    the one editor, which is why this is its own model rather than booleans on
+    ``Community``: one changelist of every grant on the platform, filterable and
+    bulk-editable, instead of flags scattered through a 30-field community form.
+
+    ``head_weight`` is the exception, and deliberately so: it is not a right, it
+    is a bill. A member is entitled to know what their communities cost them,
+    so the head weight is announced on the profile (``HeadTaxProfilePlugin``)
+    while every other field here stays admin-only.
 
     A community without a row grants nothing and taxes at the ordinary rate —
     the commoner default, free to resolve.
@@ -225,8 +230,11 @@ class Station(models.Model):
 
     **The roster is public; the capabilities are not.** Which offices exist, what
     they are for and who holds them are the point of an institution and render
-    freely. What an office GRANTS and what it PAYS stay in admin, exactly as
-    :class:`CommunityPrivilege` does.
+    freely. What an office GRANTS stays in admin, exactly as
+    :class:`CommunityPrivilege`'s rights do. What it PAYS stays in admin too,
+    with one exception: a holder sees their own stipend on their own profile,
+    and nobody else's — the profile page shows any person to any logged-in user,
+    so that line is gated on being its owner.
     """
 
     name = models.CharField(max_length=120)

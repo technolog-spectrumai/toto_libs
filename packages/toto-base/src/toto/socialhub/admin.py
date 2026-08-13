@@ -210,8 +210,9 @@ class StationAdmin(TotoModelAdmin):
 
     Every station is federal however local its work — `serves` says who an
     office works for, never who pays it. The public roster shows the name, the
-    charter and the holder; the capabilities, the multiplier and the stipend are
-    visible only here.
+    charter and the holder; the capabilities and the multiplier are visible only
+    here, and so is the stipend — except to its own holder, on their own
+    profile, who sees what they are paid and nobody else's.
     """
 
     list_display = ("name", "serves", "holder", "active", "limit_multiplier",
