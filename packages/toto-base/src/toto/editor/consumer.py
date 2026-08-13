@@ -47,11 +47,33 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
             return f.read()
 
     @database_sync_to_async
-    def write_file(self, content: str) -> None:
+    def write_file(self, content: str):
+        """Screen, then write. Returns the verdict; writes nothing if it refuses.
+
+        This is the door most easily missed, and the one that most needs the
+        check: on the patch path the sending client never sees the final bytes,
+        so a patch that is innocent in isolation can still compose into hostile
+        content. Screening the *result* is the only place that catches it.
+        """
+        import hashlib
+
+        from toto.vault import scanning
         from toto.vault.models import VaultFile
+
         vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
+        verdict = scanning.scan(content, file_type=vf.file_type, filename=vf.title)
+        if not verdict.ok:
+            scanning.record(vf, verdict, user=self.user, door="socket")
+            return verdict
+
         with vf.file.open("w") as f:
             f.write(content)
+        encoded = content.encode("utf-8")
+        vf.content_hash = hashlib.sha256(encoded).hexdigest()
+        vf.file_size_bytes = len(encoded)
+        vf.save(update_fields=["content_hash", "file_size_bytes"])
+        scanning.record(vf, verdict, user=self.user, door="socket")
+        return verdict
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -67,7 +89,18 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         else:
             new_content = incoming_content
 
-        await self.write_file(new_content)
+        verdict = await self.write_file(new_content)
+        if not verdict.ok:
+            # Tell the sender, and nobody else: the other sessions still hold
+            # the last good content, and broadcasting a refusal would only
+            # invite them to overwrite it with what they have.
+            await self.send(text_data=json.dumps({
+                "type": "refused",
+                "reason": verdict.reason,
+                "detail": verdict.detail,
+                "line": verdict.line,
+            }))
+            return
 
         await self.channel_layer.group_send(
             self.room,

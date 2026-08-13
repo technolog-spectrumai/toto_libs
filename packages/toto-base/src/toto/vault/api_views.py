@@ -141,6 +141,15 @@ class FileUploadApiView(CorsApiView):
         content_hash = hashlib.sha256(content).hexdigest()
         file.seek(0)
 
+        # The bytes are already in memory here, which makes this the natural
+        # point: nothing has been created yet, so a refusal costs no cleanup and
+        # leaves no half-made row behind.
+        from toto.vault import scanning
+
+        verdict = scanning.scan(content, file_type=file_type, filename=file.name)
+        if not verdict.ok:
+            return JsonResponse(verdict.as_error(), status=400)
+
         # Keys address files across the whole owner (the detail/download/delete/move
         # endpoints look up by key alone), so keep them unique per owner — not just
         # per bucket — or a cross-bucket collision makes those lookups ambiguous.
@@ -162,6 +171,7 @@ class FileUploadApiView(CorsApiView):
             directory=directory,
         )
         vf.file.save(file.name, file, save=True)
+        scanning.record(vf, verdict, user=request.user, door="api-upload")
 
         src = {"source_type": "vault.VaultFile", "source_id": str(vf.pk)}
         record_usage(VaultUsageEvent, "storage.request", 1, request.user,
@@ -570,12 +580,24 @@ class FileContentApiView(CorsApiView):
         encoded = content.encode("utf-8")
         if len(encoded) > MAX_EDIT_BYTES:
             return JsonResponse({"error": "Content is too large to save."}, status=413)
+
+        # The desktop client's save is the API twin of editor.save_file and gets
+        # the same screening — a door that is guarded in the browser and open
+        # over the API is not guarded.
+        from toto.vault import scanning
+
+        verdict = scanning.scan(content, file_type=vf.file_type, filename=vf.title)
+        if not verdict.ok:
+            scanning.record(vf, verdict, user=request.user, door="api")
+            return JsonResponse(verdict.as_error(), status=400)
+
         try:
             with vf.file.open("w") as f:
                 f.write(content)
             vf.file_size_bytes = len(encoded)
             vf.content_hash = hashlib.sha256(encoded).hexdigest()
             vf.save(update_fields=["file_size_bytes", "content_hash"])
+            scanning.record(vf, verdict, user=request.user, door="api")
         except Exception as e:
             return JsonResponse({"error": f"Could not save file: {e}"}, status=500)
         return JsonResponse(_file_to_dict(request, vf))

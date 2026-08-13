@@ -179,6 +179,19 @@ def version_restore(request, pk: int, version_pk: int):
             status=HTTP_LOCKED)
 
     version = get_object_or_404(FileVersion, pk=version_pk, file=vault_file)
+
+    # Screen on the way back in. These bytes were stored once, but "we accepted
+    # it before" is not a verdict — a rule added since, or a file that predates
+    # screening entirely, both land here.
+    from toto.vault import scanning
+
+    verdict = scanning.scan(version.read(), file_type=vault_file.file_type,
+                            filename=vault_file.title)
+    if not verdict.ok:
+        scanning.record(vault_file, verdict, user=request.user, door="restore")
+        return JsonResponse(verdict.as_error(), status=400)
+
     restored = versions.restore_version(version, actor=request.user)
+    scanning.record(vault_file, verdict, user=request.user, door="restore")
     return JsonResponse({"restored": True, "from": version.number,
                          **_version_json(restored)})

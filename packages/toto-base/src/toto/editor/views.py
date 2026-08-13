@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -99,10 +101,33 @@ def save_file(request, file_pk):
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
     content = request.POST.get("content", "")
 
+    # Screen BEFORE anything is written. `scanning` is a façade over the
+    # optional antivirus app: on a host without it this is clean-and-unscanned
+    # and nothing changes. On a host with it, hostile content never reaches
+    # storage — which is the whole point of doing it here rather than warning
+    # about it afterwards.
+    from toto.vault import scanning
+
+    verdict = scanning.scan(content, file_type=vault_file.file_type,
+                            filename=vault_file.title)
+    if not verdict.ok:
+        scanning.record(vault_file, verdict, user=request.user, door="editor")
+        return JsonResponse(verdict.as_error(), status=400)
+
     try:
         with vault_file.file.open("w") as f:
             f.write(content)
-        vault_file.save()
+        # content_hash and file_size_bytes, not a bare save(): this path used to
+        # leave both stale, so every hash-keyed thing downstream — the scan
+        # verdict cache and its green tick among them — was reasoning about
+        # bytes the file no longer held. Hashed from the string we were handed
+        # rather than by re-reading the file, which is what the API twin does and
+        # is the only version that still works after the write handle is closed.
+        encoded = content.encode("utf-8")
+        vault_file.content_hash = hashlib.sha256(encoded).hexdigest()
+        vault_file.file_size_bytes = len(encoded)
+        vault_file.save(update_fields=["content_hash", "file_size_bytes"])
+        scanning.record(vault_file, verdict, user=request.user, door="editor")
         return JsonResponse({"status": "ok"})
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)

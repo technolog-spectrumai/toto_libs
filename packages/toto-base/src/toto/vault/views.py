@@ -22,6 +22,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.contrib import messages
 from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
+from . import scanning
 from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 from .storage_backends import get_bucket_storage
 
@@ -61,7 +62,8 @@ class PublicFileListView(TemplateView):
     """
     template_name = "vault/public_file_list.html"
 
-    def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None):
+    def _build_flat_items(self, dirs, files, dir_gateway_map, user_bucket_pks=None,
+                          clean_pks=None):
         from toto.vault.plugins import VaultPlayPlugin
 
         def _play_url_for(f):
@@ -159,6 +161,7 @@ class PublicFileListView(TemplateView):
                         "play_url": _play_url_for(f),
                         "editor_url": _editor_url_for(f),
                         "has_services": _has_services(f),
+                        "scan_ok": f.pk in clean_pks if clean_pks else False,
                     })
 
         visit(None, 0)
@@ -181,6 +184,7 @@ class PublicFileListView(TemplateView):
                 "play_url": _play_url_for(f),
                 "editor_url": _editor_url_for(f),
                 "has_services": _has_services(f),
+                "scan_ok": f.pk in clean_pks if clean_pks else False,
             })
 
         return flat
@@ -237,7 +241,13 @@ class PublicFileListView(TemplateView):
             set(Bucket.objects.filter(owner=self.request.user).values_list("pk", flat=True))
             if self.request.user.is_authenticated else set()
         )
-        flat_items = self._build_flat_items(accessible_dirs, list(file_qs), dir_gateway_map, user_bucket_pks)
+        # One query for the whole listing, not one per row — and an empty set on
+        # a host without antivirus, which is what keeps this page byte-identical
+        # to what it was there.
+        _files = list(file_qs)
+        clean_pks = scanning.clean_file_ids(_files)
+        flat_items = self._build_flat_items(accessible_dirs, _files, dir_gateway_map,
+                                            user_bucket_pks, clean_pks)
 
         context["flat_items"] = flat_items
         context["selected_bucket"] = bucket_slug
@@ -434,6 +444,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
 
         from toto.quota import QuotaExceeded, check_quota, record_usage as _ru
         from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+        from toto.vault import scanning as _scanning
         from toto.vault.models import VaultQuotaPolicy, VaultUsageEvent
 
         # One rate-card lookup for the whole batch; None when nothing is priced
@@ -469,6 +480,24 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
                 file_type = manual_type if manual_type in valid_types else auto_file_type
 
+                # Screen before the row is made. `is_scannable` first so a 200 MB
+                # video is never read into memory just to be told nobody screens
+                # it — the façade would answer that anyway, but not before the
+                # read.
+                verdict = _scanning.Verdict.clean(scanned=False)
+                if _scanning.is_scannable(file_type):
+                    _body = uploaded_file.read()
+                    uploaded_file.seek(0)
+                    verdict = _scanning.scan(_body, file_type=file_type,
+                                             filename=uploaded_file.name)
+                    if not verdict.ok:
+                        # This file's error entry, not the batch's — same rule
+                        # the size and quota checks above already follow.
+                        errors.append(
+                            f"{uploaded_file.name}: refused ({verdict.reason}"
+                            f"{': ' + verdict.detail if verdict.detail else ''}).")
+                        continue
+
                 vault_file = VaultFile(
                     owner=request.user,
                     title=uploaded_file.name,
@@ -487,6 +516,8 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 vault_file.save()
                 vault_file.content_hash = vault_file.create_hash()
                 vault_file.save()
+                _scanning.record(vault_file, verdict, user=request.user,
+                                 door="gateway")
             except Exception as _exc:  # noqa: BLE001 — one bad file mustn't 500 the batch
                 errors.append(f"{uploaded_file.name}: {_exc}")
                 continue
@@ -1414,6 +1445,12 @@ class RemoteBucketImportView(LoginRequiredMixin, View):
     Creates (or updates) a local Bucket that proxies to the remote toto
     server via RemoteTotoStorageDriver.  Only toto:// URLs are accepted —
     S3 buckets are configured directly via the admin.
+
+    **No scan here, and not by oversight.** This registers a connection; it
+    copies nothing. The remote bytes arrive later, one file at a time, through
+    the storage driver on read — so there is nothing at this moment to screen.
+    Screening third-party bytes from a proxied bucket belongs on the read path,
+    which is a wider change than a door check and is not in this pass.
     """
 
     def post(self, request):
