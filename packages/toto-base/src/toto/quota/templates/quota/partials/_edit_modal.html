@@ -1,0 +1,135 @@
+{% load i18n %}
+{% comment %}One edit modal per metered thing, opened by the row's Edit button.
+
+   The table is a READING surface — it answers "what does this cost, what is the
+   cap, how much is left" without a click. Editing is a separate act, one thing
+   at a time, so a mis-click cannot silently reprice the platform.
+
+   Every modal is rendered up front rather than fetched: the page already holds
+   every value it needs, so a fetch would be a round trip to redisplay data that
+   is already here, and it keeps working with no JS beyond Alpine.
+
+   Only the essentials are here — the cap, what it costs, and whether it is
+   levied. There is no currency select: the platform charges in ONE currency,
+   chosen once above the table.
+{% endcomment %}
+
+{% for group in groups %}{% for row in group.rows %}
+<div x-show="editing === '{{ row.metric.code }}'" x-cloak x-transition.opacity
+     class="fixed inset-0 z-50 flex items-end justify-center p-0 sm:items-center sm:p-4">
+
+  <div class="absolute inset-0"
+       :class="darkMode ? 'bg-primary-bg-dark/80' : 'bg-primary-bg-light/80'"
+       @click="editing = null"></div>
+
+  <div :class="darkMode
+         ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark'
+         : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="relative z-10 flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden
+              rounded-t-2xl border shadow-xl sm:rounded-2xl">
+
+    {# ---- title: what this thing is ---- #}
+    <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+         class="flex items-start justify-between gap-4 border-b px-5 py-4">
+      <div class="min-w-0">
+        <h3 class="text-lg font-bold">{{ row.metric.label }}</h3>
+        <code class="text-xs opacity-55">{{ row.metric.code }}</code>
+        {% if row.metric.description %}
+          <p class="mt-1 text-xs opacity-70">{{ row.metric.description }}</p>
+        {% endif %}
+      </div>
+      <button type="button" @click="editing = null"
+              class="shrink-0 rounded px-2 py-1 text-sm opacity-60 transition hover:opacity-100"
+              aria-label="{% trans 'Close' %}">
+        <i class="fa-solid fa-xmark"></i></button>
+    </div>
+
+    <div class="space-y-5 overflow-y-auto px-5 py-4">
+
+      {# ---- the cap ---- #}
+      {% if row.has_table %}
+      <form method="post" action="{% url 'quota:metric_detail' code=row.metric.code %}"
+            class="space-y-2">
+        {% csrf_token %}
+        <input type="hidden" name="action" value="default">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Limit" %}</p>
+        <div class="flex flex-wrap items-center gap-2">
+          <input type="text" inputmode="decimal" name="limit"
+                 value="{{ row.limit|default_if_none:''|floatformat:'-10' }}"
+                 placeholder="{% trans 'no limit' %}"
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="w-28 rounded border px-3 py-2 font-mono text-sm">
+          <span class="text-xs opacity-60">{{ row.metric.unit }} / {{ row.period }}</span>
+          <select name="mode"
+                  :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                  class="rounded border px-2 py-2 text-sm">
+            {% for value, label in modes %}
+              <option value="{{ value }}" {% if row.mode == value %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <input type="hidden" name="unit" value="{{ row.metric.unit }}">
+        <input type="hidden" name="period" value="{{ row.period }}">
+        <input type="hidden" name="active" value="on">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="w-full rounded px-4 py-2 text-sm font-bold transition hover:opacity-90 sm:w-auto">
+          {% trans "Save limit" %}</button>
+        <p class="text-[11px] opacity-55">{% trans "Leave it empty for no limit at all." %}</p>
+      </form>
+      {% endif %}
+
+      {# ---- what it costs ---- #}
+      {% if pricing_enabled %}
+        {% if row.is_levy %}
+        <form method="post" action="{% url 'quota:metric_detail' code=row.metric.code %}"
+              class="space-y-2 border-t border-current/10 pt-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="levy">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Levy" %}</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <input type="text" inputmode="decimal" name="price"
+                   value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
+                   placeholder="{% trans 'price' %}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-28 rounded border px-3 py-2 font-mono text-sm">
+            <span class="text-xs opacity-60">{{ price_asset }} / {{ row.levy_unit }} {% trans "per night" %}</span>
+          </div>
+          <label class="flex items-center gap-2 text-sm">
+            <input type="checkbox" name="levy_active" {% if row.levy.active %}checked{% endif %}
+                   class="rounded border">
+            {% trans "Levy this every night" %}</label>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="w-full rounded px-4 py-2 text-sm font-bold transition hover:opacity-90 sm:w-auto">
+            {% trans "Save levy" %}</button>
+          <p class="text-[11px] opacity-55">
+            {% trans "Arming without a price is refused — it would measure every night and charge nothing." %}</p>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'quota:metric_detail' code=row.metric.code %}"
+              class="space-y-2 border-t border-current/10 pt-4">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="price">
+          <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Price" %}</p>
+          <div class="flex flex-wrap items-center gap-2">
+            <input type="text" inputmode="decimal" name="price"
+                   value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
+                   placeholder="{% trans 'free' %}"
+                   :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                   class="w-28 rounded border px-3 py-2 font-mono text-sm">
+            <span class="text-xs opacity-60">{{ price_asset }} / {{ row.metric.unit }}</span>
+          </div>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="w-full rounded px-4 py-2 text-sm font-bold transition hover:opacity-90 sm:w-auto">
+            {% trans "Save price" %}</button>
+          <p class="text-[11px] opacity-55">
+            {% trans "Leave it empty to make this free. Free is the absence of a price, not a zero." %}</p>
+        </form>
+        {% endif %}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endfor %}{% endfor %}

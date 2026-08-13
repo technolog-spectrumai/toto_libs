@@ -17,15 +17,13 @@ finds the event model through it::
 
     check_quota(VaultQuotaPolicy, "storage.request", 1, request.user)
 
-Three things the per-app split buys that one shared table could not:
+Two things the per-app split buys that one shared table could not:
 
 * ``idempotency_key`` can be genuinely unique (partial, ignoring blanks), so a
   duplicate record is refused by the database rather than by a racy
   check-then-insert;
 * the subject is a real FK, so deleting a user cascades their usage away
-  instead of orphaning rows that still sum into the totals;
-* one default policy per metric and one override per user are expressible as
-  two partial unique constraints.
+  instead of orphaning rows that still sum into the totals.
 
 Names in ``Meta.constraints``/``Meta.indexes`` must interpolate ``%(class)s``
 (Django requires uniqueness across the subclasses), and index names are capped
@@ -53,12 +51,20 @@ __all__ = [
 
 
 class AbstractQuotaPolicy(models.Model):
-    """A limit on one metric, for one user or for everybody.
+    """A limit on one metric, for everybody.
 
-    ``user = None`` is the default policy for the metric; a row naming a user
-    overrides it. Nothing is limited until a policy exists — an unmetered
-    metric is free, which is what makes the free tier expressible as an
-    absence rather than a magic number.
+    One row per metric, and it applies to every user. Nothing is limited until
+    a policy exists — an unmetered metric is free, which is what makes the free
+    tier expressible as an absence rather than a magic number.
+
+    **There is no per-person override, deliberately.** There used to be: a row
+    naming a user beat the default. It went the way every other
+    name-an-individual mechanism on this platform went, and for the same reason
+    — variation belongs to institutions, not to people. Somebody who needs more
+    room gets an OFFICE, and ``Station.limit_multiplier`` scales every limit
+    they are subject to (``quota/api.py::effective_limit``). That is one place
+    to look instead of N rows scattered across sixteen tables, it is visible on
+    the public roster, and it moves to their successor when they move on.
     """
 
     #: The concrete AbstractUsageEvent subclass this policy meters. Set it on
@@ -67,15 +73,6 @@ class AbstractQuotaPolicy(models.Model):
 
     name = models.CharField(max_length=255, blank=True)
     metric_code = models.CharField(max_length=100, db_index=True)
-
-    user = models.ForeignKey(
-        settings.AUTH_USER_MODEL,
-        null=True,
-        blank=True,
-        on_delete=models.CASCADE,
-        related_name="+",
-        help_text="Leave empty for the default policy that applies to everyone.",
-    )
 
     limit = models.DecimalField(max_digits=30, decimal_places=10)
     unit = models.CharField(max_length=100, blank=True)
@@ -95,19 +92,12 @@ class AbstractQuotaPolicy(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=["metric_code"],
-                condition=Q(user__isnull=True),
-                name="%(app_label)s_%(class)s_one_default",
-            ),
-            models.UniqueConstraint(
-                fields=["metric_code", "user"],
-                condition=Q(user__isnull=False),
-                name="%(app_label)s_%(class)s_one_per_user",
+                name="%(app_label)s_%(class)s_one_per_metric",
             ),
         ]
 
     def __str__(self) -> str:
-        who = self.user or "everyone"
-        return f"{self.metric_code} — {self.limit} {self.unit}/{self.period} [{who}]"
+        return f"{self.metric_code} — {self.limit} {self.unit}/{self.period}"
 
     def is_active_now(self, at=None) -> bool:
         now = at or timezone.now()

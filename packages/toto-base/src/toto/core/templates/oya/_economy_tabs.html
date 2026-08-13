@@ -76,22 +76,6 @@
     <i class="fa-solid fa-gauge-high"></i>{% if user.is_staff %}{% trans "Usage" %}{% else %}{% trans "My usage" %}{% endif %}</a>
   {% endif %}{% endif %}
 
-  {% comment %}Income is STAFF-ONLY, so the chip is too. It used to render one
-     URL as two unrelated pages — income for staff, "what am I charged" for
-     everyone else — and the second half moved onto the metered things, where
-     the prices and the usage already are. Showing a member a chip that 403s is
-     the one case where hiding is not merely cosmetic.{% endcomment %}
-  {% if user.is_staff %}{% if "toto.quota"|app_installed %}{% url 'quota:fees' as fees_url %}{% if fees_url %}
-  <a href="{{ fees_url }}"
-     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
-     {% if active_tab == 'fees' %}aria-current="page"
-       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
-     {% else %}
-       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-     {% endif %}>
-    <i class="fa-solid fa-receipt"></i>{% trans "Income" %}</a>
-  {% endif %}{% endif %}{% endif %}
-
   {% if "toto.bourse"|app_installed %}{% url 'bourse:exchange_center' as bourse_url %}{% if bourse_url %}
   <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
         class="mx-1 self-center h-5 border-l opacity-30"></span>

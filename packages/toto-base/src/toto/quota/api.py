@@ -124,19 +124,20 @@ def _event_model(policy_model):
 # ---------------------------------------------------------------------------
 
 def get_policy(policy_model, metric_code: str, user=None):
-    """The policy governing this metric for this user, or None.
+    """The policy governing this metric, or None. One row, everybody.
 
-    A row naming the user wins; otherwise the default row (``user=None``).
+    ``user`` is accepted and ignored — every caller already has it to hand for
+    :func:`effective_limit`, and taking it here keeps the two calls looking
+    alike. A per-user policy row used to win over the default; that mechanism is
+    gone, and headroom for one person is an office's ``limit_multiplier``
+    instead.
     """
     now = timezone.now()
-    base = policy_model.objects.filter(metric_code=metric_code, active=True)
-    base = base.exclude(starts_at__gt=now).exclude(ends_at__lte=now)
-
-    if user is not None and getattr(user, "pk", None):
-        specific = base.filter(user=user).first()
-        if specific is not None:
-            return specific
-    return base.filter(user__isnull=True).first()
+    return (policy_model.objects
+            .filter(metric_code=metric_code, active=True)
+            .exclude(starts_at__gt=now)
+            .exclude(ends_at__lte=now)
+            .first())
 
 
 def effective_limit(policy, user=None) -> Decimal:
@@ -265,9 +266,6 @@ def usage_summary(policy_model, user=None, metric_codes=None) -> list[dict]:
     events = _event_model(policy_model)
 
     policies = {p.metric_code: p for p in policy_model.objects.filter(active=True)}
-    if user is not None and getattr(user, "pk", None):
-        for p in policy_model.objects.filter(active=True, user=user):
-            policies[p.metric_code] = p
 
     seen = set(policies)
     event_qs = events.objects.filter(status=EventStatus.RECORDED)

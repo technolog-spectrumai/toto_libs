@@ -101,18 +101,17 @@ class EconomyTabsTests(TestCase):
         self.assertIn("Wallet", self._render(self.plain))
         self.assertIn("Assets", self._render(self.staff))
 
-    def test_income_is_an_operator_chip_only(self):
-        """It stopped being one URL with two renderings.
+    def test_income_is_not_a_chip_at_all(self):
+        """The income board left the navigation.
 
-        The user half — "why was I charged" — answered a fair question in the
-        wrong place: the prices and the usage it described live on the metered
-        things, and it now lives there with them. What is left is the platform's
-        income, which is an operator's question about a different object. So the
-        chip is staff-only, and this is the one case where hiding is not merely
-        cosmetic: the page 403s, and a chip that 403s is a broken chip.
+        It stopped being one URL with two renderings: the user half — "why was I
+        charged" — moved onto the metered things where the prices and the usage
+        already are. What is left is the platform's own income, which is an
+        operator's report rather than somewhere to navigate to, so it keeps its
+        URL and loses its chip and its dashboard tile.
         """
-        self.assertIn("Income", self._render(self.staff))
-        self.assertNotIn("Income", self._render(self.plain))
+        for who in (self.staff, self.plain):
+            self.assertNotIn("Income", self._render(who))
 
     def test_an_anonymous_visitor_renders_without_raising(self):
         # Several /assets/ pages are still reachable anonymously, so the strip
@@ -304,26 +303,21 @@ class IncomeBoardLiveTests(TestCase):
 
         self.assertEqual(feeboard.income_board().drift, [])
 
-    def test_a_price_in_another_asset_is_reported_as_drift(self):
-        # The data model permits it and the seeder's demo tariff uses it
-        # deliberately, so it cannot be an error — but it is income the board
-        # cannot count, and no-FX means it never can be. Name it.
+    def test_one_charging_currency_leaves_no_price_drift(self):
+        """Nothing to report, because there is nothing to drift into.
+
+        The rate desk denominates the WHOLE card in one asset in a single act,
+        so a mixed card cannot survive an operator's next visit — and with no
+        exchange rate anywhere in this ledger, a mixed card could never have
+        been added up anyway.
+        """
         from toto.assets.testing import make_asset
-        from toto.quota import feeboard
+        from toto.quota import feeboard, rates
         from toto.tariffs.models import TariffItem
 
-        from toto.quota import rates
-
-        # The seeder prices nothing by default — "0 of N metrics priced" — so
-        # the drift has to be manufactured: price something, then denominate it
-        # in an asset this platform is not contracted for.
         banana = make_asset(unit_name="BANANA", decimals=2)
-        self.assertTrue(rates.set_price("cyprian.pdf", "0.001"),
-                        "could not price a metric to drift")
-        item = TariffItem.objects.filter(active=True).first()
-        self.assertIsNotNone(item)
-        TariffItem.objects.filter(pk=item.pk).update(charged_asset=banana)
+        rates.set_price("cyprian.pdf", "0.001")
+        TariffItem.objects.update(charged_asset=banana)
 
-        drift = feeboard.income_board().drift
-        self.assertEqual([d.asset for d in drift], ["BANANA"])
-        self.assertEqual(drift[0].kind, "price")
+        self.assertEqual(
+            [d for d in feeboard.income_board().drift if d.kind == "price"], [])

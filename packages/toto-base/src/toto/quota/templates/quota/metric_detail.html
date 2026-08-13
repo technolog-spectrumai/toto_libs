@@ -6,7 +6,7 @@
    Disclosure order is the whole design. Always visible: what it is, your usage,
    its limit, its price, and — when it is a levy — whether it is armed. Those are
    the questions people arrive with. Everything else is behind a <details>: how
-   it is charged, its time dials, its per-user overrides, its advanced pricing,
+   it is charged and its time dials,
    its recent activity. Rare knobs are one click deeper, never gone.
 
    Both audiences use this URL. A member sees the numbers; staff see the same
@@ -36,7 +36,6 @@
 
 {% block quota_content %}
 
-{% include "oya/_thing_tabs.html" with thing_label=metric.label has_usage=has_table has_money=pricing_enabled has_dials=dials has_people=is_staff_view has_advanced=is_staff_view has_activity=recent %}
 
 {% if row.unpriced_levy and is_staff_view %}
   <div class="rounded-lg border border-amber-500/60 bg-amber-500/10 px-4 py-3 text-sm">
@@ -192,15 +191,6 @@
                  placeholder="{% trans 'free' %}"
                  :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
                  class="w-32 rounded border px-3 py-2 font-mono text-sm">
-          {% if billing_assets %}
-            <select name="asset"
-                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                    class="rounded border px-2 py-2 text-sm">
-              {% for a in billing_assets %}
-                <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
-              {% endfor %}
-            </select>
-          {% endif %}
         </div>
         <button type="submit"
                 :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -252,15 +242,6 @@
                  placeholder="{% trans 'price' %}"
                  :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
                  class="w-24 rounded border px-3 py-2 font-mono text-sm">
-          {% if billing_assets %}
-            <select name="asset"
-                    :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                    class="rounded border px-2 py-2 text-sm">
-              {% for a in billing_assets %}
-                <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
-              {% endfor %}
-            </select>
-          {% endif %}
           <span class="text-xs opacity-60">/ {{ row.levy_unit }}</span>
         </div>
         <label class="flex items-center gap-2 text-sm">
@@ -398,88 +379,6 @@
       {% trans "See every way this platform charges" %}</a></p>
   </div>
 </details>
-
-{% if is_staff_view and has_table %}
-{# ---- Per-user overrides ---- #}
-<details id="people" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-5 shadow-sm">
-  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
-    {% trans "Per-person limits" %}
-    {% if overrides %}<span class="ml-2 rounded-full border border-current/25 px-2 text-xs">{{ overrides|length }}</span>{% endif %}
-  </summary>
-
-  <div class="mt-3 space-y-4">
-    {% if overrides %}
-      <table class="w-full text-sm">
-        <thead class="text-left text-xs uppercase opacity-60">
-          <tr><th class="py-2">{% trans "Person" %}</th><th class="py-2">{% trans "Limit" %}</th>
-              <th class="py-2">{% trans "Window" %}</th><th class="py-2">{% trans "When over" %}</th><th></th></tr>
-        </thead>
-        <tbody>
-        {% for o in overrides %}
-          <tr :class="darkMode ? 'border-accent-1' : 'border-accent-2'" class="border-t">
-            <td class="py-2 font-semibold">{{ o.user }}</td>
-            <td class="py-2 font-mono">{{ o.limit|floatformat:"-2" }} <span class="text-xs opacity-60">{{ o.unit }}</span></td>
-            <td class="py-2 text-xs opacity-70">{{ o.get_period_display }}</td>
-            <td class="py-2 text-xs opacity-70">{{ o.get_mode_display }}</td>
-            <td class="py-2 text-right">
-              <form method="post" action="{% url 'quota:override_delete' code=metric.code pk=o.pk %}">
-                {% csrf_token %}
-                <button type="submit" class="text-xs font-semibold text-red-500 underline hover:opacity-80">
-                  {% trans "Remove" %}</button>
-              </form>
-            </td>
-          </tr>
-        {% endfor %}
-        </tbody>
-      </table>
-    {% else %}
-      <p class="text-sm opacity-60">{% trans "Nobody has a limit of their own — everyone gets the default above." %}</p>
-    {% endif %}
-
-    <form method="post" class="space-y-3 border-t border-current/10 pt-4">
-      {% csrf_token %}
-      <input type="hidden" name="action" value="override">
-      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Give one person a different limit" %}</p>
-      {% include "oya/_form_fields.html" with form=override_form %}
-      <button type="submit"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="rounded px-4 py-2 text-sm font-bold transition hover:opacity-90">
-        {% trans "Add override" %}</button>
-    </form>
-  </div>
-</details>
-
-{# ---- The full policy form + advanced pricing ---- #}
-<details id="advanced" :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="rounded-lg border p-5 shadow-sm">
-  <summary class="cursor-pointer text-sm font-semibold uppercase tracking-wide opacity-60">
-    {% trans "Advanced" %}</summary>
-  <div class="mt-3 grid gap-6 lg:grid-cols-2">
-    <div>
-      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Every limit field" %}</p>
-      <form method="post" class="space-y-3">
-        {% csrf_token %}
-        <input type="hidden" name="action" value="default">
-        {% include "oya/_form_fields.html" with form=form %}
-        <button type="submit"
-                class="rounded border border-current/30 px-4 py-2 text-sm font-semibold hover:opacity-80">
-          {% trans "Save" %}</button>
-      </form>
-    </div>
-    {% if advanced_url %}
-    <div>
-      <p class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Every price field" %}</p>
-      <p class="text-sm opacity-70">
-        {% trans "Rounding, the quantity one price covers, a per-event minimum, and which ledger account the money lands in." %}</p>
-      <a href="{{ advanced_url }}"
-         class="mt-2 inline-block rounded border border-current/30 px-4 py-2 text-sm font-semibold hover:opacity-80">
-        {% trans "Open the rate card entry" %} <i class="fa-solid fa-arrow-up-right-from-square text-xs"></i></a>
-    </div>
-    {% endif %}
-  </div>
-</details>
-{% endif %}
 
 {# ---- Recent activity ---- #}
 {% if recent %}

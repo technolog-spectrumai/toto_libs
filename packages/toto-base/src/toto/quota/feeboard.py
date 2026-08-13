@@ -222,12 +222,7 @@ def _add_outgoings(board, asset, *, since=None, until=None) -> None:
 
 
 def off_contract_rows(asset) -> list:
-    """Prices and fee policies denominated in something else.
-
-    Not an error — the data model permits it and a demo tariff in the seeder
-    uses it deliberately. But it is income the board above cannot count and the
-    doctrine says should not exist, so it is named rather than dropped.
-    """
+    """Income the board cannot count, named rather than dropped."""
     rows: list = []
     if asset is None:
         return rows
@@ -237,16 +232,12 @@ def off_contract_rows(asset) -> list:
     except ImportError:
         return rows
 
-    items = (TariffItem.objects.filter(active=True)
-             .exclude(charged_asset=asset)
-             .select_related("metric", "charged_asset"))
-    for item in items:
-        rows.append(DriftRow(
-            kind="price",
-            what=item.metric.code if item.metric_id else item.name,
-            asset=item.charged_asset.unit_name,
-            fix_url=_url_or_blank("quota:index"),
-        ))
+    # Off-contract PRICES are no longer possible to leave lying around: the rate
+    # desk sets one charging currency for the whole card in a single act
+    # (`rates.set_charging_currency`), so a mixed card is one click from fixed
+    # rather than a list of rows to hunt down. What remains here is the other,
+    # genuinely invisible drift — income retargeted at an account no source
+    # counts.
 
     # Income retargeted away from the account its source counts. The most
     # fragile configurable thing in the area and the least visible: a

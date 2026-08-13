@@ -9,7 +9,7 @@ visiting five of them and holding the answer in your head.
 The axis here is the **metered thing**. There is a collection view of all of
 them (:func:`index`) and a detail view of one (:func:`metric_detail`), and
 every knob that thing has — its limit, its price, whether it is armed, its time
-dials, its per-user overrides — is edited on the thing, in place. The other two
+dials — is edited on the thing, in place. The other two
 screens are a read-only explanation of the charging *kinds* (:func:`taxes`) and
 the platform's income (:func:`fees`), which are genuinely different objects.
 
@@ -178,26 +178,22 @@ def index(request):
 
     One table, one row per thing. The cap, the price and what is left are
     columns rather than destinations, so the common question needs no click at
-    all. Staff additionally edit limit, mode, price and arming in place and
-    save the whole grid in one POST — this replaced the separate rate desk,
-    which was the same grid at a different address.
+    all.
+
+    **The table is read-only.** It used to be a grid of inputs saved in one
+    POST, which meant every row carried a limit box, a mode select, a price box
+    and a currency select — four controls × seventeen things, all live, on the
+    page people came to in order to LOOK something up. Editing now happens one
+    thing at a time in a modal, so the reading surface stays a reading surface
+    and a mis-click cannot silently reprice the platform.
     """
     is_staff = request.user.is_staff
 
     if request.method == "POST":
         _staff_only(request)
-        plan, errors = _parse_grid(request.POST)
-        if errors:
-            # Nothing is written until every row is good: a ValidationError
-            # raised mid-loop would roll back but still render as success, and
-            # leave the operator guessing which row was at fault.
-            for message in errors:
-                messages.error(request, message)
-        else:
-            with transaction.atomic():
-                _apply_grid(plan)
-            messages.success(request, _("Saved."))
+        if _set_charging_currency(request):
             return redirect("quota:index")
+        return redirect("quota:index")
 
     prices = rates.rate_card()
     spend = rates.spend_by_metric(request.user)
@@ -227,114 +223,35 @@ def index(request):
     })
 
 
-def _parse_grid(post):
-    """Read the whole grid before writing any of it.
+def _set_charging_currency(request) -> bool:
+    """Re-denominate the whole rate card in one asset. True when something moved.
 
-    The field-naming rule, which inverts formica's on purpose:
-
-    ==================  ==========================================
-    key absent          the row was not rendered — leave it alone
-    key present, blank  explicit erasure: drop the policy / price
-    key present, valued upsert
-    ==================  ==========================================
-
-    Absent-versus-blank is what stops a half-rendered form, a browser that
-    dropped fields, or a host where tariffs vanished between GET and POST from
-    silently wiping the rate card. Codes are dotted, so ``__`` separates the
-    prefix from the code.
-
-    Levies have no number to blank at all: a levy is armed or it is not, and
-    what it bills is everything held, from the first unit.
+    ONE charging currency, chosen once, applied everywhere — because the
+    alternative was a currency select on every row of a seventeen-row grid, and
+    a rate card that mixes currencies is a rate card nobody can add up. There is
+    no exchange rate anywhere in this ledger (``get_exchange_rate`` refuses every
+    cross-asset pair), so a mixed card cannot even be totalled, which is why
+    ``ingress_tariffs`` already asserted everything must be priced in one asset.
+    This makes that assertion something an operator can satisfy with one click
+    rather than something that fails their seed.
     """
-    plan, errors = [], []
-    pricing = rates.pricing_enabled()
-    levy_codes = levies.levy_codes()
-
-    for metric in registry.installed():
-        entry = {"metric": metric}
-        limit_key = f"limit__{metric.code}"
-        mode_key = f"mode__{metric.code}"
-        price_key = f"price__{metric.code}"
-        armed_key = f"armed__{metric.code}"
-
-        if limit_key in post:
-            raw = (post.get(limit_key) or "").strip()
-            if raw == "":
-                entry["limit"] = None
-            else:
-                try:
-                    value = Decimal(raw)
-                except (InvalidOperation, ValueError):
-                    errors.append(_("%(code)s: %(value)r is not a number.")
-                                  % {"code": metric.code, "value": raw})
-                    continue
-                if value < 0:
-                    errors.append(_("%(code)s: a limit cannot be negative.")
-                                  % {"code": metric.code})
-                    continue
-                entry["limit"] = value
-
-        # Mode is read INDEPENDENTLY of limit. It used to be nested inside the
-        # limit branch, so choosing "Track only" on an unlimited row silently
-        # did nothing, while saving the grid overwrote a mode carefully set on
-        # the detail page with whatever the select happened to show.
-        if mode_key in post:
-            entry["mode"] = post.get(mode_key) or Mode.BLOCK
-
-        # Guard one: never even look at a price field on an unbilled host.
-        if pricing and price_key in post:
-            try:
-                # Guard two: parse here so a bad number is a form error rather
-                # than an exception out of the write phase.
-                from toto.tariffs.rate_card import parse_price
-
-                entry["price"] = parse_price(post.get(price_key))
-                entry["has_price"] = True
-                # Per-metric currency. Absent or blank keeps the inherited one
-                # (tariff default, else the host gas asset).
-                entry["asset_id"] = (post.get(f"asset__{metric.code}") or "").strip() or None
-            except ImportError:  # pragma: no cover
-                pass
-            except ValueError as exc:
-                errors.append(f"{metric.code}: {exc}")
-                continue
-
-        if metric.code in levy_codes and armed_key in post:
-            entry["armed"] = post.get(armed_key) == "on"
-            entry["has_armed"] = True
-
-        if len(entry) > 1:
-            plan.append(entry)
-
-    return plan, errors
+    asset_id = (request.POST.get("charging_currency") or "").strip()
+    if not asset_id:
+        return False
+    try:
+        moved = rates.set_charging_currency(asset_id)
+    except ValueError as exc:
+        messages.error(request, str(exc))
+        return False
+    if moved:
+        messages.success(
+            request,
+            _("Everything is now charged in %(symbol)s.") % {"symbol": moved})
+    return True
 
 
-def _apply_grid(plan):
-    """Write a validated plan. Caller owns the transaction."""
-    for entry in plan:
-        metric = entry["metric"]
-        policy_model = policy_model_for(metric.app_label)
-        if policy_model is not None and ("limit" in entry or "mode" in entry):
-            _set_default_limit(policy_model, metric,
-                               entry.get("limit", _UNSET), entry.get("mode"))
-        if entry.get("has_price"):
-            # Guard three: set_price is itself a no-op when nothing bills.
-            if entry["price"] is None:
-                rates.clear_price(metric.code)
-            else:
-                rates.set_price(metric.code, entry["price"], asset_id=entry.get("asset_id"))
-        if entry.get("has_armed"):
-            try:
-                levies.set_armed(metric.code, entry["armed"])
-            except levies.UnpricedLevy:
-                # Refused on purpose: armed and unpriced measures every night
-                # and bills zero. Reported per row by _parse_grid; reaching
-                # here means a hand-posted field, not worth failing the whole
-                # transaction over.
-                pass
-
-
-#: Distinguishes "the limit field was not in this POST" from "it was, and blank".
+#: "the caller said nothing", which is not the same as "the caller said blank".
+#: Blank means erase the limit; absent means leave it alone.
 _UNSET = object()
 
 
@@ -378,7 +295,7 @@ def metric_detail(request, code):
 
     Always visible: what it is, your usage, its limit, its price, and — when it
     is a levy — whether it is armed. One click deeper: how it is charged, its
-    time dials, its per-user overrides, its advanced pricing, its recent
+    time dials, its advanced pricing, its recent
     activity.
 
     Not staff-only. A member has every reason to be here ("what does this cost
@@ -403,21 +320,15 @@ def metric_detail(request, code):
                spend=rates.spend_by_metric(request.user),
                levy_codes=levies.levy_codes())
 
-    default = overrides = override_form = form = None
+    default = form = None
     if policy_model is not None:
-        default = policy_model.objects.filter(metric_code=code, user__isnull=True).first()
+        default = policy_model.objects.filter(metric_code=code).first()
         if is_staff:
             form = policy_form_for(policy_model)(
                 instance=default,
                 initial=None if default else {
                     "unit": metric.unit, "period": metric.period, "active": True},
             )
-            override_form = policy_form_for(policy_model, include_user=True)(
-                initial={"unit": metric.unit, "period": metric.period, "active": True})
-            overrides = (policy_model.objects
-                         .filter(metric_code=code, user__isnull=False)
-                         .select_related("user")
-                         .order_by("user__username"))
 
     pricing = rates.pricing_enabled()
     return _render(request, "quota/metric_detail.html", {
@@ -429,8 +340,6 @@ def metric_detail(request, code):
         "policy_table": policy_model._meta.db_table if policy_model else "",
         "default": default,
         "form": form,
-        "override_form": override_form,
-        "overrides": overrides,
         "pricing_enabled": pricing,
         "levy_enabled": levies.levy_enabled(),
         "price_asset": rates.price_asset_symbol(),
@@ -455,7 +364,7 @@ def _detail_post(request, metric, policy_model):
     code = metric.code
 
     if action == "default" and policy_model is not None:
-        default = policy_model.objects.filter(metric_code=code, user__isnull=True).first()
+        default = policy_model.objects.filter(metric_code=code).first()
         # Blank means unlimited, exactly as in the grid. The ModelForm makes
         # `limit` required, so the detail page could not express "unlimited" at
         # all while the grid could — the same field, two opposite vocabularies.
@@ -468,7 +377,6 @@ def _detail_post(request, metric, policy_model):
         if form.is_valid():
             policy = form.save(commit=False)
             policy.metric_code = code
-            policy.user = None
             if not policy.name:
                 policy.name = metric.label
             policy.save()
@@ -477,29 +385,18 @@ def _detail_post(request, metric, policy_model):
         messages.error(request, _("That limit could not be saved."))
         return None
 
-    if action == "override" and policy_model is not None:
-        form = policy_form_for(policy_model, include_user=True)(request.POST)
-        if form.is_valid():
-            policy = form.save(commit=False)
-            policy.metric_code = code
-            if not policy.name:
-                policy.name = f"{metric.label} — {policy.user}"
-            policy.save()
-            messages.success(request, _("Override saved for %(user)s.")
-                             % {"user": policy.user})
-            return redirect("quota:metric_detail", code=code)
-        messages.error(request, _("That override could not be saved."))
-        return None
-
     if action == "price":
         raw = request.POST.get("price")
-        asset_id = (request.POST.get("asset") or "").strip() or None
         try:
             if (raw or "").strip() == "":
                 rates.clear_price(code)
                 messages.success(request, _("No price — this is now free."))
             else:
-                rates.set_price(code, raw, asset_id=asset_id)
+                # No asset argument: the platform charges in one currency,
+                # chosen once at the rate desk. A per-price currency was a
+                # select on every row of a rate card that cannot be added up
+                # across currencies anyway — there is no exchange rate here.
+                rates.set_price(code, raw)
                 messages.success(request, _("Price saved."))
         except ValueError as exc:
             messages.error(request, str(exc))
@@ -520,8 +417,7 @@ def _detail_post(request, metric, policy_model):
             if (raw_price or "").strip() == "":
                 rates.clear_price(code)
             else:
-                rates.set_price(code, raw_price,
-                                asset_id=(request.POST.get("asset") or "").strip() or None)
+                rates.set_price(code, raw_price)
             levies.set_armed(code, bool(request.POST.get("levy_active")))
         except levies.UnpricedLevy as exc:
             messages.error(request, str(exc))
@@ -546,25 +442,6 @@ def _recent_events(metric, policy_model, user, is_staff, limit=10):
     if not is_staff:
         qs = qs.filter(user=user)
     return list(qs.select_related("user").order_by("-occurred_at")[:limit])
-
-
-@login_required
-def override_delete(request, code, pk):
-    """Drop a per-user override so the default applies again."""
-    _staff_only(request)
-    if request.method != "POST":
-        return redirect("quota:metric_detail", code=code)
-
-    metric = registry.get(code)
-    policy_model = policy_model_for(metric.app_label) if metric else None
-    if policy_model is None:
-        raise Http404
-
-    policy = get_object_or_404(policy_model, pk=pk, metric_code=code, user__isnull=False)
-    who = policy.user
-    policy.delete()
-    messages.success(request, _("Removed the override for %(user)s.") % {"user": who})
-    return redirect("quota:metric_detail", code=code)
 
 
 # ---------------------------------------------------------------------------

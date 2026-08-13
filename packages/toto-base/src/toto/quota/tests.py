@@ -103,12 +103,19 @@ class PolicyResolutionTests(SampleModels):
         self.assertEqual(get_policy(SampleQuotaPolicy, "widgets.made", self.alice), default)
         self.assertEqual(get_policy(SampleQuotaPolicy, "widgets.made", self.bob), default)
 
-    def test_a_users_own_policy_wins(self):
+    def test_there_is_no_per_person_policy(self):
+        """One row per metric, and the constraint says so.
+
+        A row naming a user used to beat the default. It went the way every
+        other name-an-individual mechanism went: headroom for one person is an
+        office's ``Station.limit_multiplier``, which is visible on the public
+        roster and moves to their successor.
+        """
+        from django.db.utils import IntegrityError
+
         a_policy()
-        mine = a_policy(user=self.alice, limit=Decimal("99"))
-        self.assertEqual(get_policy(SampleQuotaPolicy, "widgets.made", self.alice), mine)
-        self.assertEqual(get_policy(SampleQuotaPolicy, "widgets.made", self.bob).limit,
-                         Decimal("10"))
+        with self.assertRaises(IntegrityError):
+            a_policy(limit=Decimal("99"))
 
     def test_inactive_and_expired_policies_are_ignored(self):
         policy = a_policy(active=False)
@@ -486,17 +493,33 @@ class RateDeskTests(SampleModels):
         self.assertEqual(self.client.get("/quota/").status_code, 200)
         self.assertEqual(self.client.post("/quota/", {}).status_code, 403)
 
-    def test_a_limit_is_set_from_the_grid(self):
+    def test_a_limit_is_set_from_the_edit_modal(self):
+        """Editing is one thing at a time now, not a grid of live inputs."""
         from toto.quota.metrics import policy_model_for, registry
 
         code = self._code()
-        model = policy_model_for(registry.get(code).app_label)
+        metric = registry.get(code)
+        model = policy_model_for(metric.app_label)
         self.client.force_login(self.staff)
 
-        self.client.post("/quota/", {f"limit__{code}": "42"})
+        self.client.post(f"/quota/{code}/", {
+            "action": "default", "limit": "42",
+            "unit": metric.unit, "period": metric.period,
+            "mode": "block", "active": "on",
+        })
 
-        policy = model.objects.get(metric_code=code, user__isnull=True)
-        self.assertEqual(policy.limit, Decimal("42"))
+        self.assertEqual(model.objects.get(metric_code=code).limit, Decimal("42"))
+
+    def test_the_table_itself_posts_nothing(self):
+        """The reading surface stays a reading surface.
+
+        Seventeen rows × four live controls meant a mis-click could reprice the
+        platform from the page people came to in order to LOOK something up.
+        """
+        response = self.client.get("/quota/")
+        body = response.content.decode()
+        for name in ("limit__", "price__", "mode__", "asset__", "armed__"):
+            self.assertNotIn(name, body, name)
 
     def test_a_blank_limit_deletes_the_policy_rather_than_storing_zero(self):
         """Nothing is limited until a policy exists, so unlimited is an absence."""
@@ -509,35 +532,25 @@ class RateDeskTests(SampleModels):
 
         self.client.post("/quota/", {f"limit__{code}": ""})
 
-        self.assertFalse(model.objects.filter(metric_code=code, user__isnull=True).exists())
+        self.assertFalse(model.objects.filter(metric_code=code).exists())
 
-    def test_an_absent_key_leaves_the_row_alone(self):
-        """A half-rendered form must not read as "erase everything"."""
+    def test_an_empty_post_changes_nothing(self):
+        """The desk's only POST is the charging currency; a blank one is a no-op."""
         from toto.quota.metrics import policy_model_for, registry
 
         code = self._code()
-        model = policy_model_for(registry.get(code).app_label)
+        metric = registry.get(code)
+        model = policy_model_for(metric.app_label)
         self.client.force_login(self.staff)
-        self.client.post("/quota/", {f"limit__{code}": "7"})
+        self.client.post(f"/quota/{code}/", {
+            "action": "default", "limit": "7",
+            "unit": metric.unit, "period": metric.period,
+            "mode": "block", "active": "on",
+        })
 
-        self.client.post("/quota/", {})  # nothing submitted at all
+        self.client.post("/quota/", {})
 
-        self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
-                         Decimal("7"))
-
-    def test_one_bad_row_saves_nothing(self):
-        from toto.quota.metrics import policy_model_for, registry
-
-        codes = registry.codes()
-        if len(codes) < 2:
-            self.skipTest("needs two registered metrics")
-        good, bad = codes[0], codes[1]
-        model = policy_model_for(registry.get(good).app_label)
-        self.client.force_login(self.staff)
-
-        self.client.post("/quota/", {f"limit__{good}": "9", f"limit__{bad}": "-5"})
-
-        self.assertFalse(model.objects.filter(metric_code=good, user__isnull=True).exists())
+        self.assertEqual(model.objects.get(metric_code=code).limit, Decimal("7"))
 
 
 class PricingBoundaryTests(SampleModels):
@@ -592,10 +605,16 @@ class PricingBoundaryTests(SampleModels):
             # checked directly: no header, and no input, for money.
             body = response.content.decode()
             self.assertNotIn("price__", body)
+            self.assertNotIn("charging_currency", body)
 
-            self.client.post("/quota/", {f"limit__{code}": "11"})
+            metric = registry.get(code)
+            self.client.post(f"/quota/{code}/", {
+                "action": "default", "limit": "11",
+                "unit": metric.unit, "period": metric.period,
+                "mode": "block", "active": "on",
+            })
 
-        self.assertEqual(model.objects.get(metric_code=code, user__isnull=True).limit,
+        self.assertEqual(model.objects.get(metric_code=code).limit,
                          Decimal("11"))
 
     def test_the_free_column_follows_the_levy_engine_not_the_rate_card(self):

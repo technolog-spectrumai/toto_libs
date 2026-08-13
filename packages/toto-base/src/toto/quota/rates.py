@@ -78,6 +78,36 @@ def billing_assets() -> list[dict]:
     ]
 
 
+def set_charging_currency(asset_id) -> str | None:
+    """Re-denominate every price in one asset. Returns its symbol, or None.
+
+    ONE charging currency for the whole platform. There is no exchange rate
+    anywhere in this ledger — ``get_exchange_rate`` refuses every cross-asset
+    pair — so a rate card that mixes currencies cannot be added up, compared or
+    reasoned about; ``ingress_tariffs`` already asserted everything must be
+    priced in one asset, and this is how an operator satisfies that in one act
+    instead of row by row.
+
+    Only the DENOMINATION moves. The numbers are left exactly as they are: this
+    is not a conversion, and pretending otherwise would invent a rate the ledger
+    refuses to have.
+    """
+    if not pricing_enabled():
+        return None
+    try:
+        from toto.assets.models import Asset
+        from toto.tariffs.models import TariffItem
+    except ImportError:  # pragma: no cover - app installed, wheel absent
+        return None
+
+    asset = Asset.objects.filter(pk=asset_id, active=True).first()
+    if asset is None:
+        raise ValueError("That currency is not available on this host.")
+
+    TariffItem.objects.exclude(charged_asset=asset).update(charged_asset=asset)
+    return asset.unit_name
+
+
 def set_price(metric_code: str, raw, asset_id=None) -> bool:
     """Price a metric from a raw form value. False when nothing was written.
 

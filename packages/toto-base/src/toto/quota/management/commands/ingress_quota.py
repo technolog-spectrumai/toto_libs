@@ -8,9 +8,10 @@ Each metric's suggested cap comes from the ``default_limit`` its own app
 declared in ``<app>/metrics.py``. A metric that declares none is measured but
 never capped, which is a legitimate choice and stays that way.
 
-Rows land in the declaring app's own table — quota owns none — and are created
-with ``user=None``, meaning "the default for everyone". A per-user override is
-a second row, added from the UI or admin.
+Rows land in the declaring app's own table — quota owns none — and one row per
+metric applies to everyone. There is no per-person override: somebody who needs
+more room holds an office, and ``Station.limit_multiplier`` scales every limit
+they are subject to.
 
 Idempotent: an existing default policy is left exactly as it is, so re-running
 after an administrator has tuned a limit will not undo their work.
@@ -70,7 +71,6 @@ class Command(IngressCommand):
 
             policy, created = policy_model.objects.get_or_create(
                 metric_code=metric.code,
-                user=None,
                 defaults=defaults,
             )
             if created:

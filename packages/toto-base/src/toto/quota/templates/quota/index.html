@@ -62,8 +62,29 @@
   {% endif %}
 </div>
 
-<form method="post" x-data="{ q: '' }">
-  {% csrf_token %}
+<div x-data="{ q: '', editing: null }" @keydown.escape.window="editing = null">
+
+  {% if is_staff_view and billing_assets %}
+  {% comment %}ONE charging currency, chosen once. There is no exchange rate in
+     this ledger — get_exchange_rate refuses every cross-asset pair — so a rate
+     card that mixes currencies cannot be added up. It used to be a select on
+     every row.{% endcomment %}
+  <form method="post" class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+    {% csrf_token %}
+    <label class="font-semibold opacity-70">{% trans "Everything is charged in" %}</label>
+    <select name="charging_currency"
+            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+            class="rounded border px-2 py-1">
+      {% for a in billing_assets %}
+        <option value="{{ a.id }}" {% if a.symbol == price_asset %}selected{% endif %}>{{ a.symbol }} — {{ a.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit"
+            :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+            class="rounded border px-3 py-1 font-semibold transition">
+      {% trans "Apply to every price" %}</button>
+  </form>
+  {% endif %}
 
   <div class="mb-4 flex flex-wrap items-center gap-3">
     <label class="relative flex-1 min-w-[16rem]">
@@ -131,23 +152,7 @@
 
               {# ---- limit ---- #}
               <td class="px-5 py-3">
-                {% if is_staff_view and row.has_table %}
-                  <div class="flex items-center gap-1">
-                    <input type="text" inputmode="decimal" name="limit__{{ row.metric.code }}"
-                           value="{{ row.limit|default_if_none:''|floatformat:'-10' }}"
-                           placeholder="{% trans 'none' %}"
-                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                           class="w-20 rounded border px-2 py-1 font-mono text-xs">
-                    <select name="mode__{{ row.metric.code }}"
-                            :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                            class="rounded border px-1 py-1 text-xs">
-                      {% for value, label in modes %}
-                        <option value="{{ value }}" {% if row.mode == value %}selected{% endif %}>{{ label }}</option>
-                      {% endfor %}
-                    </select>
-                  </div>
-                  <div class="mt-0.5 text-[10px] opacity-50">{{ row.metric.unit }} / {{ row.period }}</div>
-                {% elif row.limit %}
+                {% if row.limit %}
                   <span class="font-mono">{{ row.limit|floatformat:"-2" }}</span>
                   <span class="text-xs opacity-60">{{ row.metric.unit }} / {{ row.period }}</span>
                   {% if row.mode and row.mode != "block" %}
@@ -165,14 +170,7 @@
               {% if levy_enabled %}
               <td class="px-5 py-3">
                 {% if row.is_levy %}
-                  {% if is_staff_view %}
-                    <label class="inline-flex items-center gap-2 text-xs">
-                      <input type="checkbox" name="armed__{{ row.metric.code }}"
-                             {% if row.levy.active %}checked{% endif %}
-                             class="rounded border">
-                      <span class="opacity-70">{{ row.levy_unit }}{% trans " / night" %}</span>
-                    </label>
-                  {% elif row.levy.active %}
+                  {% if row.levy.active %}
                     <span class="text-xs">{% trans "nightly" %}</span>
                   {% else %}
                     <span class="text-xs opacity-55">{% trans "not armed" %}</span>
@@ -186,26 +184,8 @@
               {# ---- price ---- #}
               {% if pricing_enabled %}
               <td class="px-5 py-3">
-                {% if is_staff_view %}
-                  <div class="flex items-center gap-1">
-                    <input type="text" inputmode="decimal" name="price__{{ row.metric.code }}"
-                           value="{% if row.price %}{{ row.price.price_display }}{% endif %}"
-                           placeholder="{% trans 'free' %}"
-                           :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                           class="w-24 rounded border px-2 py-1 font-mono text-xs">
-                    {% if billing_assets %}
-                      <select name="asset__{{ row.metric.code }}"
-                              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-                              class="rounded border px-1 py-1 text-xs">
-                        {% for a in billing_assets %}
-                          <option value="{{ a.id }}" {% if row.price and row.price.asset == a.symbol %}selected{% endif %}>{{ a.symbol }}</option>
-                        {% endfor %}
-                      </select>
-                    {% endif %}
-                  </div>
-                {% elif row.price %}
+                {% if row.price %}
                   <span class="font-mono">{{ row.price.price_display }}</span>
-                  <span class="text-xs opacity-60">{{ row.price.asset }}</span>
                 {% else %}
                   <span class="text-xs opacity-55">{% trans "free" %}</span>
                 {% endif %}
@@ -232,8 +212,16 @@
               </td>
 
               <td class="px-5 py-3 text-right">
-                <a href="{% url 'quota:metric_detail' code=row.metric.code %}"
-                   class="text-xs font-semibold underline hover:opacity-80">{% trans "Open" %}</a>
+                {% if is_staff_view %}
+                  <button type="button" @click="editing = '{{ row.metric.code }}'"
+                          :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                          class="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold transition"
+                          aria-label="{% blocktrans with thing=row.metric.label %}Edit {{ thing }}{% endblocktrans %}">
+                    <i class="fa-solid fa-pen-to-square"></i>{% trans "Edit" %}</button>
+                {% else %}
+                  <a href="{% url 'quota:metric_detail' code=row.metric.code %}"
+                     class="text-xs font-semibold underline hover:opacity-80">{% trans "Open" %}</a>
+                {% endif %}
               </td>
             </tr>
           {% endfor %}
@@ -245,17 +233,12 @@
   {% endfor %}
 
   {% if is_staff_view %}
-    <div class="flex items-center justify-between gap-4">
-      <p class="text-xs opacity-55">
-        {% trans "An empty limit means no limit. An empty price means free — for everyone, since there are no per-person allowances. A levy bills everything held, so arming one without a price is refused." %}
-      </p>
-      <button type="submit"
-              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-              class="shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
-        <i class="fa-solid fa-floppy-disk mr-1"></i>{% trans "Save all" %}
-      </button>
-    </div>
+    <p class="text-xs opacity-55">
+      {% trans "An empty limit means no limit. An empty price means free — for everyone, since there are no per-person allowances. A levy bills everything held, so arming one without a price is refused." %}
+    </p>
+
+    {% include "quota/partials/_edit_modal.html" %}
   {% endif %}
-</form>
+</div>
 
 {% endblock %}

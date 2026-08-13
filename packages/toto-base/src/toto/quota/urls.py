@@ -18,5 +18,4 @@ urlpatterns = [
     # a new segment declared after this line is swallowed as a metric code and
     # 404s as "no metric registered as 'taxes'".
     path("<str:code>/", views.metric_detail, name="metric_detail"),
-    path("<str:code>/overrides/<int:pk>/delete/", views.override_delete, name="override_delete"),
 ]

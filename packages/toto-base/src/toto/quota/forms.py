@@ -34,11 +34,6 @@ class BasePolicyForm(forms.ModelForm):
         for name, text in HELP.items():
             if name in self.fields:
                 self.fields[name].help_text = text
-        if "user" in self.fields:
-            self.fields["user"].required = True
-            self.fields["user"].help_text = _(
-                "This user's limit replaces the default for this metric."
-            )
 
     def clean_limit(self):
         limit = self.cleaned_data["limit"]
@@ -54,9 +49,14 @@ class BasePolicyForm(forms.ModelForm):
         return cleaned
 
 
-def policy_form_for(policy_model, *, include_user=False):
-    """A ModelForm class for one app's concrete quota policy."""
-    fields = list(("user",) + FIELDS) if include_user else list(FIELDS)
+def policy_form_for(policy_model):
+    """A ModelForm class for one app's concrete quota policy.
+
+    One form, one row per metric. There was an ``include_user`` variant that
+    added a user field for per-person overrides; both are gone — headroom for
+    one person is an office's ``limit_multiplier``, not a row naming them.
+    """
     return forms.modelform_factory(
-        policy_model, form=BasePolicyForm, fields=fields, widgets=dict(WIDGETS)
+        policy_model, form=BasePolicyForm, fields=list(FIELDS),
+        widgets=dict(WIDGETS)
     )

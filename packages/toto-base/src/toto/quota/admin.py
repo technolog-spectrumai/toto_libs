@@ -14,18 +14,20 @@ from django.contrib import admin
 
 
 class QuotaPolicyAdminBase(admin.ModelAdmin):
-    list_display = ("metric_code", "user", "limit", "unit", "period", "mode", "active")
+    """One row per metric, applying to everyone.
+
+    There is no user column because there is no per-person policy: somebody who
+    needs more room holds an office, and ``Station.limit_multiplier`` scales
+    every limit they are subject to.
+    """
+
+    list_display = ("metric_code", "limit", "unit", "period", "mode", "active")
     list_filter = ("period", "mode", "active", "metric_code")
-    search_fields = ("name", "metric_code", "user__username")
+    search_fields = ("name", "metric_code")
     list_editable = ("active", "mode")
-    autocomplete_fields = ("user",)
     readonly_fields = ("created_at", "updated_at")
     fieldsets = (
         (None, {"fields": ("name", "metric_code", "active")}),
-        ("Applies to", {
-            "fields": ("user",),
-            "description": "Leave the user empty for the default policy that applies to everyone.",
-        }),
         ("Limit", {"fields": ("limit", "unit", "period", "mode")}),
         ("Time bounds", {"fields": ("starts_at", "ends_at"), "classes": ("collapse",)}),
         ("Timestamps", {"fields": ("created_at", "updated_at"), "classes": ("collapse",)}),
