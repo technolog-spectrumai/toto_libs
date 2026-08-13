@@ -8,11 +8,13 @@ future consumer has one obvious place to look.
 
 from toto.core.ai_surfaces import (  # noqa: F401
     Action,
+    AgentVoice,
     AiSurface,
     DuplicateSurface,
     SurfaceRegistry,
     build_messages,
     code_actions,
+    compose_system,
     prose_actions,
     registry,
 )

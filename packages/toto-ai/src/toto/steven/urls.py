@@ -6,6 +6,7 @@ app_name = "steven"
 
 urlpatterns = [
     path("", views.console, name="console"),
+    path("manage/", views.manage, name="manage"),
     path("ask/", views.ask, name="ask"),
     path("runs/<int:pk>/", views.run_status, name="run_status"),
     path("file/<int:file_pk>/", views.file_ask, name="file_ask"),

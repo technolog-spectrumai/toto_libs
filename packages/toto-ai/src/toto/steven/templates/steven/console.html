@@ -18,7 +18,8 @@
       <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
          class="text-xs font-semibold uppercase tracking-wide">{% trans "Studio" %}</p>
       <h1 class="flex items-center gap-3 text-3xl font-bold">
-        <i class="fa-solid fa-wand-magic-sparkles"></i>{% trans "Assistant" %}
+        <i class="{% if agent %}{{ agent.icon }}{% else %}fa-solid fa-wand-magic-sparkles{% endif %}"></i>
+        {% if agent %}{{ agent.name }}{% else %}{% trans "Assistant" %}{% endif %}
         {% trans "What the assistant costs" as help_title %}
         {% blocktrans asvar help_body %}The assistant works on what you have SELECTED, not on your whole document. That is the billing model, not a limitation: you pay by the token, and sending a whole file to fix one sentence is the difference between a free action and an expensive one.
 
@@ -29,6 +30,15 @@ A request that fails costs nothing at all. There is no work to pay for, so there
 Nothing the assistant proposes is ever applied on its own. You accept it or you reject it.{% endblocktrans %}
         {% include "oya/partials/_help.html" with title=help_title body=help_body %}
       </h1>
+      {% if agent.tagline %}<p class="text-sm opacity-70">{{ agent.tagline }}</p>{% endif %}
+      {% if agent.description %}<p class="text-sm opacity-70">{{ agent.description }}</p>{% endif %}
+      {% if is_operator %}
+        {% url 'steven:manage' as manage_url %}
+        {% if manage_url %}
+          <p><a href="{{ manage_url }}" class="text-sm underline hover:opacity-80">
+            <i class="fa-solid fa-sliders"></i> {% trans "Assistant setup" %}</a></p>
+        {% endif %}
+      {% endif %}
     </header>
 
     {% comment %}The honest line first: is this thing on at all?{% endcomment %}

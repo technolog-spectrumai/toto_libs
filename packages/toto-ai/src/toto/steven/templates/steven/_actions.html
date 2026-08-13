@@ -22,17 +22,33 @@
    every editor already has its own for the same reason.
 {% endcomment %}
 
+{% comment %}Into variables first, and through escapejs, because these end up
+   INSIDE JavaScript string literals below. A Polish or French translation
+   carrying an apostrophe would otherwise close the string and break the whole
+   attribute — the same reason primula/edit.html takes a variable before an
+   include.{% endcomment %}
+{% trans "Ask" as ask_label %}
+{% trans "Ask the assistant about the selection" as ask_title %}
+{% trans "on the selection" as on_selection_lower %}
+{% trans "On the selection" as on_selection %}
+
 <span class="relative inline-flex" x-data="stevenPanel({
         surface: '{{ surface|escapejs }}',
         askUrl: '{% url 'steven:ask' %}',
         actionsUrl: '{% url 'steven:surface_actions' surface %}'
       })" @keydown.escape.window="open = false">
 
+  {% comment %}The icon follows the configured agent once the action list has
+     been fetched — before that it is the platform's own wand, because a button
+     that renders empty for a second is worse than one that never changes.
+     Deliberately NOT a server-rendered value: this include lives in six editors
+     in three packages, and threading an identity through all six templates to
+     save one field on a request the panel already makes is churn.{% endcomment %}
   <button type="button" @click="toggle()"
           :class="open ? (darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light') : 'opacity-60 hover:opacity-100'"
           class="inline-flex items-center gap-1.5 rounded px-2 py-1 text-sm font-semibold transition"
-          title="{% trans 'Ask the assistant about the selection' %}">
-    <i class="fa-solid fa-wand-magic-sparkles"></i>{% if label %}<span class="hidden sm:inline">{{ label }}</span>{% endif %}
+          :title="agent ? '{{ ask_label|escapejs }} ' + agent.name : '{{ ask_title|escapejs }}'">
+    <i :class="(agent && agent.icon) || 'fa-solid fa-wand-magic-sparkles'"></i>{% if label %}<span class="hidden sm:inline">{{ label }}</span>{% endif %}
   </button>
 
   <div x-show="open" x-cloak @click.outside="open = false"
@@ -43,8 +59,8 @@
        toolbars cannot drift into six vocabularies.{% endcomment %}
     <template x-if="!chosen && !result">
       <div class="space-y-1">
-        <p class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-50">
-          {% trans "On the selection" %}</p>
+        <p class="px-1 pb-1 text-[10px] font-semibold uppercase tracking-wide opacity-50"
+           x-text="agent ? agent.name + ' — {{ on_selection_lower|escapejs }}' : '{{ on_selection|escapejs }}'"></p>
         <template x-for="a in actions" :key="a.key">
           <button type="button" @click="choose(a)"
                   :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"

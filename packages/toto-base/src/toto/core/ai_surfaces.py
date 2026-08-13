@@ -28,6 +28,13 @@ surrounding context it sends a bounded window, and says so.
 instruction template and a declared output shape. The model is told what to
 return; the surface's ``file_type`` decides whether the answer is screened by
 ``toto.vault.scanning`` before anybody is offered it.
+
+**An operator's tuning arrives as an :class:`AgentVoice`.** Who the assistant is
+and how the house wants it to write are configuration, not code — but they are
+configuration held by an app this module may not import. So the voice is a plain
+dataclass the caller passes in, and :func:`compose_system` decides where each
+piece lands relative to the action's own rule. See that function for why the
+action's rule goes last.
 """
 
 from __future__ import annotations
@@ -192,8 +199,68 @@ def code_actions(language: str = "") -> tuple:
     )
 
 
+# ---------------------------------------------------------------------------
+# The operator's half of the system prompt
+# ---------------------------------------------------------------------------
+
+@dataclass(frozen=True)
+class AgentVoice:
+    """Who the assistant is and how the house wants it to write.
+
+    Configuration, edited by an operator, held by an app this module may not
+    import — so it arrives as a plain value rather than a lookup. A caller with
+    nothing configured passes ``None`` and gets the untouched action prompt,
+    which is what every host does until somebody opens the management page.
+    """
+
+    #: What it calls itself. Rendered in the panel; also told to the model, so
+    #: "who are you" gets the house answer rather than the provider's.
+    name: str = ""
+    #: One or two sentences: what it is and what it is for.
+    persona: str = ""
+    #: Blank means "answer in the language of the text" — the sane default for a
+    #: platform whose users write in several. A value here overrides it.
+    language: str = ""
+    #: Rules that apply everywhere: what never to invent, how blunt to be.
+    house_rules: str = ""
+    #: kind → an extra note for surfaces of that kind only. Tuning how LaTeX
+    #: answers come back should not change how prose answers do.
+    kind_notes: dict = field(default_factory=dict)
+
+
+def compose_system(surface: AiSurface, action: Action,
+                   voice: AgentVoice | None = None) -> str:
+    """Assemble the system message. **The action's own rule always goes last.**
+
+    Order is persona, then language, then the note for this kind of surface,
+    then the house rules, then the action's rule — and that last position is not
+    cosmetic. An action's rule is what says *return only the edited text, no
+    preamble, no code fences*, and Accept pastes whatever comes back straight
+    into somebody's document. An operator tuning tone must not be able to make
+    the assistant start returning "Sure! Here you go:" in front of a paragraph,
+    or ```` ``` ```` fences inside an HTML file. Everything above the action's
+    rule shapes the voice; the action's rule fixes the shape of the answer, and
+    it is stated closest to the question so it is the instruction in force.
+    """
+    action_rule = action.system or _PROSE_SYSTEM
+    if voice is None:
+        return action_rule
+
+    who = voice.persona
+    if voice.name and not who:
+        who = f"You are {voice.name}."
+    elif voice.name and voice.name.lower() not in who.lower():
+        who = f"You are {voice.name}. {who}"
+
+    language = (f"Always answer in {voice.language}." if voice.language else "")
+
+    parts = [who, language, voice.kind_notes.get(surface.kind, ""),
+             voice.house_rules, action_rule]
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
 def build_messages(surface: AiSurface, action: Action, *, selection: str,
-                   instruction: str = "") -> list:
+                   instruction: str = "", voice: AgentVoice | None = None) -> list:
     """The two-message payload. No history: an action is a single shot.
 
     The parked app resent an unbounded conversation on every turn, which grew
@@ -203,7 +270,7 @@ def build_messages(surface: AiSurface, action: Action, *, selection: str,
     user = action.template.format(selection=selection,
                                   instruction=instruction or "")
     return [
-        {"role": "system", "content": action.system or _PROSE_SYSTEM},
+        {"role": "system", "content": compose_system(surface, action, voice)},
         {"role": "user", "content": user},
     ]
 

@@ -1,15 +1,23 @@
-"""Steven — the assistant's two tables: how it is configured, and what it ran.
+"""Steven — how it is configured, who it is, and what it ran.
 
 **One provider row is active; several may exist.** That is
 ``jess.EmailProvider``'s shape, and jess is the only place in this tree that has
 it, so it is copied rather than re-derived: a console row can sit beside a
 working one, switching is flipping a flag, and the row you switched away from is
-still there to switch back to.
+still there to switch back to. :class:`AiAgent` follows the same rule for the
+same reason — a persona you are drafting sits beside the one answering.
 
 **The key is not a column.** It is a ``gervazy.EncryptedSecret`` in steven's own
 strongbox — see :mod:`toto.steven.vault`. ``deploy.py`` copies config env into
 ``.env`` with no redaction, which is why the environment is the wrong place for
 it.
+
+**A provider and an agent are different questions.** The provider is *where
+completions come from* — a URL, a model name, a key, a timeout. The agent is
+*who is answering* — a name, a persona, the house's rules about how to write.
+They are two tables because they change for unrelated reasons and by unrelated
+people: swapping to a cheaper model must not disturb a tone somebody spent an
+afternoon on, and editing that tone must never be a way to touch an API key.
 """
 
 from __future__ import annotations
@@ -102,6 +110,90 @@ class AiProvider(models.Model):
     @property
     def is_usable(self) -> bool:
         return bool(self.active and self.secret_id)
+
+
+class AiAgent(models.Model):
+    """Who the assistant is, and how the house wants it to write.
+
+    Everything here ends up in the **system message**, and nowhere else — see
+    ``toto.core.ai_surfaces.compose_system``, which decides the order and keeps
+    the action's own output rule last so no amount of tuning here can make the
+    assistant start returning code fences into somebody's document.
+
+    **The icon is a Font Awesome class, not an uploaded avatar.** The parked app
+    had an ``ImageField``; an upload here would mean a media path, a storage
+    question and an untrusted image nobody scans, all so a settings row can have
+    a picture. Every other identity on this platform is drawn from the same icon
+    set, and this one is not the exception worth building an upload door for.
+    """
+
+    name = models.CharField(max_length=60, default="Steven", help_text=_(
+        "What it calls itself. Shown on the panel, and told to the model — so "
+        "'who are you' gets this answer rather than the provider's."))
+    icon = models.CharField(max_length=80,
+                            default="fa-solid fa-wand-magic-sparkles",
+                            help_text=_("A Font Awesome class."))
+    tagline = models.CharField(max_length=160, blank=True, help_text=_(
+        "One line, under the name. Not sent to the model."))
+    description = models.TextField(blank=True, help_text=_(
+        "What this assistant is for, in the user's words. Shown on the console. "
+        "Not sent to the model."))
+
+    persona = models.TextField(blank=True, help_text=_(
+        "One or two sentences telling the model what it is. Sent on EVERY "
+        "call, so length here is a bill, not a detail."))
+    language = models.CharField(max_length=60, blank=True, help_text=_(
+        "Leave blank to answer in the language of the text — the right default "
+        "when people write in several. A value here overrides that."))
+    house_rules = models.TextField(blank=True, help_text=_(
+        "Rules that apply to every action: what never to invent, how blunt to "
+        "be, what to do when unsure."))
+    kind_notes = models.JSONField(default=dict, blank=True, help_text=_(
+        "kind → an extra note for surfaces of that kind only (prose, code, "
+        "latex, sheet, cells). Tuning LaTeX answers must not change prose ones."))
+
+    active = models.BooleanField(default=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-active", "-updated_at"]
+        verbose_name = _("AI agent")
+        verbose_name_plural = _("AI agents")
+
+    def __str__(self):
+        return f"{self.name}{' (active)' if self.active else ''}"
+
+    def save(self, *args, **kwargs):
+        """One active row, the same transaction-bound way ``AiProvider`` does it."""
+        with transaction.atomic():
+            super().save(*args, **kwargs)
+            if self.active:
+                AiAgent.objects.filter(active=True).exclude(pk=self.pk).update(
+                    active=False)
+
+    @classmethod
+    def current(cls):
+        """The active agent, or None. Read per call — never cached."""
+        return cls.objects.filter(active=True).order_by("-updated_at").first()
+
+    def as_voice(self):
+        """This row as the value ``compose_system`` takes."""
+        from toto.core.ai_surfaces import AgentVoice
+
+        return AgentVoice(
+            name=self.name, persona=self.persona, language=self.language,
+            house_rules=self.house_rules,
+            # A hand-edited JSON column can hold anything; a bad one must not
+            # take the assistant down, so a non-mapping degrades to no notes.
+            kind_notes=self.kind_notes if isinstance(self.kind_notes, dict) else {},
+        )
+
+    @classmethod
+    def voice(cls):
+        """The active agent's voice, or None when nobody has configured one."""
+        agent = cls.current()
+        return agent.as_voice() if agent else None
 
 
 class AiRun(models.Model):

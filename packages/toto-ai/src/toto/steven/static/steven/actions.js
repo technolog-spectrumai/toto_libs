@@ -62,6 +62,10 @@
 
       open: false,
       actions: [],
+      /* {name, icon, tagline} once the action list has been fetched, null when
+         no operator has configured an identity. The button falls back to the
+         platform's own wand rather than rendering empty while this is null. */
+      agent: null,
       loaded: false,
       chosen: null,
       instruction: "",
@@ -89,6 +93,7 @@
           .then(function (r) { return r.json(); })
           .then(function (d) {
             self.actions = d.actions || [];
+            self.agent = d.agent || null;
             self.loaded = true;
           })
           .catch(function () { self.error = "Could not load the actions."; });

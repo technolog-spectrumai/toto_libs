@@ -1,0 +1,170 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Assistant setup" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Operators" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="{% if agent %}{{ agent.icon }}{% else %}fa-solid fa-wand-magic-sparkles{% endif %}"></i>
+        {% trans "Assistant setup" %}
+      </h1>
+      <p class="text-sm opacity-70">
+        {% trans "Who the assistant is, and how the house wants it to write. Both take effect on the next question — there is nothing to restart." %}
+      </p>
+    </header>
+
+    {% comment %}The provider is read-only here on purpose: an API key and a
+       persona are edited by different people with different care, and one page
+       carrying both is how a tone change becomes an outage. The line is here
+       because an operator tuning a prompt still needs to know what is answering
+       — and whether anything is.{% endcomment %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 text-sm shadow-sm">
+      {% if configured %}
+        <p class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-check" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          {% blocktrans with model=provider.model label=provider.label %}Answering as {{ model }}, via {{ label }}.{% endblocktrans %}
+        </p>
+      {% else %}
+        <p class="flex items-center gap-2">
+          <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          {% trans "No provider is set up, so nothing here can answer yet. The model and the API key live in the admin, under AI providers." %}
+        </p>
+      {% endif %}
+      <a href="{{ console_url }}" class="text-xs underline hover:opacity-80">
+        <i class="fa-solid fa-gauge-high"></i> {% trans "Console" %}</a>
+    </article>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border px-4 py-3 text-sm font-medium">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% comment %}Server-driven tabs, not Alpine: each tab is its own form POSTing
+       on its own, so a half-finished persona cannot block a one-word fix to a
+       name — and a validation error has to come back on the tab that caused it,
+       which a client-side toggle would lose on reload.{% endcomment %}
+    <nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Assistant setup' %}">
+      <a href="?tab=identity"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+         {% if tab == 'identity' %}aria-current="page"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+         {% else %}
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         {% endif %}>
+        <i class="fa-solid fa-id-badge"></i>{% trans "Identity" %}</a>
+      <a href="?tab=prompt"
+         class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+         {% if tab == 'prompt' %}aria-current="page"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+         {% else %}
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         {% endif %}>
+        <i class="fa-solid fa-sliders"></i>{% trans "Prompt" %}</a>
+    </nav>
+
+    {% if tab == 'prompt' %}
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-4 rounded-2xl border p-5 shadow-sm">
+        <div class="space-y-1">
+          <h2 class="text-lg font-bold">{% trans "How it writes" %}</h2>
+          <p class="text-sm opacity-70">
+            {% trans "Everything on this tab is sent to the model on every single call, so length here is a bill rather than a detail. The per-surface notes below are sent only with the editors they name — tuning how LaTeX comes back must not change how prose does." %}
+          </p>
+        </div>
+
+        <form method="post" class="space-y-4">
+          {% csrf_token %}
+          <input type="hidden" name="form" value="prompt">
+          {% include "oya/_form_fields.html" with form=prompt_form %}
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+        </form>
+      </article>
+
+      {% comment %}The preview is the point of this tab. Text boxes that build a
+         prompt nobody can read is how the parked app ended up shipping a system
+         prompt no one had looked at in months.{% endcomment %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-4 rounded-2xl border p-5 shadow-sm">
+        <div class="space-y-1">
+          <h2 class="text-lg font-bold">{% trans "What the model is actually told" %}</h2>
+          <p class="text-sm opacity-70">
+            {% trans "The assembled system message, one example per kind of surface. The last paragraph is the action's own rule — it is stated last, and closest to the question, because it is what says 'return only the text, no preamble, no code fences'. Nothing above it can override it, which is why a persona cannot make the assistant start pasting fences into your document." %}
+          </p>
+        </div>
+
+        {% for row in preview %}
+          <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="space-y-2 rounded-xl border p-4">
+            <p class="text-xs font-semibold uppercase tracking-wide opacity-60">
+              {{ row.kind }} — {{ row.surface }} · {{ row.action }}</p>
+            <pre :class="darkMode ? 'bg-black/20' : 'bg-black/5'"
+                 class="overflow-x-auto whitespace-pre-wrap rounded-lg p-3 text-xs leading-relaxed">{{ row.system }}</pre>
+          </div>
+        {% empty %}
+          <p class="text-sm opacity-60">
+            {% trans "No editor on this server has registered a surface, so there is nothing to preview yet." %}</p>
+        {% endfor %}
+      </article>
+
+    {% else %}
+
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="space-y-4 rounded-2xl border p-5 shadow-sm">
+        <div class="space-y-1">
+          <h2 class="text-lg font-bold">{% trans "Who it is" %}</h2>
+          <p class="text-sm opacity-70">
+            {% trans "The name and icon a user sees on the wand panel in every editor. The name is also told to the model, so 'who are you' gets this answer rather than the provider's. The tagline and the description are for people only — they are never sent." %}
+          </p>
+        </div>
+
+        <form method="post" class="space-y-4">
+          {% csrf_token %}
+          <input type="hidden" name="form" value="identity">
+          {% include "oya/_form_fields.html" with form=identity_form %}
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+        </form>
+      </article>
+
+      {% if agent %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="space-y-3 rounded-2xl border p-5 shadow-sm">
+          <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "How it introduces itself" %}</h2>
+          <div class="flex items-center gap-3">
+            <i class="{{ agent.icon }} text-2xl opacity-80"></i>
+            <div>
+              <p class="font-bold">{{ agent.name }}</p>
+              {% if agent.tagline %}<p class="text-sm opacity-70">{{ agent.tagline }}</p>{% endif %}
+            </div>
+          </div>
+          {% if not agent.active %}
+            <p class="flex items-center gap-2 text-sm">
+              <i class="fa-solid fa-circle-exclamation" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              {% trans "Switched off. The assistant still answers, using the plain per-action prompts and none of this." %}
+            </p>
+          {% endif %}
+        </article>
+      {% endif %}
+
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

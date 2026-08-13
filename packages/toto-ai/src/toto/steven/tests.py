@@ -762,20 +762,31 @@ class AllSurfacesTests(TestCase):
         self.assertEqual(surface.kind, "code")
         self.assertIn("docstring", {a.key for a in surface.actions})
 
+    def _declared_surfaces(self):
+        """The surfaces real apps declared — not this module's fixtures.
+
+        **The registry is a process global**, and every class here that calls
+        ``_register_test_surfaces`` leaves TEST_SURFACE and HTML_SURFACE in it
+        for the rest of the run. Which classes have run first depends on
+        alphabetical ordering, so a new test class can silently change what
+        these two see. Filtering by key is what makes them assert a contract
+        about editors rather than about test ordering.
+        """
+        from toto.core.ai_surfaces import registry
+
+        fixtures = {TEST_SURFACE.key, HTML_SURFACE.key}
+        return [s for s in registry.all() if s.key not in fixtures]
+
     def test_every_surface_can_be_asked_a_question(self):
         """The side panel needs ONE action it can count on, whatever editor it
         is docked to."""
-        from toto.core.ai_surfaces import registry
-
-        for surface in registry.all():
+        for surface in self._declared_surfaces():
             with self.subTest(surface=surface.key):
                 self.assertIsNotNone(surface.action("ask"),
                                      f"{surface.key} has no 'ask' action")
 
     def test_an_action_that_needs_a_question_says_so(self):
-        from toto.core.ai_surfaces import registry
-
-        for surface in registry.all():
+        for surface in self._declared_surfaces():
             action = surface.action("ask")
             with self.subTest(surface=surface.key):
                 self.assertTrue(action.needs_instruction)
@@ -819,3 +830,383 @@ class DrawerTests(TestCase):
             and blank in template.read_text(errors="ignore")
         ]
         self.assertEqual(offenders, [])
+
+
+class ComposeSystemTests(TestCase):
+    """Where an operator's words land relative to the action's own rule."""
+
+    def _voice(self, **kwargs):
+        from toto.core.ai_surfaces import AgentVoice
+
+        return AgentVoice(**kwargs)
+
+    def _action(self):
+        return Action("improve", "Improve", system="RETURN ONLY THE TEXT.",
+                      template="{selection}")
+
+    def test_no_voice_is_the_untouched_action_prompt(self):
+        """Every host until somebody opens the management page."""
+        from toto.core.ai_surfaces import compose_system
+
+        self.assertEqual(compose_system(TEST_SURFACE, self._action()),
+                         "RETURN ONLY THE TEXT.")
+
+    def test_the_action_rule_is_always_last(self):
+        """The load-bearing one. Accept pastes the answer straight into a
+        document, so no amount of tuning may displace 'return only the text'
+        from the position closest to the question."""
+        from toto.core.ai_surfaces import compose_system
+
+        system = compose_system(TEST_SURFACE, self._action(), self._voice(
+            name="Steven", persona="You are chatty and love preambles.",
+            house_rules="Always greet the user warmly first."))
+
+        self.assertTrue(system.rstrip().endswith("RETURN ONLY THE TEXT."))
+
+    def test_a_bare_name_becomes_a_sentence(self):
+        from toto.core.ai_surfaces import compose_system
+
+        system = compose_system(TEST_SURFACE, self._action(),
+                                self._voice(name="Steven"))
+
+        self.assertIn("You are Steven.", system)
+
+    def test_a_persona_that_already_names_it_is_not_prefixed_twice(self):
+        from toto.core.ai_surfaces import compose_system
+
+        system = compose_system(TEST_SURFACE, self._action(), self._voice(
+            name="Steven", persona="You are Steven, the house editor."))
+
+        self.assertEqual(system.count("Steven"), 1)
+
+    def test_a_blank_language_says_nothing_about_language(self):
+        """The right default on a platform whose users write in several."""
+        from toto.core.ai_surfaces import compose_system
+
+        system = compose_system(TEST_SURFACE, self._action(), self._voice())
+
+        self.assertNotIn("Always answer in", system)
+
+    def test_a_note_reaches_only_its_own_kind(self):
+        """Tuning LaTeX must not change prose."""
+        from toto.core.ai_surfaces import compose_system
+
+        voice = self._voice(kind_notes={"code": "Prefer f-strings."})
+        prose = compose_system(TEST_SURFACE, self._action(), voice)
+        code = compose_system(
+            AiSurface(key="c", label="C", kind="code",
+                      actions=(self._action(),)), self._action(), voice)
+
+        self.assertNotIn("f-strings", prose)
+        self.assertIn("f-strings", code)
+
+    def test_build_messages_carries_the_voice_into_the_system_message(self):
+        from toto.core.ai_surfaces import build_messages
+
+        messages = build_messages(TEST_SURFACE, self._action(),
+                                  selection="hello",
+                                  voice=self._voice(persona="You are terse."))
+
+        self.assertEqual(messages[0]["role"], "system")
+        self.assertIn("You are terse.", messages[0]["content"])
+
+
+class AgentTests(TestCase):
+    def test_exactly_one_row_is_active(self):
+        from .models import AiAgent
+
+        first = AiAgent.objects.create(name="one", active=True)
+        second = AiAgent.objects.create(name="two", active=True)
+
+        first.refresh_from_db()
+        self.assertFalse(first.active)
+        self.assertEqual(AiAgent.current(), second)
+
+    def test_no_agent_means_no_voice(self):
+        from .models import AiAgent
+
+        self.assertIsNone(AiAgent.voice())
+
+    def test_an_inactive_agent_is_not_the_voice(self):
+        from .models import AiAgent
+
+        AiAgent.objects.create(name="draft", persona="unused", active=False)
+
+        self.assertIsNone(AiAgent.voice())
+
+    def test_a_corrupt_kind_notes_column_degrades_to_no_notes(self):
+        """A hand-edited JSON column must not take the assistant down."""
+        from .models import AiAgent
+
+        agent = AiAgent.objects.create(name="x", active=True)
+        AiAgent.objects.filter(pk=agent.pk).update(kind_notes=["not", "a", "map"])
+
+        self.assertEqual(AiAgent.voice().kind_notes, {})
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
+class VoiceInRunTests(TestCase):
+    """The configured voice actually reaches the wire."""
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+        vault.clear_cache()
+        self.user = User.objects.create_user("voiced", password="pw")
+        self.provider = AiProvider.objects.create(
+            label="test", active=True, max_output_tokens=100)
+        self.provider.secret = vault.store_secret("sk-test", name="voice-key")
+        self.provider.save(update_fields=["secret"])
+
+    def test_the_persona_is_sent_with_every_call(self):
+        from .models import AiAgent
+
+        AiAgent.objects.create(name="Steven", active=True,
+                               persona="You are the house editor.",
+                               house_rules="Never invent a citation.")
+        run = dispatch.create_run(user=self.user, surface="tests",
+                                  action="improve", source_text="words")
+
+        with mock.patch("toto.steven.client.complete",
+                        return_value=_answer()) as call:
+            services.execute(run)
+
+        system = call.call_args.kwargs["messages"][0]["content"]
+        self.assertIn("You are the house editor.", system)
+        self.assertIn("Never invent a citation.", system)
+
+    def test_editing_the_persona_changes_the_next_call_with_no_restart(self):
+        """Read per call, never cached."""
+        from .models import AiAgent
+
+        agent = AiAgent.objects.create(name="Steven", active=True,
+                                       persona="First voice.")
+        with mock.patch("toto.steven.client.complete", return_value=_answer()):
+            services.execute(dispatch.create_run(
+                user=self.user, surface="tests", action="improve",
+                source_text="a"))
+
+        agent.persona = "Second voice."
+        agent.save()
+
+        with mock.patch("toto.steven.client.complete",
+                        return_value=_answer()) as call:
+            services.execute(dispatch.create_run(
+                user=self.user, surface="tests", action="improve",
+                source_text="b"))
+
+        self.assertIn("Second voice.",
+                      call.call_args.kwargs["messages"][0]["content"])
+
+    def test_the_worst_case_counts_the_configured_system_prompt(self):
+        """It used to be a code constant of known size. Since the management
+        page it is whatever somebody typed, and leaving it out would make the
+        wallet check optimistic exactly when it was configured to be expensive."""
+        from .models import AiAgent
+
+        provider = AiProvider(max_output_tokens=100)
+        before = services.worst_case_units(provider, "x" * 400)
+
+        AiAgent.objects.create(name="Steven", active=True,
+                               persona="p" * 4000)
+
+        self.assertGreater(services.worst_case_units(provider, "x" * 400), before)
+
+    def test_only_the_longest_note_is_reserved_not_all_of_them(self):
+        """Exactly one kind applies to any call; summing five would refuse
+        people over tokens that will never be sent."""
+        from .models import AiAgent
+
+        AiAgent.objects.create(name="Steven", active=True, kind_notes={
+            "prose": "p" * 400, "code": "c" * 400, "latex": "l" * 400})
+        provider = AiProvider(max_output_tokens=100)
+
+        units = services.worst_case_units(provider, "")
+
+        # 400 chars ≈ 100 tokens for ONE note, plus "Steven" (6), plus the
+        # 100-token ceiling. Three notes would be 300 tokens over.
+        self.assertLess(units, Decimal("0.250"))
+
+
+class ManageViewTests(TestCase):
+    """The two tabs, and who may open them."""
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+        self.url = reverse("steven:manage")
+        self.operator = User.objects.create_user("boss", password="pw",
+                                                 is_staff=True)
+        self.user = User.objects.create_user("nobody", password="pw")
+
+    def test_a_normal_user_gets_403_not_a_redirect(self):
+        """A 302 to LOGIN_URL is what jess/views.py exists to avoid."""
+        self.client.force_login(self.user)
+
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_an_anonymous_visitor_gets_the_same_403(self):
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_a_superuser_who_is_not_staff_may_still_open_it(self):
+        """is_superuser does not imply is_staff in Django."""
+        root = User.objects.create_user("root", password="pw", is_superuser=True)
+        self.client.force_login(root)
+
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_it_opens_on_the_identity_tab(self):
+        self.client.force_login(self.operator)
+
+        response = self.client.get(self.url)
+
+        self.assertEqual(response.context["tab"], "identity")
+
+    def test_saving_the_identity_creates_the_agent_switched_on(self):
+        from .models import AiAgent
+
+        self.client.force_login(self.operator)
+
+        self.client.post(self.url, {"form": "identity", "name": "Ada",
+                                    "icon": "fa-solid fa-robot", "active": "on"})
+
+        agent = AiAgent.current()
+        self.assertEqual(agent.name, "Ada")
+        self.assertEqual(agent.icon, "fa-solid fa-robot")
+
+    def test_a_first_save_from_the_prompt_tab_also_switches_it_on(self):
+        """Somebody who types a persona and sees nothing change would be the
+        worse default."""
+        from .models import AiAgent
+
+        self.client.force_login(self.operator)
+
+        self.client.post(self.url, {"form": "prompt",
+                                    "persona": "You are terse."})
+
+        self.assertIsNotNone(AiAgent.current())
+        self.assertEqual(AiAgent.current().persona, "You are terse.")
+
+    def test_the_two_tabs_edit_the_same_row(self):
+        from .models import AiAgent
+
+        self.client.force_login(self.operator)
+
+        self.client.post(self.url, {"form": "identity", "name": "Ada",
+                                    "icon": "fa-solid fa-robot", "active": "on"})
+        self.client.post(self.url, {"form": "prompt", "persona": "Terse."})
+
+        self.assertEqual(AiAgent.objects.count(), 1)
+        agent = AiAgent.current()
+        self.assertEqual((agent.name, agent.persona), ("Ada", "Terse."))
+
+    def test_a_blank_name_is_refused_rather_than_saved(self):
+        """'You are .' at the top of every system message, and an empty panel."""
+        from .models import AiAgent
+
+        self.client.force_login(self.operator)
+
+        response = self.client.post(self.url, {"form": "identity", "name": " ",
+                                               "icon": "fa-solid fa-robot"})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(AiAgent.objects.count(), 0)
+
+    def test_a_junk_icon_is_refused(self):
+        self.client.force_login(self.operator)
+
+        response = self.client.post(self.url, {
+            "form": "identity", "name": "Ada", "icon": 'x" onload="alert(1)'})
+
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.context["identity_form"].is_valid())
+
+    def test_the_note_fields_are_built_from_the_registered_surfaces(self):
+        """A host gets note boxes for the editors it installed, not five boxes
+        describing editors nobody can open."""
+        self.client.force_login(self.operator)
+
+        form = self.client.get(f"{self.url}?tab=prompt").context["prompt_form"]
+
+        kinds = {kind for kind, _where in form.kinds}
+        self.assertIn("prose", kinds)
+        self.assertEqual(kinds, {s.kind for s in registry.all() if s.kind})
+
+    def test_emptying_a_note_removes_it_rather_than_leaving_it_stored(self):
+        from .models import AiAgent
+
+        self.client.force_login(self.operator)
+        self.client.post(self.url, {"form": "prompt", "persona": "p",
+                                    "note__prose": "Be brief."})
+        self.assertEqual(AiAgent.current().kind_notes, {"prose": "Be brief."})
+
+        self.client.post(self.url, {"form": "prompt", "persona": "p",
+                                    "note__prose": ""})
+
+        self.assertEqual(AiAgent.current().kind_notes, {})
+
+    def test_the_preview_shows_the_assembled_system_message(self):
+        """The point of the second tab: text boxes that build a prompt nobody
+        can read is how the parked app shipped one nobody had looked at."""
+        self.client.force_login(self.operator)
+        self.client.post(self.url, {"form": "prompt",
+                                    "persona": "You are the house editor."})
+
+        response = self.client.get(f"{self.url}?tab=prompt")
+
+        systems = " ".join(row["system"] for row in response.context["preview"])
+        self.assertIn("You are the house editor.", systems)
+
+    def test_the_page_does_not_edit_the_provider(self):
+        """An API key and a persona are edited by different people with
+        different care."""
+        self.client.force_login(self.operator)
+        provider = AiProvider.objects.create(label="live", model="gpt-4.1-mini",
+                                             active=True)
+
+        self.client.post(self.url, {"form": "identity", "name": "Ada",
+                                    "icon": "fa-solid fa-robot",
+                                    "model": "gpt-4-turbo", "label": "hijacked"})
+
+        provider.refresh_from_db()
+        self.assertEqual((provider.label, provider.model),
+                         ("live", "gpt-4.1-mini"))
+
+
+class AgentIdentityInEditorsTests(TestCase):
+    """The name reaches six editor panels without six template changes."""
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+        self.user = User.objects.create_user("reader", password="pw")
+        self.client.force_login(self.user)
+
+    def test_the_action_list_carries_the_agent(self):
+        from .models import AiAgent
+
+        AiAgent.objects.create(name="Ada", icon="fa-solid fa-robot",
+                               tagline="Here to help.", active=True)
+
+        payload = self.client.get(
+            reverse("steven:surface_actions", args=["tests"])).json()
+
+        self.assertEqual(payload["agent"]["name"], "Ada")
+        self.assertEqual(payload["agent"]["icon"], "fa-solid fa-robot")
+
+    def test_it_is_null_when_nobody_configured_one(self):
+        """The panel falls back to calling itself Assistant."""
+        payload = self.client.get(
+            reverse("steven:surface_actions", args=["tests"])).json()
+
+        self.assertIsNone(payload["agent"])
+
+    def test_the_console_offers_setup_to_an_operator_only(self):
+        response = self.client.get(reverse("steven:console"))
+        self.assertNotContains(response, reverse("steven:manage"))
+
+        self.client.force_login(User.objects.create_user(
+            "boss2", password="pw", is_staff=True))
+
+        self.assertContains(self.client.get(reverse("steven:console")),
+                            reverse("steven:manage"))

@@ -33,7 +33,8 @@ from decimal import Decimal
 
 from django.utils import timezone
 
-from .models import METRIC_REQUEST, METRIC_TOKENS, AiProvider, AiRun, RunStatus
+from .models import (METRIC_REQUEST, METRIC_TOKENS, AiAgent, AiProvider, AiRun,
+                     RunStatus)
 
 
 class NotConfigured(RuntimeError):
@@ -60,10 +61,38 @@ def worst_case_units(provider: AiProvider, selection: str) -> Decimal:
     under-charge the wallet check), plus the answer ceiling in full. Being
     generous is the safe direction — it can only refuse somebody who is very
     close to empty, and it can never let a call run that cannot be paid for.
+
+    **The system prompt counts too.** It used to be a code constant of known
+    size; since the management page it is whatever an operator typed, and a long
+    persona is paid for on every single call. Leaving it out would make this
+    check quietly optimistic in exactly the case somebody configured it to be
+    expensive.
     """
-    prompt_tokens = Decimal(len(selection or "")) / Decimal("4")
+    prompt_tokens = Decimal(len(selection or "") + _system_chars()) / Decimal("4")
     total = prompt_tokens + Decimal(provider.max_output_tokens)
     return (total / Decimal("1000")).quantize(Decimal("0.001"))
+
+
+def _system_chars() -> int:
+    """How many characters the configured voice adds to every system message.
+
+    Never raises and never blocks a call: on a host with no agent row, or a
+    database that is momentarily unhappy, an assistant that still answers and
+    checks against a slightly low estimate is better than one that refuses.
+    """
+    try:
+        voice = AiAgent.voice()
+    except Exception:  # noqa: BLE001
+        return 0
+    if voice is None:
+        return 0
+    notes = voice.kind_notes.values() if voice.kind_notes else ()
+    return sum(len(part or "") for part in
+               (voice.name, voice.persona, voice.language, voice.house_rules,
+                # The longest note, not the sum: exactly one kind applies to any
+                # given call, and adding all five would refuse people over
+                # tokens that will never be sent.
+                max(notes, key=len, default="")))
 
 
 def check_affordable(user, provider: AiProvider, selection: str) -> None:
@@ -165,8 +194,11 @@ def execute(run: AiRun) -> AiRun:
         run.finish(status=RunStatus.FAILED, error=str(exc))
         return run
 
+    # Read at call time, never cached: an operator who fixes a persona expects
+    # the next question to use it, not the next redeploy.
     messages = build_messages(surface, action, selection=run.source_text,
-                              instruction=run.instruction)
+                              instruction=run.instruction,
+                              voice=AiAgent.voice())
 
     try:
         answer = complete(

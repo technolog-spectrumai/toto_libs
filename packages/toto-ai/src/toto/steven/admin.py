@@ -11,7 +11,7 @@ only place in the tree that had already solved this.
 from django import forms
 from django.contrib import admin, messages
 
-from .models import AiProvider, AiRun, StevenQuotaPolicy
+from .models import AiAgent, AiProvider, AiRun, StevenQuotaPolicy
 from .vault import VaultUnavailable, vault
 
 
@@ -117,6 +117,27 @@ class AiProviderAdmin(admin.ModelAdmin):
             request,
             f"{provider.label} answered \"{answer['text'].strip()[:40]}\" "
             f"as {answer['model']} ({used} tokens).")
+
+
+@admin.register(AiAgent)
+class AiAgentAdmin(admin.ModelAdmin):
+    """Registered so a second persona can be drafted beside the live one.
+
+    The DAY-TO-DAY surface is ``steven:manage``, which shows the assembled
+    system message beside the boxes that build it — this page cannot, so it is
+    for the one thing it does better: having more than one row.
+    """
+
+    list_display = ("name", "active", "language", "updated_at")
+    list_filter = ("active",)
+    search_fields = ("name", "persona", "house_rules")
+    fieldsets = (
+        ("Identity", {"fields": ("name", "icon", "tagline", "description",
+                                 "active")}),
+        ("Prompt", {"fields": ("persona", "language", "house_rules",
+                               "kind_notes")}),
+    )
+    readonly_fields = ("created_at", "updated_at")
 
 
 @admin.register(AiRun)
