@@ -43,7 +43,7 @@ from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
 from toto.memo import tiptap
 
-from . import document_format, render_pdf
+from . import clean_html, document_format, render_pdf
 from .bridge import DocumentBridge, open_document
 from .bridge import write_back as _bridge_write_back
 from .sanitize_html import sanitize_content
@@ -952,12 +952,18 @@ def document_save_html(request, file_pk):
     pictures are already data URIs, so the file opens anywhere — in a browser,
     in an email, on a machine that has never heard of this platform. That is the
     point of exporting HTML at all rather than linking to the reader.
+
+    The body is indented on the way out. Storage keeps it as one line — the
+    format wraps it in a single CDATA section and the tests pin that to the byte
+    — but a file someone downloads is a file someone may open in an editor, and
+    one 40 kB line is not a document you can read.
     """
     vault_file = _get_owned_file(request, file_pk)
     document = _read_document(vault_file)
 
     html = render_to_string("cyprian/standalone.html", {
         "document": document,
+        "body_html": clean_html.pretty(document.anchored_content),
         "document_css": render_pdf.document_css(),
         "katex_css": render_pdf.katex_css(),
     })

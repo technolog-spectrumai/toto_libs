@@ -34,5 +34,9 @@ anchor has to be real.
 {% endif %}
 
 <section class="cy-page">
-  <div class="cy-content">{{ document.anchored_content|safe }}</div>
+  {% comment %}`body_html` is the same content indented for reading, passed only
+     by the HTML export. Everything else — reader, print, thumbnail — takes the
+     stored one-liner, which is what those paths have always rendered.
+  {% endcomment %}
+  <div class="cy-content">{% if body_html %}{{ body_html|safe }}{% else %}{{ document.anchored_content|safe }}{% endif %}</div>
 </section>

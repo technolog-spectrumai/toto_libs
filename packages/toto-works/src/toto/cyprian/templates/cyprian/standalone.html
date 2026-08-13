@@ -27,7 +27,7 @@ on when it was written.
 <body>
   <article class="cy-doc cy-font-{{ document.font }}"
            data-margins="{{ document.margins }}">
-    {% include "cyprian/_body.html" with document=document %}
+    {% include "cyprian/_body.html" with document=document body_html=body_html %}
   </article>
 </body>
 </html>
