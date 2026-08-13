@@ -104,7 +104,28 @@ def set_charging_currency(asset_id) -> str | None:
     if asset is None:
         raise ValueError("That currency is not available on this host.")
 
-    TariffItem.objects.exclude(charged_asset=asset).update(charged_asset=asset)
+    # 1. Remember it. `resolve_asset` reads tariff.default_asset before falling
+    #    back to the contract's gas asset, so this is the one persistent place a
+    #    platform can say "charge in X" — and without it the NEXT price written
+    #    would silently revert to the contract asset. (Nothing set this field
+    #    before, which is why it looked like a field with no purpose.)
+    from toto.tariffs.rate_card import default_tariff
+
+    tariff = default_tariff()
+    if tariff is not None and tariff.default_asset_id != asset.pk:
+        tariff.default_asset = asset
+        tariff.save(update_fields=["default_asset"])
+
+    # 2. Re-denominate what already exists, one save() each rather than a bulk
+    #    update: `TariffItem.save` derives price_per_unit_base_units from the
+    #    DISPLAY price and the asset's decimals, so a bulk update would leave
+    #    every existing price billing the wrong integer the moment the new asset
+    #    has a different `decimals`. The displayed number is deliberately kept —
+    #    this changes the denomination, not the price, because there is no
+    #    exchange rate anywhere in this ledger to convert with.
+    for item in TariffItem.objects.exclude(charged_asset=asset).select_related("charged_asset"):
+        item.charged_asset = asset
+        item.save(update_fields=["charged_asset", "price_per_unit_base_units"])
     return asset.unit_name
 
 

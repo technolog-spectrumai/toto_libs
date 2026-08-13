@@ -11,11 +11,12 @@ opt-in a real app performs.
 from __future__ import annotations
 
 from datetime import timedelta
+import unittest
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.db import connection
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.utils import timezone
 
 from toto.quota import (
@@ -671,3 +672,123 @@ class PricingBoundaryTests(SampleModels):
                 if any(n.startswith(("toto.tariffs", "toto.assets")) for n in names):
                     offenders.append(f"{path.name}:{node.lineno}")
         self.assertEqual(offenders, [])
+
+
+class ChargingCurrencyTests(SampleModels):
+    """ONE charging currency, chosen once, and it has to STICK.
+
+    Three separate things have to line up or the screen lies about what it just
+    saved: the choice must persist somewhere `resolve_asset` reads, existing
+    prices must be re-denominated with their base units recomputed, and the
+    selector must render the saved choice as selected.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.tariffs"):
+            raise unittest.SkipTest("no economy on this host")
+
+        # Seeding an asset ENGRAVES it, which is a monetary act, so the host has
+        # to hold an issuer key for it. Same shape as PriceHintLiveTests, and
+        # imported lazily behind the skip so toto-base keeps no dependency on
+        # the economy wheel.
+        from toto.assets.testing import TEST_ISSUER_KEY
+
+        issuer_key = override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
+        issuer_key.enable()
+        cls.addClassCleanup(issuer_key.disable)
+        super().setUpClass()
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.staff = User.objects.create_user(
+            username="curstaff", password="pw", is_staff=True)
+
+    def _assets(self):
+        from toto.assets.testing import ensure_local_issuer, make_asset
+
+        ensure_local_issuer()
+        gas = make_asset(name="Gas", unit_name="ASR", decimals=9,
+                         max_supply_base_units=10 ** 15, active=True)
+        other = make_asset(name="Banana", unit_name="BANANA", decimals=2,
+                           max_supply_base_units=10 ** 9, active=True)
+        return gas, other
+
+    def test_the_choice_persists_where_pricing_reads_it(self):
+        from toto.quota import rates
+        from toto.tariffs.rate_card import default_tariff
+
+        _gas, other = self._assets()
+
+        rates.set_charging_currency(other.pk)
+
+        # Persisted on the platform tariff — the step `resolve_asset` consults
+        # before the contract asset. Without it the next price written would
+        # silently revert.
+        self.assertEqual(default_tariff().default_asset_id, other.pk)
+        # And the page reports the same thing it stored.
+        self.assertEqual(rates.price_asset_symbol(), "BANANA")
+
+    def test_a_later_price_uses_the_chosen_currency(self):
+        from toto.quota import rates
+        from toto.tariffs.models import TariffItem
+
+        _gas, other = self._assets()
+        rates.set_charging_currency(other.pk)
+
+        code = self._code() if hasattr(self, "_code") else None
+        from toto.quota.metrics import registry
+
+        rates.set_price(registry.codes()[0], "0.05")
+
+        item = TariffItem.objects.get()
+        self.assertEqual(item.charged_asset_id, other.pk)
+
+    def test_existing_prices_are_re_denominated_with_correct_base_units(self):
+        """A bulk UPDATE would leave every price billing the wrong integer.
+
+        base_units is derived from the DISPLAY price and the asset's decimals,
+        so moving ASR (9) → BANANA (2) must recompute it.
+        """
+        from decimal import Decimal
+
+        from toto.quota import rates
+        from toto.quota.metrics import registry
+        from toto.tariffs.models import TariffItem
+
+        gas, other = self._assets()
+        rates.set_price(registry.codes()[0], "1.5")
+        self.assertEqual(TariffItem.objects.get().charged_asset_id, gas.pk)
+
+        rates.set_charging_currency(other.pk)
+
+        item = TariffItem.objects.get()
+        self.assertEqual(item.charged_asset_id, other.pk)
+        # The number a human typed is untouched — this is a denomination
+        # change, not a conversion; the ledger has no rate to convert with.
+        self.assertEqual(item.price_per_unit_display, Decimal("1.5"))
+        self.assertEqual(item.price_per_unit_base_units, 150)   # 1.5 × 10²
+
+    def test_the_desk_renders_the_saved_choice_as_selected(self):
+        from toto.quota import rates
+
+        _gas, other = self._assets()
+        rates.set_charging_currency(other.pk)
+
+        self.client.force_login(self.staff)
+        body = self.client.get("/quota/").content.decode()
+
+        self.assertIn(f'value="{other.pk}" selected', body)
+
+    def test_an_unknown_currency_is_refused(self):
+        from toto.quota import rates
+
+        self._assets()
+        with self.assertRaises(ValueError):
+            rates.set_charging_currency(999999)

@@ -274,6 +274,17 @@ def parse_price(raw) -> Decimal | None:
 
 
 def price_asset_symbol() -> str:
-    """The ticker prices are quoted in, for a column header. "" when unseeded."""
+    """The ticker prices are quoted in. "" when unseeded.
+
+    Reads the same chain `resolve_asset` writes through — the platform tariff's
+    own default first, then the contract's gas asset. It used to read gas_asset
+    alone, so a platform that had chosen a different charging currency was told
+    it was still billing in the contract's, and the rate desk's own selector
+    rendered the wrong option as selected. The reader and the writer have to
+    agree or the screen lies about what it just saved.
+    """
+    tariff = default_tariff()
+    if tariff is not None and tariff.default_asset_id:
+        return tariff.default_asset.unit_name
     asset = gas_asset()
     return asset.unit_name if asset else ""

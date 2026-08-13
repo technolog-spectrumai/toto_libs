@@ -246,7 +246,10 @@ def _set_charging_currency(request) -> bool:
     if moved:
         messages.success(
             request,
-            _("Everything is now charged in %(symbol)s.") % {"symbol": moved})
+            _("Everything is now charged in %(symbol)s. Prices keep their "
+              "numbers — this changes the denomination, not what anything "
+              "costs, because the ledger has no exchange rate to convert with.")
+            % {"symbol": moved})
     return True
 
 
