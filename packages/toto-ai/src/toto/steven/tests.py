@@ -28,7 +28,7 @@ from toto.core.models import Platform
 from . import dispatch, services
 from .client import ProviderError
 from .models import AiProvider, AiRun, RunStatus
-from .surfaces import Action, AiSurface, registry
+from toto.core.ai_surfaces import Action, AiSurface, registry
 from .vault import VaultUnavailable, vault
 
 User = get_user_model()
@@ -535,7 +535,7 @@ class EditorButtonTests(TestCase):
 
     def test_an_html_file_gets_the_markup_surface_which_is_screened(self):
         from toto.editor.views import HtmlFileDisplayView
-        from toto.steven.surfaces import registry
+        from toto.core.ai_surfaces import registry
 
         self.assertEqual(HtmlFileDisplayView.steven_surface, "editor-markup")
         self.assertEqual(registry.get("editor-markup").file_type, "html")
@@ -543,7 +543,7 @@ class EditorButtonTests(TestCase):
     def test_a_plain_text_file_is_not_screened_as_markup(self):
         """A paragraph that merely MENTIONS <script> is not a threat, and
         refusing it would teach people to ignore the real alarm."""
-        from toto.steven.surfaces import registry
+        from toto.core.ai_surfaces import registry
 
         self.assertEqual(registry.get("editor-text").file_type, "")
         self.assertEqual(registry.get("editor-code").file_type, "")
@@ -556,7 +556,14 @@ class EditorButtonTests(TestCase):
         self.assertEqual(SvgFileDisplayView.steven_surface, "")
 
     def test_cyprian_declares_a_screened_prose_surface(self):
-        from toto.steven.surfaces import registry
+        """Skipped where cyprian is not installed — placidia pins no toto-works,
+        and a surface for an absent editor would be a promise nothing keeps."""
+        from django.apps import apps
+
+        from toto.core.ai_surfaces import registry
+
+        if not apps.is_installed("toto.cyprian"):
+            self.skipTest("cyprian is not installed on this host")
 
         surface = registry.get("cyprian")
         self.assertIsNotNone(surface)
