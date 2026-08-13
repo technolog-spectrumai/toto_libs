@@ -95,6 +95,9 @@
         <a href="{% url 'assets:account_detail' account.pk %}"
            :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
            class="text-xs underline-offset-4 hover:underline whitespace-nowrap">{% trans "Full history" %} →</a>
+        <a href="{% url 'assets:account_ledger' account.pk %}"
+           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+           class="text-xs underline-offset-4 hover:underline whitespace-nowrap">{% trans "Ledger" %} →</a>
       </div>
     </div>
 

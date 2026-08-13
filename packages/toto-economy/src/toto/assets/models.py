@@ -6,6 +6,7 @@ from decimal import Decimal, ROUND_DOWN
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.utils.text import slugify
 
 from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 
@@ -709,6 +710,170 @@ class LedgerHash(models.Model):
 
     def __str__(self):
         return f"{self.transaction.reference}: {self.hash[:16]}…"
+
+
+# ---------------------------------------------------------------------------
+# Ledger decorations — tags and comments
+# ---------------------------------------------------------------------------
+#
+# The ledger is a record and cannot be edited: `LedgerEntry.save()` refuses any
+# write after creation, `delete()` always raises, and a posted transaction's
+# `description` and `metadata` are BOTH inputs to the hash chain
+# (`hashing.calculate_transaction_hash`). Editing either retroactively
+# invalidates `verify_hash_chain()` for every later row — visible on
+# /assets/chain/, in the admin's "Chain valid" column, and in the signed
+# attestation a master platform verifies.
+#
+# So bookkeeping notes live HERE, beside the ledger and never inside it. That is
+# not a workaround: it is what lets a person annotate freely, for years, without
+# any of it being able to alter what was recorded. `calculate_transaction_hash`
+# reads only the columns it lists, so nothing below can ever reach the chain.
+#
+# **Tags and comments are two independent groups with no relation between them.**
+# Django refuses relations that span databases, and this tree already runs
+# multi-database (`toto.datalink.federation.routers`), whose own router explains
+# it allows relations only *because* "no relation ever spans them". Routers
+# receive `model_name` as well as `app_label`, so these can be sent to different
+# databases without a new app — but only for as long as nothing joins them.
+
+
+class LedgerTag(models.Model):
+    """A word somebody files their own movements under. Scoped to one account.
+
+    Per ACCOUNT rather than per user, because that is the only key that serves
+    both cases: an ordinary person's account carries `user`, and a company's
+    (`company-<slug>`) sets `user=None` by construction, so a user-scoped
+    vocabulary could never reach it.
+
+    Deliberately NOT `toto.verbena.AbstractTag`: its `name` and `slug` are
+    *globally* unique, which is exactly what per-account scoping must undo, and
+    its `save()` slugifies bare — so a tag typed as "#tx" would collide with one
+    typed as "tx". After overriding both fields and `save()` nothing of the base
+    would remain but `uid`, and no other model in this app carries one.
+
+    The `#` is NEVER stored. `name` holds `tx`; the sigil is decoration the
+    template adds. That is what makes the collision impossible rather than
+    merely unlikely.
+    """
+
+    account = models.ForeignKey(
+        LedgerAccount, on_delete=models.CASCADE, related_name="ledger_tags",
+        help_text="Whose vocabulary this is. Tags never cross accounts.",
+    )
+    name = models.CharField(
+        max_length=50,
+        help_text="Without the '#' — write 'invoice', not '#invoice'.",
+    )
+    slug = models.SlugField(max_length=60, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = "ledger tag"
+        constraints = [
+            models.UniqueConstraint(fields=["account", "slug"],
+                                    name="assets_ledgertag_slug_per_account"),
+            models.UniqueConstraint(fields=["account", "name"],
+                                    name="assets_ledgertag_name_per_account"),
+        ]
+
+    def __str__(self):
+        return f"#{self.name}"
+
+    def save(self, *args, **kwargs):
+        self.name = (self.name or "").lstrip("#").strip()
+        if not self.slug:
+            base = slugify(self.name) or "tag"
+            slug, n = base, 1
+            taken = LedgerTag.objects.filter(account_id=self.account_id).exclude(pk=self.pk)
+            while taken.filter(slug=slug).exists():
+                n += 1
+                slug = f"{base}-{n}"
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
+class LedgerEntryTag(models.Model):
+    """One tag, on one movement.
+
+    ``entry_id`` is a bare integer and NOT a ForeignKey, for three reasons that
+    all point the same way:
+
+    * a relation spanning databases is what Django forbids, and keeping this
+      side relocatable is the whole point of the split;
+    * there is no ``on_delete`` policy to choose, because there is no delete —
+      ``LedgerEntry.delete()`` raises unconditionally, so a dangling id is
+      unreachable rather than merely unlikely. The integrity an FK would buy is
+      already bought by immutability;
+    * with no FK, these rows can never appear in a ledger entry's delete plan.
+      The ledger's collection of dependents stays empty, which is itself the
+      statement that nothing structurally depends on it.
+
+    Named ``entry_id`` on purpose, and that forecloses ever adding an FK called
+    ``entry`` here — which is the intent, not an oversight.
+    """
+
+    entry_id = models.PositiveBigIntegerField(
+        db_index=True,
+        help_text="assets.LedgerEntry pk. Not an FK — see the class docstring.",
+    )
+    tag = models.ForeignKey(LedgerTag, on_delete=models.CASCADE,
+                            related_name="entry_links")
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["tag__name"]
+        verbose_name = "ledger entry tag"
+        constraints = [
+            models.UniqueConstraint(fields=["entry_id", "tag"],
+                                    name="assets_ledgerentrytag_once"),
+        ]
+        indexes = [
+            # Serves "show me every movement tagged #rent".
+            models.Index(fields=["tag", "entry_id"]),
+        ]
+
+    def __str__(self):
+        return f"{self.entry_id} #{self.tag.name}"
+
+
+class LedgerEntryComment(models.Model):
+    """One sentence about one movement, editable for as long as it is wrong.
+
+    ONE per entry, not a thread: this decorates a reading surface, and a
+    variable-height row destroys the scannability the table exists for. An empty
+    body deletes the row rather than storing "" — absence, not blankness.
+
+    Shares nothing with :class:`LedgerEntryTag` — no FK, no M2M, not even a
+    common parent row. The only thing the two have in common is that each holds
+    an integer that happens to be a ledger entry's pk, which is precisely the
+    property that lets them live in different databases later.
+
+    The `author` FK is the one piece of ordinary same-database coupling here,
+    and is the thing that would need attention if this table ever did move.
+    """
+
+    entry_id = models.PositiveBigIntegerField(
+        unique=True,
+        help_text="assets.LedgerEntry pk. Not an FK — see LedgerEntryTag.",
+    )
+    body = models.TextField()
+    author = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name="+")
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["-updated_at"]
+        verbose_name = "ledger entry comment"
+
+    def __str__(self):
+        return f"{self.entry_id}: {self.body[:40]}"
 
 
 # ---------------------------------------------------------------------------

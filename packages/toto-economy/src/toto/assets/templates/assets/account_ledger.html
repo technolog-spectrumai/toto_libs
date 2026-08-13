@@ -1,0 +1,50 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% comment %}One account's ledger, decorated. A page of its own rather than a
+   section of account_detail, and the reason is a permission one: account_detail
+   is deliberately public — no login, no ownership check — so anything private
+   added there would be world-readable. This page proves ownership inside the
+   lookup, so a wrong pk is a 404.
+{% endcomment %}
+
+{% block assets_title %}{{ account.code }}{% endblock %}
+{% block tab_accounts %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}assets/base.html declares no [x-cloak] rule, and the annotate row
+   is Alpine-hidden — without this every row opens on first paint.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+
+  <a href="{% url 'assets:account_detail' account.pk %}"
+     class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+    <i class="fa-solid fa-arrow-left"></i>{% trans "Back to the account" %}</a>
+
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-6 shadow-sm">
+    <div class="mb-1 flex flex-wrap items-center justify-between gap-3">
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-book"></i>{% trans "Ledger" %}</h2>
+      <p class="font-mono text-sm opacity-70">{{ account.code }}</p>
+    </div>
+    <p class="mb-4 text-sm opacity-70">
+      {% trans "Every movement on this account, and the notes you keep beside them. The movements themselves are a record and cannot be edited — the notes and tags are yours and can be changed at any time." %}
+    </p>
+
+    {% if messages %}
+      {% for msg in messages %}
+      <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+           class="mb-3 rounded-lg border px-4 py-2 text-sm font-semibold">{{ msg }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% include "assets/partials/_ledger_table.html" %}
+  </article>
+
+</div>
+{% endblock %}

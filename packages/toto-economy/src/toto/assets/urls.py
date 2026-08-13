@@ -29,6 +29,11 @@ urlpatterns = [
     path("flow/data/", views.ledger_flow_data, name="ledger_flow_data"),
     path("wallet/", views.wallet, name="wallet"),
     path("accounts/<int:pk>/priority/", views.set_account_priority, name="set_account_priority"),
+    # The decorated ledger: one account's movements plus the notes beside them.
+    path("accounts/<int:pk>/ledger/", views.account_ledger, name="account_ledger"),
+    path("accounts/<int:pk>/ledger/<int:entry_id>/note/", views.entry_comment, name="entry_comment"),
+    path("accounts/<int:pk>/ledger/<int:entry_id>/tag/", views.entry_tag_add, name="entry_tag_add"),
+    path("accounts/<int:pk>/ledger/<int:entry_id>/untag/", views.entry_tag_remove, name="entry_tag_remove"),
     path("wallet/pin/", views.wallet_pin_set, name="wallet_pin_set"),
     path("wallet/pin/verify/", views.wallet_pin_verify, name="wallet_pin_verify"),
     path("wallet/authorizations/", views.authorization_list, name="authorization_list"),

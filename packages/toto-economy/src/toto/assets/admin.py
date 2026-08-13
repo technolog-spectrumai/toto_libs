@@ -8,7 +8,10 @@ from .models import (
     LedgerAccountKey,
     LedgerAuthorization,
     LedgerEntry,
+    LedgerEntryComment,
+    LedgerEntryTag,
     LedgerHash,
+    LedgerTag,
     LedgerTransaction,
     WalletAuthorization,
     WalletPin,
@@ -229,3 +232,34 @@ class AssetsQuotaPolicyAdmin(QuotaPolicyAdminBase):
 @admin.register(AssetsUsageEvent)
 class AssetsUsageEventAdmin(UsageEventAdminBase):
     pass
+
+
+# ---------------------------------------------------------------------------
+# Ledger decorations
+# ---------------------------------------------------------------------------
+#
+# Ordinary editable rows, unlike everything above them: they are notes ABOUT the
+# ledger and were never part of it. `entry_id` shows as a raw integer because it
+# is deliberately not a ForeignKey — see LedgerEntryTag's docstring.
+
+
+@admin.register(LedgerTag)
+class LedgerTagAdmin(admin.ModelAdmin):
+    list_display = ("name", "account", "slug", "created_at")
+    list_filter = ("account",)
+    search_fields = ("name", "slug", "account__code")
+    raw_id_fields = ("account",)
+
+
+@admin.register(LedgerEntryTag)
+class LedgerEntryTagAdmin(admin.ModelAdmin):
+    list_display = ("entry_id", "tag", "created_by", "created_at")
+    search_fields = ("entry_id", "tag__name")
+    raw_id_fields = ("tag", "created_by")
+
+
+@admin.register(LedgerEntryComment)
+class LedgerEntryCommentAdmin(admin.ModelAdmin):
+    list_display = ("entry_id", "body", "author", "updated_at")
+    search_fields = ("entry_id", "body")
+    raw_id_fields = ("author",)

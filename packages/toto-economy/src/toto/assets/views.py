@@ -527,3 +527,94 @@ def attestation(request):
     response = JsonResponse(sign_statement(build_statement()))
     response["Cache-Control"] = "no-store"
     return response
+
+
+# ---------------------------------------------------------------------------
+# The decorated ledger
+# ---------------------------------------------------------------------------
+#
+# A page of its own rather than a section of `account_detail`, deliberately:
+# account_detail carries no @login_required and no ownership check, so notes
+# added there would be world-readable. Everything below proves ownership inside
+# the lookup, the `set_account_priority` idiom — a wrong pk is a 404, not a 403.
+
+def _my_account(request, pk):
+    """The account, if it is the requester's (or they are staff)."""
+    if request.user.is_staff:
+        return get_object_or_404(LedgerAccount, pk=pk)
+    return get_object_or_404(LedgerAccount, pk=pk, user=request.user)
+
+
+@login_required
+def account_ledger(request, pk):
+    """One account's movements, with the notes kept beside them."""
+    from . import decorations
+
+    account = _my_account(request, pk)
+    asset = None
+    if request.GET.get("asset"):
+        asset = Asset.objects.filter(unit_name=request.GET["asset"]).first()
+
+    context = decorations.ledger_page_context(
+        account,
+        asset=asset,
+        tag_slug=request.GET.get("tag", ""),
+        page=request.GET.get("page") or 1,
+        can_annotate=decorations.can_annotate_account(request.user, account),
+    )
+    context.update({
+        # The partial reverses these, so the same markup serves the Business
+        # Center's board-gated endpoints without this app knowing what a
+        # company is.
+        "annotate_key": account.pk,
+        "comment_url_name": "assets:entry_comment",
+        "tag_add_url_name": "assets:entry_tag_add",
+        "tag_remove_url_name": "assets:entry_tag_remove",
+    })
+    return assets_render(request, "assets/account_ledger.html", context)
+
+
+def _annotate_redirect(request, account):
+    return redirect(f"{reverse('assets:account_ledger', args=[account.pk])}"
+                    f"?{request.META.get('QUERY_STRING', '')}")
+
+
+@require_POST
+@login_required
+def entry_comment(request, pk, entry_id):
+    from . import decorations
+
+    account = _my_account(request, pk)
+    try:
+        decorations.set_comment(account, entry_id, request.POST.get("body", ""),
+                                user=request.user)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return _annotate_redirect(request, account)
+
+
+@require_POST
+@login_required
+def entry_tag_add(request, pk, entry_id):
+    from . import decorations
+
+    account = _my_account(request, pk)
+    try:
+        decorations.add_tag(account, entry_id, request.POST.get("name", ""),
+                            user=request.user)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return _annotate_redirect(request, account)
+
+
+@require_POST
+@login_required
+def entry_tag_remove(request, pk, entry_id):
+    from . import decorations
+
+    account = _my_account(request, pk)
+    try:
+        decorations.remove_tag(account, entry_id, request.POST.get("tag") or 0)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
+    return _annotate_redirect(request, account)

@@ -1,0 +1,192 @@
+{% load i18n %}
+{% comment %}One account's movements, decorated. Rendered by two callers:
+   the owner's own ledger page, and the Business Center's accounting log.
+
+   THE TABLE IS A READING SURFACE. Everything answerable at a glance is in the
+   row; editing is a separate act behind the Edit button, one movement at a
+   time. That is the same rule quota/partials/_edit_modal.html states.
+
+   The two columns on the left come from the LEDGER and cannot be edited by
+   anybody — the reference and the amount are hashed into the chain. The two on
+   the right are notes kept beside it. They are visually separated on purpose:
+   if the two ever read as one field, somebody will eventually "correct" the
+   ledger's own description through the admin and break verify_hash_chain().
+
+   The caller supplies the three endpoint names, so the assets app never learns
+   what a company is:
+     comment_url_name / tag_add_url_name / tag_remove_url_name
+   each reversed with (account-ish slug or pk, entry pk).
+{% endcomment %}
+
+{% if ledger_assets|length > 1 or asset_filter or tag_filter %}
+<div class="mb-4 flex flex-wrap items-center gap-2 text-sm">
+  <span class="opacity-60">{% trans "Currency" %}</span>
+  <a href="?{% if tag_filter %}tag={{ tag_filter }}{% endif %}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="rounded-full border px-3 py-1 {% if not asset_filter %}font-bold{% else %}opacity-60{% endif %}">
+    {% trans "All" %}</a>
+  {% for asset in ledger_assets %}
+    <a href="?asset={{ asset.unit_name }}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="rounded-full border px-3 py-1 {% if asset_filter and asset_filter.pk == asset.pk %}font-bold{% else %}opacity-60{% endif %}">
+      {{ asset.unit_name }}</a>
+  {% endfor %}
+
+  {% if tag_filter %}
+    <span class="ml-2 opacity-60">{% trans "Tagged" %}</span>
+    <a href="?{% if asset_filter %}asset={{ asset_filter.unit_name }}{% endif %}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="inline-flex items-center gap-1 rounded-full border px-3 py-1 font-semibold">
+      <span aria-hidden="true" class="opacity-50">#</span>{{ tag_filter }}
+      <i class="fa-solid fa-xmark ml-1 opacity-60"></i></a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% if rows %}
+<div class="overflow-x-auto">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="border-b border-current/20 text-left uppercase tracking-wide opacity-60">
+        <th class="py-2 pr-4">{% trans "When" %}</th>
+        <th class="py-2 pr-4">{% trans "Reference" %}</th>
+        <th class="py-2 pr-4">{% trans "Asset" %}</th>
+        <th class="py-2 pr-4 text-right">{% trans "Amount" %}</th>
+        <th class="py-2 pr-4">{% trans "Note" %}</th>
+        <th class="py-2 pr-4">{% trans "Tags" %}</th>
+        {% if can_annotate %}<th class="py-2"></th>{% endif %}
+      </tr>
+    </thead>
+    <tbody x-data="{ editing: null }">
+      {% for row in rows %}
+      <tr class="border-b border-current/10 align-top">
+        <td class="whitespace-nowrap py-2 pr-4 opacity-70">{{ row.entry.created_at|date:"Y-m-d H:i" }}</td>
+        {% comment %}From the ledger: dimmed and monospaced, so it reads as a
+           record rather than as something anybody here may change.{% endcomment %}
+        <td class="py-2 pr-4">
+          <a href="{% url 'assets:transaction_detail' row.entry.transaction.pk %}"
+             class="font-mono text-xs opacity-70 underline hover:opacity-100">{{ row.entry.transaction.reference|truncatechars:32 }}</a>
+        </td>
+        <td class="py-2 pr-4">{{ row.entry.asset.unit_name }}</td>
+        <td class="py-2 pr-4 text-right font-mono {% if row.entry.amount_base_units < 0 %}text-red-600{% else %}text-green-600{% endif %}">
+          {{ row.entry.amount_display }}</td>
+
+        {% comment %}Kept beside the ledger, editable forever.{% endcomment %}
+        <td class="py-2 pr-4">
+          {% if row.comment %}{{ row.comment.body|truncatechars:60 }}
+          {% else %}<span class="opacity-40">—</span>{% endif %}
+        </td>
+        <td class="py-2 pr-4">
+          <div class="flex flex-wrap gap-1">
+            {% for link in row.tags %}
+              <span :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-accent-dark' : 'border-accent-2 bg-primary-bg-light text-accent-light'"
+                    class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold"
+                    title="{% trans 'Ledger tag' %}">
+                <span aria-hidden="true" class="opacity-50">#</span>{{ link.tag.name }}
+              </span>
+            {% endfor %}
+          </div>
+        </td>
+
+        {% if can_annotate %}
+        <td class="py-2 text-right">
+          <button type="button" @click="editing = editing === {{ row.entry.pk }} ? null : {{ row.entry.pk }}"
+                  :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                  class="rounded border px-2 py-1 text-xs font-semibold transition">
+            <i class="fa-solid fa-pen-to-square mr-1"></i>{% trans "Edit" %}</button>
+        </td>
+        {% endif %}
+      </tr>
+
+      {% if can_annotate %}
+      <tr x-show="editing === {{ row.entry.pk }}" x-cloak>
+        <td colspan="7" class="pb-4">
+          <div :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+               class="space-y-3 rounded-lg border p-4">
+
+            <form method="post" action="{% url comment_url_name annotate_key row.entry.pk %}"
+                  class="space-y-2
+                         [&_textarea]:rounded [&_textarea]:border [&_textarea]:px-3 [&_textarea]:py-2 [&_textarea]:text-sm [&_textarea]:bg-inherit [&_textarea]:text-inherit [&_textarea]:border-inherit [&_textarea]:outline-none">
+              {% csrf_token %}
+              <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+                {% trans "Note" %}</label>
+              <textarea name="body" rows="2" class="w-full"
+                        :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                        placeholder="{% trans 'What was this for?' %}">{% if row.comment %}{{ row.comment.body }}{% endif %}</textarea>
+              <p class="text-xs opacity-60">
+                {% trans "Kept beside the ledger, never in it. Clearing the box removes the note." %}</p>
+              <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="rounded px-3 py-1.5 text-sm font-bold transition hover:opacity-90">
+                {% trans "Save note" %}</button>
+            </form>
+
+            <div class="flex flex-wrap items-end gap-2">
+              <form method="post" action="{% url tag_add_url_name annotate_key row.entry.pk %}"
+                    class="flex items-end gap-2
+                           [&_input]:rounded [&_input]:border [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm [&_input]:bg-inherit [&_input]:text-inherit [&_input]:border-inherit [&_input]:outline-none">
+                {% csrf_token %}
+                <div>
+                  <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">
+                    {% trans "Add tag" %}</label>
+                  <input type="text" name="name" list="ledger-tags-{{ account.pk }}"
+                         :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                         placeholder="{% trans 'rent' %}">
+                </div>
+                <button type="submit"
+                        :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                        class="rounded border px-3 py-2 text-sm font-semibold transition">
+                  <i class="fa-solid fa-plus"></i></button>
+              </form>
+
+              {% comment %}Removal lives in here and nowhere else — a remove
+                 button on the grid's chips would make a mis-click silently
+                 untag a row.{% endcomment %}
+              {% for link in row.tags %}
+                <form method="post" action="{% url tag_remove_url_name annotate_key row.entry.pk %}">
+                  {% csrf_token %}
+                  <input type="hidden" name="tag" value="{{ link.tag_id }}">
+                  <button type="submit"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                          class="inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-xs font-semibold opacity-70 transition hover:opacity-100">
+                    <span aria-hidden="true" class="opacity-50">#</span>{{ link.tag.name }}
+                    <i class="fa-solid fa-xmark ml-1"></i></button>
+                </form>
+              {% endfor %}
+            </div>
+          </div>
+        </td>
+      </tr>
+      {% endif %}
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+{% if can_annotate %}
+<datalist id="ledger-tags-{{ account.pk }}">
+  {% for tag in ledger_vocabulary %}<option value="{{ tag.name }}"></option>{% endfor %}
+</datalist>
+{% endif %}
+
+{% if page_obj.has_other_pages %}
+<div class="mt-4 flex items-center justify-between text-sm">
+  <span class="opacity-60">
+    {% blocktrans with number=page_obj.number total=page_obj.paginator.num_pages %}Page {{ number }} of {{ total }}{% endblocktrans %}
+  </span>
+  <span class="flex gap-2">
+    {% if page_obj.has_previous %}
+      <a href="?page={{ page_obj.previous_page_number }}{% if asset_filter %}&asset={{ asset_filter.unit_name }}{% endif %}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}"
+         class="underline hover:opacity-80">{% trans "Newer" %}</a>
+    {% endif %}
+    {% if page_obj.has_next %}
+      <a href="?page={{ page_obj.next_page_number }}{% if asset_filter %}&asset={{ asset_filter.unit_name }}{% endif %}{% if tag_filter %}&tag={{ tag_filter }}{% endif %}"
+         class="underline hover:opacity-80">{% trans "Older" %}</a>
+    {% endif %}
+  </span>
+</div>
+{% endif %}
+
+{% else %}
+  <p class="opacity-70">{% trans "No movements yet." %}</p>
+{% endif %}
