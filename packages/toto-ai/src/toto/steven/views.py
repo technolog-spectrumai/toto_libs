@@ -30,12 +30,18 @@ from toto.ui import PageProcessor
 from . import dispatch, services
 from .forms import IdentityForm, PromptForm
 from .models import AiAgent, AiProvider, AiRun
-from .surfaces import registry
+from .surfaces import DOCUMENT_ACTION, registry, resolve_action
 
 #: The largest selection that may be sent. A selection is not a document — the
 #: whole billing model rests on that — and 20k characters is already several
-#: pages. Bigger than this is a file-level job, which is a different feature.
+#: pages.
 MAX_SELECTION = 20_000
+
+#: The largest DOCUMENT that may be rewritten whole. Bigger than a selection
+#: because the whole point is the whole file, and small enough that one press
+#: cannot cost a fortune — the wallet check below reserves the worst case
+#: before anything runs. Matches the file-level wand's own cap.
+MAX_DOCUMENT = 60_000
 
 
 def _render(request, template_name, context):
@@ -60,17 +66,27 @@ def ask(request):
     surface = registry.get(surface_key)
     if surface is None:
         return JsonResponse({"error": "Unknown surface."}, status=400)
-    action = surface.action(action_key)
+    # resolve_action, not surface.action: the whole-document rewrite is
+    # synthesised from the surface's own file type rather than declared by each
+    # editor, and the worker resolves it exactly the same way.
+    action = resolve_action(surface, action_key)
     if action is None:
         return JsonResponse({"error": "Unknown action."}, status=400)
 
+    whole_document = action_key == DOCUMENT_ACTION
+    limit = MAX_DOCUMENT if whole_document else MAX_SELECTION
+
     if not selection.strip():
-        return JsonResponse({"error": "Select something first."}, status=400)
-    if len(selection) > MAX_SELECTION:
         return JsonResponse(
-            {"error": f"That selection is too long ({len(selection)} characters; "
-                      f"the limit is {MAX_SELECTION}). Select less, or use a "
-                      f"whole-file action."}, status=400)
+            {"error": "There is nothing here to work on." if whole_document
+                      else "Select something first."}, status=400)
+    if len(selection) > limit:
+        return JsonResponse(
+            {"error": f"This is too long ({len(selection)} characters; the "
+                      f"limit is {limit}). "
+                      + ("Try a smaller file." if whole_document
+                         else "Select less, or rewrite the whole document.")},
+            status=400)
     if action.needs_instruction and not instruction:
         return JsonResponse({"error": "This action needs an instruction."},
                             status=400)
@@ -365,9 +381,15 @@ def surface_actions(request, key: str):
     # six templates in three packages. Absent when nobody configured one, and
     # the panel falls back to calling itself "Assistant".
     agent = AiAgent.current()
+    from .surfaces import LANGUAGE_NAMES
+
     return JsonResponse({
         "surface": surface.key,
         "label": surface.label,
+        # What a whole-document rewrite will be asked to emit. Shown in the
+        # modal so somebody pressing AI on an .html file can see it is about to
+        # get HTML back rather than prose about their HTML.
+        "language": LANGUAGE_NAMES.get(surface.file_type, surface.file_type),
         "agent": ({"name": agent.name, "icon": agent.icon,
                    "tagline": agent.tagline} if agent else None),
         "actions": [

@@ -73,7 +73,7 @@
 
         {% if steven_surface %}
           <div class="h-5 w-px opacity-20 bg-current"></div>
-          {% include "steven/_actions.html" with surface=steven_surface %}
+          {% include "steven/_ai.html" with surface=steven_surface %}
         {% endif %}
 
         <div class="h-5 w-px opacity-20 bg-current"></div>
@@ -229,6 +229,35 @@ if (window.StevenActions) {
       if (range.isEmpty()) { editor.setValue(text, -1); }
       else { editor.session.replace(range, text); }
       editor.focus();
+    },
+    /* The rewrite's unit is the FOCUSED CELL. A .tpy notebook is cells with
+       outputs and execution state, not a source file — regenerating "the whole
+       notebook" from a flat dump would throw that structure away and hand back
+       one blob nothing could load. A cell, by contrast, is exactly Python
+       source, and tpy_run_cell already treats it as the addressable unit. */
+    source: function () {
+      const editor = editors[focusedCellUid];
+      return editor ? editor.getValue() : "";
+    },
+    writeDocument: function (text) {
+      const editor = editors[focusedCellUid];
+      if (!editor) return;
+      /* -1 keeps the cursor at the start instead of selecting everything just
+         inserted, which would leave the floating AI button over the new cell. */
+      editor.setValue(text, -1);
+      editor.focus();
+    },
+    /* ACE draws its own selection, so the shared window.getSelection()
+       fallback finds nothing here. */
+    anchor: function () {
+      const editor = editors[focusedCellUid];
+      if (!editor) return null;
+      const range = editor.getSelectionRange();
+      if (range.isEmpty()) return null;
+      const c = editor.renderer.textToScreenCoordinates(range.end.row, range.end.column);
+      return { top: c.pageY - window.scrollY, left: c.pageX - window.scrollX,
+               right: c.pageX - window.scrollX,
+               height: editor.renderer.lineHeight || 16, width: 0 };
     },
     /* The side panel asks about the NOTEBOOK. Cells are labelled so the model
        can refer to one by number, which is what somebody asking "where does

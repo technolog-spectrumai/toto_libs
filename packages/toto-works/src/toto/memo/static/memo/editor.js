@@ -661,6 +661,20 @@
             if (sel.empty) chain.selectAll();
             chain.insertContent(text).run();
           },
+          /* The rewrite's unit here is the OPEN BLOCK, not the deck.
+             A block payload is HTML — the thing "generate new code in the
+             encoding language" actually means in memo — and a deck is slides
+             and blocks in a model, not a source file, so there is nothing to
+             regenerate at that level. The AI button lives in the block
+             dialog's own toolbar, so it exists exactly when a block does. */
+          source: function () { return prose ? prose.getHTML() : ""; },
+          writeDocument: function (html) {
+            if (!prose) return;
+            /* selectAll + insertContent rather than setContent: one undoable
+               step, and it fires the update the block dialog's dirty flag and
+               autosave already listen to. */
+            prose.chain().focus().selectAll().insertContent(html).run();
+          },
           /* The side panel asks about the DECK, not the open block — from the
              model rather than the DOM, so it works with the dialog closed. */
           document: function () {

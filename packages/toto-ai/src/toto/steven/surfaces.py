@@ -12,9 +12,13 @@ from toto.core.ai_surfaces import (  # noqa: F401
     AiSurface,
     DuplicateSurface,
     SurfaceRegistry,
+    DOCUMENT_ACTION,
+    LANGUAGE_NAMES,
     build_messages,
     code_actions,
     compose_system,
+    document_action,
     prose_actions,
     registry,
+    resolve_action,
 )

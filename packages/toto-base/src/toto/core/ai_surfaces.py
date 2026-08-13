@@ -200,6 +200,77 @@ def code_actions(language: str = "") -> tuple:
 
 
 # ---------------------------------------------------------------------------
+# Rewriting a whole document
+# ---------------------------------------------------------------------------
+# A different job from the selection actions above, and it needs its own rule.
+# A selection action edits prose and hands back prose. This one is asked to
+# return a COMPLETE, VALID source file in the document's own language — the
+# answer replaces everything, so a truncated or fenced reply does not degrade,
+# it destroys the document. Hence the emphasis, and hence the caller pins the
+# language rather than letting the model infer it from what it was shown.
+
+#: The one action a document surface offers. Free text in, a whole file out.
+DOCUMENT_ACTION = "rewrite_document"
+
+_DOCUMENT_SYSTEM = (
+    "You rewrite a complete source document. Return ONLY the full new document "
+    "and nothing else: no preamble, no explanation, no markdown code fences, no "
+    "commentary before or after. The output REPLACES the file entirely, so it "
+    "must be complete and valid on its own — never truncate, never abbreviate "
+    "with an ellipsis or a 'rest unchanged' note. Preserve everything the "
+    "instruction does not ask you to change, including formatting and comments."
+)
+
+#: What we call each file type when telling the model what to emit. Keys are
+#: ``AiSurface.file_type`` / vault file types.
+LANGUAGE_NAMES = {
+    "html": "HTML",
+    "xml": "XML",
+    "json": "JSON",
+    "svg": "SVG",
+    "yaml": "YAML",
+    "csv": "CSV",
+    "latex": "LaTeX",
+    "python": "Python",
+    "bib": "BibTeX",
+    "text": "plain text",
+}
+
+
+def resolve_action(surface: AiSurface, key: str) -> Action | None:
+    """One place both the view and the worker look an action up.
+
+    The document action is SYNTHESISED from the surface rather than declared by
+    each editor: every surface would otherwise carry an identical copy, and the
+    only thing that varies is the language, which the surface already knows.
+    Resolved here so the endpoint that starts a run and the worker that executes
+    it cannot disagree about what the run means.
+    """
+    if key == DOCUMENT_ACTION:
+        return document_action(surface.file_type)
+    return surface.action(key)
+
+
+def document_action(language: str = "") -> Action:
+    """The rewrite-everything action, told which language to emit.
+
+    ``language`` is the surface's ``file_type``. Naming it explicitly matters:
+    asked to "rewrite this", a model shown a fragment of HTML will happily
+    answer in Markdown, and the answer would replace an .html file.
+    """
+    named = LANGUAGE_NAMES.get(language, language)
+    emit = f" Return valid {named}." if named else ""
+    return Action(
+        DOCUMENT_ACTION, "Rewrite the document", "fa-solid fa-file-pen",
+        system=_DOCUMENT_SYSTEM + emit,
+        needs_instruction=True,
+        instruction_placeholder="what should change?",
+        template=("{instruction}\n\nThe complete current document follows. "
+                  "Return the complete new one.\n\n{selection}"),
+    )
+
+
+# ---------------------------------------------------------------------------
 # The operator's half of the system prompt
 # ---------------------------------------------------------------------------
 

@@ -169,7 +169,7 @@ def execute(run: AiRun) -> AiRun:
     when the run itself failed.
     """
     from .client import ProviderError, complete
-    from .surfaces import build_messages, registry
+    from .surfaces import build_messages, registry, resolve_action
     from .vault import VaultUnavailable, vault
 
     run.status = RunStatus.RUNNING
@@ -182,7 +182,9 @@ def execute(run: AiRun) -> AiRun:
         return run
 
     surface = registry.get(run.surface)
-    action = surface.action(run.action) if surface else None
+    # Same resolver the endpoint used, so a run's meaning cannot drift between
+    # being started and being executed.
+    action = resolve_action(surface, run.action) if surface else None
     if surface is None or action is None:
         run.finish(status=RunStatus.FAILED,
                    error=f"Unknown surface/action: {run.surface}/{run.action}")

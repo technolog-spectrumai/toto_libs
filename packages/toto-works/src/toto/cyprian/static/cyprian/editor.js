@@ -493,9 +493,28 @@
               .insertContentAt({ from: sel.from, to: sel.to }, text)
               .run();
           },
-          /* The side panel's half: the whole document as text, never HTML.
-             Markup would be most of the tokens and none of the meaning. */
+          /* The side panel ASKS about the document, so it gets prose: markup
+             would be most of the tokens and none of the meaning. */
           document: function () { return editor.getText(); },
+          /* The rewrite REGENERATES the document, so it gets the markup. A
+             cyprian body IS HTML (see ai_surfaces.py), and a model shown only
+             prose would invent structure it was never given — every table and
+             heading in the file would come back as a guess. */
+          source: function () { return editor.getHTML(); },
+          writeDocument: function (html) {
+            /* Through a chain, so it is ONE undoable step and the change event
+               that drives the dirty flag, the autosave and the conflict hash
+               fires exactly as it does for a typed edit.
+
+               `emitUpdate` (the second argument) must stay true: setContent
+               defaults to silent, and a silent whole-document replacement
+               would leave the save button clean over a document that has
+               entirely changed. */
+            editor.chain().focus().setContent(html, true).run();
+          },
+          /* TipTap renders into contenteditable, so the component's own
+             window.getSelection() fallback already finds the right rectangle —
+             no `anchor` needed here. */
         });
       },
 

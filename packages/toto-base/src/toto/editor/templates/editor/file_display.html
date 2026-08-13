@@ -90,7 +90,7 @@
            page whose other controls are plain id handles.{% endcomment %}
         {% if steven_surface %}
           <div class="h-5 w-px opacity-20 bg-current"></div>
-          {% include "steven/_actions.html" with surface=steven_surface %}
+          {% include "steven/_ai.html" with surface=steven_surface %}
         {% endif %}
 
         <button id="toggle-sync" title="{% trans 'Toggle live sync' %}" class="toolbar-btn border">
@@ -271,8 +271,39 @@ if (window.StevenActions) {
       editor.session.replace(range, text);
       editor.focus();
     },
-    /* The side panel's half: the whole buffer. */
+    /* The whole-document half. This editor holds raw source — HTML, XML,
+       JSON, LaTeX, Python — so "generate new code in the encoding language"
+       means exactly what it says here, and this is the surface the AI button
+       was designed around. */
     document: function () { return editor.getValue(); },
+    /* The same function: this editor holds the file's raw source, so what you
+       ask about and what you regenerate are the same bytes. Both are declared
+       anyway, so neither reads as the other's fallback. */
+    source: function () { return editor.getValue(); },
+    writeDocument: function (text) {
+      /* setValue(text, -1) replaces the buffer and puts the cursor at the
+         START. The second argument is not optional: ACE's default is to select
+         everything it just inserted, which leaves the floating selection button
+         hovering over the entire new file the moment it lands.
+
+         One undo step, one change event — so Ctrl+Z takes the whole rewrite
+         back, and the websocket sync and the antivirus door see it as an
+         ordinary edit on its way to disk. */
+      editor.session.setValue(text, -1);
+      editor.focus();
+    },
+    /* ACE draws its own selection on a canvas layer, so window.getSelection()
+       is empty here and the shared fallback would never show the floating
+       button. Its own geometry, translated to viewport coordinates. */
+    anchor: function () {
+      var range = editor.getSelectionRange();
+      if (range.isEmpty()) return null;
+      var coords = editor.renderer.textToScreenCoordinates(
+        range.end.row, range.end.column);
+      var height = editor.renderer.lineHeight || 16;
+      return { top: coords.pageY - window.scrollY, left: coords.pageX - window.scrollX,
+               right: coords.pageX - window.scrollX, height: height, width: 0 };
+    },
   });
 }
 {% endif %}

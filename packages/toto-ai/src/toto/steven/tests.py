@@ -1210,3 +1210,238 @@ class AgentIdentityInEditorsTests(TestCase):
 
         self.assertContains(self.client.get(reverse("steven:console")),
                             reverse("steven:manage"))
+
+
+class DocumentRewriteTests(TestCase):
+    """The AI button's whole-document scope.
+
+    A selection action edits prose and hands back prose. This one is asked for a
+    COMPLETE source file in the document's own language, and the answer replaces
+    everything — so a truncated or fenced reply does not degrade, it destroys
+    the document. These pin the rules that stop that.
+    """
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+
+    def test_the_action_is_synthesised_not_declared(self):
+        """Every surface would otherwise carry an identical copy, and the only
+        thing that varies is the language the surface already knows."""
+        from toto.core.ai_surfaces import DOCUMENT_ACTION, resolve_action
+
+        self.assertIsNone(TEST_SURFACE.action(DOCUMENT_ACTION))
+        self.assertIsNotNone(resolve_action(TEST_SURFACE, DOCUMENT_ACTION))
+
+    def test_the_language_is_named_from_the_surfaces_file_type(self):
+        """Asked to "rewrite this", a model shown a fragment of HTML will
+        happily answer in Markdown — and the answer replaces an .html file."""
+        from toto.core.ai_surfaces import DOCUMENT_ACTION, resolve_action
+
+        action = resolve_action(HTML_SURFACE, DOCUMENT_ACTION)
+
+        self.assertIn("HTML", action.system)
+
+    def test_a_surface_with_no_file_type_names_no_language(self):
+        """Better silent than wrong: TEST_SURFACE is prose with no file type,
+        and inventing one would tell the model to emit a format nobody asked
+        for."""
+        from toto.core.ai_surfaces import DOCUMENT_ACTION, resolve_action
+
+        action = resolve_action(TEST_SURFACE, DOCUMENT_ACTION)
+
+        self.assertNotIn("Return valid", action.system)
+
+    def test_it_forbids_fences_truncation_and_commentary(self):
+        from toto.core.ai_surfaces import DOCUMENT_ACTION, resolve_action
+
+        system = resolve_action(TEST_SURFACE, DOCUMENT_ACTION).system.lower()
+
+        for rule in ("code fences", "never truncate", "no preamble"):
+            with self.subTest(rule=rule):
+                self.assertIn(rule, system)
+
+    def test_it_needs_an_instruction(self):
+        """The whole interaction is a typed prompt; without one there is no
+        request, only a very expensive echo."""
+        from toto.core.ai_surfaces import DOCUMENT_ACTION, resolve_action
+
+        self.assertTrue(
+            resolve_action(TEST_SURFACE, DOCUMENT_ACTION).needs_instruction)
+
+    def test_the_whole_document_is_in_the_prompt(self):
+        from toto.core.ai_surfaces import (DOCUMENT_ACTION, build_messages,
+                                           resolve_action)
+
+        action = resolve_action(HTML_SURFACE, DOCUMENT_ACTION)
+        messages = build_messages(HTML_SURFACE, action,
+                                  selection="<p>one</p><p>two</p>",
+                                  instruction="make it a list")
+
+        body = messages[1]["content"]
+        self.assertIn("<p>one</p><p>two</p>", body)
+        self.assertIn("make it a list", body)
+
+    def test_an_operator_persona_cannot_displace_the_output_rule(self):
+        """Accept pastes this straight into a file. A persona that made the
+        model chatty would put "Sure! Here you go:" at the top of an .html
+        document."""
+        from toto.core.ai_surfaces import (DOCUMENT_ACTION, AgentVoice,
+                                           compose_system, resolve_action)
+
+        action = resolve_action(HTML_SURFACE, DOCUMENT_ACTION)
+        system = compose_system(HTML_SURFACE, action, AgentVoice(
+            name="Steven", persona="You are chatty and love preambles.",
+            house_rules="Always greet the user first."))
+
+        self.assertTrue(system.rstrip().endswith(action.system.rstrip()))
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
+class DocumentAskViewTests(TestCase):
+    """What the endpoint accepts for a whole-document rewrite."""
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+        vault.clear_cache()
+        self.user = User.objects.create_user("writer", password="pw")
+        self.client.force_login(self.user)
+        provider = AiProvider.objects.create(label="t", active=True,
+                                             max_output_tokens=100)
+        provider.secret = vault.store_secret("sk-test", name="doc-key")
+        provider.save(update_fields=["secret"])
+        self.url = reverse("steven:ask")
+
+    def _post(self, **kwargs):
+        from toto.core.ai_surfaces import DOCUMENT_ACTION
+
+        body = {"surface": "tests-html", "action": DOCUMENT_ACTION,
+                "selection": "<p>hello</p>", "instruction": "make it bold"}
+        body.update(kwargs)
+        # dispatch is patched, not the queue: there is no celery worker in a
+        # test run, and an unpatched call refuses with 503 by design.
+        with mock.patch("toto.steven.dispatch.dispatch_run",
+                        return_value=None):
+            return self.client.post(self.url, body,
+                                    content_type="application/json")
+
+    def test_a_document_rewrite_starts_a_run(self):
+        response = self._post()
+
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("run_id", response.json())
+
+    def test_a_document_may_be_far_longer_than_a_selection(self):
+        """The whole point is the whole file. 30k would be refused as a
+        selection and is fine as a document."""
+        from toto.steven.views import MAX_DOCUMENT, MAX_SELECTION
+
+        self.assertGreater(MAX_DOCUMENT, MAX_SELECTION)
+
+        response = self._post(selection="<p>" + ("x" * 30_000) + "</p>")
+
+        self.assertEqual(response.status_code, 200)
+
+    def test_a_document_past_the_cap_is_refused_before_anything_runs(self):
+        from toto.steven.views import MAX_DOCUMENT
+
+        response = self._post(selection="x" * (MAX_DOCUMENT + 1))
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(AiRun.objects.count(), 0)
+
+    def test_an_empty_document_is_refused_in_its_own_words(self):
+        """"Select something first" is the wrong sentence when nothing was
+        selected and nothing was meant to be."""
+        response = self._post(selection="   ")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("nothing here", response.json()["error"].lower())
+
+    def test_a_rewrite_with_no_prompt_is_refused(self):
+        response = self._post(instruction="")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(AiRun.objects.count(), 0)
+
+    def test_the_worker_resolves_the_same_action_the_view_did(self):
+        """The run carries an action key that exists on no surface, so the two
+        resolvers have to agree or the job fails as "unknown action"."""
+        self._post()
+        run = AiRun.objects.get()
+
+        with mock.patch("toto.steven.client.complete",
+                        return_value=_answer("<b>hello</b>")):
+            services.execute(run)
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.SUCCESS)
+        self.assertEqual(run.result, "<b>hello</b>")
+
+    def test_a_hostile_rewrite_is_refused_by_the_scanner(self):
+        """The answer is bound for an .html document, so it is untrusted
+        third-party content — screened before anybody is offered it, and a
+        refusal costs the user nothing."""
+        self._post()
+        run = AiRun.objects.get()
+
+        with mock.patch("toto.steven.client.complete",
+                        return_value=_answer("<script>alert(1)</script>")):
+            services.execute(run)
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.FAILED)
+        self.assertIn("scanner", run.error.lower())
+
+    def test_the_surface_json_names_the_language(self):
+        """The modal says what it is about to hand back."""
+        payload = self.client.get(
+            reverse("steven:surface_actions", args=["tests-html"])).json()
+
+        self.assertEqual(payload["language"], "HTML")
+
+
+class LauncherTests(TestCase):
+    """The AI button replaced a dropdown of canned actions."""
+
+    def _client_js(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent
+                / "static" / "steven" / "actions.js").read_text()
+
+    def test_the_javascript_constant_matches_the_python_one(self):
+        """The document action is synthesised server-side and appears in no
+        action list, so it is the one key both sides must agree on by name and
+        nothing would catch a drift at runtime."""
+        from toto.core.ai_surfaces import DOCUMENT_ACTION
+
+        self.assertIn(f'var DOCUMENT_ACTION = "{DOCUMENT_ACTION}"',
+                      self._client_js())
+
+    def test_the_old_dropdown_is_gone(self):
+        """It was replaced, not left beside the new one — two launchers for one
+        feature is how six toolbars drift into six vocabularies."""
+        import pathlib
+
+        templates = pathlib.Path(__file__).parent / "templates" / "steven"
+
+        self.assertFalse((templates / "_actions.html").exists())
+        self.assertNotIn("stevenPanel", self._client_js())
+
+    def test_every_editor_include_points_at_the_new_launcher(self):
+        """A template still including the retired partial would render nothing
+        and raise no error."""
+        import pathlib
+
+        packages = pathlib.Path(__file__).resolve().parents[4]
+        skip = ("/build/", "/limbo/", "site-packages", ".venv", "/dist/")
+        stale = "steven/_actions.html"
+
+        offenders = [
+            str(path) for path in packages.rglob("*/src/toto/**/*.html")
+            if not any(part in str(path) for part in skip)
+            and stale in path.read_text(errors="ignore")
+        ]
+        self.assertEqual(offenders, [])

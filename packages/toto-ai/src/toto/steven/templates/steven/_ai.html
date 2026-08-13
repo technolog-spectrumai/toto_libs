@@ -1,0 +1,168 @@
+{% load i18n static %}
+{% comment %}The assistant's whole launcher: a square AI button, a floating one
+   that follows a selection, and the one modal both of them open.
+
+   Params:
+     surface — REQUIRED, an AiSurface key (see toto/steven/surfaces.py)
+
+   The editor supplies handlers and nothing else:
+
+     window.StevenActions.register("{{ surface }}", {
+       read:          function () { return <the selected text>; },
+       write:         function (text) { <replace the selection with text> },
+       source:        function () { return <the whole SOURCE, as markup>; },
+       writeDocument: function (text) { <replace the whole document> },
+       document:      function () { return <the whole document as TEXT>; },
+       anchor:        function () { return <DOMRect of the selection> },  // optional
+     });
+
+   `source` and `document` differ on purpose — see steven/actions.js. One is what
+   a rewrite must REPRODUCE, the other is what the side panel ASKS about.
+
+   An editor that registers no `writeDocument` gets no toolbar button at all
+   rather than one that fails when pressed: primula is that case, because a
+   workbook is not a source file.
+
+   TWO SCOPES, ONE MODAL. The toolbar button opens it on the WHOLE DOCUMENT —
+   you type what should change and the model returns a complete new file in that
+   document's own language. The floating button opens it on the SELECTION.
+   Same box, same endpoint, same accept/reject; only the scope differs, and the
+   modal says which one it is on rather than making you infer it.
+
+   The button is deliberately QUIET: the page's own background and the page's own
+   text colour, with a hairline border. It sits in editor toolbars beside Save
+   and Versions, and an accent-coloured button there would read as the primary
+   action on a page whose primary action is writing.
+
+   Include steven/_head.html in the page's script block first, or this renders
+   buttons that do nothing.
+
+   A page carrying this needs an [x-cloak] rule; oya/base.html declares none, so
+   every editor already has its own for the same reason.
+{% endcomment %}
+
+{% trans "Ask the assistant to rewrite this document" as ai_doc_title %}
+{% trans "Ask the assistant about the selection" as ai_sel_title %}
+
+<span x-data="stevenAi({
+        surface: '{{ surface|escapejs }}',
+        askUrl: '{% url 'steven:ask' %}',
+        actionsUrl: '{% url 'steven:surface_actions' surface %}'
+      })"
+      x-init="watchSelection()"
+      @keydown.escape.window="close()">
+
+  {% comment %}1. The toolbar button — whole document.{% endcomment %}
+  <button type="button" @click="openDocument()" x-show="canRewrite" x-cloak
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="inline-flex h-8 w-8 items-center justify-center rounded border text-xs font-bold tracking-tight transition hover:opacity-80"
+          :title="agent ? '{{ ai_doc_title|escapejs }} — ' + agent.name : '{{ ai_doc_title|escapejs }}'">AI</button>
+
+  {% comment %}2. The floating button — appears beside a selection.
+
+     Fixed-positioned from a viewport DOMRect, so it needs no knowledge of which
+     scrolling container the editor lives in. `pointer-events` stays on only
+     while it is shown, or an invisible button would swallow clicks in the
+     document underneath it.{% endcomment %}
+  <button type="button" x-show="anchor" x-cloak
+          @mousedown.prevent @click="openSelection()"
+          :style="anchor ? ('position:fixed;z-index:60;left:' + anchor.left + 'px;top:' + anchor.top + 'px') : 'display:none'"
+          :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+          class="inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] font-bold shadow-lg transition hover:opacity-80"
+          :title="'{{ ai_sel_title|escapejs }}'">AI</button>
+
+  {% comment %}3. The modal. One box for both scopes.{% endcomment %}
+  <div x-show="open" x-cloak
+       class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
+       @click.self="close()">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+         class="mt-8 w-full max-w-2xl rounded-2xl border p-5 shadow-2xl">
+
+      <div class="mb-3 flex items-start justify-between gap-3">
+        <div class="min-w-0">
+          <h2 class="flex items-center gap-2 text-lg font-bold">
+            <span :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex h-6 w-6 items-center justify-center rounded border text-[10px] font-bold">AI</span>
+            <span x-text="agent ? agent.name : '{% trans 'Assistant' %}'"></span>
+          </h2>
+          <p class="mt-1 text-xs opacity-65"
+             x-text="scope === 'document'
+               ? '{% trans 'Rewrites the whole document.' %}' + (language ? ' {% trans 'Returns' %} ' + language + '.' : '')
+               : '{% trans 'Rewrites what you selected.' %}'"></p>
+        </div>
+        <button type="button" @click="close()"
+                class="shrink-0 opacity-50 transition hover:opacity-100"
+                title="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
+      </div>
+
+      {% comment %}Step one: the prompt.{% endcomment %}
+      <template x-if="!result">
+        <div class="space-y-3">
+          <textarea x-model="instruction" rows="3" x-ref="prompt"
+                    @keydown.enter.meta="run()" @keydown.enter.ctrl="run()"
+                    :placeholder="scope === 'document'
+                      ? '{% trans 'Add a footer with the page number. Make the table striped.' %}'
+                      : '{% trans 'Make this shorter. Translate it into Polish.' %}'"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm outline-none"></textarea>
+
+          {% comment %}What is actually going to be sent, and how much of it.
+             The bill is measured in tokens, so the size of the payload is not a
+             detail — it is the price.{% endcomment %}
+          <p class="text-xs opacity-55">
+            <template x-if="scope === 'document'">
+              <span>{% trans "Sends the whole document" %} — <span x-text="sourceLength"></span> {% trans "characters" %}.</span>
+            </template>
+            <template x-if="scope === 'selection'">
+              <span>{% trans "Sends the selection only" %} — <span x-text="sourceLength"></span> {% trans "characters" %}.</span>
+            </template>
+          </p>
+
+          <p x-show="error" x-text="error"
+             :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+             class="text-xs font-semibold"></p>
+
+          <div class="flex items-center gap-2">
+            <button type="button" @click="run()" :disabled="busy"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-50">
+              <span x-show="!busy"><i class="fa-solid fa-play mr-1"></i>{% trans "Generate" %}</span>
+              <span x-show="busy"><i class="fa-solid fa-spinner fa-spin"></i> {% trans "Working…" %}</span>
+            </button>
+            <button type="button" @click="close()"
+                    class="rounded-lg px-3 py-2 text-sm font-semibold opacity-60 transition hover:opacity-100">
+              {% trans "Cancel" %}</button>
+          </div>
+        </div>
+      </template>
+
+      {% comment %}Step two: the proposal. Never applied until Accept — the same
+         contract sketch keeps with an imported drawing and antivirus keeps with
+         a scanned file. A whole-document rewrite makes that rule matter more,
+         not less: Reject has to leave the file byte-identical.{% endcomment %}
+      <template x-if="result">
+        <div class="space-y-3">
+          <p class="text-[10px] font-semibold uppercase tracking-wide opacity-50"
+             x-text="scope === 'document' ? '{% trans 'Proposed document' %}' : '{% trans 'Proposed replacement' %}'"></p>
+          <pre :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs leading-relaxed"
+               x-text="result"></pre>
+          <p class="text-[10px] opacity-50">
+            <span x-text="tokens"></span> {% trans "tokens" %} —
+            {% trans "nothing is changed until you accept" %}
+          </p>
+          <div class="flex items-center gap-2">
+            <button type="button" @click="accept()"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-check"></i>{% trans "Accept" %}</button>
+            <button type="button" @click="reject()"
+                    class="rounded-lg px-3 py-2 text-sm font-semibold opacity-60 transition hover:opacity-100">
+              {% trans "Reject" %}</button>
+          </div>
+        </div>
+      </template>
+
+    </div>
+  </div>
+</span>

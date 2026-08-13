@@ -49,7 +49,7 @@
         {% comment %}Translated into a variable first: {% templatetag openblock %} include with
            {% templatetag closeblock %} cannot call gettext.{% endcomment %}
         {% trans "Assistant" as ai_label %}
-        {% include "steven/_actions.html" with surface=steven_surface label=ai_label %}
+        {% include "steven/_ai.html" with surface=steven_surface %}
       {% endif %}
       <button type="button" @click="showVersions = !showVersions"
               class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
@@ -167,7 +167,17 @@
           range.getCell(0, 0).setValue(text);
         } catch (e) { /* the grid refused it; the answer is still on screen */ }
       },
-      /* The side panel asks about the SHEET — its used range as TSV, not the
+      /* NO `source` and NO `writeDocument`, so this editor shows no toolbar AI
+         button — deliberately, and it is the reason that gate exists.
+         "Regenerate the whole document in its encoding language" has no honest
+         meaning for a workbook: the file is a Univer snapshot of styling,
+         merges, formulas and sheets, and a model handed that back would be
+         proposing a replacement nobody can review in a modal and the grid
+         cannot partially accept. TSV in and TSV out would lose every formula
+         and every format in the file. The selection half is the whole feature
+         here, which is what primula's own action vocabulary was built for.
+
+         The side panel asks about the SHEET — its used range as TSV, not the
          snapshot. A workbook snapshot is styling and merges and formulas, which
          would be most of the tokens and none of the question. */
       document: function () {
