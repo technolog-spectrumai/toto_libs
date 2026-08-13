@@ -23,3 +23,7 @@ class QuotaConfig(AppConfig):
         # discovery has to run on hosts that pin no economy wheel at all (where
         # it simply finds nothing).
         autodiscover_plugins("fees")
+        # The gas pump. Its own module, imported rather than autodiscovered:
+        # it is quota's own widget and there is exactly one, so discovery would
+        # be a mechanism with nothing to find.
+        from .plugins import floating_plugins  # noqa: F401

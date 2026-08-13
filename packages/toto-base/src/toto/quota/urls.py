@@ -9,6 +9,9 @@ urlpatterns = [
     path("me/", views.my_usage, name="my_usage"),
     path("me/<str:app_label>/", views.my_usage, name="my_usage_app"),
     path("taxes/", views.taxes, name="taxes"),
+    # The dials. Split from quota:index so the catalogue is a place you
+    # can stay rather than a link to the editor.
+    path("desk/", views.fees_desk, name="fees_desk"),
     # Path and url-name both unchanged, though the page is now operator-only and
     # is titled "Income": a live host has these bookmarked, and the restructure
     # was never worth breaking a link over.

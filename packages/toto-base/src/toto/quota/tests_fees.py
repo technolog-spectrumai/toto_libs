@@ -125,13 +125,14 @@ class EconomyTabsTests(TestCase):
 
 
 class UsageTabsTests(TestCase):
-    """The sub-nav, after nine chips collapsed into three.
+    """The metering chips, now part of the one economy strip.
 
     Records, My usage, Levies, Time dials, Prices, Limits, Rate desk,
     Allowances and Metrics were nine destinations keyed by one string — the
     metric code — so answering a single question about one metered thing meant
-    visiting five of them. What is left is three genuinely different objects:
-    the things, the KINDS of charge, and the billing trail.
+    visiting five of them. Three survived, and they moved into
+    oya/_economy_tabs.html when the second row was merged into the first;
+    oya/_usage_tabs.html is now a shim that renders nothing.
     """
 
     def setUp(self):
@@ -144,8 +145,43 @@ class UsageTabsTests(TestCase):
         request = self.factory.get("/")
         request.user = user
         return render_to_string(
-            "oya/_usage_tabs.html",
+            "oya/_economy_tabs.html",
             {"active_tab": active_tab, "user": user, "request": request})
+
+    def test_the_old_second_row_renders_nothing(self):
+        """Kept as a shim for one release; it must not draw a second strip."""
+        request = self.factory.get("/")
+        request.user = self.plain
+        rendered = render_to_string(
+            "oya/_usage_tabs.html",
+            {"active_tab": "metered", "user": self.plain, "request": request})
+
+        self.assertNotIn("<nav", rendered)
+        self.assertNotIn("Metered", rendered)
+
+    def test_there_is_exactly_one_strip(self):
+        """The whole point of the merge: one <nav>, one visual language."""
+        self.assertEqual(self._render(self.plain).count("<nav"), 1)
+
+    def test_usage_is_everybody_own_usage(self):
+        """Staff used to be sent to the platform's records instead, which left
+        them no way to reach their own bars from the navigation at all."""
+        from django.urls import reverse
+
+        mine = reverse("quota:my_usage")
+        for user in (self.plain, self.staff):
+            with self.subTest(user=user.username):
+                self.assertIn(f'href="{mine}"', self._render(user))
+
+    def test_the_fees_chip_goes_where_the_role_can_actually_go(self):
+        """A chip that 403s is a broken chip."""
+        from django.urls import reverse
+
+        self.assertIn(f'href="{reverse("quota:fees_desk")}"',
+                      self._render(self.staff))
+        self.assertIn(f'href="{reverse("quota:taxes")}"',
+                      self._render(self.plain))
+        self.assertNotIn(reverse("quota:fees_desk"), self._render(self.plain))
 
     def test_the_desks_are_gone_as_destinations(self):
         """Four chips all answered "where do I set what this costs"."""
@@ -166,7 +202,7 @@ class UsageTabsTests(TestCase):
         """
         for user in (self.plain, self.staff):
             rendered = self._render(user)
-            for label in ("Metered", "Records"):
+            for label in ("Metered", "Records", "Fees"):
                 with self.subTest(user=user.username, label=label):
                     self.assertIn(label, rendered)
 
@@ -521,3 +557,74 @@ class MeteredHelpTests(TestCase):
     def test_the_page_declares_the_cloak_rule(self):
         """Without it the panel — and the edit modal — flash open on load."""
         self.assertIn("[x-cloak]", self._get().content.decode())
+
+
+class GasPumpTests(TestCase):
+    """The pump appears exactly where there is something to explain."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from django.contrib.auth import get_user_model
+
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.user = get_user_model().objects.create_user("driver", password="pw")
+
+    def _plugin(self):
+        from toto.quota.plugins.floating_plugins import GasPumpPlugin
+
+        return GasPumpPlugin()
+
+    def _request(self, app_name):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.user = self.user
+        request.resolver_match = type("M", (), {"app_name": app_name})()
+        return request
+
+    def test_it_shows_on_an_app_that_meters(self):
+        self.assertTrue(self._plugin().visible_for_request(self._request("vault")))
+
+    def test_it_shows_nowhere_on_an_app_that_meters_nothing(self):
+        """The same honesty check {% quota_tab %} makes."""
+        self.assertFalse(self._plugin().visible_for_request(self._request("polls")))
+
+    def test_it_is_hidden_from_anonymous_visitors(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        request = self._request("vault")
+        request.user = AnonymousUser()
+        self.assertFalse(self._plugin().visible_for_request(request))
+
+    def test_it_survives_a_page_with_no_resolver_match(self):
+        from django.test import RequestFactory
+
+        request = RequestFactory().get("/")
+        request.user = self.user
+        self.assertFalse(self._plugin().visible_for_request(request))
+
+    def test_it_reuses_the_per_request_rate_card(self):
+        """One read for a page that already drew a price hint."""
+        request = self._request("vault")
+        request._toto_rate_card = {"sentinel": {}}
+
+        context = self._plugin().get_context(request=request)
+
+        self.assertTrue(context["gas_priced"])
+        self.assertEqual(request._toto_rate_card, {"sentinel": {}})
+
+    def test_every_metered_metric_of_the_app_is_listed(self):
+        context = self._plugin().get_context(request=self._request("vault"))
+
+        codes = {row["metric"].code for row in context["gas_rows"]}
+        self.assertIn("storage.request", codes)
+
+    def test_an_unbilled_host_says_so_rather_than_showing_zeroes(self):
+        context = self._plugin().get_context(request=self._request("vault"))
+
+        self.assertFalse(context["gas_priced"])
+        self.assertTrue(all(row["price"] is None for row in context["gas_rows"]))

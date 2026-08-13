@@ -484,15 +484,24 @@ class RateDeskTests(SampleModels):
         self.client.force_login(self.staff)
         self.assertEqual(self.client.get("/quota/taxes/").status_code, 200)
 
-    def test_a_member_reads_the_grid_but_cannot_write_it(self):
-        """Both roles share the URL; only the editors differ.
+    def test_a_member_reads_the_catalogue_and_cannot_reach_the_desk(self):
+        """Reading and editing are two URLs now.
 
-        Reading was staff-only while the grid was its own screen. It is the
-        collection view now, and a member has every reason to be there — so the
-        gate moved onto the POST, where it always belonged."""
+        Reading was staff-only while the grid was its own screen; then it became
+        the collection view with the editors hidden inside it, which made the
+        Metered chip a link to a console. The catalogue is GET-only and open to
+        members, and everything that changes a number lives at /quota/desk/.
+        """
         self.client.force_login(self.plain)
         self.assertEqual(self.client.get("/quota/").status_code, 200)
-        self.assertEqual(self.client.post("/quota/", {}).status_code, 403)
+        # Not 403 — there is nothing here to be forbidden from. A POST to a
+        # reading surface is the wrong verb, and 405 says so.
+        self.assertEqual(self.client.post("/quota/", {}).status_code, 405)
+        self.assertEqual(self.client.get("/quota/desk/").status_code, 403)
+
+    def test_the_desk_is_staff_only(self):
+        self.client.force_login(self.staff)
+        self.assertEqual(self.client.get("/quota/desk/").status_code, 200)
 
     def test_a_limit_is_set_from_the_edit_modal(self):
         """Editing is one thing at a time now, not a grid of live inputs."""
@@ -782,7 +791,7 @@ class ChargingCurrencyTests(SampleModels):
         rates.set_charging_currency(other.pk)
 
         self.client.force_login(self.staff)
-        body = self.client.get("/quota/").content.decode()
+        body = self.client.get("/quota/desk/").content.decode()
 
         self.assertIn(f'value="{other.pk}" selected', body)
 

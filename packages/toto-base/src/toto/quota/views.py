@@ -39,6 +39,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
+from django.views.decorators.http import require_GET
 
 from toto.ui import PageProcessor
 
@@ -173,6 +174,7 @@ def _groups(user, *, prices=None, spend=None):
 # ---------------------------------------------------------------------------
 
 @login_required
+@require_GET
 def index(request):
     """Every metered thing, with the answers in the list.
 
@@ -180,20 +182,20 @@ def index(request):
     columns rather than destinations, so the common question needs no click at
     all.
 
-    **The table is read-only.** It used to be a grid of inputs saved in one
-    POST, which meant every row carried a limit box, a mode select, a price box
-    and a currency select — four controls × seventeen things, all live, on the
-    page people came to in order to LOOK something up. Editing now happens one
-    thing at a time in a modal, so the reading surface stays a reading surface
-    and a mis-click cannot silently reprice the platform.
+    **The table is read-only, for everybody.** It used to be a grid of inputs
+    saved in one POST, which meant every row carried a limit box, a mode select,
+    a price box and a currency select — four controls × seventeen things, all
+    live, on the page people came to in order to LOOK something up. Then the
+    controls moved into per-row modals, which was better but still put the edit
+    surface on the reading page: staff clicking the Metered chip landed on a
+    page that was half catalogue and half console, and the chip that looked like
+    "where you are" was really a link to the editor.
+
+    The editor is now :func:`fees_desk`, behind its own chip. This function
+    renders the same template with ``editable=False``, so there is exactly one
+    table and one place it is described.
     """
     is_staff = request.user.is_staff
-
-    if request.method == "POST":
-        _staff_only(request)
-        if _set_charging_currency(request):
-            return redirect("quota:index")
-        return redirect("quota:index")
 
     prices = rates.rate_card()
     spend = rates.spend_by_metric(request.user)
@@ -220,6 +222,52 @@ def index(request):
         "kpi_spent": _total_spend(spend),
         "unpriced_levies": levies.unpriced_levies() if is_staff else [],
         "taxes_url": reverse("quota:taxes"),
+        "economy_tab": "metered",
+        # The one difference between this page and the Fees desk.
+        "editable": False,
+    })
+
+
+def fees_desk(request):
+    """The same table, with the dials — staff only.
+
+    Split out of :func:`index` so that "look something up" and "change what the
+    platform charges" stop being the same page. Everything here was already
+    staff-gated inside the template; what changed is that a non-staff visitor
+    now cannot reach the URL at all, and that a staff member reading the
+    catalogue is not one mis-click from repricing it.
+    """
+    _staff_only(request)
+
+    if request.method == "POST":
+        _set_charging_currency(request)
+        return redirect("quota:fees_desk")
+
+    prices = rates.rate_card()
+    spend = rates.spend_by_metric(request.user)
+    groups = _groups(request.user, prices=prices, spend=spend)
+    rows = [r for g in groups for r in g["rows"]]
+    pricing = rates.pricing_enabled()
+
+    return _render(request, "quota/index.html", {
+        "groups": groups,
+        "metric_count": len(registry),
+        "is_staff_view": True,
+        "pricing_enabled": pricing,
+        "levy_enabled": levies.levy_enabled(),
+        "price_asset": rates.price_asset_symbol(),
+        "billing_assets": rates.billing_assets() if pricing else [],
+        "modes": Mode.editable_choices(),
+        "balance": rates.balance_of(request.user),
+        "wallet_url": rates.wallet_url(),
+        "kpi_actions": sum((r["used"] or 0) for r in rows),
+        "kpi_at_limit": sum(1 for r in rows
+                            if r["over"] or (r["limit"] and r["remaining"] == 0)),
+        "kpi_spent": _total_spend(spend),
+        "unpriced_levies": levies.unpriced_levies(),
+        "taxes_url": reverse("quota:taxes"),
+        "economy_tab": "fees",
+        "editable": True,
     })
 
 
@@ -335,6 +383,7 @@ def metric_detail(request, code):
 
     pricing = rates.pricing_enabled()
     return _render(request, "quota/metric_detail.html", {
+        "economy_tab": "metered",
         "metric": metric,
         "row": row,
         "is_staff_view": is_staff,
@@ -463,6 +512,7 @@ def taxes(request):
     they run at different times, and which is which.
     """
     return _render(request, "quota/taxes.html", {
+        "economy_tab": "fees",
         "kinds": _charge_kinds(request.user),
         "is_staff_view": request.user.is_staff,
         "pricing_enabled": rates.pricing_enabled(),
@@ -551,6 +601,7 @@ def fees(request):
 
     board = feeboard.income_board()
     return _render(request, "quota/fees.html", {
+        "economy_tab": "fees",
         "board": board,
         "income_pie_json": feeboard.income_pie_json(board),
         "billing_enabled": apps.is_installed("toto.tariffs"),
@@ -582,8 +633,13 @@ def my_usage(request, app_label=None):
 
     at_limit = sum(1 for r in rows if r["over"] or (r["limit"] and r["remaining"] == 0))
     return _render(request, "quota/my_usage.html", {
+        "economy_tab": "usage",
         "rows": rows,
         "scope_app": app_label,
+        # The bars. "" when there is nothing to draw, so the template omits the
+        # canvas entirely rather than rendering an empty axis — the same
+        # convention income_pie_json uses.
+        "usage_chart_json": _usage_chart_json(request.user, metrics),
         "pricing_enabled": rates.pricing_enabled(),
         "price_asset": rates.price_asset_symbol(),
         "balance": rates.balance_of(request.user),
@@ -599,6 +655,77 @@ def my_usage(request, app_label=None):
         "kpi_at_limit_tone": "warn" if at_limit else "success",
         "kpi_balance_label": _("Gas balance"),
         "kpi_spent_label": _("Spent this period"),
+    })
+
+
+def _usage_chart_json(user, metrics, *, days=30) -> str:
+    """Daily totals per metric for the last 30 days, as a stacked bar chart.
+
+    One grouped query per metered app, not one per metric per day: the events of
+    every metric in an app live in that app's single concrete table, so a
+    ``values("metric_code", "day")`` annotate answers a whole app at once.
+
+    Empty days are padded to zero so the axis is a real calendar. Without that a
+    user who acted on three days gets three bars side by side and reads them as
+    three consecutive days.
+    """
+    import json
+    from collections import defaultdict
+    from datetime import timedelta
+
+    from django.db.models import Sum
+    from django.db.models.functions import TruncDate
+    from django.utils import timezone
+
+    from .metrics import policy_model_for
+
+    metrics = list(metrics)
+    if not metrics:
+        return ""
+
+    today = timezone.now().date()
+    since = today - timedelta(days=days - 1)
+    labels = [(since + timedelta(days=i)).strftime("%m-%d") for i in range(days)]
+    wanted = {m.code for m in metrics}
+
+    totals: dict[str, dict] = defaultdict(dict)
+    seen_models = set()
+    for metric in metrics:
+        model = policy_model_for(metric.app_label)
+        if model is None or model in seen_models:
+            continue
+        seen_models.add(model)
+        try:
+            rows = (model.events.objects
+                    .filter(user=user, occurred_at__date__gte=since,
+                            metric_code__in=wanted)
+                    .annotate(day=TruncDate("occurred_at"))
+                    .values("metric_code", "day")
+                    .annotate(total=Sum("quantity")))
+            for row in rows:
+                totals[row["metric_code"]][row["day"]] = float(row["total"] or 0)
+        except Exception:  # noqa: BLE001 - a chart must never break the page
+            continue
+
+    if not totals:
+        return ""
+
+    palette = ["#4f5fa1", "#5fa38c", "#d9a441", "#b45f8f", "#4a8f7a", "#c0603a"]
+    datasets = []
+    for index, metric in enumerate(m for m in metrics if m.code in totals):
+        by_day = totals[metric.code]
+        datasets.append({
+            "label": str(metric.label),
+            "data": [by_day.get(since + timedelta(days=i), 0) for i in range(days)],
+            "backgroundColor": palette[index % len(palette)],
+        })
+
+    return json.dumps({
+        "chart_type": "bar",
+        "labels": labels,
+        "datasets": datasets,
+        "options": {"scales": {"x": {"stacked": True},
+                               "y": {"stacked": True, "beginAtZero": True}}},
     })
 
 

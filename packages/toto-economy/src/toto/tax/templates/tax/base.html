@@ -20,8 +20,7 @@
       </h1>
     </header>
 
-    {% include "oya/_economy_tabs.html" with active_tab="usage" %}
-    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
+    {% include "oya/_economy_tabs.html" with active_tab="metered" %}
 
     {% if messages %}
       <div class="space-y-2">

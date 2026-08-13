@@ -37,11 +37,10 @@
       </h1>
     </header>
 
-    {% include "oya/_economy_tabs.html" with active_tab="usage" %}
+    {% include "oya/_economy_tabs.html" with active_tab="records" %}
     {% comment %}In a block so a child can light its own sub-tab: a child cannot
        pass a value into a parent's include, so it replaces the whole line. Most
        tariffs pages are usage records, hence the default.{% endcomment %}
-    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="records" %}{% endblock %}
 
     {% if messages %}
       {% for msg in messages %}

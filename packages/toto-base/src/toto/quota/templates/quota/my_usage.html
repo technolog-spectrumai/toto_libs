@@ -1,9 +1,17 @@
 {% extends "quota/base.html" %}
-{% load i18n %}
+{% load i18n static %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}block.super, not a replacement: quota/base.html declares the
+   [x-cloak] rule the help and edit modals need, and dropping it makes them
+   flash open on first paint.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
 
 {% block quota_title %}{% trans "My usage" %}{% endblock %}
 {% block quota_heading %}{% trans "My usage" %}{% endblock %}
-{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
 
 {% block quota_content %}
 
@@ -37,6 +45,25 @@
     {% endif %}
   {% endif %}
 </div>
+
+{% comment %}The bars. Above the cards because this is the page people land on
+   from the dashboard, and "how much have I been using" is a shape before it is
+   a number. Omitted entirely when there is nothing to draw — an empty axis
+   claims a month of zero usage, which is not the same as no data.
+
+   The wrapper needs an explicit height: oya/partials/chart.html sets
+   maintainAspectRatio:false, so a canvas in an auto-height box collapses.
+{% endcomment %}
+{% if usage_chart_json %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-3 flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+      <i class="fa-solid fa-chart-simple"></i>{% trans "The last 30 days" %}</h2>
+    <div class="h-56">
+      {% include "oya/partials/chart.html" with chart_id="quota_usage_bars" data=usage_chart_json %}
+    </div>
+  </article>
+{% endif %}
 
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
 {% for row in rows %}

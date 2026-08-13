@@ -34,10 +34,10 @@
       {% block quota_subheading %}{% endblock %}
     </header>
 
-    {% include "oya/_economy_tabs.html" with active_tab="usage" %}
-    {% comment %}In a block so a child lights its own sub-tab — a child
-       cannot pass a value into a parent's include.{% endcomment %}
-    {% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
+    {% comment %}One strip now. `economy_tab` comes from the VIEW, not from a
+       child template: a child cannot pass a value into a parent's include, which
+       is what the two-strip arrangement existed to work around.{% endcomment %}
+    {% include "oya/_economy_tabs.html" with active_tab=economy_tab|default:"metered" %}
 
     {% if messages %}
       {% for msg in messages %}

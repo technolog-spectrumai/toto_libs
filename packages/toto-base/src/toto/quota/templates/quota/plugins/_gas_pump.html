@@ -1,0 +1,129 @@
+{% load i18n %}
+{% comment %}The gas pump. Read-only, live, and only on apps that meter.
+
+   Rendered by GasPumpPlugin through {% render_floating_plugins %} in
+   oya/base.html, so it needs no cooperation from the page it appears on — and
+   must therefore assume nothing about that page's context.
+
+   Every number here comes from the same functions the Usage page uses, so the
+   two cannot disagree. Where nothing is priced the money column is absent
+   rather than zero: this platform runs with a real, empty rate card, and a
+   column of zeroes would read as "everything is free forever" instead of "no
+   price has been set".
+{% endcomment %}
+
+<div x-data="{ gasOpen: false }" @keydown.escape.window="gasOpen = false"
+     class="fixed bottom-6 right-6 z-40">
+
+  <button type="button" @click="gasOpen = true"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="flex h-11 w-11 items-center justify-center rounded-full border opacity-40 shadow-md transition hover:opacity-95 focus:opacity-95 focus:outline-none"
+          aria-label="{% trans 'What this costs you' %}"
+          title="{% trans 'What this costs you' %}">
+    <i class="fa-solid fa-gas-pump"></i>
+  </button>
+
+  <div x-show="gasOpen" x-cloak class="fixed inset-0 z-50 flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/60" @click="gasOpen = false"></div>
+
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+         class="relative max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl border shadow-lg">
+
+      <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'"
+           class="sticky top-0 flex items-center gap-3 px-5 py-3">
+        <i class="fa-solid fa-gas-pump" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+        <h2 class="flex-1 text-xs font-semibold uppercase tracking-wide opacity-70">
+          {% trans "What this costs you" %}</h2>
+        <button type="button" @click="gasOpen = false"
+                class="opacity-50 transition hover:opacity-100 focus:outline-none"
+                aria-label="{% trans 'Close' %}">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+
+      <div class="space-y-4 px-5 py-4 text-sm">
+
+        {% if not gas_priced %}
+          <p class="opacity-70">
+            {% trans "Nothing is priced on this server, so none of this costs money. The limits below are real and still apply." %}
+          </p>
+        {% endif %}
+
+        <ul class="space-y-3">
+          {% for row in gas_rows %}
+            <li class="space-y-1">
+              <div class="flex flex-wrap items-baseline gap-x-2">
+                <span class="font-semibold">{{ row.metric.label }}</span>
+                {% if row.price %}
+                  <span class="tabular-nums opacity-70">
+                    {{ row.price.price_display }} {{ row.price.asset }}<span class="opacity-60">/{{ row.price.unit_code }}</span>
+                  </span>
+                {% elif gas_priced %}
+                  <span class="text-xs uppercase tracking-wide opacity-50">{% trans "free" %}</span>
+                {% endif %}
+              </div>
+
+              {% if row.metric.description %}
+                <p class="text-xs opacity-60">{{ row.metric.description }}</p>
+              {% endif %}
+
+              {% if row.limit %}
+                <div class="flex items-center gap-2">
+                  <div :class="darkMode ? 'bg-white/10' : 'bg-black/10'"
+                       class="h-1.5 flex-1 overflow-hidden rounded-full">
+                    <div class="h-full rounded-full"
+                         :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                         style="width: {{ row.pct }}%"></div>
+                  </div>
+                  <span class="shrink-0 text-xs tabular-nums opacity-60">
+                    {{ row.used|floatformat:"-2" }} / {{ row.limit|floatformat:"-2" }}
+                  </span>
+                </div>
+              {% elif row.used %}
+                <p class="text-xs opacity-60">
+                  {% blocktrans with used=row.used|floatformat:"-2" unit=row.metric.unit %}{{ used }} {{ unit }} used — no cap{% endblocktrans %}
+                </p>
+              {% endif %}
+
+              {% if row.spent %}
+                <p class="text-xs opacity-60">
+                  {% blocktrans with amount=row.spent.amount asset=row.spent.asset %}You have paid {{ amount }} {{ asset }} for this{% endblocktrans %}
+                </p>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+
+        {% if my_plan %}
+          <p :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="border-t pt-3 text-xs opacity-70">
+            {% blocktrans with plan=my_plan.name %}Your plan is {{ plan }}. Metered work above is charged on top of it.{% endblocktrans %}
+          </p>
+        {% endif %}
+
+        {% if gas_balance %}
+          <p class="text-xs opacity-70">
+            {% blocktrans with amount=gas_balance.amount asset=gas_balance.asset %}Your balance is {{ amount }} {{ asset }}.{% endblocktrans %}
+          </p>
+        {% endif %}
+      </div>
+
+      <div class="flex flex-wrap items-center justify-between gap-3 px-5 pb-4">
+        <span class="flex gap-3 text-sm">
+          {% if gas_usage_url %}
+            <a href="{{ gas_usage_url }}" class="font-semibold underline hover:opacity-80">
+              {% trans "All your usage" %}</a>
+          {% endif %}
+          {% if gas_wallet_url %}
+            <a href="{{ gas_wallet_url }}" class="font-semibold underline hover:opacity-80">
+              {% trans "Wallet" %}</a>
+          {% endif %}
+        </span>
+        <button type="button" @click="gasOpen = false"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded px-3 py-1.5 text-sm font-bold transition hover:opacity-90">
+          {% trans "Got it" %}</button>
+      </div>
+    </div>
+  </div>
+</div>

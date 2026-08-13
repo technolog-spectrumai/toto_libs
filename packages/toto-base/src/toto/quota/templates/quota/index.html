@@ -42,7 +42,6 @@ A levy is never charged for being a member. What you pay to be here is a subscri
 {% trans "Every kind of charge" as help_more %}
 {% include "oya/partials/_help.html" with title=help_title body=help_body body_extra=help_extra more_url=taxes_url more_label=help_more %}
 {% endblock %}
-{% block usage_tabs %}{% include "oya/_usage_tabs.html" with active_tab="metered" %}{% endblock %}
 
 {% block quota_subheading %}
 <p class="max-w-3xl text-sm opacity-70">
@@ -88,7 +87,7 @@ A levy is never charged for being a member. What you pay to be here is a subscri
 
 <div x-data="{ q: '', editing: null }" @keydown.escape.window="editing = null">
 
-  {% if is_staff_view and billing_assets %}
+  {% if editable and billing_assets %}
   {% comment %}ONE charging currency, chosen once. There is no exchange rate in
      this ledger — get_exchange_rate refuses every cross-asset pair — so a rate
      card that mixes currencies cannot be added up. It used to be a select on
@@ -118,7 +117,7 @@ A levy is never charged for being a member. What you pay to be here is a subscri
              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="w-full rounded-lg border py-2 pl-9 pr-3 text-sm focus:outline-none">
     </label>
-    {% if is_staff_view %}
+    {% if editable %}
       <button type="submit"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
@@ -236,7 +235,7 @@ A levy is never charged for being a member. What you pay to be here is a subscri
               </td>
 
               <td class="px-5 py-3 text-right">
-                {% if is_staff_view %}
+                {% if editable %}
                   <button type="button" @click="editing = '{{ row.metric.code }}'"
                           :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
                           class="inline-flex items-center gap-1.5 rounded border px-2.5 py-1 text-xs font-semibold transition"

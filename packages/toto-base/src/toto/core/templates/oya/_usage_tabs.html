@@ -1,55 +1,14 @@
-{% load i18n app_tags %}
-{% comment %}Sub-nav of the Usage super-tab: metered | how you're charged | records.
-   Caller passes active_tab = metered | taxes | records.
+{% comment %}Deprecated shim. The usage chips are part of oya/_economy_tabs.html now.
 
-   This strip carried NINE chips: Records, My usage, Levies, Time dials, Prices,
-   Limits, Rate desk, Allowances, Metrics. Four of them — Limits, Rate desk,
-   Prices, Metrics — all plausibly answered "where do I set what this costs", and
-   the one most people meant lived in a different app from the tab that named it.
-   They were nine screens keyed by one string, the metric code, so answering a
-   single question meant visiting five and holding the answer in your head.
+   This file used to render a SECOND <nav> under the economy strip — underline
+   chips beneath pill buttons, pulled up with -mt-2 — which is what made the
+   navigation two lines and two visual languages. It is kept for one release
+   because roughly a dozen templates across four packages include it by name, and
+   a rename that has to land in every one of them at once is a rename that breaks
+   a host somebody forgot.
 
-   They are now one destination, "Metered", where each thing carries its own
-   limit, price, free allowance, dials and usage. Levies and Time dials are
-   sections of the things they belong to (storage.gb_day and time.hold); the
-   rate desk, the allowances desk and the metrics dashboard are gone as places.
-
-   The three that remain are genuinely different objects:
-     * Metered  — the things, and everything about each one.
-     * Charges  — the KINDS of charge, read-only, each linking to its knob.
-     * Records  — the ledger trail: what was actually billed, and when.
-
-   Guarded per entry the same way oya/_economy_tabs.html is, and for a sharper
-   reason: placidia installs toto.quota and toto.tariffs but NOT toto.tax, so
-   this bar genuinely renders with a hole in it on a real host.
-
-   STAFF vs USER. Both roles get the same destinations now. The old split —
-   hiding every chip that SET a number — is what forced staff and members onto
-   different pages for the same question; each page does the disclosure itself
-   instead, showing a member the numbers and staff the editors. Hiding was
-   always cosmetic anyway: every view keeps its own gate, so a typed URL is
-   still refused. "Records" stays staff-first because a member's own records are
-   already on the thing.
-
-   Active state is decided server-side; dark/light stays Alpine (darkMode).{% endcomment %}
-<nav class="flex flex-wrap gap-1 -mt-2 mb-4" aria-label="{% trans 'Usage navigation' %}">
-
-  {% if "toto.quota"|app_installed %}{% url 'quota:index' as metered_url %}{% if metered_url %}
-  <a href="{{ metered_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'metered' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'metered' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-gauge-high"></i>{% trans "Metered" %}</a>
-  {% endif %}{% endif %}
-
-  {% if "toto.tariffs"|app_installed %}{% url 'tariffs:usage_list' as records_url %}{% if records_url %}
-  <a href="{{ records_url }}"
-     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-     class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
-            {% if active_tab == 'records' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-     {% if active_tab == 'records' %}aria-current="page"{% endif %}>
-    <i class="fa-solid fa-bolt"></i>{% trans "Records" %}</a>
-  {% endif %}{% endif %}
-
-</nav>
+   It renders NOTHING: including it twice would draw the strip twice, and every
+   caller already gets the merged strip from _economy_tabs.html. Callers should
+   drop the include and pass their chip's name as active_tab to _economy_tabs
+   instead — active_tab values metered | records | fees still mean what they did.
+{% endcomment %}
