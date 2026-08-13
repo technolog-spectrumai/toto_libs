@@ -14,15 +14,19 @@ from django.test import TestCase, override_settings
 from toto.assets import decorations
 from toto.assets.hashing import verify_hash_chain
 from toto.assets.models import (
+    AssetHolding,
     LedgerAccount,
     LedgerEntry,
     LedgerEntryComment,
     LedgerEntryTag,
     LedgerTag,
 )
-from toto.assets.services.assets import distribute_asset, transfer_asset
-from toto.assets.testing import TEST_ISSUER_KEY, ensure_local_issuer
-from toto.mint.services import create_currency
+from toto.assets.services.assets import transfer_asset
+from toto.assets.testing import (
+    TEST_ISSUER_KEY,
+    ensure_local_issuer,
+    make_asset,
+)
 
 User = get_user_model()
 
@@ -38,9 +42,12 @@ class DecorationBase(TestCase):
         ensure_local_issuer()
         cls.reserve = LedgerAccount.objects.create(
             code="deco-reserve", name="Reserve", account_type="reserve", active=True)
-        cls.asset = create_currency(
-            name="Test Coin", unit_name="TST", total_supply=Decimal("1000"),
-            decimals=2, reserve_account=cls.reserve, reference="deco-create-tst")
+        # make_asset, not mint.create_currency: toto.mint is the monetary
+        # master's app and placidia does not install it, while the ledger — and
+        # therefore these decorations — exist on both hosts. Same real
+        # provenance, one less app required.
+        cls.asset = make_asset(unit_name="TST", name="Test Coin", decimals=2,
+                               reserve_account=cls.reserve)
 
         cls.account = LedgerAccount.objects.create(
             code="deco-mine", name="Mine", account_type="user",
@@ -49,10 +56,18 @@ class DecorationBase(TestCase):
             code="deco-theirs", name="Theirs", account_type="user",
             user=cls.stranger, active=True)
 
-        distribute_asset(asset=cls.asset, recipient_account=cls.account, amount=Decimal("100"),
-                         reference="deco-fund-mine")
-        distribute_asset(asset=cls.asset, recipient_account=cls.other, amount=Decimal("100"),
-                         reference="deco-fund-theirs")
+        # Funded by writing holdings rather than issuing: issuance lives in
+        # toto.mint, which only the monetary master installs, and these
+        # decorations exist on every host that has the ledger. What the tests
+        # need is real entries under a real hash chain, and a transfer gives
+        # both.
+        for account in (cls.account, cls.other):
+            AssetHolding.objects.create(
+                account=account, asset=cls.asset,
+                balance_base_units=100 * 10 ** cls.asset.decimals)
+        transfer_asset(asset=cls.asset, sender_account=cls.account,
+                       receiver_account=cls.other, amount=Decimal("10"),
+                       reference="deco-seed")
 
     def my_entry(self):
         return LedgerEntry.objects.filter(account=self.account).order_by("pk").first()
@@ -314,7 +329,26 @@ class LedgerPageTests(DecorationBase):
 
 @override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
 class LedgerPageViewTests(DecorationBase):
-    """The page, its gate, and the three write endpoints."""
+    """The page, its gate, and the three write endpoints.
+
+    Skipped where the app's URLs are not mounted. placidia installs
+    ``toto.assets`` as a BRANCH economy — it gets the models and the tables, so
+    every test above this one runs there — but it mounts no assets URLs, so the
+    page genuinely does not exist on that host. Asserting otherwise would be
+    asserting something untrue about it.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        import unittest
+
+        from django.urls import NoReverseMatch, reverse
+
+        try:
+            reverse("assets:account_ledger", args=[1])
+        except NoReverseMatch:
+            raise unittest.SkipTest("the assets urls are not mounted on this host")
+        super().setUpClass()
 
     @classmethod
     def setUpTestData(cls):
@@ -345,7 +379,7 @@ class LedgerPageViewTests(DecorationBase):
         self.client.force_login(self.owner)
         response = self.client.get(self.url())
         self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "deco-fund-mine")
+        self.assertContains(response, "deco-seed")
 
     def test_staff_may_look(self):
         self.client.force_login(self.staff)
