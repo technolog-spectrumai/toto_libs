@@ -1,0 +1,51 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% comment %}What a 402 from the gate looks like in a browser.
+
+   Rendered by SubscriptionGateMiddleware.refuse, so it must extend the ordinary
+   shell and nothing else — a page that needed a view's context would break the
+   moment the gate refused a request the view never ran.
+
+   The tone is the point. Somebody hit this by pressing a button they could see,
+   which is a design choice this platform made deliberately (paid apps stay
+   visible and readable). So the page says what happened, says nothing was lost,
+   and offers the way forward — it does not scold.
+{% endcomment %}
+
+{% block title %}{% trans "Not in your plan" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="flex min-h-screen items-center justify-center px-6 py-16">
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="w-full max-w-lg space-y-4 rounded-2xl border p-8 text-center shadow-md">
+
+    <i class="{% if entitlement %}{{ entitlement.icon }}{% else %}fa-solid fa-lock{% endif %} text-3xl opacity-50"></i>
+
+    <h1 class="text-xl font-bold">{{ message }}</h1>
+
+    <p class="text-sm opacity-75">
+      {% trans "You can still open it and read what is there — this only stops changes. Nothing you have made is affected, and nothing has been deleted." %}
+    </p>
+
+    {% if entitlement and entitlement.description %}
+      <p class="text-sm opacity-60">{{ entitlement.description }}</p>
+    {% endif %}
+
+    <div class="flex flex-wrap justify-center gap-3 pt-2">
+      <a href="{% url 'core:dashboard' %}"
+         class="rounded px-4 py-2 text-sm font-semibold underline opacity-70 transition hover:opacity-100">
+        {% trans "Back to the dashboard" %}</a>
+      {% if plans_url %}
+        <a href="{{ plans_url }}"
+           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+           class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+          <i class="fa-solid fa-id-card"></i> {% trans "See the plans" %}</a>
+      {% endif %}
+    </div>
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,156 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+
+{% block sub_title %}{% trans "My subscription" %}{% endblock %}
+{% block sub_heading %}{% trans "My subscription" %}{% endblock %}
+
+{% block sub_content %}
+
+{% comment %}Arrears first, because it is the only thing on this page somebody
+   has to act on — and the wording has one job: say that nothing has been lost.
+{% endcomment %}
+{% if subscription and subscription.state == "arrears" %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm">
+    <i class="fa-solid fa-triangle-exclamation mt-0.5"
+       :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+    <div>
+      <p class="font-semibold">{% trans "A month could not be paid." %}</p>
+      <p class="mt-1 opacity-75">
+        {% blocktrans count days=grace_days %}Everything still works. Top up your wallet within {{ days }} day and it settles by itself.{% plural %}Everything still works. Top up your wallet within {{ days }} days and it settles by itself.{% endblocktrans %}
+        {% trans "After that the paid apps become read-only until it clears. Nothing you have made is touched, and nothing is deleted." %}
+      </p>
+      {% url 'assets:wallet' as wallet_url %}
+      {% if wallet_url %}
+        <a href="{{ wallet_url }}" class="mt-2 inline-block font-semibold underline hover:opacity-80">
+          {% trans "Open your wallet" %}</a>
+      {% endif %}
+    </div>
+  </div>
+{% elif subscription and subscription.state == "lapsed" %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-start gap-3 rounded-xl border px-4 py-3 text-sm">
+    <i class="fa-solid fa-lock mt-0.5" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+    <div>
+      <p class="font-semibold">{% trans "Your plan has lapsed." %}</p>
+      <p class="mt-1 opacity-75">
+        {% trans "The paid apps are read-only. Everything you made is exactly where you left it, and choosing a plan again restores access immediately — there is nothing to restore and nothing was back-billed." %}
+      </p>
+      <a href="{% url 'subscriptions:plans' %}" class="mt-2 inline-block font-semibold underline hover:opacity-80">
+        {% trans "Choose a plan" %}</a>
+    </div>
+  </div>
+{% endif %}
+
+<div class="grid gap-5 lg:grid-cols-3">
+
+  <article
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="space-y-3 rounded-2xl border p-5 shadow-sm lg:col-span-1">
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Your plan" %}</h2>
+    <p class="text-2xl font-bold">{{ plan.name|default:_("None") }}</p>
+
+    {% if not quote.priced %}
+      <p class="text-sm opacity-60">{% trans "Nothing is priced on this server, so this costs nothing." %}</p>
+    {% elif quote.units == 0 %}
+      <p class="text-sm opacity-60">{% trans "Free, and it does not expire." %}</p>
+    {% else %}
+      <p class="text-sm">
+        <span class="text-lg font-semibold tabular-nums">{{ quote.price }}</span>
+        <span class="opacity-60">{{ quote.asset }} / {% trans "month" %}</span>
+      </p>
+      {% if quote.discount_percent %}
+        <p :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="text-sm font-semibold">
+          <i class="fa-solid fa-tag"></i>
+          {% blocktrans with pct=quote.discount_percent who=quote.discount_source %}−{{ pct }}% because you are in {{ who }}{% endblocktrans %}
+        </p>
+      {% endif %}
+    {% endif %}
+
+    {% if subscription %}
+      <p class="text-xs opacity-55">
+        {% blocktrans with since=subscription.started_at|date:"Y-m-d" %}Since {{ since }}{% endblocktrans %}
+      </p>
+    {% endif %}
+
+    <div class="flex flex-wrap gap-3 pt-1">
+      <a href="{% url 'subscriptions:plans' %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+        {% if subscription %}{% trans "Change plan" %}{% else %}{% trans "Choose a plan" %}{% endif %}</a>
+      {% if subscription and subscription.state != "cancelled" and subscription.plan.units %}
+        <form method="post" action="{% url 'subscriptions:cancel' %}">
+          {% csrf_token %}
+          <button type="submit"
+                  class="rounded px-3 py-2 text-sm font-semibold underline opacity-60 transition hover:opacity-100">
+            {% trans "Cancel" %}</button>
+        </form>
+      {% endif %}
+    </div>
+  </article>
+
+  <article
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="space-y-3 rounded-2xl border p-5 shadow-sm lg:col-span-2">
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What this includes" %}</h2>
+    <ul class="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
+      {% for item in entitlements %}
+        <li class="flex items-start gap-2">
+          <i class="{{ item.icon }} mt-0.5 w-4 shrink-0 text-xs opacity-50"></i>
+          <span class="font-semibold">{{ item.label }}</span>
+          {% if item.free %}<span class="text-[10px] uppercase tracking-wide opacity-50">{% trans "free" %}</span>{% endif %}
+        </li>
+      {% empty %}
+        <li class="opacity-60">{% trans "No plans are set up on this server, so nothing is restricted." %}</li>
+      {% endfor %}
+    </ul>
+  </article>
+</div>
+
+{% if charges %}
+  <article
+    :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    class="overflow-hidden rounded-2xl border shadow-sm">
+    <h2 class="px-5 pt-5 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Months" %}</h2>
+    <div class="overflow-x-auto px-5 pb-5 pt-2">
+      <table class="w-full min-w-[32rem] text-sm">
+        <thead>
+          <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+            <th class="py-2 pr-4">{% trans "Period" %}</th>
+            <th class="py-2 pr-4">{% trans "Plan" %}</th>
+            <th class="py-2 pr-4 text-right">{% trans "Units" %}</th>
+            <th class="py-2 pr-4">{% trans "Discount" %}</th>
+            <th class="py-2">{% trans "State" %}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for charge in charges %}
+            <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+              <td class="py-2 pr-4 font-mono">{{ charge.period_label }}</td>
+              <td class="py-2 pr-4">{{ charge.plan_name|default:"—" }}</td>
+              <td class="py-2 pr-4 text-right tabular-nums">{{ charge.units }}</td>
+              <td class="py-2 pr-4">
+                {% if charge.discount_percent %}−{{ charge.discount_percent }}%{% if charge.discount_source %}
+                  <span class="opacity-55">({{ charge.discount_source }})</span>{% endif %}
+                {% else %}—{% endif %}
+              </td>
+              <td class="py-2">
+                {% if charge.status == "paid" %}
+                  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+                    <i class="fa-solid fa-circle-check"></i> {{ charge.get_status_display }}</span>
+                {% elif charge.status == "failed" %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold"
+                        title="{{ charge.detail }}">
+                    <i class="fa-solid fa-triangle-exclamation"></i> {{ charge.get_status_display }}</span>
+                {% else %}
+                  <span class="opacity-70">{{ charge.get_status_display }}</span>
+                {% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </article>
+{% endif %}
+{% endblock %}

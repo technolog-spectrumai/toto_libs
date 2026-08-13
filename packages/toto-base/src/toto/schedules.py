@@ -20,6 +20,9 @@ def beat_schedule(
     tax=False,
     tax_hour=4,
     tax_minute=15,
+    subscriptions=False,
+    subscriptions_hour=5,
+    subscriptions_minute=5,
     sweep=False,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
@@ -100,6 +103,19 @@ def beat_schedule(
         schedule["tax-daily-levy"] = {
             "task": "toto.tax.tasks.run_daily_levy",
             "schedule": crontab(hour=tax_hour, minute=tax_minute),
+        }
+
+    if subscriptions:
+        from celery.schedules import crontab
+
+        # Daily, for a MONTHLY charge — deliberately. A monthly beat that misses
+        # its one firing misses a month; this one catches up the next morning
+        # because `materialize` is idempotent by (subscription, period_label)
+        # and a day with nothing due creates nothing. After the levy, so an
+        # empty wallet is reported by whichever ran first rather than by both.
+        schedule["subscriptions-monthly-billing"] = {
+            "task": "toto.subscriptions.tasks.run_billing",
+            "schedule": crontab(hour=subscriptions_hour, minute=subscriptions_minute),
         }
 
     if sweep:

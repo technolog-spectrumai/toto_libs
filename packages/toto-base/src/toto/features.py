@@ -56,6 +56,7 @@ class Features:
     repo: bool
     gitea: bool
     primula: bool
+    subscriptions: bool
     monit: bool
     jess: bool          # toto.jess — the mail transport and outbox
     # GIS. When off, locations loads without GeoDjango (no GDAL/GEOS/PostGIS) and
@@ -212,6 +213,7 @@ def resolve_features(get) -> Features:
     # config, and deploy.py refuses that pair on a consumer host.
     gitea = flag(get, "BUILD_GITEA")
     primula = flag(get, "BUILD_PRIMULA")                      # toto.primula — Univer spreadsheets (vault-backed)
+    subscriptions = flag(get, "BUILD_SUBSCRIPTIONS")          # toto.subscriptions — plans, entitlements and the monthly charge
     # Lightweight read-only monitoring dashboard (grafana alternative). No
     # closure: the live panel works everywhere; snapshot HISTORY needs the
     # celery worker+beat stack, which the profiles enabling this already run.
@@ -367,6 +369,7 @@ def resolve_features(get) -> Features:
         repo=repo,
         gitea=gitea,
         primula=primula,
+        subscriptions=subscriptions,
         geo=geo,
         kanban=kanban,
         antaresia=antaresia,

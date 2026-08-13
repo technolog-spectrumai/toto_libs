@@ -1,0 +1,55 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% block sub_title %}{% trans "Plans" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}oya/base.html declares no [x-cloak] rule, so every page carrying an
+   Alpine-hidden element declares its own — see quota/base.html, same trap.
+{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">
+        {% trans "Your account" %}
+      </p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-id-card"></i>
+        {% block sub_heading %}{% trans "Plans" %}{% endblock %}
+        {% block sub_help %}{% endblock %}
+      </h1>
+      {% block sub_lede %}{% endblock %}
+    </header>
+
+    <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Subscription navigation' %}">
+      {% url 'subscriptions:plans' as plans_url %}
+      <a href="{{ plans_url }}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                {% if active_tab == 'plans' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'plans' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-layer-group"></i>{% trans "Plans" %}</a>
+      {% if user.is_authenticated %}
+        {% url 'subscriptions:mine' as mine_url %}
+        <a href="{{ mine_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                  {% if active_tab == 'mine' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'mine' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-receipt"></i>{% trans "My subscription" %}</a>
+      {% endif %}
+    </nav>
+
+    {% block sub_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

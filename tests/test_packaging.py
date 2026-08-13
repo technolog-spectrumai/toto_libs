@@ -105,7 +105,13 @@ def test_migrations_are_packaged(all_names, owner):
     # drawing) and so carries no migrations package. An empty one arrived with it
     # from delta and was deleted — boilerplate that would have inflated exactly
     # this tripwire.
-    assert len(apps_with_migrations) == 46, sorted(apps_with_migrations)
+    # 47: toto.subscriptions (toto-base) — plans, the community discount, one
+    # subscription per user and one row per month. It arrived in the same
+    # release that DELETED two things which were never counted here, because
+    # neither owned an app: the head tax was a metric plus a levy provider
+    # inside socialhub, and the company tribute was two models inside zenobia's
+    # host-owned portfolio, which does not ship in any wheel.
+    assert len(apps_with_migrations) == 47, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"

@@ -86,6 +86,11 @@ FEATURE_APPS = {
     # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
     # large JS bundle that only the hosts offering sheets need baked into their image.
     "primula": ["toto.primula"],
+    # What people pay to be here (BUILD_SUBSCRIPTIONS). In toto-base rather than
+    # toto-economy because the GATE has to work on a host with no economy at
+    # all; the charge reaches money only through the toto.quota façades, so an
+    # unbilled host gets working plans that cost nothing.
+    "subscriptions": ["toto.subscriptions"],
     # The SVG editor (BUILD_SKETCH). Flag-gated like the other editors, with one
     # extra rule enforced by a system check in toto.sketch.apps: a host that sets
     # this MUST also set BUILD_ANTIVIRUS. Sketch renders SVG inline, in our
@@ -151,6 +156,10 @@ TASK_MODULES = [
     # importable on every host; the beat entry (schedules.beat_schedule
     # sweep=...) is what turns it on.
     "toto.quota",
+    # The monthly subscription sweep. Same lesson as toto.weather above: the
+    # beat entry exists in schedules.beat_schedule, and without this line the
+    # worker answers KeyError once a day and drops the run silently.
+    "toto.subscriptions",
     # toto.monit's sampler and pruner are SCHEDULED by toto/schedules.py whenever
     # BUILD_MONIT is on, so the worker has to be able to find them. Without the
     # entry beat kept enqueueing `toto.monit.tasks.monit_prune` and the worker

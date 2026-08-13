@@ -3,9 +3,16 @@
 Same reasoning as the other per-app testing modules (clearing, jess, primula):
 no host has only tax, so the app is exercised end to end against a settings
 module of its own. GIS off via the usual pair, so this runs on any interpreter
-with no GDAL. MEDIA_ROOT is real — the levy tests create VaultFiles with
-actual bytes and enforcement deletes them.
+with no GDAL.
+
+MEDIA_ROOT is real — the levy tests create VaultFiles with actual bytes — but it
+is a TEMP directory, not ``BASE_DIR / "media"``. That is where it used to point,
+which put run artefacts inside ``packages/`` where .gitignore's ``media/`` rule
+matches at any depth: running this suite then failed
+``tests/test_versioning.py::test_no_source_file_under_packages_is_gitignored``
+until somebody deleted the debris by hand.
 """
+import tempfile
 from pathlib import Path
 
 from toto.registry import BASE_APPS
@@ -78,7 +85,7 @@ DATABASES = {
 
 STATIC_URL = "static/"
 STATIC_ROOT = BASE_DIR / "staticfiles"
-MEDIA_ROOT = BASE_DIR / "media"
+MEDIA_ROOT = tempfile.mkdtemp(prefix="toto-tax-media-")
 
 DEFAULT_AUTO_FIELD = "django.db.models.AutoField"
 

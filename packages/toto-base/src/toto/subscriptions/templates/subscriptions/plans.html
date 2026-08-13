@@ -1,0 +1,117 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+
+{% block sub_title %}{% trans "Plans" %}{% endblock %}
+{% block sub_heading %}{% trans "Plans" %}{% endblock %}
+
+{% block sub_help %}
+{% trans "How a plan is priced" as help_title %}
+{% blocktrans asvar help_body %}A plan decides which apps you can use. Without one you keep your profile, your files, your communities and your wallet — nothing you have made is ever behind a plan, and nothing is deleted if you stop paying.
+
+A plan is charged once a month. If a month cannot be paid, you keep everything and keep working; after a grace period the paid apps become read-only until it clears.
+
+Your communities decide what you pay. Each one may take a percentage off a plan, and if you belong to several you get the best of them automatically — there is nothing to claim.{% endblocktrans %}
+{% include "oya/partials/_help.html" with title=help_title body=help_body %}
+{% endblock %}
+
+{% block sub_lede %}
+  <p class="max-w-2xl text-sm opacity-70">
+    {% if priced %}
+      {% trans "Every plan includes the free features. Metered work — storage, compute, PDF generation — is charged per use on top of whatever you pay here." %}
+    {% else %}
+      {% comment %}The state zenobia is actually in: a real, empty rate card.
+         Saying "free" without saying WHY would read as a promise rather than a
+         configuration.{% endcomment %}
+      {% trans "Nothing is priced on this server yet, so every plan below costs nothing. What a plan unlocks is real; what it costs is not switched on." %}
+    {% endif %}
+  </p>
+{% endblock %}
+
+{% block sub_content %}
+<div class="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
+  {% for row in rows %}
+    <article
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="flex flex-col rounded-2xl border p-5 shadow-sm{% if row.is_current %} ring-2 ring-current{% endif %}">
+
+      <header class="space-y-1">
+        <div class="flex items-center gap-2">
+          <h2 class="flex-1 text-xl font-bold">{{ row.plan.name }}</h2>
+          {% if row.is_current %}
+            <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+                  class="text-xs font-semibold uppercase tracking-wide">
+              <i class="fa-solid fa-circle-check"></i> {% trans "Your plan" %}</span>
+          {% endif %}
+        </div>
+
+        {% comment %}Three different sentences, because three different things
+           are true: nothing is priced here / this plan is free / this is what
+           you pay. Collapsing them into one zero would be a lie in two of the
+           three cases.{% endcomment %}
+        <p class="text-2xl font-bold tabular-nums">
+          {% if not row.priced %}
+            <span class="text-base font-semibold opacity-60">{% trans "Not billed here" %}</span>
+          {% elif row.units == 0 %}
+            {% trans "Free" %}
+          {% else %}
+            {{ row.price }} <span class="text-sm font-semibold opacity-60">{{ row.asset }} / {% trans "month" %}</span>
+          {% endif %}
+        </p>
+
+        {% if row.discount_percent and row.priced and row.units %}
+          <p :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+             class="text-sm font-semibold">
+            <i class="fa-solid fa-tag"></i>
+            {% blocktrans with pct=row.discount_percent who=row.discount_source %}−{{ pct }}% because you are in {{ who }}{% endblocktrans %}
+            <span class="ml-1 font-normal line-through opacity-60">{{ row.gross_price }}</span>
+          </p>
+        {% endif %}
+
+        {% if row.plan.description %}
+          <p class="pt-1 text-sm opacity-75">{{ row.plan.description }}</p>
+        {% endif %}
+      </header>
+
+      {% comment %}The entitlement list is rendered from the SAME registry the
+         gate reads, so a card cannot promise something the middleware then
+         refuses.{% endcomment %}
+      <ul class="mt-4 flex-1 space-y-1.5 text-sm">
+        {% for item in row.entitlements %}
+          <li class="flex items-start gap-2">
+            <i class="{{ item.icon }} mt-0.5 w-4 shrink-0 text-xs opacity-50"></i>
+            <span>
+              <span class="font-semibold">{{ item.label }}</span>
+              {% if item.free %}<span class="ml-1 text-[10px] uppercase tracking-wide opacity-50">{% trans "free" %}</span>{% endif %}
+              {% if item.description %}<span class="block opacity-65">{{ item.description }}</span>{% endif %}
+            </span>
+          </li>
+        {% empty %}
+          <li class="opacity-60">{% trans "Nothing is listed for this plan yet." %}</li>
+        {% endfor %}
+      </ul>
+
+      <footer class="mt-5">
+        {% if not user.is_authenticated %}
+          <a href="{% url 'core:login' %}"
+             :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+             class="block rounded px-4 py-2 text-center text-sm font-semibold transition hover:opacity-90">
+            {% trans "Sign in to choose" %}</a>
+        {% elif row.is_current %}
+          <p class="text-center text-sm opacity-60">{% trans "This is what you have." %}</p>
+        {% else %}
+          <form method="post" action="{% url 'subscriptions:subscribe' row.plan.code %}">
+            {% csrf_token %}
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="w-full rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+              {% trans "Choose this plan" %}</button>
+          </form>
+        {% endif %}
+      </footer>
+    </article>
+  {% empty %}
+    <p class="text-sm opacity-60">
+      {% trans "No plans are set up on this server, so nothing is restricted. Everything installed here is available to everybody." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}
