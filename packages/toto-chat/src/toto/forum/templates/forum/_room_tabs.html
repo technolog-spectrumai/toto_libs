@@ -1,0 +1,33 @@
+{% load i18n %}
+{% comment %}The room's tab strip — the polls/antivirus/company_base idiom.
+   Included by the chat page (which keeps its full-height layout) and by
+   channel_base.html (which the other tabs extend). Polls only when the
+   engine is installed on this host.{% endcomment %}
+<nav class="flex flex-wrap gap-1" aria-label="{% trans 'Room navigation' %}">
+  <a href="{% url 'forum:channel_detail' channel.slug %}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+            {% if active_tab == 'chat' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'chat' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-comments"></i>{% trans "Chat" %}</a>
+  <a href="{% url 'forum:room_files' channel.slug %}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+            {% if active_tab == 'files' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'files' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-folder-open"></i>{% trans "Files" %}</a>
+  {% if polls_installed %}
+    <a href="{% url 'forum:room_polls' channel.slug %}"
+       :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+       class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+              {% if active_tab == 'polls' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+       {% if active_tab == 'polls' %}aria-current="page"{% endif %}>
+      <i class="fa-solid fa-square-poll-vertical"></i>{% trans "Polls" %}</a>
+  {% endif %}
+  <a href="{% url 'forum:room_stats' channel.slug %}"
+     :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+     class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+            {% if active_tab == 'stats' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+     {% if active_tab == 'stats' %}aria-current="page"{% endif %}>
+    <i class="fa-solid fa-chart-simple"></i>{% trans "Statistics" %}</a>
+</nav>

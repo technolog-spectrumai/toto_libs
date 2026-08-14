@@ -39,11 +39,29 @@ def _notify(channel_slug):
         log.debug("forum: could not broadcast membership change", exc_info=True)
 
 
+def _sync_library(channel):
+    # The room's vault whitelist follows membership through the SAME hook
+    # that tells live sockets — leaving a room revokes the library the same
+    # moment it revokes the chat. Lazy import and broad guard for the same
+    # reason _notify has them: a library sync must never break the membership
+    # write that triggered it.
+    if channel is None or channel.vault_directory_id is None:
+        return
+    try:
+        from .library import sync_channel_library_users
+
+        sync_channel_library_users(channel)
+    except Exception:
+        log.debug("forum: could not sync the room library", exc_info=True)
+
+
 @receiver(post_save, sender="forum.ForumMember", dispatch_uid="forum_member_saved")
 def member_saved(sender, instance, **kwargs):
     _notify(getattr(instance.channel, "slug", None))
+    _sync_library(instance.channel)
 
 
 @receiver(post_delete, sender="forum.ForumMember", dispatch_uid="forum_member_deleted")
 def member_deleted(sender, instance, **kwargs):
     _notify(getattr(instance.channel, "slug", None))
+    _sync_library(instance.channel)

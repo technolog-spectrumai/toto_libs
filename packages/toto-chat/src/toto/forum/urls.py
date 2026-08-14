@@ -1,4 +1,6 @@
 from django.urls import path
+
+from . import views
 from .views import (
     ChannelCreateView,
     ChannelDetailView,
@@ -32,6 +34,14 @@ urlpatterns = [
     path("search/", MessageSearchView.as_view(), name="message_search"),
     path("<slug:slug>/join/", ChannelJoinView.as_view(), name="channel_join"),
     path("<slug:slug>/leave/", ChannelLeaveView.as_view(), name="channel_leave"),
+    # Room tabs — declared BEFORE the slug catch-all (the polls/urls.py trap:
+    # "<slug>/files/" has two segments so it cannot collide today, but the
+    # convention guards the next single-segment route somebody adds).
+    path("<slug:slug>/files/", views.room_files, name="room_files"),
+    path("<slug:slug>/polls/", views.room_polls, name="room_polls"),
+    path("<slug:slug>/polls/new/", views.room_poll_create, name="room_poll_create"),
+    path("<slug:slug>/polls/<slug:question_slug>/vote/", views.room_poll_vote, name="room_poll_vote"),
+    path("<slug:slug>/stats/", views.room_stats, name="room_stats"),
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
 
     # JSON API

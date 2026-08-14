@@ -1,0 +1,136 @@
+{% extends "forum/channel_base.html" %}
+{% load i18n %}
+
+{% block room_content %}
+<div class="space-y-6" x-data="{ createOpen: false }">
+
+  <div class="space-y-4">
+    {% for card in cards %}
+      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-2">
+          <h2 class="font-bold">{{ card.question.title }}</h2>
+          <span class="text-xs font-semibold {% if card.is_open %}{% else %}opacity-50{% endif %}"
+                {% if card.is_open %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
+            {% if card.is_open %}{% trans "Open" %}{% else %}{% trans "Closed" %}{% endif %}
+          </span>
+        </div>
+        {% if card.question.closes_at %}
+          <p class="mt-1 text-xs opacity-50">
+            {% if card.is_open %}{% trans "Closes" %}{% else %}{% trans "Closed" %}{% endif %}
+            {{ card.question.closes_at|date:"Y-m-d H:i" }}</p>
+        {% endif %}
+
+        {% if card.is_open and not card.ballot %}
+          <form method="post"
+                action="{% url 'forum:room_poll_vote' channel.slug card.question.slug %}"
+                class="mt-3 space-y-2">
+            {% csrf_token %}
+            {% for row in card.rows %}
+              <label :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                     class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition">
+                <input type="radio" name="choice" value="{{ row.result.choice_id }}">
+                <span class="flex-1 font-semibold">{{ row.result.label }}</span>
+                <span class="text-xs opacity-55">{{ row.result.ballots }}</span>
+              </label>
+            {% endfor %}
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+                    class="rounded px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
+              {% trans "Vote" %}</button>
+          </form>
+        {% else %}
+          <div class="mt-3 space-y-1">
+            {% for row in card.rows %}
+              <div class="flex items-center gap-3 text-sm">
+                <span class="w-32 truncate font-semibold">{{ row.result.label }}</span>
+                <div class="h-2 flex-1 overflow-hidden rounded-full"
+                     :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+                  <div class="h-full rounded-full"
+                       :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                       style="width: {% if row.share_percent is not None %}{{ row.share_percent|floatformat:0 }}{% else %}0{% endif %}%"></div>
+                </div>
+                <span class="w-14 text-right text-xs tabular-nums opacity-70">
+                  {% if row.share_percent is not None %}{{ row.share_percent|floatformat:0 }}%{% else %}—{% endif %}</span>
+              </div>
+            {% endfor %}
+            <p class="text-xs opacity-55">
+              {{ card.tally.total_ballots }} {% trans "ballots" %}
+              {% if card.ballot %} · {% trans "you voted" %} {{ card.ballot.choice.label }}{% endif %}
+            </p>
+          </div>
+          {% if card.is_open and card.ballot %}
+            <form method="post"
+                  action="{% url 'forum:room_poll_vote' channel.slug card.question.slug %}"
+                  class="mt-2 flex flex-wrap gap-2">
+              {% csrf_token %}
+              {% for row in card.rows %}
+                <button name="choice" value="{{ row.result.choice_id }}" type="submit"
+                        class="rounded border border-current/30 px-2 py-1 text-xs font-semibold hover:opacity-80">
+                  {{ row.result.label }}</button>
+              {% endfor %}
+              <span class="self-center text-xs opacity-50">{% trans "change your answer" %}</span>
+            </form>
+          {% endif %}
+        {% endif %}
+      </article>
+    {% empty %}
+      <p class="text-sm opacity-60">{% trans "No polls in this room yet." %}</p>
+    {% endfor %}
+  </div>
+
+  {% comment %}The Create Poll button, at the bottom — per the spec.{% endcomment %}
+  <div class="flex justify-center">
+    <button type="button" @click="createOpen = true"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold shadow-sm transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>{% trans "Create Poll" %}</button>
+  </div>
+
+  <div x-show="createOpen" x-cloak
+       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="createOpen = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 w-full max-w-lg rounded-2xl border p-5 shadow-2xl">
+      <h2 class="mb-3 flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-square-poll-vertical"></i>{% trans "New poll" %}</h2>
+      <form method="post" action="{% url 'forum:room_poll_create' channel.slug %}"
+            class="space-y-3 text-sm">
+        {% csrf_token %}
+        <label class="block">
+          <span class="mb-1 block font-semibold">{% trans "Question" %}</span>
+          <input type="text" name="title" required maxlength="150"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="w-full rounded-lg border px-3 py-2">
+        </label>
+        <label class="block">
+          <span class="mb-1 block font-semibold">{% trans "Options" %}</span>
+          <span class="mb-1 block text-xs opacity-65">
+            {% trans "One per line: a label, or “Label: description”. Two to ten." %}</span>
+          <textarea name="options" rows="4" required
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2"></textarea>
+        </label>
+        <label class="block">
+          <span class="mb-1 block font-semibold">{% trans "Deadline" %}</span>
+          <span class="mb-1 block text-xs opacity-65">
+            {% trans "Optional — leave empty for a poll that stays open." %}</span>
+          <input type="datetime-local" name="closes_at"
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="rounded-lg border px-3 py-2">
+        </label>
+        <div class="flex items-center justify-end gap-3 pt-2">
+          <button type="button" @click="createOpen = false"
+                  class="rounded px-4 py-2 font-semibold opacity-70 transition hover:opacity-100">
+            {% trans "Cancel" %}</button>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+                  class="rounded-lg px-5 py-2 font-bold transition hover:opacity-90">
+            {% trans "Open the poll" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+</div>
+{% endblock %}

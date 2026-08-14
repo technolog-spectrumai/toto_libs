@@ -84,3 +84,18 @@ def readable_channels(user):
         forum_members__person=person,
         forum_members__is_active=True,
     ).distinct()
+
+
+def require_member(request, channel):
+    """The gate every room tab opens with. Returns the active membership.
+
+    One function rather than a check at each view, for the reason this
+    module's docstring records: the last time membership had two sources,
+    they disagreed and a removed user kept posting.
+    """
+    from django.core.exceptions import PermissionDenied
+
+    member = member_for(request.user, channel)
+    if member is None:
+        raise PermissionDenied("Join this room to see its pages.")
+    return member

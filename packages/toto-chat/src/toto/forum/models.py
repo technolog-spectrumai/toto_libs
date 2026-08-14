@@ -56,6 +56,13 @@ class ForumChannel(models.Model):
         related_name="forum_channels",
         blank=True,
     )
+    #: The room's vault library directory — one per channel, in the shared
+    #: "forum" bucket, created lazily by library.ensure_channel_library().
+    #: Null until the Files tab is first used. SET_NULL: deleting the vault
+    #: side must not take the room with it.
+    vault_directory = models.ForeignKey(
+        "vault.VaultDirectory", null=True, blank=True,
+        on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

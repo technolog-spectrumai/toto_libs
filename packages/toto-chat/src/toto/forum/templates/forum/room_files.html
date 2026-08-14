@@ -1,0 +1,49 @@
+{% extends "forum/channel_base.html" %}
+{% load i18n %}
+
+{% block room_content %}
+<div class="space-y-6">
+
+  <div class="flex flex-wrap items-center justify-between gap-3">
+    <p class="text-sm opacity-70">
+      {% blocktrans with n=file_count mb=total_mb %}{{ n }} files · {{ mb }} MB, stored in the vault and readable by this room's members only.{% endblocktrans %}
+    </p>
+    <a href="{% url 'vault:gateway_page' gateway_dir_pk %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
+       class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
+      <i class="fa-solid fa-upload"></i>{% trans "Share a file" %}
+    </a>
+  </div>
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    {% comment %}The vault tree's visual grammar with a working control per
+       row: a download link through vault:public_file, which enforces
+       may_read — the whitelist this room's membership maintains. Forked
+       from vault/_file_tree_row.html for the same reason antivirus forked
+       it: our rows carry a different action (key-addressed download, not
+       prefix+id).{% endcomment %}
+    <div class="space-y-2">
+      {% for bnode in tree %}
+        {% for group in bnode.groups %}
+          {% for file in group.files %}
+            <a href="{% url 'vault:public_file' bnode.bucket.slug file.key %}"
+               class="flex items-center gap-2 rounded px-1.5 py-1 text-sm transition"
+               :class="darkMode ? 'hover:bg-accent-dark/10' : 'hover:bg-accent-light/10'">
+              <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
+              <span class="font-mono truncate min-w-0 flex-1">{{ file.title }}</span>
+              <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ file.file_type }}</span>
+              {% if file.size %}<span class="shrink-0 text-xs opacity-40">{{ file.size|filesizeformat }}</span>{% endif %}
+            </a>
+          {% endfor %}
+        {% endfor %}
+      {% empty %}
+        <p class="text-sm opacity-60">
+          {% trans "Nothing has been shared in this room yet." %}</p>
+      {% endfor %}
+    </div>
+  </section>
+
+</div>
+{% endblock %}

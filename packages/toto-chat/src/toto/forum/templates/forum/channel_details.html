@@ -866,7 +866,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     {# ── Centre: chat ─────────────────────────────────────────────────────── #}
     <section
       :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
-      class="grid min-h-0 min-w-0 grid-rows-[auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+      class="grid min-h-0 min-w-0 grid-rows-[auto_auto_auto_minmax(0,1fr)_auto] overflow-hidden rounded-lg border shadow-md">
+
+      {# The room's tab strip — chat is one of four surfaces now. #}
+      {% if is_participant %}
+        <div class="border-b border-current/10 px-4 pt-2">
+          {% include "forum/_room_tabs.html" %}
+        </div>
+      {% endif %}
 
       {# Header #}
       <header class="flex min-w-0 flex-wrap items-center gap-2 border-b border-current/10 px-4 py-3">
@@ -964,7 +971,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       {% endif %}
 
       {# Messages — pinned to row 3 so composer always stays visible regardless of whether the observer banner renders #}
-      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:3]">
+      <div id="messages" class="min-h-0 min-w-0 space-y-3 overflow-y-auto overflow-x-hidden p-4 [grid-row:4]">
         {# History is delivered over the websocket, never server-rendered. #}
         <div id="load-older-wrap" class="hidden pb-1 text-center">
           <button type="button" id="load-older-button"
@@ -981,7 +988,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       </div>
 
       {# Input #}
-      <div id="message-form" class="border-t border-current/10 p-3 [grid-row:4]">
+      <div id="message-form" class="border-t border-current/10 p-3 [grid-row:5]">
         {# Mobile chips row #}
         <div class="mb-2 flex flex-wrap gap-2 sm:hidden">
           <div
