@@ -62,7 +62,7 @@ def test_kanban_is_independent_of_every_other_feature():
     bare = resolve(BUILD_KANBAN=0)
     assert bare.kanban is False
     assert bare.chat is False
-    assert bare.workflows is False
+    assert bare.workflows is True   # compulsory since 8/2026, on every host
 
 
 def test_kanban_off_does_not_disturb_geo():
@@ -108,7 +108,9 @@ def test_media_no_longer_drags_the_celery_layer():
     # a media host can now be plain WSGI.
     f = resolve(BUILD_MEDIA=1)
     assert f.vod is True
-    assert (f.workflows, f.realtime, f.needs_channels) == (False, False, False)
+    # workflows (and with it the celery pip layer) is compulsory since
+    # 8/2026 — what media still must NOT buy is the websocket tier.
+    assert (f.workflows, f.realtime, f.needs_channels) == (True, True, False)
     assert (f.ffmpeg, f.tesseract) == (False, False)
 
 
@@ -133,7 +135,7 @@ def test_manta_buys_the_celery_layer_but_not_workflows():
     # the realtime pip layer or it will not boot.
     f = resolve(BUILD_MANTA=1)
     assert (f.manta, f.realtime, f.ffmpeg) == (True, True, True)
-    assert f.workflows is False
+    assert f.workflows is True   # compulsory since 8/2026; manta no longer the reason
 
 
 def test_jess_buys_the_celery_layer_but_not_workflows():
@@ -143,7 +145,7 @@ def test_jess_buys_the_celery_layer_but_not_workflows():
     # workflows nowhere and has no FK to WorkflowRun, so it is not in that closure.
     f = resolve(BUILD_JESS=1)
     assert (f.jess, f.realtime) == (True, True)
-    assert f.workflows is False
+    assert f.workflows is True   # compulsory since 8/2026; jess no longer the reason
     assert f.chat is False
 
 
@@ -163,7 +165,7 @@ def test_primula_is_opt_in_and_buys_nothing_else():
     assert resolve(BUILD_PRIMULA=0).primula is False
     f = resolve(BUILD_PRIMULA=1)
     assert f.primula is True
-    assert (f.realtime, f.workflows, f.editor) == (False, False, False)
+    assert (f.realtime, f.workflows, f.editor) == (True, True, False)  # realtime+workflows compulsory
 
 
 def test_fileservices_forces_workflows():
@@ -191,7 +193,7 @@ def test_ocr_stands_alone():
     assert f.ocr is True
     assert f.tesseract is True                      # brings its own binary
     assert (f.graph, f.neo4j, f.vicuna) == (False, False, False)
-    assert (f.workflows, f.realtime, f.ffmpeg) == (False, False, False)
+    assert (f.workflows, f.realtime, f.ffmpeg) == (True, True, False)  # ffmpeg is the claim that matters
 
 
 def test_ocr_is_not_implied_by_the_neo4j_tier_any_more():
@@ -234,7 +236,7 @@ def test_the_labs_carry_their_closures():
     assert (f.texlab, f.workflows, f.texlive, f.realtime) == (True, True, True, True)
     f = resolve(BUILD_ANTARESIA=1)
     assert (f.antaresia, f.realtime) == (True, True)
-    assert (f.workflows, f.texlive) == (False, False)   # a Python lab buys no TeX
+    assert f.texlive is False   # a Python lab buys no TeX (workflows is compulsory now)
 
 
 def test_the_ambrosia_alias_still_means_both_labs():
@@ -289,10 +291,12 @@ def test_realtime_is_derived_not_merely_echoed():
     # The tier is an INPUT default and also an OUTPUT: any realtime feature
     # implies the pip layer, even when the tier flag was never set. This is why
     # zenobia still installs it after the split — it keeps workflows.
-    assert resolve(BUILD_WORKFLOWS=1).realtime is True
+    assert resolve().workflows is True                # compulsory; the flag is dead
     assert resolve(BUILD_CHAT=1).realtime is True
     assert resolve(BUILD_CANASTA=1).realtime is True    # via needs_channels
-    assert resolve().realtime is False
+    # The compulsory job runner sits in the realtime-or chain, so the celery
+    # pip layer is now part of EVERY build — the tier cannot be avoided.
+    assert resolve().realtime is True
 
 
 def test_sketch_does_not_buy_channels():
@@ -305,7 +309,7 @@ def test_sketch_does_not_buy_channels():
     whole realtime pip layer for a feature that never opens a socket.
     """
     f = resolve(BUILD_SKETCH=1)
-    assert (f.sketch, f.needs_channels, f.realtime) == (True, False, False)
+    assert (f.sketch, f.needs_channels) == (True, False)  # realtime is compulsory now
 
 
 def test_canasta_buys_channels_and_nothing_else():
@@ -318,7 +322,7 @@ def test_canasta_buys_channels_and_nothing_else():
     assert (f.canasta, f.needs_channels, f.realtime) == (True, True, True)
     # It must NOT drag in the realtime tier's own apps: canasta has no chat by
     # design (the game forbids player-to-player talk), no workflows, no weather.
-    assert (f.chat, f.workflows, f.weather) == (False, False, False)
+    assert (f.chat, f.weather) == (False, False)  # workflows is compulsory now
     assert resolve().canasta is False
 
 
@@ -336,12 +340,14 @@ def test_build_studio_is_still_honoured_as_the_old_tier_name():
 def test_features_studio_property_still_answers():
     # Read by the sibling hosts' deploy tooling as f.studio.
     assert resolve(BUILD_REALTIME=1).studio is True
-    assert resolve().studio is False
-    assert resolve(BUILD_WORKFLOWS=1).studio is resolve(BUILD_WORKFLOWS=1).realtime
+    assert resolve().studio is True   # realtime is compulsory now, so its alias is too
+    assert resolve(BUILD_WORKFLOWS=0).workflows is True  # even an explicit 0 cannot
 
 
 def test_an_explicit_build_realtime_wins_over_the_old_name():
-    # Both present and disagreeing: the new name decides, so a host can retire
-    # BUILD_STUDIO from its configs incrementally without a flag-day.
-    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).realtime is False
-    assert resolve(BUILD_STUDIO=0, BUILD_REALTIME=1).realtime is True
+    # Both present and disagreeing: the new name still decides the TIER INPUT —
+    # but the compulsory job runner means the effective layer is on either way.
+    # What the flag still controls is what the tier defaulted: chat/weather.
+    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).chat is False
+    assert resolve(BUILD_STUDIO=0, BUILD_REALTIME=1).chat is True
+    assert resolve(BUILD_STUDIO=1, BUILD_REALTIME=0).realtime is True  # compulsory

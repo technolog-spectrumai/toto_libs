@@ -131,7 +131,14 @@ def resolve_features(get) -> Features:
 
     # Realtime-group features (default to the realtime tier).
     chat = flag(get, "BUILD_CHAT", tier_realtime)             # toto.forum — live chat (WebSocket)
-    workflows = flag(get, "BUILD_WORKFLOWS", tier_realtime)   # toto.workflows + toto.mandragora kernel
+    # COMPULSORY since 8/2026. Workflows is the platform's job runner, and the
+    # antivirus — which every content door depends on — queues its scans
+    # through it. A flag that can switch off the machinery security rides on is
+    # not a flag, it is a foot-gun; BUILD_WORKFLOWS is deliberately not read
+    # any more, so no config, old or new, can turn this off. Note what this
+    # implies one line down: workflows sits in the realtime-or chain, so the
+    # realtime pip layer (celery and friends) is now part of every build too.
+    workflows = True
     weather = flag(get, "BUILD_WEATHER", tier_realtime)       # toto.weather (FKs workflows.WorkflowRun)
 
     # Editing features (standalone — each enabled on its own; no labs tier).
