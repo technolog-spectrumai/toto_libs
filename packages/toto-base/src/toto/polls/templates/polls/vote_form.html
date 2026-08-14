@@ -1,0 +1,54 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "New vote" %}{% endblock %}
+{% block polls_heading %}{% trans "New vote" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "A formal vote: one ballot each, final once cast, counted against a named electorate. What is written here is the instrument voters will read." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+<form method="post"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-4 rounded-2xl border p-5 shadow-sm">
+  {% csrf_token %}
+
+  {% if form.non_field_errors %}
+    <div :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm font-semibold">
+      {{ form.non_field_errors }}</div>
+  {% endif %}
+
+  {% for field in form %}
+    <div class="text-sm">
+      <label for="{{ field.id_for_label }}" class="mb-1 block font-semibold">{{ field.label }}</label>
+      {% if field.help_text %}
+        <p class="mb-1 text-xs opacity-65">{{ field.help_text }}</p>
+      {% endif %}
+      {% if field.name == "opens_at" or field.name == "closes_at" %}
+        <div class="grid grid-cols-2 gap-2">
+          {{ field.subwidgets.0 }}
+          {{ field.subwidgets.1 }}
+        </div>
+      {% else %}
+        {{ field }}
+      {% endif %}
+      {% if field.errors %}
+        <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+           class="mt-1 text-xs font-semibold">{{ field.errors|first }}</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  <div class="flex items-center justify-end gap-3 pt-2">
+    <a href="{% url 'polls:vote_list' %}"
+       class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
+      {% trans "Cancel" %}</a>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-check-to-slot"></i>{% trans "Open the vote" %}</button>
+  </div>
+</form>
+{% endblock %}

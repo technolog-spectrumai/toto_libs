@@ -9,8 +9,45 @@
 {% endblock %}
 
 {% block polls_content %}
+{% if decision %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex flex-wrap items-center gap-3 rounded-2xl border p-4 text-sm shadow-sm">
+    <i class="fa-solid fa-gavel" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+    <span class="font-semibold">
+      {% if decision.winner_label %}
+        {% trans "Decided:" %} {{ decision.winner_label }}
+      {% else %}{{ decision.get_outcome_display }}{% endif %}</span>
+    <span class="opacity-60">{{ decision.decided_at|date:"Y-m-d H:i" }}</span>
+    <a href="{% url 'polls:question_results' question.kind question.slug %}"
+       class="ml-auto font-semibold underline hover:opacity-80">{% trans "Full record" %}</a>
+  </div>
+{% endif %}
+
+{% if question.is_formal and is_operator and not decision %}
+  <form method="post" action="{% url 'polls:question_close' question.kind question.slug %}"
+        class="flex justify-end">
+    {% csrf_token %}
+    <button type="submit"
+            :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+      <i class="fa-solid fa-gavel"></i>
+      {% if question.is_open %}{% trans "Close early & record" %}{% else %}{% trans "Record the decision" %}{% endif %}
+    </button>
+  </form>
+{% endif %}
+
 <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="space-y-4 rounded-2xl border p-5 shadow-sm">
+
+  {% if question.is_formal %}
+    <p class="text-xs opacity-60">
+      {% if question.created_by %}
+        {% trans "Proposed by" %} {{ question.created_by.username }} ·
+      {% endif %}
+      {% trans "Opens" %} {{ question.opens_at|date:"Y-m-d H:i" }}
+      {% if question.closes_at %} · {% trans "Closes" %} {{ question.closes_at|date:"Y-m-d H:i" }}{% endif %}
+    </p>
+  {% endif %}
 
   {% if question.body %}
     <div class="whitespace-pre-wrap text-sm opacity-80">{{ question.body }}</div>

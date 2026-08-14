@@ -14,6 +14,29 @@
 {% endblock %}
 
 {% block polls_content %}
+{% if decision %}
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="space-y-2 rounded-2xl border p-4 text-sm shadow-sm">
+    <div class="flex flex-wrap items-center gap-3">
+      <i class="fa-solid fa-gavel" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
+      <span class="font-bold">
+        {% if decision.winner_label %}
+          {% trans "Decided:" %} {{ decision.winner_label }}
+        {% else %}{{ decision.get_outcome_display }}{% endif %}</span>
+      <span class="opacity-60">{{ decision.decided_at|date:"Y-m-d H:i" }}</span>
+      <a href="{% url 'polls:decision_pdf' question.kind question.slug %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-file-pdf"></i>{% trans "Download PDF" %}</a>
+    </div>
+    <p class="text-xs opacity-60">
+      {% trans "Electorate" %}: {{ decision.electorate_key }} ({{ decision.electorate_size }})
+      · {% trans "Recorded by" %}:
+      {% if decision.decided_by %}{{ decision.decided_by.username }}{% else %}{% trans "the deadline" %}{% endif %}
+    </p>
+  </div>
+{% endif %}
+
 <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
          class="space-y-4 rounded-2xl border p-5 shadow-sm">
 
@@ -21,7 +44,7 @@
     <p class="opacity-75">{{ question.question_text }}</p>
     <p class="text-xs opacity-55">
       {{ tally.total_ballots }} {% trans "ballots" %}
-      {% if tally.turnout %} · {{ tally.turnout|floatformat:0 }}% {% trans "turnout" %}{% endif %}
+      {% if turnout_percent is not None %} · {{ turnout_percent }}% {% trans "turnout" %}{% endif %}
     </p>
   </div>
 
@@ -47,7 +70,7 @@
           <td class="py-2 pr-4 text-right tabular-nums">{{ row.result.ballots }}</td>
           <td class="py-2 pr-4 text-right tabular-nums">{{ row.result.weight }}</td>
           <td class="py-2 text-right tabular-nums">
-            {% if row.share %}{{ row.share|floatformat:1 }}%{% else %}—{% endif %}</td>
+            {% if row.share_percent is not None %}{{ row.share_percent|floatformat:1 }}%{% else %}—{% endif %}</td>
         </tr>
       {% endfor %}
     </tbody>

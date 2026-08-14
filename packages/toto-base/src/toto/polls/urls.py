@@ -14,7 +14,14 @@ app_name = "polls"
 urlpatterns = [
     path("", views.poll_list, name="poll_list"),
     path("votes/", views.vote_list, name="vote_list"),
+    # Fixed routes BEFORE the <kind>/<slug> catch-alls: "votes/new/" would
+    # otherwise match as kind="votes", slug="new".
+    path("votes/new/", views.vote_create, name="vote_create"),
+    path("ledger/", views.decision_ledger, name="decision_ledger"),
+    path("ledger/export.pdf", views.ledger_pdf_export, name="ledger_pdf"),
     path("<str:kind>/<slug:slug>/", views.question_detail, name="question_detail"),
     path("<str:kind>/<slug:slug>/vote/", views.question_vote, name="question_vote"),
     path("<str:kind>/<slug:slug>/results/", views.question_results, name="question_results"),
+    path("<str:kind>/<slug:slug>/close/", views.question_close, name="question_close"),
+    path("<str:kind>/<slug:slug>/decision.pdf", views.decision_pdf, name="decision_pdf"),
 ]

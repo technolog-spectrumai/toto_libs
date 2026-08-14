@@ -1,0 +1,108 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "Decision ledger" %}{% endblock %}
+{% block polls_heading %}{% trans "Decision ledger" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "Every formal vote that has been decided, newest first. A row is written once, when the vote closes, and never edited." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+<form method="get"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="flex flex-wrap items-end gap-3 rounded-2xl border p-4 text-sm shadow-sm">
+  <label class="block">
+    <span class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Outcome" %}</span>
+    <select name="outcome"
+            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+            class="rounded-lg border px-3 py-1.5">
+      <option value="">{% trans "Any" %}</option>
+      {% for value, label in outcomes %}
+        <option value="{{ value }}" {% if filters.outcome == value %}selected{% endif %}>{{ label }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "From" %}</span>
+    <input type="date" name="from" value="{{ filters.from }}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="rounded-lg border px-3 py-1.5">
+  </label>
+  <label class="block">
+    <span class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "To" %}</span>
+    <input type="date" name="to" value="{{ filters.to }}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="rounded-lg border px-3 py-1.5">
+  </label>
+  <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+    {% trans "Filter" %}</button>
+  <a href="{% url 'polls:ledger_pdf' %}{% if querystring %}?{{ querystring }}{% endif %}"
+     :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+     class="ml-auto inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+    <i class="fa-solid fa-file-pdf"></i>{% trans "Export PDF" %}</a>
+</form>
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="overflow-x-auto rounded-2xl border p-5 shadow-sm">
+  <table class="w-full text-sm">
+    <thead>
+      <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+        <th class="py-2 pr-4">{% trans "Decided" %}</th>
+        <th class="py-2 pr-4">{% trans "Title" %}</th>
+        <th class="py-2 pr-4">{% trans "Outcome" %}</th>
+        <th class="py-2 pr-4">{% trans "Electorate" %}</th>
+        <th class="py-2 pr-4 text-right">{% trans "Ballots" %}</th>
+        <th class="py-2 pr-4 text-right">{% trans "Weight" %}</th>
+        <th class="py-2 text-right">{% trans "Turnout" %}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for decision in page %}
+        <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+          <td class="py-2 pr-4 whitespace-nowrap tabular-nums">{{ decision.decided_at|date:"Y-m-d" }}</td>
+          <td class="py-2 pr-4">
+            <a href="{% url 'polls:question_results' decision.question.kind decision.question.slug %}"
+               class="font-semibold underline hover:opacity-80">{{ decision.title }}</a>
+          </td>
+          <td class="py-2 pr-4">
+            {% if decision.winner_label %}
+              <span class="font-semibold">{{ decision.winner_label }}</span>
+            {% else %}
+              <span class="opacity-70">{{ decision.get_outcome_display }}</span>
+            {% endif %}
+          </td>
+          <td class="py-2 pr-4">{{ decision.electorate_key|default:"—" }}</td>
+          <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_ballots }}</td>
+          <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_weight }}</td>
+          <td class="py-2 text-right tabular-nums">
+            {% if decision.turnout is not None %}{% widthratio decision.turnout 1 100 %}%{% else %}—{% endif %}</td>
+        </tr>
+      {% empty %}
+        <tr><td colspan="7" class="py-6 text-center text-sm opacity-60">
+          {% trans "Nothing has been decided yet." %}</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+
+  {% if page.paginator.num_pages > 1 %}
+    <nav class="mt-4 flex items-center justify-between text-sm" aria-label="{% trans 'Ledger pages' %}">
+      {% if page.has_previous %}
+        <a href="?page={{ page.previous_page_number }}{% if querystring %}&{{ querystring }}{% endif %}"
+           class="font-semibold underline hover:opacity-80">
+          <i class="fa-solid fa-chevron-left"></i> {% trans "Newer" %}</a>
+      {% else %}<span></span>{% endif %}
+      <span class="text-xs opacity-60">
+        {% blocktrans with n=page.number total=page.paginator.num_pages %}Page {{ n }} of {{ total }}{% endblocktrans %}</span>
+      {% if page.has_next %}
+        <a href="?page={{ page.next_page_number }}{% if querystring %}&{{ querystring }}{% endif %}"
+           class="font-semibold underline hover:opacity-80">
+          {% trans "Older" %} <i class="fa-solid fa-chevron-right"></i></a>
+      {% else %}<span></span>{% endif %}
+    </nav>
+  {% endif %}
+</div>
+{% endblock %}
