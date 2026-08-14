@@ -21,7 +21,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.core.paginator import Paginator
-from django.http import HttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.text import slugify
@@ -30,11 +29,10 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
-from . import render_pdf, services
+from . import downloads, render_pdf, services
 from .core import Revisability, Visibility, VotingError
 from .forms import VoteCreateForm
-from .models import (SCOPE_GLOBAL, Choice, Decision, Kind, Outcome,
-                     PollsQuotaPolicy, PollsUsageEvent, Question)
+from .models import (SCOPE_GLOBAL, Choice, Decision, Kind, Outcome, Question)
 
 #: The chart palette, shared by both tabs so a poll and a vote of the same shape
 #: look like the same object.
@@ -250,26 +248,13 @@ def question_close(request, kind, slug):
 
 
 def _filtered_ledger(request):
-    """The ledger queryset plus the filters that shaped it — one place,
-    because the HTML page and the PDF export must agree exactly."""
-    decisions = Decision.objects.in_scope(SCOPE_GLOBAL)
+    """This app's ledger: the global scope, always.
 
-    outcome = request.GET.get("outcome") or ""
-    if outcome in Outcome.values:
-        decisions = decisions.filter(outcome=outcome)
-
-    filters = {"outcome": outcome}
-    for param, lookup in (("from", "decided_at__date__gte"),
-                          ("to", "decided_at__date__lte")):
-        raw = request.GET.get(param) or ""
-        filters[param] = raw
-        if raw:
-            try:
-                decisions = decisions.filter(**{lookup: raw})
-            except Exception:  # noqa: BLE001 — a malformed date is not an error page
-                filters[param] = ""
-
-    return decisions.select_related("question", "decided_by"), filters
+    The filtering itself lives in services.filtered_decisions so Business
+    Center can render the same ledger for one company. Calling it with no
+    scope arguments is what keeps every polls URL locked to SCOPE_GLOBAL.
+    """
+    return services.filtered_decisions(request.GET)
 
 
 @login_required
@@ -291,36 +276,6 @@ def decision_ledger(request):
     })
 
 
-def _pdf_response(request, build, filename: str):
-    """The platform's metered-download shape (portfolio/views.py): quota and
-    funds checked before the work, charged after it, refusals as plain text."""
-    from toto.quota import QuotaExceeded, check_quota, record_usage
-    from toto.quota.charge import (InsufficientFunds, charge, check_funds,
-                                   price_for)
-
-    tariff = price_for(request.user, "polls")
-    try:
-        check_quota(PollsQuotaPolicy, "polls.pdf", 1, request.user)
-        check_funds(request.user, tariff, "polls.pdf", 1)
-    except (QuotaExceeded, InsufficientFunds) as exc:
-        # Plain text, not messages+redirect: this is a download target.
-        return HttpResponse(str(exc), status=exc.status_code,
-                            content_type="text/plain")
-
-    try:
-        raw = build()
-    except render_pdf.PdfUnavailable as exc:
-        # A deployment fact, not something the user can fix by retrying.
-        return HttpResponse(str(exc), status=503, content_type="text/plain")
-
-    record_usage(PollsUsageEvent, "polls.pdf", 1, request.user)
-    charge(request.user, tariff, "polls.pdf", 1)
-
-    response = HttpResponse(raw, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{filename}"'
-    return response
-
-
 @login_required
 def decision_pdf(request, kind, slug):
     """One vote's recorded decision, as a document."""
@@ -335,7 +290,7 @@ def decision_pdf(request, kind, slug):
 
     decision = get_object_or_404(Decision, question=question)
     base = slugify(question.title) or question.slug
-    return _pdf_response(
+    return downloads.metered_pdf(
         request, lambda: render_pdf.vote_result_pdf(question, decision),
         f"{base}-decision.pdf")
 
@@ -345,7 +300,7 @@ def ledger_pdf_export(request):
     """The filtered ledger, on paper. Exactly the rows the HTML page shows."""
     services.record_overdue(SCOPE_GLOBAL)
     decisions, filters = _filtered_ledger(request)
-    return _pdf_response(
+    return downloads.metered_pdf(
         request,
         lambda: render_pdf.ledger_pdf(list(decisions), filters=filters),
         "decision-ledger.pdf")

@@ -185,10 +185,17 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                 raise PermissionDenied(
                     "Closing a vote before its deadline is a staff act.")
 
-        from . import electorates
+        from . import electorates, governance
 
         roll = electorate_for(question)
         count = tally(question, electorate=roll)
+
+        # What the scope's own rules make of that count. None when the scope
+        # has no rule, which is every scope the engine ships: "passed" is a
+        # constitution, not arithmetic. Not caught — a judge that raises is a
+        # bug in the rule, and this transaction rolls the whole recording back
+        # rather than writing a decision that cannot be corrected.
+        verdict = governance.judge(question, count)
 
         if count.total_ballots == 0:
             outcome, winner_label, winner_ref = Outcome.NO_BALLOTS, "", None
@@ -244,6 +251,9 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                        "ballots": count.total_ballots,
                        "turnout": count.turnout},
             "ballots": ballots,
+            # Always present, null where the scope has no rule — so a reader
+            # can tell "nobody judges this" from "the judge said nothing".
+            "governance": verdict,
         }
 
         try:
@@ -264,6 +274,39 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
             # Two recorders raced past the filter; the OneToOne held. The
             # other one's row IS the decision.
             return Decision.objects.get(question=question)
+
+
+def filtered_decisions(params, *, scope_type: str = "", scope_id: str = ""):
+    """The ledger queryset plus the filters that shaped it.
+
+    One place, because a ledger PAGE and its PDF export must agree exactly —
+    and now also because a scope owner (Business Center) renders the same
+    ledger for one company. Takes a plain mapping rather than a request, so a
+    host app can call it without importing the view layer.
+
+    The global scope is the DEFAULT, not a constant buried in here: the polls
+    views call this with no scope arguments and stay locked to SCOPE_GLOBAL,
+    while a scoped call site is a different view behind a different gate in
+    the app that owns that scope. No polls URL can reach another scope.
+    """
+    decisions = Decision.objects.in_scope(scope_type, scope_id)
+
+    outcome = params.get("outcome") or ""
+    if outcome in Outcome.values:
+        decisions = decisions.filter(outcome=outcome)
+
+    filters = {"outcome": outcome}
+    for param, lookup in (("from", "decided_at__date__gte"),
+                          ("to", "decided_at__date__lte")):
+        raw = params.get(param) or ""
+        filters[param] = raw
+        if raw:
+            try:
+                decisions = decisions.filter(**{lookup: raw})
+            except Exception:  # noqa: BLE001 — a malformed date is not an error page
+                filters[param] = ""
+
+    return decisions.select_related("question", "decided_by"), filters
 
 
 def record_overdue(scope_type: str = "", scope_id: str = "") -> int:
