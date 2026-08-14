@@ -165,7 +165,7 @@ def freeze_roll(question, *, electorate=None, entries=None):
     """
     from django.utils import timezone as tz
 
-    from .electorate_models import RollEntry
+    from .electorate_models import Presence, RollEntry
 
     if RollEntry.objects.filter(question=question).exists():
         raise ValueError("This vote's register is already frozen.")
@@ -173,13 +173,24 @@ def freeze_roll(question, *, electorate=None, entries=None):
     if entries is None:
         if electorate is None:
             raise ValueError("freeze_roll needs an electorate or entries.")
-        entries = [(member.user, member.user.get_username(), member.weight)
+        entries = [(member.user, member.display_name, member.weight)
                    for member in electorate.members.select_related("user")]
         if question.electorate_id != electorate.pk:
             question.electorate = electorate
 
     if not entries:
         raise ValueError("Nobody is on that register; there is no vote to hold.")
+
+    # An entry is (user, label, weight), optionally followed by presence and
+    # the proxy's name: attendance is taken at the same moment as the
+    # register, by the caller that knows who turned up.
+    normalized = []
+    for entry in entries:
+        user, label, weight = entry[0], entry[1], entry[2]
+        presence = entry[3] if len(entry) > 3 else Presence.PRESENT
+        represented_by = entry[4] if len(entry) > 4 else ""
+        normalized.append((user, label, weight, presence, represented_by))
+    entries = normalized
 
     # The pointer and the frozen marker go down BEFORE the rows: once a row
     # exists the instrument is locked, and freezing is part of opening, not
@@ -189,10 +200,43 @@ def freeze_roll(question, *, electorate=None, entries=None):
     question.save()
     RollEntry.objects.bulk_create([
         RollEntry(question=question, user=user, label=label or "",
-                  weight=weight)
-        for user, label, weight in entries
+                  weight=weight, presence=presence,
+                  represented_by=represented_by or "")
+        for user, label, weight, presence, represented_by in entries
     ])
+    snapshot_procedure(question)
     return question
+
+
+def snapshot_procedure(question):
+    """The session's three weights, taken with the register.
+
+    Who belongs, who is in the room, and who in the room can actually cast —
+    a procedural dispute is nearly always about which of those somebody meant,
+    so all three are recorded rather than derived later from rows that may
+    have moved.
+    """
+    from .electorate_models import VoteProcedure
+
+    rows = list(question.roll.all())
+    represented = [row for row in rows if row.is_represented]
+    procedure, _created = VoteProcedure.objects.update_or_create(
+        question=question,
+        defaults={
+            "electorate_weight": sum(row.weight for row in rows),
+            "represented_weight": sum(row.weight for row in represented),
+            "eligible_weight": sum(row.weight for row in rows if row.can_act),
+            "members_total": len(rows),
+            "members_represented": len(represented),
+        })
+    return procedure
+
+
+def procedure_of(question):
+    """The snapshot, or None for a vote that never froze a register."""
+    from .electorate_models import VoteProcedure
+
+    return VoteProcedure.objects.filter(question=question).first()
 
 
 def snapshot_rule(question, profile) -> None:
@@ -317,6 +361,7 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
         roll = electorate_for(question)
         count = tally(question, electorate=roll)
         consensus = evaluate_consensus(question, count)
+        procedure = procedure_of(question)
 
         # What the scope's own rules make of that count. None when the scope
         # has no rule, which is every scope the engine ships: "passed" is a
@@ -379,7 +424,11 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                 "label": entry.label or (entry.user.get_username()
                                          if entry.user_id else ""),
                 "weight": entry.weight,
+                "presence": entry.presence,
+                "represented_by": entry.represented_by,
             } for entry in question.roll.all()],
+            "procedure": (procedure.as_dict(notes=question.procedural_notes)
+                          if procedure else None),
             "consensus": consensus,
             "outcome": {"outcome": outcome, "winner": winner_ref},
             "tally": [{

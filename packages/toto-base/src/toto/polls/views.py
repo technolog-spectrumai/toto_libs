@@ -347,7 +347,7 @@ def electorate_detail(request, slug):
         "is_operator": _is_operator(request.user),
         "power_chart_json": json.dumps({
             "chart_type": "pie",
-            "labels": [str(row["member"].user) for row in table],
+            "labels": [row["name"] for row in table],
             "datasets": [{"data": [row["weight"] for row in table],
                           "backgroundColor": PALETTE}],
         }) if table else "",

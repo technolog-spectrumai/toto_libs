@@ -94,17 +94,29 @@ class Electorate(models.Model):
         total = self.total_weight()
         return [{
             "member": member,
+            "name": member.display_name,
             "weight": member.weight,
             "percent": round(member.weight / total * 100, 1) if total else 0,
         } for member in self.members.select_related("user")]
 
 
 class ElectorateMember(models.Model):
+    """A name and a weight. The login is optional.
+
+    A body may include somebody with no account — an institution, an estate,
+    a member who only ever acts through counsel. They hold voting rights and
+    weight, they count toward the electorate, and they act through a proxy
+    (see :class:`Presence`). Requiring a login here would make the electorate
+    a list of accounts rather than a list of members.
+    """
+
     electorate = models.ForeignKey(Electorate, on_delete=models.CASCADE,
                                    related_name="members")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL,
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
                              on_delete=models.CASCADE,
                              related_name="electorate_memberships")
+    #: How this member is named when there is no login to name them by.
+    label = models.CharField(max_length=150, blank=True)
     #: Ballot power. On an EQUAL electorate this stays 1 by convention; the
     #: snapshot copies whatever is written here, so the kind is documentation
     #: of intent, not a second enforcement path.
@@ -114,11 +126,30 @@ class ElectorateMember(models.Model):
         ordering = ["-weight", "pk"]
         constraints = [
             models.UniqueConstraint(fields=["electorate", "user"],
+                                    condition=models.Q(user__isnull=False),
                                     name="uniq_electorate_member"),
         ]
 
     def __str__(self):
-        return f"{self.user} ({self.weight})"
+        return f"{self.display_name} ({self.weight})"
+
+    @property
+    def display_name(self) -> str:
+        return self.label or (str(self.user) if self.user_id else "—")
+
+
+class Presence(models.TextChoices):
+    """Whether a member of the register is at the session.
+
+    Belonging to the electorate and being at the meeting are two different
+    facts, and a governance instrument has to state both: a roll of a hundred
+    with eleven in the room decided something rather different from a roll of
+    a hundred with ninety.
+    """
+
+    PRESENT = "present", _("Present")
+    REPRESENTED = "represented", _("Represented by proxy")
+    ABSENT = "absent", _("Absent")
 
 
 class RollEntry(models.Model):
@@ -128,6 +159,10 @@ class RollEntry(models.Model):
     ``user`` may be null: a register may name somebody with no account (the
     company case). They are ON the roll — counted in its size and so in the
     turnout denominator — and cannot cast.
+
+    Attendance rides on the same row, snapshotted at the same moment: who
+    BELONGS is the electorate's answer, who is PRESENT is the session's, and
+    the two are recorded separately so a reader can see both.
     """
 
     question = models.ForeignKey("polls.Question", on_delete=models.CASCADE,
@@ -136,6 +171,13 @@ class RollEntry(models.Model):
                              on_delete=models.SET_NULL, related_name="+")
     label = models.CharField(max_length=150, blank=True)
     weight = models.PositiveBigIntegerField(default=1)
+    #: Taken when voting begins, with the register itself.
+    presence = models.CharField(max_length=12, choices=Presence.choices,
+                                default=Presence.PRESENT)
+    #: Who holds the proxy, as a label — generic on purpose: a proxy may be
+    #: another member, a lawyer or an institution, and none of those is a
+    #: model this app should know about.
+    represented_by = models.CharField(max_length=150, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -159,6 +201,69 @@ class RollEntry(models.Model):
             raise ValueError(
                 "A register entry is a record date, not a live register.")
         super().save(*args, **kwargs)
+
+    @property
+    def is_represented(self) -> bool:
+        return self.presence in (Presence.PRESENT, Presence.REPRESENTED)
+
+    @property
+    def can_act(self) -> bool:
+        """Represented AND somebody able to cast: a login of their own, or a
+        proxy named to act for them."""
+        return self.is_represented and bool(self.user_id
+                                            or self.represented_by)
+
+
+class VoteProcedure(models.Model):
+    """The session's own facts, snapshotted when voting begins.
+
+    Three weights, because they answer three different questions and a
+    procedural dispute is usually about which one somebody meant:
+
+    ``electorate_weight``  everything on the register — the whole body.
+    ``represented_weight`` present or held by proxy — the room.
+    ``eligible_weight``    the part of the room that can actually cast.
+
+    Written once, with the register. Notes stay editable until the decision
+    is recorded — they carry facts observed during the session (an arrival,
+    a departure, an objection), which by nature are not all known at the
+    moment voting opens.
+    """
+
+    question = models.OneToOneField("polls.Question",
+                                    on_delete=models.CASCADE,
+                                    related_name="procedure")
+    electorate_weight = models.PositiveBigIntegerField(default=0)
+    represented_weight = models.PositiveBigIntegerField(default=0)
+    eligible_weight = models.PositiveBigIntegerField(default=0)
+    members_total = models.PositiveIntegerField(default=0)
+    members_represented = models.PositiveIntegerField(default=0)
+    frozen_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name = _("voting procedure")
+        verbose_name_plural = _("voting procedures")
+
+    def __str__(self):
+        return f"{self.question_id}: {self.attendance_percent}% attending"
+
+    @property
+    def attendance_percent(self) -> float:
+        if not self.electorate_weight:
+            return 0.0
+        return round(self.represented_weight / self.electorate_weight * 100, 1)
+
+    def as_dict(self, *, notes: str = "") -> dict:
+        return {
+            "electorate_weight": self.electorate_weight,
+            "represented_weight": self.represented_weight,
+            "eligible_weight": self.eligible_weight,
+            "members_total": self.members_total,
+            "members_represented": self.members_represented,
+            "attendance_percent": self.attendance_percent,
+            "frozen_at": self.frozen_at.isoformat() if self.frozen_at else None,
+            "notes": notes,
+        }
 
 
 class ConsensusProfile(models.Model):

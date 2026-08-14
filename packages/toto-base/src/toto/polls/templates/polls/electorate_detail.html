@@ -42,7 +42,7 @@
         <tbody>
           {% for row in table %}
             <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
-              <td class="py-2 pr-4">{{ row.member.user }}</td>
+              <td class="py-2 pr-4">{{ row.name }}</td>
               <td class="py-2 pr-4 text-right tabular-nums">{{ row.weight }}</td>
               <td class="py-2 text-right tabular-nums">{{ row.percent }}%</td>
             </tr>

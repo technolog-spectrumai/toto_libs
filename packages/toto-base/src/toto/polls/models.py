@@ -138,6 +138,12 @@ class Question(models.Model):
     rule_name = models.CharField(max_length=80, blank=True)
     rule_percent = models.DecimalField(max_digits=5, decimal_places=2,
                                        null=True, blank=True)
+    #: Facts about the session that deserve the record but not a model of
+    #: their own — an arrival, a departure, an objection, a chair's ruling.
+    #: Deliberately NOT locked with the header: notes describe what happened
+    #: DURING the session, and a field that seals before the session ends
+    #: cannot record it. It is frozen by the decision, like everything else.
+    procedural_notes = models.TextField(blank=True)
 
     objects = QuestionQuerySet.as_manager()
 
@@ -462,7 +468,8 @@ class Ballot(models.Model):
 
 # -- electorates as data, the frozen register, consensus profiles -------------
 from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402,F401
-                                ElectorateMember, RollEntry)
+                                ElectorateMember, Presence, RollEntry,
+                                VoteProcedure)
 
 # -- quizzes: competence testing on the same scoping --------------------------
 # Imported here so Django's migration autodetector sees them as polls models;
