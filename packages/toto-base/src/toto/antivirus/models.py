@@ -14,7 +14,12 @@ from __future__ import annotations
 from django.conf import settings
 from django.db import models
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 from toto.vault.scanning import SCANNABLE_TYPES
+
+#: What an on-demand scan costs. One code: the price of a scan does not vary
+#: with the file — the scanner is a bounded pass over bounded bytes.
+METRIC_SCAN = "antivirus.scan"
 
 
 class ScanVerdict(models.TextChoices):
@@ -141,3 +146,85 @@ class ScanPreference(models.Model):
         if row is None:
             return SCANNABLE_TYPES
         return tuple(t for t in row.types if t in SCANNABLE_TYPES)
+
+
+class RunStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    RUNNING = "running", "Running"
+    SUCCESS = "success", "Done"
+    FAILED = "failed", "Failed"
+
+
+class ScanRun(models.Model):
+    """One on-demand scan, queued on a worker.
+
+    The DOOR scans stay inline — a refusal there decides whether a save
+    happens, so it cannot be deferred. The Scan button is different: it is
+    ordered work, it bills, and a browser waiting on a synchronous request is
+    a spinner that is really a blocked socket. Same run shape as every queued
+    job here (texlab, aralia, steven), so the polling idiom and the stuck-run
+    sweeper work unchanged.
+    """
+
+    owner = models.ForeignKey(settings.AUTH_USER_MODEL,
+                              on_delete=models.CASCADE,
+                              related_name="scan_runs")
+    file = models.ForeignKey("vault.VaultFile", on_delete=models.CASCADE,
+                             related_name="scan_runs")
+    status = models.CharField(max_length=10, choices=RunStatus.choices,
+                              default=RunStatus.PENDING)
+    error = models.TextField(blank=True)
+    #: The verdict this run produced, for the poll to hand back. SET_NULL: a
+    #: verdict outlives its run and a run row is prunable history.
+    result = models.ForeignKey(ScanResult, null=True, blank=True,
+                               on_delete=models.SET_NULL, related_name="runs")
+
+    task_id = models.CharField(max_length=255, blank=True)
+    #: Not an FK — toto.workflows must stay optional. Same trade as AiRun.
+    workflow_run_id = models.PositiveIntegerField(null=True, blank=True)
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-created_at"]
+        indexes = [
+            models.Index(fields=["owner", "-created_at"]),
+            models.Index(fields=["status"]),
+        ]
+        verbose_name = "scan run"
+
+    def __str__(self):
+        return f"{self.owner} → {self.file_id} · {self.status}"
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status in (RunStatus.SUCCESS, RunStatus.FAILED)
+
+    def finish(self, *, status, error: str = "", result=None) -> None:
+        from django.utils import timezone
+
+        self.status = status
+        self.error = error[:2000]
+        if result is not None:
+            self.result = result
+        self.finished_at = timezone.now()
+        self.save(update_fields=["status", "error", "result", "finished_at"])
+
+
+# ---------------------------------------------------------------------------
+# Metering — the standard opt-in pair; toto.quota owns no tables.
+# ---------------------------------------------------------------------------
+
+class AntivirusUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Antivirus usage event"
+        verbose_name_plural = "Antivirus usage events"
+
+
+class AntivirusQuotaPolicy(AbstractQuotaPolicy):
+    events = AntivirusUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Antivirus quota policy"
+        verbose_name_plural = "Antivirus quota policies"

@@ -19,29 +19,39 @@ from __future__ import annotations
 
 from toto.vault.scanning import Verdict
 
-#: file_type -> callable(text) -> Verdict
+#: file_type -> callable -> Verdict. Text scanners take str; a scanner
+#: registered with ``binary=True`` takes bytes — PDF is the reason: a real PDF
+#: does not decode as UTF-8, and forcing it through the text path refused every
+#: one as "wrong-shape" before it was ever looked at.
 _REGISTRY: dict[str, callable] = {}
+_BINARY: set[str] = set()
 
 
 class DuplicateScanner(ValueError):
     """Two scanners claimed one file type — one of them would never run."""
 
 
-def register(file_type: str, scanner) -> None:
+def register(file_type: str, scanner, *, binary: bool = False) -> None:
     """Claim a file type. Idempotent for the same callable, loud otherwise."""
     existing = _REGISTRY.get(file_type)
     if existing is not None and existing is not scanner:
         raise DuplicateScanner(
             f"{file_type!r} is already scanned by {existing!r}")
     _REGISTRY[file_type] = scanner
+    if binary:
+        _BINARY.add(file_type)
 
 
 def scanner_for(file_type: str):
     return _REGISTRY.get(file_type)
 
 
+def is_binary(file_type: str) -> bool:
+    return file_type in _BINARY
+
+
 def scanned_types() -> tuple[str, ...]:
     return tuple(sorted(_REGISTRY))
 
 
-from . import json_scan, markup  # noqa: E402,F401  - the built-ins register on import
+from . import json_scan, markup, pdf  # noqa: E402,F401  - the built-ins register on import

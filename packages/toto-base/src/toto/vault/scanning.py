@@ -33,7 +33,10 @@ from django.apps import apps
 #: What this platform knows how to screen. Images, video and audio are
 #: deliberately absent: they are opaque blobs to a text scanner, and pretending
 #: to have looked at them would be worse than saying nothing.
-SCANNABLE_TYPES = ("svg", "html", "xml", "json")
+# "pdf" is the one binary member: its scanner reads raw bytes for the marker
+# tokens of active content (JavaScript, auto-run actions, launched programs)
+# and parses nothing.
+SCANNABLE_TYPES = ("svg", "html", "xml", "json", "pdf")
 
 
 @dataclass(frozen=True)

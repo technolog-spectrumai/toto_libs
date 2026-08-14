@@ -84,30 +84,90 @@
   {% endcomment %}
   <div x-show="scanModal" x-cloak
        class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="scanModal = false"></div>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm"
+         @click="phase === 'confirm' ? (scanModal = false) : null"></div>
     <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
          class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
 
       <div class="border-b border-current/10 p-5 pb-3">
         <h2 class="flex items-center gap-2 text-lg font-bold">
-          <i class="fa-solid fa-shield-virus"></i> {% trans "Scan files" %}</h2>
-        <p class="mt-1 text-sm opacity-70">
-          {% trans "Exactly the checked files will be scanned, one after another. A scan reads a file and never changes it." %}</p>
+          <i class="fa-solid fa-shield-virus"></i>
+          <span x-text="phase === 'confirm' ? '{% trans 'Scan these files?' %}'
+                        : (phase === 'running' ? '{% trans 'Scanning…' %}' : '{% trans 'Scan finished' %}')"></span></h2>
+        <p class="mt-1 text-sm opacity-70" x-show="phase === 'confirm'">
+          {% trans "Exactly the checked files will be scanned, one after another, on a worker. A scan reads a file and never changes it." %}</p>
       </div>
 
-      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3">
+      {% comment %}Phase one: pick and confirm. The question is the checked
+         set; Scan or Cancel is the whole choice.{% endcomment %}
+      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3" x-show="phase === 'confirm'">
         {% include "antivirus/_scan_tree.html" with picking=True %}
       </div>
 
+      {% comment %}Phases two and three: the SAME modal turns into the progress
+         view. The bar is real progress — scans run one after another and each
+         completed poll advances it — and every finished file lands a line, so
+         "what just happened" never requires hunting through the tree.
+      {% endcomment %}
+      <div class="min-h-0 flex-1 space-y-3 overflow-y-auto p-5 py-3" x-show="phase !== 'confirm'" x-cloak>
+        <div class="flex items-center justify-between text-xs opacity-60">
+          <span x-text="done + ' / ' + total"></span>
+          <span x-text="progressPercent + '%'"></span>
+        </div>
+        <div :class="darkMode ? 'bg-white/10' : 'bg-black/10'" class="h-2 overflow-hidden rounded-full">
+          <div :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+               class="h-full rounded-full transition-all duration-300"
+               :style="'width:' + progressPercent + '%'"></div>
+        </div>
+        <ul class="space-y-1 text-sm">
+          <template x-for="outcome in outcomes" :key="outcome.title + outcome.when">
+            <li class="flex items-start gap-2">
+              <template x-if="outcome.ok === false">
+                <i class="fa-solid fa-circle-question mt-0.5 opacity-60"></i>
+              </template>
+              <template x-if="outcome.ok !== false && outcome.clean">
+                <i class="fa-solid fa-circle-check mt-0.5"
+                   :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+              </template>
+              <template x-if="outcome.ok !== false && !outcome.clean">
+                <i class="fa-solid fa-triangle-exclamation mt-0.5"
+                   :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+              </template>
+              <span class="min-w-0">
+                <span class="font-semibold" x-text="outcome.title"></span>
+                <span class="block text-xs opacity-70"
+                      x-text="outcome.ok === false ? outcome.error
+                              : (outcome.clean ? '{% trans 'Nothing found' %}' : (outcome.detail || '{% trans 'Refused' %}'))"></span>
+              </span>
+            </li>
+          </template>
+        </ul>
+      </div>
+
       <div class="flex items-center justify-end gap-3 border-t border-current/10 p-5 pt-3">
-        <button type="button" @click="scanModal = false"
-                class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
-          {% trans "Cancel" %}</button>
-        <button type="button" @click="confirmScan()" :disabled="checkedCount === 0"
-                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                class="rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40">
-          <span x-text="checkedCount === 1 ? '{% trans 'Scan 1 file' %}' : '{% trans 'Scan' %} ' + checkedCount + ' {% trans 'files' %}'"></span>
-        </button>
+        <template x-if="phase === 'confirm'">
+          <div class="flex items-center gap-3">
+            <button type="button" @click="scanModal = false"
+                    class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
+              {% trans "Cancel" %}</button>
+            <button type="button" @click="confirmScan()" :disabled="checkedCount === 0"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40">
+              <span x-text="checkedCount === 1 ? '{% trans 'Scan 1 file' %}' : '{% trans 'Scan' %} ' + checkedCount + ' {% trans 'files' %}'"></span>
+            </button>
+          </div>
+        </template>
+        <template x-if="phase === 'running'">
+          <button type="button" @click="stopRequested = true"
+                  class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
+            {% trans "Stop after this file" %}</button>
+        </template>
+        <template x-if="phase === 'done'">
+          <button type="button" @click="closeModal()"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90">
+            {% trans "Close" %}</button>
+        </template>
       </div>
     </div>
   </div>
@@ -120,9 +180,17 @@ function antivirus() {
     saved: false,
     results: {},
     scanModal: false,
+    phase: 'confirm',
     checked: {},
+    total: 0,
+    done: 0,
+    outcomes: [],
+    stopRequested: false,
     get checkedCount() {
       return Object.values(this.checked).filter(Boolean).length;
+    },
+    get progressPercent() {
+      return this.total ? Math.round((this.done / this.total) * 100) : 0;
     },
     _csrf() {
       return document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
@@ -142,17 +210,41 @@ function antivirus() {
          confirmation, so it must never inherit leftovers from the last one. */
       this.checked = {};
       this.checked[pk] = true;
+      this.phase = 'confirm';
+      this.outcomes = [];
       this.scanModal = true;
+    },
+    closeModal() {
+      this.scanModal = false;
+      this.phase = 'confirm';
+      this.checked = {};
+      this.outcomes = [];
+    },
+    _title(pk) {
+      const el = document.querySelector(`[data-file-row="${pk}"] .truncate`);
+      return el ? el.textContent.trim() : `#${pk}`;
     },
     async confirmScan() {
       const ids = Object.keys(this.checked).filter(k => this.checked[k]);
-      this.scanModal = false;
-      /* Sequential on purpose: scans are synchronous server-side, and one
-         click fanning out N parallel POSTs is a self-inflicted stampede. */
+      if (!ids.length) return;
+      /* The modal STAYS OPEN and becomes the progress view. Sequential on
+         purpose: each file is one queued run, and one click fanning out N
+         parallel dispatches is a self-inflicted stampede. */
+      this.phase = 'running';
+      this.total = ids.length;
+      this.done = 0;
+      this.outcomes = [];
+      this.stopRequested = false;
       for (const id of ids) {
+        if (this.stopRequested) {
+          this.outcomes.push({title: this._title(id), ok: false,
+                              error: "{% trans 'Skipped.' %}", when: Date.now()});
+          continue;
+        }
         await this.scan(id);
+        this.done += 1;
       }
-      this.checked = {};
+      this.phase = 'done';
     },
     async scan(pk) {
       this.results[pk] = {busy: true};
@@ -167,15 +259,41 @@ function antivirus() {
           headers: {"X-CSRFToken": this._csrf()},
         });
         data = await res.json();
-        if (!res.ok) data = {ok: false, error: data.error || res.statusText};
+        if (!res.ok) {
+          data = {ok: false, error: data.error || res.statusText};
+          /* Out of funds or over quota: every later file refuses for the same
+             reason, so stop asking rather than printing it N times. */
+          if (res.status === 402 || res.status === 429) this.stopRequested = true;
+        } else {
+          /* Queued. The verdict arrives by polling — the same idiom texlab
+             and the assistant use, so the platform has one polling shape. */
+          data = await this.pollRun(data.status_url);
+        }
       } catch (e) {
         data = {ok: false, error: "{% trans 'The scan could not be run.' %}"};
       }
       /* A failed REQUEST is not a verdict. Without ok:false reaching the row,
          `clean` is simply absent and the template's `!clean` branch renders —
-         so a 404 read on screen as "Refused", which says a file is hostile
-         when what actually happened is that it was never scanned. */
+         so a refusal would read as "threat found" on a file nothing ever
+         scanned. */
       this.results[pk] = {busy: false, ...data};
+      this.outcomes.push({title: this._title(pk), when: Date.now(), ...data});
+    },
+    async pollRun(statusUrl) {
+      /* Fast at first (a scan takes milliseconds once a worker picks it up),
+         then relaxed; the sweeper closes anything wedged past 15 minutes. */
+      for (let i = 0; i < 240; i++) {
+        await new Promise(r => setTimeout(r, i < 5 ? 400 : 1200));
+        try {
+          const res = await fetch(statusUrl, {credentials: "same-origin"});
+          const d = await res.json();
+          if (d.finished) {
+            return d.ok ? {ok: true, clean: d.clean, reason: d.reason, detail: d.detail}
+                        : {ok: false, error: d.error || "{% trans 'The scan failed.' %}"};
+          }
+        } catch (e) { /* poll again */ }
+      }
+      return {ok: false, error: "{% trans 'This is taking too long.' %}"};
     },
   };
 }

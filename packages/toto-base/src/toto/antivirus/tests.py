@@ -18,9 +18,29 @@ from toto.vault.models import Bucket, VaultFile
 from toto.vault.scanning import Verdict, scan, scanning_enabled
 
 from .scanners import json_scan, markup, scanned_types
-from .models import ScanResult, ScanVerdict
+from .models import RunStatus, ScanResult, ScanRun, ScanVerdict
 
 User = get_user_model()
+
+
+def _scan_inline(client, pk):
+    """POST antivirus:scan_file with dispatch executing inline, then return the
+    poll response — the queued flow, collapsed for tests. A refused POST
+    (403/404/402/429/503) is returned as-is.
+    """
+    from unittest import mock
+
+    from django.urls import reverse as _reverse
+
+    from . import runner
+
+    with mock.patch("toto.antivirus.dispatch.dispatch_run",
+                    side_effect=lambda run: runner.execute_run(run.pk)):
+        posted = client.post(_reverse("antivirus:scan_file", args=[pk]))
+    if posted.status_code != 200:
+        return posted
+    return client.get(
+        _reverse("antivirus:scan_status", args=[posted.json()["run_id"]]))
 
 
 class MarkupScannerTests(SimpleTestCase):
@@ -141,7 +161,8 @@ class JsonScannerTests(SimpleTestCase):
 
 class RegistryTests(SimpleTestCase):
     def test_the_built_in_scanners_registered(self):
-        self.assertEqual(set(scanned_types()), {"svg", "html", "xml", "json"})
+        self.assertEqual(set(scanned_types()),
+                         {"svg", "html", "xml", "json", "pdf"})
 
     def test_two_scanners_cannot_claim_one_type(self):
         from .scanners import DuplicateScanner, register
@@ -215,8 +236,7 @@ class ScanViewTests(TestCase):
     def test_scanning_a_clean_file_records_a_clean_verdict(self):
         vault_file = self._file("<svg><rect/></svg>")
 
-        response = self.client.post(
-            reverse("antivirus:scan_file", args=[vault_file.pk]))
+        response = _scan_inline(self.client, vault_file.pk)
 
         self.assertEqual(response.status_code, 200)
         self.assertTrue(response.json()["clean"])
@@ -227,8 +247,7 @@ class ScanViewTests(TestCase):
         body = '<svg><script>alert(1)</script></svg>'
         vault_file = self._file(body)
 
-        response = self.client.post(
-            reverse("antivirus:scan_file", args=[vault_file.pk]))
+        response = _scan_inline(self.client, vault_file.pk)
 
         self.assertFalse(response.json()["clean"])
         self.assertEqual(vault_file.scan_results.get().verdict, "refused")
@@ -239,8 +258,7 @@ class ScanViewTests(TestCase):
         vault_file = self._file("<svg/>")
         self.client.force_login(self.stranger)
         self.assertEqual(
-            self.client.post(
-                reverse("antivirus:scan_file", args=[vault_file.pk])).status_code,
+            _scan_inline(self.client, vault_file.pk).status_code,
             404)
 
     def test_the_tick_shows_only_for_current_clean_bytes(self):
@@ -249,7 +267,7 @@ class ScanViewTests(TestCase):
         vault_file = self._file("<svg><rect/></svg>")
         self.assertEqual(clean_file_ids([vault_file]), set())
 
-        self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+        _scan_inline(self.client, vault_file.pk)
         vault_file.refresh_from_db()
         self.assertEqual(clean_file_ids([vault_file]), {vault_file.pk})
 
@@ -262,7 +280,7 @@ class ScanViewTests(TestCase):
         from toto.vault.scanning import clean_file_ids
 
         vault_file = self._file('<svg onload="x()"/>')
-        self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+        _scan_inline(self.client, vault_file.pk)
         vault_file.refresh_from_db()
         self.assertEqual(clean_file_ids([vault_file]), set())
 
@@ -275,7 +293,7 @@ class ScanViewTests(TestCase):
         self.assertEqual(set(ScanPreference.types_for(self.user)), {"svg", "html"})
         # Untouched for everyone else.
         self.assertEqual(set(ScanPreference.types_for(self.stranger)),
-                         {"svg", "html", "xml", "json"})
+                         {"svg", "html", "xml", "json", "pdf"})
 
     def test_an_unknown_type_cannot_be_smuggled_into_preferences(self):
         from .models import ScanPreference
@@ -556,7 +574,7 @@ class ListingTickTests(TestCase):
 
     def test_a_scanned_clean_file_is_marked(self):
         vault_file = self._file()
-        self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+        _scan_inline(self.client, vault_file.pk)
 
         items = self._items(self.client.get(reverse("vault:public_list")))
         self.assertTrue(items["drawing.svg"]["scan_ok"])
@@ -570,7 +588,7 @@ class ListingTickTests(TestCase):
         bytes that change without passing a door lose it immediately.
         """
         vault_file = self._file()
-        self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+        _scan_inline(self.client, vault_file.pk)
 
         self.client.post(reverse("editor:xml_save", args=[vault_file.pk]),
                          {"content": '<svg xmlns="http://www.w3.org/2000/svg"><circle/></svg>'})
@@ -581,7 +599,7 @@ class ListingTickTests(TestCase):
     def test_bytes_that_changed_outside_a_door_lose_the_mark(self):
         """No verdict exists for the hash the file now carries."""
         vault_file = self._file()
-        self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+        _scan_inline(self.client, vault_file.pk)
 
         VaultFile.objects.filter(pk=vault_file.pk).update(content_hash="0" * 64)
 
@@ -593,7 +611,7 @@ class ListingTickTests(TestCase):
 
         for n in range(6):
             vault_file = self._file(f"d{n}.svg")
-            self.client.post(reverse("antivirus:scan_file", args=[vault_file.pk]))
+            _scan_inline(self.client, vault_file.pk)
         self.assertEqual(ScanResult.objects.count(), 6)
 
         from toto.vault.scanning import clean_file_ids
@@ -656,8 +674,7 @@ class ScanPanelTests(TestCase):
 
         for pk in self._listed():
             with self.subTest(pk=pk):
-                response = self.client.post(
-                    reverse("antivirus:scan_file", args=[pk]))
+                response = _scan_inline(self.client, pk)
                 self.assertEqual(response.status_code, 200)
 
     def test_an_encrypted_file_is_listed_but_disabled(self):
@@ -678,8 +695,7 @@ class ScanPanelTests(TestCase):
 
         self.assertNotIn(theirs.pk, self._listed())
         self.assertEqual(
-            self.client.post(
-                reverse("antivirus:scan_file", args=[theirs.pk])).status_code,
+            _scan_inline(self.client, theirs.pk).status_code,
             404)
 
     def test_a_file_in_my_bucket_owned_by_someone_else_is_still_mine(self):
@@ -749,8 +765,7 @@ class _TabsFixture(TestCase):
         return vault_file
 
     def _scan(self, vault_file):
-        return self.client.post(
-            reverse("antivirus:scan_file", args=[vault_file.pk]))
+        return _scan_inline(self.client, vault_file.pk)
 
 
 class TabsTests(_TabsFixture):
@@ -838,7 +853,8 @@ class ErrorRecordingTests(_TabsFixture):
 
         response = self._scan(vault_file)
 
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(response.json()["ok"])
         row = ScanResult.objects.get(file=vault_file)
         self.assertEqual(row.verdict, ScanVerdict.ERROR)
 
@@ -1126,3 +1142,157 @@ class HtmlUploadDoorTests(TestCase):
 
         self.assertEqual(response.status_code, 400)
         self.assertEqual(VaultFile.objects.count(), before)
+
+
+class PdfScannerTests(SimpleTestCase):
+    """The binary scanner: refuse what a PDF can DO, parse nothing.
+
+    Deliberately not refused: /AcroForm and signature machinery — notarius
+    writes signed PDFs, and a scanner that refuses the platform's own output
+    is a ban, not a guard. The same lesson as the HTML5 doctype.
+    """
+
+    CLEAN = (b"%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\n"
+             b"2 0 obj<</Type/Pages/Kids[]/Count 0>>endobj\n"
+             b"trailer<</Root 1 0 R/Size 3>>\n%%EOF")
+
+    def test_a_plain_pdf_passes(self):
+        self.assertTrue(scan(self.CLEAN, file_type="pdf").ok)
+
+    def test_active_content_markers_refuse_by_name(self):
+        for marker in (b"/JavaScript", b"/JS", b"/OpenAction", b"/AA",
+                       b"/Launch", b"/EmbeddedFile", b"/RichMedia", b"/XFA"):
+            with self.subTest(marker=marker.decode()):
+                body = self.CLEAN.replace(b"trailer", marker + b" trailer")
+                verdict = scan(body, file_type="pdf")
+                self.assertFalse(verdict.ok)
+                self.assertEqual(verdict.reason, "active-content")
+
+    def test_a_name_that_merely_starts_the_same_way_is_not_a_marker(self):
+        """PDF names are case-sensitive tokens; /JSXform is not /JS."""
+        body = self.CLEAN.replace(b"trailer", b"/JSXform trailer")
+
+        self.assertTrue(scan(body, file_type="pdf").ok)
+
+    def test_signature_machinery_is_not_refused(self):
+        """A notarius-signed document must pass its own platform's scanner."""
+        body = self.CLEAN.replace(
+            b"trailer", b"/AcroForm<</Fields[]>> /Sig /ByteRange[0 1 2 3] trailer")
+
+        self.assertTrue(scan(body, file_type="pdf").ok)
+
+    def test_an_encrypted_pdf_is_refused_not_waved_through(self):
+        body = self.CLEAN.replace(b"trailer", b"/Encrypt 5 0 R trailer")
+        verdict = scan(body, file_type="pdf")
+
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "wrong-shape")
+
+    def test_bytes_that_are_not_a_pdf_are_refused(self):
+        verdict = scan(b"GIF89a not a pdf at all", file_type="pdf")
+
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "wrong-shape")
+
+    def test_the_binary_path_does_not_choke_on_binary(self):
+        """The old text path refused every real PDF as not-UTF-8 without ever
+        looking at it — the reason binary scanners exist."""
+        body = self.CLEAN + b"\nstream\n\x00\xff\xfe\x89binary\xda\nendstream\n"
+
+        self.assertTrue(scan(body, file_type="pdf").ok)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="antivirus-queue-"))
+class QueuedScanTests(_TabsFixture):
+    """The Scan button is queued, billable work."""
+
+    def test_no_worker_is_a_named_refusal_and_a_closed_run(self):
+        """celery is not running in tests, so the real dispatch path refuses —
+        which is exactly the production behaviour with no worker."""
+        vault_file = self._file(title="q1.svg")
+
+        response = self.client.post(
+            reverse("antivirus:scan_file", args=[vault_file.pk]))
+
+        self.assertEqual(response.status_code, 503)
+        self.assertIn("worker", response.json()["error"].lower())
+        run = ScanRun.objects.get()
+        self.assertEqual(run.status, RunStatus.FAILED)
+
+    def test_over_limit_is_refused_before_any_run_exists(self):
+        from unittest import mock
+
+        vault_file = self._file(title="q2.svg")
+
+        class Broke(Exception):
+            status_code = 402
+
+        with mock.patch("toto.antivirus.services.check_affordable",
+                        side_effect=Broke("no funds")):
+            response = self.client.post(
+                reverse("antivirus:scan_file", args=[vault_file.pk]))
+
+        self.assertEqual(response.status_code, 402)
+        self.assertEqual(ScanRun.objects.count(), 0)
+
+    def test_the_poll_is_owner_only(self):
+        vault_file = self._file(title="q3.svg")
+        run_response = self._scan(vault_file)
+        self.assertEqual(run_response.status_code, 200)
+        run = ScanRun.objects.get()
+
+        self.client.force_login(self.other)
+
+        self.assertEqual(
+            self.client.get(reverse("antivirus:scan_status",
+                                    args=[run.pk])).status_code, 404)
+
+    def test_a_delivered_verdict_charges_once(self):
+        from .models import AntivirusUsageEvent
+
+        vault_file = self._file(title="q4.svg")
+        self._scan(vault_file)
+
+        events = AntivirusUsageEvent.objects.filter(
+            metric_code="antivirus.scan")
+        self.assertEqual(events.count(), 1)
+
+        # Settling again must not double-bill: the idempotency key is the run.
+        from . import services as antivirus_services
+
+        antivirus_services.settle(ScanRun.objects.get())
+        self.assertEqual(events.count(), 1)
+
+    def test_a_refused_verdict_still_charges(self):
+        """The scan ran and the answer is "this file is hostile" — that is the
+        service, delivered."""
+        from .models import AntivirusUsageEvent
+
+        vault_file = self._file(self.HOSTILE, title="q5.svg")
+        self._scan(vault_file)
+
+        self.assertEqual(AntivirusUsageEvent.objects.count(), 1)
+
+    def test_a_failed_run_charges_nothing(self):
+        import os
+
+        from .models import AntivirusUsageEvent
+
+        vault_file = self._file(title="q6.svg")
+        os.remove(vault_file.file.path)
+        self._scan(vault_file)
+
+        self.assertEqual(AntivirusUsageEvent.objects.count(), 0)
+        self.assertEqual(ScanRun.objects.get().status, RunStatus.FAILED)
+
+    def test_the_stuck_run_policy_is_registered(self):
+        from toto.quota.sweeps import all_policies
+
+        labels = {policy.model_label for policy in all_policies()}
+        self.assertIn("antivirus.ScanRun", labels)
+
+    def test_the_metric_is_registered_and_priced(self):
+        from toto.quota.metrics import registry as metric_registry
+
+        codes = {metric.code for metric in metric_registry}
+        self.assertIn("antivirus.scan", codes)

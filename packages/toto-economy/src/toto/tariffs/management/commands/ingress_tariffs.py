@@ -212,6 +212,10 @@ PRICES = {
     # often somebody asks, and how big each ask turns out to be. The token price
     # is the one that matters — a 60-page paste and a one-line question are the
     # same number of requests and are not remotely the same cost.
+    # One on-demand file scan. Priced because it occupies a worker on purpose;
+    # the automatic door screening stays free — it is the platform protecting
+    # itself, not a service somebody ordered.
+    "antivirus.scan": CHEAP,
     "ai.request": CHEAP,
     "ai.tokens_1k": NORMAL,
     # A month of a subscription plan. The QUANTITY is the plan's size (Standard

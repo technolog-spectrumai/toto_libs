@@ -516,8 +516,13 @@ class FileUploadDirectoryApiTests(TestCase):
             owner=self.user, name="B2", slug="up2", storage_backend="local"
         )
         keys = []
+        # Real (minimal) PDF bytes: the antivirus screens pdf at this door now,
+        # and a file CLAIMING .pdf whose bytes are plain text is rightly
+        # refused as the wrong shape. This test is about key uniqueness, so its
+        # fixture has to be an honest PDF.
+        small_pdf = b"%PDF-1.4\ntrailer<</Size 1>>\n%%EOF"
         for slug in ("up", "up2"):
-            f = SimpleUploadedFile("report.pdf", SMALL_TXT, content_type="text/plain")
+            f = SimpleUploadedFile("report.pdf", small_pdf, content_type="application/pdf")
             res = self.client.post(
                 "/vault/api/files/upload/",
                 {"file": f, "title": "Report", "bucket_slug": slug},

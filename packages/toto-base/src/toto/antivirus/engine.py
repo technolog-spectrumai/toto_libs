@@ -29,9 +29,18 @@ def _as_text(data) -> str | None:
 
 def scan(data, *, file_type: str, filename: str = "") -> Verdict:
     """Screen content. Returns clean-and-unscanned for anything we cannot read."""
+    from .scanners import is_binary
+
     scanner = scanner_for(file_type)
     if scanner is None:
         return Verdict.clean(scanned=False)
+
+    # A binary scanner takes the raw bytes. PDF is the reason this branch
+    # exists: a real PDF does not decode as UTF-8, and pushing it through the
+    # text path refused every one as "wrong-shape" without ever looking at it.
+    if is_binary(file_type):
+        raw = data.encode("utf-8") if isinstance(data, str) else bytes(data or b"")
+        return scanner(raw)
 
     text = _as_text(data)
     if text is None:
@@ -60,7 +69,7 @@ def record(vault_file, verdict: Verdict, *, user=None, door: str = "",
     content_hash = digest(content) if content is not None else (
         vault_file.content_hash or "")
     if not content_hash:
-        return
+        return None
 
     if isinstance(content, str):
         size = len(content.encode("utf-8"))
@@ -69,7 +78,7 @@ def record(vault_file, verdict: Verdict, *, user=None, door: str = "",
     else:
         size = vault_file.file_size_bytes or 0
 
-    ScanResult.objects.update_or_create(
+    row, _created = ScanResult.objects.update_or_create(
         file=vault_file,
         content_sha256=content_hash,
         defaults={
@@ -83,6 +92,7 @@ def record(vault_file, verdict: Verdict, *, user=None, door: str = "",
             "scanned_by": user if getattr(user, "is_authenticated", False) else None,
         },
     )
+    return row
 
 
 def record_failure(vault_file, detail: str, *, user=None, door: str = "") -> None:
@@ -94,7 +104,7 @@ def record_failure(vault_file, detail: str, *, user=None, door: str = "") -> Non
     """
     from .models import ScanResult, ScanVerdict
 
-    ScanResult.objects.update_or_create(
+    row, _created = ScanResult.objects.update_or_create(
         file=vault_file,
         content_sha256=vault_file.content_hash or "unreadable",
         defaults={

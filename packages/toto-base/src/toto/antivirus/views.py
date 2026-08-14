@@ -29,10 +29,11 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 from toto.vault.filetree import accessible_files, build_file_tree
-from toto.vault.scanning import SCANNABLE_TYPES, scan
+from toto.vault.scanning import SCANNABLE_TYPES
 
-from . import engine
-from .models import ScanPreference, ScanResult, ScanVerdict, severity_of
+from . import dispatch, engine, services
+from .models import (ScanPreference, ScanResult, ScanRun, ScanVerdict,
+                     severity_of)
 
 
 def _render(request, template_name, context):
@@ -317,35 +318,46 @@ def set_preference(request):
 @login_required
 @require_POST
 def scan_file(request, pk):
-    """Scan one file now, on purpose.
+    """Queue one scan, on purpose. Returns ``{run_id}`` or a reason it will not.
 
-    Always runs, whatever the automatic preferences say — pressing the button is
-    the deliberate act the preferences exist to be an alternative to.
+    Always allowed whatever the automatic preferences say — pressing the button
+    is the deliberate act the preferences exist to be an alternative to. The
+    scan itself runs on a worker: it is BILLED work with a run row, and the
+    browser polls ``scan_status`` exactly as it polls texlab and steven.
+
+    Affordability is checked BEFORE anything is queued — nobody occupies a
+    worker they cannot pay for — and the charge lands after the verdict, in
+    ``services.execute``.
     """
     vault_file = get_object_or_404(_my_files(request.user), pk=pk)
 
     try:
-        with vault_file.file.open("rb") as handle:
-            content = handle.read()
-    except (OSError, ValueError) as exc:
-        # RECORDED, not just reported: before the ERROR verdict existed this
-        # returned 400 and forgot — a file that cannot be checked looked
-        # exactly like one nobody had tried.
-        engine.record_failure(vault_file, str(exc), user=request.user,
-                              door="manual")
-        return JsonResponse(
-            {"ok": False, "error": "The file could not be read."}, status=400)
+        services.check_affordable(request.user)
+    except Exception as exc:  # noqa: BLE001 - QuotaExceeded / InsufficientFunds
+        status = getattr(exc, "status_code", None)
+        if status is None:
+            raise
+        return JsonResponse({"ok": False, "error": str(exc)}, status=status)
 
-    verdict = scan(content, file_type=vault_file.file_type,
-                   filename=vault_file.title)
-    engine.record(vault_file, verdict, user=request.user, door="manual",
-                  content=content)
+    run = dispatch.create_run(user=request.user, vault_file=vault_file)
+    try:
+        dispatch.dispatch_run(run)
+    except dispatch.CannotQueue as exc:
+        dispatch.fail_run(run, str(exc))
+        return JsonResponse({"ok": False, "error": str(exc),
+                             "run_id": run.pk}, status=503)
 
     return JsonResponse({
         "ok": True,
-        "clean": verdict.ok,
-        "scanned": verdict.scanned,
-        "reason": verdict.reason,
-        "detail": verdict.detail,
-        "line": verdict.line,
+        "run_id": run.pk,
+        "status": run.status,
+        "status_url": reverse("antivirus:scan_status", args=[run.pk]),
     })
+
+
+@login_required
+def scan_status(request, pk):
+    """Poll one scan run. Owner only."""
+    run = get_object_or_404(ScanRun.objects.select_related("result", "file"),
+                            pk=pk, owner=request.user)
+    return JsonResponse(services.run_payload(run))

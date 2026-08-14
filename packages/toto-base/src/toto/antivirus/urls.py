@@ -10,4 +10,5 @@ urlpatterns = [
     path("pathology/", views.pathology, name="pathology"),
     path("preference/", views.set_preference, name="set_preference"),
     path("scan/<int:pk>/", views.scan_file, name="scan_file"),
+    path("scan/runs/<int:pk>/", views.scan_status, name="scan_status"),
 ]
