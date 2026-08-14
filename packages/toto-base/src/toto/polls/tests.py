@@ -316,3 +316,54 @@ class KindInvariantTests(TestCase):
 
         question.refresh_from_db()
         self.assertEqual(question.revisability, Revisability.FINAL)
+
+
+class OpenNowConsistencyTests(TestCase):
+    """open_now() and Question.is_open must tell the same story."""
+
+    def test_no_deadline_means_open_in_both_tellings(self):
+        question = _question(closes_at=None)
+
+        self.assertTrue(question.is_open)
+        self.assertIn(question, Question.objects.open_now())
+
+    def test_a_passed_deadline_excludes_in_both_tellings(self):
+        question = _question(
+            closes_at=timezone.now() - timezone.timedelta(minutes=1))
+
+        self.assertFalse(question.is_open)
+        self.assertNotIn(question, Question.objects.open_now())
+
+    def test_a_future_opening_excludes(self):
+        question = _question(
+            opens_at=timezone.now() + timezone.timedelta(hours=1))
+
+        self.assertNotIn(question, Question.objects.open_now())
+
+
+class BallotGuardTests(TestCase):
+    """The model-level backstop behind services.cast()'s refusals."""
+
+    def setUp(self):
+        self.voter = User.objects.create_user("v", password="pw")
+
+    def test_a_formal_ballot_refuses_update_and_delete(self):
+        vote = _question(kind=Kind.VOTE)
+        ballot = services.cast(vote, self.voter, vote.choices.first())
+
+        ballot.weight = 99
+        with self.assertRaises(ValueError):
+            ballot.save()
+        with self.assertRaises(ValueError):
+            ballot.delete()
+
+    def test_a_poll_ballot_still_revises_and_deletes(self):
+        poll = _question(kind=Kind.POLL)
+        yes, no = poll.choices.all()
+        ballot = services.cast(poll, self.voter, yes)
+
+        services.cast(poll, self.voter, no)  # revision passes the guard
+        ballot.refresh_from_db()
+        ballot.delete()  # and an individual delete is allowed
+
+        self.assertFalse(Ballot.objects.exists())
