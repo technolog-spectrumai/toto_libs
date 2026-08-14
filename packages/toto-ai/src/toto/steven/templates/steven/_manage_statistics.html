@@ -1,0 +1,158 @@
+{% load i18n %}
+{% comment %}The Statistics tab: the aggregate picture. Included by manage.html.
+
+   Metadata only, by construction: the context is built by steven/stats.py,
+   which never SELECTS source_text, instruction or result — so nothing here
+   can show prompt contents even by accident, and no API key exists on any
+   row it reads. Never widen these tables to content columns.
+{% endcomment %}
+
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-4 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Requests" %}</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums">{{ stats.runs }}</p>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-4 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Tokens" %}</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums">{{ stats.tokens }}</p>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-4 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Answered" %}</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums">
+      {% if stats.success_percent is not None %}{{ stats.success_percent }}%{% else %}—{% endif %}</p>
+    <p class="text-xs opacity-60">{{ stats.succeeded }} {% trans "answered" %} · {{ stats.failed }} {% trans "failed" %}</p>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-4 shadow-sm">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Avg. answer time" %}</p>
+    <p class="mt-1 text-2xl font-bold tabular-nums">
+      {% if stats.avg_duration_ms %}{{ stats.avg_duration_ms }} ms{% else %}—{% endif %}</p>
+  </article>
+</div>
+
+{% if requests_chart_json %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="space-y-3 rounded-2xl border p-5 shadow-sm">
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Requests, last 30 days" %}</h2>
+    {% comment %}The explicit height is load-bearing: the shared partial sets
+       maintainAspectRatio:false, so an unsized parent collapses the canvas to
+       nothing.{% endcomment %}
+    <div class="h-64">
+      {% include "oya/partials/chart.html" with chart_id="steven_requests" data=requests_chart_json %}
+    </div>
+  </article>
+{% endif %}
+
+{% if tokens_chart_json %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="space-y-3 rounded-2xl border p-5 shadow-sm">
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Tokens, last 30 days" %}</h2>
+    <div class="h-64">
+      {% include "oya/partials/chart.html" with chart_id="steven_tokens" data=tokens_chart_json %}
+    </div>
+  </article>
+{% endif %}
+
+<div class="grid gap-4 lg:grid-cols-3">
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "By agent" %}</h2>
+    <table class="w-full text-sm">
+      <tbody>
+        {% for row in stats_by_agent %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-1.5 pr-3">{{ row.label }}</td>
+            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.runs }}</td>
+            <td class="py-1.5 text-right text-xs opacity-60 tabular-nums">{{ row.tokens }} tk</td>
+          </tr>
+        {% empty %}
+          <tr><td class="py-2 text-sm opacity-60">{% trans "Nothing yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "By model" %}</h2>
+    <table class="w-full text-sm">
+      <tbody>
+        {% for row in stats_by_model %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-1.5 pr-3">{{ row.label }}</td>
+            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.runs }}</td>
+            <td class="py-1.5 text-right text-xs opacity-60 tabular-nums">{{ row.tokens }} tk</td>
+          </tr>
+        {% empty %}
+          <tr><td class="py-2 text-sm opacity-60">{% trans "Nothing yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-2 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "By app and action" %}</h2>
+    <table class="w-full text-sm">
+      <tbody>
+        {% for row in stats_by_surface %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-1.5 pr-3">{{ row.label }}</td>
+            <td class="py-1.5 pr-3 text-right tabular-nums">{{ row.runs }}</td>
+            <td class="py-1.5 text-right text-xs opacity-60 tabular-nums">{{ row.tokens }} tk</td>
+          </tr>
+        {% empty %}
+          <tr><td class="py-2 text-sm opacity-60">{% trans "Nothing yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </article>
+</div>
+
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="overflow-hidden rounded-2xl border shadow-sm">
+  <h2 class="px-5 pt-5 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Recent activity" %}</h2>
+  <div class="overflow-x-auto px-5 pb-5 pt-2">
+    <table class="w-full min-w-[42rem] text-sm">
+      <thead>
+        <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+          <th class="py-2 pr-4">{% trans "When" %}</th>
+          {% if stats_show_owner %}<th class="py-2 pr-4">{% trans "Who" %}</th>{% endif %}
+          <th class="py-2 pr-4">{% trans "Where" %}</th>
+          <th class="py-2 pr-4">{% trans "Agent" %}</th>
+          <th class="py-2 pr-4">{% trans "Model" %}</th>
+          <th class="py-2 pr-4 text-right">{% trans "Tokens" %}</th>
+          <th class="py-2 pr-4 text-right">{% trans "ms" %}</th>
+          <th class="py-2">{% trans "Result" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for run in stats_recent %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-2 pr-4 whitespace-nowrap opacity-70">{{ run.created_at|date:"Y-m-d H:i" }}</td>
+            {% if stats_show_owner %}<td class="py-2 pr-4">{{ run.owner__username }}</td>{% endif %}
+            <td class="py-2 pr-4">{{ run.surface }}/{{ run.action }}</td>
+            <td class="py-2 pr-4">{{ run.agent_label|default:"—" }}</td>
+            <td class="py-2 pr-4 text-xs opacity-70">{{ run.model_used|default:"—" }}</td>
+            <td class="py-2 pr-4 text-right tabular-nums">{{ run.total_tokens }}</td>
+            <td class="py-2 pr-4 text-right tabular-nums">{{ run.duration_ms|default:"—" }}</td>
+            <td class="py-2">
+              {% if run.status == "success" %}
+                <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+                  <i class="fa-solid fa-circle-check"></i> {% trans "Done" %}</span>
+              {% elif run.status == "failed" %}
+                <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold">
+                  <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Failed" %}</span>
+              {% else %}
+                <span class="opacity-70">{{ run.status }}</span>
+              {% endif %}
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="8" class="py-3 opacity-60">{% trans "Nothing yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</article>

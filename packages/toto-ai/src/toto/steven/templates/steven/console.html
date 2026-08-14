@@ -101,9 +101,34 @@ Nothing the assistant proposes is ever applied on its own. You accept it or you 
       </article>
     {% endif %}
 
+    {% comment %}The user's standing note. Prepended to EVERY question they ask
+       — which is why the help text is honest that it is a bill.{% endcomment %}
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-3 rounded-2xl border p-5 shadow-sm">
+      <div class="space-y-1">
+        <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Personalization" %}</h2>
+        <p class="text-sm opacity-70">
+          {% trans "A standing note the assistant reads before every one of your questions — how to answer, what you work on, which language. It rides on every call, so it counts toward what each question costs." %}
+        </p>
+      </div>
+      <form method="post" action="{% url 'steven:personalization' %}" class="space-y-3">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=personalization_form %}
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition">
+          <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+      </form>
+    </article>
+
     <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="overflow-hidden rounded-2xl border shadow-sm">
-      <h2 class="px-5 pt-5 text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What you have asked" %}</h2>
+      <div class="flex flex-wrap items-baseline justify-between gap-2 px-5 pt-5">
+        <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Your usage" %}</h2>
+        <p class="text-xs opacity-60">
+          {{ stats.runs }} {% trans "requests" %} · {{ stats.tokens }} {% trans "tokens" %}{% if stats.success_percent is not None %} · {{ stats.success_percent }}% {% trans "answered" %}{% endif %}
+        </p>
+      </div>
       <div class="overflow-x-auto px-5 pb-5 pt-2">
         <table class="w-full min-w-[34rem] text-sm">
           <thead>
@@ -112,31 +137,32 @@ Nothing the assistant proposes is ever applied on its own. You accept it or you 
               <th class="py-2 pr-4">{% trans "Where" %}</th>
               <th class="py-2 pr-4">{% trans "What" %}</th>
               <th class="py-2 pr-4 text-right">{% trans "Tokens" %}</th>
+              <th class="py-2 pr-4 text-right">{% trans "ms" %}</th>
               <th class="py-2">{% trans "Result" %}</th>
             </tr>
           </thead>
           <tbody>
-            {% for run in runs %}
+            {% for run in stats_recent %}
               <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
                 <td class="py-2 pr-4 whitespace-nowrap opacity-70">{{ run.created_at|date:"Y-m-d H:i" }}</td>
                 <td class="py-2 pr-4">{{ run.surface }}</td>
                 <td class="py-2 pr-4">{{ run.action }}</td>
                 <td class="py-2 pr-4 text-right tabular-nums">{{ run.total_tokens }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ run.duration_ms|default:"—" }}</td>
                 <td class="py-2">
                   {% if run.status == "success" %}
                     <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
-                      <i class="fa-solid fa-circle-check"></i> {{ run.get_status_display }}</span>
+                      <i class="fa-solid fa-circle-check"></i> {% trans "Done" %}</span>
                   {% elif run.status == "failed" %}
-                    <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold"
-                          title="{{ run.error }}">
-                      <i class="fa-solid fa-triangle-exclamation"></i> {{ run.get_status_display }}</span>
+                    <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="font-semibold">
+                      <i class="fa-solid fa-triangle-exclamation"></i> {% trans "Failed" %}</span>
                   {% else %}
-                    <span class="opacity-70">{{ run.get_status_display }}</span>
+                    <span class="opacity-70">{{ run.status }}</span>
                   {% endif %}
                 </td>
               </tr>
             {% empty %}
-              <tr><td colspan="5" class="py-3 opacity-60">
+              <tr><td colspan="6" class="py-3 opacity-60">
                 {% trans "Nothing yet. Select something in an editor and press the wand." %}</td></tr>
             {% endfor %}
           </tbody>

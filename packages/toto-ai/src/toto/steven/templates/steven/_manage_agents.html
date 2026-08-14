@@ -1,0 +1,76 @@
+{% load i18n %}
+{% comment %}The Agents tab: reusable personas. Included by manage.html.
+
+   Several rows may exist; exactly one is the voice. A row is edited on its
+   own page (identity + prompt, with the assembled-message preview); this
+   list's one power is having more than one, and switching between them.
+{% endcomment %}
+
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="space-y-4 rounded-2xl border p-5 shadow-sm">
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="space-y-1">
+      <h2 class="text-lg font-bold">{% trans "Agents" %}</h2>
+      <p class="max-w-2xl text-sm opacity-70">
+        {% trans "Who the assistant is: a name, a persona, the house's rules about how to write. Draft as many as you like beside the live one; Activate decides which answers. A new agent starts switched off." %}
+      </p>
+    </div>
+    <a href="{% url 'steven:agent_new' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-plus"></i>{% trans "Add agent" %}</a>
+  </div>
+
+  <div class="overflow-x-auto">
+    <table class="w-full min-w-[36rem] text-sm">
+      <thead>
+        <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+          <th class="py-2 pr-4">{% trans "Agent" %}</th>
+          <th class="py-2 pr-4">{% trans "Tagline" %}</th>
+          <th class="py-2 pr-4">{% trans "Language" %}</th>
+          <th class="py-2 pr-4">{% trans "Status" %}</th>
+          <th class="py-2"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in agents %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-2 pr-4">
+              <span class="flex items-center gap-2 font-semibold">
+                <i class="{{ row.icon }} opacity-70"></i>{{ row.name }}</span>
+            </td>
+            <td class="py-2 pr-4 text-xs opacity-70">{{ row.tagline|default:"—" }}</td>
+            <td class="py-2 pr-4 text-xs opacity-70">{{ row.language|default:"—" }}</td>
+            <td class="py-2 pr-4">
+              {% if row.active %}
+                <span :class="darkMode ? 'text-success-dark' : 'text-success-light'" class="font-semibold">
+                  <i class="fa-solid fa-circle-check"></i> {% trans "The voice" %}</span>
+              {% else %}
+                <span class="opacity-60">{% trans "Draft" %}</span>
+              {% endif %}
+            </td>
+            <td class="py-2">
+              <div class="flex items-center justify-end gap-2">
+                <a href="{% url 'steven:agent_edit' row.pk %}"
+                   class="rounded-lg border border-current/30 px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+                  <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+                {% if not row.active %}
+                  <form method="post" action="{% url 'steven:agent_activate' row.pk %}">
+                    {% csrf_token %}
+                    <button type="submit"
+                            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                            class="rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
+                      <i class="fa-solid fa-power-off"></i> {% trans "Activate" %}</button>
+                  </form>
+                {% endif %}
+              </div>
+            </td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="5" class="py-4 text-sm opacity-60">
+            {% trans "No agents yet. Without one, the assistant answers with the plain per-action prompts and no persona." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</article>

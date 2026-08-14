@@ -1,0 +1,60 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% if provider %}{{ provider.label }}{% else %}{% trans "New provider" %}{% endif %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Operators" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-plug"></i>
+        {% if provider %}{{ provider.label }}{% else %}{% trans "New provider" %}{% endif %}
+      </h1>
+      <p class="text-sm opacity-70">
+        {% trans "An OpenAI-compatible endpoint: any provider speaking that wire format works by pointing the endpoint URL at it." %}
+      </p>
+    </header>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border px-4 py-3 text-sm font-medium">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-4 rounded-2xl border p-5 shadow-sm">
+
+      {% comment %}The status line is everything a reader ever learns about the
+         key: encrypted at rest in Steven's vault, never displayed again after
+         submission, kept out of logs and error reports. The field below is
+         write-only by construction.{% endcomment %}
+      <p class="text-sm">
+        <span class="font-semibold">{% trans "Current API key" %}:</span>
+        <span class="opacity-75">{{ key_status }}</span>
+      </p>
+
+      <form method="post" class="space-y-4">
+        {% csrf_token %}
+        {% include "oya/_form_fields.html" with form=form %}
+        <div class="flex items-center gap-3">
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold hover:opacity-90 transition">
+            <i class="fa-solid fa-floppy-disk"></i>{% trans "Save" %}</button>
+          <a href="{% url 'steven:manage' %}?tab=connection"
+             class="rounded-lg px-3 py-2 text-sm font-semibold opacity-60 transition hover:opacity-100">
+            {% trans "Back to Connection" %}</a>
+        </div>
+      </form>
+    </article>
+
+  </div>
+</section>
+{% endblock %}

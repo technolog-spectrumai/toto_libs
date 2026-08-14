@@ -23,13 +23,14 @@ from django.core.exceptions import PermissionDenied
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
 
-from . import dispatch, services
-from .forms import IdentityForm, PromptForm
-from .models import AiAgent, AiProvider, AiRun
+from . import dispatch, services, stats
+from .forms import IdentityForm, PersonalizationForm, PromptForm, ProviderForm
+from .models import AiAgent, AiPersonalization, AiProvider, AiRun
 from .surfaces import DOCUMENT_ACTION, ELEMENT_ACTION, registry, resolve_action
 
 #: The largest selection that may be sent. A selection is not a document — the
@@ -144,7 +145,9 @@ def console(request):
     from toto.quota import rates
 
     provider = AiProvider.current()
-    runs = AiRun.objects.filter(owner=request.user)[:25]
+    mine = AiRun.objects.filter(owner=request.user)
+
+    row = AiPersonalization.objects.filter(user=request.user).first()
 
     card = rates.rate_card()
     return _render(request, "steven/console.html", {
@@ -153,12 +156,31 @@ def console(request):
         "agent": AiAgent.current(),
         "is_operator": _is_operator(request.user),
         "surfaces": list(registry.all()),
-        "runs": runs,
+        # Own rows only — the aggregate lives behind the 403 gate on manage.
+        **stats.context_for(mine, staff=False),
+        "personalization_form": PersonalizationForm(instance=row),
         "price_request": card.get("ai.request"),
         "price_tokens": card.get("ai.tokens_1k"),
         "spend": (rates.spend_by_metric(request.user) or {}),
         "balance": rates.balance_of(request.user),
     })
+
+
+@login_required
+@require_POST
+def personalization(request):
+    """Save the user's standing note. Console-only; every user has one."""
+    row, _created = AiPersonalization.objects.get_or_create(user=request.user)
+    form = PersonalizationForm(request.POST, instance=row)
+    if form.is_valid():
+        form.save()
+        django_messages.success(
+            request, "Saved. It is sent with every question you ask.")
+    else:
+        django_messages.error(
+            request, "; ".join(e for errors in form.errors.values()
+                               for e in errors))
+    return redirect("steven:console")
 
 
 # ---------------------------------------------------------------------------
@@ -221,21 +243,153 @@ def _preview(agent: AiAgent):
     return rows
 
 
+#: The hub's tabs. Anything else — including the legacy identity/prompt links,
+#: which now live on each agent's own page — falls back to the first.
+MANAGE_TABS = ("connection", "agents", "statistics")
+
+
 def manage(request):
-    """Identity and prompt engineering, one page, two tabs.
+    """Steven AI Settings — Connection, Agents, Statistics. The operator's desk.
 
-    Deliberately not the Django admin. The admin edits a row; this edits a
-    *voice*, which means showing the assembled system message beside the boxes
-    that build it — and doing it on a page that looks like the rest of the
-    platform rather than one that looks like a database.
+    Deliberately not the Django admin: the admin edits rows; this page answers
+    an operator's three questions — what is answering (and with which key,
+    without ever showing it), who it is, and what it has been doing.
 
-    The provider is NOT editable here, and the tabs say where it lives. An API
-    key and a persona are edited by different people with different care, and
-    putting them on one page is how a tone change becomes an outage.
+    A hub only: no POST lands here. Providers and agents are edited on their
+    own pages, so "which row" is a URL rather than a hidden input, and a
+    validation error comes back on the page that caused it.
     """
     _operator_only(request)
 
-    agent = AiAgent.current() or AiAgent(active=True)
+    tab = request.GET.get("tab") or ""
+    if tab not in MANAGE_TABS:
+        tab = MANAGE_TABS[0]
+
+    context = {
+        "tab": tab,
+        "console_url": reverse("steven:console"),
+        "configured": False,
+    }
+    provider = AiProvider.current()
+    context["provider"] = provider
+    context["configured"] = bool(provider and provider.secret_id)
+
+    if tab == "connection":
+        context["providers"] = list(AiProvider.objects.all())
+    elif tab == "agents":
+        context["agents"] = list(AiAgent.objects.all())
+    else:
+        context.update(stats.context_for(AiRun.objects.all(), staff=True))
+
+    return _render(request, "steven/manage.html", context)
+
+
+# The write-only key never reaches an error report either: this is the same
+# decorator jess's provider_secret page carries, and it is what keeps a POST
+# body out of Django's debug/error emails.
+@sensitive_post_parameters("new_api_key")
+def provider_edit(request, pk: int | None = None):
+    """One provider row: settings, and the write-only key field.
+
+    The key sequence is ``services.store_api_key`` — the admin's exact
+    store → repoint → retire → audit, shared so the two doors cannot drift.
+    The row is saved FIRST (the sequence needs a pk), then the key; a vault
+    failure therefore keeps the row edits and says the key was NOT changed.
+    """
+    _operator_only(request)
+    from .vault import VaultUnavailable
+
+    provider = get_object_or_404(AiProvider, pk=pk) if pk else None
+    form = ProviderForm(instance=provider)
+
+    if request.method == "POST":
+        form = ProviderForm(request.POST, instance=provider)
+        if form.is_valid():
+            saved = form.save()
+            new_value = (form.cleaned_data.get("new_api_key") or "").strip()
+            if new_value:
+                try:
+                    services.store_api_key(saved, new_value, actor=request.user)
+                    django_messages.success(
+                        request, "API key stored, encrypted. It will not be "
+                                 "shown again.")
+                except VaultUnavailable as exc:
+                    django_messages.error(
+                        request, f"Vault unavailable — the key was NOT "
+                                 f"changed: {exc}")
+                except Exception as exc:  # noqa: BLE001 — never echo the value
+                    django_messages.error(
+                        request, f"Could not store the key: {exc}")
+            else:
+                django_messages.success(request, "Saved.")
+            return redirect(f"{reverse('steven:manage')}?tab=connection")
+
+    return _render(request, "steven/provider_form.html", {
+        "form": form,
+        "provider": provider,
+        "key_status": _secret_status(provider),
+    })
+
+
+def _secret_status(provider) -> str:
+    """"set · active · rotated 2026-03-01" or "— none". Never the key."""
+    secret = getattr(provider, "secret", None) if provider else None
+    if not secret:
+        return "— none"
+    rotated = (f" · rotated {secret.rotated_at:%Y-%m-%d}"
+               if secret.rotated_at else "")
+    return f"set · {secret.state}{rotated}"
+
+
+@require_POST
+def provider_activate(request, pk: int):
+    _operator_only(request)
+    provider = get_object_or_404(AiProvider, pk=pk)
+    provider.active = True
+    provider.save()  # the model save keeps the one-active-row invariant
+    django_messages.success(request, f"{provider.label} is now answering.")
+    return redirect(f"{reverse('steven:manage')}?tab=connection")
+
+
+@require_POST
+def provider_test(request, pk: int):
+    """Prove THIS row, synchronously — prove-then-switch, like the admin action.
+
+    Every message here is formatted from ``probe_provider``'s dict or from an
+    exception that cannot contain the key; the probe truncates the answer to
+    40 characters itself, so no caller can leak more.
+    """
+    _operator_only(request)
+    from .client import ProviderError
+    from .vault import VaultUnavailable
+
+    provider = get_object_or_404(AiProvider, pk=pk)
+    try:
+        probe = services.probe_provider(provider)
+        django_messages.success(
+            request,
+            f"{provider.label} answered \"{probe['text']}\" as "
+            f"{probe['model']} ({probe['tokens']} tokens).")
+    except services.NotConfigured as exc:
+        django_messages.error(request, str(exc))
+    except VaultUnavailable as exc:
+        django_messages.error(request, f"Vault: {exc}")
+    except ProviderError as exc:
+        django_messages.error(request, f"{provider.label} did not answer: {exc}")
+    return redirect(f"{reverse('steven:manage')}?tab=connection")
+
+
+def agent_edit(request, pk: int | None = None):
+    """One agent: identity and prompt engineering, two sub-tabs.
+
+    The old single-agent manage page, instance-bound: the assembled-message
+    preview beside the boxes that build it, each tab POSTing alone. A NEW
+    agent saves inactive — with a list, activation is the list's explicit
+    button, not a side effect of typing a persona.
+    """
+    _operator_only(request)
+
+    agent = get_object_or_404(AiAgent, pk=pk) if pk else AiAgent()
     kinds = _registered_kinds()
     tab = request.GET.get("tab") or "identity"
 
@@ -248,35 +402,37 @@ def manage(request):
             tab = "prompt"
             prompt = PromptForm(request.POST, instance=agent, kinds=kinds)
             if prompt.is_valid():
-                # `active` is not a field on this form, so it carries whatever
-                # the instance already had — True for the unsaved row above, so
-                # a first save from EITHER tab switches the assistant on, and
-                # the identity tab's checkbox is the only thing that turns it
-                # off again. An operator who typed a persona and then could not
-                # work out why nothing changed would be the worse default.
-                prompt.save()
+                saved = prompt.save()
                 django_messages.success(request, "Saved. New questions use it.")
-                return redirect(f"{reverse('steven:manage')}?tab=prompt")
+                return redirect(
+                    f"{reverse('steven:agent_edit', args=[saved.pk])}?tab=prompt")
         else:
             tab = "identity"
             identity = IdentityForm(request.POST, instance=agent)
             if identity.is_valid():
-                identity.save()
+                saved = identity.save()
                 django_messages.success(request, "Saved.")
-                return redirect(f"{reverse('steven:manage')}?tab=identity")
+                return redirect(
+                    f"{reverse('steven:agent_edit', args=[saved.pk])}?tab=identity")
 
-    provider = AiProvider.current()
-    return _render(request, "steven/manage.html", {
+    return _render(request, "steven/agent_form.html", {
         "agent": agent if agent.pk else None,
         "identity_form": identity,
         "prompt_form": prompt,
         "tab": tab,
         "kinds": kinds,
-        "preview": _preview(agent),
-        "provider": provider,
-        "configured": bool(provider and provider.secret_id),
-        "console_url": reverse("steven:console"),
+        "preview": _preview(agent if agent.pk else None),
     })
+
+
+@require_POST
+def agent_activate(request, pk: int):
+    _operator_only(request)
+    agent = get_object_or_404(AiAgent, pk=pk)
+    agent.active = True
+    agent.save()  # the model save keeps the one-active-row invariant
+    django_messages.success(request, f"{agent.name} is now the voice.")
+    return redirect(f"{reverse('steven:manage')}?tab=agents")
 
 
 #: How much of a file may be read into a prompt. Bigger than a selection because
