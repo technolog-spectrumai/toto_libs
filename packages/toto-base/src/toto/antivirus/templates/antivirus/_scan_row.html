@@ -81,7 +81,10 @@
           <i class="fa-solid fa-spinner fa-spin"></i>
         </template>
         <template x-if="!(results[{{ file.id }}] && results[{{ file.id }}].busy)">
-          <span>{% trans "Scan" %}</span>
+          {% comment %}Re-scan is always allowed — a verdict is about bytes, and
+             pressing the button again re-checks the bytes as they are now. The
+             label says which act this is.{% endcomment %}
+          <span>{% if file.status == "unscanned" %}{% trans "Scan" %}{% else %}{% trans "Re-scan" %}{% endif %}</span>
         </template>
       </button>
     {% endif %}

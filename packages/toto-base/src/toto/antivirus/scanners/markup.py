@@ -59,6 +59,17 @@ _SVG_EXTRA_TAGS = {"foreignobject", "animate", "animatetransform",
 #: already expanded entities has already lost.
 _DECL_RE = re.compile(r"<!DOCTYPE|<!ENTITY", re.IGNORECASE)
 
+#: The one declaration that is INERT: the bare HTML5 doctype. It names no
+#: external DTD (no SYSTEM/PUBLIC), carries no internal subset (no ``[``) and
+#: expands nothing — it is a rendering-mode switch, and every real HTML file
+#: starts with it. Refusing it meant no ordinary .html could pass the upload
+#: door at all, which turned the scanner from a guard into a ban. Anything
+#: beyond the bare form — an identifier, a subset, an entity — falls outside
+#: this pattern and is refused exactly as before. SVG and XML keep refusing
+#: every doctype: their parsers actually process DTDs, and that is where XXE
+#: lives.
+_HTML5_DOCTYPE = re.compile(r"<!doctype\s+html\s*>", re.IGNORECASE)
+
 #: What an SVG may point at: itself, or an image it carries.
 _SVG_SAFE_REF = re.compile(r"^(#|data:image/(png|jpeg|webp|gif);base64,)",
                            re.IGNORECASE)
@@ -177,6 +188,11 @@ def scan_svg(text: str) -> Verdict:
 
 
 def scan_html(text: str) -> Verdict:
+    # The bare HTML5 doctype is dropped BEFORE the declaration check — once,
+    # from a str only. Everything else about the pipeline is unchanged, so a
+    # doctype with a subset or an identifier still refuses on the same line.
+    if isinstance(text, str):
+        text = _HTML5_DOCTYPE.sub("", text, count=1)
     return _scan_markup(text, svg=False, links_allowed=True)
 
 

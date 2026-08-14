@@ -55,11 +55,15 @@ def _my_files(user):
     Encrypted files are dropped here too, because ``scan_file`` refuses them —
     the tree may LIST more than this (disabled), but every enabled control
     resolves to a file this queryset contains.
+
+    There is deliberately no owner filter beyond the claim arms above:
+    ``VaultFile.owner`` is NOT NULL, so the ``.exclude(owner__isnull=True)``
+    this used to carry could never match a row — dead code wearing a security
+    comment, which is worse than no code.
     """
     return (accessible_files(user, file_types=list(SCANNABLE_TYPES),
                              include_public=False)
-            .filter(is_encrypted=False)
-            .exclude(owner__isnull=True))
+            .filter(is_encrypted=False))
 
 
 def _scoped_results(user):

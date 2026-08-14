@@ -1008,3 +1008,121 @@ class VaultSurfaceTests(_TabsFixture):
         self.assertIn(reverse("antivirus:index"), body)
         self.assertNotIn("askScan", body)
         self.assertNotIn("confirmScan", body)
+
+
+class HtmlDoctypeTests(TestCase):
+    """The bare HTML5 doctype is inert, and every real HTML file starts with it.
+
+    Refusing it meant no ordinary .html could pass the upload door at all — the
+    scanner had turned from a guard into a ban. The allowance is EXACTLY the
+    bare form: an identifier, a subset or an entity falls outside the pattern
+    and refuses precisely as before. SVG and XML keep refusing every doctype,
+    because their parsers actually process DTDs and that is where XXE lives.
+    """
+
+    def test_a_real_html_file_passes(self):
+        for body in ("<!doctype html><html><body><h1>Hi</h1></body></html>",
+                     "<!DOCTYPE html><html><body>x</body></html>",
+                     "<!DOCTYPE  html >\n<html><body>x</body></html>"):
+            with self.subTest(body=body[:30]):
+                self.assertTrue(scan(body, file_type="html").ok)
+
+    def test_the_dangerous_doctypes_still_refuse(self):
+        for body in ('<!DOCTYPE html [ <!ENTITY x "y"> ]><html>&x;</html>',
+                     '<!DOCTYPE html SYSTEM "http://evil/dtd"><html></html>',
+                     '<!ENTITY x "y"><html></html>'):
+            with self.subTest(body=body[:40]):
+                verdict = scan(body, file_type="html")
+                self.assertFalse(verdict.ok)
+                self.assertEqual(verdict.reason, "declaration")
+
+    def test_the_doctype_does_not_smuggle_anything_past_the_rest(self):
+        verdict = scan("<!doctype html><html><script>alert(1)</script></html>",
+                       file_type="html")
+
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "active-content")
+
+    def test_svg_and_xml_keep_refusing_every_doctype(self):
+        for file_type, body in (("svg", "<!doctype html><svg><rect/></svg>"),
+                                ("xml", "<!DOCTYPE html><data><row/></data>")):
+            with self.subTest(file_type=file_type):
+                self.assertFalse(scan(body, file_type=file_type).ok)
+
+
+class RescanTests(_TabsFixture):
+    """A verdict is about bytes; pressing Scan again re-checks the bytes now."""
+
+    def test_scanning_twice_updates_rather_than_piling_up(self):
+        vault_file = self._file(title="again.svg")
+
+        self._scan(vault_file)
+        self._scan(vault_file)
+
+        self.assertEqual(ScanResult.objects.filter(file=vault_file).count(), 1)
+
+    def test_a_rescan_after_an_edit_judges_the_new_bytes(self):
+        """The old verdict stays as history; the new one is about now."""
+        vault_file = self._file(self.HOSTILE, title="fixed.svg")
+        self._scan(vault_file)
+
+        vault_file.file.save("fixed.svg", ContentFile(self.CLEAN.encode()),
+                             save=False)
+        vault_file.content_hash = vault_file.create_hash()
+        # "file" too: FileField.save(save=False) renames the stored file, and
+        # persisting only the hash leaves the row pointing at the old bytes.
+        vault_file.save(update_fields=["file", "content_hash"])
+        response = self._scan(vault_file)
+
+        self.assertTrue(response.json()["clean"])
+        self.assertEqual(ScanResult.objects.filter(file=vault_file).count(), 2)
+
+    def test_a_scanned_row_offers_a_rescan(self):
+        vault_file = self._file(title="offer.svg")
+        self._scan(vault_file)
+
+        body = self.client.get(reverse("antivirus:index")).content.decode()
+
+        self.assertIn("Re-scan", body)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="antivirus-htmldoor-"))
+class HtmlUploadDoorTests(TestCase):
+    """End to end: an ordinary HTML file lands through the vault door."""
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.user = User.objects.create_user("uploader", password="pw")
+        self.bucket = Bucket.objects.create(name="Up", slug="up",
+                                            owner=self.user)
+        self.client.force_login(self.user)
+
+    def test_a_plain_html5_file_uploads(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        body = "<!doctype html><html><body><h1>Notes</h1></body></html>"
+        response = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile("notes.html", body.encode(),
+                                        content_type="text/html"),
+             "bucket_slug": self.bucket.slug})
+
+        self.assertEqual(response.status_code, 201, response.content)
+
+    def test_a_hostile_html_file_still_does_not(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        body = "<!doctype html><html><script>alert(1)</script></html>"
+        before = VaultFile.objects.count()
+        response = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile("bad.html", body.encode(),
+                                        content_type="text/html"),
+             "bucket_slug": self.bucket.slug})
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(VaultFile.objects.count(), before)
