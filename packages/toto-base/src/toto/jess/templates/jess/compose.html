@@ -3,6 +3,15 @@
 
 {% block title %}{% trans "Send a message" %} | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+{{ block.super }}
+{% if steven_surface %}
+  {% comment %}The assistant's modal uses x-cloak; oya/base.html declares no
+     rule, so the page that carries the button carries the rule.{% endcomment %}
+  <style>[x-cloak]{display:none!important}</style>
+{% endif %}
+{% endblock %}
+
 {% block content %}
 <section
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
@@ -83,8 +92,49 @@
         <a href="{% url 'jess:outbox' %}" class="text-sm font-medium opacity-70 hover:opacity-100">
           {% trans "Outbox" %}
         </a>
+        {% if steven_surface %}
+          <span class="h-6 w-px bg-current/20"></span>
+          {% include "steven/_ai.html" with surface=steven_surface %}
+        {% endif %}
       </div>
     </form>
   </div>
 </section>
+
+{% if steven_surface %}
+  {% include "steven/_head.html" %}
+  <script>
+    /* The assistant's handlers, over the BODY textarea and nothing else —
+       "what source returns is what writeDocument replaces" must hold, so the
+       subject and html_body stay out of reach. A plain form field: value
+       assignment IS the whole write, there is no dirty flag to keep honest. */
+    document.addEventListener("DOMContentLoaded", function () {
+      if (!window.StevenActions) return;
+      var body = function () { return document.getElementById("id_body"); };
+      window.StevenActions.register("{{ steven_surface|escapejs }}", {
+        read: function () {
+          var el = body();
+          if (!el) return "";
+          return el.value.substring(el.selectionStart, el.selectionEnd);
+        },
+        write: function (text) {
+          var el = body();
+          if (!el) return;
+          var start = el.selectionStart, end = el.selectionEnd;
+          el.value = el.value.slice(0, start) + text + el.value.slice(end);
+        },
+        insert: function (text) {
+          var el = body();
+          if (!el) return;
+          el.value = el.value.trim()
+            ? el.value.replace(/\s*$/, "") + "\n\n" + text
+            : text;
+        },
+        source: function () { var el = body(); return el ? el.value : ""; },
+        document: function () { var el = body(); return el ? el.value : ""; },
+        writeDocument: function (text) { var el = body(); if (el) el.value = text; },
+      });
+    });
+  </script>
+{% endif %}
 {% endblock %}

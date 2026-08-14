@@ -154,6 +154,8 @@ def compose(request):
         )
         return redirect(reverse("jess:outbox"))
 
+    from toto.core import assistant
+
     return _render(request, "jess/compose.html", {
         "form": form,
         "page_title": "Send a message",
@@ -161,6 +163,8 @@ def compose(request):
         "can_deliver": jess_status.can_deliver(),
         "provider": EmailProvider.active_provider(),
         "manual": manual,
+        # "" on hosts without the assistant, and the template renders nothing.
+        "steven_surface": assistant.surface_for("jess-compose"),
     })
 
 
