@@ -29,6 +29,7 @@ from django.views import View
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
+from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import locks, scanning, versions
 from toto.vault.models import VaultFile
@@ -215,6 +216,10 @@ class SketchEditView(LoginRequiredMixin, View):
             "can_edit": can_edit,
             "save_url": reverse("sketch:save", args=[vault_file.pk]),
             "index_url": reverse("sketch:index"),
+            # "" without the assistant (or for a reader) and the template
+            # renders nothing — the same degradation every editor has.
+            "steven_surface": (assistant.surface_for("sketch")
+                               if can_edit else ""),
         }
         if not verdict.ok:
             # A refused file's content never reaches the page — only the

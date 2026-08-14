@@ -271,6 +271,15 @@ if (window.StevenActions) {
       editor.session.replace(range, text);
       editor.focus();
     },
+    /* The element half: at the CURSOR, not the end of file. ACE keeps a real
+       cursor while blurred, and in code or LaTeX position is meaning — an
+       appended-at-EOF fragment would land after \end{document}. Through the
+       session, so it rides the change event (websocket sync + the antivirus
+       door on save) and ACE's own undo stack. */
+    insert: function (text) {
+      editor.session.insert(editor.getCursorPosition(), text);
+      editor.focus();
+    },
     /* The whole-document half. This editor holds raw source — HTML, XML,
        JSON, LaTeX, Python — so "generate new code in the encoding language"
        means exactly what it says here, and this is the surface the AI button

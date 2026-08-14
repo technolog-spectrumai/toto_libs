@@ -4,6 +4,15 @@
 
 {% block title %}{{ drawing.title }} | {{ platform.site_name }}{% endblock %}
 
+{% block start_script %}
+{{ block.super }}
+{% comment %}oya/base.html declares no [x-cloak] rule, so every page carrying
+   x-cloak ships its own — this one always used the attribute and, until the
+   assistant's modal arrived, got away without the rule because its widgets
+   sat inside late-rendered containers.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
 {% block content %}
 {% if refusal %}
   {% comment %} A refused file's content never reaches this page — only the
@@ -260,6 +269,11 @@ a JS string is never a place to render a template tag into. {% endcomment %}
               class="flex h-8 w-8 items-center justify-center rounded opacity-70 transition hover:text-red-500 hover:opacity-100">
         <i class="fa-solid fa-broom"></i></button>
     </div>
+
+    {% if steven_surface %}
+      <span class="h-6 w-px bg-current/20"></span>
+      {% include "steven/_ai.html" with surface=steven_surface %}
+    {% endif %}
   </div>
 
   <!-- Canvas -->
@@ -452,5 +466,6 @@ a JS string is never a place to render a template tag into. {% endcomment %}
   <script src="{% static 'sketch/svgdoc.js' %}"></script>
   <script src="{% static 'sketch/export.js' %}"></script>
   <script src="{% static 'sketch/editor.js' %}"></script>
+  {% if steven_surface %}{% include "steven/_head.html" %}{% endif %}
 {% endif %}
 {% endblock %}

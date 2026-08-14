@@ -194,6 +194,9 @@
         this.ui.activeId = this.state.slides[0].id;
         history.seed(this.state);
         this.syncHistory();
+        // The deck-level assistant lives with the deck toolbar, which exists
+        // from boot — unlike the block mount, which lives with its dialog.
+        this.registerDeckAssistant();
 
         this._stopCanvas = global.MemoCanvas.observe(this.$refs.stage);
         this._stopStrip = global.MemoCanvas.watchFilmstrip(
@@ -644,6 +647,12 @@
        * opens and destroyed when it closes.
        */
       registerAssistant: function () {
+        /* This declaration is load-bearing: the handlers below close over
+           `self`, and without it `self` silently resolved to window.self —
+           the deck flattening threw on window.state and the chip's catch
+           swallowed it, which is how "ask about this deck" was quietly dead
+           for as long as nobody looked. */
+        var self = this;
         if (!global.StevenActions) return;
         global.StevenActions.register("memo", {
           read: function () {
@@ -661,6 +670,13 @@
             if (sel.empty) chain.selectAll();
             chain.insertContent(text).run();
           },
+          /* The element half of THIS mount appends inside the open block —
+             the deck-level mount is where whole slides come from. */
+          insert: function (html) {
+            if (!prose) return;
+            prose.chain().focus()
+              .insertContentAt(prose.state.doc.content.size, html).run();
+          },
           /* The rewrite's unit here is the OPEN BLOCK, not the deck.
              A block payload is HTML — the thing "generate new code in the
              encoding language" actually means in memo — and a deck is slides
@@ -675,24 +691,86 @@
                autosave already listen to. */
             prose.chain().focus().selectAll().insertContent(html).run();
           },
-          /* The side panel asks about the DECK, not the open block — from the
+          /* Questions are about the DECK, not the open block — from the
              model rather than the DOM, so it works with the dialog closed. */
-          document: function () {
-            var out = [];
-            (self.state.slides || []).forEach(function (slide, index) {
-              out.push("--- slide " + (index + 1) +
-                       (slide.title ? ": " + slide.title : "") + " ---");
-              (slide.blocks || []).forEach(function (block) {
-                var payload = block.payload || "";
-                if (typeof payload !== "string") return;
-                var text = payload.replace(/<[^>]*>/g, " ")
-                                  .replace(/\s+/g, " ").trim();
-                if (text) out.push(text);
-              });
-            });
-            return out.join("\n");
-          },
+          document: function () { return self.deckText(); },
         });
+      },
+
+      /* The deck flattened for asking: titles as headers, block text between.
+         Shared by both assistant mounts and the chat chip's document mode. */
+      deckText: function () {
+        var out = [];
+        (this.state.slides || []).forEach(function (slide, index) {
+          out.push("--- slide " + (index + 1) +
+                   (slide.title ? ": " + slide.title : "") + " ---");
+          (slide.blocks || []).forEach(function (block) {
+            var payload = block.payload || "";
+            if (typeof payload !== "string") return;
+            var text = payload.replace(/<[^>]*>/g, " ")
+                              .replace(/\s+/g, " ").trim();
+            if (text) out.push(text);
+          });
+        });
+        return out.join("\n");
+      },
+
+      /* ---- the deck-level assistant ---------------------------------------
+       * A SECOND surface, registered once at boot: the block mount above
+       * exists only while the dialog does, and "generate a slide" belongs to
+       * the deck toolbar that is there the whole time. No `read` (so no
+       * floating button — the block mount owns selections) and no
+       * `writeDocument` (a deck is not a source file; there is no Full
+       * rewrite of one, deliberately).
+       */
+      registerDeckAssistant: function () {
+        var self = this;
+        if (!global.StevenActions) return;
+        global.StevenActions.register("memo-deck", {
+          source: function () { return self.deckText(); },
+          document: function () { return self.deckText(); },
+          insert: function (text) { self.insertGeneratedSlide(text); },
+        });
+      },
+
+      /* The generated slide arrives as PLAIN TEXT — title line, then bullet
+         lines — and is built through M.newSlide/M.newBlock, never hand-rolled
+         literals: a client-inserted slide skips fromServer's coercion, so a
+         missing id/slot/attrs would leak into templates. Escaped here because
+         the model's text goes into block HTML. */
+      insertGeneratedSlide: function (text) {
+        var self = this;
+        var lines = String(text || "").split("\n")
+            .map(function (l) { return l.trim(); })
+            .filter(function (l) { return !!l; });
+        if (!lines.length) return;
+        var esc = function (s) {
+          return s.replace(/&/g, "&amp;").replace(/</g, "&lt;")
+                  .replace(/>/g, "&gt;");
+        };
+        var slide = M.newSlide("title-content");
+        slide.title = lines.shift().replace(/^[-*#•]+\s*/, "");
+        var body = slide.blocks[0];
+        var bullets = lines.filter(function (l) { return /^[-*•]\s/.test(l); });
+        if (lines.length && bullets.length === lines.length) {
+          body.type = "list";
+          body.items = lines.map(function (l) {
+            return esc(l.replace(/^[-*•]\s*/, ""));
+          });
+          body.payload = "";
+        } else {
+          body.payload = lines.map(function (l) {
+            return "<p>" + esc(l) + "</p>";
+          }).join("");
+        }
+        /* The addSlide idiom — mutate + select — plus refresh(): addSlide
+           skips it only because its slide arrives empty, and this one has
+           content the canvas must draw. */
+        this.mutate(function (s) {
+          s.slides.splice(self.activeIndex + 1, 0, slide);
+        });
+        this.select(slide.id);
+        this.refresh();
       },
 
       teardownProse: function () {

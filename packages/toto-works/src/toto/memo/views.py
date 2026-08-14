@@ -260,6 +260,7 @@ class PresentationEditView(LoginRequiredMixin, View):
                 # deck under version control keeps its history buttons (staff only).
                 # "" without the assistant, and the template renders nothing.
                 "steven_surface": assistant.surface_for("memo"),
+                "steven_deck_surface": assistant.surface_for("memo-deck"),
                 **BaseFileDisplayView.repo_context(vault_file, request.user),
             },
             request,

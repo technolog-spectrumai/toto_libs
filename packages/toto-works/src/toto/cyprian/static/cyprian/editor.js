@@ -493,6 +493,16 @@
               .insertContentAt({ from: sel.from, to: sel.to }, text)
               .run();
           },
+          /* A generated element is APPENDED at the end of the document: the
+             toolbar button is pressed outside the editor, where the caret is
+             stale or collapsed at position 0, and "generate a new section"
+             appends — deterministic and reviewable. One chain, so it is one
+             undo step and the change event the dirty flag, the autosave and
+             the conflict hash listen to. */
+          insert: function (html) {
+            editor.chain().focus()
+              .insertContentAt(editor.state.doc.content.size, html).run();
+          },
           /* The side panel ASKS about the document, so it gets prose: markup
              would be most of the tokens and none of the meaning. */
           document: function () { return editor.getText(); },

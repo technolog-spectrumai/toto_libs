@@ -374,6 +374,23 @@
       return engine.doc.shapes.filter(function (s) { return s.kind === "opaque"; }).length;
     };
 
+    /* Add a BATCH of shapes as one undo step — the assistant's door, and the
+       reason it exists at all: commit() is a closure local, and it neither
+       checks capacity (every interactive caller does) nor takes more than one
+       shape. All-or-nothing on the cap: half a generated arrow would be worse
+       than a refusal. */
+    engine.addShapes = function (list) {
+      if (!list || !list.length) return false;
+      if (engine.doc.shapes.length + list.length > caps.maxShapes) {
+        atCapacity();
+        return false;
+      }
+      snapshot();
+      applyShapes(engine.doc.shapes.concat(list));
+      engine.onChange("all");
+      return true;
+    };
+
     return engine;
   }
 
@@ -962,6 +979,54 @@
         if (engine.opaqueCount() > 0) renderer.renderAll();
         baselineText = engine.toText();
         this.syncMirrors();
+
+        /* ---- the assistant ---------------------------------------------
+         * Generated elements arrive as a complete <svg> holding ONLY the new
+         * shapes (the surface's own rule), already screened server-side as
+         * svg. The browser's parser stays authoritative, exactly as it is
+         * for applySource: what it cannot decompose becomes one opaque
+         * shape, the first-class kind for exactly that markup.
+         *
+         * No `read` (no floating selection button — a drawing's selection is
+         * shapes, not text) and no `writeDocument` (no Full rewrite of a
+         * drawing, deliberately: the source view's Apply is the door for
+         * that, with its own undo-clearing rules).
+         */
+        if (global.StevenActions && config.canEdit) {
+          global.StevenActions.register("sketch", {
+            source: function () { return engine.toText(); },
+            document: function () { return engine.toText(); },
+            insert: function (markup) {
+              /* Draw view only: a connected-but-hidden canvas answers
+                 getBBox with a zero box the renderer would TRUST, breaking
+                 hit-testing of the inserted shapes. */
+              if (self.view !== "draw") {
+                throw new Error("switch to the drawing view first");
+              }
+              var parsed = D.parse(markup, measure);
+              if (!parsed.ok) {
+                /* A bare fragment: wrap it in an <svg> carrying the board's
+                   own viewBox and try again. */
+                parsed = D.parse(
+                  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ' +
+                  engine.doc.width + " " + engine.doc.height + '">' +
+                  markup + "</svg>", measure);
+              }
+              if (!parsed.ok) {
+                throw new Error(parsed.reason + " (" + parsed.detail + ")");
+              }
+              var shapes = parsed.doc.shapes.length
+                ? parsed.doc.shapes
+                : [D.opaqueShape(markup)];
+              if (!engine.addShapes(shapes)) {
+                throw new Error("the board is full");
+              }
+              /* Opaque arrivals measure their bbox on first render — same
+                 second pass as boot's. */
+              if (engine.opaqueCount() > 0) renderer.renderAll();
+            },
+          });
+        }
       },
 
       syncMirrors: function () {

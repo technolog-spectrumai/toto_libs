@@ -271,6 +271,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
               </template>
             </div>
           </div>
+          {% if steven_deck_surface %}
+            <span class="h-6 w-px bg-current/20"></span>
+            {% include "steven/_ai.html" with surface=steven_deck_surface %}
+          {% endif %}
           <span class="flex-1"></span>
           <span class="text-xs opacity-45">
             <span x-text="activeIndex + 1"></span> / <span x-text="state.slides.length"></span>
@@ -714,7 +718,7 @@ old one carried 210 lines of inline Alpine that no test could reach.
 {% endblock %}
 
 {% block end_script %}
-  {% if steven_surface %}{% include "steven/_head.html" %}{% endif %}
+  {% if steven_surface or steven_deck_surface %}{% include "steven/_head.html" %}{% endif %}
   {% if repo_ctx %}{% include "repo/_git_ui.html" %}{% endif %}
   {% comment %} ACE, for the code box, vendored under core/static/vendor and
      listed in every host's download_vendor.py. The prose field is TipTap, at

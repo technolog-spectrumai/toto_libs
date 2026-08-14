@@ -394,7 +394,10 @@
         try {
           write(this.result);
         } catch (e) {
-          this.error = "Could not apply that to the document.";
+          /* A handler may throw a reason worth reading — sketch says "the
+             board is full" — and a swallowed one reads as a dead button. */
+          this.error = "Could not apply that to the document." +
+                       (e && e.message ? " (" + e.message + ")" : "");
           return;
         }
         this.close();
