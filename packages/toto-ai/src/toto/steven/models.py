@@ -196,6 +196,50 @@ class AiAgent(models.Model):
         return agent.as_voice() if agent else None
 
 
+class AiPersonalization(models.Model):
+    """One user's standing note to the assistant. Sent with EVERY question.
+
+    The per-person counterpart of :class:`AiAgent`: the operator's voice says
+    who the assistant is for everyone, this says how one person wants to be
+    answered ("keep it short", "I write Django", "answer in Polish"). It lands
+    in the system message under the house rules and ABOVE the action's rule —
+    ``toto.core.ai_surfaces.compose_system`` keeps the output rule last, so a
+    user's preferences can shape tone and can never displace the answer shape.
+
+    Capped because it is a bill: like the persona, it rides on every single
+    call, and an essay here would be paid for token by token, question after
+    question.
+    """
+
+    user = models.OneToOneField(settings.AUTH_USER_MODEL,
+                                on_delete=models.CASCADE,
+                                related_name="ai_personalization")
+    text = models.TextField(blank=True, max_length=2000, help_text=_(
+        "Sent with every question you ask, so it counts toward what each "
+        "question costs. Keep it short."))
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = _("AI personalization")
+        verbose_name_plural = _("AI personalizations")
+
+    def __str__(self):
+        return f"Personalization for {self.user}"
+
+    @classmethod
+    def text_for(cls, user) -> str:
+        """The user's note, or "". Never raises — same stance as
+        ``services._system_chars``: an assistant that answers without the note
+        beats one that refuses because a lookup hiccuped."""
+        try:
+            if user is None or not getattr(user, "is_authenticated", False):
+                return ""
+            row = cls.objects.filter(user=user).only("text").first()
+            return row.text if row else ""
+        except Exception:  # noqa: BLE001
+            return ""
+
+
 class AiRun(models.Model):
     """One request to the model.
 
@@ -229,6 +273,14 @@ class AiRun(models.Model):
     total_tokens = models.PositiveIntegerField(default=0)
 
     model_used = models.CharField(max_length=120, blank=True)
+    #: Wall time of the provider call itself, in milliseconds. 0 for a run that
+    #: never reached the provider; a slow FAILURE records its duration too —
+    #: a timeout is a diagnostic fact, not an absence of one.
+    duration_ms = models.PositiveIntegerField(default=0)
+    #: Snapshots, not FKs: statistics group by what answered AT THE TIME, and
+    #: renaming or deleting an agent later must not rewrite last month's rows.
+    agent_label = models.CharField(max_length=60, blank=True)
+    provider_label = models.CharField(max_length=120, blank=True)
     task_id = models.CharField(max_length=255, blank=True)
     #: Not an FK: a real one would make toto.workflows a hard dependency of this
     #: app, and a host can run the assistant without the workflow engine's
@@ -262,7 +314,7 @@ class AiRun(models.Model):
         return (Decimal(self.total_tokens) / Decimal("1000")).quantize(Decimal("0.001"))
 
     def finish(self, *, status, result: str = "", error: str = "", usage=None,
-               model_used: str = "") -> None:
+               model_used: str = "", duration_ms: int | None = None) -> None:
         self.status = status
         self.result = result
         self.error = error[:4000]
@@ -271,10 +323,15 @@ class AiRun(models.Model):
             self.prompt_tokens = int(usage.get("prompt_tokens") or 0)
             self.completion_tokens = int(usage.get("completion_tokens") or 0)
             self.total_tokens = int(usage.get("total_tokens") or 0)
+        if duration_ms is not None:
+            self.duration_ms = int(duration_ms)
         self.finished_at = timezone.now()
+        # The label snapshots are assigned on the instance by services.execute
+        # before any finish path runs; listed here or they silently vanish.
         self.save(update_fields=[
             "status", "result", "error", "model_used", "prompt_tokens",
-            "completion_tokens", "total_tokens", "finished_at"])
+            "completion_tokens", "total_tokens", "duration_ms", "agent_label",
+            "provider_label", "finished_at"])
 
 
 # ---------------------------------------------------------------------------

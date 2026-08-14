@@ -30,7 +30,7 @@ from toto.ui import PageProcessor
 from . import dispatch, services
 from .forms import IdentityForm, PromptForm
 from .models import AiAgent, AiProvider, AiRun
-from .surfaces import DOCUMENT_ACTION, registry, resolve_action
+from .surfaces import DOCUMENT_ACTION, ELEMENT_ACTION, registry, resolve_action
 
 #: The largest selection that may be sent. A selection is not a document — the
 #: whole billing model rests on that — and 20k characters is already several
@@ -74,9 +74,13 @@ def ask(request):
         return JsonResponse({"error": "Unknown action."}, status=400)
 
     whole_document = action_key == DOCUMENT_ACTION
-    limit = MAX_DOCUMENT if whole_document else MAX_SELECTION
+    element = action_key == ELEMENT_ACTION
+    # An element generation sends the document as CONTEXT, so it shares the
+    # document limit — and it tolerates an empty one, because an empty document
+    # is exactly where the first element gets generated.
+    limit = MAX_DOCUMENT if (whole_document or element) else MAX_SELECTION
 
-    if not selection.strip():
+    if not selection.strip() and not element:
         return JsonResponse(
             {"error": "There is nothing here to work on." if whole_document
                       else "Select something first."}, status=400)

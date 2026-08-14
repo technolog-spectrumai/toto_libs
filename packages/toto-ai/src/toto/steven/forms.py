@@ -1,8 +1,14 @@
-"""The two halves of the management page.
+"""The settings page's forms.
 
-Two forms rather than one, because they are two tabs and each POSTs alone: a
-half-finished persona must not be able to block a one-word fix to a name, and
-the page tells you which tab saved. Both write the same row.
+Identity and prompt are two forms rather than one, because they are two tabs
+and each POSTs alone: a half-finished persona must not be able to block a
+one-word fix to a name, and the page tells you which tab saved. Both write the
+same row.
+
+The provider form carries the same write-only key field as the admin's — a
+non-model ``PasswordInput(render_value=False)``, so the key never round-trips
+into a response after it is submitted. The storing sequence itself lives in
+``services.store_api_key`` and is shared with the admin.
 """
 
 from __future__ import annotations
@@ -10,7 +16,47 @@ from __future__ import annotations
 from django import forms
 from django.utils.translation import gettext_lazy as _
 
-from .models import AiAgent
+from .models import AiAgent, AiPersonalization, AiProvider
+
+
+class ProviderForm(forms.ModelForm):
+    """The provider row, plus one field that is not on the model.
+
+    The key field is write-only by construction: not a model field, a password
+    widget that never renders a value, and nothing anywhere puts the submitted
+    value back into a page. What a reader gets instead is the status line —
+    "set · active · rotated <date>" — which is everything an operator needs and
+    nothing an attacker wants.
+    """
+
+    new_api_key = forms.CharField(
+        required=False,
+        widget=forms.PasswordInput(render_value=False,
+                                   attrs={"autocomplete": "new-password"}),
+        label=_("Set / replace API key"),
+        help_text=_("Leave blank to keep the current one. Stored encrypted in "
+                    "Steven's vault and never displayed again — not even here."),
+    )
+
+    class Meta:
+        model = AiProvider
+        fields = ("label", "base_url", "model", "temperature",
+                  "max_output_tokens", "timeout", "active")
+
+
+class PersonalizationForm(forms.ModelForm):
+    """One user's standing note. Edited on the console, sent with every question."""
+
+    class Meta:
+        model = AiPersonalization
+        fields = ["text"]
+        widgets = {
+            "text": forms.Textarea(attrs={
+                "rows": 4,
+                "placeholder": _("Keep answers short. I write Django. "
+                                 "Answer in Polish.")}),
+        }
+        labels = {"text": _("Personalization")}
 
 
 class IdentityForm(forms.ModelForm):

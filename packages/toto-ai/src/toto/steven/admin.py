@@ -11,8 +11,9 @@ only place in the tree that had already solved this.
 from django import forms
 from django.contrib import admin, messages
 
+from . import services
 from .models import AiAgent, AiProvider, AiRun, StevenQuotaPolicy
-from .vault import VaultUnavailable, vault
+from .vault import VaultUnavailable
 
 
 class AiProviderForm(forms.ModelForm):
@@ -47,23 +48,15 @@ class AiProviderAdmin(admin.ModelAdmin):
     actions = ["test_provider"]
 
     def save_model(self, request, obj, form, change):
+        # Row first, then key: store_api_key needs the pk. The sequence itself
+        # (store → repoint → retire → audit) lives in services.store_api_key,
+        # shared with the settings page so the two doors cannot drift.
         super().save_model(request, obj, form, change)
         new_value = (form.cleaned_data.get("new_api_key") or "").strip()
         if not new_value:
             return
         try:
-            old = obj.secret
-            secret = vault.store_secret(
-                new_value,
-                name=vault.unique_secret_name(f"steven-{obj.pk}"),
-                purpose="ai_api_key",
-            )
-            obj.secret = secret
-            obj.save(update_fields=["secret"])
-            vault.retire_secret(old)
-            vault.log_secret_event(
-                request.user, "set_ai_api_key", secret,
-                reason=f"set via admin for AI provider #{obj.pk}")
+            services.store_api_key(obj, new_value, actor=request.user)
             messages.success(request, "API key stored, encrypted.")
         except VaultUnavailable as exc:
             messages.error(request, f"Vault unavailable — the key was NOT changed: {exc}")
@@ -91,32 +84,25 @@ class AiProviderAdmin(admin.ModelAdmin):
             messages.error(request, "Select exactly one provider.")
             return
         provider = queryset.first()
-        if not provider.secret_id:
-            messages.error(request, "That provider has no API key stored yet.")
-            return
 
-        from .client import ProviderError, complete
+        from .client import ProviderError
 
         try:
-            key = vault.read_secret(provider.secret)
+            probe = services.probe_provider(provider)
+        except services.NotConfigured as exc:
+            messages.error(request, str(exc))
+            return
         except VaultUnavailable as exc:
             messages.error(request, f"Vault: {exc}")
             return
-
-        try:
-            answer = complete(
-                base_url=provider.base_url, api_key=key, model=provider.model,
-                messages=[{"role": "user", "content": "Reply with the single word: ok"}],
-                temperature=0, max_tokens=8, timeout=min(provider.timeout, 30))
         except ProviderError as exc:
             messages.error(request, f"{provider.label} did not answer: {exc}")
             return
 
-        used = (answer.get("usage") or {}).get("total_tokens", "?")
         messages.success(
             request,
-            f"{provider.label} answered \"{answer['text'].strip()[:40]}\" "
-            f"as {answer['model']} ({used} tokens).")
+            f"{provider.label} answered \"{probe['text']}\" "
+            f"as {probe['model']} ({probe['tokens']} tokens).")
 
 
 @admin.register(AiAgent)
@@ -143,7 +129,7 @@ class AiAgentAdmin(admin.ModelAdmin):
 @admin.register(AiRun)
 class AiRunAdmin(admin.ModelAdmin):
     list_display = ("owner", "surface", "action", "status", "total_tokens",
-                    "model_used", "created_at")
+                    "duration_ms", "agent_label", "model_used", "created_at")
     list_filter = ("status", "surface", "action")
     search_fields = ("owner__username", "surface", "action")
     # Everything: a run is a record of what happened, and an editable one is not

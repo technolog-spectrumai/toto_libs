@@ -245,9 +245,18 @@ def resolve_action(surface: AiSurface, key: str) -> Action | None:
     only thing that varies is the language, which the surface already knows.
     Resolved here so the endpoint that starts a run and the worker that executes
     it cannot disagree about what the run means.
+
+    The element action is the OPPOSITE precedence on purpose: a declared one
+    wins and synthesis is only the fallback. "Add an element" means a fragment
+    of the file's own markup for a source document, but a memo deck wants a
+    plain-text slide and a drawing wants a whole ``<svg>`` of new shapes — a
+    surface whose fragment grammar is not "a fragment of file_type" declares
+    its own Action under this key and the synthesised wording never fires.
     """
     if key == DOCUMENT_ACTION:
         return document_action(surface.file_type)
+    if key == ELEMENT_ACTION:
+        return surface.action(ELEMENT_ACTION) or element_action(surface.file_type)
     return surface.action(key)
 
 
@@ -267,6 +276,50 @@ def document_action(language: str = "") -> Action:
         instruction_placeholder="what should change?",
         template=("{instruction}\n\nThe complete current document follows. "
                   "Return the complete new one.\n\n{selection}"),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Adding one new element
+# ---------------------------------------------------------------------------
+# The third job, and the toolbar's DEFAULT one. A rewrite replaces; this adds.
+# The answer is a fragment the editor appends through its own command path, so
+# the rule leans the other way from the document rule: never the whole file,
+# only the new piece — an answer that re-emits the document would be pasted
+# into it twice.
+
+#: The add-an-element action. Synthesised like DOCUMENT_ACTION, but a surface
+#: MAY declare its own Action under this key, and the declared one wins — see
+#: resolve_action. It appears in no action list either; both sides agree on
+#: the name, and steven/actions.js carries the same constant.
+ELEMENT_ACTION = "generate_element"
+
+_ELEMENT_SYSTEM = (
+    "You add ONE new element to an existing document. Return ONLY the new "
+    "element and nothing else: never the whole document, no preamble, no "
+    "explanation, no markdown code fences, no commentary before or after. The "
+    "output is inserted into the document exactly as returned, so it must be a "
+    "complete, valid fragment on its own."
+)
+
+
+def element_action(language: str = "") -> Action:
+    """The add-an-element action, told which language the fragment is in.
+
+    ``language`` is the surface's ``file_type``, exactly as for
+    :func:`document_action` and for the same reason: shown a fragment of HTML
+    and asked to "add a section", a model will happily answer in Markdown.
+    """
+    named = LANGUAGE_NAMES.get(language, language)
+    emit = f" Return a valid {named} fragment." if named else ""
+    return Action(
+        ELEMENT_ACTION, "Add to the document", "fa-solid fa-plus",
+        system=_ELEMENT_SYSTEM + emit,
+        needs_instruction=True,
+        instruction_placeholder="what should be added?",
+        template=("{instruction}\n\nThe current document follows, as context "
+                  "only. Do not repeat it — return ONLY the new element.\n\n"
+                  "{selection}"),
     )
 
 
@@ -300,22 +353,34 @@ class AgentVoice:
 
 
 def compose_system(surface: AiSurface, action: Action,
-                   voice: AgentVoice | None = None) -> str:
+                   voice: AgentVoice | None = None, *,
+                   personalization: str = "") -> str:
     """Assemble the system message. **The action's own rule always goes last.**
 
     Order is persona, then language, then the note for this kind of surface,
-    then the house rules, then the action's rule — and that last position is not
-    cosmetic. An action's rule is what says *return only the edited text, no
-    preamble, no code fences*, and Accept pastes whatever comes back straight
-    into somebody's document. An operator tuning tone must not be able to make
-    the assistant start returning "Sure! Here you go:" in front of a paragraph,
-    or ```` ``` ```` fences inside an HTML file. Everything above the action's
-    rule shapes the voice; the action's rule fixes the shape of the answer, and
-    it is stated closest to the question so it is the instruction in force.
+    then the house rules, then the user's personalization, then the action's
+    rule — and that last position is not cosmetic. An action's rule is what
+    says *return only the edited text, no preamble, no code fences*, and Accept
+    pastes whatever comes back straight into somebody's document. An operator
+    tuning tone must not be able to make the assistant start returning "Sure!
+    Here you go:" in front of a paragraph, or ```` ``` ```` fences inside an
+    HTML file. Everything above the action's rule shapes the voice; the
+    action's rule fixes the shape of the answer, and it is stated closest to
+    the question so it is the instruction in force.
+
+    ``personalization`` is the asking USER's standing note — the per-person
+    counterpart of the operator's voice, held by an app this module may not
+    import, so it arrives as a plain string exactly as the voice arrives as a
+    plain value. It sits under the house rules and above the action's rule for
+    the same reason the voice does: a user's preferences shape tone and detail,
+    and must be exactly as unable as the operator to displace the output rule.
     """
     action_rule = action.system or _PROSE_SYSTEM
+    personal = (f"The user asking has set these standing preferences:\n"
+                f"{personalization.strip()}" if personalization.strip() else "")
     if voice is None:
-        return action_rule
+        parts = [personal, action_rule]
+        return "\n\n".join(part for part in parts if part)
 
     who = voice.persona
     if voice.name and not who:
@@ -326,12 +391,13 @@ def compose_system(surface: AiSurface, action: Action,
     language = (f"Always answer in {voice.language}." if voice.language else "")
 
     parts = [who, language, voice.kind_notes.get(surface.kind, ""),
-             voice.house_rules, action_rule]
+             voice.house_rules, personal, action_rule]
     return "\n\n".join(part.strip() for part in parts if part and part.strip())
 
 
 def build_messages(surface: AiSurface, action: Action, *, selection: str,
-                   instruction: str = "", voice: AgentVoice | None = None) -> list:
+                   instruction: str = "", voice: AgentVoice | None = None,
+                   personalization: str = "") -> list:
     """The two-message payload. No history: an action is a single shot.
 
     The parked app resent an unbounded conversation on every turn, which grew
@@ -341,7 +407,9 @@ def build_messages(surface: AiSurface, action: Action, *, selection: str,
     user = action.template.format(selection=selection,
                                   instruction=instruction or "")
     return [
-        {"role": "system", "content": compose_system(surface, action, voice)},
+        {"role": "system",
+         "content": compose_system(surface, action, voice,
+                                   personalization=personalization)},
         {"role": "user", "content": user},
     ]
 
