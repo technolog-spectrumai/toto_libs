@@ -95,7 +95,8 @@
                   x-text="op.result.detail"></span>
             {% if editable %}
             <div class="ml-auto flex gap-1">
-              <button @click="setApproval(op, 'approved')" :disabled="busy || (op.validation && op.validation.status === 'error')"
+              {# !!: Alpine turns an undefined bind result into "" for dotted expressions, and "" stamps disabled instead of removing it #}
+              <button @click="setApproval(op, 'approved')" :disabled="!!(busy || (op.validation && op.validation.status === 'error'))"
                       class="rounded border px-2 py-1 text-xs font-semibold disabled:opacity-30"
                       :class="op.approval === 'approved'
                         ? 'border-emerald-500 bg-emerald-500/20 text-emerald-500'

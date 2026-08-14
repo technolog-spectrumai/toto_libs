@@ -1418,6 +1418,27 @@ class SettingsTabTests(_TabsFixture):
                 self.assertContains(response, "accent-accent-dark")
                 self.assertContains(response, "[color-scheme:dark]")
 
+    def test_the_scan_button_binding_yields_a_real_boolean(self):
+        """Alpine coerces an undefined bind result to "" when the expression
+        contains a dot — and "" STAMPS a boolean attribute instead of removing
+        it. `:disabled="a && a.busy"` therefore rendered every Scan button
+        disabled from birth. The binding must coerce with !!."""
+        self._file()
+        html = self.client.get(reverse("antivirus:index")).content.decode()
+
+        self.assertIn(':disabled="!!(results[', html)
+        self.assertNotIn(':disabled="results[', html)
+
+    def test_row_results_are_icons_not_sentences(self):
+        # The tree stays a list: outcome text lives in tooltips and the
+        # modal's outcome list, never inline in a row.
+        self._file()
+        html = self.client.get(reverse("antivirus:index")).content.decode()
+
+        # No row renders result text inline (the modal's outcome list may).
+        self.assertNotIn('x-text="results[', html)
+        self.assertIn(':title="results[', html)
+
     def test_the_files_tab_no_longer_carries_the_preference_card(self):
         self.assertNotContains(self.client.get(reverse("antivirus:index")),
                                "Scan automatically")

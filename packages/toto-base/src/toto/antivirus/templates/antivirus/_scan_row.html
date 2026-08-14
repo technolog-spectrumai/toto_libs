@@ -53,29 +53,37 @@
       {% comment %}Page mode: the live result of a scan run from the modal, and
          the action that opens it. Three outcomes, not two — a scan that could
          not RUN is neither clean nor refused.{% endcomment %}
+      {% comment %}Icons only, never sentences: the tree is a list, and a
+         paragraph of error text in a row turns it into a log. The tooltip
+         carries the sentence; the modal's outcome list keeps the detail.
+         A scan that could not RUN is shown as the same warning as a refusal —
+         suspicious until a scan says otherwise.{% endcomment %}
       <template x-if="results[{{ file.id }}] && !results[{{ file.id }}].busy">
-        <span class="text-xs"
-              :class="results[{{ file.id }}].ok === false
-                        ? 'opacity-70'
-                        : (results[{{ file.id }}].clean
-                            ? (darkMode ? 'text-success-dark' : 'text-success-light')
-                            : (darkMode ? 'text-warn-dark' : 'text-warn-light'))">
-          <template x-if="results[{{ file.id }}].ok === false">
-            <span><i class="fa-solid fa-circle-question"></i>
-              <span x-text="results[{{ file.id }}].error || '{% trans "Could not scan" %}'"></span></span>
-          </template>
+        <span class="text-xs">
+          {% comment %}"Nothing found", not the server icon's "Scanned —
+             nothing found": the status tests read that string as proof the
+             SERVER recomputed the tick, so the client icon may not echo it.
+          {% endcomment %}
           <template x-if="results[{{ file.id }}].ok !== false && results[{{ file.id }}].clean">
-            <span><i class="fa-solid fa-circle-check"></i> {% trans "Nothing found" %}</span>
+            <i class="fa-solid fa-circle-check"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+               title="{% trans 'Nothing found' %}"></i>
           </template>
-          <template x-if="results[{{ file.id }}].ok !== false && !results[{{ file.id }}].clean">
-            <span><i class="fa-solid fa-triangle-exclamation"></i>
-              <span x-text="results[{{ file.id }}].detail || '{% trans "Refused" %}'"></span></span>
+          <template x-if="!(results[{{ file.id }}].ok !== false && results[{{ file.id }}].clean)">
+            <i class="fa-solid fa-triangle-exclamation"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+               :title="results[{{ file.id }}].ok === false
+                         ? (results[{{ file.id }}].error || '{% trans "Could not scan" %}')
+                         : (results[{{ file.id }}].detail || '{% trans "Refused" %}')"></i>
           </template>
         </span>
       </template>
 
+      {% comment %}!! matters: Alpine coerces an undefined bind result to ""
+         when the expression contains a dot, and "" STAMPS a boolean attribute
+         instead of removing it — every button was born disabled.{% endcomment %}
       <button type="button" @click="askScan({{ file.id }})"
-              :disabled="results[{{ file.id }}] && results[{{ file.id }}].busy"
+              :disabled="!!(results[{{ file.id }}] && results[{{ file.id }}].busy)"
               :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
               class="rounded border px-2 py-0.5 text-xs font-semibold transition disabled:opacity-50">
         <template x-if="results[{{ file.id }}] && results[{{ file.id }}].busy">
