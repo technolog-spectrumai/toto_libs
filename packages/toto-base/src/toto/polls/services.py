@@ -15,24 +15,27 @@ first.
 
 from __future__ import annotations
 
-from django.db import transaction
+from django.core.exceptions import PermissionDenied
+from django.db import IntegrityError, transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
 
-from .core import (AlreadyCast, Eligibility, NotEligible, NotOpen, OpenToAll,
+from .core import (AlreadyCast, Eligibility, NotEligible, NotOpen,
                    Result, Revisability, Tally, UnknownChoice, Visibility)
-from .models import Ballot, Question
+from .models import Ballot, Decision, Kind, Outcome, Question, Status
 
 
 def electorate_for(question) -> object:
-    """The electorate a question's scope implies.
+    """The electorate a question names, resolved through the registry.
 
     Resolved here rather than stored on the row, because an electorate is code
-    (it asks live questions about membership and shareholdings) and the scope is
-    data. Consumers register their own by passing ``electorate=`` explicitly;
-    this is the fallback for anything platform-wide.
+    (it asks live questions about membership and shareholdings) and the row
+    stores only a key. Consumers may still pass ``electorate=`` explicitly at
+    any call site; that override always wins.
     """
-    return OpenToAll()
+    from . import electorates
+
+    return electorates.resolve(question)
 
 
 def standing(question, user, *, electorate=None) -> Eligibility:
@@ -147,3 +150,137 @@ def tally(question, *, electorate=None) -> Tally:
         total_ballots=sum(r.ballots for r in results),
         electorate=size,
     )
+
+
+# -- recording a decision -----------------------------------------------------
+
+def record_decision(question, *, decided_by=None, when=None) -> Decision:
+    """Close a formal vote and write its result down, once.
+
+    The Tally is recomputed on every page view; the Decision is the one copy
+    that is not — "what was decided" has to survive later edits and deletions.
+    Idempotent: recording an already-decided vote returns the existing row.
+
+    Policy: after the deadline the clock decides and anyone (or nothing —
+    ``decided_by=None``) may trigger the recording. BEFORE the deadline, or
+    when there is no deadline at all, closing is an act of authority: only
+    staff may do it, and the row says who.
+    """
+    if question.kind != Kind.VOTE:
+        raise ValueError("Only a formal vote is recorded. A poll just closes.")
+
+    with transaction.atomic():
+        question = (Question.objects.select_for_update()
+                    .get(pk=question.pk))
+        existing = Decision.objects.filter(question=question).first()
+        if existing is not None:
+            return existing
+
+        now = timezone.now()
+        deadline_passed = (question.closes_at is not None
+                           and question.closes_at <= now)
+        if not deadline_passed:
+            if decided_by is None or not (decided_by.is_staff
+                                          or decided_by.is_superuser):
+                raise PermissionDenied(
+                    "Closing a vote before its deadline is a staff act.")
+
+        from . import electorates
+
+        roll = electorate_for(question)
+        count = tally(question, electorate=roll)
+
+        if count.total_ballots == 0:
+            outcome, winner_label, winner_ref = Outcome.NO_BALLOTS, "", None
+        elif count.winner is None:
+            outcome, winner_label, winner_ref = Outcome.TIE, "", None
+        else:
+            outcome = Outcome.WINNER
+            winner_label = count.winner.label
+            winner_ref = {"choice_id": count.winner.choice_id,
+                          "label": count.winner.label}
+
+        # An overdue vote closed AT its deadline, whenever the recording ran;
+        # an early close closed when the closer said so.
+        closed_when = when or (question.closes_at if deadline_passed else now)
+        question.close(when=closed_when)
+
+        proposer = question.created_by
+        ballots = [{
+            "voter_id": b.voter_id,
+            "voter_username": b.voter.get_username(),
+            "choice_label": b.choice.label,
+            "weight": b.weight,
+            "cast_at": b.cast_at.isoformat(),
+        } for b in question.ballots.select_related("voter", "choice")]
+
+        content = {
+            "question": {
+                "pk": question.pk, "kind": question.kind,
+                "title": question.title,
+                "question_text": question.question_text,
+                "body": question.body, "slug": question.slug,
+                "scope_type": question.scope_type,
+                "scope_id": question.scope_id,
+            },
+            "proposer": ({"id": proposer.pk,
+                          "username": proposer.get_username()}
+                         if proposer else None),
+            "window": {
+                "opens_at": question.opens_at.isoformat(),
+                "closes_at": (question.closes_at.isoformat()
+                              if question.closes_at else None),
+                "closed_at": (question.closed_at.isoformat()
+                              if question.closed_at else None),
+            },
+            "electorate": {"key": electorates.key_of(question),
+                           "size": count.electorate},
+            "outcome": {"outcome": outcome, "winner": winner_ref},
+            "tally": [{
+                "choice_id": r.choice_id, "label": r.label,
+                "weight": r.weight, "ballots": r.ballots,
+            } for r in count.results],
+            "totals": {"weight": count.total_weight,
+                       "ballots": count.total_ballots,
+                       "turnout": count.turnout},
+            "ballots": ballots,
+        }
+
+        try:
+            return Decision.objects.create(
+                question=question,
+                scope_type=question.scope_type, scope_id=question.scope_id,
+                title=question.title,
+                outcome=outcome, winner_label=winner_label,
+                electorate_key=electorates.key_of(question),
+                electorate_size=count.electorate,
+                total_ballots=count.total_ballots,
+                total_weight=count.total_weight,
+                turnout=count.turnout,
+                decided_by=decided_by,
+                content=content,
+            )
+        except IntegrityError:
+            # Two recorders raced past the filter; the OneToOne held. The
+            # other one's row IS the decision.
+            return Decision.objects.get(question=question)
+
+
+def record_overdue(scope_type: str = "", scope_id: str = "") -> int:
+    """Record every formal vote in one scope whose deadline has passed.
+
+    Called from the pages that could display a decided vote — the tab, the
+    ledger, the results page — so the decision exists by the time anything
+    could show it. Deterministic: after the deadline no ballot can change
+    (cast() checks the clock), so it does not matter which request runs it.
+    Bounded: one indexed query, usually empty.
+    """
+    overdue = (Question.objects.in_scope(scope_type, scope_id)
+               .filter(kind=Kind.VOTE, status=Status.OPEN,
+                       closes_at__lte=timezone.now(),
+                       decision__isnull=True))
+    recorded = 0
+    for question in overdue:
+        record_decision(question)
+        recorded += 1
+    return recorded

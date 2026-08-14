@@ -27,6 +27,8 @@ from django.utils import timezone
 from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 from .core import Revisability, Visibility
 
 #: Scope types. A question with GLOBAL scope belongs to the platform and shows
@@ -65,9 +67,11 @@ class QuestionQuerySet(models.QuerySet):
         return self.filter(kind=Kind.VOTE)
 
     def open_now(self):
+        # Must agree with Question.is_open: a null closes_at means "open until
+        # somebody closes it", so it belongs in this set too.
         now = timezone.now()
-        return self.filter(status=Status.OPEN, opens_at__lte=now,
-                           closes_at__gt=now)
+        return self.filter(status=Status.OPEN, opens_at__lte=now).filter(
+            models.Q(closes_at__isnull=True) | models.Q(closes_at__gt=now))
 
 
 class Question(models.Model):
@@ -216,6 +220,92 @@ class Choice(models.Model):
         return f"{self.label}: {self.text}" if self.text else self.label
 
 
+class Outcome(models.TextChoices):
+    """What a count says, without judging it.
+
+    Pass/fail against a threshold is a POLICY (a consensus profile, stage 7);
+    the outcome here is arithmetic: somebody led, nobody led, or nobody came.
+    """
+
+    WINNER = "winner", _("Winner")
+    TIE = "tie", _("Tie")
+    NO_BALLOTS = "no_ballots", _("No ballots")
+
+
+class DecisionQuerySet(models.QuerySet):
+    def in_scope(self, scope_type: str = SCOPE_GLOBAL, scope_id: str = ""):
+        """Decisions belonging to exactly one scope — the ONLY door, for the
+        same reason as :meth:`QuestionQuerySet.in_scope`: Company A's decided
+        votes are not a filter away from Company B's, they are a different
+        set."""
+        return self.filter(scope_type=scope_type, scope_id=str(scope_id or ""))
+
+
+class Decision(models.Model):
+    """The recorded result of one formal vote. Written once, never edited.
+
+    A Tally is recomputed on every request; a decision must not be — "the
+    vote passed with 62%" has to stay true even if a ballot row is deleted
+    years later. So everything the ledger shows lives in real columns here,
+    and the full snapshot (tally rows, per-ballot audit list) lives in
+    ``content``. The field is named ``content`` to match
+    ``chainledger.ChainedRecord``: stage 6 promotes this table onto the hash
+    chain by swapping the base class, not by migrating data.
+    """
+
+    question = models.OneToOneField(Question, on_delete=models.PROTECT,
+                                    related_name="decision")
+
+    # -- denormalized for the ledger: never joins through Question, and the
+    #    row keeps saying what was decided even if the question is edited.
+    scope_type = models.CharField(max_length=40, blank=True, db_index=True)
+    scope_id = models.CharField(max_length=64, blank=True, db_index=True)
+    title = models.CharField(max_length=150)
+    outcome = models.CharField(max_length=12, choices=Outcome.choices)
+    winner_label = models.CharField(max_length=60, blank=True)
+    electorate_key = models.CharField(max_length=40, blank=True)
+    electorate_size = models.PositiveIntegerField(default=0)
+    total_ballots = models.PositiveIntegerField(default=0)
+    total_weight = models.PositiveIntegerField(default=0)
+    #: Fraction in [0, 1]; null when the electorate size is unknown (0).
+    turnout = models.FloatField(null=True, blank=True)
+
+    decided_at = models.DateTimeField(default=timezone.now)
+    #: Who triggered the recording. Null means the clock did — the deadline
+    #: passed and the first read materialized it.
+    decided_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                   blank=True, on_delete=models.SET_NULL,
+                                   related_name="decisions_recorded")
+
+    #: The full snapshot: question, proposer, window, electorate, tally rows,
+    #: per-ballot audit list. The name matches ChainedRecord.content.
+    content = models.JSONField(default=dict)
+
+    objects = DecisionQuerySet.as_manager()
+
+    class Meta:
+        ordering = ["-decided_at"]
+        indexes = [
+            models.Index(fields=["scope_type", "scope_id", "-decided_at"]),
+            models.Index(fields=["outcome"]),
+        ]
+        verbose_name = _("decision")
+        verbose_name_plural = _("decisions")
+
+    def __str__(self):
+        return f"{self.title}: {self.get_outcome_display()}"
+
+    def save(self, *args, **kwargs):
+        # ChainedRecord's idiom: a decision is appended, never amended.
+        if self.pk is not None:
+            raise ValueError(
+                "A decision is never edited. Record a new question instead.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        raise ValueError("A decision is never deleted; the ledger is history.")
+
+
 class Ballot(models.Model):
     """One voter's answer.
 
@@ -252,3 +342,38 @@ class Ballot(models.Model):
 
     def __str__(self):
         return f"{self.voter} → {self.choice.label} ({self.weight})"
+
+    def save(self, *args, **kwargs):
+        # Model-level backstop, not the primary guard: services.cast() refuses
+        # first with a sentence (AlreadyCast). This catches the code path that
+        # never went through services — the same defence-in-depth ChainedRecord
+        # uses. Creation (pk is None) and poll revisions pass untouched.
+        if self.pk is not None and \
+                self.question.revisability == Revisability.FINAL:
+            raise ValueError("A formal ballot is never altered.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Individual deletes only; queryset .delete() and the CASCADE from
+        # Question stay possible — the documented trust model. A decided
+        # question is PROTECTed by its Decision anyway.
+        if self.question.revisability == Revisability.FINAL:
+            raise ValueError("A formal ballot is never deleted.")
+        return super().delete(*args, **kwargs)
+
+
+# -- metering (the polls.pdf metric's storage) -------------------------------
+
+
+class PollsUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = _("Polls usage event")
+        verbose_name_plural = _("Polls usage events")
+
+
+class PollsQuotaPolicy(AbstractQuotaPolicy):
+    events = PollsUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = _("Polls quota policy")
+        verbose_name_plural = _("Polls quota policies")

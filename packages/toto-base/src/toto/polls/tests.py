@@ -226,11 +226,16 @@ class TallyTests(TestCase):
         self.assertIsNone(services.tally(question).winner)
 
     def test_turnout_is_none_without_a_roll_to_count(self):
-        """Zero would read as "nobody voted" rather than "no fixed roll"."""
+        """Zero would read as "nobody voted" rather than "no fixed roll".
+
+        OpenToAll is passed explicitly: since the registry landed, a global
+        question resolves the "all" electorate, which DOES have a size.
+        """
         question = _question()
         services.cast(question, self.users[0], question.choices.first())
 
-        self.assertIsNone(services.tally(question).turnout)
+        self.assertIsNone(
+            services.tally(question, electorate=OpenToAll()).turnout)
 
     def test_turnout_is_a_fraction_when_the_electorate_is_known(self):
         class Roll:
