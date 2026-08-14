@@ -116,7 +116,13 @@ def test_migrations_are_packaged(all_names, owner):
     # chat widget with no models at all, which is why it appears in
     # NO_MIGRATION_APPS at the top of this file. Rewriting it gave it tables, so
     # that exemption went with the rewrite.
-    assert len(apps_with_migrations) == 48, sorted(apps_with_migrations)
+    # 49: toto.polls (toto-base) — came IN from the zenobia host, where it had
+    # always lived. The Forum has to show the polls belonging to a room and the
+    # poll stays owned by the Polls app; forum ships in toto-chat, and a wheel
+    # cannot import a host portion, so the app had to move to be reachable at
+    # all. Same move, and the same reason, as cyprian in 1.41 and gitvault in
+    # 1.50. The app LABEL is unchanged, so no deployed database notices.
+    assert len(apps_with_migrations) == 49, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
