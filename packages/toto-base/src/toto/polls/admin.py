@@ -149,7 +149,8 @@ class QuizCertificateAdmin(admin.ModelAdmin):
 # -- electorates and consensus rules (stages 5, 7) ---------------------------
 
 from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402
-                                ElectorateMember, RollEntry)
+                                ElectorateMember, RollEntry, VoteExclusion,
+                                VoteProcedure)
 
 
 class ElectorateMemberInline(admin.TabularInline):
@@ -199,4 +200,31 @@ class RollEntryAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(VoteExclusion)
+class VoteExclusionAdmin(admin.ModelAdmin):
+    """Who was barred from which vote, and why. Frozen once decided —
+    the model refuses writes after a Decision exists."""
+
+    list_display = ("question", "label", "user", "excluded_by", "created_at")
+    search_fields = ("label", "reason", "question__title")
+    raw_id_fields = ("question", "user", "excluded_by")
+    readonly_fields = ("created_at",)
+
+
+@admin.register(VoteProcedure)
+class VoteProcedureAdmin(admin.ModelAdmin):
+    """The session's snapshot, read-only: it is written with the register."""
+
+    list_display = ("question", "electorate_weight", "represented_weight",
+                    "eligible_weight", "excluded_weight", "frozen_at")
+    raw_id_fields = ("question",)
+    readonly_fields = [f.name for f in VoteProcedure._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
         return False

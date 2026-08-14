@@ -469,7 +469,7 @@ class Ballot(models.Model):
 # -- electorates as data, the frozen register, consensus profiles -------------
 from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402,F401
                                 ElectorateMember, Presence, RollEntry,
-                                VoteProcedure)
+                                VoteExclusion, VoteProcedure)
 
 # -- quizzes: competence testing on the same scoping --------------------------
 # Imported here so Django's migration autodetector sees them as polls models;

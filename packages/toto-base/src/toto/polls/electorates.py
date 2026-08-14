@@ -86,12 +86,24 @@ class SnapshotElectorate:
         if entry is None:
             return Eligibility(False, reason=_(
                 "You were not on the register when this vote opened."))
+        if _is_barred(question, user):
+            # On the register, in the room, and barred from THIS question.
+            return Eligibility(False, reason=_(
+                "You are excluded from this vote. The reason is recorded "
+                "with it."))
         return Eligibility(True, weight=entry.weight)
 
     def size(self, question) -> int:
         from .electorate_models import RollEntry
 
         return RollEntry.objects.filter(question=self.question).count()
+
+
+def _is_barred(question, user) -> bool:
+    from .electorate_models import VoteExclusion
+
+    return VoteExclusion.objects.filter(question=question,
+                                        user=user).exists()
 
 
 def has_roll(question) -> bool:

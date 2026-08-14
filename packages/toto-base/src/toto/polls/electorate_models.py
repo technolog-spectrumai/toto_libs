@@ -214,6 +214,73 @@ class RollEntry(models.Model):
                                             or self.represented_by)
 
 
+class VoteExclusion(models.Model):
+    """One member barred from ONE vote, with the reason on the record.
+
+    Generic on purpose. Conflict of interest is the case everybody thinks of,
+    but a body may also exclude somebody under a related-party rule, a
+    suspension, or an interest declared in the minutes — so this stores a
+    reason somebody wrote rather than a code from a list the platform
+    invented. Hard-coding one legal scenario would make every other one a
+    lie told in the nearest-fitting field.
+
+    An exclusion is scoped to the vote and never touches the Electorate:
+    membership is a standing fact, exclusion is a fact about one question.
+    The excluded member stays visible in the procedure — a body's record
+    should show who was barred and why, not quietly shorten the roll.
+    """
+
+    question = models.ForeignKey("polls.Question", on_delete=models.CASCADE,
+                                 related_name="exclusions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                             on_delete=models.CASCADE, related_name="+")
+    #: How the excluded member is named — matches the register's label, and
+    #: carries the name for a member with no login.
+    label = models.CharField(max_length=150, blank=True)
+    #: Required. An exclusion with no reason is a silent disenfranchisement,
+    #: and the whole point of recording one is that it can be read back.
+    reason = models.TextField()
+    excluded_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                    blank=True, on_delete=models.SET_NULL,
+                                    related_name="vote_exclusions_made")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["pk"]
+        constraints = [
+            models.UniqueConstraint(fields=["question", "user"],
+                                    condition=models.Q(user__isnull=False),
+                                    name="uniq_vote_exclusion_user"),
+        ]
+        indexes = [models.Index(fields=["question", "user"])]
+        verbose_name = _("voter exclusion")
+        verbose_name_plural = _("voter exclusions")
+
+    def __str__(self):
+        return f"{self.label or self.user} — {self.reason[:60]}"
+
+    def _decided(self) -> bool:
+        from .models import Decision
+
+        return Decision.objects.filter(question_id=self.question_id).exists()
+
+    def save(self, *args, **kwargs):
+        if not (self.reason or "").strip():
+            raise ValueError("An exclusion must say why.")
+        if self._decided():
+            raise ValueError(
+                "This vote is decided; its exclusions are part of the record.")
+        super().save(*args, **kwargs)
+
+    def delete(self, *args, **kwargs):
+        # Liftable while the vote is undecided — a mistake should be fixable —
+        # and frozen the moment a decision exists.
+        if self._decided():
+            raise ValueError(
+                "This vote is decided; its exclusions are part of the record.")
+        return super().delete(*args, **kwargs)
+
+
 class VoteProcedure(models.Model):
     """The session's own facts, snapshotted when voting begins.
 
@@ -236,8 +303,13 @@ class VoteProcedure(models.Model):
     electorate_weight = models.PositiveBigIntegerField(default=0)
     represented_weight = models.PositiveBigIntegerField(default=0)
     eligible_weight = models.PositiveBigIntegerField(default=0)
+    #: Represented, but barred from this question. Held out of
+    #: ``eligible_weight`` and reported on its own, because "could not
+    #: attend" and "was not allowed to vote" are different facts.
+    excluded_weight = models.PositiveBigIntegerField(default=0)
     members_total = models.PositiveIntegerField(default=0)
     members_represented = models.PositiveIntegerField(default=0)
+    members_excluded = models.PositiveIntegerField(default=0)
     frozen_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:
@@ -258,8 +330,10 @@ class VoteProcedure(models.Model):
             "electorate_weight": self.electorate_weight,
             "represented_weight": self.represented_weight,
             "eligible_weight": self.eligible_weight,
+            "excluded_weight": self.excluded_weight,
             "members_total": self.members_total,
             "members_represented": self.members_represented,
+            "members_excluded": self.members_excluded,
             "attendance_percent": self.attendance_percent,
             "frozen_at": self.frozen_at.isoformat() if self.frozen_at else None,
             "notes": notes,

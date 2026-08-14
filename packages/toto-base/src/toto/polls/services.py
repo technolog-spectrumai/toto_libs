@@ -208,6 +208,56 @@ def freeze_roll(question, *, electorate=None, entries=None):
     return question
 
 
+# -- exclusions (stage 9) -----------------------------------------------------
+
+def excluded_user_ids(question) -> set:
+    """Logins barred from this one vote. Cheap enough for every render."""
+    from .electorate_models import VoteExclusion
+
+    return set(VoteExclusion.objects.filter(question=question)
+               .exclude(user=None).values_list("user_id", flat=True))
+
+
+def is_excluded(question, user) -> bool:
+    if not getattr(user, "is_authenticated", False):
+        return False
+    return user.pk in excluded_user_ids(question)
+
+
+def exclude_voter(question, *, user=None, label="", reason, excluded_by=None):
+    """Bar one member from one vote, on the record.
+
+    Never touches the Electorate: membership is a standing fact, exclusion is
+    a fact about this question. Re-snapshots the procedure, because barring
+    somebody changes what "eligible" means and the summary must not go stale.
+    """
+    from .electorate_models import RollEntry, VoteExclusion
+
+    if not (reason or "").strip():
+        raise ValueError("An exclusion must say why.")
+
+    entry = None
+    if user is not None:
+        entry = RollEntry.objects.filter(question=question,
+                                         user=user).first()
+        if entry is None:
+            raise ValueError(
+                "That person is not on this vote's register.")
+    exclusion = VoteExclusion.objects.create(
+        question=question, user=user,
+        label=label or (entry.label if entry else ""),
+        reason=reason, excluded_by=excluded_by)
+    snapshot_procedure(question)
+    return exclusion
+
+
+def lift_exclusion(exclusion):
+    """Undo one, while the vote is still undecided. The model refuses after."""
+    question = exclusion.question
+    exclusion.delete()
+    snapshot_procedure(question)
+
+
 def snapshot_procedure(question):
     """The session's three weights, taken with the register.
 
@@ -219,15 +269,24 @@ def snapshot_procedure(question):
     from .electorate_models import VoteProcedure
 
     rows = list(question.roll.all())
+    barred = excluded_user_ids(question)
     represented = [row for row in rows if row.is_represented]
+    excluded = [row for row in rows
+                if row.user_id is not None and row.user_id in barred]
     procedure, _created = VoteProcedure.objects.update_or_create(
         question=question,
         defaults={
             "electorate_weight": sum(row.weight for row in rows),
             "represented_weight": sum(row.weight for row in represented),
-            "eligible_weight": sum(row.weight for row in rows if row.can_act),
+            # Barred weight is held out: somebody excluded from this question
+            # is in the room and may not vote on it.
+            "eligible_weight": sum(
+                row.weight for row in rows
+                if row.can_act and row.user_id not in barred),
+            "excluded_weight": sum(row.weight for row in excluded),
             "members_total": len(rows),
             "members_represented": len(represented),
+            "members_excluded": len(excluded),
         })
     return procedure
 
@@ -301,8 +360,12 @@ def outcome_fixed(question, count=None) -> bool:
 
     count = count or tally(question, electorate=electorate_for(question))
     voted = set(question.ballots.values_list("voter_id", flat=True))
+    barred = excluded_user_ids(question)
+    # Weight that is barred can never arrive, so it does not keep an
+    # outcome "open" — a vote whose only holdouts are excluded is settled.
     remaining = sum(e.weight for e in entries
-                    if e.user_id is not None and e.user_id not in voted)
+                    if e.user_id is not None and e.user_id not in voted
+                    and e.user_id not in barred)
 
     for_weight, against, denominator = _signed_sides(question, count)
     threshold = float(question.rule_percent)
@@ -429,6 +492,15 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
             } for entry in question.roll.all()],
             "procedure": (procedure.as_dict(notes=question.procedural_notes)
                           if procedure else None),
+            "exclusions": [{
+                "user_id": exclusion.user_id,
+                "label": exclusion.label,
+                "reason": exclusion.reason,
+                "excluded_by": (exclusion.excluded_by.get_username()
+                                if exclusion.excluded_by_id else None),
+                "created_at": exclusion.created_at.isoformat(),
+            } for exclusion in question.exclusions.select_related(
+                "excluded_by")],
             "consensus": consensus,
             "outcome": {"outcome": outcome, "winner": winner_ref},
             "tally": [{
