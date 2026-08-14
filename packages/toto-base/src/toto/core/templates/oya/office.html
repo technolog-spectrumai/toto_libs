@@ -1,0 +1,47 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Office" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Studio" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-briefcase"></i>{% trans "Office" %}
+      </h1>
+      <p class="max-w-3xl text-sm opacity-70">
+        {% trans "The tools for making things: documents, slides, spreadsheets, drawings and templated HTML. Everything you make here is an ordinary file in your vault, so it moves, versions and backs up with the rest of your work." %}
+      </p>
+    </header>
+
+    {% include "oya/_office_tabs.html" %}
+
+    {% comment %}Cards under the strip rather than a redirect to the first tab:
+       an Office landing page whose only content is a tab bar is a menu wearing
+       a page's clothes, and a first-time reader has no idea which of the five
+       is the one they want.{% endcomment %}
+    <div class="grid gap-4 sm:grid-cols-2">
+      {% for app in apps %}
+        <a href="{{ app.url }}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="flex items-start gap-4 rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+          <i class="{{ app.icon }} mt-0.5 text-xl opacity-60"></i>
+          <span>
+            <span class="block font-bold">{{ app.title }}</span>
+            <span class="mt-1 block text-sm opacity-70">{{ app.description }}</span>
+          </span>
+        </a>
+      {% empty %}
+        <p class="text-sm opacity-60 sm:col-span-2">
+          {% trans "None of the office tools are installed on this server." %}</p>
+      {% endfor %}
+    </div>
+  </div>
+</section>
+{% endblock %}

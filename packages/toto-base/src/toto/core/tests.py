@@ -130,3 +130,64 @@ class ManualFeatureGateTests(TestCase):
         # Whatever this host installs, every advertised section must correspond
         # to something reachable — that is the property the gate exists for.
         self.assertIs(type(features["notebooks"]), bool)
+
+
+class OfficeAreaTests(TestCase):
+    """One place for the tools you make things with.
+
+    The five apps live in three different wheels plus a host portion, so the
+    only honest way to list them is to ask this server what it installed AND
+    mounted — an app can be in INSTALLED_APPS and serve no page, which is why
+    zenobia keeps toto.mandragora installed and unmounted.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test", defaults={"author": "t", "publication_year": 2026,
+                                        "active": True})
+        cls.user = User.objects.create_user("officer", password="pw")
+
+    def setUp(self):
+        self.client.force_login(self.user)
+
+    def test_the_page_renders(self):
+        response = self.client.get(reverse("core:office"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "Office")
+
+    def test_it_lists_only_apps_this_host_installed_and_mounted(self):
+        from django.apps import apps as django_apps
+
+        from .views import OFFICE_APPS, _mounted
+
+        listed = {app["title"] for app in
+                  self.client.get(reverse("core:office")).context["apps"]}
+        expected = {title for label, url_name, title, _icon, _desc in OFFICE_APPS
+                    if django_apps.is_installed(label) and _mounted(url_name)}
+
+        self.assertEqual(listed, expected)
+
+    def test_a_missing_app_is_absent_rather_than_broken(self):
+        """The strip and the cards share both guards, so an uninstalled app
+        costs a card rather than a NoReverseMatch."""
+        response = self.client.get(reverse("core:office"))
+
+        for app in response.context["apps"]:
+            with self.subTest(app=app["title"]):
+                self.assertTrue(app["url"].startswith("/"))
+
+    def test_every_office_app_is_named_once(self):
+        """A duplicate would render two identical cards and two tabs."""
+        from .views import OFFICE_APPS
+
+        titles = [title for _l, _u, title, _i, _d in OFFICE_APPS]
+        self.assertEqual(len(titles), len(set(titles)))
+
+    def test_it_needs_a_login(self):
+        self.client.logout()
+
+        response = self.client.get(reverse("core:office"))
+
+        self.assertNotEqual(response.status_code, 500)

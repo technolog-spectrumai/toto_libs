@@ -1,0 +1,82 @@
+{% load i18n app_tags %}
+{% comment %}ONE strip for the productivity apps — the Office area.
+
+   Caller passes active_tab = documents | presentations | sheets | drawings
+                            | html.
+
+   Each entry is doubly guarded, and both guards are load-bearing (the same
+   pair oya/_economy_tabs.html uses, and for the same reasons):
+
+     * `|app_installed` hides the tab when the app is not in INSTALLED_APPS;
+     * the `{% templatetag openblock %} url … as {% templatetag closeblock %}`
+       form swallows NoReverseMatch, so an app that is installed but mounted at
+       no URL degrades to no tab rather than a 500.
+
+   It lives in toto-base/oya/ rather than in any one of the five apps: they are
+   spread across toto-works (cyprian, memo, primula, sketch) and toto-base
+   (aralia is a host app on zenobia), and Django only loads template dirs for
+   INSTALLED apps — so a strip owned by one of them would vanish on a host that
+   did not install that one. Same siting, and the same reasoning, as the
+   economy and media strips.
+
+   Written as a comment tag rather than a hash-brace comment because that form
+   is single-line only; spanning one over several lines makes Django render the
+   whole block as visible page text.{% endcomment %}
+<nav class="mb-4 flex flex-wrap items-center gap-2" aria-label="{% trans 'Office navigation' %}">
+
+  {% if "toto.cyprian"|app_installed %}{% url 'cyprian:index' as documents_url %}{% if documents_url %}
+  <a href="{{ documents_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'documents' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-feather-pointed"></i>{% trans "Documents" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.memo"|app_installed %}{% url 'memo:index' as presentations_url %}{% if presentations_url %}
+  <a href="{{ presentations_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'presentations' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-person-chalkboard"></i>{% trans "Presentations" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.primula"|app_installed %}{% url 'primula:index' as sheets_url %}{% if sheets_url %}
+  <a href="{{ sheets_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'sheets' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-table-cells"></i>{% trans "Sheets" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.sketch"|app_installed %}{% url 'sketch:index' as drawings_url %}{% if drawings_url %}
+  <a href="{{ drawings_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'drawings' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-pen-ruler"></i>{% trans "Drawings" %}</a>
+  {% endif %}{% endif %}
+
+  {% if "toto.aralia"|app_installed %}{% url 'aralia:template_list' as html_url %}{% if html_url %}
+  <a href="{{ html_url }}"
+     class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+     {% if active_tab == 'html' %}aria-current="page"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
+     {% else %}
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     {% endif %}>
+    <i class="fa-solid fa-file-invoice"></i>{% trans "HTML generator" %}</a>
+  {% endif %}{% endif %}
+
+</nav>
