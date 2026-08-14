@@ -1790,3 +1790,46 @@ class ManualReleaseTests(JessTestCase):
                 self.client.force_login(self.plain)   # authenticated, not staff
                 res = self.client.get(reverse(f"jess:{name}"))
                 self.assertEqual(res.status_code, 403)
+
+
+class ComposeAssistantTests(JessTestCase):
+    """The compose aid: body only, and nothing at all without the assistant."""
+
+    def test_the_surface_is_declared_with_draft_rewrite_and_ask(self):
+        import toto.jess.ai_surfaces  # noqa: F401 — idempotent registration
+        from toto.core.ai_surfaces import ELEMENT_ACTION, registry
+
+        surface = registry.get("jess-compose")
+
+        # Plain-text body — screening it as HTML is the documented false alarm.
+        self.assertEqual(surface.file_type, "")
+        element = surface.action(ELEMENT_ACTION)
+        self.assertIsNotNone(element)
+        self.assertIn("no subject line", element.system)
+        self.assertIsNotNone(surface.action("rewrite"))
+        self.assertIsNotNone(surface.action("ask"))
+
+    def test_compose_degrades_to_nothing_without_the_assistant(self):
+        """aurelian never installs steven; the page must render bare, not 500."""
+        from django.apps import apps
+
+        self.client.force_login(self.staff)
+
+        response = self.client.get(reverse("jess:compose"))
+
+        self.assertEqual(response.status_code, 200)
+        if not apps.is_installed("toto.steven"):
+            self.assertEqual(response.context["steven_surface"], "")
+            self.assertNotContains(response, "stevenAi(")
+
+    def test_the_handlers_target_the_body_and_only_the_body(self):
+        """'What source returns is what writeDocument replaces' must hold, so
+        the subject and html_body stay out of the registration entirely."""
+        import pathlib
+
+        template = (pathlib.Path(__file__).parent / "templates" / "jess"
+                    / "compose.html").read_text()
+
+        self.assertIn('getElementById("id_body")', template)
+        self.assertNotIn('getElementById("id_subject")', template)
+        self.assertNotIn('getElementById("id_html_body")', template)

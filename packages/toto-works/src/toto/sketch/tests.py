@@ -564,3 +564,63 @@ class StyledTextTests(TestCase):
         block = model[start:start + 700]
 
         self.assertIn("tracking", block)
+
+
+class AssistantTests(_SketchFixture):
+    """The first wiring: a drawing gets an add-element door, and nothing else.
+
+    No Full rewrite (the source view's Apply is the one door for replacing a
+    drawing) and no floating selection button (a drawing's selection is
+    shapes, not text) — the surface offers exactly one write: append new
+    shapes, screened server-side as SVG before anyone is offered them.
+    """
+
+    def test_the_surface_is_declared_and_screened_as_svg(self):
+        import toto.sketch.ai_surfaces  # noqa: F401 — idempotent registration
+        from toto.core.ai_surfaces import ELEMENT_ACTION, registry
+
+        surface = registry.get("sketch")
+
+        self.assertEqual(surface.file_type, "svg")
+        element = surface.action(ELEMENT_ACTION)
+        self.assertIsNotNone(element)
+        self.assertIn("<svg>", element.system)
+        self.assertIn("No scripts", element.system)
+        self.assertIsNotNone(surface.action("ask"))
+
+    def test_the_owner_gets_the_surface_and_a_reader_does_not(self):
+        from django.apps import apps
+
+        import toto.sketch.ai_surfaces  # noqa: F401
+
+        expected = "sketch" if apps.is_installed("toto.steven") else ""
+
+        own = self.client.get(reverse("sketch:edit", args=[self.own.pk]))
+        shared = self.client.get(reverse("sketch:edit", args=[self.public.pk]))
+
+        self.assertEqual(own.context["steven_surface"], expected)
+        # can_edit is False on a shared file, so no button — the assistant
+        # only writes where the human can.
+        self.assertEqual(shared.context["steven_surface"], "")
+
+    def test_the_page_and_the_engine_carry_the_wiring(self):
+        import pathlib
+
+        base = pathlib.Path(__file__).parent
+        edit = (base / "templates" / "sketch" / "edit.html").read_text()
+        self.assertIn("steven/_ai.html", edit)
+        self.assertIn("steven/_head.html", edit)
+        # The page always used x-cloak and never carried the rule; the
+        # assistant's modal made that a visible flash.
+        self.assertIn("[x-cloak]{display:none!important}", edit)
+
+        js = (base / "static" / "sketch" / "editor.js").read_text()
+        self.assertIn('StevenActions.register("sketch"', js)
+        self.assertIn("engine.addShapes", js)
+        # The registration offers insert and never writeDocument — no Full
+        # rewrite of a drawing, deliberately. (Sliced to the registration
+        # object: the comments around it are allowed to SAY writeDocument.)
+        registration = js[js.index('register("sketch"'):]
+        registration = registration[:registration.index("});")]
+        self.assertIn("insert:", registration)
+        self.assertNotIn("writeDocument:", registration)

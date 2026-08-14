@@ -1814,3 +1814,56 @@ class TipTapVendorTests(SimpleTestCase):
 
     def test_a_less_than_sign_cannot_close_the_script_element(self):
         self.assertNotIn("<", tiptap.import_map_json())
+
+
+class DeckAssistantTests(TestCase):
+    """The deck-level mount: a second surface whose element is a SLIDE."""
+
+    def test_the_deck_surface_is_declared_plain_text(self):
+        import toto.memo.ai_surfaces  # noqa: F401 — idempotent registration
+        from toto.core.ai_surfaces import ELEMENT_ACTION, registry
+
+        surface = registry.get("memo-deck")
+
+        # No file_type: the answer is plain text the client escapes and
+        # builds into model blocks itself — screening it as HTML is the
+        # false-alarm trap editor/ai_surfaces.py documents.
+        self.assertEqual(surface.file_type, "")
+        element = surface.action(ELEMENT_ACTION)
+        self.assertIsNotNone(element)
+        self.assertIn("plain", element.system)
+        self.assertIsNotNone(surface.action("ask"))
+
+    def test_the_editor_mounts_the_deck_assistant_at_boot(self):
+        import pathlib
+
+        base = pathlib.Path(__file__).parent
+        js = (base / "static" / "memo" / "editor.js").read_text()
+
+        self.assertIn('StevenActions.register("memo-deck"', js)
+        self.assertIn("registerDeckAssistant", js)
+        self.assertIn("insertGeneratedSlide", js)
+        # The deck registration offers insert and never writeDocument — a
+        # deck is not a source file, so there is no Full rewrite of one.
+        deck = js[js.index('register("memo-deck"'):]
+        deck = deck[:deck.index("});")]
+        self.assertIn("insert:", deck)
+        self.assertNotIn("writeDocument", deck)
+
+    def test_the_page_carries_both_mounts(self):
+        import pathlib
+
+        base = pathlib.Path(__file__).parent
+        edit = (base / "templates" / "memo" / "edit.html").read_text()
+
+        self.assertIn("steven_deck_surface", edit)
+        # The script include must load when EITHER surface is present.
+        self.assertIn("steven_surface or steven_deck_surface", edit)
+
+    def test_the_view_offers_the_deck_surface_key(self):
+        import inspect
+
+        from toto.memo import views
+
+        source = inspect.getsource(views)
+        self.assertIn('assistant.surface_for("memo-deck")', source)

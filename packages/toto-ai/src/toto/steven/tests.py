@@ -48,6 +48,23 @@ HTML_SURFACE = AiSurface(
     key="tests-html", label="Tests HTML", kind="prose", file_type="html",
     actions=(Action("improve", "Improve", system="s", template="{selection}"),),
 )
+#: Declares its OWN element action — the declared-beats-synthesised half of
+#: resolve_action's contract. Carries "ask" so the registry sweep stays green
+#: whichever class registered it first.
+DECLARED_ELEMENT_SURFACE = AiSurface(
+    key="tests-element", label="Tests element", kind="prose",
+    actions=(
+        Action("generate_element", "Add a widget", system="THE WIDGET RULE",
+               needs_instruction=True, template="{instruction}\n{selection}"),
+        Action("ask", "Ask about it…", system="s", needs_instruction=True,
+               template="{instruction}\n{selection}"),
+    ),
+)
+SVG_SURFACE = AiSurface(
+    key="tests-svg", label="Tests SVG", kind="code", file_type="svg",
+    actions=(Action("ask", "Ask about it…", system="s", needs_instruction=True,
+                    template="{instruction}\n{selection}"),),
+)
 
 
 def _register_test_surfaces():
@@ -774,7 +791,8 @@ class AllSurfacesTests(TestCase):
         """
         from toto.core.ai_surfaces import registry
 
-        fixtures = {TEST_SURFACE.key, HTML_SURFACE.key}
+        fixtures = {TEST_SURFACE.key, HTML_SURFACE.key,
+                    DECLARED_ELEMENT_SURFACE.key, SVG_SURFACE.key}
         return [s for s in registry.all() if s.key not in fixtures]
 
     def test_every_surface_can_be_asked_a_question(self):
@@ -792,23 +810,50 @@ class AllSurfacesTests(TestCase):
                 self.assertTrue(action.needs_instruction)
 
 
-class DrawerTests(TestCase):
-    """The side panel, and the block that used to hide it."""
+class ChatChipTests(TestCase):
+    """The chat chip (grown from the drawer), and the block that used to hide it."""
 
     def test_it_is_registered_as_a_floating_plugin(self):
         from toto.core.plugin import FloatingPlugin
 
-        self.assertIn("steven_drawer", FloatingPlugin.registry)
+        self.assertIn("steven_chat", FloatingPlugin.registry)
+        # The drawer it replaced is gone, not left beside it.
+        self.assertNotIn("steven_drawer", FloatingPlugin.registry)
 
     def test_it_is_hidden_from_anonymous_visitors(self):
         from django.contrib.auth.models import AnonymousUser
         from django.test import RequestFactory
 
-        from toto.steven.plugins.floating_plugins import StevenDrawerPlugin
+        from toto.steven.plugins.floating_plugins import StevenChatPlugin
 
         request = RequestFactory().get("/")
         request.user = AnonymousUser()
-        self.assertFalse(StevenDrawerPlugin().visible_for_request(request))
+        self.assertFalse(StevenChatPlugin().visible_for_request(request))
+
+    def test_it_shows_for_any_authenticated_user(self):
+        """No document required any more — a quick question is page-agnostic."""
+        from django.test import RequestFactory
+
+        from toto.steven.plugins.floating_plugins import StevenChatPlugin
+
+        request = RequestFactory().get("/")
+        request.user = User.objects.create_user("chipper", password="pw")
+        self.assertTrue(StevenChatPlugin().visible_for_request(request))
+
+    def test_the_chip_is_single_turn_by_construction(self):
+        """Ephemeral is a decision: the say action's template has no history
+        slot to fill, so a transcript CANNOT be resent."""
+        surface = registry.get("chat")
+        self.assertEqual(surface.action("say").template, "{selection}")
+
+    def test_the_template_carries_its_own_cloak_rule(self):
+        """Rendered into every page, so it cannot rely on any page's rule."""
+        import pathlib
+
+        template = (pathlib.Path(__file__).parent / "templates" / "steven"
+                    / "plugins" / "_chat.html").read_text()
+        self.assertIn("[x-cloak]{display:none!important}", template)
+        self.assertNotIn("stevenDrawer", template)
 
     def test_no_editor_still_blanks_the_floating_block(self):
         """Four editors used to render nothing there, which silenced every
@@ -1029,21 +1074,33 @@ class VoiceInRunTests(TestCase):
 
 
 class ManageViewTests(TestCase):
-    """The two tabs, and who may open them."""
+    """The settings hub, the agent page it grew, and who may open them.
+
+    The old single-agent manage page relocated to steven:agent_edit; the hub
+    is tabs and lists only. What did NOT survive the move, deliberately: the
+    implicit first-save activation — with a LIST of agents, activation is the
+    list's explicit button, and tests_settings pins that a new agent saves
+    inactive.
+    """
 
     def setUp(self):
         _platform()
         _register_test_surfaces()
         self.url = reverse("steven:manage")
+        self.new_url = reverse("steven:agent_new")
         self.operator = User.objects.create_user("boss", password="pw",
                                                  is_staff=True)
         self.user = User.objects.create_user("nobody", password="pw")
+
+    def _edit_url(self, agent):
+        return reverse("steven:agent_edit", args=[agent.pk])
 
     def test_a_normal_user_gets_403_not_a_redirect(self):
         """A 302 to LOGIN_URL is what jess/views.py exists to avoid."""
         self.client.force_login(self.user)
 
         self.assertEqual(self.client.get(self.url).status_code, 403)
+        self.assertEqual(self.client.get(self.new_url).status_code, 403)
 
     def test_an_anonymous_visitor_gets_the_same_403(self):
         self.assertEqual(self.client.get(self.url).status_code, 403)
@@ -1055,49 +1112,38 @@ class ManageViewTests(TestCase):
 
         self.assertEqual(self.client.get(self.url).status_code, 200)
 
-    def test_it_opens_on_the_identity_tab(self):
+    def test_the_hub_opens_on_the_connection_tab(self):
         self.client.force_login(self.operator)
 
         response = self.client.get(self.url)
 
-        self.assertEqual(response.context["tab"], "identity")
+        self.assertEqual(response.context["tab"], "connection")
 
-    def test_saving_the_identity_creates_the_agent_switched_on(self):
+    def test_saving_an_identity_creates_the_agent(self):
         from .models import AiAgent
 
         self.client.force_login(self.operator)
 
-        self.client.post(self.url, {"form": "identity", "name": "Ada",
-                                    "icon": "fa-solid fa-robot", "active": "on"})
+        self.client.post(self.new_url, {"form": "identity", "name": "Ada",
+                                        "icon": "fa-solid fa-robot"})
 
-        agent = AiAgent.current()
+        agent = AiAgent.objects.get()
         self.assertEqual(agent.name, "Ada")
         self.assertEqual(agent.icon, "fa-solid fa-robot")
-
-    def test_a_first_save_from_the_prompt_tab_also_switches_it_on(self):
-        """Somebody who types a persona and sees nothing change would be the
-        worse default."""
-        from .models import AiAgent
-
-        self.client.force_login(self.operator)
-
-        self.client.post(self.url, {"form": "prompt",
-                                    "persona": "You are terse."})
-
-        self.assertIsNotNone(AiAgent.current())
-        self.assertEqual(AiAgent.current().persona, "You are terse.")
 
     def test_the_two_tabs_edit_the_same_row(self):
         from .models import AiAgent
 
         self.client.force_login(self.operator)
 
-        self.client.post(self.url, {"form": "identity", "name": "Ada",
-                                    "icon": "fa-solid fa-robot", "active": "on"})
-        self.client.post(self.url, {"form": "prompt", "persona": "Terse."})
+        self.client.post(self.new_url, {"form": "identity", "name": "Ada",
+                                        "icon": "fa-solid fa-robot"})
+        agent = AiAgent.objects.get()
+        self.client.post(self._edit_url(agent),
+                         {"form": "prompt", "persona": "Terse."})
 
         self.assertEqual(AiAgent.objects.count(), 1)
-        agent = AiAgent.current()
+        agent.refresh_from_db()
         self.assertEqual((agent.name, agent.persona), ("Ada", "Terse."))
 
     def test_a_blank_name_is_refused_rather_than_saved(self):
@@ -1106,8 +1152,9 @@ class ManageViewTests(TestCase):
 
         self.client.force_login(self.operator)
 
-        response = self.client.post(self.url, {"form": "identity", "name": " ",
-                                               "icon": "fa-solid fa-robot"})
+        response = self.client.post(self.new_url,
+                                    {"form": "identity", "name": " ",
+                                     "icon": "fa-solid fa-robot"})
 
         self.assertEqual(response.status_code, 200)
         self.assertEqual(AiAgent.objects.count(), 0)
@@ -1115,7 +1162,7 @@ class ManageViewTests(TestCase):
     def test_a_junk_icon_is_refused(self):
         self.client.force_login(self.operator)
 
-        response = self.client.post(self.url, {
+        response = self.client.post(self.new_url, {
             "form": "identity", "name": "Ada", "icon": 'x" onload="alert(1)'})
 
         self.assertEqual(response.status_code, 200)
@@ -1126,7 +1173,8 @@ class ManageViewTests(TestCase):
         describing editors nobody can open."""
         self.client.force_login(self.operator)
 
-        form = self.client.get(f"{self.url}?tab=prompt").context["prompt_form"]
+        form = self.client.get(
+            f"{self.new_url}?tab=prompt").context["prompt_form"]
 
         kinds = {kind for kind, _where in form.kinds}
         self.assertIn("prose", kinds)
@@ -1136,37 +1184,45 @@ class ManageViewTests(TestCase):
         from .models import AiAgent
 
         self.client.force_login(self.operator)
-        self.client.post(self.url, {"form": "prompt", "persona": "p",
-                                    "note__prose": "Be brief."})
-        self.assertEqual(AiAgent.current().kind_notes, {"prose": "Be brief."})
+        agent = AiAgent.objects.create(name="Ada", active=True)
+        self.client.post(self._edit_url(agent),
+                         {"form": "prompt", "persona": "p",
+                          "note__prose": "Be brief."})
+        agent.refresh_from_db()
+        self.assertEqual(agent.kind_notes, {"prose": "Be brief."})
 
-        self.client.post(self.url, {"form": "prompt", "persona": "p",
-                                    "note__prose": ""})
+        self.client.post(self._edit_url(agent),
+                         {"form": "prompt", "persona": "p",
+                          "note__prose": ""})
 
-        self.assertEqual(AiAgent.current().kind_notes, {})
+        agent.refresh_from_db()
+        self.assertEqual(agent.kind_notes, {})
 
     def test_the_preview_shows_the_assembled_system_message(self):
-        """The point of the second tab: text boxes that build a prompt nobody
+        """The point of the prompt tab: text boxes that build a prompt nobody
         can read is how the parked app shipped one nobody had looked at."""
-        self.client.force_login(self.operator)
-        self.client.post(self.url, {"form": "prompt",
-                                    "persona": "You are the house editor."})
+        from .models import AiAgent
 
-        response = self.client.get(f"{self.url}?tab=prompt")
+        self.client.force_login(self.operator)
+        agent = AiAgent.objects.create(name="Ada", active=True,
+                                       persona="You are the house editor.")
+
+        response = self.client.get(f"{self._edit_url(agent)}?tab=prompt")
 
         systems = " ".join(row["system"] for row in response.context["preview"])
         self.assertIn("You are the house editor.", systems)
 
-    def test_the_page_does_not_edit_the_provider(self):
+    def test_the_agent_page_does_not_edit_the_provider(self):
         """An API key and a persona are edited by different people with
-        different care."""
+        different care — the provider has its OWN page and its own forms."""
         self.client.force_login(self.operator)
         provider = AiProvider.objects.create(label="live", model="gpt-4.1-mini",
                                              active=True)
 
-        self.client.post(self.url, {"form": "identity", "name": "Ada",
-                                    "icon": "fa-solid fa-robot",
-                                    "model": "gpt-4-turbo", "label": "hijacked"})
+        self.client.post(self.new_url, {"form": "identity", "name": "Ada",
+                                        "icon": "fa-solid fa-robot",
+                                        "model": "gpt-4-turbo",
+                                        "label": "hijacked"})
 
         provider.refresh_from_db()
         self.assertEqual((provider.label, provider.model),
@@ -1431,6 +1487,41 @@ class LauncherTests(TestCase):
         self.assertIn(f'var DOCUMENT_ACTION = "{DOCUMENT_ACTION}"',
                       self._client_js())
 
+    def test_the_element_constant_matches_too(self):
+        """Same contract as above, for the add-an-element action."""
+        from toto.core.ai_surfaces import ELEMENT_ACTION
+
+        self.assertIn(f'var ELEMENT_ACTION = "{ELEMENT_ACTION}"',
+                      self._client_js())
+
+    def test_accept_routes_the_element_scope_to_insert(self):
+        """The default scope appends through the editor's own `insert`;
+        pressing Accept on an element must never call writeDocument."""
+        js = self._client_js()
+        self.assertIn("h.insert", js)
+        self.assertIn('this.scope === "element" ? h.insert', js)
+
+    def test_the_drawer_component_is_gone(self):
+        """Deleted WITH its template — a dangling x-data reference would be an
+        Alpine error on every authenticated page."""
+        import pathlib
+
+        self.assertNotIn("stevenDrawer", self._client_js())
+        self.assertFalse((pathlib.Path(__file__).parent / "templates"
+                          / "steven" / "plugins" / "_drawer.html").exists())
+
+    def test_the_modal_clears_the_editor_page_modals(self):
+        """z-[70] rendered UNDER memo's block dialog (z-[9200]) and cyprian's
+        stacked level (z-[9300]) — the assistant opened from inside them must
+        sit on top."""
+        import pathlib
+
+        template = (pathlib.Path(__file__).parent / "templates" / "steven"
+                    / "_ai.html").read_text()
+        self.assertIn("z-[9400]", template)
+        self.assertNotIn("z-[70]", template)
+        self.assertIn("fullRewrite", template)
+
     def test_the_old_dropdown_is_gone(self):
         """It was replaced, not left beside the new one — two launchers for one
         feature is how six toolbars drift into six vocabularies."""
@@ -1456,3 +1547,120 @@ class LauncherTests(TestCase):
             and stale in path.read_text(errors="ignore")
         ]
         self.assertEqual(offenders, [])
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
+class ElementActionTests(TestCase):
+    """Adding one element: the default the toolbar grew, end to end."""
+
+    def setUp(self):
+        _platform()
+        _register_test_surfaces()
+        registry.register(DECLARED_ELEMENT_SURFACE)
+        registry.register(SVG_SURFACE)
+        vault.clear_cache()
+        self.user = User.objects.create_user("adder", password="pw")
+        self.client.force_login(self.user)
+        self.provider = AiProvider.objects.create(label="test", active=True)
+        self.provider.secret = vault.store_secret("sk-test", name="element-key")
+        self.provider.save(update_fields=["secret"])
+
+    def _ask(self, **payload):
+        import json
+
+        body = {"surface": "tests-html", "action": "generate_element",
+                "selection": "", "instruction": "add a section"}
+        body.update(payload)
+        return self.client.post(reverse("steven:ask"), data=json.dumps(body),
+                                content_type="application/json")
+
+    # ---- resolution -------------------------------------------------------
+
+    def test_it_is_synthesised_from_the_file_type(self):
+        from toto.core.ai_surfaces import ELEMENT_ACTION, resolve_action
+
+        action = resolve_action(HTML_SURFACE, ELEMENT_ACTION)
+
+        self.assertIn("Return a valid HTML fragment.", action.system)
+        self.assertTrue(action.needs_instruction)
+
+    def test_a_declared_element_action_wins_over_synthesis(self):
+        """The OPPOSITE precedence from DOCUMENT_ACTION, on purpose: a deck
+        wants plain text and a drawing a whole <svg>, and each says so by
+        declaring the action itself."""
+        from toto.core.ai_surfaces import ELEMENT_ACTION, resolve_action
+
+        action = resolve_action(DECLARED_ELEMENT_SURFACE, ELEMENT_ACTION)
+
+        self.assertEqual(action.system, "THE WIDGET RULE")
+
+    def test_the_element_rule_still_goes_last(self):
+        """A persona cannot displace the fragment rule, exactly as it cannot
+        displace the rewrite rule."""
+        from toto.core.ai_surfaces import (AgentVoice, ELEMENT_ACTION,
+                                           compose_system, resolve_action)
+
+        action = resolve_action(HTML_SURFACE, ELEMENT_ACTION)
+        voice = AgentVoice(name="Steven", persona="You are chatty.",
+                           house_rules="Always be brief.")
+
+        system = compose_system(HTML_SURFACE, action, voice)
+
+        self.assertTrue(system.endswith(action.system))
+
+    # ---- the endpoint -----------------------------------------------------
+
+    def test_an_empty_document_is_a_fine_place_for_the_first_element(self):
+        """The one action exempt from the empty-selection refusal."""
+        with mock.patch("toto.steven.dispatch.dispatch_run",
+                        side_effect=lambda run: run):
+            response = self._ask(selection="")
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(AiRun.objects.count(), 1)
+
+    def test_it_still_requires_an_instruction(self):
+        response = self._ask(instruction="")
+
+        self.assertEqual(response.status_code, 400)
+        self.assertEqual(AiRun.objects.count(), 0)
+
+    def test_it_shares_the_document_limit_not_the_selection_one(self):
+        """The document rides along as context, so 20k would refuse exactly
+        the files people want to extend."""
+        with mock.patch("toto.steven.dispatch.dispatch_run",
+                        side_effect=lambda run: run):
+            over_selection = self._ask(selection="x" * 21_000)
+            over_document = self._ask(selection="x" * 60_001)
+
+        self.assertEqual(over_selection.status_code, 200)
+        self.assertEqual(over_document.status_code, 400)
+
+    def test_a_document_rewrite_still_refuses_an_empty_document(self):
+        response = self._ask(action="rewrite_document", selection="  ",
+                             instruction="rewrite it")
+
+        self.assertEqual(response.status_code, 400)
+
+    # ---- screening --------------------------------------------------------
+
+    def test_a_generated_svg_element_is_screened_before_it_is_offered(self):
+        """file_type='svg' puts the answer through the scanner; a refusal
+        fails the run so nothing is ever offered — or charged."""
+        from .models import StevenUsageEvent
+
+        run = dispatch.create_run(user=self.user, surface="tests-svg",
+                                  action="generate_element",
+                                  source_text="<svg/>",
+                                  instruction="a red arrow")
+        refusing = mock.Mock(ok=False, reason="declaration", detail="script")
+
+        with mock.patch("toto.steven.client.complete",
+                        return_value=_answer("<svg onload=evil()/>")), \
+             mock.patch("toto.vault.scanning.scan", return_value=refusing):
+            services.execute(run)
+
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.FAILED)
+        self.assertIn("scanner", run.error)
+        self.assertEqual(StevenUsageEvent.objects.count(), 0)
