@@ -60,6 +60,46 @@ def key_of(question) -> str:
         ("all" if not question.scope_type else "")
 
 
+class SnapshotElectorate:
+    """The frozen register, answering for a vote that has one.
+
+    Once a roll exists, it IS the electorate: standing and size come from the
+    RollEntry rows the vote froze when it opened, whatever the configured
+    Electorate looks like today. This is the generic form of the company
+    record date, and it wins over every registry key on purpose.
+    """
+
+    def __init__(self, question):
+        self.question = question
+
+    def standing(self, question, user) -> Eligibility:
+        if question.pk != self.question.pk:
+            return Eligibility(False, reason=_(
+                "This register belongs to another vote."))
+        if not getattr(user, "is_authenticated", False):
+            return Eligibility(False, reason=_("Sign in to vote."))
+
+        from .electorate_models import RollEntry
+
+        entry = RollEntry.objects.filter(question=question,
+                                         user=user).first()
+        if entry is None:
+            return Eligibility(False, reason=_(
+                "You were not on the register when this vote opened."))
+        return Eligibility(True, weight=entry.weight)
+
+    def size(self, question) -> int:
+        from .electorate_models import RollEntry
+
+        return RollEntry.objects.filter(question=self.question).count()
+
+
+def has_roll(question) -> bool:
+    from .electorate_models import RollEntry
+
+    return RollEntry.objects.filter(question=question).exists()
+
+
 def resolve(question):
     """Key -> Electorate, failing closed for formal votes.
 
@@ -68,6 +108,10 @@ def resolve(question):
     same as a missing key: the caller gets an answer, never a stack trace,
     because standing() is consulted on every page view.
     """
+    # A frozen register beats every key: the vote already named its people.
+    if question.is_formal and has_roll(question):
+        return SnapshotElectorate(question)
+
     key = key_of(question)
 
     factory = _REGISTRY.get(key)

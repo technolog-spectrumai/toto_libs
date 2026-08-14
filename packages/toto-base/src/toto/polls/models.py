@@ -21,6 +21,8 @@ ones.
 
 from __future__ import annotations
 
+import dataclasses
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -118,6 +120,25 @@ class Question(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
     metadata = models.JSONField(default=dict, blank=True)
 
+    # -- the instrument (stages 5-7) ----------------------------------------
+    #: The configured roll this vote FROZE FROM. Standing is never answered
+    #: from this row — it is answered from the RollEntry snapshot — so
+    #: SET_NULL: deleting an electorate cannot touch a past vote.
+    electorate = models.ForeignKey("polls.Electorate", null=True, blank=True,
+                                   on_delete=models.SET_NULL,
+                                   related_name="questions")
+    #: One sentence naming what deciding this MEANS. Shown under the
+    #: question; locked once voting starts.
+    decision_header = models.CharField(max_length=200, blank=True)
+    #: Optional longer context, shown behind Details. Locked with the header.
+    decision_comment = models.TextField(blank=True)
+    #: The consensus rule, snapshotted AT OPEN — name and number both, so
+    #: retuning or renaming a profile can never rewrite what this vote
+    #: required.
+    rule_name = models.CharField(max_length=80, blank=True)
+    rule_percent = models.DecimalField(max_digits=5, decimal_places=2,
+                                       null=True, blank=True)
+
     objects = QuestionQuerySet.as_manager()
 
     class Meta:
@@ -153,6 +174,25 @@ class Question(models.Model):
         # Something revisable is a poll; that is what the two kinds ARE.
         if self.kind == Kind.VOTE:
             self.revisability = Revisability.FINAL
+        # Once voting has started, the instrument is fixed: the header, the
+        # comment, the snapshotted rule and the electorate pointer may not
+        # move under voters who already read them. Status changes (closing)
+        # pass untouched.
+        if self.pk is not None and self.kind == Kind.VOTE:
+            was = Question.objects.filter(pk=self.pk).values(
+                "decision_header", "decision_comment", "rule_name",
+                "rule_percent", "electorate_id", "opens_at").first()
+            if was and was["opens_at"] <= timezone.now():
+                changed = (
+                    was["decision_header"] != self.decision_header
+                    or was["decision_comment"] != self.decision_comment
+                    or was["rule_name"] != self.rule_name
+                    or was["rule_percent"] != self.rule_percent
+                    or was["electorate_id"] != self.electorate_id)
+                if changed:
+                    raise ValueError(
+                        "Voting has started; the header, comment, rule and "
+                        "electorate are locked.")
         super().save(*args, **kwargs)
 
     def _unique_slug(self) -> str:
@@ -232,6 +272,23 @@ class Outcome(models.TextChoices):
     NO_BALLOTS = "no_ballots", _("No ballots")
 
 
+def compute_hash(content: dict, prev_hash: str = "") -> str:
+    """Deterministic: sorted-key JSON of the content plus the previous hash.
+    The company minute book's construction, verbatim."""
+    import hashlib
+    import json
+
+    canonical = json.dumps(content, sort_keys=True, default=str)
+    return hashlib.sha256((canonical + prev_hash).encode()).hexdigest()
+
+
+@dataclasses.dataclass(frozen=True)
+class ChainVerification:
+    ok: bool
+    checked: int
+    first_bad_pk: int | None
+
+
 class DecisionQuerySet(models.QuerySet):
     def in_scope(self, scope_type: str = SCOPE_GLOBAL, scope_id: str = ""):
         """Decisions belonging to exactly one scope — the ONLY door, for the
@@ -281,6 +338,18 @@ class Decision(models.Model):
     #: per-ballot audit list. The name matches ChainedRecord.content.
     content = models.JSONField(default=dict)
 
+    #: The consensus verdict, when the vote snapshotted a rule: True adopted,
+    #: False rejected, null when no rule applied.
+    adopted = models.BooleanField(null=True, blank=True)
+
+    # -- the ledger chain (stage 6) -----------------------------------------
+    #: sha256 over the canonical content plus the previous hash, one chain
+    #: PER SCOPE — the same construction the company minute book uses, and
+    #: the same trust model: raw-SQL tampering stays possible and becomes
+    #: DETECTABLE, because every later hash stops verifying.
+    content_hash = models.CharField(max_length=64, blank=True, editable=False)
+    prev_hash = models.CharField(max_length=64, blank=True, editable=False)
+
     objects = DecisionQuerySet.as_manager()
 
     class Meta:
@@ -296,14 +365,37 @@ class Decision(models.Model):
         return f"{self.title}: {self.get_outcome_display()}"
 
     def save(self, *args, **kwargs):
-        # ChainedRecord's idiom: a decision is appended, never amended.
+        # ChainedRecord's idiom: a decision is appended, never amended — and
+        # appended ON THE CHAIN: linked by pk order within its scope, under
+        # select_for_update so two writers cannot fork it.
         if self.pk is not None:
             raise ValueError(
                 "A decision is never edited. Record a new question instead.")
+        last = (Decision.objects.select_for_update()
+                .filter(scope_type=self.scope_type, scope_id=self.scope_id)
+                .order_by("-pk").first())
+        self.prev_hash = last.content_hash if last else ""
+        self.content_hash = compute_hash(self.content, self.prev_hash)
         super().save(*args, **kwargs)
 
     def delete(self, *args, **kwargs):
         raise ValueError("A decision is never deleted; the ledger is history.")
+
+    @classmethod
+    def verify_chain(cls, scope_type: str = "", scope_id: str = ""):
+        """Recompute one scope's chain and name the first broken entry."""
+        prev = ""
+        checked = 0
+        for row in (cls.objects.filter(scope_type=scope_type,
+                                       scope_id=str(scope_id or ""))
+                    .order_by("pk").iterator()):
+            expected = compute_hash(row.content, prev)
+            if row.prev_hash != prev or row.content_hash != expected:
+                return ChainVerification(ok=False, checked=checked,
+                                         first_bad_pk=row.pk)
+            prev = row.content_hash
+            checked += 1
+        return ChainVerification(ok=True, checked=checked, first_bad_pk=None)
 
 
 class Ballot(models.Model):
@@ -361,6 +453,10 @@ class Ballot(models.Model):
             raise ValueError("A formal ballot is never deleted.")
         return super().delete(*args, **kwargs)
 
+
+# -- electorates as data, the frozen register, consensus profiles -------------
+from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402,F401
+                                ElectorateMember, RollEntry)
 
 # -- quizzes: competence testing on the same scoping --------------------------
 # Imported here so Django's migration autodetector sees them as polls models;

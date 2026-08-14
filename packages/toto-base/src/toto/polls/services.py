@@ -152,6 +152,123 @@ def tally(question, *, electorate=None) -> Tally:
     )
 
 
+# -- the record date ----------------------------------------------------------
+
+def freeze_roll(question, *, electorate=None, entries=None):
+    """Write the vote's register: the record date, generically.
+
+    ``entries`` is ``[(user_or_none, label, weight), ...]`` when the caller
+    (Business Center, a host) computes its own; otherwise the given data
+    Electorate's members are copied. Idempotent refusal: a vote that already
+    has a register keeps it — a register that can be re-frozen is a live
+    register with extra steps.
+    """
+    from django.utils import timezone as tz
+
+    from .electorate_models import RollEntry
+
+    if RollEntry.objects.filter(question=question).exists():
+        raise ValueError("This vote's register is already frozen.")
+
+    if entries is None:
+        if electorate is None:
+            raise ValueError("freeze_roll needs an electorate or entries.")
+        entries = [(member.user, member.user.get_username(), member.weight)
+                   for member in electorate.members.select_related("user")]
+        if question.electorate_id != electorate.pk:
+            question.electorate = electorate
+
+    if not entries:
+        raise ValueError("Nobody is on that register; there is no vote to hold.")
+
+    RollEntry.objects.bulk_create([
+        RollEntry(question=question, user=user, label=label or "",
+                  weight=weight)
+        for user, label, weight in entries
+    ])
+    question.metadata = {**(question.metadata or {}),
+                         "roll_frozen_at": tz.now().isoformat()}
+    question.save()
+    return question
+
+
+def snapshot_rule(question, profile) -> None:
+    """Copy a consensus profile's name AND number onto the vote — so a later
+    retune of the profile changes future votes only."""
+    question.rule_name = profile.name
+    question.rule_percent = profile.percent
+    question.save()
+
+
+def _signed_sides(question, count):
+    """(for_weight, against_weight, denominator) under the choice-value sign
+    convention; falls back to winner-vs-rest when no choice is signed."""
+    values = {c.pk: c.value for c in question.choices.all()}
+    signed = any(v != 0 for v in values.values())
+    if signed:
+        for_weight = sum(r.weight for r in count.results
+                         if values.get(r.choice_id, 0) > 0)
+        against = sum(r.weight for r in count.results
+                      if values.get(r.choice_id, 0) < 0)
+        return for_weight, against, for_weight + against
+    winner = count.winner
+    for_weight = winner.weight if winner else 0
+    return for_weight, count.total_weight - for_weight, count.total_weight
+
+
+def evaluate_consensus(question, count) -> dict | None:
+    """The snapshotted rule against the count. None when no rule was taken."""
+    if question.rule_percent is None:
+        return None
+    for_weight, against, denominator = _signed_sides(question, count)
+    achieved = (for_weight / denominator * 100) if denominator else 0.0
+    threshold = float(question.rule_percent)
+    return {
+        "name": question.rule_name,
+        "percent": str(question.rule_percent),
+        "for_weight": for_weight,
+        "against_weight": against,
+        "denominator_weight": denominator,
+        "achieved_percent": round(achieved, 2),
+        # Strictly above — the same comparison the company constitution has
+        # always made. Nothing decided (denominator 0) is not adoption.
+        "adopted": bool(denominator) and achieved > threshold,
+    }
+
+
+def outcome_fixed(question, count=None) -> bool:
+    """May this vote finalize early? Only when the ballots still out cannot
+    move the adopted/rejected answer, whichever way they all fall.
+
+    Meaningful only for votes that snapshotted a rule and froze a register:
+    without a rule there is no outcome to fix, and without a register there
+    is no bound on what remains.
+    """
+    from .electorate_models import RollEntry
+
+    if question.rule_percent is None:
+        return False
+    entries = RollEntry.objects.filter(question=question)
+    if not entries.exists():
+        return False
+
+    count = count or tally(question, electorate=electorate_for(question))
+    voted = set(question.ballots.values_list("voter_id", flat=True))
+    remaining = sum(e.weight for e in entries
+                    if e.user_id is not None and e.user_id not in voted)
+
+    for_weight, against, denominator = _signed_sides(question, count)
+    threshold = float(question.rule_percent)
+    full = denominator + remaining
+    if full == 0:
+        return True
+    # Worst case for adoption: every outstanding ballot lands against.
+    certainly_adopted = (for_weight / full * 100) > threshold
+    # Best case: every outstanding ballot lands for — and it still fails.
+    certainly_rejected = ((for_weight + remaining) / full * 100) <= threshold
+    return certainly_adopted or certainly_rejected
+
+
 # -- recording a decision -----------------------------------------------------
 
 def record_decision(question, *, decided_by=None, when=None) -> Decision:
@@ -184,11 +301,19 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                                           or decided_by.is_superuser):
                 raise PermissionDenied(
                     "Closing a vote before its deadline is a staff act.")
+            # A vote that took a consensus rule may finalize early ONLY once
+            # the outstanding ballots cannot move the answer — authority does
+            # not get to call a race that is still running.
+            if question.rule_percent is not None and not outcome_fixed(question):
+                raise PermissionDenied(
+                    "The outcome could still change; this vote cannot be "
+                    "finalized early.")
 
         from . import electorates, governance
 
         roll = electorate_for(question)
         count = tally(question, electorate=roll)
+        consensus = evaluate_consensus(question, count)
 
         # What the scope's own rules make of that count. None when the scope
         # has no rule, which is every scope the engine ships: "passed" is a
@@ -240,8 +365,19 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                 "closed_at": (question.closed_at.isoformat()
                               if question.closed_at else None),
             },
+            "decision_header": question.decision_header,
+            "decision_comment": question.decision_comment,
             "electorate": {"key": electorates.key_of(question),
+                           "name": (question.electorate.name
+                                    if question.electorate_id else ""),
                            "size": count.electorate},
+            "roll": [{
+                "user_id": entry.user_id,
+                "label": entry.label or (entry.user.get_username()
+                                         if entry.user_id else ""),
+                "weight": entry.weight,
+            } for entry in question.roll.all()],
+            "consensus": consensus,
             "outcome": {"outcome": outcome, "winner": winner_ref},
             "tally": [{
                 "choice_id": r.choice_id, "label": r.label,
@@ -267,6 +403,7 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                 total_ballots=count.total_ballots,
                 total_weight=count.total_weight,
                 turnout=count.turnout,
+                adopted=consensus["adopted"] if consensus else None,
                 decided_by=decided_by,
                 content=content,
             )
