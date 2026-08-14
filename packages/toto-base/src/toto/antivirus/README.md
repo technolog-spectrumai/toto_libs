@@ -64,7 +64,7 @@ Another app adds one by shipping `<app>/scanners.py`.
 `SCANNABLE_TYPES` lives in the façade (`toto/vault/scanning.py`) because the
 vault needs the list without importing this app.
 
-## The app's three tabs
+## The app's four tabs
 
 - **Files** — the vault's tree, read-only, in security terms. Green check =
   scanned clean; red warning = unscanned / failed / threat (tooltip names
@@ -75,6 +75,9 @@ vault needs the list without importing this app.
   recorded at scan time), verdict counts, and a 30-day stacked activity chart.
 - **Pathology** — every finding with severity, door, detail, line and the
   currency badge. Own files for users; staff see the platform.
+- **Settings** — which of your own file types are auto-screened, and at which
+  doors; explicit Save. Staff additionally get the scanner configuration
+  (JSON-row overrides — a new parameter is a new key, never a migration).
 
 The vault carries exactly one antivirus surface: the shield button above the
 file tree, linking here. Bucket metrics show a health card
@@ -103,8 +106,11 @@ of your own file types are screened at the doors as they are saved.
 **As an operator.** Staff see platform-wide Statistics and Pathology. Quota
 and price live where every metric's do: the limit under Metered
 (`antivirus.scan`), the price on the rate card (seeded by `ingress_tariffs`).
-On-demand scans need a worker (`BUILD_WORKFLOWS=1` + celery); without one the
-button refuses by name. Door screening works with no worker at all.
+On-demand scans queue onto the celery worker every build ships (workflows is
+compulsory since 8/2026); when no worker is listening they run inline in the
+web process instead — same run row, same billing. Door screening never needed
+a worker at all. The scan workflow itself is seeded by `ingress_antivirus` at
+deploy, so it is visible in the workflows app before the first Scan click.
 
 **As a developer.** Never import this app — call the façade:
 
