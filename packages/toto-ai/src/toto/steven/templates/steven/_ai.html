@@ -1,5 +1,5 @@
 {% load i18n static %}
-{% comment %}The assistant's whole launcher: a square AI button, a floating one
+{% comment %}The assistant's whole launcher: a rounded AI button, a floating one
    that follows a selection, and the one modal both of them open.
 
    Params:
@@ -10,6 +10,7 @@
      window.StevenActions.register("{{ surface }}", {
        read:          function () { return <the selected text>; },
        write:         function (text) { <replace the selection with text> },
+       insert:        function (text) { <APPEND one generated element> },
        source:        function () { return <the whole SOURCE, as markup>; },
        writeDocument: function (text) { <replace the whole document> },
        document:      function () { return <the whole document as TEXT>; },
@@ -17,17 +18,21 @@
      });
 
    `source` and `document` differ on purpose — see steven/actions.js. One is what
-   a rewrite must REPRODUCE, the other is what the side panel ASKS about.
+   a rewrite must REPRODUCE, the other is what a question is ASKED about.
 
-   An editor that registers no `writeDocument` gets no toolbar button at all
-   rather than one that fails when pressed: primula is that case, because a
-   workbook is not a source file.
+   THREE SCOPES, ONE MODAL. The toolbar button opens on ELEMENT scope when the
+   editor registered `insert` — you type what should be ADDED, the model
+   returns one new element, and Accept appends it. The "Full rewrite" checkbox
+   (shown only when the editor also registered `writeDocument`) switches the
+   same modal to the WHOLE DOCUMENT — a complete new file in the document's
+   own language, replacing everything. The floating button opens on the
+   SELECTION. Same box, same endpoint, same accept/reject; the modal says
+   which scope it is on rather than making you infer it.
 
-   TWO SCOPES, ONE MODAL. The toolbar button opens it on the WHOLE DOCUMENT —
-   you type what should change and the model returns a complete new file in that
-   document's own language. The floating button opens it on the SELECTION.
-   Same box, same endpoint, same accept/reject; only the scope differs, and the
-   modal says which one it is on rather than making you infer it.
+   An editor that registers neither `insert` nor `writeDocument` gets no
+   toolbar button at all rather than one that fails when pressed: primula is
+   that case, because a workbook is not a source file. The floating button
+   additionally needs `read` — a surface without one never floats it.
 
    The button is deliberately QUIET: the page's own background and the page's own
    text colour, with a hairline border. It sits in editor toolbars beside Save
@@ -41,6 +46,7 @@
    every editor already has its own for the same reason.
 {% endcomment %}
 
+{% trans "Ask the assistant to add to this document" as ai_add_title %}
 {% trans "Ask the assistant to rewrite this document" as ai_doc_title %}
 {% trans "Ask the assistant about the selection" as ai_sel_title %}
 
@@ -52,11 +58,12 @@
       x-init="watchSelection()"
       @keydown.escape.window="close()">
 
-  {% comment %}1. The toolbar button — whole document.{% endcomment %}
-  <button type="button" @click="openDocument()" x-show="canRewrite" x-cloak
+  {% comment %}1. The toolbar button — add an element by default, whole
+     document behind the Full-rewrite checkbox.{% endcomment %}
+  <button type="button" @click="openToolbar()" x-show="canInsert || canRewrite" x-cloak
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-          class="inline-flex h-8 w-8 items-center justify-center rounded border text-xs font-bold tracking-tight transition hover:opacity-80"
-          :title="agent ? '{{ ai_doc_title|escapejs }} — ' + agent.name : '{{ ai_doc_title|escapejs }}'">AI</button>
+          class="inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold tracking-tight transition hover:opacity-80"
+          :title="(canInsert ? '{{ ai_add_title|escapejs }}' : '{{ ai_doc_title|escapejs }}') + (agent ? ' — ' + agent.name : '')">AI</button>
 
   {% comment %}2. The floating button — appears beside a selection.
 
@@ -68,15 +75,19 @@
           @mousedown.prevent @click="openSelection()"
           :style="anchor ? ('position:fixed;z-index:60;left:' + anchor.left + 'px;top:' + anchor.top + 'px') : 'display:none'"
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
-          class="inline-flex h-7 w-7 items-center justify-center rounded border text-[11px] font-bold shadow-lg transition hover:opacity-80"
+          class="inline-flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-bold shadow-lg transition hover:opacity-80"
           :title="'{{ ai_sel_title|escapejs }}'">AI</button>
 
-  {% comment %}3. The modal. One box for both scopes.{% endcomment %}
+  {% comment %}3. The modal. One box for all three scopes. The house shell —
+     a separate backdrop div owning dismissal, the panel above it — and
+     z-[9400] so it clears every editor-page modal it can be opened from
+     (memo's block dialog and the standard editor modals sit at z-[9200],
+     cyprian's stacked second level at z-[9300]).{% endcomment %}
   <div x-show="open" x-cloak
-       class="fixed inset-0 z-[70] flex items-start justify-center overflow-y-auto bg-black/50 p-4 sm:p-8"
-       @click.self="close()">
+       class="fixed inset-0 z-[9400] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close()"></div>
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-         class="mt-8 w-full max-w-2xl rounded-2xl border p-5 shadow-2xl">
+         class="relative z-10 mt-8 w-full max-w-2xl rounded-2xl border p-5 shadow-2xl">
 
       <div class="mb-3 flex items-start justify-between gap-3">
         <div class="min-w-0">
@@ -86,9 +97,11 @@
             <span x-text="agent ? agent.name : '{% trans 'Assistant' %}'"></span>
           </h2>
           <p class="mt-1 text-xs opacity-65"
-             x-text="scope === 'document'
-               ? '{% trans 'Rewrites the whole document.' %}' + (language ? ' {% trans 'Returns' %} ' + language + '.' : '')
-               : '{% trans 'Rewrites what you selected.' %}'"></p>
+             x-text="scope === 'element'
+               ? '{% trans 'Adds a new element to this document.' %}'
+               : (scope === 'document'
+                   ? '{% trans 'Rewrites the whole document.' %}' + (language ? ' {% trans 'Returns' %} ' + language + '.' : '')
+                   : '{% trans 'Rewrites what you selected.' %}')"></p>
         </div>
         <button type="button" @click="close()"
                 class="shrink-0 opacity-50 transition hover:opacity-100"
@@ -100,16 +113,31 @@
         <div class="space-y-3">
           <textarea x-model="instruction" rows="3" x-ref="prompt"
                     @keydown.enter.meta="run()" @keydown.enter.ctrl="run()"
-                    :placeholder="scope === 'document'
-                      ? '{% trans 'Add a footer with the page number. Make the table striped.' %}'
-                      : '{% trans 'Make this shorter. Translate it into Polish.' %}'"
+                    :placeholder="scope === 'element'
+                      ? '{% trans 'Add a section about pricing. Draw a red arrow pointing at the box.' %}'
+                      : (scope === 'document'
+                          ? '{% trans 'Add a footer with the page number. Make the table striped.' %}'
+                          : '{% trans 'Make this shorter. Translate it into Polish.' %}')"
                     :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                     class="w-full rounded-lg border px-3 py-2 text-sm outline-none"></textarea>
+
+          {% comment %}The explicit escape hatch: adding is the default, and
+             replacing the whole document is something you ASK for. Only shown
+             when the editor can do both.{% endcomment %}
+          <label x-show="scope !== 'selection' && canInsert && canRewrite" x-cloak
+                 class="flex items-center gap-2 text-xs opacity-80">
+            <input type="checkbox" x-model="fullRewrite"
+                   @change="scope = fullRewrite ? 'document' : 'element'">
+            <span>{% trans "Full rewrite — replace the whole document instead of adding to it" %}</span>
+          </label>
 
           {% comment %}What is actually going to be sent, and how much of it.
              The bill is measured in tokens, so the size of the payload is not a
              detail — it is the price.{% endcomment %}
           <p class="text-xs opacity-55">
+            <template x-if="scope === 'element'">
+              <span>{% trans "Sends the whole document as context" %} — <span x-text="sourceLength"></span> {% trans "characters" %}.</span>
+            </template>
             <template x-if="scope === 'document'">
               <span>{% trans "Sends the whole document" %} — <span x-text="sourceLength"></span> {% trans "characters" %}.</span>
             </template>
@@ -143,7 +171,8 @@
       <template x-if="result">
         <div class="space-y-3">
           <p class="text-[10px] font-semibold uppercase tracking-wide opacity-50"
-             x-text="scope === 'document' ? '{% trans 'Proposed document' %}' : '{% trans 'Proposed replacement' %}'"></p>
+             x-text="scope === 'element' ? '{% trans 'Proposed addition' %}'
+               : (scope === 'document' ? '{% trans 'Proposed document' %}' : '{% trans 'Proposed replacement' %}')"></p>
           <pre :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                class="max-h-80 overflow-auto whitespace-pre-wrap rounded-lg border px-3 py-2 text-xs leading-relaxed"
                x-text="result"></pre>

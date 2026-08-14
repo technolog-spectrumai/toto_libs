@@ -10,14 +10,18 @@
  *     window.StevenActions.register("cyprian", {
  *       read:          function () { ... return selected text or "" ... },
  *       write:         function (text) { ... replace the selection ... },
+ *       insert:        function (text) { ... APPEND one generated element ... },
  *       document:      function () { ... return the whole source ... },
  *       writeDocument: function (text) { ... replace the whole document ... },
  *       anchor:        function () { ... return a viewport DOMRect ... },
  *     });
  *
- * `source`/`writeDocument` are what the toolbar's AI button uses: you type what
- * should change and the model returns a COMPLETE new file in that document's
- * own language. An editor that registers neither still gets the selection half.
+ * The toolbar button's DEFAULT is `insert`: you type what should be added and
+ * the model returns ONE new element, appended on Accept through the editor's
+ * own command path. "Full rewrite" is an explicit checkbox that switches the
+ * same modal to `source`/`writeDocument` — a COMPLETE new file in that
+ * document's own language. An editor registering only one of the two gets
+ * only that mode, and one registering neither still gets the selection half.
  *
  * `source` and `document` are deliberately NOT the same handler. `document` is
  * for ASKING — the side panel wants readable text and markup would be most of
@@ -47,6 +51,12 @@
      that appears in no action list and cannot be discovered — it is a name both
      sides have to agree on. */
   var DOCUMENT_ACTION = "rewrite_document";
+
+  /* Must match toto.core.ai_surfaces.ELEMENT_ACTION, same contract as above.
+     The toolbar's DEFAULT: generate ONE new element and append it through the
+     editor's `insert` handler. "Full rewrite" is the checkbox that switches
+     the modal back to DOCUMENT_ACTION. */
+  var ELEMENT_ACTION = "generate_element";
 
   var POLL_MS = 1500;
   /* Long enough that a slow model finishes, short enough that a wedged run does
@@ -153,6 +163,12 @@
          not a source file, so it registers no writeDocument and simply has no
          toolbar button rather than one that fails on Accept. */
       canRewrite: false,
+      /* Whether this editor can APPEND a generated element — an `insert`
+         handler exists. The toolbar button shows for either capability, and
+         element is the default scope when both do. */
+      canInsert: false,
+      /* The "Full rewrite" checkbox: element scope unless explicitly ticked. */
+      fullRewrite: false,
       _polls: 0,
       _timer: null,
 
@@ -178,23 +194,27 @@
 
       /* ---- opening ------------------------------------------------------ */
 
-      openDocument: function () {
+      openToolbar: function () {
         /* `source` first: it is the regenerable markup. `document` is the
-           side panel's readable flattening and is only a fallback for editors
+           chip's readable flattening and is only a fallback for editors
            where the two are the same thing. */
         var h = this.handlers();
         var read = h.source || h.document;
         var text = "";
         try { text = typeof read === "function" ? (read() || "") : ""; }
         catch (e) { text = ""; }
-        if (!text.trim()) {
-          this.scope = "document";
+        /* Element by default when the editor can append; the Full-rewrite
+           checkbox flips the scope back to document. An empty document is
+           fine in element scope — it is exactly where the first element gets
+           generated — and a refusal only in document scope. */
+        this.fullRewrite = false;
+        this.scope = (typeof h.insert === "function") ? "element" : "document";
+        if (this.scope === "document" && !text.trim()) {
           this.source = "";
           this.sourceLength = 0;
           this._show("There is nothing in this document yet.");
           return;
         }
-        this.scope = "document";
         this._show("", text);
       },
 
@@ -254,7 +274,14 @@
         var h = this.handlers();
         this.canRewrite = typeof h.writeDocument === "function" &&
                           typeof (h.source || h.document) === "function";
+        this.canInsert = typeof h.insert === "function";
         if (this.open) { this.anchor = null; return; }
+
+        /* No `read` handler, no floating button: without one, the click has
+           nothing to send, and a second surface on the same page (memo's deck
+           mount, sketch, the compose page) would otherwise float a duplicate
+           dead button over any browser selection via the fallback below. */
+        if (typeof h.read !== "function") { this.anchor = null; return; }
 
         var custom = this.handlers().anchor;
         var rect = null;
@@ -286,7 +313,8 @@
           this.error = "Type what you want changed.";
           return;
         }
-        if (!this.source.trim()) {
+        /* Element scope tolerates an empty document — the server does too. */
+        if (!this.source.trim() && this.scope !== "element") {
           this.error = "There is nothing to work on.";
           return;
         }
@@ -302,9 +330,11 @@
           credentials: "same-origin",
           body: JSON.stringify({
             surface: this.surfaceKey,
-            /* The document scope names the synthesised rewrite action; the
-               selection scope reuses the shared "rewrite as…" one. */
-            action: this.scope === "document" ? DOCUMENT_ACTION : "rewrite",
+            /* The document scope names the synthesised rewrite action, the
+               element scope the synthesised add-one action; the selection
+               scope reuses the shared "rewrite as…" one. */
+            action: this.scope === "document" ? DOCUMENT_ACTION
+                    : (this.scope === "element" ? ELEMENT_ACTION : "rewrite"),
             selection: this.source,
             instruction: this.instruction,
           }),
@@ -358,7 +388,8 @@
        * the conflict hash all behave exactly as they do for a human edit. */
       accept: function () {
         var h = this.handlers();
-        var write = this.scope === "document" ? h.writeDocument : h.write;
+        var write = this.scope === "document" ? h.writeDocument
+                    : (this.scope === "element" ? h.insert : h.write);
         if (typeof write !== "function" || !this.result) return;
         try {
           write(this.result);
