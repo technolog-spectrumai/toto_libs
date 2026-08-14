@@ -278,3 +278,36 @@ class ResultVisibilityTests(TestCase):
 
         self.assertFalse(services.may_see_results(question, self.user,
                                                   electorate=Nobody()))
+
+
+class KindInvariantTests(TestCase):
+    """`kind` is a rule, not a label."""
+
+    def test_a_vote_is_always_final(self):
+        """Asked for a revisable vote, the model says no — something revisable
+        is a poll. The old app's whole failure was that this was left to the
+        caller and one caller forgot."""
+        question = Question.objects.create(
+            kind=Kind.VOTE, title="Resolution", question_text="Well?",
+            revisability=Revisability.OPEN)
+
+        question.refresh_from_db()
+        self.assertEqual(question.revisability, Revisability.FINAL)
+
+    def test_a_poll_keeps_whatever_it_was_given(self):
+        question = Question.objects.create(
+            kind=Kind.POLL, title="Colour", question_text="Which?",
+            revisability=Revisability.OPEN)
+
+        question.refresh_from_db()
+        self.assertEqual(question.revisability, Revisability.OPEN)
+
+    def test_the_invariant_survives_a_later_edit(self):
+        question = Question.objects.create(
+            kind=Kind.VOTE, title="Resolution 2", question_text="Well?")
+
+        question.revisability = Revisability.OPEN
+        question.save()
+
+        question.refresh_from_db()
+        self.assertEqual(question.revisability, Revisability.FINAL)

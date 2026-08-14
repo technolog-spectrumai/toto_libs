@@ -141,6 +141,14 @@ class Question(models.Model):
     def save(self, *args, **kwargs):
         if not self.slug:
             self.slug = self._unique_slug()
+        # A formal vote is FINAL, and not by convention. Revisability is the
+        # difference between a ballot and a preference, and leaving it to each
+        # caller to remember means one that forgets produces a "vote" whose
+        # ballots can be rewritten until it closes — which is precisely the bug
+        # the old polls app shipped, in a view that used update_or_create.
+        # Something revisable is a poll; that is what the two kinds ARE.
+        if self.kind == Kind.VOTE:
+            self.revisability = Revisability.FINAL
         super().save(*args, **kwargs)
 
     def _unique_slug(self) -> str:
