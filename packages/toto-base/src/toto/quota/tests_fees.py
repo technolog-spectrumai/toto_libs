@@ -673,8 +673,14 @@ class GasPumpTests(TestCase):
         self.assertTrue(self._plugin().visible_for_request(self._request("vault")))
 
     def test_it_shows_nowhere_on_an_app_that_meters_nothing(self):
-        """The same honesty check {% quota_tab %} makes."""
-        self.assertFalse(self._plugin().visible_for_request(self._request("polls")))
+        """The same honesty check {% quota_tab %} makes.
+
+        `events`, not `polls`: polls started metering its PDF export in 8/2026
+        and the pump then correctly appeared there. The claim under test is
+        about an app with no metrics at all, so it needs an example that stays
+        one — anything registering a metric later must fail this on purpose.
+        """
+        self.assertFalse(self._plugin().visible_for_request(self._request("events")))
 
     def test_it_is_hidden_from_anonymous_visitors(self):
         from django.contrib.auth.models import AnonymousUser
