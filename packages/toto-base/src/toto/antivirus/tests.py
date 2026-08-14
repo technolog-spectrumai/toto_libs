@@ -1531,3 +1531,42 @@ class WorkflowsRequiredTests(TestCase):
                       if e.id == "antivirus.E001"]
 
         self.assertEqual(len(errors), 1)
+
+
+class IngressTests(TestCase):
+    """The scan workflow is seeded at deploy, not first-Scan.
+
+    Before this command existed the Workflow row was created lazily by the
+    first successful dispatch — so an operator opening the workflows app on a
+    fresh deploy saw no antivirus workflow at all and read it as "antivirus
+    has no worker path".
+    """
+
+    def test_ingress_creates_the_workflow(self):
+        from django.core.management import call_command
+
+        from toto.workflows.models import Workflow, WorkflowNode
+
+        from .workflow import SCAN_TASK_NAME, SCAN_WORKFLOW_SLUG
+
+        call_command("ingress_antivirus")
+
+        workflow = Workflow.objects.get(slug=SCAN_WORKFLOW_SLUG)
+        self.assertTrue(workflow.nodes.filter(
+            node_type=WorkflowNode.PREDEFINED_TASK,
+            task_name=SCAN_TASK_NAME).exists())
+
+    def test_ingress_is_idempotent(self):
+        from django.core.management import call_command
+
+        from toto.workflows.models import Workflow
+
+        from .workflow import SCAN_WORKFLOW_SLUG
+
+        call_command("ingress_antivirus")
+        call_command("ingress_antivirus", full=True)
+
+        self.assertEqual(
+            Workflow.objects.filter(slug=SCAN_WORKFLOW_SLUG).count(), 1)
+        self.assertEqual(
+            Workflow.objects.get(slug=SCAN_WORKFLOW_SLUG).nodes.count(), 1)
