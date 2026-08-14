@@ -60,15 +60,26 @@
 
   var surfaces = {};
   var currentKey = "";
+  /* The last surface that registered a `document` handler — what the floating
+     chat chip reads through documentText(). Tracked separately from
+     `currentKey` because memo re-registers its block surface on every dialog
+     mount, and the chip wants "the page's document", not "whoever spoke
+     last". */
+  var documentKey = "";
 
-  /* handlers: { read, write, source?, writeDocument?, document?, anchor? }
+  /* handlers: { read, write, insert?, source?, writeDocument?, document?, anchor? }
    *
    * `read`/`write` are the SELECTION pair. `source`/`writeDocument` are the
-   * whole-file pair. An editor that supplies only one pair gets only that half
-   * of the feature rather than a button that fails when pressed. */
+   * whole-file pair. `insert` APPENDS one generated element through the
+   * editor's own command path. An editor that supplies only some handlers
+   * gets only those halves of the feature rather than a button that fails
+   * when pressed. */
   function register(key, handlers) {
     surfaces[key] = handlers || {};
     currentKey = key;
+    if (handlers && typeof handlers.document === "function") {
+      documentKey = key;
+    }
   }
 
   function handlersFor(key) {
@@ -79,96 +90,24 @@
     return currentKey;
   }
 
-  /* ---- the side panel ---------------------------------------------------
-   * A drawer that asks about the WHOLE document, docked to whatever editor is
-   * on the page. It shares everything with the toolbar — the same endpoint, the
-   * same run, the same polling — and differs in exactly two ways: it sends
-   * `document()` instead of `read()`, and it never writes anything back. An
-   * answer here is something to read, not a proposal to apply; the toolbar is
-   * where edits come from, and keeping that line sharp is why this has no
-   * Accept button.
-   */
-  function stevenDrawer(config) {
-    return {
-      askUrl: config.askUrl,
-      open: false,
-      question: "",
-      busy: false,
-      error: "",
-      answer: "",
-      tokens: 0,
-      _runId: null,
-      _polls: 0,
+  /* ---- what the chat chip reads --------------------------------------- */
 
-      /* Nothing to ask about, nothing to show. An editor registers a
-         `document` handler to opt in; the others get no drawer at all. */
-      get available() {
-        var handlers = handlersFor(current());
-        return typeof handlers.document === "function";
-      },
-
-      toggle: function () { this.open = !this.open; },
-
-      run: function () {
-        var self = this;
-        if (this.busy) return;
-        if (!this.question.trim()) { this.error = "Type a question first."; return; }
-
-        var handlers = handlersFor(current());
-        var text = "";
-        try { text = handlers.document ? handlers.document() || "" : ""; }
-        catch (e) { text = ""; }
-        if (!text.trim()) { this.error = "There is nothing in this document yet."; return; }
-
-        this.busy = true; this.error = ""; this.answer = ""; this._polls = 0;
-
-        fetch(this.askUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", "X-CSRFToken": csrf() },
-          credentials: "same-origin",
-          body: JSON.stringify({
-            surface: current(),
-            action: "ask",
-            selection: text,
-            instruction: this.question,
-          }),
-        })
-          .then(function (r) { return r.json().then(function (d) { return { ok: r.ok, data: d }; }); })
-          .then(function (res) {
-            if (!res.ok) {
-              self.busy = false;
-              self.error = (res.data && res.data.error) || "That did not work.";
-              return;
-            }
-            self._runId = res.data.run_id;
-            self.poll();
-          })
-          .catch(function () { self.busy = false; self.error = "Could not reach the server."; });
-      },
-
-      poll: function () {
-        var self = this;
-        setTimeout(function () {
-          self._polls += 1;
-          if (self._polls > MAX_POLLS) {
-            self.busy = false;
-            self.error = "This is taking too long.";
-            return;
-          }
-          fetch("/steven/runs/" + self._runId + "/", { credentials: "same-origin" })
-            .then(function (r) { return r.json(); })
-            .then(function (d) {
-              if (!d.finished) { self.poll(); return; }
-              self.busy = false;
-              self.tokens = d.tokens || 0;
-              if (d.status === "success") { self.answer = d.result || ""; }
-              else { self.error = d.error || "The assistant could not answer."; }
-            })
-            .catch(function () { self.poll(); });
-        }, POLL_MS);
-      },
-    };
+  function hasDocument() {
+    return typeof handlersFor(documentKey).document === "function";
   }
+
+  function documentText() {
+    var h = handlersFor(documentKey);
+    try {
+      return typeof h.document === "function" ? (h.document() || "") : "";
+    } catch (e) {
+      return "";
+    }
+  }
+
+  /* The old side-panel drawer lived here. Its whole feature — ask about the
+   * page's document — survives as the chat chip's "include this document"
+   * toggle (steven/chat.js), which reads documentText() above. */
 
   /* ---- the AI button, and the one modal both buttons open ---------------
    * Replaces the old dropdown of canned actions. Two entry points, one box:
@@ -443,7 +382,8 @@
     register: register,
     handlersFor: handlersFor,
     current: current,
+    hasDocument: hasDocument,
+    documentText: documentText,
   };
   global.stevenAi = stevenAi;
-  global.stevenDrawer = stevenDrawer;
 })(window);
