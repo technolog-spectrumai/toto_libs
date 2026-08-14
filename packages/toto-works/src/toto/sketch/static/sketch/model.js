@@ -73,6 +73,56 @@
   var ROTATE_SNAP_DEG = 15;
   var SVG_FONT_STACK = "system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif";
 
+  /* The fonts a drawing may use, and there is no way to add one.
+   *
+   * A drawing is an .svg FILE that this platform renders, and the antivirus
+   * screens it on the way in and out — so a font is not a free-text field. A
+   * typed family name would be markup somebody else's browser resolves, and
+   * the obvious next request after that is @font-face, which is a URL, which
+   * is a network fetch out of a document we promise is inert.
+   *
+   * Every stack below resolves to fonts already on the machine. Five, because
+   * the point is a legible choice between kinds of letterform — not a font
+   * menu — and because each one has to look like itself on Linux, macOS and
+   * Windows without shipping anything.
+   */
+  var FONT_CHOICES = [
+    { key: "sans",   label: "Sans",       stack: SVG_FONT_STACK },
+    { key: "serif",  label: "Serif",      stack: "Georgia, 'Times New Roman', serif" },
+    { key: "mono",   label: "Monospace",  stack: "ui-monospace, 'Cascadia Mono', Menlo, Consolas, monospace" },
+    { key: "round",  label: "Rounded",    stack: "'Trebuchet MS', 'Segoe UI', Verdana, sans-serif" },
+    { key: "narrow", label: "Condensed",  stack: "'Arial Narrow', 'Liberation Sans Narrow', Impact, sans-serif" },
+  ];
+  var DEFAULT_FONT = "sans";
+
+  /* Letter spacing, in SVG user units, as steps rather than a free number: the
+   * useful range is small and the interesting values are near zero, so a
+   * slider spends most of its travel on settings nobody wants. Negative is
+   * genuinely useful for a headline, so it goes both ways. */
+  var TRACKING_STEPS = [-2, -1, -0.5, 0, 0.5, 1, 2, 4];
+
+  function fontStack(key) {
+    for (var i = 0; i < FONT_CHOICES.length; i++) {
+      if (FONT_CHOICES[i].key === key) return FONT_CHOICES[i].stack;
+    }
+    return SVG_FONT_STACK;
+  }
+
+  function fontKey(value) {
+    for (var i = 0; i < FONT_CHOICES.length; i++) {
+      if (FONT_CHOICES[i].key === value) return value;
+    }
+    return DEFAULT_FONT;
+  }
+
+  /* The CSS `font` shorthand for a text shape, used by canvas measurement so
+   * the box a shape reports matches what the browser will actually draw.
+   * Weight and style change advance width; underline does not. */
+  function fontShorthand(s) {
+    return (s.italic ? "italic " : "") + (s.bold ? "700 " : "") +
+           s.size + "px " + fontStack(s.font);
+  }
+
   function canFill(kind) {
     return kind === "rect" || kind === "ellipse" || kind === "triangle" ||
            kind === "polygon";
@@ -352,6 +402,11 @@
         return Object.assign({}, s, {
           x: sx(s.x), y: sy(s.y),
           size: quant(Math.max(4, s.size * f)),
+          // Letter spacing scales WITH the type. It is a length in user units,
+          // so leaving it fixed makes an enlarged label look progressively
+          // tighter and a shrunk one gappy — the one thing tracking is
+          // supposed to hold steady.
+          tracking: s.tracking ? quant(s.tracking * f) : s.tracking,
           tw: quant(s.tw * f), th: quant(s.th * f),
         });
       }
@@ -704,10 +759,20 @@
           '" stroke="' + esc(s.color) + '" stroke-width="' + s.sw + '" stroke-linecap="round"/>' +
           '<polygon points="' + polyPoints(arrowHead(s)) + '" fill="' + esc(s.color) + '"/>' +
           "</g>";
-      case "text":
-        return '<text x="' + s.x + '" y="' + s.y + '" fill="' + esc(s.color) + '" opacity="' +
-          s.opacity + '" font-size="' + s.size + '" font-family="' + esc(SVG_FONT_STACK) + '"' +
-          rot + ">" + esc(s.text) + "</text>";
+      case "text": {
+        /* Presentation attributes, not a style="" string: the scanner reads
+           attributes, and a style attribute is a place to hide a declaration
+           it would have to parse CSS to see. Each is emitted only when it is
+           not the default, so an ordinary label stays the short line it was. */
+        var font = '<text x="' + s.x + '" y="' + s.y + '" fill="' + esc(s.color) +
+          '" opacity="' + s.opacity + '" font-size="' + s.size +
+          '" font-family="' + esc(fontStack(s.font)) + '"';
+        if (s.bold) font += ' font-weight="bold"';
+        if (s.italic) font += ' font-style="italic"';
+        if (s.underline) font += ' text-decoration="underline"';
+        if (s.tracking) font += ' letter-spacing="' + s.tracking + '"';
+        return font + rot + ">" + esc(s.text) + "</text>";
+      }
       case "opaque": {
         // Untouched → the exact original bytes. Touched → wrapped, with the
         // raw placement factors in the hint so it round-trips losslessly.
@@ -727,6 +792,9 @@
     EXTRA_COLORS: EXTRA_COLORS, PICKER_COLORS: PICKER_COLORS,
     STROKE_SIZES: STROKE_SIZES, TEXT_SIZES: TEXT_SIZES, OPACITY_STEPS: OPACITY_STEPS,
     ROTATE_SNAP_DEG: ROTATE_SNAP_DEG, SVG_FONT_STACK: SVG_FONT_STACK,
+    FONT_CHOICES: FONT_CHOICES, DEFAULT_FONT: DEFAULT_FONT,
+    TRACKING_STEPS: TRACKING_STEPS,
+    fontStack: fontStack, fontKey: fontKey, fontShorthand: fontShorthand,
     BACKGROUND_COLORS: BACKGROUND_COLORS,
     MAX_BG_IMAGE_CHARS: MAX_BG_IMAGE_CHARS,
     MAX_SHAPES: MAX_SHAPES, MAX_TEXT_LEN: MAX_TEXT_LEN, DEFAULT_CAPS: DEFAULT_CAPS,

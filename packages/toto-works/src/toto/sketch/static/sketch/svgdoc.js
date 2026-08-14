@@ -213,11 +213,34 @@
         var size = n(el, "font-size");
         var textContent = el.textContent || "";
         if (size === null || !textContent) return null;
-        var box = measure(textContent, size);
-        draft = Object.assign(common, {
+        /* Read the styling back, or a save-and-reload silently flattens every
+           label to plain sans. The font is matched against the ALLOW-LIST by
+           its stack rather than trusted: an .svg may arrive from anywhere, and
+           an unrecognised family falls back to the default instead of being
+           carried through into what we re-emit. */
+        var family = str(el, "font-family") || "";
+        var fontKey = M.DEFAULT_FONT;
+        for (var fi = 0; fi < M.FONT_CHOICES.length; fi++) {
+          if (M.FONT_CHOICES[fi].stack === family) { fontKey = M.FONT_CHOICES[fi].key; break; }
+        }
+        var weight = (str(el, "font-weight") || "").toLowerCase();
+        var decoration = (str(el, "text-decoration") || "").toLowerCase();
+        var tracking = n(el, "letter-spacing");
+        var shape = {
           kind: "text", color: common.fill || "#000000", fill: null,
           x: n(el, "x") || 0, y: n(el, "y") || 0,
-          text: textContent, size: size, tw: box.w, th: box.h });
+          text: textContent, size: size, font: fontKey,
+          bold: weight === "bold" || Number(weight) >= 600,
+          italic: (str(el, "font-style") || "").toLowerCase() === "italic",
+          underline: decoration.indexOf("underline") !== -1,
+          tracking: tracking === null ? 0 : tracking };
+        // Measured WITH its styling: bold and tracking change advance width,
+        // and a box measured without them puts the selection outline in the
+        // wrong place for every styled label in the file.
+        var box = measure(textContent, size, shape);
+        shape.tw = box.w;
+        shape.th = box.h;
+        draft = Object.assign(common, shape);
         break;
       }
       case "g": {

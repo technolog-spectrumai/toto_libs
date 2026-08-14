@@ -318,11 +318,109 @@ a JS string is never a place to render a template tag into. {% endcomment %}
          class="relative z-10 w-full max-w-md space-y-4 rounded-2xl border p-5 shadow-2xl">
       <h2 class="flex items-center gap-2 text-lg font-bold">
         <i class="fa-solid fa-font"></i> {% trans "Add text" %}</h2>
+      {% comment %}The field carries the chosen styling, so what you type is
+         what lands on the board — a preview you have to imagine is not a
+         preview. Size, family, weight, slant, underline and tracking are all
+         set before the text exists rather than after, because a label is
+         usually typed once and never edited.{% endcomment %}
       <input type="text" x-ref="textfield" x-model="textInput" maxlength="200"
              @keydown.enter.prevent="confirmText()"
              placeholder="{% trans 'Text on the board' %}"
              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-             class="w-full rounded-lg border px-3 py-2 text-sm">
+             class="w-full rounded-lg border px-3 py-2"
+             {% comment %}Capped at 28px: the field previews the STYLING, and a
+                56px board label would push the controls off a laptop screen.
+             {% endcomment %}
+             :style="textPreviewStyle + ';font-size:' + Math.min(textSize, 28) + 'px'">
+
+      <div class="space-y-3">
+
+        {% comment %}Font. A fixed list from the model — a drawing is an SVG
+           file this platform renders and the scanner screens, so the family is
+           chosen from an allow-list of stacks that resolve to fonts already on
+           the machine, never typed.{% endcomment %}
+        <div>
+          <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Font" %}</p>
+          <div class="flex flex-wrap gap-1.5">
+            <template x-for="choice in fontChoices" :key="choice.key">
+              <button type="button" @click="textFont = choice.key"
+                      :style="'font-family:' + choice.stack"
+                      :class="textFont === choice.key
+                                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                                : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                      class="rounded border px-3 py-1.5 text-sm transition hover:opacity-85"
+                      x-text="choice.label"></button>
+            </template>
+          </div>
+        </div>
+
+        <div class="flex flex-wrap items-end gap-4">
+
+          {% comment %}Size — the same four steps the toolbar offers, so a label
+             made here and one made there can match.{% endcomment %}
+          <div>
+            <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Size" %}</p>
+            <div class="flex gap-1.5">
+              <template x-for="size in textSizes" :key="size">
+                <button type="button" @click="textSize = size"
+                        :class="textSize === size
+                                  ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                                  : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                        class="w-10 rounded border py-1.5 text-xs font-semibold transition hover:opacity-85"
+                        x-text="size"></button>
+              </template>
+            </div>
+          </div>
+
+          <div>
+            <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Style" %}</p>
+            <div class="flex gap-1.5">
+              <button type="button" @click="textBold = !textBold"
+                      :aria-pressed="textBold ? 'true' : 'false'"
+                      :class="textBold
+                                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                                : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                      class="w-10 rounded border py-1.5 transition hover:opacity-85"
+                      title="{% trans 'Bold' %}"><i class="fa-solid fa-bold"></i></button>
+              <button type="button" @click="textItalic = !textItalic"
+                      :aria-pressed="textItalic ? 'true' : 'false'"
+                      :class="textItalic
+                                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                                : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                      class="w-10 rounded border py-1.5 transition hover:opacity-85"
+                      title="{% trans 'Italic' %}"><i class="fa-solid fa-italic"></i></button>
+              <button type="button" @click="textUnderline = !textUnderline"
+                      :aria-pressed="textUnderline ? 'true' : 'false'"
+                      :class="textUnderline
+                                ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
+                                : (darkMode ? 'border-accent-1' : 'border-accent-2')"
+                      class="w-10 rounded border py-1.5 transition hover:opacity-85"
+                      title="{% trans 'Underline' %}"><i class="fa-solid fa-underline"></i></button>
+            </div>
+          </div>
+
+          {% comment %}Letter spacing, up and down along fixed steps. Negative
+             is offered because tightening a heading is the common reason to
+             touch this at all.{% endcomment %}
+          <div>
+            <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Letter spacing" %}</p>
+            <div class="flex items-center gap-1.5">
+              <button type="button" @click="nudgeTracking(-1)"
+                      :disabled="textTracking === trackingSteps[0]"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                      class="w-9 rounded border py-1.5 transition hover:opacity-85 disabled:opacity-35"
+                      title="{% trans 'Tighter' %}"><i class="fa-solid fa-minus"></i></button>
+              <span class="w-12 text-center text-sm tabular-nums" x-text="textTracking"></span>
+              <button type="button" @click="nudgeTracking(1)"
+                      :disabled="textTracking === trackingSteps[trackingSteps.length - 1]"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                      class="w-9 rounded border py-1.5 transition hover:opacity-85 disabled:opacity-35"
+                      title="{% trans 'Looser' %}"><i class="fa-solid fa-plus"></i></button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <div class="flex justify-end gap-3">
         <button type="button" @click="cancelText()"
                 class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">

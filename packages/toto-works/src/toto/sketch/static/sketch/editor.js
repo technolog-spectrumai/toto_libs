@@ -194,12 +194,19 @@
       if (atCapacity() || !Array.isArray(pts) || pts.length < 6) return;
       commit(Object.assign(base, { kind: "polygon", pts: pts.map(M.quant) }));
     };
-    engine.addText = function (x, y, text, size, tw, th, base) {
+    engine.addText = function (x, y, text, size, tw, th, base, style) {
       var clean = text.trim().slice(0, caps.maxTextLen);
       if (!clean || atCapacity()) return;
+      var font = style || {};
       commit(Object.assign(base, {
         kind: "text", fill: null, x: M.quant(x), y: M.quant(y),
-        text: clean, size: size, tw: M.quant(tw), th: M.quant(th) }));
+        text: clean, size: size, tw: M.quant(tw), th: M.quant(th),
+        // Normalised here rather than trusted from the caller: `font` reaches
+        // the emitter and becomes a font-family in a file this platform
+        // renders, so an unknown key falls back to the default.
+        font: M.fontKey(font.font),
+        bold: !!font.bold, italic: !!font.italic, underline: !!font.underline,
+        tracking: Number(font.tracking) || 0 }));
     };
 
     // — selection + transforms —
@@ -509,7 +516,12 @@
           break;
         case "text":
           setAttrs(el, { x: s.x, y: s.y, fill: s.color, opacity: s.opacity,
-            "font-size": s.size, "font-family": M.SVG_FONT_STACK, transform: rotOf(s) });
+            "font-size": s.size, "font-family": M.fontStack(s.font),
+            "font-weight": s.bold ? "bold" : null,
+            "font-style": s.italic ? "italic" : null,
+            "text-decoration": s.underline ? "underline" : null,
+            "letter-spacing": s.tracking || null,
+            transform: rotOf(s) });
           el.textContent = s.text;
           break;
         case "opaque": {
@@ -821,6 +833,16 @@
       paletteEditing: false,
       openSlot: null,
       textSize: 24,
+      // Text styling, remembered between labels: somebody titling a diagram
+      // wants the next heading to match the last one, and re-picking a font
+      // for every word is the kind of thing that makes a tool feel hostile.
+      textFont: M.DEFAULT_FONT,
+      textBold: false,
+      textItalic: false,
+      textUnderline: false,
+      textTracking: 0,
+      fontChoices: M.FONT_CHOICES,
+      trackingSteps: M.TRACKING_STEPS,
       hasSelection: false,
       selRotation: 0,
       canUndo: false,
@@ -858,9 +880,20 @@
         var text = JSON.parse(contentEl.textContent);
 
         var measureCtx = document.createElement("canvas").getContext("2d");
-        function measure(t, size) {
-          measureCtx.font = size + "px " + M.SVG_FONT_STACK;
-          return { w: measureCtx.measureText(t).width, h: size * 1.2 };
+        function measure(t, size, style) {
+          /* `style` is a text shape (or anything carrying font/bold/italic/
+             tracking). Optional so every existing caller still works, and
+             honoured when given: bold, a condensed family and letter spacing
+             all change advance width, and a box measured without them leaves
+             the selection outline and the hit test wrong for styled text. */
+          var shape = style || {};
+          measureCtx.font = M.fontShorthand({
+            size: size, font: shape.font, bold: shape.bold, italic: shape.italic });
+          var w = measureCtx.measureText(t).width;
+          // Canvas cannot measure letter-spacing, so it is added: SVG puts the
+          // gap after every glyph including the last.
+          if (shape.tracking) w += shape.tracking * t.length;
+          return { w: Math.max(w, 1), h: size * 1.2 };
         }
         this._measure = measure;
 
@@ -1287,10 +1320,34 @@
         var text = this.textInput.trim();
         this.textModal = false;
         if (!text || !this.textAt || !engine) return;
-        var box = this._measure(text, this.textSize);
+        var style = {
+          font: this.textFont, bold: this.textBold, italic: this.textItalic,
+          underline: this.textUnderline, tracking: this.textTracking };
+        var box = this._measure(text, this.textSize, style);
         engine.addText(this.textAt.x, this.textAt.y, text, this.textSize,
-                       box.w, box.h, this.newBase());
+                       box.w, box.h, this.newBase(), style);
         this.textAt = null;
+      },
+      nudgeTracking: function (direction) {
+        var steps = M.TRACKING_STEPS;
+        var at = steps.indexOf(this.textTracking);
+        // An unrecognised value (an older file, a hand-edited one) snaps to
+        // the nearest step rather than refusing to move.
+        if (at === -1) {
+          at = 0;
+          for (var i = 1; i < steps.length; i++) {
+            if (Math.abs(steps[i] - this.textTracking) <
+                Math.abs(steps[at] - this.textTracking)) at = i;
+          }
+        }
+        this.textTracking = steps[Math.min(steps.length - 1, Math.max(0, at + direction))];
+      },
+      get textPreviewStyle() {
+        return "font-family:" + M.fontStack(this.textFont) +
+               ";font-weight:" + (this.textBold ? "700" : "400") +
+               ";font-style:" + (this.textItalic ? "italic" : "normal") +
+               ";text-decoration:" + (this.textUnderline ? "underline" : "none") +
+               ";letter-spacing:" + this.textTracking + "px";
       },
       cancelText: function () {
         this.textModal = false;

@@ -446,3 +446,121 @@ class ScanRecordTests(_SketchFixture):
 
         self.own.refresh_from_db()
         self.assertEqual(clean_file_ids([self.own]), {self.own.pk})
+
+
+class StyledTextTests(TestCase):
+    """Text carries a font, a weight, a slant, an underline and letter spacing.
+
+    Two things matter here and neither is cosmetic. A drawing is an .svg FILE
+    the platform renders and the scanner screens, so the font family comes from
+    a fixed allow-list rather than a text field — a typed family is markup, and
+    the request after that is @font-face, which is a URL out of a document we
+    promise is inert. And the styling has to survive a save: the emitter and
+    the parser are two halves of one contract, and a round trip that drops
+    formatting is the bug somebody notices a week later on a finished diagram.
+    """
+
+    def _model_js(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "static" / "sketch"
+                / "model.js").read_text()
+
+    def _svgdoc_js(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "static" / "sketch"
+                / "svgdoc.js").read_text()
+
+    def test_a_styled_label_passes_the_scanner(self):
+        """Everything the emitter can now write, screened as the file it is."""
+        svg = (
+            '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">'
+            '<text x="10" y="20" fill="#000000" opacity="1" font-size="24"'
+            ' font-family="Georgia, \'Times New Roman\', serif"'
+            ' font-weight="bold" font-style="italic"'
+            ' text-decoration="underline" letter-spacing="2">Hello</text>'
+            "</svg>"
+        )
+
+        verdict = scan(svg, file_type="svg")
+
+        self.assertTrue(verdict.ok, f"{verdict.reason}: {verdict.detail}")
+
+    def test_the_font_list_names_no_external_source(self):
+        """Every stack must resolve to fonts already on the machine. A url() or
+        an @font-face here would put a network fetch in a drawing."""
+        model = self._model_js()
+        start = model.index("var FONT_CHOICES")
+        block = model[start:model.index("var DEFAULT_FONT")]
+
+        for forbidden in ("url(", "@font-face", "http://", "https://", "//fonts"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, block)
+
+    def test_the_emitter_writes_attributes_not_a_style_string(self):
+        """The scanner reads attributes; a style="" is a place to hide a
+        declaration it would have to parse CSS to see."""
+        model = self._model_js()
+        # model.js holds TWO `case "text"` blocks — scaleShape's and the
+        # emitter's. Anchored on the markup only the emitter writes.
+        start = model.index(chr(39) + '<text x="' + chr(39))
+        block = model[start:start + 900]
+
+        self.assertIn('font-weight="', block)
+        self.assertIn('letter-spacing="', block)
+        self.assertNotIn(' style="', block)
+
+    def test_the_parser_reads_back_everything_the_emitter_writes(self):
+        """Two halves of one contract. A save-and-reload that drops these
+        silently flattens every label in the file to plain sans."""
+        parser = self._svgdoc_js()
+        start = parser.index('case "text": {')
+        block = parser[start:start + 2200]
+
+        for attribute in ("font-family", "font-weight", "font-style",
+                          "text-decoration", "letter-spacing"):
+            with self.subTest(attribute=attribute):
+                self.assertIn(attribute, block)
+
+    def test_an_unknown_family_falls_back_rather_than_passing_through(self):
+        """An .svg may arrive from anywhere. A family we do not recognise must
+        not be carried into what we re-emit."""
+        parser = self._svgdoc_js()
+        start = parser.index('case "text": {')
+        block = parser[start:start + 2200]
+
+        self.assertIn("M.DEFAULT_FONT", block)
+        self.assertIn("M.FONT_CHOICES", block)
+
+    def test_measurement_accounts_for_the_styling(self):
+        """Bold, a condensed family and tracking all change advance width, and
+        a box measured without them leaves the selection outline wrong."""
+        import pathlib
+
+        editor = (pathlib.Path(__file__).parent / "static" / "sketch"
+                  / "editor.js").read_text()
+        start = editor.index("function measure(t, size, style)")
+        block = editor[start:start + 900]
+
+        self.assertIn("fontShorthand", block)
+        self.assertIn("tracking", block)
+
+    def test_tracking_goes_both_ways(self):
+        """Tightening a heading is the common reason to touch this at all."""
+        model = self._model_js()
+        start = model.index("var TRACKING_STEPS")
+        block = model[start:model.index("function fontStack")]
+
+        self.assertIn("-1", block)
+        self.assertIn("0,", block)
+
+
+    def test_letter_spacing_scales_with_the_type(self):
+        """A length in user units. Left fixed, an enlarged label looks
+        progressively tighter — the one thing tracking should hold steady."""
+        model = self._model_js()
+        start = model.index('case "text": {')
+        block = model[start:start + 700]
+
+        self.assertIn("tracking", block)
