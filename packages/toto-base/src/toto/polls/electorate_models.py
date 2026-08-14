@@ -340,6 +340,69 @@ class VoteProcedure(models.Model):
         }
 
 
+class QuorumRule(models.Model):
+    """A named attendance bar, staff-configured, snapshotted at vote open.
+
+    Four modes, because bodies count a quorum four ways: not at all, as a
+    fraction of the voting weight, as an absolute weight, or by somebody
+    with authority saying so on the record. Evaluated from the vote's OWN
+    snapshotted attendance — never from live rows.
+    """
+
+    class Mode(models.TextChoices):
+        NONE = "none", _("No additional quorum")
+        PERCENT = "percent", _("Minimum represented weight, percent")
+        ABSOLUTE = "absolute", _("Minimum represented weight, absolute")
+        MANUAL = "manual", _("Manual confirmation")
+
+    name = models.CharField(max_length=80, unique=True)
+    slug = models.SlugField(max_length=100, unique=True, blank=True)
+    mode = models.CharField(max_length=10, choices=Mode.choices,
+                            default=Mode.NONE)
+    #: Percent of the electorate weight (PERCENT) or an absolute weight
+    #: (ABSOLUTE). Meaningless — and null — for the other modes.
+    threshold = models.DecimalField(max_digits=14, decimal_places=2,
+                                    null=True, blank=True)
+    description = models.TextField(blank=True)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["name"]
+        verbose_name = _("quorum rule")
+        verbose_name_plural = _("quorum rules")
+
+    def __str__(self):
+        if self.threshold is None:
+            return self.name
+        return f"{self.name} ({self.threshold})"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            self.slug = slugify(self.name)
+        super().save(*args, **kwargs)
+
+
+class ConveningMode(models.TextChoices):
+    """How the session came to be entitled to decide anything.
+
+    A formally convened meeting draws its authority from the notice that
+    called it. A universal meeting draws it from everybody being in the room
+    and nobody objecting — which is why that mode demands three explicit
+    confirmations rather than a checkbox.
+    """
+
+    FORMAL = "formal", _("Formally convened")
+    UNIVERSAL = "universal", _("100% represented / universal meeting")
+
+
+#: The three facts a universal meeting must confirm, each on the record.
+CONVENING_ASPECTS = (
+    ("full_representation", _("The entire voting weight is represented")),
+    ("no_objection_meeting", _("Nobody objects to holding the meeting")),
+    ("no_objection_agenda", _("Nobody objects to the agenda")),
+)
+
+
 class ConsensusProfile(models.Model):
     """A named threshold, staff-configured, snapshotted at vote open.
 

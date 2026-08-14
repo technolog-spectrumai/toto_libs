@@ -298,6 +298,103 @@ def procedure_of(question):
     return VoteProcedure.objects.filter(question=question).first()
 
 
+def snapshot_quorum(question, rule) -> None:
+    """Copy a quorum rule's mode, name and number onto the vote at open."""
+    question.quorum_mode = rule.mode
+    question.quorum_name = rule.name
+    question.quorum_threshold = rule.threshold
+    question.save()
+
+
+def confirm_quorum(question, user) -> None:
+    """The MANUAL mode's act of authority, on the record: who, and when.
+
+    A session fact like the notes — it happens while the meeting runs, so it
+    is not caught by the instrument lock, and it freezes with the decision.
+    """
+    from django.utils import timezone as tz
+
+    question.metadata = {**(question.metadata or {}), "quorum_confirmation": {
+        "by": user.get_username(), "at": tz.now().isoformat()}}
+    question.save()
+
+
+def confirm_convening(question, aspect: str, user) -> None:
+    """One of a universal meeting's three confirmations, on the record."""
+    from django.utils import timezone as tz
+
+    from .electorate_models import CONVENING_ASPECTS
+
+    if aspect not in {key for key, _label in CONVENING_ASPECTS}:
+        raise ValueError("Unknown convening confirmation.")
+    confirmations = dict((question.metadata or {}).get(
+        "convening_confirmations", {}))
+    confirmations[aspect] = {"by": user.get_username(),
+                             "at": tz.now().isoformat()}
+    question.metadata = {**(question.metadata or {}),
+                         "convening_confirmations": confirmations}
+    question.save()
+
+
+def evaluate_quorum(question, procedure) -> dict | None:
+    """The snapshotted rule against the snapshotted attendance.
+
+    None when the vote took no quorum rule. Percent and absolute bars are
+    met AT the number — a quorum is "at least", where a consensus threshold
+    is "strictly more".
+    """
+    from .electorate_models import QuorumRule
+
+    if not question.quorum_mode:
+        return None
+    result = {
+        "mode": question.quorum_mode,
+        "name": question.quorum_name,
+        "threshold": (str(question.quorum_threshold)
+                      if question.quorum_threshold is not None else None),
+        "represented_weight": procedure.represented_weight if procedure else 0,
+        "electorate_weight": procedure.electorate_weight if procedure else 0,
+        "attendance_percent": (procedure.attendance_percent
+                               if procedure else 0.0),
+    }
+    if question.quorum_mode == QuorumRule.Mode.NONE:
+        result["met"] = True
+    elif question.quorum_mode == QuorumRule.Mode.PERCENT:
+        result["met"] = (procedure is not None
+                         and procedure.attendance_percent
+                         >= float(question.quorum_threshold or 0))
+    elif question.quorum_mode == QuorumRule.Mode.ABSOLUTE:
+        result["met"] = (procedure is not None
+                         and procedure.represented_weight
+                         >= float(question.quorum_threshold or 0))
+    elif question.quorum_mode == QuorumRule.Mode.MANUAL:
+        confirmation = (question.metadata or {}).get("quorum_confirmation")
+        result["met"] = bool(confirmation)
+        result["confirmation"] = confirmation
+    else:
+        result["met"] = False
+    return result
+
+
+def convening_state(question) -> dict:
+    """The convening mode and whatever has been confirmed so far."""
+    from .electorate_models import CONVENING_ASPECTS, ConveningMode
+
+    confirmations = (question.metadata or {}).get(
+        "convening_confirmations", {})
+    mode = question.convening_mode or ConveningMode.FORMAL
+    return {
+        "mode": mode,
+        "confirmations": confirmations,
+        # Only a universal meeting owes confirmations; a formally convened
+        # one owes nothing, and listing three "missing" facts it never
+        # needed would misread as a defect.
+        "missing": ([key for key, _label in CONVENING_ASPECTS
+                     if key not in confirmations]
+                    if mode == ConveningMode.UNIVERSAL else []),
+    }
+
+
 def snapshot_rule(question, profile) -> None:
     """Copy a consensus profile's name AND number onto the vote — so a later
     retune of the profile changes future votes only."""
@@ -425,6 +522,31 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
         count = tally(question, electorate=roll)
         consensus = evaluate_consensus(question, count)
         procedure = procedure_of(question)
+        quorum = evaluate_quorum(question, procedure)
+        convening = convening_state(question)
+
+        from .electorate_models import ConveningMode
+
+        if question.convening_mode == ConveningMode.UNIVERSAL:
+            # A universal meeting IS its three confirmations plus the fact of
+            # everybody being in the room; without them there was no meeting
+            # entitled to decide, and recording would launder that.
+            if convening["missing"]:
+                raise PermissionDenied(
+                    "A universal meeting needs all three confirmations "
+                    "before its decision can be recorded.")
+            if procedure is None or procedure.attendance_percent < 100.0:
+                raise PermissionDenied(
+                    "A universal meeting requires the entire voting weight "
+                    "to be represented; the attendance snapshot says it "
+                    "is not.")
+
+        if consensus is not None and quorum is not None and not quorum["met"]:
+            # A threshold vote in a session without quorum cannot adopt —
+            # the arithmetic stays in the record, the verdict does not
+            # survive the missing room.
+            consensus = {**consensus, "adopted": False,
+                         "quorum_blocked": True}
 
         # What the scope's own rules make of that count. None when the scope
         # has no rule, which is every scope the engine ships: "passed" is a
@@ -492,6 +614,8 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
             } for entry in question.roll.all()],
             "procedure": (procedure.as_dict(notes=question.procedural_notes)
                           if procedure else None),
+            "quorum": quorum,
+            "convening": convening,
             "exclusions": [{
                 "user_id": exclusion.user_id,
                 "label": exclusion.label,

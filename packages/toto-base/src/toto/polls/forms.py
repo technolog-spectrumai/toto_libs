@@ -43,6 +43,15 @@ class VoteCreateForm(forms.Form):
         queryset=None, label=_("Electorate"),
         help_text=_("Who may ballot, and with what weight. Its membership "
                     "and weights are frozen when the vote opens."))
+    quorum = forms.ModelChoiceField(
+        queryset=None, required=False, label=_("Quorum rule"),
+        help_text=_("The attendance bar this session must clear. Mode, name "
+                    "and number are snapshotted when the vote opens."))
+    convening = forms.ChoiceField(
+        required=False, label=_("Convening mode"),
+        help_text=_("Formally convened, or a universal meeting — the latter "
+                    "needs three staff confirmations on the record before "
+                    "the decision can be recorded."))
     rule = forms.ModelChoiceField(
         queryset=None, required=False, label=_("Consensus rule"),
         help_text=_("The threshold this vote must exceed. Its name and "
@@ -90,6 +99,11 @@ class VoteCreateForm(forms.Form):
             Electorate.objects.in_scope("").active())
         self.fields["rule"].queryset = ConsensusProfile.objects.filter(
             is_active=True)
+        from .electorate_models import ConveningMode, QuorumRule
+
+        self.fields["quorum"].queryset = QuorumRule.objects.filter(
+            is_active=True)
+        self.fields["convening"].choices = ConveningMode.choices
         # The events idiom: the form dresses its own widgets, the template
         # just renders {{ field }}.
         for name, field in self.fields.items():
@@ -152,6 +166,11 @@ class VoteCreateForm(forms.Form):
                                   position=position)
         if data.get("rule"):
             services.snapshot_rule(question, data["rule"])
+        if data.get("quorum"):
+            services.snapshot_quorum(question, data["quorum"])
+        if data.get("convening"):
+            question.convening_mode = data["convening"]
+            question.save()
         # The register: membership and weights copied now, so later edits to
         # the electorate change future votes only.
         services.freeze_roll(question, electorate=data["electorate"])

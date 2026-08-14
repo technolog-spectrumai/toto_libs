@@ -73,6 +73,7 @@
         <th class="py-2 pr-4">{% trans "Decided" %}</th>
         <th class="py-2 pr-4">{% trans "Title" %}</th>
         <th class="py-2 pr-4">{% trans "Outcome" %}</th>
+        <th class="py-2 pr-4">{% trans "Consensus" %}</th>
         <th class="py-2 pr-4">{% trans "Electorate" %}</th>
         <th class="py-2 pr-4 text-right">{% trans "Ballots" %}</th>
         <th class="py-2 pr-4 text-right">{% trans "Weight" %}</th>
@@ -99,11 +100,16 @@
               {% if c %}
                 <span class="font-semibold {% if decision.adopted %}text-green-600{% else %}text-red-600{% endif %}">
                   {% if decision.adopted %}{% trans "Adopted" %}{% else %}{% trans "Rejected" %}{% endif %}</span>
-                <span class="block text-[10px] opacity-60">{{ c.name }} · {{ c.achieved_percent }}% / {{ c.percent }}%</span>
+                <span class="block text-[10px] opacity-60">{{ c.name }} · {{ c.achieved_percent }}% / {{ c.percent }}%{% if c.quorum_blocked %} · {% trans "no quorum" %}{% endif %}</span>
               {% else %}—{% endif %}
             {% endwith %}
           </td>
-          <td class="py-2 pr-4">{{ decision.electorate_key|default:"—" }}</td>
+          <td class="py-2 pr-4">{{ decision.electorate_key|default:"—" }}
+            {% if decision.content.exclusions %}
+              <span class="block text-[10px] opacity-60"
+                    title="{% for e in decision.content.exclusions %}{{ e.label }}: {{ e.reason }}{% if not forloop.last %} | {% endif %}{% endfor %}">
+                {{ decision.content.exclusions|length }} {% trans "excluded" %}</span>
+            {% endif %}</td>
           <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_ballots }}</td>
           <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_weight }}</td>
           <td class="py-2 text-right tabular-nums">

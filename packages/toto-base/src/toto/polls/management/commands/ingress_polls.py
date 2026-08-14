@@ -47,8 +47,31 @@ class Command(IngressCommand):
                 defaults={"percent": Decimal(percent),
                           "description": description})
 
+    QUORUM_RULES = [
+        ("No additional quorum", "none", None,
+         "The session decides with whoever attends."),
+        ("Half the voting weight", "percent", "50.00",
+         "At least half of the electorate weight must be represented."),
+        ("Manual confirmation", "manual", None,
+         "The chair confirms quorum on the record."),
+    ]
+
+    def _seed_quorum_rules(self):
+        from decimal import Decimal
+
+        from toto.polls.models import QuorumRule
+
+        for name, mode, threshold, description in self.QUORUM_RULES:
+            QuorumRule.objects.get_or_create(
+                name=name,
+                defaults={"mode": mode,
+                          "threshold": (Decimal(threshold)
+                                        if threshold else None),
+                          "description": description})
+
     def process(self):
         self._seed_profiles()
+        self._seed_quorum_rules()
         if not self.full:
             return
 

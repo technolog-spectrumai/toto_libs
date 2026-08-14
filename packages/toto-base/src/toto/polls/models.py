@@ -138,6 +138,16 @@ class Question(models.Model):
     rule_name = models.CharField(max_length=80, blank=True)
     rule_percent = models.DecimalField(max_digits=5, decimal_places=2,
                                        null=True, blank=True)
+    #: The quorum rule, snapshotted AT OPEN like the consensus rule: mode,
+    #: name and number all copied, so retuning the rule changes future votes
+    #: only. Blank mode = no quorum requirement was taken.
+    quorum_mode = models.CharField(max_length=10, blank=True)
+    quorum_name = models.CharField(max_length=80, blank=True)
+    quorum_threshold = models.DecimalField(max_digits=14, decimal_places=2,
+                                           null=True, blank=True)
+    #: How the session is entitled to decide. Locked with the instrument.
+    convening_mode = models.CharField(max_length=10, blank=True,
+                                      default="formal")
     #: Facts about the session that deserve the record but not a model of
     #: their own — an arrival, a departure, an objection, a chair's ruling.
     #: Deliberately NOT locked with the header: notes describe what happened
@@ -187,7 +197,8 @@ class Question(models.Model):
         if self.pk is not None and self.kind == Kind.VOTE:
             was = Question.objects.filter(pk=self.pk).values(
                 "decision_header", "decision_comment", "rule_name",
-                "rule_percent", "electorate_id").first()
+                "rule_percent", "electorate_id", "quorum_mode",
+                "quorum_name", "quorum_threshold", "convening_mode").first()
             # "Voting has started" means the register is frozen — that is the
             # moment the instrument became addressable to voters — or that
             # somebody has already balloted. Not merely that opens_at passed:
@@ -200,11 +211,15 @@ class Question(models.Model):
                     or was["decision_comment"] != self.decision_comment
                     or was["rule_name"] != self.rule_name
                     or was["rule_percent"] != self.rule_percent
-                    or was["electorate_id"] != self.electorate_id)
+                    or was["electorate_id"] != self.electorate_id
+                    or was["quorum_mode"] != self.quorum_mode
+                    or was["quorum_name"] != self.quorum_name
+                    or was["quorum_threshold"] != self.quorum_threshold
+                    or was["convening_mode"] != self.convening_mode)
                 if changed:
                     raise ValueError(
-                        "Voting has started; the header, comment, rule and "
-                        "electorate are locked.")
+                        "Voting has started; the header, comment, rules, "
+                        "quorum, convening mode and electorate are locked.")
         super().save(*args, **kwargs)
 
     def _unique_slug(self) -> str:
@@ -467,9 +482,10 @@ class Ballot(models.Model):
 
 
 # -- electorates as data, the frozen register, consensus profiles -------------
-from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402,F401
-                                ElectorateMember, Presence, RollEntry,
-                                VoteExclusion, VoteProcedure)
+from .electorate_models import (CONVENING_ASPECTS,  # noqa: E402,F401
+                                ConsensusProfile, ConveningMode, Electorate,
+                                ElectorateMember, Presence, QuorumRule,
+                                RollEntry, VoteExclusion, VoteProcedure)
 
 # -- quizzes: competence testing on the same scoping --------------------------
 # Imported here so Django's migration autodetector sees them as polls models;

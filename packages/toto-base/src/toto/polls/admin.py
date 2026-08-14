@@ -149,8 +149,8 @@ class QuizCertificateAdmin(admin.ModelAdmin):
 # -- electorates and consensus rules (stages 5, 7) ---------------------------
 
 from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402
-                                ElectorateMember, RollEntry, VoteExclusion,
-                                VoteProcedure)
+                                ElectorateMember, QuorumRule, RollEntry,
+                                VoteExclusion, VoteProcedure)
 
 
 class ElectorateMemberInline(admin.TabularInline):
@@ -228,3 +228,14 @@ class VoteProcedureAdmin(admin.ModelAdmin):
 
     def has_change_permission(self, request, obj=None):
         return False
+
+
+@admin.register(QuorumRule)
+class QuorumRuleAdmin(admin.ModelAdmin):
+    """Staff only, like the consensus profiles: an attendance bar is policy.
+    A vote snapshots mode, name and number at open, so edits here never
+    rewrite history."""
+
+    list_display = ("name", "mode", "threshold", "is_active")
+    list_filter = ("mode", "is_active")
+    readonly_fields = ("slug",)
