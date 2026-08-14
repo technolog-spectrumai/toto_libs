@@ -23,7 +23,8 @@
     <div class="mb-4 flex flex-wrap gap-4 text-sm">
       {% for type in scannable_types %}
         <label class="inline-flex items-center gap-2">
-          <input type="checkbox" value="{{ type }}" x-model="types">
+          <input type="checkbox" value="{{ type }}" x-model="types"
+                 :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
           <span class="uppercase">{{ type }}</span>
         </label>
       {% endfor %}
@@ -33,7 +34,8 @@
     <div class="mb-4 space-y-2 text-sm">
       {% for key, label, blurb in door_groups %}
         <label class="flex items-start gap-2">
-          <input type="checkbox" value="{{ key }}" x-model="doors" class="mt-1">
+          <input type="checkbox" value="{{ key }}" x-model="doors" class="mt-1"
+                 :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
           <span><span class="font-semibold">{{ label }}</span>
             <span class="block text-xs opacity-65">{{ blurb }}</span></span>
         </label>
@@ -80,19 +82,24 @@
       {% trans "Held strictly by default; untick only after a policy decision. JavaScript, auto-run and launched programs cannot be unticked." %}</p>
     <div class="mb-4 grid gap-2 text-sm sm:grid-cols-2">
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" x-model="config.pdf_refuse_aa">
+        <input type="checkbox" x-model="config.pdf_refuse_aa"
+               :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
         <span>{% trans "Refuse additional actions" %} <span class="opacity-50">/AA</span></span></label>
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" x-model="config.pdf_refuse_xfa">
+        <input type="checkbox" x-model="config.pdf_refuse_xfa"
+               :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
         <span>{% trans "Refuse XFA forms" %} <span class="opacity-50">/XFA</span></span></label>
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" x-model="config.pdf_refuse_embedded">
+        <input type="checkbox" x-model="config.pdf_refuse_embedded"
+               :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
         <span>{% trans "Refuse embedded files" %} <span class="opacity-50">/EmbeddedFile</span></span></label>
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" x-model="config.pdf_refuse_richmedia">
+        <input type="checkbox" x-model="config.pdf_refuse_richmedia"
+               :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
         <span>{% trans "Refuse rich media" %} <span class="opacity-50">/RichMedia</span></span></label>
       <label class="inline-flex items-center gap-2">
-        <input type="checkbox" x-model="config.pdf_refuse_encrypted">
+        <input type="checkbox" x-model="config.pdf_refuse_encrypted"
+               :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'">
         <span>{% trans "Refuse encrypted PDFs" %} <span class="opacity-50">/Encrypt</span></span></label>
     </div>
 

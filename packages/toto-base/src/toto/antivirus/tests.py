@@ -1407,6 +1407,17 @@ class SettingsTabTests(_TabsFixture):
         # Explicit save: no checkbox fires the POST by itself.
         self.assertNotContains(response, '@change="savePreference()"')
 
+    def test_checkboxes_follow_the_theme(self):
+        # Native checkboxes ignore the page palette unless told: accent-color
+        # picks the checked fill, color-scheme makes the browser draw the box
+        # itself dark. Both, on every checkbox — settings and the scan modal.
+        self._file()  # the index checkbox lives on a rendered row
+        for name in ("settings", "index"):
+            with self.subTest(page=name):
+                response = self.client.get(reverse(f"antivirus:{name}"))
+                self.assertContains(response, "accent-accent-dark")
+                self.assertContains(response, "[color-scheme:dark]")
+
     def test_the_files_tab_no_longer_carries_the_preference_card(self):
         self.assertNotContains(self.client.get(reverse("antivirus:index")),
                                "Scan automatically")

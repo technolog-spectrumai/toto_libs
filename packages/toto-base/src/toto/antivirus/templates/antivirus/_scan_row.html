@@ -47,6 +47,7 @@
     {% if picking %}
       {% comment %}Modal mode: pick what the confirmed scan will cover.{% endcomment %}
       <input type="checkbox" class="h-4 w-4"
+             :class="darkMode ? 'accent-accent-dark [color-scheme:dark]' : 'accent-accent-light [color-scheme:light]'"
              x-model="checked[{{ file.id }}]">
     {% else %}
       {% comment %}Page mode: the live result of a scan run from the modal, and
