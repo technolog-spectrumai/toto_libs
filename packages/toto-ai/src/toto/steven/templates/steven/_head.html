@@ -4,5 +4,12 @@
    Separate from _ai.html because a page may carry several AI buttons
    (memo has three toolbars) and loading the script three times would register
    the Alpine component three times.
+
+   SYNCHRONOUS, not defer — load-bearing: oya/alpine.js starts Alpine in a
+   queueMicrotask right after its own script runs, BEFORE any later deferred
+   script executes. A deferred stevenAi is undefined at init, Alpine strips
+   x-cloak anyway, x-show throws instead of hiding, and the modal wedges open
+   over the page with dead handlers. Definition-only script, so sync is safe —
+   the same pattern sketch and cyprian load their editors with.
 {% endcomment %}
-<script defer src="{% static 'steven/actions.js' %}"></script>
+<script src="{% static 'steven/actions.js' %}"></script>

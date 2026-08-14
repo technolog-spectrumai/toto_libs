@@ -1,11 +1,29 @@
 {% load i18n static %}
-{% comment %}The floating chat chip, and the modal it opens.
+{% comment %}The floating chat chip, and the popover it opens.
 
    Rendered into every authenticated page through {% templatetag openblock %}
    render_floating_plugins {% templatetag closeblock %}, so it must be entirely
-   self-contained: its own [x-cloak] rule (neither oya/base.html nor any other
-   plugin declares one), its own script, its own modal markup — the gas pump
-   is the model.
+   self-contained AND entirely unable to take a page down. Three fail-safes,
+   each of which alone keeps the page usable:
+
+   1. chat.js loads SYNCHRONOUSLY. oya/alpine.js starts Alpine in a
+      queueMicrotask right after its own (deferred) script runs — BEFORE any
+      later deferred script executes — so a deferred component factory is
+      undefined at init, Alpine strips x-cloak anyway, x-show throws instead
+      of evaluating, and the panel wedges OPEN with dead handlers. That is
+      exactly the outage this file shipped once; sync definition-only scripts
+      are the house pattern (sketch, cyprian) for this reason.
+   2. x-data falls back to an inert stub when the factory is missing, so
+      every binding still evaluates and the chip is simply dead rather than
+      broken.
+   3. The panel carries a literal style="display:none" — x-show overrides it
+      when Alpine is in charge, and nothing can render it open when Alpine
+      is not.
+
+   NO full-screen layer and NO scrim, deliberately: the chat is a corner
+   POPOVER, not a modal. The page behind it stays fully interactive — an
+   assistant must never block the work it is supposed to help with. Close is
+   the ×, Escape, or clicking anywhere else.
 
    EPHEMERAL by decision: the transcript lives in Alpine state and dies with
    the page; every question is a single-turn run ("say"), or a single question
@@ -15,13 +33,18 @@
    Slot map, hand-coordinated: gas pump right-6, this chip right-20.
 {% endcomment %}
 <style>[x-cloak]{display:none!important}</style>
-<script defer src="{% static 'steven/chat.js' %}"></script>
+<script src="{% static 'steven/chat.js' %}"></script>
 
-<div x-data="stevenChat({ askUrl: '{% url 'steven:ask' %}' })"
+<div x-data="window.stevenChat ? stevenChat({ askUrl: '{% url 'steven:ask' %}' })
+       : { open: false, draft: '', busy: false, includeDocument: false,
+           hasDocument: false, messages: [],
+           toggle() {}, close() {}, send() {} }"
      @keydown.escape.window="close()"
      class="fixed bottom-6 right-20 z-40">
 
-  <button type="button" @click="toggle()"
+  {% comment %}.stop so the chip's own click never doubles as the panel's
+     outside-click — toggle would close-then-reopen otherwise.{% endcomment %}
+  <button type="button" @click.stop="toggle()"
           :class="open
                     ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
                     : (darkMode ? 'border-accent-1 bg-bubble-bg-dark opacity-40' : 'border-accent-2 bg-bubble-bg-light opacity-40')"
@@ -31,67 +54,61 @@
     <i class="fa-solid fa-comment-dots"></i>
   </button>
 
-  {% comment %}The modal — the gas pump's shell: full-screen fixed container,
-     its own scrim, the panel above it.{% endcomment %}
-  <div x-show="open" x-cloak
-       class="fixed inset-0 z-50 flex items-end justify-end p-4 sm:p-6">
-    <div class="absolute inset-0 bg-black/60" @click="close()"></div>
+  <div x-show="open" x-cloak style="display:none" @click.outside="close()"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+       class="absolute bottom-14 right-0 flex max-h-[70vh] w-80 flex-col rounded-2xl border shadow-2xl sm:w-96">
 
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
-         class="relative z-10 flex max-h-[80vh] w-full max-w-md flex-col rounded-2xl border shadow-2xl">
-
-      <div class="flex items-center justify-between gap-3 border-b border-current/10 px-4 py-3">
-        <h2 class="flex items-center gap-2 text-sm font-bold">
-          <i class="fa-solid fa-comment-dots opacity-70"></i>
-          {% trans "Assistant" %}
-        </h2>
-        <button type="button" @click="close()"
-                class="opacity-50 transition hover:opacity-100"
-                title="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
-      </div>
-
-      <div class="min-h-[8rem] flex-1 space-y-3 overflow-y-auto px-4 py-3" x-ref="transcript">
-        <template x-for="(message, index) in messages" :key="index">
-          <div :class="message.role === 'you' ? 'text-right' : ''">
-            <div :class="message.role === 'you'
-                           ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/15')
-                           : (message.error
-                               ? (darkMode ? 'border border-warn-dark/40' : 'border border-warn-light/40')
-                               : (darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'))"
-                 class="inline-block max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-left text-sm leading-relaxed"
-                 x-text="message.text"></div>
-            <p x-show="message.tokens" class="mt-0.5 text-[10px] opacity-45">
-              <span x-text="message.tokens"></span> {% trans "tokens" %}</p>
-          </div>
-        </template>
-        <p x-show="!messages.length" class="text-sm opacity-55">
-          {% trans "Ask anything. Answers are brief, and each question stands alone." %}</p>
-        <p x-show="busy" class="text-sm opacity-55">
-          <i class="fa-solid fa-spinner fa-spin"></i> {% trans "Thinking…" %}</p>
-      </div>
-
-      <div class="space-y-2 border-t border-current/10 px-4 py-3">
-        <label x-show="hasDocument" x-cloak class="flex items-center gap-2 text-xs opacity-75">
-          <input type="checkbox" x-model="includeDocument">
-          <span>{% trans "Ask about this page's document" %}</span>
-        </label>
-        <div class="flex items-center gap-2">
-          <input type="text" x-model="draft" @keydown.enter.prevent="send()"
-                 placeholder="{% trans 'Type a question…' %}"
-                 :disabled="busy"
-                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                 class="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-50">
-          <button type="button" @click="send()" :disabled="busy"
-                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-                  class="shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-50"
-                  title="{% trans 'Send' %}">
-            <i class="fa-solid fa-paper-plane"></i>
-          </button>
-        </div>
-        <p class="text-[10px] opacity-45">
-          {% trans "Conversations are not saved, and each question stands alone." %}</p>
-      </div>
-
+    <div class="flex items-center justify-between gap-3 border-b border-current/10 px-4 py-3">
+      <h2 class="flex items-center gap-2 text-sm font-bold">
+        <i class="fa-solid fa-comment-dots opacity-70"></i>
+        {% trans "Assistant" %}
+      </h2>
+      <button type="button" @click="close()"
+              class="opacity-50 transition hover:opacity-100"
+              title="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
     </div>
+
+    <div class="min-h-[8rem] flex-1 space-y-3 overflow-y-auto px-4 py-3" x-ref="transcript">
+      <template x-for="(message, index) in messages" :key="index">
+        <div :class="message.role === 'you' ? 'text-right' : ''">
+          <div :class="message.role === 'you'
+                         ? (darkMode ? 'bg-accent-dark/20' : 'bg-accent-light/15')
+                         : (message.error
+                             ? (darkMode ? 'border border-warn-dark/40' : 'border border-warn-light/40')
+                             : (darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'))"
+               class="inline-block max-w-[90%] whitespace-pre-wrap rounded-xl px-3 py-2 text-left text-sm leading-relaxed"
+               x-text="message.text"></div>
+          <p x-show="message.tokens" class="mt-0.5 text-[10px] opacity-45">
+            <span x-text="message.tokens"></span> {% trans "tokens" %}</p>
+        </div>
+      </template>
+      <p x-show="!messages.length" class="text-sm opacity-55">
+        {% trans "Ask anything. Answers are brief, and each question stands alone." %}</p>
+      <p x-show="busy" x-cloak class="text-sm opacity-55">
+        <i class="fa-solid fa-spinner fa-spin"></i> {% trans "Thinking…" %}</p>
+    </div>
+
+    <div class="space-y-2 border-t border-current/10 px-4 py-3">
+      <label x-show="hasDocument" x-cloak class="flex items-center gap-2 text-xs opacity-75">
+        <input type="checkbox" x-model="includeDocument">
+        <span>{% trans "Ask about this page's document" %}</span>
+      </label>
+      <div class="flex items-center gap-2">
+        <input type="text" x-model="draft" @keydown.enter.prevent="send()"
+               placeholder="{% trans 'Type a question…' %}"
+               :disabled="busy"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="w-full rounded-lg border px-3 py-2 text-sm outline-none disabled:opacity-50">
+        <button type="button" @click="send()" :disabled="busy"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="shrink-0 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-50"
+                title="{% trans 'Send' %}">
+          <i class="fa-solid fa-paper-plane"></i>
+        </button>
+      </div>
+      <p class="text-[10px] opacity-45">
+        {% trans "Conversations are not saved, and each question stands alone." %}</p>
+    </div>
+
   </div>
 </div>

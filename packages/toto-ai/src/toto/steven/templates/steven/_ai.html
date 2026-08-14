@@ -59,8 +59,12 @@
       @keydown.escape.window="close()">
 
   {% comment %}1. The toolbar button — add an element by default, whole
-     document behind the Full-rewrite checkbox.{% endcomment %}
+     document behind the Full-rewrite checkbox. The literal display:none here
+     and on the modal below is the fail-safe: if this component's script never
+     ran, Alpine strips x-cloak and x-show throws without evaluating — an
+     inline default is the only thing that cannot be taken down with it.{% endcomment %}
   <button type="button" @click="openToolbar()" x-show="canInsert || canRewrite" x-cloak
+          style="display:none"
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
           class="inline-flex h-8 w-8 items-center justify-center rounded-full border text-xs font-bold tracking-tight transition hover:opacity-80"
           :title="(canInsert ? '{{ ai_add_title|escapejs }}' : '{{ ai_doc_title|escapejs }}') + (agent ? ' — ' + agent.name : '')">AI</button>
@@ -71,7 +75,7 @@
      scrolling container the editor lives in. `pointer-events` stays on only
      while it is shown, or an invisible button would swallow clicks in the
      document underneath it.{% endcomment %}
-  <button type="button" x-show="anchor" x-cloak
+  <button type="button" x-show="anchor" x-cloak style="display:none"
           @mousedown.prevent @click="openSelection()"
           :style="anchor ? ('position:fixed;z-index:60;left:' + anchor.left + 'px;top:' + anchor.top + 'px') : 'display:none'"
           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
@@ -83,7 +87,7 @@
      z-[9400] so it clears every editor-page modal it can be opened from
      (memo's block dialog and the standard editor modals sit at z-[9200],
      cyprian's stacked second level at z-[9300]).{% endcomment %}
-  <div x-show="open" x-cloak
+  <div x-show="open" x-cloak style="display:none"
        class="fixed inset-0 z-[9400] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
     <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close()"></div>
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"

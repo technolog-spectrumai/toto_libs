@@ -855,6 +855,35 @@ class ChatChipTests(TestCase):
         self.assertIn("[x-cloak]{display:none!important}", template)
         self.assertNotIn("stevenDrawer", template)
 
+    def _chat_template(self):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent / "templates" / "steven"
+                / "plugins" / "_chat.html").read_text()
+
+    def test_the_chat_is_a_popover_and_never_a_screen_wide_layer(self):
+        """It once shipped as a modal with a full-page scrim, which wedged
+        OPEN over the whole app when its script lost the race with Alpine's
+        start. A corner popover cannot block anything even when broken —
+        an assistant must never stand between a user and their own page."""
+        template = self._chat_template()
+
+        self.assertNotIn("inset-0", template)
+        self.assertNotIn("bg-black/", template)
+
+    def test_the_panel_cannot_render_open_without_alpine(self):
+        """Three fail-safes, each alone sufficient. oya/alpine.js starts in a
+        queueMicrotask BEFORE later deferred scripts run, Alpine strips
+        x-cloak even when x-data errored, and x-show that throws never hides
+        anything — so: the script is synchronous, the factory has an inert
+        fallback, and the panel's default display is a literal none."""
+        template = self._chat_template()
+
+        self.assertIn("<script src=", template)
+        self.assertNotIn("<script defer", template)
+        self.assertIn("window.stevenChat ?", template)
+        self.assertIn('style="display:none"', template)
+
     def test_no_editor_still_blanks_the_floating_block(self):
         """Four editors used to render nothing there, which silenced every
         floating plugin — including the gas pump, so the apps that actually
@@ -1521,6 +1550,23 @@ class LauncherTests(TestCase):
         self.assertIn("z-[9400]", template)
         self.assertNotIn("z-[70]", template)
         self.assertIn("fullRewrite", template)
+
+    def test_the_client_loads_synchronously_and_defaults_to_hidden(self):
+        """The chip outage's editor-side twin, prevented: oya/alpine.js
+        starts before later DEFERRED scripts run, so a deferred stevenAi is
+        undefined at init and the modal wedges open over the editor. The
+        script is sync, and the modal and both buttons carry a literal
+        display:none that survives any script failure."""
+        import pathlib
+
+        head = (pathlib.Path(__file__).parent / "templates" / "steven"
+                / "_head.html").read_text()
+        self.assertIn("<script src=", head)
+        self.assertNotIn("<script defer", head)
+
+        template = (pathlib.Path(__file__).parent / "templates" / "steven"
+                    / "_ai.html").read_text()
+        self.assertEqual(template.count('style="display:none"'), 3)
 
     def test_the_old_dropdown_is_gone(self):
         """It was replaced, not left beside the new one — two launchers for one
