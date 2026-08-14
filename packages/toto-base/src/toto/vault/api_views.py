@@ -150,9 +150,15 @@ class FileUploadApiView(CorsApiView):
         # leaves no half-made row behind.
         from toto.vault import scanning
 
-        verdict = scanning.scan(content, file_type=file_type, filename=file.name)
-        if not verdict.ok:
-            return JsonResponse(verdict.as_error(), status=400)
+        # The uploader is the owner-to-be, and it is the OWNER's preference
+        # that decides whether this door screens. Skipped means the file lands
+        # unscanned — and shows exactly that in the antivirus app.
+        if scanning.should_scan(request.user, file_type, door="api-upload"):
+            verdict = scanning.scan(content, file_type=file_type, filename=file.name)
+            if not verdict.ok:
+                return JsonResponse(verdict.as_error(), status=400)
+        else:
+            verdict = None
 
         # Keys address files across the whole owner (the detail/download/delete/move
         # endpoints look up by key alone), so keep them unique per owner — not just
@@ -175,7 +181,8 @@ class FileUploadApiView(CorsApiView):
             directory=directory,
         )
         vf.file.save(file.name, file, save=True)
-        scanning.record(vf, verdict, user=request.user, door="api-upload")
+        if verdict is not None:
+            scanning.record(vf, verdict, user=request.user, door="api-upload")
 
         src = {"source_type": "vault.VaultFile", "source_id": str(vf.pk)}
         record_usage(VaultUsageEvent, "storage.request", 1, request.user,
@@ -594,10 +601,13 @@ class FileContentApiView(CorsApiView):
         # over the API is not guarded.
         from toto.vault import scanning
 
-        verdict = scanning.scan(content, file_type=vf.file_type, filename=vf.title)
-        if not verdict.ok:
-            scanning.record(vf, verdict, user=request.user, door="api")
-            return JsonResponse(verdict.as_error(), status=400)
+        if scanning.should_scan(vf.owner, vf.file_type, door="api"):
+            verdict = scanning.scan(content, file_type=vf.file_type, filename=vf.title)
+            if not verdict.ok:
+                scanning.record(vf, verdict, user=request.user, door="api")
+                return JsonResponse(verdict.as_error(), status=400)
+        else:
+            verdict = None
 
         try:
             with vf.file.open("w") as f:
@@ -605,7 +615,8 @@ class FileContentApiView(CorsApiView):
             vf.file_size_bytes = len(encoded)
             vf.content_hash = hashlib.sha256(encoded).hexdigest()
             vf.save(update_fields=["file_size_bytes", "content_hash"])
-            scanning.record(vf, verdict, user=request.user, door="api")
+            if verdict is not None:
+                scanning.record(vf, verdict, user=request.user, door="api")
         except Exception as e:
             return JsonResponse({"error": f"Could not save file: {e}"}, status=500)
         return JsonResponse(_file_to_dict(request, vf))

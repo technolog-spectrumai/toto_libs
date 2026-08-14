@@ -185,13 +185,19 @@ def version_restore(request, pk: int, version_pk: int):
     # screening entirely, both land here.
     from toto.vault import scanning
 
-    verdict = scanning.scan(version.read(), file_type=vault_file.file_type,
-                            filename=vault_file.title)
-    if not verdict.ok:
-        scanning.record(vault_file, verdict, user=request.user, door="restore")
-        return JsonResponse(verdict.as_error(), status=400)
+    if scanning.should_scan(vault_file.owner, vault_file.file_type,
+                            door="restore"):
+        verdict = scanning.scan(version.read(), file_type=vault_file.file_type,
+                                filename=vault_file.title)
+        if not verdict.ok:
+            scanning.record(vault_file, verdict, user=request.user,
+                            door="restore")
+            return JsonResponse(verdict.as_error(), status=400)
+    else:
+        verdict = None
 
     restored = versions.restore_version(version, actor=request.user)
-    scanning.record(vault_file, verdict, user=request.user, door="restore")
+    if verdict is not None:
+        scanning.record(vault_file, verdict, user=request.user, door="restore")
     return JsonResponse({"restored": True, "from": version.number,
                          **_version_json(restored)})

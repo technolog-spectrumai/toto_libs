@@ -144,11 +144,17 @@ def save_file(request, file_pk):
     # about it afterwards.
     from toto.vault import scanning
 
-    verdict = scanning.scan(content, file_type=vault_file.file_type,
-                            filename=vault_file.title)
-    if not verdict.ok:
-        scanning.record(vault_file, verdict, user=request.user, door="editor")
-        return JsonResponse(verdict.as_error(), status=400)
+    # The owner's preference gates this door (the queryset above makes the
+    # actor the owner). Skipped means saved-but-unscanned, shown as exactly
+    # that in the antivirus app.
+    if scanning.should_scan(request.user, vault_file.file_type, door="editor"):
+        verdict = scanning.scan(content, file_type=vault_file.file_type,
+                                filename=vault_file.title)
+        if not verdict.ok:
+            scanning.record(vault_file, verdict, user=request.user, door="editor")
+            return JsonResponse(verdict.as_error(), status=400)
+    else:
+        verdict = None
 
     try:
         with vault_file.file.open("w") as f:
@@ -163,7 +169,8 @@ def save_file(request, file_pk):
         vault_file.content_hash = hashlib.sha256(encoded).hexdigest()
         vault_file.file_size_bytes = len(encoded)
         vault_file.save(update_fields=["content_hash", "file_size_bytes"])
-        scanning.record(vault_file, verdict, user=request.user, door="editor")
+        if verdict is not None:
+            scanning.record(vault_file, verdict, user=request.user, door="editor")
         return JsonResponse({"status": "ok"})
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)

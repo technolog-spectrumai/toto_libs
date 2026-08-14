@@ -69,10 +69,13 @@ def scan_json(text: str) -> Verdict:
     if not isinstance(text, str) or not text.strip():
         return Verdict.refused(REASON_MALFORMED, "empty document")
 
-    line = _depth_exceeded(text, MAX_DEPTH)
+    from .config import params
+
+    limit = int(params().get("json_max_depth") or MAX_DEPTH)
+    line = _depth_exceeded(text, limit)
     if line:
         return Verdict.refused(
-            REASON_DEPTH, f"nested deeper than {MAX_DEPTH} levels", line=line)
+            REASON_DEPTH, f"nested deeper than {limit} levels", line=line)
 
     try:
         json.loads(text)

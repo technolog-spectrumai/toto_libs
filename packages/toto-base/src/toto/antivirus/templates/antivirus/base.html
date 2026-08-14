@@ -49,6 +49,12 @@
                 {% if active_tab == 'pathology' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
          {% if active_tab == 'pathology' %}aria-current="page"{% endif %}>
         <i class="fa-solid fa-virus-covid"></i>{% trans "Pathology" %}</a>
+      <a href="{% url 'antivirus:settings' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'settings' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'settings' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-sliders"></i>{% trans "Settings" %}</a>
     </nav>
 
     {% block antivirus_content %}{% endblock %}

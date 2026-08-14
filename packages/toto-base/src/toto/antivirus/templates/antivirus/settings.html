@@ -1,0 +1,186 @@
+{% extends "antivirus/base.html" %}
+{% load i18n %}
+
+{% block antivirus_title %}{% trans "Antivirus settings" %}{% endblock %}
+
+{% comment %}Two kinds of setting, gated differently on purpose: the automatic
+   -scan preference narrows YOUR OWN files and belongs to everybody; the
+   scanner parameters are platform security policy and belong to staff. Both
+   save on an explicit button — a settings page that saves as you poke it
+   turns every exploratory click into policy.
+{% endcomment %}
+
+{% block antivirus_content %}
+<div x-data="antivirusSettings()" class="space-y-6">
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="text-lg font-bold">{% trans "Scan my files automatically" %}</h2>
+    <p class="mb-4 text-sm opacity-70">
+      {% trans "What is screened as it is written, for your own files only. The Scan button always works whatever you choose here — and a file that skips screening shows as unscanned, never as clean." %}</p>
+
+    <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "File types" %}</p>
+    <div class="mb-4 flex flex-wrap gap-4 text-sm">
+      {% for type in scannable_types %}
+        <label class="inline-flex items-center gap-2">
+          <input type="checkbox" value="{{ type }}" x-model="types">
+          <span class="uppercase">{{ type }}</span>
+        </label>
+      {% endfor %}
+    </div>
+
+    <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Doors" %}</p>
+    <div class="mb-4 space-y-2 text-sm">
+      {% for key, label, blurb in door_groups %}
+        <label class="flex items-start gap-2">
+          <input type="checkbox" value="{{ key }}" x-model="doors" class="mt-1">
+          <span><span class="font-semibold">{{ label }}</span>
+            <span class="block text-xs opacity-65">{{ blurb }}</span></span>
+        </label>
+      {% endfor %}
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="button" @click="savePreference()" :disabled="!prefDirty"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-40">
+        {% trans "Save" %}</button>
+      <span class="text-xs opacity-60" x-show="prefDirty" x-cloak>{% trans "Unsaved changes." %}</span>
+      <span class="text-xs opacity-60" x-show="prefSaved" x-cloak>{% trans "Saved." %}</span>
+    </div>
+  </section>
+
+  {% if is_operator %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-user-shield text-sm opacity-60"></i>{% trans "Scanner configuration" %}</h2>
+    <p class="mb-4 text-sm opacity-70">
+      {% trans "Platform-wide, staff only. Overrides live in one JSON row — a new parameter is a new key, never a migration. The core refusals (scripts, PDF JavaScript, auto-run actions) have no switch here on purpose." %}</p>
+
+    <div class="mb-4 grid gap-4 sm:grid-cols-2">
+      <label class="block text-sm">
+        <span class="font-semibold">{% trans "JSON nesting limit" %}</span>
+        <span class="block text-xs opacity-65">{% trans "Depth beyond this refuses — the billion-laughs family arrives as depth, not size." %}</span>
+        <input type="number" min="1" x-model.number="config.json_max_depth"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="mt-1 w-28 rounded-lg border px-3 py-1.5">
+      </label>
+      <label class="block text-sm">
+        <span class="font-semibold">{% trans "Scan size limit (MB)" %}</span>
+        <span class="block text-xs opacity-65">{% trans "Bigger files refuse rather than silently skip — too big to check must not look like checked." %}</span>
+        <input type="number" min="1" x-model.number="config.scan_max_mb"
+               :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+               class="mt-1 w-28 rounded-lg border px-3 py-1.5">
+      </label>
+    </div>
+
+    <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Conservative PDF markers" %}</p>
+    <p class="mb-2 text-xs opacity-65">
+      {% trans "Held strictly by default; untick only after a policy decision. JavaScript, auto-run and launched programs cannot be unticked." %}</p>
+    <div class="mb-4 grid gap-2 text-sm sm:grid-cols-2">
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" x-model="config.pdf_refuse_aa">
+        <span>{% trans "Refuse additional actions" %} <span class="opacity-50">/AA</span></span></label>
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" x-model="config.pdf_refuse_xfa">
+        <span>{% trans "Refuse XFA forms" %} <span class="opacity-50">/XFA</span></span></label>
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" x-model="config.pdf_refuse_embedded">
+        <span>{% trans "Refuse embedded files" %} <span class="opacity-50">/EmbeddedFile</span></span></label>
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" x-model="config.pdf_refuse_richmedia">
+        <span>{% trans "Refuse rich media" %} <span class="opacity-50">/RichMedia</span></span></label>
+      <label class="inline-flex items-center gap-2">
+        <input type="checkbox" x-model="config.pdf_refuse_encrypted">
+        <span>{% trans "Refuse encrypted PDFs" %} <span class="opacity-50">/Encrypt</span></span></label>
+    </div>
+
+    <div class="flex items-center gap-3">
+      <button type="button" @click="saveConfig()" :disabled="!configDirty"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-40">
+        {% trans "Save configuration" %}</button>
+      <span class="text-xs opacity-60" x-show="configDirty" x-cloak>{% trans "Unsaved changes." %}</span>
+      <span class="text-xs opacity-60" x-show="configSaved" x-cloak>{% trans "Saved." %}</span>
+      <span class="text-xs font-semibold" x-show="configError" x-text="configError"
+            :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" x-cloak></span>
+    </div>
+  </section>
+  {% endif %}
+</div>
+
+<script>
+function antivirusSettings() {
+  return {
+    types: JSON.parse(`{{ types_json|escapejs }}`),
+    doors: JSON.parse(`{{ doors_json|escapejs }}`),
+    savedTypes: JSON.parse(`{{ types_json|escapejs }}`),
+    savedDoors: JSON.parse(`{{ doors_json|escapejs }}`),
+    prefSaved: false,
+    {% if is_operator %}
+    config: {
+      json_max_depth: {{ scanner_params.json_max_depth }},
+      scan_max_mb: {{ scanner_params.scan_max_mb }},
+      pdf_refuse_aa: {{ scanner_params.pdf_refuse_aa|yesno:"true,false" }},
+      pdf_refuse_xfa: {{ scanner_params.pdf_refuse_xfa|yesno:"true,false" }},
+      pdf_refuse_embedded: {{ scanner_params.pdf_refuse_embedded|yesno:"true,false" }},
+      pdf_refuse_richmedia: {{ scanner_params.pdf_refuse_richmedia|yesno:"true,false" }},
+      pdf_refuse_encrypted: {{ scanner_params.pdf_refuse_encrypted|yesno:"true,false" }},
+    },
+    savedConfig: "",
+    {% endif %}
+    configSaved: false,
+    configError: "",
+    init() {
+      {% if is_operator %}this.savedConfig = JSON.stringify(this.config);{% endif %}
+    },
+    get prefDirty() {
+      const same = (a, b) => JSON.stringify([...a].sort()) === JSON.stringify([...b].sort());
+      return !(same(this.types, this.savedTypes) && same(this.doors, this.savedDoors));
+    },
+    get configDirty() {
+      {% if is_operator %}return JSON.stringify(this.config) !== this.savedConfig;{% endif %}
+      return false;
+    },
+    _csrf() {
+      return document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
+    },
+    async savePreference() {
+      const body = new FormData();
+      this.types.forEach(t => body.append("types", t));
+      this.doors.forEach(d => body.append("doors", d));
+      const res = await fetch("{% url 'antivirus:set_preference' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: {"X-CSRFToken": this._csrf()}, body: body,
+      });
+      if (res.ok) {
+        this.savedTypes = [...this.types];
+        this.savedDoors = [...this.doors];
+        this.prefSaved = true;
+        setTimeout(() => { this.prefSaved = false; }, 2500);
+      }
+    },
+    {% if is_operator %}
+    async saveConfig() {
+      this.configError = "";
+      const body = new FormData();
+      for (const [key, value] of Object.entries(this.config)) body.append(key, value);
+      const res = await fetch("{% url 'antivirus:set_scanner_config' %}", {
+        method: "POST", credentials: "same-origin",
+        headers: {"X-CSRFToken": this._csrf()}, body: body,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.ok) {
+        this.savedConfig = JSON.stringify(this.config);
+        this.configSaved = true;
+        setTimeout(() => { this.configSaved = false; }, 2500);
+      } else {
+        this.configError = data.error || "{% trans 'Could not save.' %}";
+      }
+    },
+    {% endif %}
+  };
+}
+</script>
+{% endblock %}

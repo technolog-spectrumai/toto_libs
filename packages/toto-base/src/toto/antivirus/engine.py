@@ -35,6 +35,18 @@ def scan(data, *, file_type: str, filename: str = "") -> Verdict:
     if scanner is None:
         return Verdict.clean(scanned=False)
 
+    # The size cap, before anything is decoded: "too big to check" must be a
+    # refusal, not a silent skip that looks like a pass. Configurable
+    # (scan_max_mb) because the right ceiling is a deployment fact.
+    from .scanners.config import params
+
+    cap_bytes = int(float(params().get("scan_max_mb") or 10) * 1024 * 1024)
+    size = len(data.encode("utf-8")) if isinstance(data, str) else len(bytes(data or b""))
+    if size > cap_bytes:
+        return Verdict.refused(
+            "wrong-shape",
+            f"{size} bytes is over the {cap_bytes // (1024 * 1024)} MB scan limit")
+
     # A binary scanner takes the raw bytes. PDF is the reason this branch
     # exists: a real PDF does not decode as UTF-8, and pushing it through the
     # text path refused every one as "wrong-shape" without ever looking at it.

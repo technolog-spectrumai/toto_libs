@@ -15,7 +15,8 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
 
 from toto.vault.models import Bucket, VaultFile
-from toto.vault.scanning import Verdict, scan, scanning_enabled
+from toto.vault.scanning import (SCANNABLE_TYPES, Verdict, scan,
+                                 scanning_enabled)
 
 from .scanners import json_scan, markup, scanned_types
 from .models import RunStatus, ScanResult, ScanRun, ScanVerdict
@@ -24,20 +25,16 @@ User = get_user_model()
 
 
 def _scan_inline(client, pk):
-    """POST antivirus:scan_file with dispatch executing inline, then return the
-    poll response — the queued flow, collapsed for tests. A refused POST
-    (403/404/402/429/503) is returned as-is.
-    """
-    from unittest import mock
+    """POST antivirus:scan_file and return the finished payload.
 
+    No mock: tests have no celery worker, so the POST takes the REAL inline
+    fallback — the same path a worker-less deployment takes — and comes back
+    finished. A refused POST (403/404/402/429) is returned as-is.
+    """
     from django.urls import reverse as _reverse
 
-    from . import runner
-
-    with mock.patch("toto.antivirus.dispatch.dispatch_run",
-                    side_effect=lambda run: runner.execute_run(run.pk)):
-        posted = client.post(_reverse("antivirus:scan_file", args=[pk]))
-    if posted.status_code != 200:
+    posted = client.post(_reverse("antivirus:scan_file", args=[pk]))
+    if posted.status_code != 200 or posted.json().get("finished"):
         return posted
     return client.get(
         _reverse("antivirus:scan_status", args=[posted.json()["run_id"]]))
@@ -1206,18 +1203,37 @@ class PdfScannerTests(SimpleTestCase):
 class QueuedScanTests(_TabsFixture):
     """The Scan button is queued, billable work."""
 
-    def test_no_worker_is_a_named_refusal_and_a_closed_run(self):
-        """celery is not running in tests, so the real dispatch path refuses —
-        which is exactly the production behaviour with no worker."""
+    def test_no_worker_falls_back_inline(self):
+        """celery is not running in tests — the user's exact environment. The
+        POST must complete the scan inline rather than refuse: a missing
+        worker means slower, never "scanning is broken"."""
         vault_file = self._file(title="q1.svg")
 
         response = self.client.post(
             reverse("antivirus:scan_file", args=[vault_file.pk]))
 
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("worker", response.json()["error"].lower())
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertTrue(payload["finished"])
+        self.assertTrue(payload["clean"])
         run = ScanRun.objects.get()
-        self.assertEqual(run.status, RunStatus.FAILED)
+        self.assertEqual(run.status, RunStatus.SUCCESS)
+
+    def test_the_queue_is_still_tried_first(self):
+        """The fallback must not become the path of least resistance: with a
+        worker listening, the request queues and returns unfinished."""
+        from unittest import mock
+
+        vault_file = self._file(title="q1b.svg")
+
+        with mock.patch("toto.antivirus.dispatch.dispatch_run") as queued:
+            response = self.client.post(
+                reverse("antivirus:scan_file", args=[vault_file.pk]))
+
+        queued.assert_called_once()
+        payload = response.json()
+        self.assertNotIn("clean", payload)
+        self.assertEqual(ScanRun.objects.get().status, RunStatus.PENDING)
 
     def test_over_limit_is_refused_before_any_run_exists(self):
         from unittest import mock
@@ -1296,3 +1312,222 @@ class QueuedScanTests(_TabsFixture):
 
         codes = {metric.code for metric in metric_registry}
         self.assertIn("antivirus.scan", codes)
+
+
+class PreferenceDoorsTests(_TabsFixture):
+    """The preference finally does what its card always claimed.
+
+    The doors never consulted ScanPreference before — the card said "which of
+    your files are screened as they are saved" and no door read it. Now every
+    automatic door asks ``scanning.should_scan(owner, type, door)``, and the
+    owner's choice can narrow their own screening by type AND by door. Skipped
+    means saved-but-UNSCANNED — never marked clean.
+    """
+
+    def _prefer(self, user=None, types=None, doors=None):
+        from .models import ScanPreference
+
+        ScanPreference.objects.update_or_create(
+            user=user or self.user,
+            defaults={"types": types if types is not None else
+                      list(SCANNABLE_TYPES),
+                      "doors": doors})
+
+    def test_no_row_means_everything_everywhere(self):
+        from toto.vault.scanning import should_scan
+
+        self.assertTrue(should_scan(self.user, "svg", door="editor"))
+        self.assertTrue(should_scan(self.user, "pdf", door="api-upload"))
+
+    def test_a_door_switched_off_lets_the_owners_file_pass_unscanned(self):
+        """By design: the preference narrows YOUR OWN screening. The file
+        lands, no verdict exists, and the app shows it red-unscanned."""
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self._prefer(doors=["editor", "restore"])   # uploads OFF
+
+        response = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile(
+                "wild.svg", b"<svg><script>alert(1)</script></svg>",
+                content_type="image/svg+xml"),
+             "bucket_slug": self.bucket.slug})
+
+        self.assertEqual(response.status_code, 201)
+        stored = VaultFile.objects.get(title="wild")
+        self.assertEqual(stored.scan_results.count(), 0)
+
+    def test_the_same_upload_refuses_when_the_door_is_on(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        self._prefer(doors=["editor", "upload", "restore"])
+
+        response = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile(
+                "wild2.svg", b"<svg><script>alert(1)</script></svg>",
+                content_type="image/svg+xml"),
+             "bucket_slug": self.bucket.slug})
+
+        self.assertEqual(response.status_code, 400)
+
+    def test_an_unknown_door_is_never_silently_exempt(self):
+        from toto.vault.scanning import should_scan
+
+        self._prefer(doors=[])   # every known door off
+
+        self.assertTrue(should_scan(self.user, "svg", door="some-new-door"))
+
+    def test_the_manual_scan_ignores_the_preference_entirely(self):
+        """Pressing Scan is the deliberate act preferences exist to replace."""
+        self._prefer(types=[], doors=[])
+        vault_file = self._file(title="deliberate.svg")
+
+        response = self._scan(vault_file)
+
+        self.assertTrue(response.json()["clean"])
+
+    def test_null_doors_means_all_doors_for_an_old_row(self):
+        """Rows saved before the field existed must not switch anything off."""
+        from .models import ScanPreference
+
+        self._prefer(doors=None)
+        row = ScanPreference.objects.get(user=self.user)
+
+        self.assertIsNone(row.doors)
+        self.assertTrue(ScanPreference.applies(self.user, "svg", "editor"))
+
+
+class SettingsTabTests(_TabsFixture):
+    def test_the_tab_renders_with_explicit_save(self):
+        response = self.client.get(reverse("antivirus:settings"))
+
+        self.assertEqual(response.status_code, 200)
+        self.assertContains(response, "savePreference()")
+        # Explicit save: no checkbox fires the POST by itself.
+        self.assertNotContains(response, '@change="savePreference()"')
+
+    def test_the_files_tab_no_longer_carries_the_preference_card(self):
+        self.assertNotContains(self.client.get(reverse("antivirus:index")),
+                               "Scan automatically")
+
+    def test_saving_types_and_doors_persists_both(self):
+        from .models import ScanPreference
+
+        self.client.post(reverse("antivirus:set_preference"),
+                         {"types": ["svg", "pdf"], "doors": ["editor"]})
+
+        row = ScanPreference.objects.get(user=self.user)
+        self.assertEqual(sorted(row.types), ["pdf", "svg"])
+        self.assertEqual(row.doors, ["editor"])
+
+    def test_the_scanner_form_is_staff_only(self):
+        response = self.client.get(reverse("antivirus:settings"))
+        self.assertNotContains(response, "Scanner configuration")
+
+        self.assertEqual(
+            self.client.post(reverse("antivirus:set_scanner_config"),
+                             {"scan_max_mb": "5"}).status_code, 403)
+
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(reverse("antivirus:settings")),
+                            "Scanner configuration")
+
+    def test_only_real_overrides_are_stored(self):
+        """A value matching the default stays out of the row, so tightening a
+        default later is not pinned by everyone who once pressed Save."""
+        from .models import ScannerConfig
+        from .scanners.config import DEFAULTS
+
+        self.client.force_login(self.staff)
+        self.client.post(reverse("antivirus:set_scanner_config"), {
+            "json_max_depth": str(DEFAULTS["json_max_depth"]),
+            "scan_max_mb": "5",
+        })
+
+        self.assertEqual(ScannerConfig.get().params, {"scan_max_mb": 5})
+
+    def test_a_nonsense_number_is_refused(self):
+        self.client.force_login(self.staff)
+
+        response = self.client.post(reverse("antivirus:set_scanner_config"),
+                                    {"scan_max_mb": "-3"})
+
+        self.assertEqual(response.status_code, 400)
+
+
+class ScannerConfigEffectTests(_TabsFixture):
+    """The stored parameters actually reach the scanners, at scan time."""
+
+    def _override(self, **params):
+        from .models import ScannerConfig
+
+        config = ScannerConfig.get()
+        config.params = params
+        config.save(update_fields=["params"])
+
+    def test_json_depth_is_configurable(self):
+        deep = '{"a":{"b":{"c":{"d":1}}}}'
+        self.assertTrue(scan(deep, file_type="json").ok)
+
+        self._override(json_max_depth=2)
+
+        verdict = scan(deep, file_type="json")
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "too-deep")
+
+    def test_the_size_cap_refuses_rather_than_skips(self):
+        self._override(scan_max_mb=1)
+
+        verdict = scan("x" * (2 * 1024 * 1024), file_type="html")
+
+        self.assertFalse(verdict.ok)
+        self.assertEqual(verdict.reason, "wrong-shape")
+        self.assertIn("scan limit", verdict.detail)
+
+    def test_a_pdf_toggle_relaxes_exactly_one_marker(self):
+        base = (b"%PDF-1.4\ntrailer<</Size 1>>\n%%EOF")
+
+        self._override(pdf_refuse_aa=False)
+
+        relaxed = base.replace(b"trailer", b"/AA trailer")
+        still_hard = base.replace(b"trailer", b"/JavaScript trailer")
+        self.assertTrue(scan(relaxed, file_type="pdf").ok)
+        self.assertFalse(scan(still_hard, file_type="pdf").ok)
+
+    def test_the_hard_core_has_no_switch(self):
+        """No parameter exists that could let /JavaScript through."""
+        from .scanners.config import DEFAULTS
+
+        for key in DEFAULTS:
+            self.assertNotIn("javascript", key.lower())
+            self.assertNotIn("openaction", key.lower())
+
+    def test_a_broken_row_degrades_to_the_defaults(self):
+        from .models import ScannerConfig
+        from .scanners.config import DEFAULTS, params
+
+        config = ScannerConfig.get()
+        config.params = "not-a-dict"
+        config.save(update_fields=["params"])
+
+        self.assertEqual(params()["json_max_depth"],
+                         DEFAULTS["json_max_depth"])
+
+
+class WorkflowsRequiredTests(TestCase):
+    def test_the_check_passes_here(self):
+        from django.core import checks
+
+        errors = [e for e in checks.run_checks() if e.id == "antivirus.E001"]
+        self.assertEqual(errors, [])
+
+    def test_the_check_fails_without_workflows(self):
+        from django.core import checks
+        from django.test import modify_settings
+
+        with modify_settings(INSTALLED_APPS={"remove": "toto.workflows"}):
+            errors = [e for e in checks.run_checks()
+                      if e.id == "antivirus.E001"]
+
+        self.assertEqual(len(errors), 1)

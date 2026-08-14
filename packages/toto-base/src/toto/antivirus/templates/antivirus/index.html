@@ -49,25 +49,9 @@
       </div>
     </div>
 
-    {% comment %}The automatic-scan policy: four plain checkboxes, this person's
-       own files only.{% endcomment %}
-    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-lg border p-5 shadow-sm">
-      <h2 class="text-lg font-bold">{% trans "Scan automatically" %}</h2>
-      <p class="mb-3 text-sm opacity-70">
-        {% trans "Which of your own files are screened as they are saved or uploaded. The Scan button below always works, whatever you choose here." %}</p>
-      <div class="flex flex-wrap gap-4 text-sm">
-        {% for type in scannable_types %}
-          <label class="inline-flex items-center gap-2">
-            <input type="checkbox" value="{{ type }}"
-                   @change="savePreference()"
-                   x-model="autoTypes">
-            <span class="uppercase">{{ type }}</span>
-          </label>
-        {% endfor %}
-        <span class="text-xs opacity-60" x-show="saved" x-cloak>{% trans "Saved." %}</span>
-      </div>
-    </section>
+    {% comment %}The automatic-scan policy lives on the Settings tab now —
+       this page is about the files.{% endcomment %}
+
 
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-lg border p-5 shadow-sm">
@@ -176,8 +160,6 @@
 <script>
 function antivirus() {
   return {
-    autoTypes: JSON.parse(`{{ auto_types_json|escapejs }}`),
-    saved: false,
     results: {},
     scanModal: false,
     phase: 'confirm',
@@ -194,16 +176,6 @@ function antivirus() {
     },
     _csrf() {
       return document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
-    },
-    async savePreference() {
-      const body = new FormData();
-      this.autoTypes.forEach(t => body.append("types", t));
-      await fetch("{% url 'antivirus:set_preference' %}", {
-        method: "POST", credentials: "same-origin",
-        headers: {"X-CSRFToken": this._csrf()}, body: body,
-      });
-      this.saved = true;
-      setTimeout(() => { this.saved = false; }, 2000);
     },
     askScan(pk) {
       /* Reset, then pre-check the clicked file: the modal's checked set IS the
@@ -264,6 +236,11 @@ function antivirus() {
           /* Out of funds or over quota: every later file refuses for the same
              reason, so stop asking rather than printing it N times. */
           if (res.status === 402 || res.status === 429) this.stopRequested = true;
+        } else if (data.finished) {
+          /* The inline path (no worker listening) already carries the
+             verdict — polling a run that will never change again is waste. */
+          data = data.ok ? {ok: true, clean: data.clean, reason: data.reason, detail: data.detail}
+                         : {ok: false, error: data.error};
         } else {
           /* Queued. The verdict arrives by polling — the same idiom texlab
              and the assistant use, so the platform has one polling shape. */

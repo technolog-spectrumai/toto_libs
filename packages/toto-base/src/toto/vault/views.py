@@ -536,7 +536,8 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 # it — the façade would answer that anyway, but not before the
                 # read.
                 verdict = _scanning.Verdict.clean(scanned=False)
-                if _scanning.is_scannable(file_type):
+                if _scanning.should_scan(request.user, file_type,
+                                         door="gateway"):
                     _body = uploaded_file.read()
                     uploaded_file.seek(0)
                     verdict = _scanning.scan(_body, file_type=file_type,

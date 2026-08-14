@@ -144,3 +144,23 @@ def health_report(files):
         return engine.health_report(files)
     except Exception:  # noqa: BLE001 - a metrics card is not worth a 500
         return None
+
+
+def should_scan(owner, file_type: str, door: str = "") -> bool:
+    """Whether an automatic door should screen this file, per its OWNER's
+    preference.
+
+    The owner's, not the actor's: "a preference can only narrow your own
+    files" means the person whose file it is decides, and somebody else
+    editing a shared file cannot switch the owner's screening off by carrying
+    a looser preference of their own. Every failure direction answers True —
+    scanning more is always the safe mistake.
+    """
+    if not scanning_enabled() or not is_scannable(file_type):
+        return False
+    try:
+        from toto.antivirus.models import ScanPreference
+
+        return ScanPreference.applies(owner, file_type, door)
+    except Exception:  # noqa: BLE001
+        return True

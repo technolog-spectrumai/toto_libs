@@ -22,6 +22,20 @@ from toto.vault.scanning import SCANNABLE_TYPES
 METRIC_SCAN = "antivirus.scan"
 
 
+#: The automatic doors, grouped as a person configures them. Keys are what
+#: ``ScanPreference.doors`` stores; values are the door strings the call sites
+#: actually record on ScanResult rows. "manual" is deliberately absent —
+#: pressing Scan is already the deliberate act preferences exist to replace.
+DOOR_GROUPS = {
+    "editor": ("editor", "socket"),
+    "upload": ("api-upload", "api", "gateway"),
+    "restore": ("restore",),
+}
+DOOR_GROUPS_BY_DOOR = {door: group
+                       for group, doors in DOOR_GROUPS.items()
+                       for door in doors}
+
+
 class ScanVerdict(models.TextChoices):
     CLEAN = "clean", "Clean"
     REFUSED = "refused", "Refused"
@@ -129,6 +143,12 @@ class ScanPreference(models.Model):
     #: Absent from this list means "do not scan my files of that type on the
     #: way in". Defaults to everything.
     types = models.JSONField(default=list, blank=True)
+    #: Which automatic DOORS screen this person's files, as group names from
+    #: :data:`DOOR_GROUPS`. ``None`` — never chosen — means every door; a saved
+    #: list is exact. The asymmetry with ``types`` is deliberate backward
+    #: compatibility: rows created before this field exist with no list, and
+    #: an empty default list would have silently switched every door off.
+    doors = models.JSONField(null=True, blank=True, default=None)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -136,6 +156,27 @@ class ScanPreference(models.Model):
 
     def __str__(self):
         return f"{self.user_id}: {', '.join(self.types) or 'nothing'}"
+
+    @classmethod
+    def applies(cls, user, file_type: str, door: str = "") -> bool:
+        """Whether this owner's preference lets a door screen this file.
+
+        The rule unchanged from day one: a preference can only NARROW your own
+        files. No row, an unknown door, or no signed-in owner all mean SCAN —
+        scanning more is always the safe failure direction.
+        """
+        if user is None or not getattr(user, "is_authenticated", False):
+            return file_type in SCANNABLE_TYPES
+        if file_type not in cls.types_for(user):
+            return False
+        row = cls.objects.filter(user=user).first()
+        if row is None or row.doors is None:
+            return True
+        group = DOOR_GROUPS_BY_DOOR.get(door)
+        if group is None:
+            # A door this vocabulary does not know is never silently exempt.
+            return True
+        return group in row.doors
 
     @classmethod
     def types_for(cls, user) -> tuple[str, ...]:
@@ -228,3 +269,34 @@ class AntivirusQuotaPolicy(AbstractQuotaPolicy):
     class Meta(AbstractQuotaPolicy.Meta):
         verbose_name = "Antivirus quota policy"
         verbose_name_plural = "Antivirus quota policies"
+
+
+class ScannerConfig(models.Model):
+    """The scanner's tuning, in ONE row and ONE JSON field.
+
+    A JSON field on purpose: a new parameter is a new key in
+    ``scanners/config.DEFAULTS`` and nothing else — no migration, which is the
+    entire request behind this model. What is tunable is bounded there too;
+    the core refusals are not parameters.
+
+    Staff-only by contract (the view enforces it): scanner tuning is platform
+    security policy, not a personal preference — that is what
+    :class:`ScanPreference` is.
+    """
+
+    params = models.JSONField(default=dict, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                   blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+
+    class Meta:
+        verbose_name = "scanner configuration"
+
+    def __str__(self):
+        return f"scanner config ({len(self.params or {})} overrides)"
+
+    @classmethod
+    def get(cls) -> "ScannerConfig":
+        row, _created = cls.objects.get_or_create(pk=1)
+        return row

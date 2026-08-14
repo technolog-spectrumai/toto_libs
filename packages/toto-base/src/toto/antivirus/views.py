@@ -302,17 +302,101 @@ def _file_url(vault_file) -> str:
 
 
 # ---------------------------------------------------------------------------
+# Settings
+# ---------------------------------------------------------------------------
+
+@login_required
+def settings_view(request):
+    """Your automatic-scan preference, and — for staff — the scanner's tuning.
+
+    Two different kinds of setting on one tab, gated differently on purpose:
+    the preference narrows YOUR OWN files and belongs to everybody; the
+    scanner parameters are platform security policy and belong to staff.
+    """
+    from .models import DOOR_GROUPS, ScannerConfig
+    from .scanners.config import DEFAULTS, params
+
+    preference = ScanPreference.objects.filter(user=request.user).first()
+    doors_chosen = (preference.doors if preference and preference.doors is not None
+                    else list(DOOR_GROUPS))
+
+    context = {
+        "active_tab": "settings",
+        "scannable_types": SCANNABLE_TYPES,
+        "types_json": json.dumps(list(ScanPreference.types_for(request.user))),
+        "door_groups": [
+            ("editor", _("Editor saves"), _("Files written from the editors, over HTTP or the live socket.")),
+            ("upload", _("Uploads"), _("Files arriving through the vault API and the gateway pages.")),
+            ("restore", _("Version restores"), _("Old versions brought back — a rule added since may refuse what was once accepted.")),
+        ],
+        "doors_json": json.dumps(doors_chosen),
+        "is_operator": _is_operator(request.user),
+    }
+    if _is_operator(request.user):
+        context.update({
+            "scanner_params": params(),
+            "scanner_defaults": DEFAULTS,
+            "scanner_overrides": ScannerConfig.get().params or {},
+        })
+    return _render(request, "antivirus/settings.html", context)
+
+
+@login_required
+@require_POST
+def set_scanner_config(request):
+    """Store the scanner overrides. Staff only — this is security policy."""
+    from .models import ScannerConfig
+    from .scanners.config import DEFAULTS
+
+    if not _is_operator(request.user):
+        return JsonResponse({"ok": False, "error": "Staff only."}, status=403)
+
+    overrides = {}
+    for key, default in DEFAULTS.items():
+        if key not in request.POST:
+            continue
+        raw = request.POST[key]
+        if isinstance(default, bool):
+            value = raw in ("1", "true", "on", "True")
+        else:
+            try:
+                value = int(raw)
+            except (TypeError, ValueError):
+                return JsonResponse(
+                    {"ok": False, "error": f"{key} must be a number."},
+                    status=400)
+            if value <= 0:
+                return JsonResponse(
+                    {"ok": False, "error": f"{key} must be positive."},
+                    status=400)
+        # Only real OVERRIDES are stored; a value matching the default stays
+        # out of the row, so tightening a default later is not silently pinned
+        # by everyone who once pressed Save.
+        if value != default:
+            overrides[key] = value
+
+    config = ScannerConfig.get()
+    config.params = overrides
+    config.updated_by = request.user
+    config.save(update_fields=["params", "updated_by", "updated_at"])
+    return JsonResponse({"ok": True, "overrides": overrides})
+
+
+# ---------------------------------------------------------------------------
 # Actions
 # ---------------------------------------------------------------------------
 
 @login_required
 @require_POST
 def set_preference(request):
-    """Which types get screened automatically for this person's own files."""
+    """Which types, at which doors, get screened for this person's own files."""
+    from .models import DOOR_GROUPS
+
     chosen = [t for t in request.POST.getlist("types") if t in SCANNABLE_TYPES]
+    doors = [d for d in request.POST.getlist("doors") if d in DOOR_GROUPS]
     ScanPreference.objects.update_or_create(
-        user=request.user, defaults={"types": chosen})
-    return JsonResponse({"ok": True, "types": chosen})
+        user=request.user, defaults={"types": chosen, "doors": doors})
+    return JsonResponse({"ok": True, "types": chosen, "doors": doors})
 
 
 @login_required
@@ -342,17 +426,25 @@ def scan_file(request, pk):
     run = dispatch.create_run(user=request.user, vault_file=vault_file)
     try:
         dispatch.dispatch_run(run)
-    except dispatch.CannotQueue as exc:
-        dispatch.fail_run(run, str(exc))
-        return JsonResponse({"ok": False, "error": str(exc),
-                             "run_id": run.pk}, status=503)
+    except dispatch.CannotQueue:
+        # No worker (a bare runserver, celery down). A scan is a bounded pass
+        # over bounded bytes — the fileservices precedent, not the steven
+        # case — so it runs inline rather than telling the user scanning is
+        # broken. Same run row, same billing, same verdict path; the worker
+        # is used whenever one is listening.
+        services.execute(run)
 
-    return JsonResponse({
+    payload = {
         "ok": True,
         "run_id": run.pk,
         "status": run.status,
         "status_url": reverse("antivirus:scan_status", args=[run.pk]),
-    })
+    }
+    if run.is_finished:
+        # The inline path already has the verdict; handing it back saves the
+        # client a poll against a run that will never change again.
+        payload.update(services.run_payload(run))
+    return JsonResponse(payload)
 
 
 @login_required

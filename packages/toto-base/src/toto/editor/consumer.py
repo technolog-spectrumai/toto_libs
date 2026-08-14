@@ -61,10 +61,14 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         from toto.vault.models import VaultFile
 
         vf = VaultFile.objects.get(pk=self.file_pk, owner=self.user)
-        verdict = scanning.scan(content, file_type=vf.file_type, filename=vf.title)
-        if not verdict.ok:
-            scanning.record(vf, verdict, user=self.user, door="socket")
-            return verdict
+        if scanning.should_scan(self.user, vf.file_type, door="socket"):
+            verdict = scanning.scan(content, file_type=vf.file_type,
+                                    filename=vf.title)
+            if not verdict.ok:
+                scanning.record(vf, verdict, user=self.user, door="socket")
+                return verdict
+        else:
+            verdict = scanning.Verdict.clean(scanned=False)
 
         with vf.file.open("w") as f:
             f.write(content)
@@ -72,7 +76,8 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         vf.content_hash = hashlib.sha256(encoded).hexdigest()
         vf.file_size_bytes = len(encoded)
         vf.save(update_fields=["content_hash", "file_size_bytes"])
-        scanning.record(vf, verdict, user=self.user, door="socket")
+        if verdict.scanned:
+            scanning.record(vf, verdict, user=self.user, door="socket")
         return verdict
 
     async def receive(self, text_data):

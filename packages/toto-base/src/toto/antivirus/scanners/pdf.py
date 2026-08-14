@@ -52,7 +52,19 @@ _MARKER_RE = [
 _ENCRYPT_RE = re.compile(rb"/Encrypt" + _DELIMITER)
 
 
+#: Which config key switches each CONSERVATIVE marker. The hard core —
+#: /JavaScript, /JS, /OpenAction, /Launch — has no entry and no off switch.
+_TOGGLE_BY_MARKER = {
+    rb"/AA": "pdf_refuse_aa",
+    rb"/XFA": "pdf_refuse_xfa",
+    rb"/EmbeddedFile": "pdf_refuse_embedded",
+    rb"/RichMedia": "pdf_refuse_richmedia",
+}
+
+
 def scan_pdf(data: bytes) -> Verdict:
+    from .config import params
+
     if not isinstance(data, (bytes, bytearray, memoryview)):
         return Verdict.refused(REASON_SHAPE, "not bytes")
     raw = bytes(data)
@@ -60,11 +72,16 @@ def scan_pdf(data: bytes) -> Verdict:
     if not raw.lstrip().startswith(b"%PDF-"):
         return Verdict.refused(REASON_SHAPE, "not a PDF")
 
-    if _ENCRYPT_RE.search(raw):
+    config = params()
+
+    if config.get("pdf_refuse_encrypted", True) and _ENCRYPT_RE.search(raw):
         return Verdict.refused(
             REASON_SHAPE, "encrypted PDF — its content cannot be inspected")
 
     for pattern, label in _MARKER_RE:
+        toggle = _TOGGLE_BY_MARKER.get(pattern.pattern[:-len(_DELIMITER)])
+        if toggle is not None and not config.get(toggle, True):
+            continue
         match = pattern.search(raw)
         if match is not None:
             line = raw.count(b"\n", 0, match.start()) + 1
