@@ -1,0 +1,64 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{{ quiz.title }} — {% trans "statistics" %}{% endblock %}
+{% block polls_heading %}{{ quiz.title }}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">{% trans "The aggregate picture: who took it, how it went, where people stumble." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+<div class="space-y-6">
+
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{{ stats.attempts }}</div>
+      <div class="text-xs opacity-60">{% trans "Attempts" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{{ stats.participants }}</div>
+      <div class="text-xs opacity-60">{% trans "Participants" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{% if stats.avg_percent is not None %}{{ stats.avg_percent }}%{% else %}—{% endif %}</div>
+      <div class="text-xs opacity-60">{% trans "Average score" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{% if stats.pass_rate is not None %}{{ stats.pass_rate }}%{% else %}—{% endif %}</div>
+      <div class="text-xs opacity-60">{% trans "Pass rate" %}</div>
+    </div>
+  </div>
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="overflow-x-auto rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-3 text-lg font-bold">{% trans "By question" %}</h2>
+    <table class="w-full text-sm">
+      <thead>
+        <tr class="text-left text-xs uppercase tracking-wide opacity-55">
+          <th class="py-2 pr-4">{% trans "Question" %}</th>
+          <th class="py-2 pr-4 text-right">{% trans "Asked" %}</th>
+          <th class="py-2 pr-4 text-right">{% trans "Correct" %}</th>
+          <th class="py-2 text-right">{% trans "Correct rate" %}</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in stats.questions %}
+          <tr :class="darkMode ? 'border-t border-accent-1/20' : 'border-t border-accent-2/20'">
+            <td class="py-2 pr-4">{{ row.question.text|truncatechars:90 }}</td>
+            <td class="py-2 pr-4 text-right tabular-nums">{{ row.asked }}</td>
+            <td class="py-2 pr-4 text-right tabular-nums">{{ row.correct }}</td>
+            <td class="py-2 text-right tabular-nums">
+              {% if row.correct_rate is not None %}{{ row.correct_rate }}%{% else %}—{% endif %}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+</div>
+{% endblock %}

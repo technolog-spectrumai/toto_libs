@@ -66,3 +66,81 @@ class DecisionAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# -- quizzes ------------------------------------------------------------------
+
+from .quiz_models import (Quiz, QuizAnswer, QuizAttempt,  # noqa: E402
+                          QuizCertificate, QuizQuestion)
+
+
+class QuizQuestionInline(admin.TabularInline):
+    model = QuizQuestion
+    extra = 1
+    fields = ("text", "is_multiple_choice", "points", "position")
+    show_change_link = True
+
+
+class QuizAnswerInline(admin.TabularInline):
+    model = QuizAnswer
+    extra = 2
+    fields = ("text", "is_correct", "position")
+
+
+@admin.register(Quiz)
+class QuizAdmin(admin.ModelAdmin):
+    """The authoring surface. A quiz is written here; it is TAKEN on the
+    pages, and what attempts recorded can never be edited anywhere."""
+
+    list_display = ("title", "scope_type", "scope_id", "pass_mark",
+                    "max_attempts", "is_active", "created_by")
+    list_filter = ("is_active", "scope_type")
+    search_fields = ("title", "slug")
+    readonly_fields = ("slug", "created_at", "updated_at")
+    inlines = [QuizQuestionInline]
+
+
+@admin.register(QuizQuestion)
+class QuizQuestionAdmin(admin.ModelAdmin):
+    list_display = ("text", "quiz", "is_multiple_choice", "points", "position")
+    list_filter = ("quiz",)
+    inlines = [QuizAnswerInline]
+
+
+@admin.register(QuizAttempt)
+class QuizAttemptAdmin(admin.ModelAdmin):
+    """Read-only: an attempt is a graded fact."""
+
+    list_display = ("quiz", "user", "number", "score", "max_score",
+                    "percent", "passed", "finished_at")
+    list_filter = ("quiz", "passed")
+    readonly_fields = [f.name for f in QuizAttempt._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(QuizCertificate)
+class QuizCertificateAdmin(admin.ModelAdmin):
+    """The issued paper, behind glass — the model raises on save and delete."""
+
+    list_display = ("quiz_title", "user", "percent", "passed", "serial",
+                    "issued_at")
+    list_filter = ("passed",)
+    search_fields = ("quiz_title", "serial", "user__username")
+    readonly_fields = [f.name for f in QuizCertificate._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

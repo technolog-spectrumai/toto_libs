@@ -7,7 +7,7 @@ two drift apart.
 
 from django.urls import path
 
-from . import views
+from . import quiz_views, views
 
 app_name = "polls"
 
@@ -19,6 +19,12 @@ urlpatterns = [
     path("votes/new/", views.vote_create, name="vote_create"),
     path("ledger/", views.decision_ledger, name="decision_ledger"),
     path("ledger/export.pdf", views.ledger_pdf_export, name="ledger_pdf"),
+    # Quizzes: fixed prefix, so it can never collide with the kind catch-all.
+    path("quizzes/", quiz_views.quiz_list, name="quiz_list"),
+    path("quizzes/<slug:slug>/", quiz_views.quiz_take, name="quiz_take"),
+    path("quizzes/<slug:slug>/statistics/", quiz_views.quiz_statistics, name="quiz_statistics"),
+    path("quizzes/<slug:slug>/attempts/<int:number>/", quiz_views.quiz_result, name="quiz_result"),
+    path("quizzes/<slug:slug>/attempts/<int:number>/certificate.pdf", quiz_views.quiz_certificate_pdf, name="quiz_certificate"),
     path("<str:kind>/<slug:slug>/", views.question_detail, name="question_detail"),
     path("<str:kind>/<slug:slug>/vote/", views.question_vote, name="question_vote"),
     path("<str:kind>/<slug:slug>/results/", views.question_results, name="question_results"),

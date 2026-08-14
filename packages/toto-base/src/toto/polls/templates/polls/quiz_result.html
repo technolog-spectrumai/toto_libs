@@ -1,0 +1,69 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{{ quiz.title }}{% endblock %}
+{% block polls_heading %}{{ quiz.title }}{% endblock %}
+
+{% block polls_content %}
+<div class="max-w-3xl space-y-6">
+
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-6 text-center shadow-sm">
+    <p class="text-xs uppercase tracking-wide opacity-55">
+      {% blocktrans with n=attempt.number %}Attempt {{ n }}{% endblocktrans %}
+      · {{ attempt.finished_at|date:"Y-m-d H:i" }}</p>
+    <p class="mt-2 text-4xl font-extrabold">{{ attempt.percent|floatformat:0 }}%</p>
+    <p class="text-sm opacity-70">{{ attempt.score }} / {{ attempt.max_score }} {% trans "points" %}</p>
+    <p class="mt-2 text-lg font-bold
+              {% if attempt.passed %}{% elif attempt.passed is False %}{% endif %}"
+       {% if attempt.passed %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"
+       {% elif attempt.passed is False %}:class="darkMode ? 'text-warn-dark' : 'text-warn-light'"{% endif %}>
+      {% if attempt.passed %}{% trans "Passed" %}
+      {% elif attempt.passed is False %}{% trans "Not passed" %}
+      {% else %}{% trans "Completed" %}{% endif %}
+    </p>
+    {% if certificate %}
+      <a href="{% url 'polls:quiz_certificate' quiz.slug attempt.number %}"
+         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+         class="mt-4 inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-file-pdf"></i>{% trans "Download certificate" %}</a>
+      <p class="mt-2 text-[10px] opacity-45">{{ certificate.serial }}</p>
+    {% endif %}
+  </article>
+
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border p-5 shadow-sm">
+    <h2 class="mb-3 text-lg font-bold">{% trans "Question by question" %}</h2>
+    <ol class="space-y-2">
+      {% for row in rows %}
+        <li class="flex items-start gap-3 text-sm">
+          {% if row.was_correct %}
+            <i class="fa-solid fa-circle-check mt-0.5"
+               :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+          {% else %}
+            <i class="fa-solid fa-circle-xmark mt-0.5"
+               :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          {% endif %}
+          <span class="min-w-0">
+            <span class="font-semibold">{{ row.question.text }}</span>
+            <span class="block text-xs opacity-60">
+              {% if row.selected.all %}
+                {% trans "Your answer:" %}
+                {% for answer in row.selected.all %}{{ answer.text }}{% if not forloop.last %}, {% endif %}{% endfor %}
+              {% else %}{% trans "Not answered." %}{% endif %}
+              · {{ row.points_earned }}/{{ row.question.points }} {% trans "pts" %}
+            </span>
+          </span>
+        </li>
+      {% endfor %}
+    </ol>
+  </article>
+
+  <p class="text-sm">
+    <a href="{% url 'polls:quiz_take' quiz.slug %}" class="font-semibold underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i>
+      {% if attempts_left is None or attempts_left > 0 %}{% trans "Try again" %}{% else %}{% trans "Back to the quiz" %}{% endif %}</a>
+  </p>
+
+</div>
+{% endblock %}

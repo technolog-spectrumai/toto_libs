@@ -46,6 +46,12 @@
                 {% if active_tab == 'votes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
          {% if active_tab == 'votes' %}aria-current="page"{% endif %}>
         <i class="fa-solid fa-check-to-slot"></i>{% trans "Votes" %}</a>
+      <a href="{% url 'polls:quiz_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'quizzes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'quizzes' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-graduation-cap"></i>{% trans "Quizzes" %}</a>
       <a href="{% url 'polls:decision_ledger' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition

@@ -1,0 +1,82 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{{ quiz.title }}{% endblock %}
+{% block polls_heading %}{{ quiz.title }}{% endblock %}
+
+{% block polls_lede %}
+{% if quiz.description %}<p class="max-w-3xl text-sm opacity-75">{{ quiz.description }}</p>{% endif %}
+{% endblock %}
+
+{% block polls_content %}
+<div class="max-w-3xl space-y-6">
+
+  <p class="text-xs opacity-60">
+    {% if quiz.pass_mark is not None %}
+      <i class="fa-solid fa-flag-checkered"></i>
+      {% blocktrans with mark=quiz.pass_mark %}Pass mark: {{ mark }}%.{% endblocktrans %}
+    {% else %}
+      <i class="fa-solid fa-circle-check"></i>
+      {% trans "Completion-only: finishing is what counts." %}
+    {% endif %}
+    {% if attempts_left is not None %}
+      · {% blocktrans with n=attempts_left %}{{ n }} attempts left.{% endblocktrans %}
+    {% endif %}
+    · {% trans "Every question counts; a blank answer scores nothing." %}
+  </p>
+
+  {% if my_attempts %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4 text-sm shadow-sm">
+      <p class="mb-1 text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Your attempts" %}</p>
+      {% for attempt in my_attempts %}
+        <a href="{% url 'polls:quiz_result' quiz.slug attempt.number %}"
+           class="mr-4 underline hover:opacity-80">
+          #{{ attempt.number }}: {{ attempt.percent|floatformat:0 }}%
+          {% if attempt.passed %}({% trans "passed" %}){% elif attempt.passed is False %}({% trans "failed" %}){% endif %}
+        </a>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if attempts_left is None or attempts_left > 0 %}
+    <form method="post"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-5 rounded-2xl border p-5 shadow-sm">
+      {% csrf_token %}
+      {% for question in questions %}
+        <fieldset>
+          <legend class="mb-2 text-sm font-bold">
+            {{ forloop.counter }}. {{ question.text }}
+            {% if question.points != 1 %}
+              <span class="font-normal opacity-55">({{ question.points }} {% trans "pts" %})</span>
+            {% endif %}
+            {% if question.is_multiple_choice %}
+              <span class="block text-xs font-normal opacity-55">{% trans "Select every answer that applies — the exact set scores." %}</span>
+            {% endif %}
+          </legend>
+          <div class="space-y-1">
+            {% for answer in question.answers.all %}
+              <label :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+                     class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 text-sm transition">
+                <input type="{% if question.is_multiple_choice %}checkbox{% else %}radio{% endif %}"
+                       name="q{{ question.pk }}" value="{{ answer.pk }}" class="mt-1">
+                <span>{{ answer.text }}</span>
+              </label>
+            {% endfor %}
+          </div>
+        </fieldset>
+      {% endfor %}
+
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+        <i class="fa-solid fa-paper-plane"></i>{% trans "Submit" %}</button>
+    </form>
+  {% else %}
+    <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm font-semibold">
+      {% trans "You have used all your attempts. Your results remain above." %}</p>
+  {% endif %}
+
+</div>
+{% endblock %}

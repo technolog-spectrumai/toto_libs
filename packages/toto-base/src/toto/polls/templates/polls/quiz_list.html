@@ -1,0 +1,40 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "Quizzes" %}{% endblock %}
+{% block polls_heading %}{% trans "Quizzes" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "Competence tests. Every finished attempt earns a result certificate — pass, fail, or completed, the paper says which." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+<div class="grid gap-4 sm:grid-cols-2">
+  {% for row in rows %}
+    <a href="{% url 'polls:quiz_take' row.quiz.slug %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="block rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="font-bold">{{ row.quiz.title }}</h2>
+        {% if row.passed_ever %}
+          <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+                class="shrink-0 text-xs font-semibold">
+            <i class="fa-solid fa-circle-check"></i> {% trans "Passed" %}</span>
+        {% endif %}
+      </div>
+      {% if row.quiz.description %}
+        <p class="mt-1 text-sm opacity-75">{{ row.quiz.description|truncatechars:140 }}</p>
+      {% endif %}
+      <p class="mt-3 text-xs opacity-55">
+        {{ row.question_count }} {% trans "questions" %}
+        {% if row.quiz.pass_mark is not None %} · {% trans "pass mark" %} {{ row.quiz.pass_mark }}%{% endif %}
+        {% if row.attempts_left is not None %} · {{ row.attempts_left }} {% trans "attempts left" %}{% endif %}
+        {% if row.best_percent is not None %} · {% trans "best" %} {{ row.best_percent }}%{% endif %}
+      </p>
+    </a>
+  {% empty %}
+    <p class="text-sm opacity-60 sm:col-span-2">{% trans "No quizzes yet." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}

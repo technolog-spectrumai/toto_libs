@@ -362,6 +362,12 @@ class Ballot(models.Model):
         return super().delete(*args, **kwargs)
 
 
+# -- quizzes: competence testing on the same scoping --------------------------
+# Imported here so Django's migration autodetector sees them as polls models;
+# the module carries its own docstring on what came from delta and what stayed.
+from .quiz_models import (Quiz, QuizAnswer, QuizAttempt,  # noqa: E402,F401
+                          QuizAttemptAnswer, QuizCertificate, QuizQuestion)
+
 # -- metering (the polls.pdf metric's storage) -------------------------------
 
 
