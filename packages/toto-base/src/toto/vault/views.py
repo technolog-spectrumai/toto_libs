@@ -750,6 +750,11 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 
         gateways = list(bucket.gateways.select_related("directory").all())
 
+        # Through the façade, never an import: None on a host with no
+        # antivirus, and the card simply does not render — the honest state,
+        # not a card full of zeroes about a scanner that does not exist.
+        from toto.vault import scanning
+
         context.update({
             "bucket": bucket,
             "gateways": gateways,
@@ -759,6 +764,8 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             "encrypted_files": encrypted_files,
             "root_files": root_files,
             "recent_count": recent_count,
+            "antivirus_report": scanning.health_report(
+                VaultFile.objects.filter(bucket=bucket)),
         })
 
         context["files_by_type"] = list(

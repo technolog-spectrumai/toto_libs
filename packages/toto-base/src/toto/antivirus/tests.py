@@ -18,6 +18,7 @@ from toto.vault.models import Bucket, VaultFile
 from toto.vault.scanning import Verdict, scan, scanning_enabled
 
 from .scanners import json_scan, markup, scanned_types
+from .models import ScanResult, ScanVerdict
 
 User = get_user_model()
 
@@ -641,7 +642,9 @@ class ScanPanelTests(TestCase):
         import re
 
         body = self.client.get(reverse("antivirus:index")).content.decode()
-        return {int(pk) for pk in re.findall(r'@click="scan\((\d+)\)"', body)}
+        # askScan, not scan: the button opens the confirmation modal now, and
+        # the actual POST happens from the modal's checked set.
+        return {int(pk) for pk in re.findall(r'@click="askScan\((\d+)\)"', body)}
 
     def test_every_listed_file_can_actually_be_scanned(self):
         """The invariant. A row with a button the endpoint refuses is a dead
@@ -657,16 +660,19 @@ class ScanPanelTests(TestCase):
                     reverse("antivirus:scan_file", args=[pk]))
                 self.assertEqual(response.status_code, 200)
 
-    def test_an_encrypted_file_is_not_offered(self):
-        """scan_file refuses it, so listing it promises something untrue."""
+    def test_an_encrypted_file_is_listed_but_disabled(self):
+        """The tree shows everything readable now; what changed is that a row
+        the endpoint refuses carries NO action, not that it is hidden."""
         encrypted = self._file(title="enc.svg", encrypted=True)
 
         self.assertNotIn(encrypted.pk, self._listed())
+        body = self.client.get(reverse("antivirus:index")).content.decode()
+        self.assertIn("enc.svg", body)
 
-    def test_a_strangers_public_file_is_neither_listed_nor_scannable(self):
+    def test_a_strangers_public_file_is_visible_but_not_scannable(self):
         """Readable is not mine. Letting anyone queue work against anyone's
-        files is how a scan button becomes an amplifier — the docstring said so
-        while the code allowed it."""
+        files is how a scan button becomes an amplifier — the row is shown
+        (it IS readable) but carries no scan control."""
         theirs = self._file(owner=self.other, bucket=self.their_bucket,
                             title="theirs.svg", public=True)
 
@@ -704,3 +710,301 @@ class ScanPanelTests(TestCase):
 
         self.assertIn("ok === false", row)
         self.assertIn("ok !== false", row)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp(prefix="antivirus-tabs-"))
+class _TabsFixture(TestCase):
+    """Shared fixture for the three-tab surfaces."""
+
+    HOSTILE = '<svg><script>alert(1)</script></svg>'
+    CLEAN = "<svg><rect/></svg>"
+
+    def setUp(self):
+        from toto.core.models import Platform
+
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.user = User.objects.create_user("tabs", password="pw")
+        self.staff = User.objects.create_user("tabs-staff", password="pw",
+                                              is_staff=True)
+        self.other = User.objects.create_user("tabs-other", password="pw")
+        self.bucket = Bucket.objects.create(name="Tabs", slug="tabs",
+                                            owner=self.user)
+        self.their_bucket = Bucket.objects.create(name="TabsTheirs",
+                                                  slug="tabs-theirs",
+                                                  owner=self.other)
+        self.client.force_login(self.user)
+
+    def _file(self, body=CLEAN, *, title="a.svg", file_type="svg", owner=None,
+              bucket=None, public=False, encrypted=False):
+        vault_file = VaultFile(owner=owner or self.user, title=title,
+                               file_type=file_type,
+                               bucket=bucket or self.bucket,
+                               is_public=public, is_encrypted=encrypted)
+        vault_file.file.save(title, ContentFile(body.encode()), save=False)
+        vault_file.save()
+        vault_file.content_hash = vault_file.create_hash()
+        vault_file.save(update_fields=["content_hash"])
+        return vault_file
+
+    def _scan(self, vault_file):
+        return self.client.post(
+            reverse("antivirus:scan_file", args=[vault_file.pk]))
+
+
+class TabsTests(_TabsFixture):
+    def test_all_three_tabs_render_with_the_nav(self):
+        for name in ("antivirus:index", "antivirus:statistics",
+                     "antivirus:pathology"):
+            with self.subTest(name=name):
+                response = self.client.get(reverse(name))
+                self.assertEqual(response.status_code, 200)
+                self.assertContains(response, "Pathology")
+                self.assertContains(response, "Statistics")
+
+
+class FilesTreeStatusTests(_TabsFixture):
+    """The tree is the vault's, read-only, in security terms."""
+
+    def _body(self):
+        return self.client.get(reverse("antivirus:index")).content.decode()
+
+    def test_an_unscanned_file_warns(self):
+        self._file(title="fresh.svg")
+
+        self.assertIn("Not scanned yet", self._body())
+
+    def test_a_clean_scan_earns_the_green_check(self):
+        vault_file = self._file(title="good.svg")
+        self._scan(vault_file)
+
+        self.assertIn("Scanned — nothing found", self._body())
+
+    def test_a_threat_warns_by_name(self):
+        vault_file = self._file(self.HOSTILE, title="bad.svg")
+        self._scan(vault_file)
+
+        self.assertIn("Threat found", self._body())
+
+    def test_editing_a_clean_file_takes_the_check_away(self):
+        """The icon is about the bytes the file holds NOW."""
+        vault_file = self._file(title="edited.svg")
+        self._scan(vault_file)
+        VaultFile.objects.filter(pk=vault_file.pk).update(
+            content_hash="different-bytes-now")
+
+        body = self._body()
+        self.assertNotIn("Scanned — nothing found", body)
+        self.assertIn("Not scanned yet", body)
+
+    def test_disabled_rows_say_why(self):
+        self._file(title="locked.svg", encrypted=True)
+        self._file(title="photo.png", file_type="png")
+        self._file(title="pub.svg", owner=self.other,
+                   bucket=self.their_bucket, public=True)
+
+        body = self._body()
+        self.assertIn("Encrypted — the scanner cannot read it.", body)
+        self.assertIn("This type cannot be scanned.", body)
+        self.assertIn("Not yours to scan.", body)
+
+    def test_no_management_controls_anywhere(self):
+        """Read-only in the strong sense: the page offers scanning and nothing
+        the vault already owns."""
+        self._file(title="a.svg")
+
+        body = self._body()
+        for forbidden in ("Upload", "New File", "New file"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, body)
+
+    def test_the_modal_ships_a_picking_tree(self):
+        self._file(title="pick.svg")
+
+        body = self._body()
+        self.assertIn("checked[", body)
+        self.assertIn("confirmScan", body)
+
+
+class ErrorRecordingTests(_TabsFixture):
+    def test_an_unreadable_file_is_recorded_not_forgotten(self):
+        """Before ERROR existed this was a 400 and nothing else — a file that
+        cannot be checked looked exactly like one nobody had tried."""
+        import os
+
+        vault_file = self._file(title="ghost.svg")
+        os.remove(vault_file.file.path)
+
+        response = self._scan(vault_file)
+
+        self.assertEqual(response.status_code, 400)
+        row = ScanResult.objects.get(file=vault_file)
+        self.assertEqual(row.verdict, ScanVerdict.ERROR)
+
+    def test_the_failure_shows_in_pathology_as_failed(self):
+        import os
+
+        vault_file = self._file(title="ghost2.svg")
+        os.remove(vault_file.file.path)
+        self._scan(vault_file)
+
+        response = self.client.get(reverse("antivirus:pathology"))
+
+        self.assertContains(response, "ghost2.svg")
+        self.assertContains(response, "Failed to scan")
+
+
+class StatisticsTests(_TabsFixture):
+    def test_the_numbers_add_up(self):
+        clean = self._file(title="s1.svg")
+        hostile = self._file(self.HOSTILE, title="s2.svg")
+        self._scan(clean)
+        self._scan(hostile)
+
+        context = self.client.get(reverse("antivirus:statistics")).context
+
+        self.assertEqual(context["files_scanned"], 2)
+        self.assertEqual(context["scans_run"], 2)
+        self.assertEqual(context["clean_count"], 1)
+        self.assertEqual(context["threat_count"], 1)
+        self.assertGreater(context["data_scanned"], 0)
+
+    def test_two_scans_one_day_is_one_bucket(self):
+        """The Meta-ordering GROUP BY trap, as a regression test: without the
+        trailing order_by the chart gets one row per SCAN."""
+        import json as jsonlib
+
+        self._scan(self._file(title="d1.svg"))
+        self._scan(self._file(title="d2.svg"))
+
+        payload = jsonlib.loads(
+            self.client.get(reverse("antivirus:statistics"))
+            .context["activity_chart_json"])
+
+        self.assertEqual(len(payload["labels"]), 30)
+        clean_series = next(d for d in payload["datasets"]
+                            if d["label"] == "Clean")
+        self.assertEqual(sum(clean_series["data"]), 2)
+        self.assertEqual(clean_series["data"][-1], 2)
+
+    def test_a_user_sees_their_files_and_staff_see_everything(self):
+        theirs = self._file(title="theirs.svg", owner=self.other,
+                            bucket=self.their_bucket)
+        from . import engine
+        from toto.vault.scanning import scan as facade_scan
+
+        engine.record(theirs, facade_scan(self.CLEAN, file_type="svg"),
+                      user=self.other, door="manual", content=self.CLEAN)
+
+        mine = self.client.get(reverse("antivirus:statistics")).context
+        self.assertEqual(mine["scans_run"], 0)
+        self.assertFalse(mine["staff_view"])
+
+        self.client.force_login(self.staff)
+        alls = self.client.get(reverse("antivirus:statistics")).context
+        self.assertEqual(alls["scans_run"], 1)
+        self.assertTrue(alls["staff_view"])
+
+
+class PathologyTests(_TabsFixture):
+    def test_a_finding_carries_its_severity_and_currency(self):
+        vault_file = self._file(self.HOSTILE, title="p1.svg")
+        self._scan(vault_file)
+
+        response = self.client.get(reverse("antivirus:pathology"))
+
+        self.assertContains(response, "p1.svg")
+        self.assertContains(response, "Threat")
+        self.assertContains(response, "Still present")
+
+    def test_a_fixed_file_reads_as_historic_not_infected(self):
+        vault_file = self._file(self.HOSTILE, title="p2.svg")
+        self._scan(vault_file)
+        VaultFile.objects.filter(pk=vault_file.pk).update(
+            content_hash="rewritten-clean")
+
+        response = self.client.get(reverse("antivirus:pathology"))
+
+        self.assertContains(response, "Bytes changed since")
+        self.assertNotContains(response, "Still present")
+
+    def test_a_strangers_finding_is_invisible_until_you_are_staff(self):
+        theirs = self._file(self.HOSTILE, title="secret-bad.svg",
+                            owner=self.other, bucket=self.their_bucket)
+        from . import engine
+        from toto.vault.scanning import scan as facade_scan
+
+        engine.record(theirs, facade_scan(self.HOSTILE, file_type="svg"),
+                      user=self.other, door="manual", content=self.HOSTILE)
+
+        self.assertNotContains(
+            self.client.get(reverse("antivirus:pathology")), "secret-bad.svg")
+
+        self.client.force_login(self.staff)
+        self.assertContains(
+            self.client.get(reverse("antivirus:pathology")), "secret-bad.svg")
+
+
+class HealthReportTests(_TabsFixture):
+    def test_counts_and_status_over_a_bucket(self):
+        from toto.vault import scanning
+
+        clean = self._file(title="h1.svg")
+        self._scan(clean)
+        self._file(title="h2.svg")                      # unscanned
+        self._file(title="photo.png", file_type="png")  # unscannable
+
+        report = scanning.health_report(
+            VaultFile.objects.filter(bucket=self.bucket))
+
+        self.assertEqual(report["scannable"], 2)
+        self.assertEqual(report["unscannable"], 1)
+        self.assertEqual(report["clean"], 1)
+        self.assertEqual(report["unscanned"], 1)
+        self.assertEqual(report["status"], "partial")
+        self.assertGreater(report["scanned_bytes"], 0)
+
+    def test_a_threat_outranks_everything(self):
+        from toto.vault import scanning
+
+        hostile = self._file(self.HOSTILE, title="h3.svg")
+        self._scan(hostile)
+
+        report = scanning.health_report(
+            VaultFile.objects.filter(bucket=self.bucket))
+
+        self.assertEqual(report["status"], "threats")
+
+    def test_no_antivirus_means_none_not_zeroes(self):
+        """The façade's contract: the metrics card must not render a card full
+        of zeroes about a scanner that does not exist."""
+        from django.test import modify_settings
+
+        from toto.vault import scanning
+
+        with modify_settings(INSTALLED_APPS={"remove": "toto.antivirus"}):
+            self.assertIsNone(scanning.health_report(VaultFile.objects.all()))
+
+
+class VaultSurfaceTests(_TabsFixture):
+    def test_the_bucket_metrics_page_carries_the_card(self):
+        vault_file = self._file(title="m1.svg")
+        self._scan(vault_file)
+
+        response = self.client.get(
+            reverse("vault:bucket_metrics", args=[self.bucket.slug]))
+
+        self.assertContains(response, "Antivirus")
+        self.assertContains(response, "Data scanned")
+
+    def test_the_vault_tree_carries_the_shield_and_nothing_else(self):
+        """The shield is the vault's ONLY antivirus surface: a link, no scan
+        buttons, no modal."""
+        response = self.client.get(reverse("vault:public_list"))
+        body = response.content.decode()
+
+        self.assertIn("fa-shield-virus", body)
+        self.assertIn(reverse("antivirus:index"), body)
+        self.assertNotIn("askScan", body)
+        self.assertNotIn("confirmScan", body)

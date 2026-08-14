@@ -1,0 +1,80 @@
+{% extends "antivirus/base.html" %}
+{% load i18n static %}
+
+{% block antivirus_title %}{% trans "Antivirus statistics" %}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}Chart.js is vendored locally, never a CDN, and oya/partials/dim.html
+   is NOT optional — the shared chart partial calls dim() unconditionally, so
+   omitting it is a ReferenceError that kills the inline script, not a plainer
+   chart.{% endcomment %}
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
+{% endblock %}
+
+{% block antivirus_content %}
+<div class="space-y-6">
+
+  {% if staff_view %}
+    <p :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border px-4 py-2 text-xs font-semibold">
+      <i class="fa-solid fa-user-shield"></i>
+      {% trans "Staff view — these numbers cover the whole platform, not only your files." %}</p>
+  {% else %}
+    <p class="text-xs opacity-55">{% trans "Your files only." %}</p>
+  {% endif %}
+
+  <div class="grid grid-cols-2 gap-4 lg:grid-cols-3">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{{ files_scanned }}</div>
+      <div class="text-xs opacity-60">{% trans "Files scanned" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{{ scans_run }}</div>
+      <div class="text-xs opacity-60">{% trans "Scans run" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold">{{ data_scanned|filesizeformat }}</div>
+      <div class="text-xs opacity-60">{% trans "Data scanned" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold"
+           :class="darkMode ? 'text-success-dark' : 'text-success-light'">{{ clean_count }}</div>
+      <div class="text-xs opacity-60">{% trans "Clean verdicts" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold"
+           :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">{{ threat_count }}</div>
+      <div class="text-xs opacity-60">{% trans "Threats detected" %}</div>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-xl border p-4 shadow-sm">
+      <div class="text-2xl font-bold opacity-80">{{ failed_count }}</div>
+      <div class="text-xs opacity-60">{% trans "Failed scans" %}</div>
+    </div>
+  </div>
+
+  {% if activity_chart_json %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="mb-4 flex items-center gap-2 text-lg font-bold">
+      <i class="fa-solid fa-chart-simple opacity-60 text-sm"></i>{% trans "The last 30 days" %}</h2>
+    {% comment %}The wrapper's height is required: the shared partial forces
+       maintainAspectRatio:false and its own wrapper is height:auto, so an
+       unsized parent collapses the canvas to nothing.{% endcomment %}
+    <div class="h-64">
+      {% include "oya/partials/chart.html" with chart_id="antivirus_activity" data=activity_chart_json %}
+    </div>
+  </section>
+  {% else %}
+  <p class="text-sm opacity-60">{% trans "No scans in the last 30 days." %}</p>
+  {% endif %}
+
+</div>
+{% endblock %}

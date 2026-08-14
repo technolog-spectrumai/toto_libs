@@ -96,6 +96,49 @@
       {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-clock-rotate-left" label="Last 7 Days" value=recent_count color="accent" %}
     </div>
 
+    {% comment %}Antivirus health — only when the app exists on this host. The
+       report is None otherwise (the façade's contract), so placidia and
+       aurelian render this page exactly as before. "Current" everywhere here:
+       a verdict about bytes the file no longer holds is history, not health.
+    {% endcomment %}
+    {% if antivirus_report %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-xl border p-5 shadow-sm">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-shield-virus opacity-70"></i>{% trans "Antivirus" %}
+          {% if antivirus_report.status == "threats" %}
+            <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                  class="text-sm font-semibold"><i class="fa-solid fa-triangle-exclamation"></i> {% trans "Threats found" %}</span>
+          {% elif antivirus_report.status == "attention" %}
+            <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                  class="text-sm font-semibold"><i class="fa-solid fa-circle-question"></i> {% trans "Needs attention" %}</span>
+          {% elif antivirus_report.status == "partial" %}
+            <span class="text-sm font-semibold opacity-60">{% trans "Partly scanned" %}</span>
+          {% elif antivirus_report.status == "clean" %}
+            <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+                  class="text-sm font-semibold"><i class="fa-solid fa-circle-check"></i> {% trans "Clean" %}</span>
+          {% else %}
+            <span class="text-sm font-semibold opacity-50">{% trans "Nothing to scan" %}</span>
+          {% endif %}
+        </h2>
+        {% url 'antivirus:index' as antivirus_url %}
+        {% if antivirus_url %}
+          <a href="{{ antivirus_url }}" class="text-xs font-semibold underline hover:opacity-80">
+            <i class="fa-solid fa-arrow-right"></i> {% trans "Open the antivirus" %}</a>
+        {% endif %}
+      </div>
+      <div class="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-magnifying-glass" label="Scanned" value=antivirus_report.scanned color="accent" %}
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-circle-check" label="Clean" value=antivirus_report.clean color="success" %}
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-virus" label="Threats" value=antivirus_report.threats color="warn" %}
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-circle-question" label="Failed" value=antivirus_report.failed color="warn" %}
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-hourglass-half" label="Unscanned" value=antivirus_report.unscanned color="neutral" %}
+        {% include "vault/partials/_stat_card.html" with icon="fa-solid fa-weight-hanging" label="Data scanned" value=antivirus_report.scanned_bytes|filesizeformat color="neutral" %}
+      </div>
+    </section>
+    {% endif %}
+
     <!-- Bucket-level quota bar -->
     {% if bucket_quota_mb %}
     <div

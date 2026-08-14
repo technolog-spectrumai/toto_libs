@@ -20,6 +20,33 @@ from toto.vault.scanning import SCANNABLE_TYPES
 class ScanVerdict(models.TextChoices):
     CLEAN = "clean", "Clean"
     REFUSED = "refused", "Refused"
+    #: The scan itself failed — unreadable bytes, a storage error. Recorded
+    #: rather than swallowed: a file that CANNOT be checked is a security fact
+    #: of its own kind, and before this verdict existed the panel forgot the
+    #: failure the moment the 400 response was gone.
+    ERROR = "error", "Could not scan"
+
+
+#: Refusal reasons that mean the content tried to DO something — run script,
+#: reach out of the document — as opposed to merely being the wrong shape.
+#: The scanners' own vocabulary (scanners/markup.py, scanners/json_scan.py).
+_ACTIVE_REASONS = frozenset({"active-content", "external-reference"})
+
+#: What a Pathology row calls itself. The scanner refuses, it does not grade —
+#: so severity is DERIVED from the refusal reason, in one place, rather than
+#: each template inventing its own reading of "malformed".
+SEVERITY_THREAT = "threat"          # active content: script, outbound refs
+SEVERITY_SUSPICIOUS = "suspicious"  # structural: malformed, wrong shape, depth
+SEVERITY_FAILED = "failed"          # the scan itself could not run
+
+
+def severity_of(verdict: str, reason: str = "") -> str:
+    """One finding's severity, from what the scanner actually said."""
+    if verdict == ScanVerdict.ERROR:
+        return SEVERITY_FAILED
+    if reason in _ACTIVE_REASONS:
+        return SEVERITY_THREAT
+    return SEVERITY_SUSPICIOUS
 
 
 class ScanResult(models.Model):
@@ -47,6 +74,10 @@ class ScanResult(models.Model):
     #: "websocket", "restore", "manual". Worth keeping: it is how you find out
     #: which door is letting things in.
     door = models.CharField(max_length=32, blank=True)
+    #: How many bytes were actually read for this scan. What makes "data
+    #: scanned" on the Statistics tab an honest number: the file's CURRENT size
+    #: is a different quantity the moment anybody edits it.
+    size_bytes = models.PositiveBigIntegerField(default=0)
     scanned_by = models.ForeignKey(
         settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
         null=True, blank=True, related_name="+")
@@ -73,6 +104,10 @@ class ScanResult(models.Model):
     @property
     def is_threat(self) -> bool:
         return self.verdict == ScanVerdict.REFUSED
+
+    @property
+    def severity(self) -> str:
+        return severity_of(self.verdict, self.reason)
 
 
 class ScanPreference(models.Model):

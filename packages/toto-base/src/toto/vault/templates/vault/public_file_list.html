@@ -1,6 +1,6 @@
 {% extends "oya/base.html" %}
 {% load static %}
-{% load i18n quota_tags %}
+{% load i18n quota_tags app_tags %}
 
 {% block title %}{% trans "Public Files" %} | {{ platform.site_name }}{% endblock %}
 
@@ -995,8 +995,22 @@
           </select>
         </div>
 
+        {% comment %}The antivirus shortcut — a shield, nothing else. Scanning
+           itself lives entirely in the antivirus app; the vault only points at
+           it. Double-guarded like every optional-app link: |app_installed
+           hides it when the app is absent, and the url-as form swallows
+           NoReverseMatch when it is installed but unmounted.{% endcomment %}
+        {% if "toto.antivirus"|app_installed %}{% url 'antivirus:index' as antivirus_url %}
+        {% if antivirus_url %}
+        <a href="{{ antivirus_url }}" title="{% trans 'Antivirus' %}"
+           :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+           class="ml-auto flex h-8 w-8 items-center justify-center rounded-lg border transition">
+          <i class="fa-solid fa-shield-virus text-sm"></i>
+        </a>
+        {% endif %}{% endif %}
+
         <!-- View toggle -->
-        <div class="ml-auto flex rounded-lg overflow-hidden border"
+        <div class="{% if not antivirus_url %}ml-auto {% endif %}flex rounded-lg overflow-hidden border"
              :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
           <button @click="setViewMode('tree')"
                   :class="viewMode === 'tree'

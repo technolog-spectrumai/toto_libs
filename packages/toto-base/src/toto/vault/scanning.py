@@ -122,3 +122,22 @@ def clean_file_ids(files) -> set[int]:
         return engine.clean_file_ids(files)
     except Exception:  # noqa: BLE001
         return set()
+
+
+def health_report(files):
+    """Antivirus health over a set of files, or None where there is no antivirus.
+
+    The bucket metrics page is the caller: the vault may not import the
+    antivirus app, so the counting happens engine-side and this façade answers
+    ``None`` on a host without it — the metrics card simply does not render,
+    which is the honest state, not a card full of zeroes about a scanner that
+    does not exist.
+    """
+    if not scanning_enabled():
+        return None
+    try:
+        from toto.antivirus import engine
+
+        return engine.health_report(files)
+    except Exception:  # noqa: BLE001 - a metrics card is not worth a 500
+        return None

@@ -1,50 +1,89 @@
 {% load i18n %}
-{% comment %}One file: its name, its tick if it has one, and a Scan button.
+{% comment %}One file: its name, its security state, and — in its two modes —
+   either a Scan button or a checkbox.
 
-   The result appears in place — no page reload, no toast that scrolls away
-   from the row it was about.
+   Context: `file` is a tree row annotated by views._annotate_tree with
+   `scannable`, `status` (clean|threat|failed|unscanned) or `reason` (why it is
+   disabled). `picking` switches the modal mode: checkbox instead of button.
+
+   The status icon is the user's contract: green check = scanned clean, red
+   warning = needs attention (unscanned, threat, or the scan itself failed) —
+   with the tooltip naming WHICH, because three different problems behind one
+   red icon is a mystery, not a warning.
 {% endcomment %}
-<div class="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm">
+<div class="flex flex-wrap items-center gap-2 rounded px-1 py-1 text-sm
+            {% if not file.scannable %}opacity-45{% endif %}"
+     {% if not file.scannable %}title="{{ file.reason }}"{% endif %}
+     data-file-row="{{ file.id }}">
+
   <i class="fa-solid fa-file text-xs opacity-40"></i>
   <span class="min-w-0 flex-1 truncate">{{ file.title }}</span>
 
-  {% include "antivirus/_clean_tick.html" %}
+  {% if file.scannable %}
+    {% if file.status == "clean" %}
+      <i class="fa-solid fa-circle-check text-xs"
+         :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+         title="{% trans 'Scanned — nothing found' %}"></i>
+    {% elif file.status == "threat" %}
+      <i class="fa-solid fa-triangle-exclamation text-xs"
+         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+         title="{% trans 'Threat found' %}"></i>
+    {% elif file.status == "failed" %}
+      <i class="fa-solid fa-triangle-exclamation text-xs"
+         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+         title="{% trans 'Could not be scanned' %}"></i>
+    {% else %}
+      <i class="fa-solid fa-triangle-exclamation text-xs"
+         :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+         title="{% trans 'Not scanned yet' %}"></i>
+    {% endif %}
+  {% else %}
+    <i class="fa-solid fa-ban text-xs opacity-60"></i>
+  {% endif %}
 
   <span class="text-[0.65rem] uppercase opacity-40">{{ file.file_type }}</span>
 
-  {% comment %}Three outcomes, not two. A scan that could not RUN is neither
-     clean nor refused, and rendering it as refused tells somebody their file is
-     hostile when nothing ever read it.{% endcomment %}
-  <template x-if="results[{{ file.id }}] && !results[{{ file.id }}].busy">
-    <span class="text-xs"
-          :class="results[{{ file.id }}].ok === false
-                    ? 'opacity-70'
-                    : (results[{{ file.id }}].clean
-                        ? (darkMode ? 'text-success-dark' : 'text-success-light')
-                        : (darkMode ? 'text-warn-dark' : 'text-warn-light'))">
-      <template x-if="results[{{ file.id }}].ok === false">
-        <span><i class="fa-solid fa-circle-question"></i>
-          <span x-text="results[{{ file.id }}].error || '{% trans "Could not scan" %}'"></span></span>
+  {% if file.scannable %}
+    {% if picking %}
+      {% comment %}Modal mode: pick what the confirmed scan will cover.{% endcomment %}
+      <input type="checkbox" class="h-4 w-4"
+             x-model="checked[{{ file.id }}]">
+    {% else %}
+      {% comment %}Page mode: the live result of a scan run from the modal, and
+         the action that opens it. Three outcomes, not two — a scan that could
+         not RUN is neither clean nor refused.{% endcomment %}
+      <template x-if="results[{{ file.id }}] && !results[{{ file.id }}].busy">
+        <span class="text-xs"
+              :class="results[{{ file.id }}].ok === false
+                        ? 'opacity-70'
+                        : (results[{{ file.id }}].clean
+                            ? (darkMode ? 'text-success-dark' : 'text-success-light')
+                            : (darkMode ? 'text-warn-dark' : 'text-warn-light'))">
+          <template x-if="results[{{ file.id }}].ok === false">
+            <span><i class="fa-solid fa-circle-question"></i>
+              <span x-text="results[{{ file.id }}].error || '{% trans "Could not scan" %}'"></span></span>
+          </template>
+          <template x-if="results[{{ file.id }}].ok !== false && results[{{ file.id }}].clean">
+            <span><i class="fa-solid fa-circle-check"></i> {% trans "Nothing found" %}</span>
+          </template>
+          <template x-if="results[{{ file.id }}].ok !== false && !results[{{ file.id }}].clean">
+            <span><i class="fa-solid fa-triangle-exclamation"></i>
+              <span x-text="results[{{ file.id }}].detail || '{% trans "Refused" %}'"></span></span>
+          </template>
+        </span>
       </template>
-      <template x-if="results[{{ file.id }}].ok !== false && results[{{ file.id }}].clean">
-        <span><i class="fa-solid fa-circle-check"></i> {% trans "Nothing found" %}</span>
-      </template>
-      <template x-if="results[{{ file.id }}].ok !== false && !results[{{ file.id }}].clean">
-        <span><i class="fa-solid fa-triangle-exclamation"></i>
-          <span x-text="results[{{ file.id }}].detail || '{% trans "Refused" %}'"></span></span>
-      </template>
-    </span>
-  </template>
 
-  <button type="button" @click="scan({{ file.id }})"
-          :disabled="results[{{ file.id }}] && results[{{ file.id }}].busy"
-          :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-          class="rounded border px-2 py-0.5 text-xs font-semibold transition disabled:opacity-50">
-    <template x-if="results[{{ file.id }}] && results[{{ file.id }}].busy">
-      <i class="fa-solid fa-spinner fa-spin"></i>
-    </template>
-    <template x-if="!(results[{{ file.id }}] && results[{{ file.id }}].busy)">
-      <span>{% trans "Scan" %}</span>
-    </template>
-  </button>
+      <button type="button" @click="askScan({{ file.id }})"
+              :disabled="results[{{ file.id }}] && results[{{ file.id }}].busy"
+              :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+              class="rounded border px-2 py-0.5 text-xs font-semibold transition disabled:opacity-50">
+        <template x-if="results[{{ file.id }}] && results[{{ file.id }}].busy">
+          <i class="fa-solid fa-spinner fa-spin"></i>
+        </template>
+        <template x-if="!(results[{{ file.id }}] && results[{{ file.id }}].busy)">
+          <span>{% trans "Scan" %}</span>
+        </template>
+      </button>
+    {% endif %}
+  {% endif %}
 </div>

@@ -1,24 +1,20 @@
-{% extends "oya/base.html" %}
+{% extends "antivirus/base.html" %}
 {% load i18n %}
 
-{% comment %}The whole app, for now: two counters, what was found, and the files
-   you can scan. It grows from here.
+{% comment %}The Files tab: the vault's tree, read-only, in security terms.
+
+   Every file the user may READ is listed — more than they may scan, with the
+   difference visible rather than hidden: scannable rows carry a status icon
+   and a Scan action, unscannable rows are disabled with the reason in the
+   tooltip. No upload, no New File, no management — that is the vault's job.
+
+   Scanning always goes through the confirmation modal: the same tree again,
+   checkboxes on what may be scanned, so what is about to happen is exactly
+   what is on screen.
 {% endcomment %}
 
-{% block title %}{% trans "Antivirus" %} – {{ platform.site_name }}{% endblock %}
-
-{% block content %}
-<div x-data="antivirus()"
-     :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-     class="min-h-screen px-4 py-8 transition-colors duration-300">
-  <div class="mx-auto max-w-5xl space-y-6">
-
-    <div>
-      <h1 class="flex items-center gap-3 text-2xl font-extrabold">
-        <i class="fa-solid fa-shield-virus"></i>{% trans "Antivirus" %}</h1>
-      <p class="mt-1 text-sm opacity-70">
-        {% trans "Files are screened on the way in, and you can scan anything you own on demand. A scan never changes a file." %}</p>
-    </div>
+{% block antivirus_content %}
+<div x-data="antivirus()" class="space-y-6">
 
     {% comment %}Two counters. vault/metrics.html's shape.{% endcomment %}
     <div class="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -53,29 +49,6 @@
       </div>
     </div>
 
-    {% if threats %}
-    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-             class="rounded-lg border p-5 shadow-sm">
-      <h2 class="mb-1 text-lg font-bold">{% trans "What was found" %}</h2>
-      <p class="mb-3 text-sm opacity-70">
-        {% trans "These files are untouched and still yours to open or download. Nothing was removed." %}</p>
-      <ul class="space-y-2 text-sm">
-        {% for threat in threats %}
-          <li :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
-              class="rounded-lg border px-4 py-2">
-            <div class="flex flex-wrap items-center justify-between gap-2">
-              <span class="font-semibold">{{ threat.file.title }}</span>
-              <span class="text-xs opacity-60">{{ threat.scanned_at|date:"Y-m-d H:i" }}</span>
-            </div>
-            <p class="mt-1 text-xs opacity-80">
-              {{ threat.detail }}{% if threat.line %} <span class="opacity-60">({% blocktrans with line=threat.line %}line {{ line }}{% endblocktrans %})</span>{% endif %}
-            </p>
-          </li>
-        {% endfor %}
-      </ul>
-    </section>
-    {% endif %}
-
     {% comment %}The automatic-scan policy: four plain checkboxes, this person's
        own files only.{% endcomment %}
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -98,13 +71,45 @@
 
     <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
              class="rounded-lg border p-5 shadow-sm">
-      <h2 class="text-lg font-bold">{% trans "Your files" %}</h2>
+      <h2 class="text-lg font-bold">{% trans "Files" %}</h2>
       <p class="mb-3 text-sm opacity-70">
-        {% trans "Everything here is a type we know how to read. Pictures, video and sound are not listed — there is nothing in them a text scanner can honestly judge." %}</p>
+        {% trans "Everything you can read, in security terms: a green check has been scanned and found clean; a red warning is unscanned, could not be scanned, or holds a finding. Greyed-out files cannot be scanned — the tooltip says why." %}</p>
 
       {% include "antivirus/_scan_tree.html" %}
     </section>
 
+  {% comment %}The confirmation modal. The SAME annotated tree, in picking
+     mode: the clicked file arrives pre-checked, more can be checked, and what
+     is about to happen is exactly the checked set — nothing implicit.
+  {% endcomment %}
+  <div x-show="scanModal" x-cloak
+       class="fixed inset-0 z-[9200] flex items-center justify-center p-4">
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="scanModal = false"></div>
+    <div :class="darkMode ? 'bg-bubble-bg-dark text-text-main-dark border-accent-1' : 'bg-bubble-bg-light text-text-main-light border-accent-2'"
+         class="relative z-10 flex max-h-[80vh] w-full max-w-lg flex-col rounded-2xl border shadow-2xl">
+
+      <div class="border-b border-current/10 p-5 pb-3">
+        <h2 class="flex items-center gap-2 text-lg font-bold">
+          <i class="fa-solid fa-shield-virus"></i> {% trans "Scan files" %}</h2>
+        <p class="mt-1 text-sm opacity-70">
+          {% trans "Exactly the checked files will be scanned, one after another. A scan reads a file and never changes it." %}</p>
+      </div>
+
+      <div class="min-h-0 flex-1 overflow-y-auto p-5 py-3">
+        {% include "antivirus/_scan_tree.html" with picking=True %}
+      </div>
+
+      <div class="flex items-center justify-end gap-3 border-t border-current/10 p-5 pt-3">
+        <button type="button" @click="scanModal = false"
+                class="rounded px-4 py-2 text-sm font-semibold opacity-70 transition hover:opacity-100">
+          {% trans "Cancel" %}</button>
+        <button type="button" @click="confirmScan()" :disabled="checkedCount === 0"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40">
+          <span x-text="checkedCount === 1 ? '{% trans 'Scan 1 file' %}' : '{% trans 'Scan' %} ' + checkedCount + ' {% trans 'files' %}'"></span>
+        </button>
+      </div>
+    </div>
   </div>
 </div>
 
@@ -114,6 +119,11 @@ function antivirus() {
     autoTypes: JSON.parse(`{{ auto_types_json|escapejs }}`),
     saved: false,
     results: {},
+    scanModal: false,
+    checked: {},
+    get checkedCount() {
+      return Object.values(this.checked).filter(Boolean).length;
+    },
     _csrf() {
       return document.cookie.split("; ").find(c => c.startsWith("csrftoken="))?.split("=")[1] || "";
     },
@@ -126,6 +136,23 @@ function antivirus() {
       });
       this.saved = true;
       setTimeout(() => { this.saved = false; }, 2000);
+    },
+    askScan(pk) {
+      /* Reset, then pre-check the clicked file: the modal's checked set IS the
+         confirmation, so it must never inherit leftovers from the last one. */
+      this.checked = {};
+      this.checked[pk] = true;
+      this.scanModal = true;
+    },
+    async confirmScan() {
+      const ids = Object.keys(this.checked).filter(k => this.checked[k]);
+      this.scanModal = false;
+      /* Sequential on purpose: scans are synchronous server-side, and one
+         click fanning out N parallel POSTs is a self-inflicted stampede. */
+      for (const id of ids) {
+        await this.scan(id);
+      }
+      this.checked = {};
     },
     async scan(pk) {
       this.results[pk] = {busy: true};

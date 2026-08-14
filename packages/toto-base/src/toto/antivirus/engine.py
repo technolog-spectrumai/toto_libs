@@ -62,6 +62,13 @@ def record(vault_file, verdict: Verdict, *, user=None, door: str = "",
     if not content_hash:
         return
 
+    if isinstance(content, str):
+        size = len(content.encode("utf-8"))
+    elif content is not None:
+        size = len(bytes(content))
+    else:
+        size = vault_file.file_size_bytes or 0
+
     ScanResult.objects.update_or_create(
         file=vault_file,
         content_sha256=content_hash,
@@ -72,6 +79,32 @@ def record(vault_file, verdict: Verdict, *, user=None, door: str = "",
             "detail": verdict.detail[:2000],
             "line": verdict.line,
             "door": door,
+            "size_bytes": size,
+            "scanned_by": user if getattr(user, "is_authenticated", False) else None,
+        },
+    )
+
+
+def record_failure(vault_file, detail: str, *, user=None, door: str = "") -> None:
+    """Remember that a scan could not run at all.
+
+    Keyed on the file's stored hash (there is no content — that is the point),
+    so a later successful scan of the same bytes replaces this row rather than
+    sitting beside it.
+    """
+    from .models import ScanResult, ScanVerdict
+
+    ScanResult.objects.update_or_create(
+        file=vault_file,
+        content_sha256=vault_file.content_hash or "unreadable",
+        defaults={
+            "file_type": vault_file.file_type,
+            "verdict": ScanVerdict.ERROR,
+            "reason": "unreadable",
+            "detail": detail[:2000],
+            "line": 0,
+            "door": door,
+            "size_bytes": 0,
             "scanned_by": user if getattr(user, "is_authenticated", False) else None,
         },
     )
@@ -98,3 +131,62 @@ def clean_file_ids(files) -> set[int]:
         verdict=ScanVerdict.CLEAN,
     ).values_list("file_id", "content_sha256")
     return {pk for pk, content_hash in rows if (pk, content_hash) in wanted}
+
+
+#: What a health report's overall status can be. Derived, never stored.
+STATUS_THREATS = "threats"      # something hostile is in the bucket NOW
+STATUS_ATTENTION = "attention"  # a file could not be scanned
+STATUS_PARTIAL = "partial"      # scannable files nobody has scanned yet
+STATUS_CLEAN = "clean"          # everything scannable scanned, all clean
+STATUS_NONE = "none"            # nothing here a scanner can read
+
+
+def health_report(files) -> dict:
+    """Counts and a verdict over a set of vault files, for the metrics card.
+
+    "Current" means the verdict is about the bytes the file holds NOW —
+    a finding about an old revision is history, not health. One query for the
+    whole set, same reasoning as ``clean_file_ids``.
+    """
+    from toto.vault.scanning import SCANNABLE_TYPES
+
+    from .models import ScanResult, ScanVerdict
+
+    files = list(files)
+    scannable = [f for f in files
+                 if f.file_type in SCANNABLE_TYPES and not f.is_encrypted]
+    hashes = {f.pk: (f.content_hash or "unreadable") for f in scannable}
+
+    current = {}
+    for row in ScanResult.objects.filter(file_id__in=hashes):
+        if row.content_sha256 == hashes.get(row.file_id):
+            current[row.file_id] = row
+
+    clean = sum(1 for r in current.values() if r.verdict == ScanVerdict.CLEAN)
+    threats = sum(1 for r in current.values() if r.verdict == ScanVerdict.REFUSED)
+    failed = sum(1 for r in current.values() if r.verdict == ScanVerdict.ERROR)
+    unscanned = len(scannable) - len(current)
+
+    if threats:
+        status = STATUS_THREATS
+    elif failed:
+        status = STATUS_ATTENTION
+    elif unscanned:
+        status = STATUS_PARTIAL
+    elif current:
+        status = STATUS_CLEAN
+    else:
+        status = STATUS_NONE
+
+    return {
+        "total": len(files),
+        "scannable": len(scannable),
+        "unscannable": len(files) - len(scannable),
+        "scanned": len(current),
+        "clean": clean,
+        "threats": threats,
+        "failed": failed,
+        "unscanned": unscanned,
+        "scanned_bytes": sum(r.size_bytes for r in current.values()),
+        "status": status,
+    }

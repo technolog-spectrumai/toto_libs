@@ -1,0 +1,57 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The antivirus app: three tabs over one scanner.
+
+   Files is the vault's tree in a security-focused, read-only form; Statistics
+   is the aggregate picture; Pathology is every finding. Same tab idiom as
+   polls/base.html.
+{% endcomment %}
+
+{% block title %}{% block antivirus_title %}{% trans "Antivirus" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}oya/base.html declares no [x-cloak] rule, so every page with an
+   Alpine-hidden element declares its own — the same trap quota/base.html
+   records.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <div>
+      <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+        <i class="fa-solid fa-shield-virus"></i>{% trans "Antivirus" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Files are screened on the way in, and you can scan anything you own on demand. A scan never changes a file." %}</p>
+    </div>
+
+    <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Antivirus navigation' %}">
+      <a href="{% url 'antivirus:index' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'files' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'files' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-folder-tree"></i>{% trans "Files" %}</a>
+      <a href="{% url 'antivirus:statistics' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'statistics' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'statistics' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-chart-simple"></i>{% trans "Statistics" %}</a>
+      <a href="{% url 'antivirus:pathology' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'pathology' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'pathology' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-virus-covid"></i>{% trans "Pathology" %}</a>
+    </nav>
+
+    {% block antivirus_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
