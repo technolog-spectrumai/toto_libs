@@ -1,0 +1,90 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{{ question.title }}{% endblock %}
+{% block polls_heading %}{{ question.title }}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-75">{{ question.question_text }}</p>
+{% endblock %}
+
+{% block polls_content %}
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="space-y-4 rounded-2xl border p-5 shadow-sm">
+
+  {% if question.body %}
+    <div class="whitespace-pre-wrap text-sm opacity-80">{{ question.body }}</div>
+  {% endif %}
+
+  {% comment %}Say the rules BEFORE the buttons. "A ballot cannot be changed"
+     after you have clicked is not a rule, it is a complaint.{% endcomment %}
+  <p class="text-xs opacity-60">
+    {% if question.is_open %}
+      {% if is_final %}
+        <i class="fa-solid fa-lock"></i>
+        {% trans "One ballot each, and it cannot be changed once cast." %}
+      {% else %}
+        <i class="fa-solid fa-rotate"></i>
+        {% trans "You may change your answer while this is open." %}
+      {% endif %}
+      {% if question.closes_at %}
+        · {% trans "Closes" %} {{ question.closes_at|date:"Y-m-d H:i" }}
+      {% endif %}
+    {% else %}
+      <i class="fa-solid fa-flag-checkered"></i> {% trans "This is closed." %}
+    {% endif %}
+  </p>
+
+  {% if not standing.allowed %}
+    <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm font-semibold">
+      {{ standing.reason }}</p>
+  {% elif question.is_open %}
+    <form method="post" action="{% url 'polls:question_vote' question.kind question.slug %}"
+          class="space-y-2">
+      {% csrf_token %}
+      {% for choice in choices %}
+        <label :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+               class="flex cursor-pointer items-start gap-3 rounded-lg border px-3 py-2 text-sm transition">
+          <input type="radio" name="choice" value="{{ choice.pk }}" class="mt-1"
+                 {% if ballot.choice_id == choice.pk %}checked{% endif %}>
+          <span>
+            <span class="font-semibold">{{ choice.label }}</span>
+            {% if choice.text %}<span class="block opacity-70">{{ choice.text }}</span>{% endif %}
+          </span>
+        </label>
+      {% endfor %}
+
+      {% if ballot and is_final %}
+        <p class="text-xs opacity-60">
+          <i class="fa-solid fa-circle-check"></i>
+          {% trans "Your ballot is recorded." %} {{ ballot.cast_at|date:"Y-m-d H:i" }}</p>
+      {% else %}
+        <button type="submit"
+          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+          class="inline-flex items-center gap-2 rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+          <i class="fa-solid fa-check"></i>
+          {% if ballot %}{% trans "Change my answer" %}{% else %}{% trans "Submit" %}{% endif %}</button>
+      {% endif %}
+    </form>
+  {% else %}
+    <ul class="space-y-1 text-sm opacity-75">
+      {% for choice in choices %}
+        <li><span class="font-semibold">{{ choice.label }}</span>
+          {% if choice.text %}— {{ choice.text }}{% endif %}</li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+
+  <p class="pt-2 text-sm">
+    {% if results_visible %}
+      <a href="{% url 'polls:question_results' question.kind question.slug %}"
+         class="font-semibold underline hover:opacity-80">
+        <i class="fa-solid fa-chart-simple"></i> {% trans "See the results" %}</a>
+    {% else %}
+      <span class="text-xs opacity-55">
+        <i class="fa-solid fa-lock"></i>
+        {% trans "The count opens when voting closes." %}</span>
+    {% endif %}
+  </p>
+</article>
+{% endblock %}

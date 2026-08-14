@@ -1,0 +1,61 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The Polls app: two tabs over one engine.
+
+   Polls are lightweight and revisable; Votes are formal, cast once, and show
+   nothing until they close. They share a page shape because they share a
+   mechanism — what differs is stated on each question, not in two designs.
+{% endcomment %}
+
+{% block title %}{% block polls_title %}{% trans "Polls" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}oya/base.html declares no [x-cloak] rule, so every page with an
+   Alpine-hidden element declares its own — the same trap quota/base.html
+   records.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Decisions" %}</p>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-square-poll-vertical"></i>
+        {% block polls_heading %}{% trans "Polls" %}{% endblock %}
+      </h1>
+      {% block polls_lede %}{% endblock %}
+    </header>
+
+    <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Polls navigation' %}">
+      <a href="{% url 'polls:poll_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'polls' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'polls' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-square-poll-vertical"></i>{% trans "Polls" %}</a>
+      <a href="{% url 'polls:vote_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'votes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'votes' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-check-to-slot"></i>{% trans "Votes" %}</a>
+    </nav>
+
+    {% if messages %}
+      {% for message in messages %}
+        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border px-4 py-3 text-sm font-medium">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    {% block polls_content %}{% endblock %}
+  </div>
+</section>
+{% endblock %}

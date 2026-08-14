@@ -1,0 +1,52 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% if active_tab == 'votes' %}{% trans "Votes" %}{% else %}{% trans "Polls" %}{% endif %}{% endblock %}
+{% block polls_heading %}{% if active_tab == 'votes' %}{% trans "Votes" %}{% else %}{% trans "Polls" %}{% endif %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% if active_tab == 'votes' %}
+    {% trans "Formal decisions. A ballot is cast once and cannot be changed, and the count stays sealed until voting closes." %}
+  {% else %}
+    {% trans "Quick questions. Answer as often as you like while a poll is open, and watch the count as it comes in." %}
+  {% endif %}
+</p>
+{% endblock %}
+
+{% block polls_content %}
+<div class="grid gap-4 sm:grid-cols-2">
+  {% for card in cards %}
+    <a href="{{ card.url }}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="block rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="font-bold">{{ card.question.title }}</h2>
+        {% if card.is_open %}
+          <span :class="darkMode ? 'text-success-dark' : 'text-success-light'"
+                class="shrink-0 text-xs font-semibold">{% trans "Open" %}</span>
+        {% else %}
+          <span class="shrink-0 text-xs font-semibold opacity-50">{% trans "Closed" %}</span>
+        {% endif %}
+      </div>
+      <p class="mt-1 text-sm opacity-75">{{ card.question.question_text }}</p>
+      {% if card.options %}
+        <p class="mt-3 text-xs opacity-55">{{ card.options }}</p>
+      {% endif %}
+      {% if card.question.closes_at %}
+        <p class="mt-2 text-xs opacity-50">
+          {% if card.is_open %}{% trans "Closes" %}{% else %}{% trans "Closed" %}{% endif %}
+          {{ card.question.closes_at|date:"Y-m-d H:i" }}</p>
+      {% endif %}
+    </a>
+  {% empty %}
+    <p class="text-sm opacity-60 sm:col-span-2">
+      {% if active_tab == 'votes' %}
+        {% trans "No votes have been opened." %}
+      {% else %}
+        {% trans "No polls yet." %}
+      {% endif %}
+    </p>
+  {% endfor %}
+</div>
+{% endblock %}

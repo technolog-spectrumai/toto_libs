@@ -1,0 +1,26 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{{ question.title }}{% endblock %}
+{% block polls_heading %}{{ question.title }}{% endblock %}
+
+{% block polls_content %}
+{% comment %}A sealed count is a FEATURE of a formal vote, not an error — a
+   running tally is an instrument for changing an outcome. So this says why,
+   and when it opens, rather than reading as a permission failure.{% endcomment %}
+<article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="space-y-3 rounded-2xl border p-6 text-center shadow-sm">
+  <i class="fa-solid fa-lock text-3xl opacity-30"></i>
+  <p class="text-sm font-semibold">{% trans "The count is sealed." %}</p>
+  <p class="mx-auto max-w-lg text-sm opacity-70">
+    {% if opens_when_closed %}
+      {% trans "Results for a formal vote stay hidden until voting closes — a running tally is a way of changing the outcome, not of reporting it." %}
+    {% else %}
+      {% trans "You may not read these results." %}
+    {% endif %}
+  </p>
+  {% if question.closes_at %}
+    <p class="text-xs opacity-55">{% trans "Voting closes" %} {{ question.closes_at|date:"Y-m-d H:i" }}</p>
+  {% endif %}
+</article>
+{% endblock %}
