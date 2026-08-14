@@ -18,6 +18,9 @@ urlpatterns = [
     # otherwise match as kind="votes", slug="new".
     path("votes/new/", views.vote_create, name="vote_create"),
     path("ledger/", views.decision_ledger, name="decision_ledger"),
+    path("ledger/verify/", views.ledger_verify, name="ledger_verify"),
+    path("electorates/", views.electorate_list, name="electorate_list"),
+    path("electorates/<slug:slug>/", views.electorate_detail, name="electorate_detail"),
     path("ledger/export.pdf", views.ledger_pdf_export, name="ledger_pdf"),
     # Quizzes: fixed prefix, so it can never collide with the kind catch-all.
     path("quizzes/", quiz_views.quiz_list, name="quiz_list"),

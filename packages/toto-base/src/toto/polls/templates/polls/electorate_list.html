@@ -1,0 +1,36 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "Electorates" %}{% endblock %}
+{% block polls_heading %}{% trans "Electorates" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "Who may vote, and with what power. Membership is the right to vote; weight is how much a ballot carries. A vote freezes its electorate's membership and weights the moment it opens." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+<div class="grid gap-4 sm:grid-cols-2">
+  {% for row in rolls %}
+    <a href="{% url 'polls:electorate_detail' row.electorate.slug %}"
+       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="block rounded-2xl border p-5 shadow-sm transition hover:opacity-90">
+      <div class="flex items-start justify-between gap-3">
+        <h2 class="font-bold">{{ row.electorate.name }}</h2>
+        <span class="shrink-0 rounded border border-current/20 px-2 py-0.5 text-xs font-semibold">
+          {{ row.electorate.get_kind_display }}</span>
+      </div>
+      {% if row.electorate.description %}
+        <p class="mt-1 text-sm opacity-75">{{ row.electorate.description|truncatechars:120 }}</p>
+      {% endif %}
+      <p class="mt-3 text-xs opacity-55">
+        {{ row.members }} {% trans "members" %} · {% trans "total weight" %} {{ row.total_weight }}
+        {% if not row.electorate.is_active %} · {% trans "inactive" %}{% endif %}
+      </p>
+    </a>
+  {% empty %}
+    <p class="text-sm opacity-60 sm:col-span-2">
+      {% trans "No electorates configured. Staff create them in the admin." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}

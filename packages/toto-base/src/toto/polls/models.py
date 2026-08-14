@@ -181,8 +181,14 @@ class Question(models.Model):
         if self.pk is not None and self.kind == Kind.VOTE:
             was = Question.objects.filter(pk=self.pk).values(
                 "decision_header", "decision_comment", "rule_name",
-                "rule_percent", "electorate_id", "opens_at").first()
-            if was and was["opens_at"] <= timezone.now():
+                "rule_percent", "electorate_id").first()
+            # "Voting has started" means the register is frozen — that is the
+            # moment the instrument became addressable to voters — or that
+            # somebody has already balloted. Not merely that opens_at passed:
+            # freezing the register IS part of opening, and it saves the row.
+            started = was is not None and (
+                self.roll.exists() or self.ballots.exists())
+            if started:
                 changed = (
                     was["decision_header"] != self.decision_header
                     or was["decision_comment"] != self.decision_comment

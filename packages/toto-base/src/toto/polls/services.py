@@ -181,14 +181,17 @@ def freeze_roll(question, *, electorate=None, entries=None):
     if not entries:
         raise ValueError("Nobody is on that register; there is no vote to hold.")
 
+    # The pointer and the frozen marker go down BEFORE the rows: once a row
+    # exists the instrument is locked, and freezing is part of opening, not
+    # an edit to an open vote.
+    question.metadata = {**(question.metadata or {}),
+                         "roll_frozen_at": tz.now().isoformat()}
+    question.save()
     RollEntry.objects.bulk_create([
         RollEntry(question=question, user=user, label=label or "",
                   weight=weight)
         for user, label, weight in entries
     ])
-    question.metadata = {**(question.metadata or {}),
-                         "roll_frozen_at": tz.now().isoformat()}
-    question.save()
     return question
 
 

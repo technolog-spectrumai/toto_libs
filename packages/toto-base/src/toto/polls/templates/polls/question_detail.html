@@ -49,6 +49,26 @@
     </p>
   {% endif %}
 
+  {% comment %}The decision header sits directly under the question — it is
+     what deciding this MEANS — and the comment hides behind Details so the
+     instrument reads as one sentence unless you ask for more.{% endcomment %}
+  {% if question.decision_header %}
+    <p class="text-sm font-semibold">{{ question.decision_header }}</p>
+    {% if question.decision_comment %}
+      <details class="text-sm">
+        <summary class="cursor-pointer opacity-70 hover:opacity-100">{% trans "Details" %}</summary>
+        <div class="mt-2 whitespace-pre-wrap opacity-80">{{ question.decision_comment }}</div>
+      </details>
+    {% endif %}
+  {% endif %}
+
+  {% if question.rule_name %}
+    <p class="text-xs opacity-60">
+      <i class="fa-solid fa-scale-balanced"></i>
+      {% blocktrans with name=question.rule_name pct=question.rule_percent %}Adoption needs more than {{ pct }}% of the decided weight ({{ name }}).{% endblocktrans %}
+    </p>
+  {% endif %}
+
   {% if question.body %}
     <div class="whitespace-pre-wrap text-sm opacity-80">{{ question.body }}</div>
   {% endif %}

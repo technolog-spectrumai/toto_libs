@@ -304,3 +304,77 @@ def ledger_pdf_export(request):
         request,
         lambda: render_pdf.ledger_pdf(list(decisions), filters=filters),
         "decision-ledger.pdf")
+
+# -- electorates (stage 5) and the ledger's chain (stage 6) -------------------
+
+@login_required
+def electorate_list(request):
+    """The configured rolls. Staff configure; everyone may read who decides."""
+    from .electorate_models import Electorate
+
+    rolls = []
+    for electorate in Electorate.objects.in_scope(SCOPE_GLOBAL):
+        rolls.append({
+            "electorate": electorate,
+            "members": electorate.members.count(),
+            "total_weight": electorate.total_weight(),
+        })
+    return _render(request, "polls/electorate_list.html", {
+        "active_tab": "electorates",
+        "rolls": rolls,
+        "is_operator": _is_operator(request.user),
+    })
+
+
+@login_required
+def electorate_detail(request, slug):
+    """One roll: members, weights, percentages — and the power chart.
+
+    Deliberately generic. Members and weights, never shares: the same table
+    serves a company assembly, a club committee and a project board.
+    """
+    from .electorate_models import Electorate
+
+    electorate = get_object_or_404(
+        Electorate.objects.in_scope(SCOPE_GLOBAL), slug=slug)
+    table = electorate.power_table()
+
+    return _render(request, "polls/electorate_detail.html", {
+        "active_tab": "electorates",
+        "electorate": electorate,
+        "table": table,
+        "total_weight": electorate.total_weight(),
+        "is_operator": _is_operator(request.user),
+        "power_chart_json": json.dumps({
+            "chart_type": "pie",
+            "labels": [str(row["member"].user) for row in table],
+            "datasets": [{"data": [row["weight"] for row in table],
+                          "backgroundColor": PALETTE}],
+        }) if table else "",
+    })
+
+
+@login_required
+def ledger_verify(request):
+    """Recompute the chain and name the first broken entry, if any.
+
+    Detectable, not prevented: a decision cannot be edited or deleted through
+    the model, and a raw-SQL rewrite leaves every later hash failing to
+    verify. That is what this page reports, and the page says exactly that.
+    """
+    services.record_overdue(SCOPE_GLOBAL)
+    verification = Decision.verify_chain(SCOPE_GLOBAL)
+    decisions, filters = services.filtered_decisions(request.GET)
+
+    paginator = Paginator(decisions, LEDGER_PAGE_SIZE)
+    page = paginator.get_page(request.GET.get("page"))
+    querystring = "&".join(f"{k}={v}" for k, v in filters.items() if v)
+
+    return _render(request, "polls/ledger.html", {
+        "active_tab": "ledger",
+        "page": page,
+        "filters": filters,
+        "outcomes": Outcome.choices,
+        "querystring": querystring,
+        "verification": verification,
+    })

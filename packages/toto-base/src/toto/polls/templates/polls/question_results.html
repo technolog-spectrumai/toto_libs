@@ -29,6 +29,19 @@
          class="ml-auto inline-flex items-center gap-2 rounded-lg px-3 py-1.5 text-xs font-bold transition hover:opacity-90">
         <i class="fa-solid fa-file-pdf"></i>{% trans "Download PDF" %}</a>
     </div>
+    {% with c=decision.content.consensus %}
+      {% if c %}
+        <p class="text-sm font-semibold">
+          {% if decision.adopted %}
+            <span class="text-green-600"><i class="fa-solid fa-circle-check"></i> {% trans "Adopted" %}</span>
+          {% else %}
+            <span class="text-red-600"><i class="fa-solid fa-circle-xmark"></i> {% trans "Rejected" %}</span>
+          {% endif %}
+          <span class="font-normal opacity-70">
+            {% blocktrans with achieved=c.achieved_percent required=c.percent name=c.name %}{{ achieved }}% for, against a required {{ required }}% ({{ name }}).{% endblocktrans %}</span>
+        </p>
+      {% endif %}
+    {% endwith %}
     <p class="text-xs opacity-60">
       {% trans "Electorate" %}: {{ decision.electorate_key }} ({{ decision.electorate_size }})
       · {% trans "Recorded by" %}:

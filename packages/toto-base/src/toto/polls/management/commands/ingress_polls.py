@@ -21,7 +21,34 @@ User = get_user_model()
 class Command(IngressCommand):
     help = "Seeds a demo poll and a demo formal vote."
 
+    #: The named thresholds every deployment gets. Seeded always, not only
+    #: with --full: a vote cannot select a rule that does not exist, and a
+    #: fresh platform having no rules at all is a broken feature rather than
+    #: missing demo data.
+    PROFILES = [
+        ("Normal Majority", "50.00",
+         "More than half of the decided weight."),
+        ("Strong Majority", "60.00",
+         "More than three fifths of the decided weight."),
+        ("Supermajority", "75.00",
+         "More than three quarters of the decided weight."),
+        ("Near Unanimity", "80.00",
+         "More than four fifths of the decided weight."),
+    ]
+
+    def _seed_profiles(self):
+        from decimal import Decimal
+
+        from toto.polls.models import ConsensusProfile
+
+        for name, percent, description in self.PROFILES:
+            ConsensusProfile.objects.get_or_create(
+                name=name,
+                defaults={"percent": Decimal(percent),
+                          "description": description})
+
     def process(self):
+        self._seed_profiles()
         if not self.full:
             return
 

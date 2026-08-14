@@ -144,3 +144,59 @@ class QuizCertificateAdmin(admin.ModelAdmin):
 
     def has_delete_permission(self, request, obj=None):
         return False
+
+
+# -- electorates and consensus rules (stages 5, 7) ---------------------------
+
+from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402
+                                ElectorateMember, RollEntry)
+
+
+class ElectorateMemberInline(admin.TabularInline):
+    model = ElectorateMember
+    extra = 2
+    raw_id_fields = ("user",)
+    fields = ("user", "weight")
+
+
+@admin.register(Electorate)
+class ElectorateAdmin(admin.ModelAdmin):
+    """Where a roll is configured. Members and weights — never shares."""
+
+    list_display = ("name", "kind", "scope_type", "scope_id", "is_active")
+    list_filter = ("kind", "is_active", "scope_type")
+    search_fields = ("name", "slug")
+    readonly_fields = ("slug", "created_at", "updated_at")
+    inlines = [ElectorateMemberInline]
+
+
+@admin.register(ConsensusProfile)
+class ConsensusProfileAdmin(admin.ModelAdmin):
+    """Staff only, by Django's own permission: a named threshold is policy.
+
+    Editing one never rewrites history — a vote snapshots the name AND the
+    percentage when it opens.
+    """
+
+    list_display = ("name", "percent", "is_active")
+    list_filter = ("is_active",)
+    readonly_fields = ("slug",)
+
+
+@admin.register(RollEntry)
+class RollEntryAdmin(admin.ModelAdmin):
+    """A frozen register, behind glass — the model refuses edits."""
+
+    list_display = ("question", "label", "user", "weight", "created_at")
+    search_fields = ("label", "question__title")
+    raw_id_fields = ("question", "user")
+    readonly_fields = [f.name for f in RollEntry._meta.fields]
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
+        return False

@@ -40,11 +40,30 @@
           :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
           class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
     {% trans "Filter" %}</button>
+  <a href="{% url 'polls:ledger_verify' %}{% if querystring %}?{{ querystring }}{% endif %}"
+     class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-shield-halved"></i>{% trans "Verify the chain" %}</a>
   <a href="{% url 'polls:ledger_pdf' %}{% if querystring %}?{{ querystring }}{% endif %}"
      :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
      class="ml-auto inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
     <i class="fa-solid fa-file-pdf"></i>{% trans "Export PDF" %}</a>
 </form>
+
+{% if verification %}
+  {% if verification.ok %}
+    <p class="rounded border border-green-500/40 bg-green-500/10 px-4 py-2 text-sm font-semibold text-green-600">
+      <i class="fa-solid fa-circle-check mr-1"></i>
+      {% blocktrans with checked=verification.checked %}Chain intact — {{ checked }} decisions verified.{% endblocktrans %}
+      <span class="block text-xs font-normal opacity-80">
+        {% trans "Each decision's hash covers its own payload and the hash before it. A decision cannot be edited or deleted through the platform; a database-level rewrite would leave every later hash failing to verify — which is what this check reports." %}</span>
+    </p>
+  {% else %}
+    <p class="rounded border border-red-500/40 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-600">
+      <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+      {% blocktrans with pk=verification.first_bad_pk checked=verification.checked %}Chain BROKEN at decision #{{ pk }} — only {{ checked }} verify.{% endblocktrans %}
+    </p>
+  {% endif %}
+{% endif %}
 
 <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
      class="overflow-x-auto rounded-2xl border p-5 shadow-sm">
@@ -75,6 +94,15 @@
               <span class="opacity-70">{{ decision.get_outcome_display }}</span>
             {% endif %}
           </td>
+          <td class="py-2 pr-4">
+            {% with c=decision.content.consensus %}
+              {% if c %}
+                <span class="font-semibold {% if decision.adopted %}text-green-600{% else %}text-red-600{% endif %}">
+                  {% if decision.adopted %}{% trans "Adopted" %}{% else %}{% trans "Rejected" %}{% endif %}</span>
+                <span class="block text-[10px] opacity-60">{{ c.name }} · {{ c.achieved_percent }}% / {{ c.percent }}%</span>
+              {% else %}—{% endif %}
+            {% endwith %}
+          </td>
           <td class="py-2 pr-4">{{ decision.electorate_key|default:"—" }}</td>
           <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_ballots }}</td>
           <td class="py-2 pr-4 text-right tabular-nums">{{ decision.total_weight }}</td>
@@ -82,7 +110,7 @@
             {% if decision.turnout is not None %}{% widthratio decision.turnout 1 100 %}%{% else %}—{% endif %}</td>
         </tr>
       {% empty %}
-        <tr><td colspan="7" class="py-6 text-center text-sm opacity-60">
+        <tr><td colspan="8" class="py-6 text-center text-sm opacity-60">
           {% trans "Nothing has been decided yet." %}</td></tr>
       {% endfor %}
     </tbody>
