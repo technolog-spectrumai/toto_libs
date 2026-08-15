@@ -55,7 +55,7 @@
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
               class="w-full rounded-lg border px-3 py-2 text-sm"
             >
-              <option value="">— select query —</option>
+              <option value="">{% trans "— select query —" %}</option>
               {% for q in queries %}
               <option value="{{ q.id }}">{{ q.name }}</option>
               {% endfor %}
@@ -70,7 +70,7 @@
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
               class="w-full rounded-lg border px-3 py-2 text-sm"
             >
-              <option value="">— select workflow —</option>
+              <option value="">{% trans "— select workflow —" %}</option>
               {% for wf in workflows %}
               <option value="{{ wf.slug }}">{{ wf.name }}</option>
               {% endfor %}
@@ -90,7 +90,7 @@
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
               class="w-full rounded-lg border px-3 py-2 text-sm"
             >
-              <option value="">— select bucket —</option>
+              <option value="">{% trans "— select bucket —" %}</option>
               {% for b in buckets %}
               <option value="{{ b.id }}">{{ b.name }}</option>
               {% endfor %}
@@ -106,7 +106,7 @@
               :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
               class="w-full rounded-lg border px-3 py-2 text-sm"
             >
-              <option value="">— root of bucket —</option>
+              <option value="">{% trans "— root of bucket —" %}</option>
               <template x-for="d in filteredDirectories" :key="d.id">
                 <option :value="d.id" x-text="d.path"></option>
               </template>

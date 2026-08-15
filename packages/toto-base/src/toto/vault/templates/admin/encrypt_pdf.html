@@ -35,7 +35,7 @@
     <fieldset class="module aligned">
       <h2>{% trans "PDF encryption settings" %}</h2>
       <p class="help">{% trans "Set a" %}<strong>user password</strong> to restrict opening the file.
-        Set an <strong>owner password</strong> to restrict editing/printing (defaults to user password if left blank).
+        Set an <strong>{% trans "owner password" %}</strong> to restrict editing/printing (defaults to user password if left blank).
       </p>
       {% for field in form %}
         <div class="form-row{% if field.errors %} errors{% endif %}">

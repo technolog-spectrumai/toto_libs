@@ -1,9 +1,10 @@
+{% load i18n %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE|default:"en" }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Limit reached</title>
+  <title>{% trans "Limit reached" %}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -35,8 +36,8 @@
 <body>
   <main class="card">
     <div class="badge">⏳</div>
-    <h1>You've hit your limit</h1>
-    <p>This action is rate-limited, and you've used your allowance for now.</p>
+    <h1>{% trans "You've hit your limit" %}</h1>
+    <p>{% trans "This action is rate-limited, and you've used your allowance for now." %}</p>
 
     {% if reason %}<div class="reason">{{ reason }}</div>{% endif %}
 

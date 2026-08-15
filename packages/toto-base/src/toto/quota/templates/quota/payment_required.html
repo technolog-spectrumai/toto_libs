@@ -1,9 +1,10 @@
+{% load i18n %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE|default:"en" }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Not enough gas</title>
+  <title>{% trans "Not enough gas" %}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -39,17 +40,17 @@
 <body>
   <main class="card">
     <div class="badge">⛽</div>
-    <h1>Not enough gas</h1>
-    <p>This action costs more than your account currently holds, so nothing was run
-       and nothing was charged.</p>
+    <h1>{% trans "Not enough gas" %}</h1>
+    <p>{% blocktrans %}This action costs more than your account currently holds, so nothing was run
+       and nothing was charged.{% endblocktrans %}</p>
 
     {% if reason %}<div class="reason">{{ reason }}</div>{% endif %}
 
     {% if error.needed_display %}
     <div class="amounts">
-      <div><strong>{{ error.needed_display }}</strong><span>needed</span></div>
-      <div><strong>{{ error.have_display }}</strong><span>you have</span></div>
-      <div><strong>{{ error.shortfall_display }}</strong><span>short by</span></div>
+      <div><strong>{{ error.needed_display }}</strong><span>{% trans "needed" %}</span></div>
+      <div><strong>{{ error.have_display }}</strong><span>{% trans "you have" %}</span></div>
+      <div><strong>{{ error.shortfall_display }}</strong><span>{% trans "short by" %}</span></div>
     </div>
     {% endif %}
 

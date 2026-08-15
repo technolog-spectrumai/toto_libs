@@ -1127,7 +1127,7 @@
           <select x-model="exportBucketId" @change="exportDirectoryId = ''"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
-            <option value="">— select bucket —</option>
+            <option value="">{% trans "— select bucket —" %}</option>
             <template x-for="b in exportBuckets" :key="b.id">
               <option :value="b.id" x-text="b.name"></option>
             </template>
@@ -1141,7 +1141,7 @@
           <select x-model="exportDirectoryId"
                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                   class="w-full rounded-lg border px-3 py-2 text-sm">
-            <option value="">— root of bucket —</option>
+            <option value="">{% trans "— root of bucket —" %}</option>
             <template x-for="d in exportFilteredDirectories" :key="d.id">
               <option :value="d.id" x-text="d.path"></option>
             </template>

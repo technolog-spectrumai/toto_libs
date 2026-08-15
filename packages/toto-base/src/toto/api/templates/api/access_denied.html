@@ -1,9 +1,10 @@
+{% load i18n %}
 <!DOCTYPE html>
-<html lang="en">
+<html lang="{{ LANGUAGE_CODE|default:"en" }}">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Access gated · data mesh</title>
+  <title>{% trans "Access gated · data mesh" %}</title>
   <style>
     :root { color-scheme: dark; }
     * { box-sizing: border-box; }
@@ -40,10 +41,10 @@
 <body>
   <main class="card">
     <div class="badge">🔒</div>
-    <h1>This data lives in the mesh</h1>
-    <p>You don't have direct server access to this data. It's distributed
+    <h1>{% trans "This data lives in the mesh" %}</h1>
+    <p>{% blocktrans %}You don't have direct server access to this data. It's distributed
        <strong>peer-to-peer</strong> — ask someone who has it to share it with you from
-       their device in Enigma (Chat → Sync).</p>
+       their device in Enigma (Chat → Sync).{% endblocktrans %}</p>
 
     <div class="mesh" aria-hidden="true">
       <div class="node">🛰️</div><div class="link"></div>
