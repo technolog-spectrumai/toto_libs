@@ -203,7 +203,6 @@ class SecondRunTests(SimpleTestCase):
         ("locations.Address", "re-derives latitude/longitude from geometry"),
         ("people.Person", "generates a slug on collision"),
         ("socialhub.Community", "generates a slug on collision"),
-        ("socialhub.Constitution", "generates a slug on collision"),
     ]
 
     def test_an_unchanged_row_is_skipped_on_every_subsequent_run(self):

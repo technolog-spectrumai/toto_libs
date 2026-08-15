@@ -42,9 +42,9 @@ class CanonicalTests(TestCase):
         self.assertEqual(canonical_json({"b": 1, "a": 2}), canonical_json({"a": 2, "b": 1}))
 
     def test_identity_hash_is_scoped_by_model(self):
-        # Constitution and MapLayer both key on a field called `slug`; without the model
-        # label in the hash they would collide in the merge base.
-        a = identity_hash("socialhub.Constitution", {"natural": {"slug": "charter"}})
+        # Two models can key on a field called `slug`; without the model label
+        # in the hash they would collide in the merge base.
+        a = identity_hash("socialhub.CommunityNewsTopic", {"natural": {"slug": "charter"}})
         b = identity_hash("locations.MapLayer", {"natural": {"slug": "charter"}})
         self.assertNotEqual(a, b)
 
@@ -107,13 +107,25 @@ class ReferenceTests(TestCase):
         self.assertNotIn("id", ref)
 
     def test_a_natural_key_model_references_by_its_key(self):
-        from toto.socialhub.models import Community, Constitution
+        """Against a fixture policy: no app declares natural-key identity
+        today, and the wire format is the engine's business either way."""
+        from unittest import mock
 
-        community = Community.objects.create(name="C", slug="c")
-        constitution = Constitution.objects.create(
-            community=community, title="Charter", slug="charter", body="b", version="1",
-        )
-        ref = reference_to(constitution)
+        from toto.datalink import registry as registry_module
+        from toto.datalink.registry import (IDENTITY_NATURAL, SyncPolicy,
+                                            policy_for)
+        from toto.socialhub.models import CommunityNewsTopic
+
+        topic_row = CommunityNewsTopic.objects.create(name="Charter",
+                                                      slug="charter")
+        topic = policy_for("socialhub.CommunityNewsTopic")
+        natural = SyncPolicy(**{**topic.__dict__,
+                                "identity": IDENTITY_NATURAL,
+                                "natural_key": ("slug",)})
+
+        with mock.patch.dict(registry_module._REGISTRY,
+                             {"socialhub.CommunityNewsTopic": natural}):
+            ref = reference_to(topic_row)
         self.assertEqual(ref["natural"], {"slug": "charter"})
 
     def test_a_reference_to_a_refused_model_raises(self):
@@ -257,7 +269,7 @@ class ManifestTests(TestCase):
     def test_no_stage_advertises_a_refused_model(self):
         manifest = build_manifest()
         advertised = {m["model"] for s in manifest["stages"] for m in s["models"]}
-        for label in ("auth.User", "vault.VaultFile", "socialhub.ConstitutionSignature"):
+        for label in ("auth.User", "vault.VaultFile", "socialhub.MembershipApplication"):
             self.assertNotIn(label, advertised)
         self.assertFalse(any(label.startswith("gervazy.") for label in advertised))
 

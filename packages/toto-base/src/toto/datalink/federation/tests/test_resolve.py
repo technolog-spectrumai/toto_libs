@@ -117,14 +117,31 @@ class ResolveReferenceTests(TestCase):
         self.assertEqual(resolve_references([{"fields": {"a": ref}}]), {})
 
     def test_a_natural_key_reference_resolves(self):
-        from toto.socialhub.models import Community, Constitution
+        """The engine's natural-key path, on a policy this test owns.
 
-        community = Community.objects.create(name="C", slug="c")
-        Constitution.objects.create(community=community, title="T", slug="charter",
-                                    body="b", version="1")
-        ref = {"__ref__": True, "model": "socialhub.Constitution",
+        No app declares a natural-key policy today — the one that did was
+        retired with the Constitution model — so the identity mode is proved
+        against a fixture rather than borrowed from whichever app happens to
+        use it. An engine test that dies because an app dropped a model is
+        testing the wrong thing.
+        """
+        from unittest import mock
+
+        from toto.datalink import registry as registry_module
+        from toto.datalink.registry import IDENTITY_NATURAL, SyncPolicy
+        from toto.socialhub.models import CommunityNewsTopic
+
+        CommunityNewsTopic.objects.create(name="Charter", slug="charter")
+        topic = policy_for("socialhub.CommunityNewsTopic")
+        natural = SyncPolicy(**{**topic.__dict__,
+                                "identity": IDENTITY_NATURAL,
+                                "natural_key": ("slug",)})
+
+        ref = {"__ref__": True, "model": "socialhub.CommunityNewsTopic",
                "natural": {"slug": "charter"}}
-        resolved = resolve_references([{"fields": {"c": ref}}])
+        with mock.patch.dict(registry_module._REGISTRY,
+                             {"socialhub.CommunityNewsTopic": natural}):
+            resolved = resolve_references([{"fields": {"c": ref}}])
         self.assertEqual(len(resolved), 1)
 
     def test_an_operator_approved_alias_redirects_a_reference(self):
@@ -172,12 +189,18 @@ class ResolveIdentityTests(TestCase):
         self.assertEqual(resolve_identities(policy, rows), {})
 
     def test_a_natural_key_identity_is_found(self):
-        from toto.socialhub.models import Community, Constitution
+        """resolve_identities takes the policy directly, so the fixture needs
+        no registry patch — see the reference test above for why it is a
+        fixture at all."""
+        from toto.datalink.registry import IDENTITY_NATURAL, SyncPolicy
+        from toto.socialhub.models import CommunityNewsTopic
 
-        community = Community.objects.create(name="C", slug="c")
-        Constitution.objects.create(community=community, title="T", slug="charter",
-                                    body="b", version="1")
-        policy = policy_for("socialhub.Constitution")
+        CommunityNewsTopic.objects.create(name="Charter", slug="charter")
+        topic = policy_for("socialhub.CommunityNewsTopic")
+        policy = SyncPolicy(**{**topic.__dict__,
+                               "identity": IDENTITY_NATURAL,
+                               "natural_key": ("slug",)})
+
         rows = [{"identity": {"natural": {"slug": "charter"}}}]
         self.assertEqual(len(resolve_identities(policy, rows)), 1)
 

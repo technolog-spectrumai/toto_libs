@@ -15,20 +15,21 @@ from toto.assets.testing import LedgerTestCase as TestCase
 from .factories import GB, make_gas_asset, make_rule, make_user, make_vault_file, price_gb_day
 
 
-def _citizen(user, community=None):
-    """Give this user a Person, a community and a signed constitution."""
+def _office_holder(user, community=None):
+    """Give this user a Person and a community — what an office now requires.
+
+    It used to sign a governing document too: holding an office was gated on
+    a platform-wide "committed citizen" status computed from signatures. That
+    retired with the model behind it, and membership is the register that
+    says who belongs, so joining IS the qualification.
+    """
     from toto.people.models import Person
-    from toto.socialhub.models import Community, Constitution, ConstitutionSignature
+    from toto.socialhub.models import Community
 
     person = getattr(user, "community_profile", None) or Person.objects.create(
         user=user, display_name=user.username)
     community = community or Community.objects.create(name=f"{user.username}-guild")
     person.communities.add(community)
-    constitution, _ = Constitution.objects.get_or_create(
-        community=community, defaults={"title": "Charter", "body": "Be good."})
-    ConstitutionSignature.objects.get_or_create(
-        constitution=constitution, person=person,
-        defaults={"signed_at": timezone.now()})
     return person
 
 
@@ -49,7 +50,7 @@ class OfficeChangesNoCharge(TestCase):
         commoner = make_user("commoner")
         officer = make_user("officer")
         Station.objects.create(
-            name="Archivist", holder=_citizen(officer),
+            name="Archivist", holder=_office_holder(officer),
             limit_multiplier=Decimal("10"), stipend=Decimal("5"))
 
         make_vault_file(commoner, 4 * GB)
@@ -73,7 +74,7 @@ class OfficeChangesNoCharge(TestCase):
 
         commoner = make_user("limited")
         officer = make_user("roomy")
-        Station.objects.create(name="Archivist", holder=_citizen(officer),
+        Station.objects.create(name="Archivist", holder=_office_holder(officer),
                                limit_multiplier=Decimal("10"))
 
         policy = get_policy(VaultQuotaPolicy, "storage.request", commoner)
@@ -105,7 +106,7 @@ class MintHonestyTests(TestCase):
             defaults={"author": "t", "publication_year": 2026, "active": True})
 
         member = make_user("minter")
-        Station.objects.create(name="Mint Operator", holder=_citizen(member),
+        Station.objects.create(name="Mint Operator", holder=_office_holder(member),
                                may_operate_mint=True)
         bystander = make_user("nobody")
 

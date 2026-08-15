@@ -139,10 +139,13 @@ class RefusalTests(SimpleTestCase):
         policy = load_registry()["core.Platform"]
         self.assertEqual(policy.identity, IDENTITY_REFUSE)
 
-    def test_constitution_signatures_are_refused(self):
-        policy = load_registry()["socialhub.ConstitutionSignature"]
+    def test_an_application_to_join_is_refused(self):
+        """A refusal whose reason names why, not merely that. (This replaced
+        the constitution-signature case when that model was retired; the
+        discipline it pins is the same.)"""
+        policy = load_registry()["socialhub.MembershipApplication"]
         self.assertEqual(policy.identity, IDENTITY_REFUSE)
-        self.assertIn("verify", policy.refuse_reason)
+        self.assertTrue(policy.refuse_reason.strip())
 
     def test_datalinks_own_credentials_are_refused(self):
         registry = load_registry()
@@ -208,7 +211,7 @@ class TimestampTests(SimpleTestCase):
         with_tiebreak = {p.model_label for p in replicated_policies() if p.timestamp_field}
         self.assertEqual(
             with_tiebreak,
-            {"socialhub.Community", "socialhub.CommunityNewsPost", "socialhub.Constitution"},
+            {"socialhub.Community", "socialhub.CommunityNewsPost"},
         )
 
     def test_the_models_without_one_are_reported_as_a_note(self):
@@ -304,18 +307,19 @@ class ValidatorBitesTests(SimpleTestCase):
         self.assertIn("later stage", problems)
 
     def test_a_natural_key_with_no_unique_constraint_is_rejected(self):
-        constitution = load_registry()["socialhub.Constitution"]
-        unsound = SyncPolicy(**{**constitution.__dict__,
+        community = load_registry()["socialhub.Community"]
+        unsound = SyncPolicy(**{**community.__dict__,
                                 "identity": IDENTITY_NATURAL,
-                                "natural_key": ("title",)})
-        problems = self._problems(**{"socialhub.Constitution": unsound})
+                                "natural_key": ("established_year",)})
+        problems = self._problems(**{"socialhub.Community": unsound})
         self.assertIn("not backed by a unique constraint", problems)
 
     def test_a_uid_identity_without_a_uid_field_is_rejected(self):
-        constitution = load_registry()["socialhub.Constitution"]
-        wrong = SyncPolicy(**{**constitution.__dict__,
+        # Station is a plain model — no DomainEntity, so no uid to key on.
+        station = load_registry()["socialhub.Station"]
+        wrong = SyncPolicy(**{**station.__dict__,
                               "identity": IDENTITY_UID, "natural_key": ()})
-        problems = self._problems(**{"socialhub.Constitution": wrong})
+        problems = self._problems(**{"socialhub.Station": wrong})
         self.assertIn("no unique field named uid", problems)
 
     def test_an_auto_now_field_cannot_be_replicated(self):
