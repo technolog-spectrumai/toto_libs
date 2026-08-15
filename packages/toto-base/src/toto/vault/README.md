@@ -1,0 +1,110 @@
+# toto.vault
+
+File storage for every host: buckets, directories, gateways, versioning,
+encryption at rest, quota metering — and, since 8/2026, **remote buckets**:
+a bucket whose bytes live on S3-compatible storage or on another federated
+Toto host. This README covers the remote half; the local machinery predates
+it and is documented in the code.
+
+## Backends
+
+`Bucket.storage_backend`:
+
+| backend | bytes live | listing | who bills |
+|---|---|---|---|
+| `local` (or blank) | this host's `VAULT_ROOT`/`MEDIA_ROOT` | DB rows | `storage.gb_day` levy, owner |
+| `s3` | an S3-compatible service (provider preset + `storage_config`) | DB rows | levy, owner (this host pays the provider) |
+| `remote_toto` | a paired Toto host's exported bucket | **mirrored** DB stub rows (`VaultFile.origin="mirror"`) | the exporting host — mirrored rows are levy-exempt |
+
+Every byte crosses one seam (`storage_backends.py`): `read_file_bytes` /
+`open_file_stream` / `persist_upload`, backed by a per-bucket driver.
+Content-rewrite surfaces (editors, zip, encrypt, versions) are LOCAL-only,
+guarded by `access.is_local_content` + `access.local_content_q()`; downloads
+stream from anywhere. Uploads into a `remote_toto` bucket are refused — its
+rows come from the mirror.
+
+## The bucket link (peering)
+
+The platform's one host-to-host data channel (the row-replication `datalink`
+app is parked in `limbo/datalink/` — see its `PARKED.md`). Two directional
+models in `peering.py`:
+
+- **`BucketGrant`** — "that peer may use this bucket." Stores only an api-key
+  HASH plus a high-entropy `magic_token`. Capabilities are `may_list` /
+  `may_download` / `may_upload` / `may_delete`, ALL default False — **an
+  empty capability set denies**; copy is download+upload, no flag of its own.
+  Grants expire in 7 days by default and are extended deliberately.
+- **`BucketPeer`** — "we mount that host's bucket." Holds the secret we
+  present, Fernet-sealed under `FIELD_ENCRYPTION_KEY`, plus job-stamped
+  reachability (`last_ok_at`/`last_error`).
+
+No vault model may carry a field named `uid` — `backup_engine` selects rows
+for signed, pullable archives purely on that name; `VaultConfig.ready()`
+enforces it structurally.
+
+### Pairing flow (superuser admin, v1)
+
+1. Exporting host: add a **Bucket grant** → the save message shows a base64
+   **pairing code** ONCE (`{"v":1, grant_uid, magic_token, api_key, bucket,
+   rights}`). Rotate = the "Rotate api key" action, new code shown once.
+2. Mounting host: add a **Bucket peer** → pick the federated host (from SSO
+   pairing rows) or type a URL, paste the code. The save probes the manifest
+   once and stamps the result.
+3. Mounting host: create a Bucket with backend `remote_toto` and select the
+   peer. `storage_config` stays EMPTY — the peer FK is the whole transport
+   identity, so listings can never leak a URL or a token.
+
+A staff-facing "Data-link" tab (post-federation) is the planned v2 door.
+
+## Peer API (server half — `peer_views.py`)
+
+Under `/vault/peer/<grant_uid>/<magic_token>/…`: `manifest/`, `files/`
+(keyset-paged list / upload), `files/<key>/` (meta / delete),
+`files/<key>/download/` (stream, HEAD). Auth: the unguessable path segment
+is the cheap check; PBKDF2 verification of `X-Vault-Api-Key` runs strictly
+last. Unknown pair → 404 (anti-enumeration); held-but-expired grant → 403
+with a sentence. Whole-bucket export — directory ACLs do NOT cross hosts.
+Encrypted non-PDF files answer 409: they are sealed under the exporting
+host's local salt and would be garbage anywhere else.
+
+## Mirror (`mirror.py`)
+
+`BucketRefreshRun` walks the peer's listing page by page (one transaction
+per page, counters and rows together), upserts stubs (`file.name` = the
+remote key — what the driver dereferences), prunes unseen mirror rows
+ROWS-ONLY (a refresh can never delete anything at the peer), and stamps
+`Bucket.last_refreshed_at`. No page render ever probes a peer; the metrics
+page's Remote card reads stamps and says "never checked" when nobody has.
+Mirror rows refuse move/rename/delete ("change it on the origin host").
+
+## Transfers (`transfer.py`, `transfer_runner.py`)
+
+Copies stay synchronous local→local; any non-local endpoint becomes a
+`TransferRun` on a worker (`refuse-don't-inline`: no worker → 503 naming
+BUILD_WORKFLOWS). Per file: portability check → read → size cap →
+recompute sha256 (mismatch = skip) → scan on arrival (`door="transfer"`) →
+key policy → land → meter (`storage.transfer_mb`, idempotency key
+`vault.transfer.mb:{run}:{src}`). The cursor is written in the same
+transaction as the row it advances past, so a killed run resumes instead of
+restarting and can never double-copy or double-bill. **Partial completion is
+SUCCESS with skips**; retry mints a NEW run from the remainder plus skipped
+pks. Panel: `/vault/transfers/`.
+
+## Flags
+
+| flag | effect |
+|---|---|
+| `VAULT_EXTERNAL_BUCKETS=False` | local-only host: driver factory refuses non-local buckets, admin hides the storage fieldset, peering admins vanish |
+| `BUILD_WORKFLOWS` off | refresh + transfer dispatch refuse by name |
+| `BUILD_ANTIVIRUS` off | scans degrade to clean-but-unscanned (façade) |
+
+## Tests
+
+Vault Django test modules run only where a gate stanza names them (the
+library pytest suite does not collect them): `tests`, `tests_access`,
+`tests_api`, `tests_purge`, `tests_hardening`, `tests_peering`,
+`tests_peer_api`, `tests_mirror`, `tests_transfer`, `tests_remote_ui`,
+`tests_transfers_ui` — wired in zenobia's gate, core four in placidia's.
+The two-host harness is a loopback: `peer_client._http` patched into
+Django's test client against the real peer views (one DB, clearing's
+pattern).
