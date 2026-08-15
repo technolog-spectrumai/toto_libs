@@ -15,6 +15,16 @@ from .models import SCOPE_FORUM, Choice, Kind, Question
 User = get_user_model()
 
 
+def _person(user):
+    """The Person behind a login. Membership is a person, not an account —
+    so the tests make one, the way the platform does."""
+    from toto.people.models import Person
+
+    person, _created = Person.objects.get_or_create(
+        user=user, defaults={"display_name": user.get_username()})
+    return person
+
+
 def _platform():
     from toto.core.models import Platform
 
@@ -46,8 +56,10 @@ class ElectorateDataTests(TestCase):
 
     def test_an_equal_roll_gives_everybody_one_voice(self):
         roll = _roll()
-        ElectorateMember.objects.create(electorate=roll, user=self.a)
-        ElectorateMember.objects.create(electorate=roll, user=self.b)
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.a))
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.b))
 
         self.assertEqual(roll.total_weight(), 2)
         self.assertEqual({row["percent"] for row in roll.power_table()},
@@ -55,10 +67,10 @@ class ElectorateDataTests(TestCase):
 
     def test_an_unequal_roll_reports_real_percentages(self):
         roll = _roll(kind=Electorate.Kind.WEIGHTED)
-        ElectorateMember.objects.create(electorate=roll, user=self.a,
-                                        weight=75)
-        ElectorateMember.objects.create(electorate=roll, user=self.b,
-                                        weight=25)
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.a), weight=75)
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.b), weight=25)
 
         table = {row["member"].user: row["percent"]
                  for row in roll.power_table()}
@@ -71,10 +83,12 @@ class ElectorateDataTests(TestCase):
         from django.db import IntegrityError
 
         roll = _roll()
-        ElectorateMember.objects.create(electorate=roll, user=self.a)
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.a))
 
         with self.assertRaises(IntegrityError):
-            ElectorateMember.objects.create(electorate=roll, user=self.a)
+            ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.a))
 
     def test_rolls_are_scope_isolated(self):
         _roll(name="Global roll")
@@ -90,10 +104,10 @@ class FreezeRollTests(TestCase):
         self.a = User.objects.create_user("a", password="pw")
         self.b = User.objects.create_user("b", password="pw")
         self.roll = _roll(kind=Electorate.Kind.WEIGHTED)
-        ElectorateMember.objects.create(electorate=self.roll, user=self.a,
-                                        weight=60)
-        ElectorateMember.objects.create(electorate=self.roll, user=self.b,
-                                        weight=40)
+        ElectorateMember.objects.create(
+            electorate=self.roll, person=_person(self.a), weight=60)
+        ElectorateMember.objects.create(
+            electorate=self.roll, person=_person(self.b), weight=40)
 
     def test_opening_copies_membership_and_weights(self):
         question = _vote()
@@ -110,11 +124,11 @@ class FreezeRollTests(TestCase):
         question = _vote()
         services.freeze_roll(question, electorate=self.roll)
 
-        ElectorateMember.objects.filter(electorate=self.roll,
-                                        user=self.a).update(weight=1)
+        ElectorateMember.objects.filter(
+            electorate=self.roll, person=_person(self.a)).update(weight=1)
         late = User.objects.create_user("late", password="pw")
-        ElectorateMember.objects.create(electorate=self.roll, user=late,
-                                        weight=99)
+        ElectorateMember.objects.create(
+            electorate=self.roll, person=_person(late), weight=99)
 
         self.assertEqual(question.roll.get(user=self.a).weight, 60)
         self.assertEqual(question.roll.count(), 2)
@@ -169,8 +183,8 @@ class ElectoratePageTests(TestCase):
 
     def test_the_pages_render_members_weights_and_percentages(self):
         roll = _roll(name="Assembly", kind=Electorate.Kind.WEIGHTED)
-        ElectorateMember.objects.create(electorate=roll, user=self.user,
-                                        weight=30)
+        ElectorateMember.objects.create(
+            electorate=roll, person=_person(self.user), weight=30)
 
         listing = self.client.get(reverse("polls:electorate_list"))
         detail = self.client.get(

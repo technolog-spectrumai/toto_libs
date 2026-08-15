@@ -1,0 +1,88 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "Verify a snapshot" %}{% endblock %}
+{% block polls_heading %}{% trans "Verify a snapshot" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "Paste a checkpoint's text or upload a photo of its QR. The ledger it names is recomputed from the decisions stored right now and compared with the state the QR fixes. This needs no snapshot record: a QR from a year ago verifies against a database whose snapshots were all deleted — which is exactly what makes the paper copy evidence." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+
+<form method="post" enctype="multipart/form-data"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-3 rounded-2xl border p-4 text-sm shadow-sm">
+  {% csrf_token %}
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="block min-w-0 flex-1">
+      <span class="mb-1 block text-xs opacity-55">{% trans "Paste the checkpoint text…" %}</span>
+      <input type="text" name="payload" value="{{ verify_payload }}" placeholder="totoledger:v=1&amp;…"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="w-full rounded-lg border px-3 py-1.5 font-mono text-xs">
+    </label>
+    <label class="block">
+      <span class="mb-1 block text-xs opacity-55">{% trans "…or upload a photo of the QR" %}</span>
+      <input type="file" name="image" accept="image/*" class="text-xs">
+    </label>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-shield-halved mr-1"></i>{% trans "Verify" %}</button>
+  </div>
+</form>
+
+{% if verify_error %}
+  <p class="rounded border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-600">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ verify_error }}</p>
+{% endif %}
+
+{% if verify_result %}
+  {% if verify_result.matches %}
+    <div class="rounded border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-600">
+      <p class="text-lg font-bold"><i class="fa-solid fa-circle-check mr-1"></i>{% trans "MATCH" %}</p>
+      <p class="mt-1 text-xs opacity-90">
+        {% blocktrans with name=verify_result.electorate.name n=verify_result.current_count %}The ledger of {{ name }} was recomputed from its {{ n }} decisions and reproduces this checkpoint's head exactly. Nothing in it has changed since the snapshot was taken.{% endblocktrans %}</p>
+    </div>
+  {% else %}
+    <div class="rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+      <p class="text-lg font-bold"><i class="fa-solid fa-circle-xmark mr-1"></i>{% trans "DIFFERS" %}</p>
+      <p class="mt-1 text-xs">
+        {% if not verify_result.electorate %}
+          {% trans "This checkpoint names an electorate that does not exist on this host." %}
+        {% elif verify_result.parsed.entry_count > verify_result.current_count %}
+          {% blocktrans with had=verify_result.parsed.entry_count now=verify_result.current_count %}The checkpoint covered {{ had }} decisions; only {{ now }} exist now — entries were removed.{% endblocktrans %}
+        {% elif verify_result.parsed.entry_count < verify_result.current_count %}
+          {% blocktrans with had=verify_result.parsed.entry_count now=verify_result.current_count %}The ledger has grown from {{ had }} to {{ now }} decisions, and its head no longer matches this checkpoint. Growth alone is expected; take a fresh snapshot to fix the new state.{% endblocktrans %}
+        {% else %}
+          {% trans "The ledger holds the same number of decisions but folds to a different head — an entry was altered after this checkpoint was taken." %}
+        {% endif %}</p>
+      {% if verify_result.chain and not verify_result.chain.ok %}
+        <p class="mt-2 text-xs font-semibold">
+          {% blocktrans with pk=verify_result.chain.first_bad_pk %}The chain itself is broken at decision #{{ pk }}.{% endblocktrans %}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="space-y-1 rounded-2xl border p-4 text-xs shadow-sm">
+    <p><span class="font-semibold">{% trans "Electorate" %}:</span>
+      {{ verify_result.electorate.name|default:verify_result.parsed.scope_id }}</p>
+    <p><span class="font-semibold">{% trans "Checkpoint taken" %}:</span> {{ verify_result.parsed.taken_at }}
+      · {% trans "entries" %} {{ verify_result.parsed.entry_count }}</p>
+    <p class="break-all"><span class="font-semibold">{% trans "In the QR" %}:</span>
+      <span class="font-mono">{{ verify_result.parsed.head_hex }}</span></p>
+    <p class="break-all"><span class="font-semibold">{% trans "Recomputed now" %}:</span>
+      <span class="font-mono">{{ verify_result.current_head|default:"—" }}</span></p>
+    {% if verify_result.ledger_modified_at %}
+      <p><span class="font-semibold">{% trans "Ledger last changed" %}:</span>
+        {{ verify_result.ledger_modified_at|date:"Y-m-d H:i" }}</p>
+    {% endif %}
+  </div>
+{% endif %}
+
+<p class="text-xs opacity-55">
+  <a href="{% url 'polls:snapshots' %}{% if electorate %}?electorate={{ electorate.slug }}{% endif %}"
+     class="underline hover:opacity-80">{% trans "Back to snapshots" %}</a></p>
+{% endblock %}

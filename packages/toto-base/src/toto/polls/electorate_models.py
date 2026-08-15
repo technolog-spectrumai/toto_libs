@@ -35,6 +35,21 @@ class ElectorateQuerySet(models.QuerySet):
     def active(self):
         return self.filter(is_active=True)
 
+    def for_person(self, person):
+        """Every electorate this person sits on — ACROSS scopes.
+
+        The visibility bug this fixes: the pages only ever asked for
+        ``in_scope(SCOPE_GLOBAL)``, i.e. ``scope_type=""``, while every real
+        electorate belongs to a company or a community. Members therefore saw
+        an empty page while the admin showed their membership plainly. A
+        person's electorates are not a property of one scope — they may sit
+        on several bodies in several companies — so this deliberately does
+        not filter by scope at all.
+        """
+        if person is None:
+            return self.none()
+        return self.filter(members__person=person).distinct()
+
 
 class Electorate(models.Model):
     """A named roll: who may vote, and with what power."""
@@ -97,25 +112,34 @@ class Electorate(models.Model):
             "name": member.display_name,
             "weight": member.weight,
             "percent": round(member.weight / total * 100, 1) if total else 0,
-        } for member in self.members.select_related("user")]
+        } for member in self.members.select_related("person", "person__user")]
 
 
 class ElectorateMember(models.Model):
-    """A name and a weight. The login is optional.
+    """A person and a weight. The person is optional.
 
-    A body may include somebody with no account — an institution, an estate,
-    a member who only ever acts through counsel. They hold voting rights and
-    weight, they count toward the electorate, and they act through a proxy
-    (see :class:`Presence`). Requiring a login here would make the electorate
-    a list of accounts rather than a list of members.
+    **Membership is a PERSON, not a login.** A Person is who somebody IS on
+    this platform — the profile, the communities, the display name — while a
+    User is only how they sign in. Keying membership on the login meant an
+    electorate could not hold a member who has no account, and it meant every
+    "which electorates am I in?" question had to travel through a join the
+    domain does not actually have. A Person may sit on any number of
+    electorates, in any number of companies or communities; nothing here
+    assumes one default company.
+
+    The person stays optional for the same reason the login used to be: a
+    body may include an institution, an estate, or a member who only ever
+    acts through counsel. They hold voting rights and weight, they count
+    toward the electorate, and they act through a proxy (see
+    :class:`Presence`).
     """
 
     electorate = models.ForeignKey(Electorate, on_delete=models.CASCADE,
                                    related_name="members")
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
-                             on_delete=models.CASCADE,
-                             related_name="electorate_memberships")
-    #: How this member is named when there is no login to name them by.
+    person = models.ForeignKey("people.Person", null=True, blank=True,
+                               on_delete=models.CASCADE,
+                               related_name="electorate_memberships")
+    #: How this member is named when there is no person to name them by.
     label = models.CharField(max_length=150, blank=True)
     #: Ballot power. On an EQUAL electorate this stays 1 by convention; the
     #: snapshot copies whatever is written here, so the kind is documentation
@@ -125,8 +149,8 @@ class ElectorateMember(models.Model):
     class Meta:
         ordering = ["-weight", "pk"]
         constraints = [
-            models.UniqueConstraint(fields=["electorate", "user"],
-                                    condition=models.Q(user__isnull=False),
+            models.UniqueConstraint(fields=["electorate", "person"],
+                                    condition=models.Q(person__isnull=False),
                                     name="uniq_electorate_member"),
         ]
 
@@ -134,8 +158,27 @@ class ElectorateMember(models.Model):
         return f"{self.display_name} ({self.weight})"
 
     @property
+    def user(self):
+        """The login behind this member, or None.
+
+        Ballots are still cast by a signed-in account, and the frozen
+        register (:class:`RollEntry`) still records one — so the engine asks
+        membership for its login through here rather than storing a second
+        foreign key that could disagree with the person's.
+        """
+        return self.person.user if (self.person_id and self.person.user_id) else None
+
+    @property
+    def user_id(self):
+        return self.person.user_id if self.person_id else None
+
+    @property
     def display_name(self) -> str:
-        return self.label or (str(self.user) if self.user_id else "—")
+        if self.label:
+            return self.label
+        if self.person_id:
+            return self.person.display_name or str(self.person)
+        return "—"
 
 
 class Presence(models.TextChoices):

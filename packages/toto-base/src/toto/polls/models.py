@@ -351,6 +351,15 @@ class Decision(models.Model):
     outcome = models.CharField(max_length=12, choices=Outcome.choices)
     winner_label = models.CharField(max_length=60, blank=True)
     electorate_key = models.CharField(max_length=40, blank=True)
+    #: The roll this decision belongs to. A Decision Ledger is an
+    #: ELECTORATE's ledger — not one global book and not a company's — so the
+    #: link is a real column rather than a join through the question, which
+    #: can be edited and which a filter must never depend on. SET_NULL: a
+    #: deleted electorate must not take history with it, and a decision that
+    #: outlives its roll still says what was decided.
+    electorate = models.ForeignKey("polls.Electorate", null=True, blank=True,
+                                   on_delete=models.SET_NULL,
+                                   related_name="decisions")
     electorate_size = models.PositiveIntegerField(default=0)
     total_ballots = models.PositiveIntegerField(default=0)
     total_weight = models.PositiveIntegerField(default=0)
@@ -505,6 +514,9 @@ from .quiz_models import (Quiz, QuizAnswer, QuizAttempt,  # noqa: E402,F401
 
 # -- ledger checkpoints: the chain's head, foldable onto paper ----------------
 from .checkpoint_models import LedgerCheckpoint  # noqa: E402,F401
+
+# -- snapshots: one electorate ledger's cryptographic STATE -------------------
+from .snapshots import LedgerSnapshot  # noqa: E402,F401
 
 # -- metering (the polls.pdf metric's storage) -------------------------------
 

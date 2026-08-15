@@ -156,8 +156,10 @@ from .electorate_models import (ConsensusProfile, Electorate,  # noqa: E402
 class ElectorateMemberInline(admin.TabularInline):
     model = ElectorateMember
     extra = 2
-    raw_id_fields = ("user",)
-    fields = ("user", "weight")
+    raw_id_fields = ("person",)
+    # `label` is here on purpose: a member without a person (an institution,
+    # an estate) is named by it, and the inline is the only place to write it.
+    fields = ("person", "label", "weight")
 
 
 @admin.register(Electorate)

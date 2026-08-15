@@ -20,6 +20,7 @@ import json
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
+from django.http import Http404
 from django.core.paginator import Paginator
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -29,6 +30,7 @@ from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
+from . import checkpoint as checkpoint_module
 from . import downloads, render_pdf, services
 from .core import Revisability, Visibility, VotingError
 from .forms import VoteCreateForm
@@ -284,26 +286,67 @@ def question_close(request, kind, slug):
                             args=[question.kind, question.slug]))
 
 
-def _filtered_ledger(request):
-    """This app's ledger: the global scope, always.
+def chain_of(electorate):
+    """Verify one electorate's chain — or the platform's own unscoped one.
 
-    The filtering itself lives in services.filtered_decisions so Business
-    Center can render the same ledger for one company. Calling it with no
-    scope arguments is what keeps every polls URL locked to SCOPE_GLOBAL.
+    Not every decision belongs to a roll: a platform-wide vote, and a paper
+    result recorded without naming an electorate, both live on the global
+    chain. Falling back to it means "no electorate selected" shows the ledger
+    that does exist rather than an empty page.
     """
-    return services.filtered_decisions(request.GET)
+    from . import snapshots
+
+    if electorate is None:
+        return Decision.verify_chain(SCOPE_GLOBAL)
+    return snapshots.verify_chain(electorate)
+
+
+def selected_electorate(request):
+    """The electorate whose ledger is being read, or None.
+
+    ``?electorate=<slug>`` chooses; anything the requester does not belong to
+    is a 404, so the parameter can never be used to reach another roll's
+    decisions. With no parameter the first of their own is used — a person on
+    several bodies gets one of theirs, never a global mixture, because there
+    is no such thing as "everyone's ledger".
+    """
+    mine = my_electorates(request.user)
+    slug = (request.GET.get("electorate") or "").strip()
+    if slug:
+        return get_object_or_404(mine, slug=slug)
+    return mine.first()
+
+
+def _filtered_ledger(request, electorate=None):
+    """The rows of one electorate's ledger, plus the filters that shaped it.
+
+    The filtering lives in services.filtered_decisions so the PAGE and its
+    PDF export cannot disagree. Passing the electorate is what enforces
+    isolation: a decision belonging to a roll the requester is not on is not
+    filtered out of the page, it is never in the queryset.
+    """
+    if electorate is None:
+        # No roll chosen (or none to choose): the platform's own ledger, the
+        # global scope — exactly what this page showed before electorates
+        # became selectable.
+        return services.filtered_decisions(request.GET)
+    return services.filtered_decisions(request.GET, electorate=electorate)
 
 
 @login_required
 def decision_ledger(request):
     """What was decided, when, by which roll — the platform's public record."""
     services.record_overdue(SCOPE_GLOBAL)
-    decisions, filters = _filtered_ledger(request)
+    electorate = selected_electorate(request)
+    decisions, filters = _filtered_ledger(request, electorate)
 
     paginator = Paginator(decisions, LEDGER_PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page"))
 
     querystring = "&".join(f"{k}={v}" for k, v in filters.items() if v)
+    if electorate is not None:
+        querystring = (f"electorate={electorate.slug}&" + querystring
+                       ).rstrip("&")
     return _render(request, "polls/ledger.html", {
         "active_tab": "ledger",
         "page": page,
@@ -311,6 +354,8 @@ def decision_ledger(request):
         "outcomes": Outcome.choices,
         "querystring": querystring,
         "is_operator": _is_operator(request.user),
+        "electorate": electorate,
+        "my_electorates": my_electorates(request.user),
     })
 
 
@@ -351,7 +396,8 @@ def ledger_pdf_export(request):
     witness. Falls back to unembellished export if the fold cannot run.
     """
     services.record_overdue(SCOPE_GLOBAL)
-    decisions, filters = _filtered_ledger(request)
+    electorate = selected_electorate(request)
+    decisions, filters = _filtered_ledger(request, electorate)
 
     checkpoint_row = None
     if request.GET.get("qr") == "1":
@@ -494,13 +540,186 @@ def ledger_checkpoint_verify(request):
     })
 
 
-@login_required
-def electorate_list(request):
-    """The configured rolls. Staff configure; everyone may read who decides."""
+def _person_of(user):
+    """This login's Person, or None. Never raises on a host without people."""
+    try:
+        return getattr(user, "community_profile", None)
+    except Exception:  # noqa: BLE001 - a missing profile is not an error page
+        return None
+
+
+def my_electorates(user):
+    """Every electorate this user may look at, across every scope.
+
+    Members see the bodies they sit on — in any company, any community, as
+    many as they belong to; nothing here assumes one default company. Staff
+    see all of them, because they configure them.
+
+    This is the fix for the bug where membership existed in the admin and
+    showed nowhere: the pages asked for ``in_scope(SCOPE_GLOBAL)``, i.e.
+    ``scope_type=""``, while every real electorate belongs to a company or a
+    community, so the query could only ever return nothing.
+    """
     from .electorate_models import Electorate
 
+    if _is_operator(user):
+        return Electorate.objects.all().order_by("name")
+    return Electorate.objects.for_person(_person_of(user)).order_by("name")
+
+
+def _electorate_or_404(request, slug):
+    """One electorate the requester is entitled to see. 404 otherwise —
+    a 403 would confirm that a body by this name exists elsewhere."""
+    return get_object_or_404(my_electorates(request.user), slug=slug)
+
+
+@login_required
+def snapshot_list(request):
+    """Snapshots of one electorate's ledger — states, not events.
+
+    The page shows the ledger's current state, every stored snapshot of it,
+    and the chain drawn as a chain. Any member of the roll may take one:
+    taking a snapshot of an unchanged ledger is not a write, it resolves to
+    the state that already exists.
+    """
+    from . import snapshots
+
+    electorate = selected_electorate(request)
+    count, head, last = (snapshots.head_of(electorate)
+                         if electorate else (0, "", None))
+    stored = list(snapshots.LedgerSnapshot.objects.filter(
+        electorate=electorate)) if electorate else []
+    rows = [{"snapshot": s,
+             "qr": _checkpoint_qr(s.payload),
+             "current": s.head_hash == head}
+            for s in stored]
+
+    # The chain, as data for the graph: nodes are entries, edges are the
+    # prev_hash links. Drawn by sigma.js; the table below says the same thing
+    # in words, because a graph nobody can copy out of is not a record.
+    entries = []
+    for index, decision in enumerate(snapshots.ledger_of(electorate), start=1):
+        entries.append({
+            "n": index,
+            "pk": decision.pk,
+            "title": decision.title,
+            "outcome": decision.get_outcome_display(),
+            "decided_at": decision.decided_at.strftime("%Y-%m-%d %H:%M"),
+            "hash": decision.content_hash,
+            "prev": decision.prev_hash,
+            "secret": bool(decision.secret_ballot),
+        })
+
+    return _render(request, "polls/snapshots.html", {
+        "active_tab": "snapshots",
+        "electorate": electorate,
+        "my_electorates": my_electorates(request.user),
+        "current_count": count,
+        "current_head": head,
+        "ledger_modified_at": last,
+        "rows": rows,
+        "entries": entries,
+        "entries_json": json.dumps(entries),
+        "chain": chain_of(electorate),
+        "verify_result": None,
+    })
+
+
+@login_required
+@require_POST
+def snapshot_take(request):
+    """Resolve the current ledger state to its snapshot. Idempotent."""
+    from . import snapshots
+
+    electorate = selected_electorate(request)
+    if electorate is None:
+        raise Http404("No electorate.")
+    snapshot, created = snapshots.snapshot_current(
+        electorate, by=request.user,
+        note=request.POST.get("note", "").strip()[:200])
+    if snapshot is None:
+        messages.info(request, _(
+            "This ledger has no decisions yet, so it has no state to snapshot."))
+    elif created:
+        messages.success(request, _(
+            "Snapshot taken at %(count)s entries. Keep the QR outside this "
+            "platform — that copy is what proves the ledger later.")
+            % {"count": snapshot.entry_count})
+    else:
+        messages.info(request, _(
+            "This ledger state already had a snapshot — the same one is shown. "
+            "A snapshot is a state, not an event."))
+    return redirect(f"{reverse('polls:snapshots')}?electorate={electorate.slug}")
+
+
+@login_required
+@require_POST
+def snapshot_delete(request, pk):
+    """Forget a stored snapshot. The ledger is untouched.
+
+    Deleting a snapshot deletes a convenience: the QR image and the row that
+    remembered it. It cannot alter a Decision, and any QR already printed
+    still verifies, because verification recomputes from the decisions
+    themselves and never consults this table.
+    """
+    from . import snapshots
+
+    snapshot = get_object_or_404(
+        snapshots.LedgerSnapshot,
+        pk=pk, electorate__in=my_electorates(request.user))
+    slug = snapshot.electorate.slug
+    snapshot.delete()
+    messages.success(request, _(
+        "Snapshot deleted. The Decision Ledger is unchanged, and any QR "
+        "already taken still verifies."))
+    return redirect(f"{reverse('polls:snapshots')}?electorate={slug}")
+
+
+@login_required
+def snapshot_verify(request):
+    """Check any QR against the ledger it names — no stored row required."""
+    from . import snapshots
+
+    result = error = None
+    payload_text = (request.POST.get("payload") or "").strip()
+    if request.method == "POST":
+        upload = request.FILES.get("image")
+        if not payload_text and upload:
+            try:
+                from toto.core import qr
+
+                payload_text = qr.read(upload.read())
+            except Exception as exc:  # noqa: BLE001 - a bad photo is user input
+                error = str(exc)
+        if payload_text and not error:
+            try:
+                result = snapshots.verify_payload(payload_text)
+            except checkpoint_module.PayloadError as exc:
+                error = str(exc)
+        elif not error:
+            error = _("Paste the checkpoint text or upload a photo of the QR.")
+
+    electorate = selected_electorate(request)
+    count, head, last = (snapshots.head_of(electorate)
+                         if electorate else (0, "", None))
+    return _render(request, "polls/snapshot_verify.html", {
+        "active_tab": "snapshots",
+        "electorate": electorate,
+        "my_electorates": my_electorates(request.user),
+        "current_count": count,
+        "current_head": head,
+        "ledger_modified_at": last,
+        "verify_result": result,
+        "verify_error": error,
+        "verify_payload": payload_text,
+    })
+
+
+@login_required
+def electorate_list(request):
+    """The rolls this person sits on. Staff configure; members read."""
     rolls = []
-    for electorate in Electorate.objects.in_scope(SCOPE_GLOBAL):
+    for electorate in my_electorates(request.user).prefetch_related("members"):
         rolls.append({
             "electorate": electorate,
             "members": electorate.members.count(),
@@ -510,6 +729,7 @@ def electorate_list(request):
         "active_tab": "electorates",
         "rolls": rolls,
         "is_operator": _is_operator(request.user),
+        "has_person": _person_of(request.user) is not None,
     })
 
 
@@ -520,10 +740,7 @@ def electorate_detail(request, slug):
     Deliberately generic. Members and weights, never shares: the same table
     serves a company assembly, a club committee and a project board.
     """
-    from .electorate_models import Electorate
-
-    electorate = get_object_or_404(
-        Electorate.objects.in_scope(SCOPE_GLOBAL), slug=slug)
+    electorate = _electorate_or_404(request, slug)
     table = electorate.power_table()
 
     return _render(request, "polls/electorate_detail.html", {
@@ -550,8 +767,9 @@ def ledger_verify(request):
     verify. That is what this page reports, and the page says exactly that.
     """
     services.record_overdue(SCOPE_GLOBAL)
-    verification = Decision.verify_chain(SCOPE_GLOBAL)
-    decisions, filters = services.filtered_decisions(request.GET)
+    electorate = selected_electorate(request)
+    verification = chain_of(electorate)
+    decisions, filters = _filtered_ledger(request, electorate)
 
     paginator = Paginator(decisions, LEDGER_PAGE_SIZE)
     page = paginator.get_page(request.GET.get("page"))
@@ -565,4 +783,6 @@ def ledger_verify(request):
         "querystring": querystring,
         "verification": verification,
         "is_operator": _is_operator(request.user),
+        "electorate": electorate,
+        "my_electorates": my_electorates(request.user),
     })

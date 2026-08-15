@@ -64,6 +64,12 @@
                 {% if active_tab == 'ledger' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
          {% if active_tab == 'ledger' %}aria-current="page"{% endif %}>
         <i class="fa-solid fa-book"></i>{% trans "Ledger" %}</a>
+      <a href="{% url 'polls:snapshots' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% if active_tab == 'snapshots' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+         {% if active_tab == 'snapshots' %}aria-current="page"{% endif %}>
+        <i class="fa-solid fa-camera"></i>{% trans "Snapshots" %}</a>
     </nav>
 
     {% if messages %}

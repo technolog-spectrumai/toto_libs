@@ -178,7 +178,8 @@ def freeze_roll(question, *, electorate=None, entries=None):
         if electorate is None:
             raise ValueError("freeze_roll needs an electorate or entries.")
         entries = [(member.user, member.display_name, member.weight)
-                   for member in electorate.members.select_related("user")]
+                   for member in electorate.members.select_related(
+                       "person", "person__user")]
         if question.electorate_id != electorate.pk:
             question.electorate = electorate
 
@@ -681,6 +682,7 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
                 title=question.title,
                 outcome=outcome, winner_label=winner_label,
                 electorate_key=electorates.key_of(question),
+                electorate=question.electorate,
                 electorate_size=count.electorate,
                 total_ballots=count.total_ballots,
                 total_weight=count.total_weight,
@@ -695,7 +697,8 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
             return Decision.objects.get(question=question)
 
 
-def filtered_decisions(params, *, scope_type: str = "", scope_id: str = ""):
+def filtered_decisions(params, *, scope_type: str = "", scope_id: str = "",
+                       electorate=None, all_scopes: bool = False):
     """The ledger queryset plus the filters that shaped it.
 
     One place, because a ledger PAGE and its PDF export must agree exactly —
@@ -708,7 +711,16 @@ def filtered_decisions(params, *, scope_type: str = "", scope_id: str = ""):
     while a scoped call site is a different view behind a different gate in
     the app that owns that scope. No polls URL can reach another scope.
     """
-    decisions = Decision.objects.in_scope(scope_type, scope_id)
+    if electorate is not None:
+        # A Decision Ledger belongs to an ELECTORATE. Filtering on the FK is
+        # the whole isolation guarantee: one roll's decisions are a different
+        # SET from another's, not a filter away from them — and the caller
+        # has already proved the requester belongs to this one.
+        decisions = Decision.objects.filter(electorate=electorate)
+    elif all_scopes:
+        decisions = Decision.objects.all()
+    else:
+        decisions = Decision.objects.in_scope(scope_type, scope_id)
 
     outcome = params.get("outcome") or ""
     if outcome in Outcome.values:

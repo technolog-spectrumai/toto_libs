@@ -24,9 +24,14 @@ def _platform():
 
 def _electorate(user):
     """A configured roll for the form to freeze from — since stage 5 an
-    electorate is data, not a registry key."""
+    electorate is data, not a registry key, and since 8/2026 its members are
+    People rather than logins."""
+    from toto.people.models import Person
+
+    person, _created = Person.objects.get_or_create(
+        user=user, defaults={"display_name": user.get_username()})
     roll = Electorate.objects.create(name="Everyone")
-    ElectorateMember.objects.create(electorate=roll, user=user)
+    ElectorateMember.objects.create(electorate=roll, person=person)
     return roll
 
 
