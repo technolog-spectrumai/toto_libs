@@ -257,8 +257,8 @@ class Station(models.Model):
         related_name="stations",
         help_text=(
             "Which community this office works for, if any. Attribution only — "
-            "the federal treasury pays every station and a community never "
-            "pays anyone."
+            "the federal treasury pays every special role and a community "
+            "never pays anyone."
         ),
     )
     since = models.DateField(
@@ -295,6 +295,8 @@ class Station(models.Model):
 
     class Meta:
         ordering = ["serves__name", "name"]
+        verbose_name = "Special Role"
+        verbose_name_plural = "Special Roles"
 
     def __str__(self):
         return self.name

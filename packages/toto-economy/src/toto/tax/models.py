@@ -242,7 +242,7 @@ class StipendPayment(models.Model):
     payer_account = models.ForeignKey(
         "assets.LedgerAccount", on_delete=models.PROTECT,
         related_name="stipends_paid",
-        help_text="The federal treasury. Every station is paid from here.",
+        help_text="The federal treasury. Every special role is paid from here.",
     )
     payee_account = models.ForeignKey(
         "assets.LedgerAccount", on_delete=models.PROTECT,
