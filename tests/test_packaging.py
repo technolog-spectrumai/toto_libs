@@ -126,7 +126,12 @@ def test_migrations_are_packaged(all_names, owner):
     # decision that made the vault's bucket peer API the platform's one
     # host-to-host data channel. It had migrations but was installed by no
     # host, so no deployed database notices this either.
-    assert len(apps_with_migrations) == 48, sorted(apps_with_migrations)
+    # 49 again: toto.mail (toto-base) — real per-user mailboxes on real IMAP/
+    # SMTP servers, with the connection, the sealed credential, the attachment
+    # rows and one sent-record per recipient. It is NOT jess: jess is the
+    # platform's own outbox for transactional mail, and this is people's
+    # accounts, which is why it owns tables rather than extending that app's.
+    assert len(apps_with_migrations) == 49, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
