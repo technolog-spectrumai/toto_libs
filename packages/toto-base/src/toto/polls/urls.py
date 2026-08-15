@@ -17,6 +17,7 @@ urlpatterns = [
     # Fixed routes BEFORE the <kind>/<slug> catch-alls: "votes/new/" would
     # otherwise match as kind="votes", slug="new".
     path("votes/new/", views.vote_create, name="vote_create"),
+    path("votes/record-paper/", views.vote_record_paper, name="vote_record_paper"),
     path("ledger/", views.decision_ledger, name="decision_ledger"),
     path("ledger/verify/", views.ledger_verify, name="ledger_verify"),
     path("ledger/checkpoints/", views.ledger_checkpoints, name="ledger_checkpoints"),

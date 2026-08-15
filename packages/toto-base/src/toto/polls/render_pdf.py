@@ -97,25 +97,45 @@ def _turnout_text(decision) -> str:
     return f"{decision.turnout * 100:.0f}%"
 
 
-def vote_result_pdf(question, decision) -> bytes:
+def vote_result_pdf(question, decision, *, include_ballots=True) -> bytes:
     """One formal vote's recorded decision, as a document.
 
     Everything comes from the Decision row and its ``content`` snapshot —
     never from a live tally, so the paper says what was decided even if the
     database has since moved on.
+
+    ``include_ballots`` gates the who-voted-for-which-option appendix on an
+    OPEN vote: electorate members and staff get it, outsiders get the same
+    document without it (the view decides; this only obeys). A secret ballot
+    has no appendix for anyone — its snapshot never contained one.
     """
     A4, cm, simpleSplit, canvas = _reportlab()
 
     content = decision.content or {}
     window = content.get("window", {})
     proposer = content.get("proposer") or {}
+    secret = bool(getattr(decision, "secret_ballot", False))
 
     buf = io.BytesIO()
     c = canvas.Canvas(buf, pagesize=A4)
     page = _Page(c, A4, cm)
 
     page.line(question.title, font="Helvetica-Bold", size=16, dy=24)
-    page.line(_("Formal vote — decision record"), size=9, dy=16)
+    if secret:
+        page.line(_("SECRET BALLOT — results only"), font="Helvetica-Bold",
+                  size=10, dy=14)
+        page.line(_("Formal vote — decision record"), size=9, dy=16)
+        provenance = content.get("provenance") or {}
+        if provenance:
+            page.line(_("Held by %(method)s, attested by %(who)s") % {
+                "method": provenance.get("method", ""),
+                "who": provenance.get("attested_by", "")}, size=9)
+            if provenance.get("note"):
+                page.wrapped(provenance["note"], simpleSplit, size=8)
+            page.wrapped(provenance.get("statement", ""), simpleSplit, size=8)
+            page.gap(6)
+    else:
+        page.line(_("Formal vote — decision record"), size=9, dy=16)
 
     page.line(_("Proposer: %(name)s") % {
         "name": proposer.get("username") or _("(removed account)")})
@@ -177,7 +197,10 @@ def vote_result_pdf(question, decision) -> bytes:
     page.gap(12)
 
     # -- the audit appendix --------------------------------------------------
-    ballots = content.get("ballots", [])
+    # Never for a secret ballot (its snapshot holds no ballots to print),
+    # and only for readers the view let in on an open one.
+    ballots = [] if (secret or not include_ballots) \
+        else content.get("ballots", [])
     if ballots:
         page.line(_("Ballot record (%(count)s)") % {"count": len(ballots)},
                   font="Helvetica-Bold", size=11, dy=16)
@@ -271,8 +294,11 @@ def ledger_pdf(decisions, *, filters: dict | None = None,
 
     for decision in decisions:
         page.need(46)
-        page.line(f"{decision.decided_at.strftime('%Y-%m-%d')} — "
-                  f"{decision.title}", font="Helvetica-Bold", size=11)
+        title_line = (f"{decision.decided_at.strftime('%Y-%m-%d')} — "
+                      f"{decision.title}")
+        if getattr(decision, "secret_ballot", False):
+            title_line += "  [" + str(_("SECRET BALLOT — results only")) + "]"
+        page.line(title_line, font="Helvetica-Bold", size=11)
         page.line(_outcome_sentence(decision), size=9)
         page.line(_("Electorate %(key)s — %(ballots)s ballots, "
                     "weight %(weight)s, turnout %(turnout)s") % {

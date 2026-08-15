@@ -372,6 +372,13 @@ class Decision(models.Model):
     #: False rejected, null when no rule applied.
     adopted = models.BooleanField(null=True, blank=True)
 
+    #: A secret ballot: the result was counted away from the platform (paper,
+    #: a show of hands) and only the AGGREGATE was recorded — ``content``
+    #: carries no per-ballot list and no roll, by construction rather than by
+    #: redaction. The ledger and every export label such a row "Secret
+    #: ballot" and show results only.
+    secret_ballot = models.BooleanField(default=False)
+
     # -- the ledger chain (stage 6) -----------------------------------------
     #: sha256 over the canonical content plus the previous hash, one chain
     #: PER SCOPE — the same construction the company minute book uses, and

@@ -175,3 +175,86 @@ class VoteCreateForm(forms.Form):
         # the electorate change future votes only.
         services.freeze_roll(question, electorate=data["electorate"])
         return question
+
+
+# -- a paper vote's result, entered by hand -----------------------------------
+
+#: How many tally rows the paper form offers. Blank rows are skipped; a room
+#: that voted on more than eight options can be recorded as two questions.
+PAPER_OPTION_ROWS = 8
+
+PAPER_METHODS = (
+    ("paper", _("Paper ballot")),
+    ("hands", _("Show of hands")),
+    ("external", _("External system")),
+)
+
+
+class PaperResultForm(forms.Form):
+    """The tally sheet, typed in. Aggregate numbers only, by construction —
+    the form has nowhere to put a name next to a choice."""
+
+    title = forms.CharField(max_length=150, label=_("Title"))
+    question_text = forms.CharField(
+        max_length=300, label=_("The question"),
+        help_text=_("As it was put to the room."))
+    method = forms.ChoiceField(
+        choices=PAPER_METHODS, label=_("How it was held"))
+    electorate_label = forms.CharField(
+        max_length=120, required=False, label=_("Electorate"),
+        help_text=_("Who was entitled to vote, in words — e.g. "
+                    "'General assembly 2026'."))
+    electorate_size = forms.IntegerField(
+        min_value=0, required=False, initial=0, label=_("Eligible voters"),
+        help_text=_("How many could have voted. 0 if unknown; turnout is "
+                    "derived from it."))
+    note = forms.CharField(
+        required=False, widget=forms.Textarea(attrs={"rows": 2}),
+        label=_("Attestation note"),
+        help_text=_("Where the tally sheet lives, who counted, witnesses."))
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for row in range(PAPER_OPTION_ROWS):
+            self.fields[f"option_label_{row}"] = forms.CharField(
+                max_length=60, required=False)
+            self.fields[f"option_ballots_{row}"] = forms.IntegerField(
+                min_value=0, required=False)
+            self.fields[f"option_weight_{row}"] = forms.IntegerField(
+                min_value=0, required=False)
+        for field in self.fields.values():
+            attrs = field.widget.attrs
+            attrs["class"] = FIELD_CLASS
+            attrs[":class"] = FIELD_THEME_CLASS
+
+    def option_rows(self):
+        """(label, ballots, weight) bound-field triples for the template."""
+        return [(self[f"option_label_{row}"],
+                 self[f"option_ballots_{row}"],
+                 self[f"option_weight_{row}"])
+                for row in range(PAPER_OPTION_ROWS)]
+
+    def clean(self):
+        cleaned = super().clean()
+        options = []
+        for row in range(PAPER_OPTION_ROWS):
+            label = (cleaned.get(f"option_label_{row}") or "").strip()
+            ballots = cleaned.get(f"option_ballots_{row}")
+            weight = cleaned.get(f"option_weight_{row}")
+            if not label and ballots is None and weight is None:
+                continue
+            if not label:
+                self.add_error(f"option_label_{row}",
+                               _("A count needs its option's name."))
+                continue
+            if ballots is None:
+                self.add_error(f"option_ballots_{row}",
+                               _("Enter the ballot count — 0 is a count."))
+                continue
+            options.append({"label": label, "ballots": ballots,
+                            "weight": weight})
+        if len(options) < 2:
+            raise forms.ValidationError(
+                _("Enter at least two options, as they were on the paper."))
+        cleaned["options"] = options
+        return cleaned

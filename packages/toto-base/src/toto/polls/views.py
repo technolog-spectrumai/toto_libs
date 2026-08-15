@@ -230,6 +230,43 @@ def vote_create(request):
 
 
 @login_required
+def vote_record_paper(request):
+    """Type in a paper vote's result — a secret ballot the room already held.
+
+    Staff only, like every door that writes an immutable ledger row. The
+    entry is results-only BY CONSTRUCTION: the form has no field that could
+    attach a person to a choice, so there is nothing to hide later. The
+    ledger labels it "Secret ballot" and its PDF carries the tally and the
+    attestation, never individuals.
+    """
+    if not _is_operator(request.user):
+        raise PermissionDenied(_("Only staff record a paper result."))
+
+    from .forms import PaperResultForm
+
+    form = PaperResultForm(request.POST or None)
+    if request.method == "POST" and form.is_valid():
+        decision = services.record_paper_result(
+            title=form.cleaned_data["title"],
+            question_text=form.cleaned_data["question_text"],
+            options=form.cleaned_data["options"],
+            method=form.cleaned_data["method"],
+            electorate_label=form.cleaned_data["electorate_label"],
+            electorate_size=form.cleaned_data["electorate_size"] or 0,
+            note=form.cleaned_data["note"],
+            recorded_by=request.user,
+        )
+        messages.success(request, _(
+            "The result is on the ledger, marked as a secret ballot."))
+        return redirect("polls:decision_ledger")
+
+    return _render(request, "polls/paper_result_form.html", {
+        "active_tab": "ledger",
+        "form": form,
+    })
+
+
+@login_required
 @require_POST
 def question_close(request, kind, slug):
     """Close a formal vote and write its decision down. Staff's act."""
@@ -273,6 +310,7 @@ def decision_ledger(request):
         "filters": filters,
         "outcomes": Outcome.choices,
         "querystring": querystring,
+        "is_operator": _is_operator(request.user),
     })
 
 
@@ -289,9 +327,17 @@ def decision_pdf(request, kind, slug):
         raise PermissionDenied(_("The count is not open to you yet."))
 
     decision = get_object_or_404(Decision, question=question)
+    # The who-voted-how appendix is for the people the vote belonged to:
+    # electorate members and staff. Everyone else who may see results gets
+    # the same document without the appendix — the tally is public where the
+    # ballots are not. (For a secret ballot the renderer prints no appendix
+    # for anyone; its snapshot never contained one.)
+    include_ballots = _is_operator(request.user) or question.roll.filter(
+        user=request.user).exists()
     base = slugify(question.title) or question.slug
     return downloads.metered_pdf(
-        request, lambda: render_pdf.vote_result_pdf(question, decision),
+        request, lambda: render_pdf.vote_result_pdf(
+            question, decision, include_ballots=include_ballots),
         f"{base}-decision.pdf")
 
 
@@ -518,4 +564,5 @@ def ledger_verify(request):
         "outcomes": Outcome.choices,
         "querystring": querystring,
         "verification": verification,
+        "is_operator": _is_operator(request.user),
     })

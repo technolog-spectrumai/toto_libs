@@ -20,9 +20,13 @@ from django.db import IntegrityError, transaction
 from django.db.models import Count, Sum
 from django.utils import timezone
 
+from django.utils.translation import gettext_lazy as _
+
 from .core import (AlreadyCast, Eligibility, NotEligible, NotOpen,
-                   Result, Revisability, Tally, UnknownChoice, Visibility)
-from .models import Ballot, Decision, Kind, Outcome, Question, Status
+                   Result, Revisability, Tally, UnknownChoice, Visibility,
+                   VotingError)
+from .models import (Ballot, Choice, Decision, Kind, Outcome, Question,
+                     Status)
 
 
 def electorate_for(question) -> object:
@@ -742,3 +746,101 @@ def record_overdue(scope_type: str = "", scope_id: str = "") -> int:
         record_decision(question)
         recorded += 1
     return recorded
+
+
+# -- a paper vote's result, entered by hand -----------------------------------
+
+def record_paper_result(*, title, question_text, options, method,
+                        electorate_label="", electorate_size=0,
+                        note="", recorded_by, scope_type="", scope_id=""):
+    """Put a vote held OUTSIDE the platform onto the ledger. Results only.
+
+    A paper ballot in a room is a secret ballot software struggles to match:
+    the anonymity happened physically. What the platform adds is the ledger —
+    the tally, hashed into the same chain as every online vote, plus the
+    PROVENANCE an attested result needs instead of the recount it cannot
+    offer: who entered it, by what method, over which electorate. The entry
+    can honestly claim "this result was recorded then and has not been
+    altered since"; it deliberately cannot claim "this is what people voted",
+    and the snapshot says which claim it makes.
+
+    ``options`` is a list of ``{"label", "ballots", "weight"}`` dicts; weight
+    defaults to the ballot count (an unweighted room). By construction the
+    snapshot carries no ballot list and no roll — there is nothing to redact
+    because nothing identifying was ever written.
+    """
+    if len(options) < 2:
+        raise VotingError(_("A vote needs at least two options."))
+    now = timezone.now()
+    question = Question.objects.create(
+        kind=Kind.VOTE, title=title, question_text=question_text,
+        scope_type=scope_type, scope_id=scope_id,
+        opens_at=now, closes_at=now,
+        visibility=Visibility.ON_CLOSE,
+        created_by=recorded_by,
+        metadata={"paper_result": True},
+    )
+    for index, option in enumerate(options):
+        Choice.objects.create(question=question, label=option["label"],
+                              value=index)
+    question.close(when=now)
+
+    rows = [{"choice_id": None, "label": option["label"],
+             "ballots": int(option["ballots"]),
+             "weight": int(option.get("weight") or option["ballots"])}
+            for option in options]
+    total_ballots = sum(row["ballots"] for row in rows)
+    total_weight = sum(row["weight"] for row in rows)
+    top = sorted(rows, key=lambda row: row["weight"], reverse=True)
+    if total_ballots == 0:
+        outcome, winner_label = Outcome.NO_BALLOTS, ""
+    elif len(top) > 1 and top[0]["weight"] == top[1]["weight"]:
+        outcome, winner_label = Outcome.TIE, ""
+    else:
+        outcome, winner_label = Outcome.WINNER, top[0]["label"]
+
+    turnout = (min(total_ballots / electorate_size, 1.0)
+               if electorate_size else None)
+    content = {
+        "question": {
+            "pk": question.pk, "kind": question.kind, "title": title,
+            "question_text": question_text, "body": "",
+            "slug": question.slug,
+            "scope_type": scope_type, "scope_id": scope_id,
+        },
+        "proposer": {"id": recorded_by.pk,
+                     "username": recorded_by.get_username()},
+        "window": {"opens_at": now.isoformat(), "closes_at": now.isoformat(),
+                   "closed_at": now.isoformat()},
+        "decision_header": "",
+        "decision_comment": "",
+        "electorate": {"key": "", "name": electorate_label,
+                       "size": electorate_size},
+        "provenance": {
+            "mode": "secret_paper",
+            "method": method,
+            "attested_by": recorded_by.get_username(),
+            "note": note,
+            "statement": "Counted away from the platform; only the "
+                         "aggregate was recorded. This entry proves the "
+                         "result has not been altered since it was written, "
+                         "not how any individual voted.",
+        },
+        "outcome": {"outcome": outcome,
+                    "winner": ({"choice_id": None, "label": winner_label}
+                               if winner_label else None)},
+        "tally": rows,
+        "totals": {"weight": total_weight, "ballots": total_ballots,
+                   "turnout": turnout},
+        "secret_ballot": True,
+        "governance": None,
+    }
+    _assert_canonical(content)
+    return Decision.objects.create(
+        question=question, scope_type=scope_type, scope_id=scope_id,
+        title=title, outcome=outcome, winner_label=winner_label,
+        electorate_key="", electorate_size=electorate_size,
+        total_ballots=total_ballots, total_weight=total_weight,
+        turnout=turnout, adopted=None, decided_by=recorded_by,
+        secret_ballot=True, content=content,
+    )

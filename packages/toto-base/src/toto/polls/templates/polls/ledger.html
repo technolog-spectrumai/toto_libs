@@ -46,6 +46,11 @@
   <a href="{% url 'polls:ledger_checkpoints' %}"
      class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
     <i class="fa-solid fa-qrcode"></i>{% trans "Checkpoints" %}</a>
+  {% if is_operator %}
+  <a href="{% url 'polls:vote_record_paper' %}"
+     class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-user-secret"></i>{% trans "Record a paper result" %}</a>
+  {% endif %}
   <span class="ml-auto inline-flex items-center gap-2">
     {% comment %}The Export button submits THIS form to the PDF URL via
        formaction, so the filters and the QR flag travel together — the PDF
@@ -99,6 +104,11 @@
           <td class="py-2 pr-4">
             <a href="{% url 'polls:question_results' decision.question.kind decision.question.slug %}"
                class="font-semibold underline hover:opacity-80">{{ decision.title }}</a>
+            {% if decision.secret_ballot %}
+              <span class="ml-1 whitespace-nowrap rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-70"
+                    title="{% trans 'Counted away from the platform; only the aggregate was recorded.' %}">
+                <i class="fa-solid fa-user-secret mr-0.5"></i>{% trans "Secret ballot" %}</span>
+            {% endif %}
           </td>
           <td class="py-2 pr-4">
             {% if decision.winner_label %}
