@@ -1,0 +1,64 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Transfers" %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>[x-cloak] { display: none !important; }</style>
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <header class="space-y-1">
+      <a href="{% url 'vault:metrics' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "All Buckets" %}
+      </a>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-truck-arrow-right"></i>{% trans "Transfers" %}
+      </h1>
+      <p class="text-sm opacity-55">
+        {% trans "Copies with a non-local end run in the background; each run keeps its own record of what landed, what was skipped, and why." %}
+      </p>
+    </header>
+
+    <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         class="overflow-hidden rounded-xl border shadow-sm">
+      {% for run in runs %}
+      <a href="{% url 'vault:transfer_detail' run.pk %}"
+         :class="darkMode ? 'border-b border-accent-1/30 hover:bg-bubble-bg-dark' : 'border-b border-accent-2/30 hover:bg-bubble-bg-light'"
+         class="flex items-center gap-3 px-4 py-3 text-sm transition-colors last:border-b-0">
+        <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide
+                     {% if run.status == 'success' %}text-success-light border-success-light/40
+                     {% elif run.status == 'failed' %}text-warn-light border-warn-light/40
+                     {% else %}opacity-60{% endif %}">
+          {{ run.get_status_display }}
+        </span>
+        <span class="min-w-0 flex-1 truncate font-medium">
+          {{ run.source_bucket.name|default:"?" }}
+          <i class="fa-solid fa-arrow-right mx-1 text-xs opacity-50"></i>
+          {{ run.dest_bucket.name|default:"?" }}
+        </span>
+        <span class="shrink-0 text-xs opacity-60" title="{% trans 'Files copied' %}">
+          <i class="fa-solid fa-circle-check mr-0.5"></i>{{ run.files_done }}{% if run.total_files %}/{{ run.total_files }}{% endif %}
+        </span>
+        {% if run.files_skipped %}
+        <span class="shrink-0 text-xs text-warn-light" title="{% trans 'Skipped' %}">
+          <i class="fa-solid fa-forward mr-0.5"></i>{{ run.files_skipped }}
+        </span>
+        {% endif %}
+        <span class="shrink-0 text-xs opacity-50">{{ run.created_at|date:"Y-m-d H:i" }}</span>
+      </a>
+      {% empty %}
+      <div class="px-4 py-10 text-center text-sm opacity-50">
+        {% trans "No transfers yet. Copying files to or from a remote bucket starts one." %}
+      </div>
+      {% endfor %}
+    </div>
+
+  </div>
+</div>
+{% endblock %}

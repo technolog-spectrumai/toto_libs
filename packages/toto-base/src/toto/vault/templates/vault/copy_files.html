@@ -296,6 +296,11 @@ document.addEventListener('alpine:init', () => {
                     <i class="fa-solid fa-database shrink-0 text-xs"
                        :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"></i>
                     <span class="font-bold text-sm flex-1 truncate" x-text="item.name"></span>
+                    <span x-show="item.remote_label"
+                          class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+                          :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                      <i class="fa-solid fa-cloud mr-1"></i>{% trans "Remote" %} · <span x-text="item.remote_label"></span>
+                    </span>
                     <span x-show="item.n_dirs > 0" class="text-xs opacity-40 shrink-0"
                           x-text="`${item.n_dirs} dir${item.n_dirs !== 1 ? 's' : ''}`"></span>
                     <span x-show="isDestSelected(item)"

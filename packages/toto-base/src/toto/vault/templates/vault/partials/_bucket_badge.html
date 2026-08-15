@@ -1,0 +1,15 @@
+{% load i18n %}{% comment %}
+  The remote-bucket pill. Renders nothing for a local bucket, so every
+  listing can include it unconditionally: {% include "vault/partials/_bucket_badge.html" with bucket=b %}
+
+  What it says comes from Bucket.remote_label, which never returns a host
+  name or URL — where the bytes live is operator information; members get
+  the peer's local label ("Placidia media"), the S3 provider's display name,
+  or a generic word. Reachability is deliberately NOT here: a pill in a
+  listing must not imply a health check nobody ran (badges never probe; the
+  metrics page's Remote card reads the job-stamped columns instead).
+{% endcomment %}{% if bucket.is_remote %}<span
+  class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+  title="{% trans 'The bytes live outside this host' %}">
+  <i class="fa-solid fa-cloud mr-1"></i>{% trans "Remote" %} · {{ bucket.remote_label }}</span>{% endif %}

@@ -49,6 +49,7 @@
           <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
             <i class="fa-solid fa-layer-group"></i>
             {{ bucket.name }}
+            {% include "vault/partials/_bucket_badge.html" with bucket=bucket %}
           </h1>
           <p class="mt-1 text-sm opacity-55">
             {% trans "Owner" %}: {{ bucket.owner.username }}
@@ -139,8 +140,94 @@
     </section>
     {% endif %}
 
-    <!-- Bucket-level quota bar -->
-    {% if bucket_quota_mb %}
+    {% comment %}The Remote card — mounted buckets only. Everything on it is
+       a job-written stamp (last_ok_at/last_error from PeerClient calls,
+       last_refreshed_at from the mirror); rendering this page probes
+       nothing. Tri-state on purpose: "never checked" is a true answer.
+    {% endcomment %}
+    {% if remote_info %}
+    <section
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="rounded-xl border p-5 shadow-sm space-y-3"
+      x-data="{ refreshBusy: false, refreshMsg: '' }">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-xs font-semibold uppercase tracking-wide opacity-55">
+          <i class="fa-solid fa-cloud mr-1"></i>{% trans "Remote bucket" %}
+        </h2>
+        <div class="flex items-center gap-2">
+          <button type="button"
+                  @click="refreshBusy = true; refreshMsg = '';
+                          fetch('{% url 'vault:bucket_refresh' bucket.slug %}', {method: 'POST', headers: {'X-CSRFToken': '{{ csrf_token }}'}})
+                            .then(r => r.json().then(d => ({ok: r.ok, d})))
+                            .then(({ok, d}) => { refreshMsg = ok ? '{% trans "Refresh queued — reload in a moment." %}' : (d.error || '{% trans "Could not queue the refresh." %}'); })
+                            .catch(() => { refreshMsg = '{% trans "Could not queue the refresh." %}'; })
+                            .finally(() => { refreshBusy = false; })"
+                  :disabled="refreshBusy"
+                  :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80 disabled:opacity-40">
+            <i class="fa-solid fa-rotate" :class="refreshBusy && 'fa-spin'"></i>
+            {% trans "Refresh listing" %}
+          </button>
+          {% url 'vault:transfer_panel' as transfers_url %}
+          {% if transfers_url %}
+          <a href="{{ transfers_url }}"
+             :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+             class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+            <i class="fa-solid fa-truck-arrow-right"></i>{% trans "Transfers" %}
+          </a>
+          {% endif %}
+        </div>
+      </div>
+
+      {% if remote_info.peer %}
+        <p class="text-sm">
+          {% trans "Mounted from" %} <span class="font-semibold">{{ remote_info.peer.label }}</span>
+          <span class="opacity-55 font-mono text-xs">({{ remote_info.peer.base_url }})</span>
+        </p>
+        <p class="text-sm">
+          {% if remote_info.reachability == "ok" %}
+            <i class="fa-solid fa-circle-check mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
+            {% blocktrans with when=remote_info.peer.last_ok_at|date:"Y-m-d H:i" %}The peer answered at {{ when }}.{% endblocktrans %}
+          {% elif remote_info.reachability == "down" %}
+            <i class="fa-solid fa-triangle-exclamation mr-1" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+            {% trans "The last contact with the peer failed." %}
+            {% if remote_info.peer.last_ok_at %}
+              {% blocktrans with when=remote_info.peer.last_ok_at|date:"Y-m-d H:i" %}It last answered at {{ when }}.{% endblocktrans %}
+            {% endif %}
+          {% else %}
+            <i class="fa-solid fa-circle-question mr-1 opacity-60"></i>
+            {% trans "Never contacted yet — refresh the listing to find out." %}
+          {% endif %}
+        </p>
+        {% if remote_info.reachability == "down" %}
+          <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="rounded-lg border border-dashed px-3 py-2 text-xs">
+            <span class="font-semibold">{% trans "What the peer said" %}:</span>
+            <span class="font-mono break-all">{{ remote_info.peer.last_error }}</span>
+            <span class="opacity-60 block mt-1">{% trans "The listing below is the last mirrored state; downloads will answer 502 until the peer is back." %}</span>
+          </div>
+        {% endif %}
+        <p class="text-xs opacity-55">
+          {% if remote_info.last_refreshed_at %}
+            {% blocktrans with when=remote_info.last_refreshed_at|date:"Y-m-d H:i" %}Listing mirrored as of {{ when }}.{% endblocktrans %}
+          {% else %}
+            {% trans "The listing has never been mirrored — it renders empty until the first refresh." %}
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="text-sm">
+          <i class="fa-solid fa-triangle-exclamation mr-1" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></i>
+          {% trans "This mounted bucket has no bucket peer — pair one in the admin and select it on the bucket." %}
+        </p>
+      {% endif %}
+      <p x-cloak x-show="refreshMsg" x-text="refreshMsg" class="text-xs font-semibold"></p>
+    </section>
+    {% endif %}
+
+    <!-- Bucket-level quota bar — meaningless for a remote bucket: the quota
+         belongs to the host that holds the bytes, and the levy already
+         exempts mirrored rows. -->
+    {% if bucket_quota_mb and not bucket.is_remote %}
     <div
       :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
       class="rounded-xl border p-5 shadow-sm">
@@ -521,7 +608,7 @@
                       class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none">
                 <option value="">— {% trans "select destination" %} —</option>
                 {% for b in dest_buckets %}
-                <option value="{{ b.pk }}">{{ b.name }}</option>
+                <option value="{{ b.pk }}">{{ b.name }}{% if b.is_remote %} — {% trans "Remote" %} · {{ b.remote_label }}{% endif %}</option>
                 {% endfor %}
               </select>
               {% else %}
@@ -550,12 +637,37 @@
               <span x-text="errorMsg"></span>
             </div>
 
+            <!-- Transfer progress (async phase: a non-local end) -->
+            <div x-show="transferProgress" x-cloak class="space-y-2">
+              <div class="flex items-center justify-between text-xs">
+                <span class="font-semibold uppercase tracking-wide opacity-55">
+                  <i class="fa-solid fa-truck-arrow-right mr-1"></i>{% trans "Transferring in the background" %}
+                </span>
+                <span class="tabular-nums"
+                      x-text="transferProgress ? ((transferProgress.files_done + transferProgress.files_skipped) + (transferProgress.total_files ? ' / ' + transferProgress.total_files : '')) : ''"></span>
+              </div>
+              <div class="relative h-2.5 overflow-hidden rounded-full"
+                   :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+                <template x-if="transferProgress && transferProgress.percent !== null">
+                  <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+                       :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+                       :style="'width:' + transferProgress.percent + '%'"></div>
+                </template>
+                <template x-if="transferProgress && transferProgress.percent === null && !transferProgress.finished">
+                  <div class="vault-progress-bar" :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></div>
+                </template>
+              </div>
+              <a x-show="transferDetailUrl" :href="transferDetailUrl"
+                 class="inline-block text-xs font-semibold underline hover:opacity-80">
+                {% trans "Follow it on the transfer page (skips and retry live there)" %}</a>
+            </div>
+
             <!-- Success -->
             <div x-show="successMsg"
                  class="rounded-xl border border-success-light/40 bg-success-light/5 px-4 py-3 text-sm text-success-light flex items-center gap-2">
               <i class="fa-solid fa-check shrink-0"></i>
               <span x-text="successMsg"></span>
-              <span class="opacity-60 ml-1 text-xs">{% trans "Redirecting…" %}</span>
+              <span x-show="!transferProgress" class="opacity-60 ml-1 text-xs">{% trans "Redirecting…" %}</span>
             </div>
 
             <!-- Actions -->
@@ -853,6 +965,10 @@ function bucketCopyMenu() {
     isSubmitting: false,
     errorMsg: '',
     successMsg: '',
+    // Async phase — a copy with a non-local end comes back {async: true}
+    // and the modal switches from form to progress, polling the run.
+    transferProgress: null,
+    transferDetailUrl: '',
 
     get filtered() {
       const s = this.search.toLowerCase().trim();
@@ -906,7 +1022,12 @@ function bucketCopyMenu() {
       try {
         const resp = await fetch(copyUrl, { method: 'POST', body });
         const data = await resp.json();
-        if (data.ok) {
+        if (data.ok && data.async) {
+          // Non-local end: the copy became a TransferRun. Switch the modal
+          // to its progress phase and follow the run.
+          this.transferDetailUrl = '{% url "vault:transfer_panel" %}' + data.run_id + '/';
+          this.pollTransfer(data.status_url, 0);
+        } else if (data.ok) {
           this.successMsg = `Copied ${data.count} file${data.count !== 1 ? 's' : ''} to "${data.dest_name}".`;
           setTimeout(() => { window.location.href = data.dest_url; }, 1500);
         } else {
@@ -917,6 +1038,30 @@ function bucketCopyMenu() {
         this.errorMsg = 'Network error. Please try again.';
         this.isSubmitting = false;
       }
+    },
+    // The antivirus pollRun cadence, bounded: fast first taps, then a
+    // steady beat. On finish the modal states the outcome and leaves the
+    // detail page link for the skips.
+    pollTransfer(statusUrl, i) {
+      if (i >= 240) { this.isSubmitting = false; return; }
+      setTimeout(async () => {
+        try {
+          const resp = await fetch(statusUrl);
+          if (resp.ok) this.transferProgress = await resp.json();
+        } catch (_) { /* transient — the next tick retries */ }
+        const p = this.transferProgress;
+        if (p && p.finished) {
+          this.isSubmitting = false;
+          if (p.ok) {
+            this.successMsg = `Transferred ${p.files_done} file${p.files_done !== 1 ? 's' : ''}`
+              + (p.files_skipped ? `, ${p.files_skipped} skipped` : '') + '.';
+          } else {
+            this.errorMsg = p.error || 'The transfer failed.';
+          }
+          return;
+        }
+        this.pollTransfer(statusUrl, i + 1);
+      }, i < 5 ? 400 : 1200);
     },
   };
 }

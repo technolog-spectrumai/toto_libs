@@ -858,7 +858,7 @@
             <option value="">{% trans "All buckets" %}</option>
             {% for bucket in buckets %}
               <option value="{{ bucket.slug }}" {% if bucket.slug == selected_bucket %}selected{% endif %}>
-                {{ bucket.name }}
+                {{ bucket.name }}{% if bucket.is_remote %} — {% trans "Remote" %} · {{ bucket.remote_label }}{% endif %}
               </option>
             {% endfor %}
           </select>
@@ -885,8 +885,8 @@
           </div>
         {% endif %}
 
-        <!-- Metrics link -->
-        {% if selected_bucket %}
+        <!-- Metrics link — only where it will open (owner-or-superuser 404) -->
+        {% if selected_bucket and may_see_metrics %}
           <a href="{% url 'vault:bucket_metrics' selected_bucket %}"
              :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-80">

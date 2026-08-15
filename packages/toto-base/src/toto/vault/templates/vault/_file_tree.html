@@ -25,6 +25,7 @@ Search + collapse handled client-side (mirrors the vault app's glob/substring se
         class="flex w-full items-center gap-1.5 rounded px-1 py-1 text-xs font-semibold uppercase tracking-wide opacity-60 hover:opacity-100">
         <i class="fa-solid w-3 text-[10px]" :class="open ? 'fa-chevron-down' : 'fa-chevron-right'"></i>
         <i class="fa-solid fa-database opacity-50"></i>{{ bnode.bucket.name|default:"(no bucket)" }}
+        {% if bnode.bucket %}{% include "vault/partials/_bucket_badge.html" with bucket=bnode.bucket %}{% endif %}
       </button>
       <div x-show="open" class="ml-2 border-l pl-3" x-bind:class="darkMode ? 'border-accent-1/30' : 'border-accent-2/30'">
         {% for group in bnode.groups %}

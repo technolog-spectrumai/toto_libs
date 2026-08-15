@@ -211,7 +211,7 @@ def _advance(run, idx: int, *, done: bool, n_bytes: int = 0) -> None:
 
 def _skip(run, idx: int, key: str, reason: str) -> None:
     with transaction.atomic():
-        run.add_skip(key, reason)
+        run.add_skip(key, reason, pk=(run.file_ids or [None] * (idx + 1))[idx])
         run.files_skipped += 1
         run.cursor = idx + 1
         run.save()

@@ -195,6 +195,29 @@ class Bucket(models.Model):
         """
         return self.storage_backend in ("", StorageBackend.LOCAL)
 
+    @property
+    def is_remote(self) -> bool:
+        """The badge question: are this bucket's bytes elsewhere?"""
+        return not self.is_local
+
+    @property
+    def remote_label(self) -> str:
+        """What the badge says after "Remote · ". NEVER a host name or URL —
+        bucket badges render in listings any member can see, and where the
+        bytes live is operator information (the peer admin has it). Peer
+        label / provider display name / generic fallbacks only; templates
+        never parse storage_config.
+        """
+        if not self.is_remote:
+            return ""
+        if self.storage_backend == StorageBackend.REMOTE_TOTO:
+            if self.peer_id and self.peer.label:
+                return self.peer.label
+            return "Remote server"
+        if self.provider_id and self.provider.display_name:
+            return self.provider.display_name
+        return "S3"
+
     def get_connection_url(self) -> str:
         from toto.vault.connection import BucketConnectionSpec
         return BucketConnectionSpec.from_bucket(self).to_url()

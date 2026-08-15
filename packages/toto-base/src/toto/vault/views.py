@@ -27,7 +27,8 @@ from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
 from . import access, scanning
 from . import storage_backends as _storage_backends
-from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
+from .models import (VaultFile, Bucket, FileGateway, VaultDirectory,
+                     BucketCopyLog, StorageBackend)
 from .storage_backends import get_bucket_storage
 
 
@@ -260,6 +261,13 @@ class PublicFileListView(TemplateView):
         context["selected_bucket"] = bucket_slug
         context["total_files"] = sum(1 for i in flat_items if i["t"] == "file")
         context["total_dirs"] = sum(1 for i in flat_items if i["t"] == "dir")
+        # The metrics page is owner-or-superuser 404 now; render its link
+        # only where it will open.
+        context["may_see_metrics"] = bool(
+            bucket_slug and self.request.user.is_authenticated and (
+                self.request.user.is_superuser
+                or Bucket.objects.filter(
+                    slug=bucket_slug, owner=self.request.user).exists()))
 
         # The wand. LISTING is the vault's own endpoint, so it works on every
         # host; RUNNING is fileservices' — its run substrate is ffmpeg-shaped and
@@ -755,7 +763,17 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
-        bucket = get_object_or_404(Bucket, slug=self.kwargs["bucket_slug"])
+        bucket = get_object_or_404(
+            Bucket.objects.select_related("peer", "provider"),
+            slug=self.kwargs["bucket_slug"])
+        # Owner-or-superuser, 404 otherwise. This page lists every member's
+        # usage, per-directory locks and gateway doors — any authenticated
+        # account could read any bucket's whole shape by guessing a slug,
+        # and slugs are not secrets. 404, not 403: a refusal that confirms
+        # the bucket exists is an enumeration oracle.
+        if not (bucket.owner_id == self.request.user.pk
+                or self.request.user.is_superuser):
+            raise Http404("No such bucket.")
         copy_files_qs = VaultFile.objects.filter(
             owner=self.request.user, bucket=bucket
         ).order_by("title")
@@ -791,8 +809,14 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
             "encrypted_files": encrypted_files,
             "root_files": root_files,
             "recent_count": recent_count,
-            "antivirus_report": scanning.health_report(
-                VaultFile.objects.filter(bucket=bucket)),
+            # None for a mounted bucket, same as a host with no antivirus:
+            # this host never scanned the peer's bytes, and a card of zeroes
+            # would claim it had.
+            "antivirus_report": (
+                None if bucket.storage_backend == StorageBackend.REMOTE_TOTO
+                else scanning.health_report(
+                    VaultFile.objects.filter(bucket=bucket))),
+            "remote_info": self._remote_info(bucket),
         })
 
         context["files_by_type"] = list(
@@ -899,6 +923,32 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
         context["service_stats"] = self._service_stats(bucket)
 
         return PageProcessor().decorate(context, self.request)
+
+    @staticmethod
+    def _remote_info(bucket):
+        """The Remote card's payload, from stamps only — never a probe.
+
+        This page is owner-or-superuser now, so naming the peer host here is
+        operator information reaching an operator. ``reachability`` is
+        tri-state on purpose: "never checked" is a true answer, and a green
+        badge nobody earned would be a lie (the antivirus tooltip doctrine).
+        """
+        if bucket.storage_backend != StorageBackend.REMOTE_TOTO:
+            return None
+        peer = bucket.peer if bucket.peer_id else None
+        if peer is None:
+            return {"peer": None}
+        if peer.last_error:
+            reachability = "down"
+        elif peer.last_ok_at:
+            reachability = "ok"
+        else:
+            reachability = "unknown"
+        return {
+            "peer": peer,
+            "reachability": reachability,
+            "last_refreshed_at": bucket.last_refreshed_at,
+        }
 
     def _service_stats(self, bucket):
         """Per-service run counts + success/failure for this bucket's files."""
@@ -1157,6 +1207,9 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                 "t": "bucket_root", "id": f"b{bucket.pk}", "bpk": bucket.pk,
                 "pid": None, "depth": 0, "name": bucket.name,
                 "n_dirs": len(dirs_by_bucket.get(bucket.pk, [])),
+                # The badge text, computed here because this tree is flat
+                # dicts — templates never parse storage_config.
+                "remote_label": bucket.remote_label,
             })
             visit_dest(None, 1, bucket.pk)
         return flat
@@ -1209,8 +1262,7 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
                 messages.success(
                     request,
                     "Transfer queued — it continues in the background.")
-                return redirect("vault:bucket_metrics",
-                                bucket_slug=source_bucket.slug)
+                return redirect("vault:transfer_detail", pk=data["run_id"])
             form.add_error(None, data.get("error",
                                           "Could not queue the transfer."))
             return render(request, self.template_name,
@@ -1673,6 +1725,121 @@ class TransferStatusView(LoginRequiredMixin, View):
         if not (run.owner_id == request.user.pk or request.user.is_superuser):
             raise Http404("No such run.")
         return JsonResponse(transfer_payload(run))
+
+
+def _transfer_or_404(request, pk):
+    from .transfer import TransferRun
+
+    run = get_object_or_404(
+        TransferRun.objects.select_related("source_bucket", "dest_bucket"),
+        pk=pk)
+    if not (run.owner_id == request.user.pk or request.user.is_superuser):
+        raise Http404("No such run.")
+    return run
+
+
+class TransferPanelView(LoginRequiredMixin, TemplateView):
+    """Your transfer runs, newest first. Owner's runs only — a transfer names
+    two buckets and the file count between them, which is the owner's
+    information exactly like the metrics page it links from."""
+
+    template_name = "vault/transfers.html"
+
+    def get_context_data(self, **kwargs):
+        from .transfer import TransferRun
+
+        context = super().get_context_data(**kwargs)
+        context["runs"] = list(
+            TransferRun.objects.filter(owner=self.request.user)
+            .select_related("source_bucket", "dest_bucket")[:50])
+        return PageProcessor().decorate(context, self.request)
+
+
+class TransferDetailView(LoginRequiredMixin, TemplateView):
+    """One run: the bar, the skips, and the retry door."""
+
+    template_name = "vault/transfer_detail.html"
+
+    def get_context_data(self, **kwargs):
+        from .transfer import run_payload as transfer_payload
+
+        context = super().get_context_data(**kwargs)
+        run = _transfer_or_404(self.request, self.kwargs["pk"])
+        sibling_running = run.__class__.objects.filter(
+            owner=run.owner_id, source_bucket=run.source_bucket,
+            dest_bucket=run.dest_bucket,
+            status__in=("pending", "running")).exclude(pk=run.pk).exists()
+        context.update({
+            "run": run,
+            "payload": transfer_payload(run),
+            "can_retry": (run.status == "failed" or (
+                run.status == "success" and run.files_skipped > 0))
+                and bool(run.retry_file_ids())
+                and not sibling_running,
+            "sibling_running": sibling_running,
+        })
+        return PageProcessor().decorate(context, self.request)
+
+
+class TransferRetryView(LoginRequiredMixin, View):
+    """POST — a NEW run seeded with the remainder plus the skipped files.
+
+    A new row, never a reopened one: the old run's counters are a record of
+    money and bytes that actually moved, and mutating them to run again
+    would rewrite that record. Refused while a sibling run between the same
+    buckets is still going — two concurrent walks would race the same keys.
+    """
+
+    def post(self, request, pk):
+        run = _transfer_or_404(request, pk)
+        from . import transfer_dispatch
+
+        if not run.is_finished:
+            return JsonResponse(
+                {"ok": False, "error": "This run is still going."}, status=400)
+        if run.source_bucket is None or run.dest_bucket is None:
+            return JsonResponse(
+                {"ok": False,
+                 "error": "A bucket this run used no longer exists."},
+                status=400)
+        retry_ids = run.retry_file_ids()
+        if not retry_ids:
+            return JsonResponse(
+                {"ok": False, "error": "Nothing left to retry."}, status=400)
+        sibling = run.__class__.objects.filter(
+            owner=run.owner_id, source_bucket=run.source_bucket,
+            dest_bucket=run.dest_bucket,
+            status__in=("pending", "running")).exists()
+        if sibling:
+            return JsonResponse(
+                {"ok": False,
+                 "error": "A transfer between these buckets is already "
+                          "running — wait for it to finish."}, status=409)
+
+        files = list(VaultFile.objects.filter(
+            pk__in=retry_ids, bucket=run.source_bucket))
+        if not files:
+            return JsonResponse(
+                {"ok": False,
+                 "error": "The files to retry no longer exist at the "
+                          "source."}, status=400)
+        new_run = transfer_dispatch.create_transfer_run(
+            user=request.user, source_bucket=run.source_bucket,
+            dest_bucket=run.dest_bucket, dest_directory=run.dest_directory,
+            files=files, copy_policy=run.copy_policy)
+        try:
+            transfer_dispatch.dispatch_transfer_run(new_run)
+        except transfer_dispatch.CannotQueue as exc:
+            transfer_dispatch.fail_transfer_run(new_run, str(exc))
+            return JsonResponse(
+                {"ok": False, "error": str(exc), "run_id": new_run.pk},
+                status=503)
+        return JsonResponse({
+            "ok": True,
+            "run_id": new_run.pk,
+            "detail_url": reverse("vault:transfer_detail",
+                                  args=[new_run.pk]),
+        })
 
 
 @method_decorator(csrf_exempt, "dispatch")

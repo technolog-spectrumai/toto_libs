@@ -119,9 +119,22 @@ class TransferRun(models.Model):
         done = self.files_done + self.files_skipped
         return min(100, int(100 * done / self.total_files))
 
-    def add_skip(self, key: str, reason: str) -> None:
+    def add_skip(self, key: str, reason: str, pk: int | None = None) -> None:
+        """A skip names the file for a human (key) AND for the retry (pk) —
+        a retry run is seeded from the remainder plus these pks."""
         if len(self.skips) < MAX_SKIPS:
-            self.skips.append({"key": key, "reason": reason})
+            entry = {"key": key, "reason": reason}
+            if pk is not None:
+                entry["pk"] = pk
+            self.skips.append(entry)
+
+    def retry_file_ids(self) -> list:
+        """What a retry run should attempt: everything the cursor never
+        reached, plus everything that was skipped (capped by MAX_SKIPS —
+        uncaptured skips are simply not retried, and the panel says so)."""
+        remainder = list(self.file_ids or [])[self.cursor:]
+        skipped = [s["pk"] for s in self.skips if s.get("pk") is not None]
+        return skipped + [pk for pk in remainder if pk not in set(skipped)]
 
 
 def run_payload(run: TransferRun) -> dict:

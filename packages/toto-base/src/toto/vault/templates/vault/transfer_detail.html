@@ -1,0 +1,170 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Transfer" %} #{{ run.pk }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+<style>
+[x-cloak] { display: none !important; }
+@keyframes vault-indeterminate {
+  0%   { left: -40%; }
+  100% { left: 100%; }
+}
+.vault-progress-bar {
+  animation: vault-indeterminate 1.2s ease-in-out infinite;
+  position: absolute;
+  top: 0; bottom: 0;
+  left: -40%;
+  width: 40%;
+  border-radius: 9999px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{{ payload|json_script:"transfer-initial" }}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-3xl space-y-6" x-data="transferDetail()" x-init="init()">
+
+    <header class="space-y-1">
+      <a href="{% url 'vault:transfer_panel' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+        <i class="fa-solid fa-arrow-left"></i>{% trans "Transfers" %}
+      </a>
+      <h1 class="flex items-center gap-3 text-2xl font-bold">
+        <i class="fa-solid fa-truck-arrow-right"></i>
+        {{ run.source_bucket.name|default:"?" }}
+        <i class="fa-solid fa-arrow-right text-base opacity-50"></i>
+        {{ run.dest_bucket.name|default:"?" }}
+      </h1>
+      <p class="text-xs opacity-55">
+        {% blocktrans with when=run.created_at|date:"Y-m-d H:i" %}Started {{ when }}{% endblocktrans %}
+        · {{ run.get_copy_policy_display }}
+      </p>
+    </header>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="space-y-4 rounded-xl border p-5 shadow-sm">
+
+      <div class="flex items-center justify-between">
+        <span class="rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-wide"
+              :class="{
+                'text-success-light border-success-light/40': p.status === 'success',
+                'text-warn-light border-warn-light/40': p.status === 'failed',
+                'opacity-60': p.status === 'pending' || p.status === 'running',
+              }"
+              x-text="p.status"></span>
+        <span class="text-sm tabular-nums" x-text="progressText()"></span>
+      </div>
+
+      {% comment %}Determinate when the payload carries a percent (the frozen
+         denominator exists), the house indeterminate keyframe otherwise —
+         a bar with no denominator must not invent one.{% endcomment %}
+      <div class="relative h-3 overflow-hidden rounded-full"
+           :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
+        <template x-if="p.percent !== null">
+          <div class="absolute inset-y-0 left-0 rounded-full transition-all duration-500"
+               :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"
+               :style="'width:' + p.percent + '%'"></div>
+        </template>
+        <template x-if="p.percent === null && !p.finished">
+          <div class="vault-progress-bar" :class="darkMode ? 'bg-accent-dark' : 'bg-accent-light'"></div>
+        </template>
+      </div>
+
+      <p x-cloak x-show="p.error" class="rounded-lg border border-dashed px-3 py-2 text-xs"
+         :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        <span class="font-semibold">{% trans "Why it stopped" %}:</span>
+        <span class="font-mono break-all" x-text="p.error"></span>
+      </p>
+
+      <div x-cloak x-show="p.skips && p.skips.length" class="space-y-1">
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Skipped" %}</p>
+        <ul class="space-y-1 text-xs">
+          <template x-for="s in p.skips.slice(0, shownSkips)" :key="s.key + s.reason">
+            <li class="flex gap-2">
+              <span class="font-mono shrink-0" x-text="s.key"></span>
+              <span class="opacity-70" x-text="s.reason"></span>
+            </li>
+          </template>
+        </ul>
+        <button type="button" x-show="p.skips.length > shownSkips"
+                @click="shownSkips = p.skips.length"
+                class="text-xs font-semibold underline hover:opacity-80"
+                x-text="'+' + (p.skips.length - shownSkips) + ' {% trans "more" %}'"></button>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-3 pt-1">
+        {% if can_retry %}
+        <button type="button" @click="retry()" :disabled="retryBusy"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold transition hover:opacity-90 disabled:opacity-40">
+          <i class="fa-solid fa-rotate-right" :class="retryBusy && 'fa-spin'"></i>
+          {% trans "Retry the rest" %}
+        </button>
+        {% elif sibling_running %}
+        <p class="text-xs opacity-55">{% trans "A transfer between these buckets is already running — retry unlocks when it finishes." %}</p>
+        {% endif %}
+        <p x-cloak x-show="retryMsg" x-text="retryMsg" class="text-xs font-semibold"></p>
+        {% if run.dest_bucket %}
+        <a href="{% url 'vault:bucket_metrics' run.dest_bucket.slug %}"
+           class="text-sm underline hover:opacity-80">{% trans "Open the destination bucket" %}</a>
+        {% endif %}
+      </div>
+    </section>
+
+  </div>
+</div>
+
+<script>
+function transferDetail() {
+  const statusUrl = "{% url 'vault:transfer_status' run.pk %}";
+  const retryUrl = "{% url 'vault:transfer_retry' run.pk %}";
+  return {
+    p: JSON.parse(document.getElementById('transfer-initial').textContent),
+    shownSkips: 5,
+    retryBusy: false,
+    retryMsg: '',
+    init() {
+      if (!this.p.finished) this.poll(0);
+    },
+    // The antivirus pollRun cadence: fast first taps, then a steady beat,
+    // bounded so a dead worker cannot poll forever.
+    poll(i) {
+      if (i >= 240) return;
+      setTimeout(async () => {
+        try {
+          const resp = await fetch(statusUrl);
+          if (resp.ok) this.p = await resp.json();
+        } catch (_) { /* transient — the next tick retries */ }
+        if (!this.p.finished) this.poll(i + 1);
+      }, i < 5 ? 400 : 1200);
+    },
+    progressText() {
+      const total = this.p.total_files;
+      const done = this.p.files_done + this.p.files_skipped;
+      return total ? `${done} / ${total}` : `${done}`;
+    },
+    async retry() {
+      this.retryBusy = true;
+      this.retryMsg = '';
+      const csrf = (document.cookie.match(/csrftoken=([^;]+)/) || [])[1] || '';
+      try {
+        const resp = await fetch(retryUrl, {
+          method: 'POST', headers: {'X-CSRFToken': csrf}});
+        const data = await resp.json();
+        if (data.ok) {
+          window.location.href = data.detail_url;
+          return;
+        }
+        this.retryMsg = data.error || '{% trans "Could not queue the retry." %}';
+      } catch (_) {
+        this.retryMsg = '{% trans "Network error — try again." %}';
+      }
+      this.retryBusy = false;
+    },
+  };
+}
+</script>
+{% endblock %}
