@@ -57,6 +57,7 @@ class Features:
     repo: bool
     gitea: bool
     primula: bool
+    mail: bool
     subscriptions: bool
     monit: bool
     jess: bool          # toto.jess — the mail transport and outbox
@@ -229,6 +230,7 @@ def resolve_features(get) -> Features:
     # config, and deploy.py refuses that pair on a consumer host.
     gitea = flag(get, "BUILD_GITEA")
     primula = flag(get, "BUILD_PRIMULA")                      # toto.primula — Univer spreadsheets (vault-backed)
+    mail = flag(get, "BUILD_MAIL")
     subscriptions = flag(get, "BUILD_SUBSCRIPTIONS")          # toto.subscriptions — plans, entitlements and the monthly charge
     # Lightweight read-only monitoring dashboard (grafana alternative). No
     # closure: the live panel works everywhere; snapshot HISTORY needs the
@@ -238,6 +240,14 @@ def resolve_features(get) -> Features:
     # it makes EMAIL_BACKEND meaningless unless the host also points that at Jess,
     # and its sends need a worker.
     jess = flag(get, "BUILD_JESS")
+
+    # Mail is a mailbox app over jess's transport: it sends through jess so
+    # there is ONE delivery log, and its system mailbox is sealed in jess's
+    # strongbox. Asking for Mail without jess would be asking for a product
+    # with no way to send, so the closure turns jess on rather than letting
+    # the combination fail at import time.
+    if mail:
+        jess = True
 
     # GIS toggle. On by default (every legacy host has PostGIS). Set BUILD_GEO=0
     # for a light host: locations stays installed but geometry-less, no GDAL.
@@ -386,6 +396,7 @@ def resolve_features(get) -> Features:
         repo=repo,
         gitea=gitea,
         primula=primula,
+        mail=mail,
         subscriptions=subscriptions,
         geo=geo,
         kanban=kanban,

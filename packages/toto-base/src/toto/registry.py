@@ -90,6 +90,7 @@ FEATURE_APPS = {
     # every send: a host with no celery worker would have an email service whose
     # messages can never leave. Such a host keeps reading EMAIL_* from its environment.
     "jess": ["toto.jess"],
+    "mail": ["toto.mail"],
     # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
     # large JS bundle that only the hosts offering sheets need baked into their image.
     "primula": ["toto.primula"],
