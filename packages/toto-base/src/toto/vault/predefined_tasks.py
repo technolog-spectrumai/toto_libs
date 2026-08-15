@@ -1,5 +1,6 @@
 """
-Workflow predefined task for archiving vault files.
+Workflow predefined tasks for vault jobs: archiving, encryption's node marker,
+and the remote-bucket mirror refresh.
 
 Only imported by toto.workflows' autodiscover (workflows/apps.py) for installed
 apps, so the ``toto.workflows`` import below is safe — when workflows is absent
@@ -49,3 +50,22 @@ def vault_encrypt_file(input_data: dict) -> dict:
         "vault_encrypt_file must be run via the vault encrypt action "
         "(encrypt_workflow_run), which supplies the password out-of-band."
     )
+
+
+@register("vault_refresh_remote_bucket")
+def vault_refresh_remote_bucket(input_data: dict) -> dict:
+    """Walk a paired host's bucket listing and bring the metadata stubs up to
+    date. Expects input_data = {"data": {"run_id": <BucketRefreshRun pk>}}."""
+    from .mirror import RefreshStatus, execute_refresh_run
+
+    run_id = (input_data.get("data") or {}).get("run_id")
+    if run_id is None:
+        raise ValueError(
+            "vault_refresh_remote_bucket requires run_id in its input data.")
+
+    run = execute_refresh_run(run_id)
+    if run.status == RefreshStatus.FAILED:
+        # Raise so the WorkflowRun shows FAILED too; the sentence is already
+        # on the row.
+        raise RuntimeError(run.error or "The refresh failed.")
+    return {"data": {"run_id": run_id, "status": run.status}}

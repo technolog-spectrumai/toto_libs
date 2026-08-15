@@ -1369,6 +1369,8 @@ class MoveFileView(LoginRequiredMixin, View):
         if not file_pk:
             return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if access.is_mirror_row(vault_file):
+            return access.mirror_lock_response(vault_file)
         if dest_dir_pk:
             dest_dir = get_object_or_404(VaultDirectory, pk=dest_dir_pk, bucket=vault_file.bucket)
             vault_file.directory = dest_dir
@@ -1390,6 +1392,8 @@ class RenameFileView(LoginRequiredMixin, View):
         if file_type and file_type not in self._VALID_TYPES:
             return JsonResponse({"ok": False, "error": "Invalid file type."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if access.is_mirror_row(vault_file):
+            return access.mirror_lock_response(vault_file)
         vault_file.title = new_title
         update_fields = ["title"]
         if file_type and file_type != vault_file.file_type:
@@ -1405,6 +1409,10 @@ class DeleteFileView(LoginRequiredMixin, View):
         if not file_pk:
             return JsonResponse({"ok": False, "error": "Missing file_pk."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if access.is_mirror_row(vault_file):
+            # Deleting the stub would neither delete the remote file nor
+            # stick — the next refresh resurrects it.
+            return access.mirror_lock_response(vault_file)
         vault_file.file.delete(save=False)
         vault_file.delete()
         return JsonResponse({"ok": True})
@@ -1512,70 +1520,66 @@ class BucketConnectionUrlView(LoginRequiredMixin, View):
         })
 
 
-class RemoteBucketImportView(LoginRequiredMixin, View):
-    """
-    POST /vault/buckets/import-remote/
-    Body: {"url": "toto://other-server.example.com/vault/buckets/my-slug/",
-           "name": "Optional display name"}
+class RefreshRemoteBucketView(LoginRequiredMixin, View):
+    """POST /vault/buckets/<slug>/refresh/ — queue one mirror refresh.
 
-    Creates (or updates) a local Bucket that proxies to the remote toto
-    server via RemoteTotoStorageDriver.  Only toto:// URLs are accepted —
-    S3 buckets are configured directly via the admin.
+    Owner-or-superuser, 404 otherwise (a 403 would confirm the bucket
+    exists). The run row is created BEFORE dispatch so the browser has
+    something to poll even when queueing fails; a build with no worker gets a
+    503 naming the flag, never an inline walk of another host's listing.
 
-    **No scan here, and not by oversight.** This registers a connection; it
-    copies nothing. The remote bytes arrive later, one file at a time, through
-    the storage driver on read — so there is nothing at this moment to screen.
-    Screening third-party bytes from a proxied bucket belongs on the read path,
-    which is a wider change than a door check and is not in this pass.
+    (This door replaced ``RemoteBucketImportView`` — remote mounts are
+    created by pairing a BucketPeer in the admin, never from a pasted URL.)
     """
 
-    def post(self, request):
+    def post(self, request, bucket_slug):
         from .models import external_buckets_allowed
         if not external_buckets_allowed():
-            return JsonResponse({"error": "External buckets are disabled on this host."}, status=403)
-
-        try:
-            data = json.loads(request.body)
-        except (json.JSONDecodeError, TypeError):
-            return JsonResponse({"error": "Invalid JSON body."}, status=400)
-
-        raw_url = (data.get("url") or "").strip()
-        name = (data.get("name") or "").strip()
-
-        if not raw_url:
-            return JsonResponse({"error": "'url' is required."}, status=400)
-
-        from .connection import BucketConnectionSpec
-        try:
-            spec = BucketConnectionSpec.from_url(raw_url)
-        except ValueError as exc:
-            return JsonResponse({"error": str(exc)}, status=400)
-
-        if spec.backend != "remote_toto":
             return JsonResponse(
-                {"error": "Only toto:// URLs are accepted. Configure S3 buckets via the admin."},
-                status=400,
-            )
+                {"error": "External buckets are disabled on this host."},
+                status=403)
+        bucket = get_object_or_404(
+            Bucket.objects.select_related("peer"), slug=bucket_slug)
+        if not (bucket.owner_id == request.user.pk or request.user.is_superuser):
+            raise Http404("No such bucket.")
+        if bucket.storage_backend != "remote_toto":
+            return JsonResponse(
+                {"error": "Only a mounted remote bucket can be refreshed."},
+                status=400)
 
-        if not name:
-            name = f"Remote: {spec.bucket_name}"
+        from . import transfer_dispatch
 
-        slug = slugify(name)
-        bucket, created = Bucket.objects.get_or_create(
-            slug=slug,
-            defaults={
-                "name": name,
-                "owner": request.user,
-                "storage_backend": "remote_toto",
-                "storage_config": spec.to_storage_config(),
-            },
-        )
-        if not created:
-            bucket.storage_backend = "remote_toto"
-            bucket.storage_config = spec.to_storage_config()
-            bucket.save(update_fields=["storage_backend", "storage_config"])
+        run = transfer_dispatch.create_refresh_run(
+            user=request.user, bucket=bucket)
+        try:
+            transfer_dispatch.dispatch_refresh_run(run)
+        except transfer_dispatch.CannotQueue as exc:
+            transfer_dispatch.fail_refresh_run(run, str(exc))
+            return JsonResponse({"ok": False, "error": str(exc)}, status=503)
+        return JsonResponse({
+            "ok": True,
+            "run_id": run.pk,
+            "status": run.status,
+            "status_url": reverse("vault:bucket_refresh_status",
+                                  args=[run.pk]),
+        })
 
-        return JsonResponse({"slug": bucket.slug, "created": created}, status=201 if created else 200)
+
+class BucketRefreshStatusView(LoginRequiredMixin, View):
+    """Poll one refresh run. Owner-or-superuser of the BUCKET, 404 otherwise
+    — the same guard as the dispatch door, so polling leaks nothing the
+    button did not."""
+
+    def get(self, request, pk):
+        from .mirror import BucketRefreshRun, run_payload
+
+        run = get_object_or_404(
+            BucketRefreshRun.objects.select_related("bucket"), pk=pk)
+        bucket = run.bucket
+        if not (bucket and (bucket.owner_id == request.user.pk
+                            or request.user.is_superuser)):
+            raise Http404("No such run.")
+        return JsonResponse(run_payload(run))
 
 
 @method_decorator(csrf_exempt, "dispatch")

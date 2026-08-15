@@ -140,6 +140,10 @@ class Bucket(models.Model):
             "When set, get_public_file_url() returns a direct link per file."
         ),
     )
+    #: When a remote_toto bucket's mirror last completed. Listings render from
+    #: local stub rows, so this stamp is the honest answer to "as of when?" —
+    #: a page never probes the peer to find out.
+    last_refreshed_at = models.DateTimeField(null=True, blank=True)
     #: The AI shield. A protected bucket's files are never offered to the
     #: assistant and never readable by it: the editors drop their AI buttons,
     #: the file wand disappears from the service menu, and the file-ask page
@@ -168,6 +172,17 @@ class Bucket(models.Model):
         # persist a non-local bucket on a local-only host must fail loudly.
         if self.storage_backend != StorageBackend.LOCAL and not external_buckets_allowed():
             raise ValidationError("External buckets are disabled on this host.")
+        # A mounted bucket without a live pairing is a mount to nowhere; the
+        # peer row is the only transport identity there is (no URL, no secret
+        # ever lives in storage_config).
+        if self.storage_backend == StorageBackend.REMOTE_TOTO:
+            if not self.peer_id:
+                raise ValidationError(
+                    "A remote Toto bucket needs a bucket peer — pair one in "
+                    "the admin and select it here.")
+            if not self.peer.is_active:
+                raise ValidationError(
+                    f"Bucket peer '{self.peer.label}' is deactivated.")
 
     @property
     def is_local(self) -> bool:
@@ -190,6 +205,15 @@ class Bucket(models.Model):
             return ""
         base = self.public_base_url.rstrip("/")
         return f"{base}/{file_key}"
+
+
+class FileOrigin(models.TextChoices):
+    #: Uploaded or created here; this host holds (or S3-holds) the bytes.
+    NATIVE = "native", "Native"
+    #: A metadata stub maintained by the mirror refresh; the bytes live on the
+    #: peer. Metadata edits are refused ("change it on the origin host") and
+    #: deleting the row never deletes anything remote.
+    MIRROR = "mirror", "Mirrored"
 
 
 class VaultFile(models.Model):
@@ -303,6 +327,12 @@ class VaultFile(models.Model):
     file_size_bytes = models.PositiveBigIntegerField(
         default=0,
         help_text="File size in bytes, captured at upload time.",
+    )
+    origin = models.CharField(
+        max_length=8, choices=FileOrigin.choices,
+        default=FileOrigin.NATIVE, db_index=True,
+        help_text="Mirrored rows are the peer's listing, not this host's "
+                  "bytes; their metadata is changed on the origin host.",
     )
     bucket = models.ForeignKey(Bucket, on_delete=models.SET_NULL, null=True, blank=True, related_name='files')
     directory = models.ForeignKey(
@@ -712,11 +742,15 @@ class VaultQuotaPolicy(AbstractQuotaPolicy):
         verbose_name_plural = "Vault quota policies"
 
 
-# Imported last so the peering models are part of this app's migration state.
-# See peering.py's module docstring for the doctrines they carry.
+# Imported last so the peering and mirror models are part of this app's
+# migration state. See each module's docstring for the doctrines they carry.
 from .peering import (  # noqa: E402,F401
     BUCKET_RIGHTS,
     BucketGrant,
     BucketPeer,
     has_bucket_right,
+)
+from .mirror import (  # noqa: E402,F401
+    BucketRefreshRun,
+    RefreshStatus,
 )

@@ -27,7 +27,7 @@ class StorageLevy(LevyProvider):
 
         from .models import VaultFile
 
-        rows = (VaultFile.objects
+        rows = (self._billable(VaultFile.objects)
                 .values("owner_id")
                 .annotate(total=Sum("file_size_bytes")))
         for row in rows:
@@ -38,8 +38,20 @@ class StorageLevy(LevyProvider):
 
         from .models import VaultFile
 
-        agg = VaultFile.objects.filter(owner=user).aggregate(total=Sum("file_size_bytes"))
+        agg = (self._billable(VaultFile.objects.filter(owner=user))
+               .aggregate(total=Sum("file_size_bytes")))
         return int(agg["total"] or 0)
+
+    @staticmethod
+    def _billable(qs):
+        # Rows in a mounted remote bucket are mirror stubs: the bytes are held
+        # (and billed) on the exporting host, so charging them here would bill
+        # the same gigabyte twice. S3 rows keep billing — this host pays the
+        # provider for them. One filter used by sample() AND measure(), so the
+        # sweep and the "what would I pay" preview cannot disagree.
+        from .models import StorageBackend
+
+        return qs.exclude(bucket__storage_backend=StorageBackend.REMOTE_TOTO)
 
 
 # What falling behind means here. It used to mean permanent deletion of

@@ -130,3 +130,27 @@ def remote_lock_response(request, vault_file):
         f"{f' ({label})' if label else ''} — its bytes are not on this host, "
         "so it cannot be edited here. Downloading it still works.",
         status=403, content_type="text/plain; charset=utf-8")
+
+
+def is_mirror_row(vault_file) -> bool:
+    """True for a metadata stub the mirror refresh maintains.
+
+    The metadata gate, distinct from :func:`is_local_content` on purpose: an
+    S3 file's ROW is this host's row (rename and move away), but a mirror
+    row is a copy of the PEER's listing — editing it here would be silently
+    overwritten by the next refresh, and deleting it would resurrect. Those
+    doors answer "change it on the origin host" instead.
+    """
+    return getattr(vault_file, "origin", "") == "mirror"
+
+
+def mirror_lock_response(vault_file):
+    """The refusal a metadata door returns for a mirror row."""
+    from django.http import JsonResponse
+
+    return JsonResponse(
+        {"ok": False,
+         "error": f"'{vault_file.title}' is mirrored from another host — "
+                  "change it on the origin host; the next refresh will pick "
+                  "it up here."},
+        status=403)

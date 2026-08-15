@@ -17,7 +17,7 @@ from .views import (
     CopyFilesToBucketView, BucketCopyAjaxView,
     EncryptFileView, EncryptStatusView, DecryptFileView, EncryptedDownloadView,
     MoveFileView, RenameFileView, DeleteFileView,
-    BucketConnectionUrlView, RemoteBucketImportView,
+    BucketConnectionUrlView, RefreshRemoteBucketView, BucketRefreshStatusView,
     CreateEmptyFileView,
     CreateZipView, ZipStatusView,
 )
@@ -69,7 +69,8 @@ urlpatterns = [
     path("file/rename/", RenameFileView.as_view(), name="rename_file"),
     path("file/delete/", DeleteFileView.as_view(), name="delete_file"),
     path("buckets/<slug:bucket_slug>/connection-url/", BucketConnectionUrlView.as_view(), name="bucket_connection_url"),
-    path("buckets/import-remote/", RemoteBucketImportView.as_view(), name="bucket_import_remote"),
+    path("buckets/<slug:bucket_slug>/refresh/", RefreshRemoteBucketView.as_view(), name="bucket_refresh"),
+    path("refresh-runs/<int:pk>/", BucketRefreshStatusView.as_view(), name="bucket_refresh_status"),
     path("file/create/", CreateEmptyFileView.as_view(), name="create_file"),
     path("directory/zip/", CreateZipView.as_view(), name="create_zip"),
     path("directory/zip/status/", ZipStatusView.as_view(), name="zip_status"),

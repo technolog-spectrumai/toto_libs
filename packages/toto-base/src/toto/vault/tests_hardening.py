@@ -44,23 +44,21 @@ class ExternalBucketFlagTests(TestCase):
         self.assertTrue(external_buckets_allowed())
 
     @override_settings(VAULT_EXTERNAL_BUCKETS=False)
-    def test_import_remote_is_refused(self):
+    def test_remote_refresh_is_refused(self):
+        # The refresh door replaced the old import-remote door; the flag
+        # still closes it first, before any ownership or backend check.
         resp = self._client().post(
-            reverse("vault:bucket_import_remote"),
-            '{"url": "toto://other.example/vault/buckets/x/"}',
-            content_type="application/json",
-        )
+            reverse("vault:bucket_refresh", args=["hardening-local"]))
         self.assertEqual(resp.status_code, 403)
         self.assertIn("disabled", resp.json()["error"])
 
     @override_settings(VAULT_EXTERNAL_BUCKETS=True)
-    def test_import_remote_works_when_allowed(self):
+    def test_remote_refresh_open_when_allowed(self):
+        # A LOCAL bucket past the flag gate answers 400 ("not a remote
+        # bucket"), which proves the flag itself no longer blocks.
         resp = self._client().post(
-            reverse("vault:bucket_import_remote"),
-            '{"url": "toto://other.example/vault/buckets/x/"}',
-            content_type="application/json",
-        )
-        self.assertEqual(resp.status_code, 201)
+            reverse("vault:bucket_refresh", args=["hardening-local"]))
+        self.assertEqual(resp.status_code, 400)
 
     @override_settings(VAULT_EXTERNAL_BUCKETS=False)
     def test_driver_chokepoint_refuses_non_local(self):

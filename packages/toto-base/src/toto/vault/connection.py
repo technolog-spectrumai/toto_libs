@@ -37,8 +37,11 @@ class BucketConnectionSpec:
             return f"local:///{self.bucket_name}"
 
         if self.backend == "remote_toto":
+            # toto+http for plain-http peers, so the scheme survives a
+            # round-trip instead of silently upgrading to https.
+            scheme = "toto+http" if self.server_url.startswith("http://") else "toto"
             host = self.server_url.removeprefix("https://").removeprefix("http://")
-            return f"toto://{host}/vault/buckets/{self.bucket_name}/"
+            return f"{scheme}://{host}/vault/buckets/{self.bucket_name}/"
 
         # s3 / s3+<provider>
         scheme = f"s3+{self.provider}" if self.provider else "s3"
@@ -62,8 +65,9 @@ class BucketConnectionSpec:
         if scheme == "local":
             return cls(backend="local", bucket_name=parsed.path.lstrip("/"))
 
-        if scheme == "toto":
-            server_url = f"https://{parsed.netloc}"
+        if scheme in ("toto", "toto+http"):
+            proto = "http" if scheme == "toto+http" else "https"
+            server_url = f"{proto}://{parsed.netloc}"
             # path: /vault/buckets/<slug>/
             parts = [p for p in parsed.path.split("/") if p]
             bucket_slug = parts[-1] if parts else ""
@@ -104,10 +108,16 @@ class BucketConnectionSpec:
             return cls(backend="local", bucket_name=bucket.slug)
 
         if backend == StorageBackend.REMOTE_TOTO:
+            # Transport identity lives on the peer row now; the old
+            # server_url/bucket_slug config keys survive only as a fallback
+            # for pre-peering rows.
+            peer = bucket.peer if bucket.peer_id else None
             return cls(
                 backend="remote_toto",
-                bucket_name=cfg.get("bucket_slug", bucket.slug),
-                server_url=cfg.get("server_url", ""),
+                bucket_name=(getattr(peer, "remote_bucket_slug", "")
+                             or cfg.get("bucket_slug", bucket.slug)),
+                server_url=(getattr(peer, "base_url", "")
+                            or cfg.get("server_url", "")),
             )
 
         # S3-compatible
@@ -137,7 +147,10 @@ class BucketConnectionSpec:
         if self.backend == "local":
             return {}
         if self.backend == "remote_toto":
-            return {"server_url": self.server_url, "bucket_slug": self.bucket_name}
+            # Display-only: a remote mount is created by pairing a BucketPeer
+            # in the admin, never from a pasted URL, and its storage_config
+            # stays empty (the peer FK is the transport identity).
+            return {}
         config: dict = {"bucket_name": self.bucket_name, "prefix": self.prefix}
         if self.endpoint_url:
             config["endpoint_url"] = self.endpoint_url

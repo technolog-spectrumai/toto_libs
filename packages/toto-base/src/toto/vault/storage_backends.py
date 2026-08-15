@@ -3,19 +3,18 @@ Per-bucket pluggable storage driver for the Vault app.
 
 Backends
 --------
-  local        — Django's configured default_storage (filesystem, etc.)
+  local        — this host's private vault storage (VAULT_ROOT / MEDIA_ROOT)
   s3           — boto3-backed S3-compatible store (AWS, OVH, MinIO, …)
-  remote_toto  — another toto server's Vault API (read/write via HTTP)
+  remote_toto  — a paired toto host's exported bucket, via the peer API
 
-Credentials are NEVER stored in the database.
+Credentials are NEVER stored in the database (the peer's api key is the one
+exception, and it is Fernet-sealed on the BucketPeer row — see
+toto/vault/peering.py).
 
 S3 credentials come from the standard boto3 chain:
   1. AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY env vars
   2. ~/.aws/credentials or a named profile via storage_config["aws_profile"]
   3. IAM instance role / container credentials
-
-Remote-toto token comes from the env var named in storage_config["api_token_env"]
-(default: TOTO_REMOTE_API_TOKEN).
 
 Non-secret S3 config lives in Bucket.storage_config:
   bucket_name       required — the S3 bucket name
@@ -26,10 +25,9 @@ Non-secret S3 config lives in Bucket.storage_config:
   addressing_style  optional — "path" | "virtual" | "auto", default "auto"
   aws_profile       optional — named boto3 credentials profile
 
-remote_toto config in Bucket.storage_config:
-  server_url        required — base URL of the remote toto instance
-  bucket_slug       required — slug of the bucket on the remote server
-  api_token_env     optional — env var holding the API token (default TOTO_REMOTE_API_TOKEN)
+remote_toto needs NO storage_config at all: Bucket.peer is the whole
+transport identity, so a bucket listing can never leak a host URL or a
+token name.
 """
 from __future__ import annotations
 
@@ -247,58 +245,39 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
 # ---------------------------------------------------------------------------
 
 class RemoteTotoStorageDriver(BaseVaultStorageDriver):
+    """A thin adapter over :class:`toto.vault.peer_client.PeerClient`.
+
+    The wire name IS the remote key: mirror stubs carry the peer's key in
+    ``file.name``, so every driver call passes it straight through. The
+    previous version of this class spoke an ``/api/vault/buckets/…`` API with
+    ``Authorization: Token`` — an API that was never built on any server; the
+    peer API (``vault/peer_views.py``) is its real counterpart.
     """
-    Reads/writes files from another toto server's Vault file API.
 
-    The API token is read from the environment variable named by
-    storage_config["api_token_env"] (default: TOTO_REMOTE_API_TOKEN).
-    """
+    def __init__(self, peer):
+        from .peer_client import PeerClient
 
-    def __init__(self, server_url: str, bucket_slug: str, api_token: str):
-        self._base = server_url.rstrip("/")
-        self._slug = bucket_slug
-        self._token = api_token
-        self._session = None
-
-    def _get_session(self):
-        if self._session is None:
-            try:
-                import requests as req
-            except ImportError:
-                raise RuntimeError(
-                    "requests is required for remote_toto backend: pip install requests"
-                )
-            self._session = req.Session()
-            if self._token:
-                self._session.headers["Authorization"] = f"Token {self._token}"
-        return self._session
-
-    def _files_url(self, key: str = "") -> str:
-        base = f"{self._base}/api/vault/buckets/{self._slug}/files/"
-        return f"{base}{key}" if key else base
+        self._client = PeerClient(peer)
 
     def read(self, name: str) -> bytes:
-        resp = self._get_session().get(self._files_url(name))
-        resp.raise_for_status()
-        return resp.content
+        return self._client.read(name)
+
+    def open(self, name: str):
+        return self._client.open_download(name)
 
     def save(self, name: str, content: bytes) -> str:
         import io
-        resp = self._get_session().post(
-            self._files_url(),
-            files={"file": (_safe_filename(name), io.BytesIO(content))},
-        )
-        resp.raise_for_status()
-        return resp.json()["key"]
+
+        return self._client.upload(
+            io.BytesIO(content), _safe_filename(name))["key"]
 
     def exists(self, name: str) -> bool:
-        resp = self._get_session().head(self._files_url(name))
-        return resp.status_code == 200
+        return self._client.exists(name)
 
     def delete(self, name: str) -> None:
         try:
-            self._get_session().delete(self._files_url(name)).raise_for_status()
-        except Exception as exc:
+            self._client.delete(name)
+        except Exception as exc:  # noqa: BLE001 - a purge must not 500 on a dead peer
             logger.warning("remote_toto delete failed for %r: %s", name, exc)
 
 
@@ -339,11 +318,17 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
         return S3CompatibleVaultStorageDriver(merged)
 
     if backend == "remote_toto":
-        server_url = config.get("server_url", "")
-        bucket_slug = config.get("bucket_slug", "")
-        token_env = config.get("api_token_env", "TOTO_REMOTE_API_TOKEN")
-        api_token = os.environ.get(token_env, "")
-        return RemoteTotoStorageDriver(server_url, bucket_slug, api_token)
+        # The peer FK is the whole transport identity — no URL and no secret
+        # ever lives in storage_config, so a bucket listing cannot leak either.
+        peer = getattr(bucket, "peer", None)
+        if peer is None:
+            raise RuntimeError(
+                f"Bucket '{getattr(bucket, 'slug', '?')}' has no bucket peer "
+                "— pair one in the admin and select it on the bucket.")
+        if not peer.is_active:
+            raise RuntimeError(
+                f"Bucket peer '{peer.label}' is deactivated.")
+        return RemoteTotoStorageDriver(peer)
 
     return LocalVaultStorageDriver()
 
