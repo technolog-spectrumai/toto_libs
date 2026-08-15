@@ -182,7 +182,8 @@ old one carried 210 lines of inline Alpine that no test could reach.
         <ol x-ref="filmstrip"
             class="max-h-[64vh] space-y-2 overflow-y-auto p-2">
           <template x-for="(slide, index) in state.slides" :key="slide.id">
-            <li @click="select(slide.id)"
+            <li :data-slide-id="slide.id"
+                @click="select(slide.id)"
                 @contextmenu.prevent="openMenu($event, 'slide', slide.id)"
                 :class="slide.id === ui.activeId
                   ? (darkMode ? 'border-accent-dark' : 'border-accent-light')
@@ -199,22 +200,65 @@ old one carried 210 lines of inline Alpine that no test could reach.
                 <div x-show="ui.filmstrip" class="memo-thumb"
                      :class="'memo-theme-' + state.theme" aria-hidden="true">
                   <template x-if="ui.live[slide.id]">
+                    {% comment %}The same markup the canvas renders, at 0.14
+                       scale: same slots, same block types, same stylesheet —
+                       so a two-column slide reads as two columns and a full
+                       slide looks full. Bound with x-html/x-text rather than
+                       the canvas's x-init, because a thumbnail must re-render
+                       when the payload changes and x-init runs once.{% endcomment %}
                     <div class="memo-slide"
                          :class="['memo-theme-' + state.theme, fontClass]"
                          :data-layout="slide.layout">
                       <h2 class="memo-title" x-text="slide.title"></h2>
-                      <div class="memo-flow">
-                        <template x-for="b in slide.blocks.slice(0, 4)" :key="b.id">
-                          <div class="memo-block" :data-type="b.type">
-                            <template x-if="b.type === 'image'">
-                              <img :src="b.payload" alt="">
-                            </template>
-                            <template x-if="b.type !== 'image' && b.type !== 'svg'">
-                              <div x-text="thumbText(b)"></div>
-                            </template>
-                          </div>
-                        </template>
-                      </div>
+                      <template x-for="pair in slideColumns(slide)"
+                                :key="slide.id + '-' + pair[0]">
+                        <div class="memo-flow" :data-slot="pair[0]"
+                             :data-empty="pair[1].length ? null : '1'">
+                          <template x-for="b in pair[1]" :key="b.id">
+                            <div class="memo-block" :data-type="b.type">
+                              <template x-if="b.type === 'heading' || b.type === 'quote'
+                                              || b.type === 'text' || b.type === 'html'">
+                                <div x-html="b.payload || ''"></div>
+                              </template>
+                              <template x-if="b.type === 'list'">
+                                <ul>
+                                  <template x-for="(item, i) in b.items"
+                                            :key="b.id + '-i' + i">
+                                    <li x-html="item"></li>
+                                  </template>
+                                </ul>
+                              </template>
+                              <template x-if="b.type === 'code'">
+                                <pre x-text="b.payload"></pre>
+                              </template>
+                              <template x-if="b.type === 'image'">
+                                <img :src="b.payload" :alt="(b.attrs || {}).alt || ''"
+                                     draggable="false">
+                              </template>
+                              <template x-if="b.type === 'svg'">
+                                <div x-html="b.payload"></div>
+                              </template>
+                              {% comment %}The cached KaTeX render if there is
+                                 one, else the source — exactly what the player
+                                 does (see memo/_slide.html). NOT renderFormula:
+                                 that writes block.render back, and a write
+                                 inside a thumbnail's reactive effect is a loop
+                                 waiting to happen.{% endcomment %}
+                              <template x-if="b.type === 'formula'">
+                                <div class="min-h-[1.6em] w-full text-center">
+                                  <template x-if="b.render">
+                                    <div x-html="b.render"></div>
+                                  </template>
+                                  <template x-if="!b.render">
+                                    <code class="memo-formula-source"
+                                          x-text="b.payload"></code>
+                                  </template>
+                                </div>
+                              </template>
+                            </div>
+                          </template>
+                        </div>
+                      </template>
                     </div>
                   </template>
                 </div>

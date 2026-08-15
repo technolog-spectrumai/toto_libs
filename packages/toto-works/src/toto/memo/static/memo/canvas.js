@@ -111,12 +111,20 @@
    * an empty box. Rows out of view keep their number and title, which is all
    * you navigate by anyway.
    */
+  //: The attribute rows are identified by. It was the drag id until slide
+  //  dragging was retired — and the rename was missed, so this observer
+  //  matched NOTHING, `ui.live` stayed empty, and every thumbnail rendered as
+  //  a blank box. Named for what it is now, so the next removal cannot leave
+  //  a selector pointing at a ghost.
+  var ROW_ATTR = "data-slide-id";
+  var ROW_SELECTOR = "[" + ROW_ATTR + "]";
+
   function watchFilmstrip(list, onVisible) {
     if (!list || !onVisible) return function () {};
     if (typeof IntersectionObserver === "undefined") {
       // No observer: render everything, as before. Correct, just not cheap.
-      Array.prototype.forEach.call(list.querySelectorAll("[data-drag-id]"),
-        function (row) { onVisible(row.getAttribute("data-drag-id"), true); });
+      Array.prototype.forEach.call(list.querySelectorAll(ROW_SELECTOR),
+        function (row) { onVisible(row.getAttribute(ROW_ATTR), true); });
       return function () {};
     }
 
@@ -125,14 +133,14 @@
     // read an attribute an observer had changed behind its back.
     var io = new IntersectionObserver(function (entries) {
       entries.forEach(function (entry) {
-        onVisible(entry.target.getAttribute("data-drag-id"), entry.isIntersecting);
+        onVisible(entry.target.getAttribute(ROW_ATTR), entry.isIntersecting);
       });
     }, { root: list, rootMargin: "300px 0px" });
 
     var observed = [];
     function sync() {
       observed.forEach(function (row) { io.unobserve(row); });
-      observed = Array.prototype.slice.call(list.querySelectorAll("[data-drag-id]"));
+      observed = Array.prototype.slice.call(list.querySelectorAll(ROW_SELECTOR));
       observed.forEach(function (row) { io.observe(row); });
     }
     sync();

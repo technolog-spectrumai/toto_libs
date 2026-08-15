@@ -924,14 +924,23 @@ class EditorCostTests(TestCase):
         self.assertIn("onVisible", js)
         self.assertNotIn('setAttribute("data-live"', js)
 
-    def test_thumbnail_text_is_memoised(self):
+    def test_thumbnails_cost_nothing_off_screen(self):
+        """The memoised tag-stripping this replaced is gone: a thumbnail now
+        renders the real blocks, and the saving comes from building none of
+        it until the row is near the viewport."""
         js = self._asset("memo/editor.js")
-        self.assertIn("_thumbFor", js)
+        template = self._template_source()
 
-    def test_a_thumbnail_is_inert(self):
+        self.assertNotIn("_thumbFor", js)
+        self.assertIn('x-if="ui.live[slide.id]"', template)
+
+    def _template_source(self):
         from django.template.loader import get_template
 
-        source = get_template("memo/edit.html").template.source
+        return get_template("memo/edit.html").template.source
+
+    def test_a_thumbnail_is_inert(self):
+        source = self._template_source()
         thumb = source.split('class="memo-thumb"')[1].split("</template>")[0]
         for live in ("contenteditable", "@input", "x-model"):
             self.assertNotIn(live, thumb, "a thumbnail became editable")
@@ -1866,4 +1875,64 @@ class DeckAssistantTests(TestCase):
         from toto.memo import views
 
         source = inspect.getsource(views)
-        self.assertIn('assistant.surface_for("memo-deck")', source)
+        self.assertIn('assistant.surface_for_file("memo-deck",', source)
+
+
+class FilmstripThumbnailTests(TestCase):
+    """The slide previews in the sidebar, and the contract that broke them.
+
+    The thumbnail markup was never the problem: it sat behind
+    ``x-if="ui.live[slide.id]"``, and the IntersectionObserver that fills
+    ``ui.live`` selected rows by ``data-drag-id`` — an attribute that left
+    with slide dragging. Nothing matched, so nothing was ever marked live and
+    every preview rendered as an empty box. These pin both ends of that
+    coupling, because the failure is silent by construction: no error, no
+    warning, just blank thumbnails.
+    """
+
+    def _read(self, *parts):
+        import pathlib
+
+        return (pathlib.Path(__file__).parent.joinpath(*parts)).read_text()
+
+    def test_the_observer_and_the_row_agree_on_one_attribute(self):
+        canvas = self._read("static", "memo", "canvas.js")
+        template = self._read("templates", "memo", "edit.html")
+
+        self.assertIn('var ROW_ATTR = "data-slide-id";', canvas)
+        self.assertIn(':data-slide-id="slide.id"', template)
+        # The ghost selector must not come back.
+        self.assertNotIn("data-drag-id", canvas)
+
+    def test_the_thumbnail_renders_the_slide_through_its_slots(self):
+        """A two-column slide should read as two columns, not one stack."""
+        template = self._read("templates", "memo", "edit.html")
+
+        self.assertIn("slideColumns(slide)", template)
+        self.assertIn('<div class="memo-flow" :data-slot="pair[0]"', template)
+
+    def test_slide_columns_buckets_any_slide_not_just_the_open_one(self):
+        editor = self._read("static", "memo", "editor.js")
+
+        self.assertIn("slideColumns: function (slide) { return M.columns(slide); }",
+                      editor)
+
+    def test_the_thumbnail_updates_when_the_payload_changes(self):
+        """x-init runs once; a preview that never re-rendered would be a
+        different bug with the same symptom."""
+        template = self._read("templates", "memo", "edit.html")
+        thumb = template[template.index('class="memo-thumb"'):
+                         template.index("{# Slide actions")]
+
+        self.assertIn('x-html="b.payload', thumb)
+        self.assertNotIn("x-init=", thumb)
+
+    def test_the_thumbnail_never_writes_back_to_the_deck(self):
+        """It is a preview. Rendering one must not mutate a block — which is
+        why the formula falls back to the cached render, as the player does."""
+        template = self._read("templates", "memo", "edit.html")
+        thumb = template[template.index('class="memo-thumb"'):
+                         template.index("{# Slide actions")]
+
+        self.assertNotIn("renderFormula(", thumb)
+        self.assertIn('x-html="b.render"', thumb)

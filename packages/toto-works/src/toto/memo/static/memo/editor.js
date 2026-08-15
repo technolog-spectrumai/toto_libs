@@ -227,19 +227,6 @@
         if (this._stopStrip) this._stopStrip();
       },
 
-      /* Thumbnail text, computed once per block rather than per render.
-       *
-       * The old expression ran a tag-stripping regex over every block of every
-       * slide on every keystroke. Cached against the payload, so it recomputes
-       * exactly when the payload changes. */
-      thumbText: function (block) {
-        if (block._thumbFor !== block.payload) {
-          block._thumbFor = block.payload;
-          block._thumb = (block.payload || "").replace(/<[^>]*>/g, "").slice(0, 90);
-        }
-        return block._thumb;
-      },
-
       // ---- derived ---------------------------------------------------------
       get activeSlide() {
         var at = M.indexOfId(this.state.slides, this.ui.activeId);
@@ -247,6 +234,11 @@
       },
       get activeIndex() { return M.indexOfId(this.state.slides, this.ui.activeId); },
       get columns() { return M.columns(this.activeSlide); },
+
+      /* The same slot buckets, for a slide that is not the open one — what a
+         filmstrip thumbnail renders from, so a two-column slide reads as two
+         columns there rather than as one stack. */
+      slideColumns: function (slide) { return M.columns(slide); },
 
       /* The boxes this slide's layout has, and which of them a new block goes
        * into. A layout is a fixed set of boxes — nothing here resizes one — so
