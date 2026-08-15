@@ -138,6 +138,20 @@ _DEFAULTS = (
                 icon="fa-solid fa-id-card",
                 description="This page. Never behind the thing it sells."),
 
+    # -- free: the machinery (8/2026) ---------------------------------------
+    # Plans differ by FUNCTIONALITY, not internals: every plan gets celery,
+    # the workers, and the plumbing features ride on — selling the engine
+    # separately from the features would gate one thing twice. The one
+    # exception is federation (SSO pairing, the clearing bridge): that is
+    # operator infrastructure between HOSTS, not a member perk, and it is
+    # deliberately absent from this catalogue rather than free in it.
+    Entitlement("workflows", "Workflows", free=True, order=10,
+                icon="fa-solid fa-diagram-project",
+                description="Automate multi-step jobs and run them on a schedule."),
+    Entitlement("jess", "Email", free=True, order=11,
+                icon="fa-solid fa-envelope",
+                description="Send mail from the platform."),
+
     # -- the editors --------------------------------------------------------
     Entitlement("cyprian", "Documents", order=20,
                 icon="fa-solid fa-file-lines",
@@ -168,9 +182,6 @@ _DEFAULTS = (
     Entitlement("aralia", "Invoices", order=40,
                 icon="fa-solid fa-file-invoice",
                 description="Generate PDFs from a template and your own data."),
-    Entitlement("workflows", "Workflows", order=41,
-                icon="fa-solid fa-diagram-project",
-                description="Automate multi-step jobs and run them on a schedule."),
     Entitlement("mandragora", "Notebooks", order=42,
                 icon="fa-solid fa-flask",
                 description="Compute kernels and notebooks."),
@@ -189,9 +200,6 @@ _DEFAULTS = (
     Entitlement("steven", "Assistant", order=47,
                 icon="fa-solid fa-wand-magic-sparkles",
                 description="Rewrite, translate and explain what you have selected."),
-    Entitlement("jess", "Email", order=48,
-                icon="fa-solid fa-envelope",
-                description="Send mail from the platform."),
     Entitlement("travels", "Travels", order=49,
                 icon="fa-solid fa-route",
                 description="Routes, journeys and who went where."),

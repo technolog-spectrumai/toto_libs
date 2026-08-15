@@ -1,7 +1,7 @@
 from django.contrib import admin
 
 from .models import (
-    CommunityPlanDiscount,
+    CommunityDiscount,
     Subscription,
     SubscriptionCharge,
     SubscriptionPlan,
@@ -18,13 +18,14 @@ class SubscriptionPlanAdmin(admin.ModelAdmin):
     prepopulated_fields = {"code": ("name",)}
 
 
-@admin.register(CommunityPlanDiscount)
-class CommunityPlanDiscountAdmin(admin.ModelAdmin):
-    list_display = ("community", "plan", "percent")
+@admin.register(CommunityDiscount)
+class CommunityDiscountAdmin(admin.ModelAdmin):
+    # One number per community, every plan. The Discounts tab is the everyday
+    # door; this is the escape hatch.
+    list_display = ("community", "percent")
     list_editable = ("percent",)
-    list_filter = ("plan",)
-    autocomplete_fields = ("community", "plan")
-    search_fields = ("community__name", "plan__name")
+    autocomplete_fields = ("community",)
+    search_fields = ("community__name",)
 
 
 @admin.register(Subscription)

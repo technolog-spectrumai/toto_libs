@@ -92,16 +92,18 @@
   <article
     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
     class="space-y-3 rounded-2xl border p-5 shadow-sm lg:col-span-2">
-    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What this includes" %}</h2>
+    <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "What this adds" %}</h2>
+    {% comment %}Paid names only. The commons — files, communities, wallet,
+       usage, the machinery — belong to every plan; listing them here would
+       drown what the plan actually buys.{% endcomment %}
     <ul class="grid gap-x-6 gap-y-1.5 text-sm sm:grid-cols-2">
       {% for item in entitlements %}
-        <li class="flex items-start gap-2">
-          <i class="{{ item.icon }} mt-0.5 w-4 shrink-0 text-xs opacity-50"></i>
+        <li class="flex items-center gap-2">
+          <i class="{{ item.icon }} w-4 shrink-0 text-xs opacity-50"></i>
           <span class="font-semibold">{{ item.label }}</span>
-          {% if item.free %}<span class="text-[10px] uppercase tracking-wide opacity-50">{% trans "free" %}</span>{% endif %}
         </li>
       {% empty %}
-        <li class="opacity-60">{% trans "No plans are set up on this server, so nothing is restricted." %}</li>
+        <li class="opacity-60">{% trans "Nothing beyond the free platform — which is most of it: your files, communities, wallet and the machinery are on every plan." %}</li>
       {% endfor %}
     </ul>
   </article>

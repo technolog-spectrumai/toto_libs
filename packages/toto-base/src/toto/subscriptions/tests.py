@@ -22,7 +22,7 @@ from .catalogue import Entitlement, registry
 from .gate import ALWAYS_FREE, SubscriptionGateMiddleware, is_entitled
 from .models import (
     ChargeStatus,
-    CommunityPlanDiscount,
+    CommunityDiscount,
     Subscription,
     SubscriptionCharge,
     SubscriptionPlan,
@@ -43,7 +43,7 @@ def make_plans():
         entitlements=["cyprian", "primula"])
     professional = SubscriptionPlan.objects.create(
         code="professional", name="Professional", units=600, order=30,
-        entitlements=["cyprian", "primula", "aralia", "workflows"])
+        entitlements=["cyprian", "primula", "aralia", "mandragora"])
     return free, standard, professional
 
 
@@ -60,6 +60,10 @@ class CatalogueTests(TestCase):
         free = registry.free_codes()
         self.assertIn("vault", free)
         self.assertIn("assets", free)
+        # Machinery is free on every plan (8/2026): plans differ by
+        # functionality, not internals — everyone gets celery and workers.
+        self.assertIn("workflows", free)
+        self.assertIn("jess", free)
         self.assertNotIn("aralia", free)
 
     def test_the_economy_is_free_so_a_wallet_can_always_be_funded(self):
@@ -96,10 +100,10 @@ class DiscountTests(TestCase):
         self.assertEqual(services.billed_units(self.standard, 0), Decimal("200"))
 
     def test_the_best_of_several_communities_wins(self):
-        CommunityPlanDiscount.objects.create(
-            community=self.students, plan=self.standard, percent=40)
-        CommunityPlanDiscount.objects.create(
-            community=self.founders, plan=self.standard, percent=10)
+        CommunityDiscount.objects.create(
+            community=self.students, percent=40)
+        CommunityDiscount.objects.create(
+            community=self.founders, percent=10)
         user = member("both", self.students, self.founders)
 
         percent, source = services.best_discount(user, self.standard)
@@ -109,12 +113,16 @@ class DiscountTests(TestCase):
         self.assertEqual(services.billed_units(self.standard, percent),
                          Decimal("120"))
 
-    def test_a_discount_on_another_plan_changes_nothing(self):
-        CommunityPlanDiscount.objects.create(
-            community=self.students, plan=self.professional, percent=50)
+    def test_one_number_applies_to_every_plan(self):
+        # The rework's whole point: a community's discount is plan-agnostic,
+        # so a new plan can never quietly arrive at full price for members.
+        CommunityDiscount.objects.create(
+            community=self.students, percent=50)
         user = member("student", self.students)
 
-        self.assertEqual(services.best_discount(user, self.standard), (0, ""))
+        for plan in (self.free, self.standard, self.professional):
+            self.assertEqual(services.best_discount(user, plan),
+                             (50, "Students"))
 
     def test_a_user_with_no_person_row_is_not_an_error(self):
         user = User.objects.create_user("profileless", password="pw")
@@ -472,14 +480,15 @@ class ViewTests(TestCase):
                    if r["plan"].code == "standard")
         codes = {e.code for e in row["entitlements"]}
         self.assertIn("cyprian", codes)
-        # Free entitlements appear on every card, because they are included.
-        self.assertIn("vault", codes)
+        # The commons and the machinery are on every plan, so a card no
+        # longer repeats them — it lists only what the plan adds.
+        self.assertNotIn("vault", codes)
+        self.assertNotIn("workflows", codes)
         self.assertNotIn("aralia", codes)
 
     def test_the_discount_is_named_on_the_card(self):
         community = Community.objects.create(name="Students")
-        CommunityPlanDiscount.objects.create(
-            community=community, plan=self.standard, percent=40)
+        CommunityDiscount.objects.create(community=community, percent=40)
         Person.objects.get(user=self.user).communities.add(community)
         self.client.force_login(self.user)
 
@@ -598,10 +607,10 @@ class IngressTests(TestCase):
         Community.objects.create(name="Demo")
 
         self._seed()
-        self.assertEqual(CommunityPlanDiscount.objects.count(), 0)
+        self.assertEqual(CommunityDiscount.objects.count(), 0)
 
         self._seed("--full")
-        self.assertEqual(CommunityPlanDiscount.objects.count(), 1)
+        self.assertEqual(CommunityDiscount.objects.count(), 1)
 
     def test_seeding_is_what_starts_gating(self):
         """A host that never seeds is fully open, with the same code deployed."""
@@ -740,3 +749,103 @@ class LockedPageChromeTests(TestCase):
         response = self._refuse()
 
         self.assertEqual(response.status_code, 402)
+
+
+class DiscountTabTests(TestCase):
+    """The Discounts tab: who may open it, and what saving does."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        cls.free, cls.standard, cls.professional = make_plans()
+        cls.students = Community.objects.create(name="Students")
+        cls.founders = Community.objects.create(name="Founders")
+        cls.member_user = member("plain")
+        cls.staff = User.objects.create_user("staffer", password="pw")
+        cls.staff.is_staff = True
+        cls.staff.save(update_fields=["is_staff"])
+
+    def test_members_cannot_open_it(self):
+        self.client.force_login(self.member_user)
+        response = self.client.get(reverse("subscriptions:discounts"))
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_tab_only_renders_for_staff(self):
+        url = reverse("subscriptions:discounts")
+        self.client.force_login(self.member_user)
+        self.assertNotIn(url, self.client.get(
+            reverse("subscriptions:plans")).content.decode())
+        self.client.force_login(self.staff)
+        self.assertIn(url, self.client.get(
+            reverse("subscriptions:plans")).content.decode())
+
+    def test_it_lists_every_community_including_the_zeroes(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(reverse("subscriptions:discounts"))
+        names = [row["community"].name for row in response.context["rows"]]
+        self.assertEqual(names, ["Founders", "Students"])
+        self.assertEqual([row["percent"] for row in response.context["rows"]],
+                         [0, 0])
+
+    def test_saving_sets_one_number_that_applies_to_every_plan(self):
+        self.client.force_login(self.staff)
+        self.client.post(reverse("subscriptions:discounts"), {
+            f"discount-{self.students.pk}": "40",
+            f"discount-{self.founders.pk}": "0",
+        })
+        discount = CommunityDiscount.objects.get(community=self.students)
+        self.assertEqual(discount.percent, 40)
+        self.assertFalse(CommunityDiscount.objects.filter(
+            community=self.founders).exists())
+        # One number, every plan — the whole point of the rework.
+        user = member("student", self.students)
+        for plan in (self.standard, self.professional):
+            self.assertEqual(services.best_discount(user, plan),
+                             (40, "Students"))
+
+    def test_zero_clears_an_existing_row(self):
+        CommunityDiscount.objects.create(community=self.students, percent=25)
+        self.client.force_login(self.staff)
+        self.client.post(reverse("subscriptions:discounts"),
+                         {f"discount-{self.students.pk}": "0"})
+        self.assertFalse(CommunityDiscount.objects.exists())
+
+    def test_a_typo_is_ignored_not_saved_as_zero(self):
+        # A discount silently cancelled by a stray keystroke is worse than a
+        # rejected edit: the operator sees the old value and tries again.
+        CommunityDiscount.objects.create(community=self.students, percent=30)
+        self.client.force_login(self.staff)
+        for bad in ("", "abc", "-5", "150"):
+            with self.subTest(bad=bad):
+                self.client.post(reverse("subscriptions:discounts"),
+                                 {f"discount-{self.students.pk}": bad})
+                self.assertEqual(
+                    CommunityDiscount.objects.get(
+                        community=self.students).percent, 30)
+
+    def test_percent_is_never_negative_at_the_database(self):
+        from django.db import IntegrityError, transaction
+
+        with self.assertRaises((IntegrityError, ValueError)):
+            with transaction.atomic():
+                CommunityDiscount.objects.create(
+                    community=self.students, percent=-1)
+
+    def test_over_a_hundred_is_refused_by_the_constraint(self):
+        from django.db import IntegrityError, transaction
+
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CommunityDiscount.objects.create(
+                    community=self.students, percent=101)
+
+    def test_one_row_per_community(self):
+        from django.db import IntegrityError, transaction
+
+        CommunityDiscount.objects.create(community=self.students, percent=10)
+        with self.assertRaises(IntegrityError):
+            with transaction.atomic():
+                CommunityDiscount.objects.create(
+                    community=self.students, percent=20)

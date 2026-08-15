@@ -118,6 +118,35 @@ def welcome_view(request):
     return render(request, _get_template("home.html"), processor.decorate(context, request))
 
 
+def _plan_allows(user, link) -> bool:
+    """Whether this user's plan grants the app a tile opens.
+
+    Cosmetic, like the visibility arms below — the subscription gate
+    middleware enforces the real 402 — but a dashboard that advertises tiles
+    the plan then refuses is a hallway of doors that slam. The tile's link
+    namespace IS the entitlement code (the same ``app_name`` the gate reads
+    from ``resolver_match``), so the dashboard and the middleware cannot
+    disagree about what is withheld.
+
+    Answers True unless the subscriptions app is installed AND declares the
+    app AND the plan withholds it — a host without plans, an undeclared app,
+    or any error keeps every tile, because hiding functionality by accident
+    is a silent outage.
+    """
+    if not link or ":" not in link:
+        return True
+    from django.apps import apps as django_apps
+
+    if not django_apps.is_installed("toto.subscriptions"):
+        return True
+    try:
+        from toto.subscriptions.gate import is_entitled
+
+        return is_entitled(user, link.split(":", 1)[0])
+    except Exception:  # noqa: BLE001 - a dashboard must render whatever breaks
+        return True
+
+
 def _resolve_dashboard_item(item, user):
     visibility = item.get("visibility", "public")
     authenticated = user.is_authenticated
@@ -134,6 +163,8 @@ def _resolve_dashboard_item(item, user):
     if visibility == "staff" and not (
         authenticated and (user.is_staff or user.is_superuser)
     ):
+        return None
+    if not _plan_allows(user, item.get("link")):
         return None
     link = item.get("link")
     if link and ":" in link:

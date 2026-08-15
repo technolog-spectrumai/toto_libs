@@ -43,7 +43,7 @@ from toto.quota.api import record_usage
 from .models import (
     METRIC,
     ChargeStatus,
-    CommunityPlanDiscount,
+    CommunityDiscount,
     Subscription,
     SubscriptionCharge,
     SubscriptionState,
@@ -71,26 +71,30 @@ def grace_days() -> int:
 # What a month costs
 # ---------------------------------------------------------------------------
 
-def best_discount(user, plan) -> tuple[int, str]:
-    """The largest discount this user's communities give on this plan.
+def best_discount(user, plan=None) -> tuple[int, str]:
+    """The largest discount this user's communities give. Plan-agnostic.
 
     Returns ``(percent, source)`` — the source names the community that earned
     it, because "you pay less because of X" is the sentence that makes a
     discount feel like a membership benefit rather than a pricing accident.
+
+    ``plan`` is accepted and ignored: a discount is one number per community
+    on every plan now, and keeping the argument means the quote and the
+    settle, which both have a plan in hand, did not have to change.
 
     Never raises. A database mid-migrate, a user with no profile, a host with no
     socialhub: all of them are "no discount", which is the honest answer and
     also the safe one — it can only ever make somebody pay MORE than the
     optimistic reading, never less than they agreed to.
     """
-    if user is None or not getattr(user, "is_authenticated", False) or plan is None:
+    if user is None or not getattr(user, "is_authenticated", False):
         return 0, ""
     try:
         person = getattr(user, "community_profile", None)
         if person is None:
             return 0, ""
-        row = (CommunityPlanDiscount.objects
-               .filter(plan=plan, community__in=person.communities.all())
+        row = (CommunityDiscount.objects
+               .filter(community__in=person.communities.all())
                .select_related("community")
                .order_by("-percent")
                .first())
@@ -99,6 +103,40 @@ def best_discount(user, plan) -> tuple[int, str]:
     if row is None or row.percent <= 0:
         return 0, ""
     return int(row.percent), row.community.name
+
+
+def set_discounts(posted) -> tuple[int, int]:
+    """Apply a Discounts-tab submission. Returns (saved, cleared).
+
+    Reads ``discount-<community_pk>`` fields. Anything unparseable or out of
+    range is IGNORED rather than saved as zero: a typo must not silently
+    cancel a community's discount, and the form re-renders showing what is
+    actually stored. Zero clears the row — the table is the set of communities
+    that give something, not a row per community forever.
+    """
+    from toto.socialhub.models import Community
+
+    valid_pks = set(Community.objects.values_list("pk", flat=True))
+    saved = cleared = 0
+    for key, raw in posted.items():
+        if not key.startswith("discount-"):
+            continue
+        try:
+            community_pk = int(key.removeprefix("discount-"))
+            percent = int(str(raw).strip())
+        except (TypeError, ValueError):
+            continue
+        if community_pk not in valid_pks or not 0 <= percent <= 100:
+            continue
+        if percent == 0:
+            deleted, _ignored = CommunityDiscount.objects.filter(
+                community_id=community_pk).delete()
+            cleared += int(bool(deleted))
+            continue
+        row, created = CommunityDiscount.objects.update_or_create(
+            community_id=community_pk, defaults={"percent": percent})
+        saved += 1
+    return saved, cleared
 
 
 def billed_units(plan, percent: int) -> Decimal:

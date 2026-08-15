@@ -64,6 +64,15 @@
            {% if active_tab == 'mine' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-receipt"></i>{% trans "Current plan" %}</a>
       {% endif %}
+      {% if user.is_staff or user.is_superuser %}
+        {% url 'subscriptions:discounts' as discounts_url %}
+        <a href="{{ discounts_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-3 py-1.5 text-sm font-semibold transition
+                  {% if active_tab == 'discounts' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'discounts' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-tag"></i>{% trans "Discounts" %}</a>
+      {% endif %}
     </nav>
 
     {% block sub_content %}{% endblock %}

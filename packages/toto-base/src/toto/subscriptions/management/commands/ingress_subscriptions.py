@@ -13,7 +13,7 @@ platform.
 """
 
 from toto.ingress import IngressCommand
-from toto.subscriptions.models import CommunityPlanDiscount, SubscriptionPlan
+from toto.subscriptions.models import CommunityDiscount, SubscriptionPlan
 
 #: The ladder. `units` is a QUANTITY, not a price — see subscriptions/services.py.
 #: The numbers are round because the price of one unit is the dial an operator
@@ -54,13 +54,16 @@ PLANS = [
         "order": 30,
         "description": (
             "Everything in Standard, plus the heavy end: PDF generation, "
-            "workflows, notebooks, version control, media and signatures."
+            "notebooks, version control, media, signatures and the assistant."
         ),
+        # Functionality only — workflows and email are machinery and belong
+        # to every plan (see catalogue.py: plans differ by functionality,
+        # not internals; everyone gets celery and workers).
         "entitlements": [
             "cyprian", "memo", "primula", "sketch", "editor",
             "kanban", "polls", "locations",
-            "aralia", "workflows", "mandragora", "notarius",
-            "repo", "gitea", "vod", "jess", "travels",
+            "aralia", "mandragora", "notarius",
+            "repo", "gitea", "vod", "steven", "travels",
         ],
     },
 ]
@@ -94,8 +97,8 @@ class Command(IngressCommand):
         if not self.full:
             return
 
-        # Demo data: a community that makes its members' Standard cheaper, so
-        # the discount line on the plans page has something to say.
+        # Demo data: a community that makes its members' subscription cheaper,
+        # so the discount line on the plans page has something to say.
         self._seed_demo_discount()
 
     def _apply_renames(self):
@@ -125,12 +128,11 @@ class Command(IngressCommand):
         from toto.socialhub.models import Community
 
         community = Community.objects.order_by("pk").first()
-        plan = SubscriptionPlan.objects.filter(code="standard").first()
-        if community is None or plan is None:
+        if community is None:
             self.stdout.write("subscriptions: no community to discount, skipped")
             return
-        _, was_new = CommunityPlanDiscount.objects.update_or_create(
-            community=community, plan=plan, defaults={"percent": 30})
+        _, was_new = CommunityDiscount.objects.update_or_create(
+            community=community, defaults={"percent": 30})
         self.stdout.write(
-            f"subscriptions: {community.name} → Standard −30% "
+            f"subscriptions: {community.name} −30% on any plan "
             f"({'created' if was_new else 'kept'})")

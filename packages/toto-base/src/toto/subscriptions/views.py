@@ -105,3 +105,52 @@ def cancel(request):
                              "and everything you have made stays where it is.")
                   % {"plan": free.name if free else _("the free features")})
     return redirect("subscriptions:mine")
+
+
+def _is_operator(user) -> bool:
+    """``is_superuser`` does not imply ``is_staff`` in Django. Both count."""
+    return bool(user.is_staff or user.is_superuser)
+
+
+@login_required
+def discounts(request):
+    """Set what each community takes off its members' subscriptions.
+
+    Operators only, and the tab does not render for anybody else — this
+    decides what people are charged, and a page that shows the dial to
+    someone who cannot turn it is just a tease.
+
+    Every community is listed, including the ones at zero: "which communities
+    have a discount" is a question answered by reading one column, not by
+    remembering which rows exist. A zero saves as no row at all, so the table
+    stays the set of communities that actually give something.
+    """
+    from django.http import HttpResponseForbidden
+
+    if not _is_operator(request.user):
+        return HttpResponseForbidden(_("Community discounts are set by staff."))
+
+    from toto.socialhub.models import Community
+
+    from .models import CommunityDiscount
+
+    if request.method == "POST":
+        saved, cleared = services.set_discounts(request.POST)
+        if saved or cleared:
+            messages.success(request, _(
+                "Saved: %(saved)d discount(s), %(cleared)d cleared.") % {
+                    "saved": saved, "cleared": cleared})
+        else:
+            messages.info(request, _("Nothing changed."))
+        return redirect("subscriptions:discounts")
+
+    by_community = {d.community_id: d.percent
+                    for d in CommunityDiscount.objects.all()}
+    rows = [{"community": community,
+             "percent": by_community.get(community.pk, 0),
+             "members": community.members.count()}
+            for community in Community.objects.order_by("name")]
+    return _render(request, "subscriptions/discounts.html", {
+        "active_tab": "discounts",
+        "rows": rows,
+    })

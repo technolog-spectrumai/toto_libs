@@ -72,19 +72,17 @@ Your communities decide what you pay. Each one may take a percentage off a plan,
 
       {% comment %}The entitlement list is rendered from the SAME registry the
          gate reads, so a card cannot promise something the middleware then
-         refuses.{% endcomment %}
+         refuses. Names only, and only what the plan ADDS: the free commons
+         and the machinery are on every plan, and a card that repeats them
+         buries the one thing it exists to answer.{% endcomment %}
       <ul class="mt-4 flex-1 space-y-1.5 text-sm">
         {% for item in row.entitlements %}
-          <li class="flex items-start gap-2">
-            <i class="{{ item.icon }} mt-0.5 w-4 shrink-0 text-xs opacity-50"></i>
-            <span>
-              <span class="font-semibold">{{ item.label }}</span>
-              {% if item.free %}<span class="ml-1 text-[10px] uppercase tracking-wide opacity-50">{% trans "free" %}</span>{% endif %}
-              {% if item.description %}<span class="block opacity-65">{{ item.description }}</span>{% endif %}
-            </span>
+          <li class="flex items-center gap-2">
+            <i class="{{ item.icon }} w-4 shrink-0 text-xs opacity-50"></i>
+            <span class="font-semibold">{{ item.label }}</span>
           </li>
         {% empty %}
-          <li class="opacity-60">{% trans "Nothing is listed for this plan yet." %}</li>
+          <li class="opacity-60">{% trans "Everything free — your files, communities, wallet and the platform's machinery. The paid plans add the tools on their cards." %}</li>
         {% endfor %}
       </ul>
 

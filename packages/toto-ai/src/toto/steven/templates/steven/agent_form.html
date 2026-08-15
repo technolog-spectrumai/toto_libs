@@ -4,6 +4,11 @@
 {% block title %}{% if agent %}{{ agent.name }}{% else %}{% trans "New agent" %}{% endif %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
+{% comment %}No fill on the form panels: the shade behind the FIELDS
+   made the page look like two different backgrounds stitched together, and a
+   form is not a card of content — the border alone is enough to group it.
+   The fields keep their own background; everything outside them is the page.
+{% endcomment %}
 <section
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
@@ -25,7 +30,7 @@
 
     {% if messages %}
       {% for message in messages %}
-        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="rounded-lg border px-4 py-3 text-sm font-medium">{{ message }}</div>
       {% endfor %}
     {% endif %}
@@ -40,7 +45,7 @@
          {% if tab == 'identity' %}aria-current="page"
            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
          {% else %}
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
          {% endif %}>
         <i class="fa-solid fa-id-badge"></i>{% trans "Identity" %}</a>
       <a href="?tab=prompt"
@@ -48,14 +53,14 @@
          {% if tab == 'prompt' %}aria-current="page"
            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light'"
          {% else %}
-           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
          {% endif %}>
         <i class="fa-solid fa-sliders"></i>{% trans "Prompt" %}</a>
     </nav>
 
     {% if tab == 'prompt' %}
 
-      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      <article :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                class="space-y-4 rounded-2xl border p-5 shadow-sm">
         <div class="space-y-1">
           <h2 class="text-lg font-bold">{% trans "How it writes" %}</h2>
@@ -78,7 +83,7 @@
       {% comment %}The preview is the point of this tab. Text boxes that build a
          prompt nobody can read is how the parked app ended up shipping a system
          prompt no one had looked at in months.{% endcomment %}
-      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      <article :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                class="space-y-4 rounded-2xl border p-5 shadow-sm">
         <div class="space-y-1">
           <h2 class="text-lg font-bold">{% trans "What the model is actually told" %}</h2>
@@ -103,7 +108,7 @@
 
     {% else %}
 
-      <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      <article :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                class="space-y-4 rounded-2xl border p-5 shadow-sm">
         <div class="space-y-1">
           <h2 class="text-lg font-bold">{% trans "Who it is" %}</h2>
@@ -124,7 +129,7 @@
       </article>
 
       {% if agent %}
-        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        <article :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
                  class="space-y-3 rounded-2xl border p-5 shadow-sm">
           <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "How it introduces itself" %}</h2>
           <div class="flex items-center gap-3">

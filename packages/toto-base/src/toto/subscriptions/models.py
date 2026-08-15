@@ -84,56 +84,71 @@ class SubscriptionPlan(models.Model):
         return self.name
 
     def entitlement_rows(self):
-        """This plan's entitlements as catalogue objects, free ones included.
+        """What this plan SELLS, as catalogue objects. Paid rows only.
 
-        Rendered straight onto the plan card, so the page and the gate cannot
-        disagree about what is being sold. Codes with no declaration are
-        skipped rather than shown as a bare string: an entitlement nobody
-        declared cannot be described, and a card is not the place to find out.
+        The free commons and the machinery used to be unioned in, so every
+        card repeated a dozen identical rows before saying anything — and the
+        one thing a card exists to answer is "what do I get that I don't
+        already have". Rendered from the SAME registry the gate reads, so the
+        page and the middleware cannot disagree about what is being sold.
+        Codes with no declaration are skipped rather than shown as a bare
+        string: an entitlement nobody declared cannot be described, and a
+        card is not the place to find out. Free codes that leaked into a
+        plan's stored list are skipped for the same reason the union went —
+        they are not what the plan sells.
         """
         from .catalogue import registry
 
-        codes = set(self.entitlements or []) | registry.free_codes()
-        return [e for e in registry.installed() if e.code in codes]
+        codes = set(self.entitlements or [])
+        return [e for e in registry.installed()
+                if e.code in codes and not e.free]
 
     def grants(self, code: str) -> bool:
         return code in set(self.entitlements or [])
 
 
-class CommunityPlanDiscount(models.Model):
-    """What a community takes off one plan for its members.
+class CommunityDiscount(models.Model):
+    """What a community takes off its members' subscription. One number.
+
+    **One percentage per community, on every plan.** It used to be one row per
+    (community, plan), which meant a new plan silently arrived at full price
+    for communities that had negotiated a discount, and an operator had to
+    remember to add a row per plan forever. A community either gives its
+    members a break or it does not; which plan they picked is not the
+    community's business.
 
     **Highest wins** across a person's communities — the mirror of the head
     weight this replaced, where lowest won. Both say the same thing: belonging
     to a second community can only help, never hurt, because a rule that made
     joining somewhere expensive would be a rule against joining.
 
-    A community still receives nothing and owes nothing. This sets what a MEMBER
-    pays; the money goes where all platform money goes.
+    **Never negative.** The column is unsigned and a check constraint caps it
+    at 100, so the worst a bad edit can do is make something free — a discount
+    that added to a bill would be a surcharge wearing a discount's name.
+
+    A community still receives nothing and owes nothing. This sets what a
+    MEMBER pays; the money goes where all platform money goes. Set from the
+    Discounts tab (staff), or the admin.
     """
 
-    community = models.ForeignKey(
+    community = models.OneToOneField(
         "socialhub.Community", on_delete=models.CASCADE,
-        related_name="plan_discounts")
-    plan = models.ForeignKey(
-        SubscriptionPlan, on_delete=models.CASCADE, related_name="discounts")
+        related_name="subscription_discount")
     percent = models.PositiveSmallIntegerField(default=0, help_text=_(
-        "0–100. Taken off this plan's billed quantity for members of this "
-        "community. Across several communities the LARGEST wins."))
+        "0–100. Taken off the billed quantity of ANY plan, for members of "
+        "this community. Across several communities the LARGEST wins."))
 
     class Meta:
         constraints = [
-            models.UniqueConstraint(fields=["community", "plan"],
-                                    name="uniq_community_plan_discount"),
             models.CheckConstraint(check=models.Q(percent__lte=100),
                                    name="discount_percent_at_most_100"),
         ]
-        ordering = ["community__name", "plan__order"]
-        verbose_name = _("community plan discount")
-        verbose_name_plural = _("community plan discounts")
+        ordering = ["community__name"]
+        verbose_name = _("community discount")
+        verbose_name_plural = _("community discounts")
 
     def __str__(self):
-        return f"{self.community} → {self.plan}: −{self.percent}%"
+        return f"{self.community}: −{self.percent}%"
 
 
 class Subscription(models.Model):

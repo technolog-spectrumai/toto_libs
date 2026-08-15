@@ -1,0 +1,57 @@
+{% extends "subscriptions/base.html" %}
+{% load i18n %}
+
+{% block sub_title %}{% trans "Discounts" %}{% endblock %}
+{% block sub_heading %}{% trans "Discounts" %}{% endblock %}
+
+{% block sub_content %}
+
+<p class="text-sm opacity-70">
+  {% trans "One percentage per community, taken off its members' subscription on any plan. Somebody in several communities gets the largest one — belonging to a second community can only help." %}
+</p>
+
+<form method="post" class="space-y-4">
+  {% csrf_token %}
+
+  <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="overflow-hidden rounded-xl border shadow-sm">
+    {% for row in rows %}
+    <div :class="darkMode ? 'border-b border-accent-1/30' : 'border-b border-accent-2/30'"
+         class="flex items-center gap-3 px-4 py-3 text-sm last:border-b-0">
+      <span class="min-w-0 flex-1 truncate font-semibold">{{ row.community.name }}</span>
+      {% if row.members is not None %}
+        <span class="shrink-0 text-xs opacity-50">
+          <i class="fa-solid fa-user-group mr-1"></i>{{ row.members }}</span>
+      {% endif %}
+      <div class="flex shrink-0 items-center gap-1">
+        <input type="number" name="discount-{{ row.community.pk }}"
+               value="{{ row.percent }}" min="0" max="100" step="1"
+               :class="darkMode
+                 ? 'bg-primary-bg-dark border-accent-1 text-text-main-dark'
+                 : 'bg-white border-accent-2 text-text-main-light'"
+               class="w-20 rounded-lg border px-2 py-1 text-right text-sm tabular-nums focus:outline-none focus:ring-2">
+        <span class="opacity-60">%</span>
+      </div>
+    </div>
+    {% empty %}
+    <div class="px-4 py-10 text-center text-sm opacity-50">
+      {% trans "There are no communities yet. A discount belongs to one, so there is nothing to set." %}
+    </div>
+    {% endfor %}
+  </div>
+
+  {% if rows %}
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-5 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-check mr-1"></i>{% trans "Save discounts" %}
+    </button>
+    <p class="text-xs opacity-55">
+      {% trans "0 means no discount and removes the row. Nothing here is ever negative: the worst a mistake can do is make a plan free." %}
+    </p>
+  </div>
+  {% endif %}
+</form>
+
+{% endblock %}

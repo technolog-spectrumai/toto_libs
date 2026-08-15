@@ -9,4 +9,5 @@ urlpatterns = [
     path("mine/", views.mine, name="mine"),
     path("subscribe/<slug:code>/", views.subscribe, name="subscribe"),
     path("cancel/", views.cancel, name="cancel"),
+    path("discounts/", views.discounts, name="discounts"),
 ]

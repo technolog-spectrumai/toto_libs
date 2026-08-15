@@ -4,6 +4,11 @@
 {% block title %}{% if provider %}{{ provider.label }}{% else %}{% trans "New provider" %}{% endif %} | {{ platform.site_name }}{% endblock %}
 
 {% block content %}
+{% comment %}No fill on the form panels: the shade behind the FIELDS
+   made the page look like two different backgrounds stitched together, and a
+   form is not a card of content — the border alone is enough to group it.
+   The fields keep their own background; everything outside them is the page.
+{% endcomment %}
 <section
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
@@ -23,12 +28,12 @@
 
     {% if messages %}
       {% for message in messages %}
-        <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="rounded-lg border px-4 py-3 text-sm font-medium">{{ message }}</div>
       {% endfor %}
     {% endif %}
 
-    <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+    <article :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
              class="space-y-4 rounded-2xl border p-5 shadow-sm">
 
       {% comment %}The status line is everything a reader ever learns about the
