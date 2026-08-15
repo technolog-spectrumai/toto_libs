@@ -131,12 +131,17 @@ class ChatAskTests(TestCase):
         self.assertIn("what is this?", body)
 
 
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
 class ChipRenderTests(TestCase):
     """The chip reaches pages through the floating-plugin door."""
 
     def setUp(self):
         _platform()
+        vault.clear_cache()
         self.user = User.objects.create_user("cornered", password="pw")
+        self.provider = AiProvider.objects.create(label="live", active=True)
+        self.provider.secret = vault.store_secret("sk-test", name="chip-render")
+        self.provider.save(update_fields=["secret"])
 
     def _rendered(self, user):
         from toto.core.plugin import FloatingPlugin
@@ -153,3 +158,9 @@ class ChipRenderTests(TestCase):
 
     def test_an_anonymous_page_does_not(self):
         self.assertNotIn("stevenChat(", self._rendered(AnonymousUser()))
+
+    def test_an_unconfigured_platform_renders_no_chip_at_all(self):
+        """No provider — or no key — and the chip is absent, not broken."""
+        AiProvider.objects.update(active=False)
+
+        self.assertNotIn("stevenChat(", self._rendered(self.user))

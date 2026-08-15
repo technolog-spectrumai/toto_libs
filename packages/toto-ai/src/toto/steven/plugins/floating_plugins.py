@@ -26,5 +26,22 @@ class StevenChatPlugin(FloatingPlugin):
     template_name = "steven/plugins/_chat.html"
 
     def visible_for_request(self, request):
+        """Authenticated, AND something can actually answer.
+
+        With no active provider — or an active one with no API key — every
+        question would be a 503, so the chip does not render at all: a door
+        to a dark room is worse than no door. The moment an operator
+        activates a keyed provider, the next page load carries the chip;
+        there is nothing to restart. Wrapped like the gas pump's lookups —
+        a widget must never break a page.
+        """
         user = getattr(request, "user", None)
-        return bool(getattr(user, "is_authenticated", False))
+        if not getattr(user, "is_authenticated", False):
+            return False
+        try:
+            from toto.steven.models import AiProvider
+
+            provider = AiProvider.current()
+            return bool(provider and provider.secret_id)
+        except Exception:  # noqa: BLE001
+            return False

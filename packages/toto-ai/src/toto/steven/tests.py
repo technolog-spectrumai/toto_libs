@@ -830,11 +830,32 @@ class ChatChipTests(TestCase):
         request.user = AnonymousUser()
         self.assertFalse(StevenChatPlugin().visible_for_request(request))
 
-    def test_it_shows_for_any_authenticated_user(self):
-        """No document required any more — a quick question is page-agnostic."""
+    def test_it_hides_when_nothing_can_answer(self):
+        """No provider, or a keyless one, means every question would be a
+        503 — a door to a dark room is worse than no door."""
         from django.test import RequestFactory
 
         from toto.steven.plugins.floating_plugins import StevenChatPlugin
+
+        request = RequestFactory().get("/")
+        request.user = User.objects.create_user("chipper", password="pw")
+        self.assertFalse(StevenChatPlugin().visible_for_request(request))
+
+        AiProvider.objects.create(label="keyless", active=True)
+        self.assertFalse(StevenChatPlugin().visible_for_request(request))
+
+    @override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE)
+    def test_it_shows_once_a_keyed_provider_is_active(self):
+        """No document required — a quick question is page-agnostic — and
+        nothing to restart: the next page load carries the chip."""
+        from django.test import RequestFactory
+
+        from toto.steven.plugins.floating_plugins import StevenChatPlugin
+
+        vault.clear_cache()
+        provider = AiProvider.objects.create(label="live", active=True)
+        provider.secret = vault.store_secret("sk-test", name="chip-key")
+        provider.save(update_fields=["secret"])
 
         request = RequestFactory().get("/")
         request.user = User.objects.create_user("chipper", password="pw")
@@ -1738,3 +1759,106 @@ class ElementActionTests(TestCase):
         self.assertEqual(run.status, RunStatus.FAILED)
         self.assertIn("scanner", run.error)
         self.assertEqual(StevenUsageEvent.objects.count(), 0)
+
+
+@override_settings(STEVEN_VAULT_PASSWORD=PASSPHRASE,
+                   MEDIA_ROOT=__import__("tempfile").mkdtemp(prefix="steven-shield-"))
+class AiShieldTests(TestCase):
+    """Bucket.ai_protected: one switch, and every door refuses identically."""
+
+    @classmethod
+    def setUpTestData(cls):
+        from toto.vault.models import Bucket
+
+        _platform()
+        cls.owner = User.objects.create_user("guarded", password="pw")
+        cls.open_bucket = Bucket.objects.create(
+            name="Open", slug="open", owner=cls.owner)
+        cls.shielded = Bucket.objects.create(
+            name="Sealed", slug="sealed", owner=cls.owner, ai_protected=True)
+
+    def setUp(self):
+        vault.clear_cache()
+        provider = AiProvider.objects.create(label="test", active=True)
+        provider.secret = vault.store_secret("sk-test", name="shield-key")
+        provider.save(update_fields=["secret"])
+
+    def _file(self, bucket, title="notes.txt"):
+        from django.core.files.base import ContentFile
+
+        from toto.vault.models import VaultFile
+
+        vault_file = VaultFile(owner=self.owner, title=title,
+                               file_type="text", bucket=bucket)
+        vault_file.file.save(title, ContentFile(b"quiet words"), save=False)
+        vault_file.save()
+        return vault_file
+
+    def test_the_rule_reads_the_bucket_and_only_the_bucket(self):
+        from toto.core import assistant
+
+        self.assertTrue(assistant.allowed_for_file(self._file(self.open_bucket)))
+        self.assertFalse(assistant.allowed_for_file(self._file(self.shielded)))
+        # A bucketless file is unshielded: the shield is a property of the
+        # bucket, and no bucket means nobody set one.
+        from django.core.files.base import ContentFile
+
+        from toto.vault.models import VaultFile
+
+        loose = VaultFile(owner=self.owner, title="loose.txt",
+                          file_type="text")
+        loose.file.save("loose.txt", ContentFile(b"x"), save=False)
+        loose.save()
+        self.assertTrue(assistant.allowed_for_file(loose))
+
+    def test_an_editor_offers_no_surface_for_a_shielded_file(self):
+        from toto.core import assistant
+
+        _register_test_surfaces()
+
+        self.assertEqual(
+            assistant.surface_for_file("tests", self._file(self.open_bucket)),
+            "tests")
+        self.assertEqual(
+            assistant.surface_for_file("tests", self._file(self.shielded)),
+            "")
+
+    def test_the_file_ask_page_refuses_a_shielded_file(self):
+        """Refused at the door, not merely unlisted — a URL somebody kept
+        must refuse too."""
+        self.client.force_login(self.owner)
+
+        allowed = self.client.get(
+            reverse("steven:file_ask", args=[self._file(self.open_bucket).pk]))
+        refused = self.client.get(
+            reverse("steven:file_ask", args=[self._file(self.shielded).pk]))
+
+        self.assertEqual(allowed.status_code, 200)
+        self.assertEqual(refused.status_code, 404)
+
+    def test_the_wand_leaves_the_menu_of_a_shielded_file(self):
+        from toto.vault.plugins import FileServicePlugin
+
+        open_keys = {p.get_key()
+                     for p in FileServicePlugin.for_file(self._file(self.open_bucket))}
+        sealed_keys = {p.get_key()
+                       for p in FileServicePlugin.for_file(self._file(self.shielded))}
+
+        self.assertIn("steven", open_keys)
+        self.assertNotIn("steven", sealed_keys)
+
+    def test_the_generic_editor_drops_its_button_for_a_shielded_file(self):
+        """The view-level integration: the same file, two buckets, one switch."""
+        self.client.force_login(self.owner)
+
+        for bucket, expected in ((self.open_bucket, b'steven/_ai.html'),
+                                 (self.shielded, None)):
+            vault_file = self._file(bucket, title="page.txt")
+            response = self.client.get(
+                reverse("editor:text_display", args=[vault_file.pk]))
+            with self.subTest(bucket=bucket.name):
+                self.assertEqual(response.status_code, 200)
+                if expected is None:
+                    self.assertEqual(response.context["steven_surface"], "")
+                else:
+                    self.assertNotEqual(response.context["steven_surface"], "")

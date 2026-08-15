@@ -106,11 +106,12 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
                 "wrap_lines": "true" if self.wrap_lines else "false",
                 "save_url": reverse(self.save_url_name, args=[file_pk]),
                 "delete_url": reverse(self.delete_url_name, args=[file_pk]),
-                # "" on a host without the assistant, and the template renders
-                # nothing at all — toto.core.assistant is the seam, so this app
-                # never names the wheel that ships it.
-                "steven_surface": assistant.surface_for(
-                    self.resolve_steven_surface(vault_file)),
+                # "" on a host without the assistant OR for a file whose
+                # bucket carries the AI shield — the template renders nothing
+                # at all. toto.core.assistant is the seam, so this app never
+                # names the wheel that ships it.
+                "steven_surface": assistant.surface_for_file(
+                    self.resolve_steven_surface(vault_file), vault_file),
                 # repo_context deliberately NOT merged here any more: the
                 # generic editor is the vault's own surface and git left the
                 # vault UI. The helper stays — memo and cyprian still call it.

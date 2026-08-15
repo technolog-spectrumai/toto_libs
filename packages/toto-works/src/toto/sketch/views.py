@@ -216,9 +216,10 @@ class SketchEditView(LoginRequiredMixin, View):
             "can_edit": can_edit,
             "save_url": reverse("sketch:save", args=[vault_file.pk]),
             "index_url": reverse("sketch:index"),
-            # "" without the assistant (or for a reader) and the template
-            # renders nothing — the same degradation every editor has.
-            "steven_surface": (assistant.surface_for("sketch")
+            # "" without the assistant, for a reader, or for a drawing
+            # whose bucket carries the AI shield — the same degradation every
+            # editor has.
+            "steven_surface": (assistant.surface_for_file("sketch", vault_file)
                                if can_edit else ""),
         }
         if not verdict.ok:

@@ -498,10 +498,11 @@ class DocumentEditView(LoginRequiredMixin, View):
             "tiptap_import_map": tiptap.import_map_json(),
             "read_url": reverse("cyprian:read", args=[file_pk]),
             "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]),
-            # "" on a host without the assistant, and the template renders
-            # nothing at all — see toto.core.assistant, which is why cyprian
-            # never names toto-ai.
-            "steven_surface": assistant.surface_for("cyprian"),
+            # "" on a host without the assistant, or for a file whose
+            # bucket carries the AI shield — the template renders nothing at
+            # all. See toto.core.assistant, which is why cyprian never names
+            # toto-ai.
+            "steven_surface": assistant.surface_for_file("cyprian", vault_file),
             **BaseFileDisplayView.repo_context(vault_file, request.user),
         }, request)
         return render(request, self.template_name, context)

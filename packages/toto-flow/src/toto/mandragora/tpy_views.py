@@ -237,8 +237,10 @@ class TpyDisplayView(LoginRequiredMixin, View):
                 "start_url": reverse("mandragora:tpy_start_kernel", args=[file_pk]),
                 "stop_url": reverse("mandragora:tpy_stop_kernel", args=[file_pk]),
                 "status_url": reverse("mandragora:tpy_kernel_status", args=[file_pk]),
-                # "" without the assistant, and the template renders nothing.
-                "steven_surface": assistant.surface_for("mandragora"),
+                # "" without the assistant, or for a notebook whose bucket
+                # carries the AI shield — the template renders nothing.
+                "steven_surface": assistant.surface_for_file("mandragora",
+                                                             vault_file),
             },
             request,
         )

@@ -29,6 +29,17 @@ class StevenFileServicePlugin(FileServicePlugin):
         "python", "svg", "document", "neojson",
     ]
 
+    def accepts(self, vault_file) -> bool:
+        """Also refuse AI-protected buckets — the menu half of the shield.
+
+        The file-ask view refuses on its own too; this just keeps a dead
+        entry out of the menu.
+        """
+        from toto.core import assistant
+
+        return (super().accepts(vault_file)
+                and assistant.allowed_for_file(vault_file))
+
     def builder_url(self, vault_file) -> str:
         from django.urls import NoReverseMatch, reverse
 

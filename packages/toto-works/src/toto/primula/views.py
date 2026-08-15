@@ -231,7 +231,8 @@ class SheetEditView(LoginRequiredMixin, View):
                 "save_url": reverse("primula:save", args=[vault_file.pk]),
                 "index_url": reverse("primula:index"),
                 # "" without the assistant, and the template renders nothing.
-                "steven_surface": assistant.surface_for("primula"),
+                "steven_surface": assistant.surface_for_file("primula",
+                                                             vault_file),
             },
             request,
         )

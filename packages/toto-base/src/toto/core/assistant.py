@@ -42,3 +42,31 @@ def surface_for(key: str) -> str:
     except Exception:  # noqa: BLE001 - an editor must never break over this
         return ""
     return key
+
+
+def allowed_for_file(vault_file) -> bool:
+    """False when the file's bucket is shielded from the assistant.
+
+    The ONE rule for ``Bucket.ai_protected``, so every door — the editor
+    buttons, the file wand, the file-ask page — refuses identically and a
+    bucket owner has exactly one switch to reason about. Files outside any
+    bucket (``VaultFile.bucket`` is nullable) are unshielded: the shield is a
+    property of the bucket, and no bucket means nobody set one.
+    """
+    try:
+        bucket = getattr(vault_file, "bucket", None)
+        return not bool(bucket and bucket.ai_protected)
+    except Exception:  # noqa: BLE001 - a missing row must read as unshielded
+        return True
+
+
+def surface_for_file(key: str, vault_file) -> str:
+    """`surface_for`, for an editor holding a vault file.
+
+    "" when the file's bucket is AI-protected, so the editor renders no
+    button, registers no handlers, and the chat chip finds no document —
+    all from the same `{% if %}` the editor already carries.
+    """
+    if not allowed_for_file(vault_file):
+        return ""
+    return surface_for(key)

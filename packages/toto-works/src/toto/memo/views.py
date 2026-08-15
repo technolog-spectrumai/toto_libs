@@ -258,9 +258,11 @@ class PresentationEditView(LoginRequiredMixin, View):
                 "export_zip_url": reverse("memo:export_zip", args=[file_pk]),
                 # The git toolbar moved here from the retired source page — a
                 # deck under version control keeps its history buttons (staff only).
-                # "" without the assistant, and the template renders nothing.
-                "steven_surface": assistant.surface_for("memo"),
-                "steven_deck_surface": assistant.surface_for("memo-deck"),
+                # "" without the assistant, or for a deck whose bucket
+                # carries the AI shield — the template renders nothing.
+                "steven_surface": assistant.surface_for_file("memo", vault_file),
+                "steven_deck_surface": assistant.surface_for_file("memo-deck",
+                                                                  vault_file),
                 **BaseFileDisplayView.repo_context(vault_file, request.user),
             },
             request,

@@ -129,6 +129,19 @@ class Bucket(models.Model):
             "When set, get_public_file_url() returns a direct link per file."
         ),
     )
+    #: The AI shield. A protected bucket's files are never offered to the
+    #: assistant and never readable by it: the editors drop their AI buttons,
+    #: the file wand disappears from the service menu, and the file-ask page
+    #: refuses outright. Enforced through toto.core.assistant.allowed_for_file
+    #: — one rule, consulted by every door — because a shield with a side
+    #: entrance is not a shield.
+    ai_protected = models.BooleanField(
+        default=False,
+        help_text=(
+            "The assistant never reads files in this bucket — no AI buttons "
+            "in editors, no file wand, no exceptions."
+        ),
+    )
 
     class Meta:
         verbose_name = "Bucket"

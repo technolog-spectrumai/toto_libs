@@ -464,6 +464,12 @@ def file_ask(request, file_pk: int):
         raise Http404("No such file.")
     if vault_file.is_encrypted:
         raise Http404("Encrypted files cannot be read.")
+    from toto.core import assistant
+
+    if not assistant.allowed_for_file(vault_file):
+        # The bucket's AI shield. Refused HERE, not merely unlisted: the wand
+        # plugin hides the menu entry, but a URL somebody kept must refuse too.
+        raise Http404("This bucket is protected from the assistant.")
 
     surface = registry.get("file")
     if surface is None:
