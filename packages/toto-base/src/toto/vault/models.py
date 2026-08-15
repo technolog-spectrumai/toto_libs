@@ -754,3 +754,8 @@ from .mirror import (  # noqa: E402,F401
     BucketRefreshRun,
     RefreshStatus,
 )
+from .transfer import (  # noqa: E402,F401
+    CopyPolicy,
+    TransferRun,
+    TransferStatus,
+)

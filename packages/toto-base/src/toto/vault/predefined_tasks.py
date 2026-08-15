@@ -69,3 +69,23 @@ def vault_refresh_remote_bucket(input_data: dict) -> dict:
         # on the row.
         raise RuntimeError(run.error or "The refresh failed.")
     return {"data": {"run_id": run_id, "status": run.status}}
+
+
+@register("vault_transfer_files")
+def vault_transfer_files(input_data: dict) -> dict:
+    """Copy a frozen selection between buckets, resuming at the cursor.
+    Expects input_data = {"data": {"run_id": <TransferRun pk>}}."""
+    from .transfer import TransferStatus
+    from .transfer_runner import execute_transfer_run
+
+    run_id = (input_data.get("data") or {}).get("run_id")
+    if run_id is None:
+        raise ValueError(
+            "vault_transfer_files requires run_id in its input data.")
+
+    run = execute_transfer_run(run_id)
+    if run.status == TransferStatus.FAILED:
+        raise RuntimeError(run.error or "The transfer failed.")
+    return {"data": {"run_id": run_id, "status": run.status,
+                     "files_done": run.files_done,
+                     "files_skipped": run.files_skipped}}

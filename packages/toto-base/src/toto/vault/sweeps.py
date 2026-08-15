@@ -19,3 +19,16 @@ register(StuckRunPolicy(
     status_field="status",
     task_id_field="task_id",
 ))
+
+# A transfer moves real bytes and may legally take far longer than a listing
+# walk — an hour is the ceiling beyond which a RUNNING row is a lie. Closing
+# it loses nothing: the cursor makes a retry resume where the rows stopped.
+register(StuckRunPolicy(
+    model_label="vault.TransferRun",
+    active_values=("pending", "running"),
+    closer="toto.vault.transfer_dispatch.fail_transfer_run",
+    cutoff_seconds=3600,
+    reference_fields=("started_at", "created_at"),
+    status_field="status",
+    task_id_field="task_id",
+))

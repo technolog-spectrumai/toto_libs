@@ -948,6 +948,53 @@ def _unique_copy_key(source_file, target_bucket):
     return _unique_file_key(source_file.key or slugify(source_file.title), target_bucket)
 
 
+def _delegate_to_transfer(request, source_bucket, destination_bucket,
+                          dest_directory, selected_files, copy_policy):
+    """Queue a TransferRun for a copy with a non-local endpoint.
+
+    The synchronous loop stays for local→local; the moment either end is S3
+    or a peer, the copy becomes billed, network-bound work with a run row
+    and a poll. Affordability is checked BEFORE the row exists — nobody
+    occupies a worker they cannot pay for — against the frozen size
+    estimate; real bytes are billed per landed file by the runner.
+    """
+    from decimal import Decimal as _D
+
+    from toto.quota import QuotaExceeded, check_quota
+    from toto.quota.charge import InsufficientFunds, check_funds, price_for
+
+    from . import transfer_dispatch
+    from .models import VaultQuotaPolicy
+
+    est_bytes = sum(f.file_size_bytes or 0 for f in selected_files)
+    est_mb = _D(str(est_bytes)) / _D("1048576")
+    tariff = price_for(request.user, "vault")
+    try:
+        check_quota(VaultQuotaPolicy, "storage.transfer_mb", est_mb,
+                    request.user)
+        check_funds(request.user, tariff, "storage.transfer_mb", est_mb)
+    except (QuotaExceeded, InsufficientFunds) as exc:
+        return JsonResponse({"ok": False, "error": str(exc)},
+                            status=getattr(exc, "status_code", 402))
+
+    run = transfer_dispatch.create_transfer_run(
+        user=request.user, source_bucket=source_bucket,
+        dest_bucket=destination_bucket, dest_directory=dest_directory,
+        files=selected_files, copy_policy=copy_policy)
+    try:
+        transfer_dispatch.dispatch_transfer_run(run)
+    except transfer_dispatch.CannotQueue as exc:
+        transfer_dispatch.fail_transfer_run(run, str(exc))
+        return JsonResponse(
+            {"ok": False, "error": str(exc), "run_id": run.pk}, status=503)
+    return JsonResponse({
+        "ok": True,
+        "async": True,
+        "run_id": run.pk,
+        "status_url": reverse("vault:transfer_status", args=[run.pk]),
+    })
+
+
 def create_empty_vault_file(owner, bucket, directory, title, file_type):
     """Create + persist an empty editable vault file seeded with the type's starter
     content. Caller validates ownership and that file_type is creatable. Pre-assigns a
@@ -1140,6 +1187,22 @@ class CopyFilesToBucketView(LoginRequiredMixin, View):
         copy_policy = request.POST.get("copy_policy", "add_suffix")
         if copy_policy not in ("replace", "fail", "add_suffix"):
             copy_policy = "add_suffix"
+
+        if not (source_bucket.is_local and destination_bucket.is_local):
+            resp = _delegate_to_transfer(
+                request, source_bucket, destination_bucket,
+                destination_directory, selected_files, copy_policy)
+            data = json.loads(resp.content)
+            if data.get("ok"):
+                messages.success(
+                    request,
+                    "Transfer queued — it continues in the background.")
+                return redirect("vault:bucket_metrics",
+                                bucket_slug=source_bucket.slug)
+            form.add_error(None, data.get("error",
+                                          "Could not queue the transfer."))
+            return render(request, self.template_name,
+                          self._build_context(request, source_bucket, form))
 
         if copy_policy == "fail":
             conflicts = [
@@ -1450,6 +1513,11 @@ class BucketCopyAjaxView(LoginRequiredMixin, View):
         if len(selected_files) != len(file_ids):
             return JsonResponse({"ok": False, "error": "Some selected files are invalid."}, status=400)
 
+        if not (source_bucket.is_local and destination_bucket.is_local):
+            return _delegate_to_transfer(
+                request, source_bucket, destination_bucket, None,
+                selected_files, "add_suffix")
+
         src_driver = get_bucket_storage(source_bucket)
         dst_driver = get_bucket_storage(destination_bucket)
 
@@ -1580,6 +1648,19 @@ class BucketRefreshStatusView(LoginRequiredMixin, View):
                             or request.user.is_superuser)):
             raise Http404("No such run.")
         return JsonResponse(run_payload(run))
+
+
+class TransferStatusView(LoginRequiredMixin, View):
+    """Poll one transfer run. Run owner or superuser, 404 otherwise."""
+
+    def get(self, request, pk):
+        from .transfer import TransferRun
+        from .transfer import run_payload as transfer_payload
+
+        run = get_object_or_404(TransferRun, pk=pk)
+        if not (run.owner_id == request.user.pk or request.user.is_superuser):
+            raise Http404("No such run.")
+        return JsonResponse(transfer_payload(run))
 
 
 @method_decorator(csrf_exempt, "dispatch")

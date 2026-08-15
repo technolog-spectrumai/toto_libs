@@ -593,11 +593,13 @@ class StorageDriverTest(TestCase):
     # Copy flow uses driver layer (integration test with mocked S3 driver)
     # ------------------------------------------------------------------
 
-    def test_copy_reads_from_source_driver_and_writes_to_target_driver(self):
+    def test_copy_to_s3_delegates_to_a_transfer_run_on_the_drivers(self):
         """
-        When the destination bucket uses s3, the copy view must:
-        - read content via the source driver
-        - write content via the destination (S3) driver, not local storage
+        A non-local destination no longer runs the synchronous loop in the
+        web worker: the copy view queues a TransferRun (here: no worker →
+        the refuse-don't-inline sentence and a FAILED row), and the RUNNER
+        reads via the source driver and writes via the destination (S3)
+        driver, never local storage.
         """
         Platform.objects.create(site_name="Test", author="Test", publication_year=2024, active=True)
         alice = User.objects.create_user("alice_s3", password="pass")
@@ -617,6 +619,25 @@ class StorageDriverTest(TestCase):
             bucket=src_bucket,
         )
 
+        client = Client()
+        client.login(username="alice_s3", password="pass")
+        copy_url = reverse("vault:copy_files", kwargs={"source_slug": src_bucket.slug})
+        response = client.post(copy_url, {
+            "files": [src_file.pk],
+            "destination_bucket": dst_bucket.pk,
+        })
+
+        # No celery worker in tests: the form re-renders with the sentence
+        # and the run row exists, failed, with the selection frozen.
+        from toto.vault.models import TransferRun
+
+        self.assertEqual(response.status_code, 200)
+        run = TransferRun.objects.get()
+        self.assertEqual(run.status, "failed")
+        self.assertEqual(run.file_ids, [src_file.pk])
+        self.assertEqual(run.dest_bucket, dst_bucket)
+
+        # The runner itself moves bytes strictly through the drivers.
         mock_src = MagicMock()
         mock_src.read.return_value = b"file bytes"
         mock_dst = MagicMock()
@@ -625,17 +646,16 @@ class StorageDriverTest(TestCase):
         def fake_driver(bucket):
             return mock_src if bucket.pk == src_bucket.pk else mock_dst
 
-        client = Client()
-        client.login(username="alice_s3", password="pass")
-        copy_url = reverse("vault:copy_files", kwargs={"source_slug": src_bucket.slug})
+        run.status = "pending"
+        run.error = ""
+        run.finished_at = None
+        run.save()
+        with patch("toto.vault.storage_backends.get_bucket_storage",
+                   side_effect=fake_driver):
+            from toto.vault.transfer_runner import execute_transfer_run
+            run = execute_transfer_run(run.pk)
 
-        with patch("toto.vault.views.get_bucket_storage", side_effect=fake_driver):
-            response = client.post(copy_url, {
-                "files": [src_file.pk],
-                "destination_bucket": dst_bucket.pk,
-            })
-
-        self.assertEqual(response.status_code, 302)
+        self.assertEqual(run.status, "success", run.error)
         mock_src.read.assert_called_once_with(src_file.file.name)
         mock_dst.save.assert_called_once()
         mock_src.save.assert_not_called()
