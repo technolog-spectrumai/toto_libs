@@ -2,7 +2,7 @@
 
 No real host has this exact shape — a host installs Jess alongside a dozen other
 features — so the app can only be exercised end to end against a settings module of its
-own. Same reasoning as ``datalink/federation/settings.py`` and
+own. Same reasoning as
 ``sso_core/federation/settings.py``, which exist for the same reason.
 
 Two things here are load-bearing rather than incidental:
@@ -50,10 +50,6 @@ INSTALLED_APPS = [
     # stubbed the header would stop being able to prove the pages render at all, which
     # is most of what these view tests are for.
     *BASE_APPS,
-    # For the datalink refusal test. Flag-gated on a real host; installed here because
-    # DatalinkConfig.ready() is what autodiscovers every app's datalink_policies module,
-    # so without it Jess's refusal is declared and never loaded.
-    "toto.datalink",
     "toto.jess",
 ]
 

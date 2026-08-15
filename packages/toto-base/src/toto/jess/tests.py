@@ -1452,23 +1452,6 @@ class SocialhubEndorsementMailTests(JessTestCase):
 
 
 # ---------------------------------------------------------------------------
-# The datalink refusal
-# ---------------------------------------------------------------------------
-
-class DatalinkPolicyTests(TestCase):
-    def test_every_jess_model_is_refused(self):
-        """A provider holds a credential; the outbox and inbox hold private mail."""
-        from toto.datalink.registry import IDENTITY_REFUSE, load_registry, policy_for
-
-        load_registry()
-        for label in ("jess.EmailProvider", "jess.MailMessage", "jess.InboundMessage"):
-            with self.subTest(label=label):
-                policy = policy_for(label)
-                self.assertEqual(policy.identity, IDENTITY_REFUSE)
-                self.assertTrue(policy.refuse_reason)
-
-
-# ---------------------------------------------------------------------------
 # Manual-release custody: the vault, and passphrase rotation
 # ---------------------------------------------------------------------------
 

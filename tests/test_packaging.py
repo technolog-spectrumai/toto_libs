@@ -122,7 +122,11 @@ def test_migrations_are_packaged(all_names, owner):
     # cannot import a host portion, so the app had to move to be reachable at
     # all. Same move, and the same reason, as cyprian in 1.41 and gitvault in
     # 1.50. The app LABEL is unchanged, so no deployed database notices.
-    assert len(apps_with_migrations) == 49, sorted(apps_with_migrations)
+    # 48 again: toto.datalink went OUT — parked to limbo/ with the sealing
+    # decision that made the vault's bucket peer API the platform's one
+    # host-to-host data channel. It had migrations but was installed by no
+    # host, so no deployed database notices this either.
+    assert len(apps_with_migrations) == 48, sorted(apps_with_migrations)
     assert not apps_with_migrations & NO_MIGRATION_APPS
     # A representative initial migration with real operations rides along.
     assert owner.get("toto/core/migrations/0001_initial.py") == "toto-base"
@@ -286,23 +290,6 @@ def test_every_task_module_ships_a_tasks_submodule(owner):
         )
 
 
-def test_datalink_ships_in_toto_base(owner, all_names):
-    # It is a toto-base app so every host inherits the code, and whether it is INSTALLED
-    # is a per-host BUILD_DATALINK decision. Its tables hold peer credentials, so the
-    # migration must travel with it or a host that switches the flag on has no schema.
-    assert owner.get("toto/datalink/migrations/0001_initial.py") == "toto-base"
-    assert owner.get("toto/datalink/registry.py") == "toto-base"
-    assert owner.get("toto/datalink/services/serialize.py") == "toto-base"
-    # The per-app policy modules are what make the registry complete; a missing one is
-    # a model nobody decided about.
-    for app in ("core", "people", "locations", "socialhub", "events",
-                "vault", "api", "gervazy", "backup", "jess"):
-        assert owner.get(f"toto/{app}/datalink_policies.py") == "toto-base", app
-    # The two-instance harness ships too — every host's clean-env gate runs it.
-    assert owner.get("toto/datalink/federation/settings.py") == "toto-base"
-    assert [n for n in all_names if n.startswith("toto/datalink/federation/tests/")]
-
-
 def test_federation_pairing_ships_in_toto_auth(owner, all_names):
     """Pairing spans both federation modes, so its pieces sit in sso_core.
 
@@ -330,7 +317,7 @@ def test_federation_pairing_ships_in_toto_auth(owner, all_names):
 
 
 def test_jess_ships_in_toto_base(owner, all_names):
-    """Jess is a toto-base app on a per-host BUILD_JESS flag, like datalink.
+    """Jess is a toto-base app on a per-host BUILD_JESS flag.
 
     In toto-base rather than a wheel of its own because absorbing ``api.EmailService``
     meant deleting an FK target that ``socialhub.Community`` referenced — both of those
