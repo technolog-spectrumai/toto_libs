@@ -121,6 +121,17 @@ class Bucket(models.Model):
         related_name="buckets",
         help_text="Provider preset used when storage_backend is S3-compatible.",
     )
+    peer = models.ForeignKey(
+        "vault.BucketPeer",
+        on_delete=models.PROTECT,
+        null=True,
+        blank=True,
+        related_name="buckets",
+        help_text=(
+            "For remote_toto buckets: the paired host this bucket is mounted "
+            "from. PROTECT — a peer with mounted buckets cannot be deleted."
+        ),
+    )
     public_base_url = models.URLField(
         blank=True,
         default="",
@@ -699,3 +710,13 @@ class VaultQuotaPolicy(AbstractQuotaPolicy):
     class Meta(AbstractQuotaPolicy.Meta):
         verbose_name = "Vault quota policy"
         verbose_name_plural = "Vault quota policies"
+
+
+# Imported last so the peering models are part of this app's migration state.
+# See peering.py's module docstring for the doctrines they carry.
+from .peering import (  # noqa: E402,F401
+    BUCKET_RIGHTS,
+    BucketGrant,
+    BucketPeer,
+    has_bucket_right,
+)
