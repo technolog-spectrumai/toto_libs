@@ -31,7 +31,7 @@ from django.views.decorators.http import require_POST
 
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import locks, scanning, versions
+from toto.vault import access, locks, scanning, versions
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -72,7 +72,8 @@ def _location(f: VaultFile) -> str:
 def _get_readable_file(request, file_pk) -> VaultFile:
     """An ``svg`` vault file the user may open (owner or public)."""
     vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk,
         file_type="svg",
     )
@@ -85,7 +86,8 @@ def _get_readable_file(request, file_pk) -> VaultFile:
 def _get_owned_file(request, file_pk) -> VaultFile:
     """An ``svg`` vault file the user owns (required to mutate it)."""
     return get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk,
         owner=request.user,
         file_type="svg",
@@ -121,6 +123,8 @@ class SketchIndexView(LoginRequiredMixin, View):
     def get(self, request):
         qs = (
             VaultFile.objects.filter(file_type="svg", is_encrypted=False)
+            # Editors need local bytes — remote-backed files never list here.
+            .filter(access.local_content_q())
             .filter(Q(is_public=True) | Q(owner=request.user))
             .select_related("owner", "bucket", "directory")
             .order_by("-uploaded_at", "title")[: self.LIST_CAP]

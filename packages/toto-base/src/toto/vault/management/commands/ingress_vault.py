@@ -13,6 +13,14 @@ class Command(IngressCommand):
     help = "Seed Vault: always creates default buckets/dirs; full mode adds demo files and gateways."
 
     def process(self):
+        # Provider presets ride along here because ingress_all only fires
+        # commands named ingress_<app_label> — ingress_storage_providers on
+        # its own is unreachable from any deploy, which left the table empty
+        # on every host since the day it shipped.
+        from django.core.management import call_command
+
+        call_command("ingress_storage_providers", full=self.full)
+
         admin_username = os.environ.get("ADMIN_USERNAME", "admin")
         try:
             user = User.objects.get(username=admin_username)

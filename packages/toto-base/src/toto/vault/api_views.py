@@ -8,6 +8,7 @@ from django.utils.decorators import method_decorator
 from django.utils.text import slugify
 
 from toto.api.cors import CorsApiView
+from toto.vault import access
 from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allowed
 
 # Text-ish file types editable in the Enigma Ace editor. Mirrors the file types
@@ -180,7 +181,12 @@ class FileUploadApiView(CorsApiView):
             bucket=bucket,
             directory=directory,
         )
-        vf.file.save(file.name, file, save=True)
+        from .storage_backends import UploadRefused, persist_upload
+
+        try:
+            persist_upload(vf, file)
+        except UploadRefused as exc:
+            return JsonResponse({"error": str(exc)}, status=400)
         if verdict is not None:
             scanning.record(vf, verdict, user=request.user, door="api-upload")
 
@@ -547,6 +553,10 @@ class FileContentApiView(CorsApiView):
         vf = self._get_file(request.user, key)
         if not vf:
             return JsonResponse({"error": "File not found."}, status=404)
+        if not access.is_local_content(vf):
+            return JsonResponse(
+                {"error": "This file's bytes live on remote storage — "
+                          "download it instead of editing it here."}, status=403)
         if vf.is_encrypted:
             return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
         if vf.file_type not in EDITABLE_FILE_TYPES:
@@ -581,6 +591,10 @@ class FileContentApiView(CorsApiView):
         vf = self._get_file(request.user, key)
         if not vf:
             return JsonResponse({"error": "File not found."}, status=404)
+        if not access.is_local_content(vf):
+            return JsonResponse(
+                {"error": "This file's bytes live on remote storage — "
+                          "download it instead of editing it here."}, status=403)
         if vf.is_encrypted:
             return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=400)
         if vf.file_type not in EDITABLE_FILE_TYPES:
@@ -664,6 +678,11 @@ class FileCreateApiView(CorsApiView):
             bucket = Bucket.objects.get(slug=bucket_slug, owner=request.user)
         except Bucket.DoesNotExist:
             return JsonResponse({"error": "Bucket not found."}, status=404)
+        if not bucket.is_local:
+            return JsonResponse(
+                {"error": "This bucket's storage is remote — files are "
+                          "uploaded or transferred into it, not created "
+                          "empty here."}, status=403)
 
         directory = None
         if directory_id not in (None, "", 0, "0"):

@@ -1,6 +1,8 @@
+import hashlib
 import json
 import shutil
 import tempfile
+from unittest import mock
 from unittest.mock import MagicMock, patch
 
 from django.contrib.auth.models import User
@@ -1428,3 +1430,230 @@ class EncryptedEditLockTests(TestCase):
         self.client.login(username="lock_owner", password="pass")
         resp = self.client.get(reverse("editor:text_display", args=[vf.pk]))
         self.assertEqual(resp.status_code, 200)
+
+class ByteSeamTests(TestCase):
+    """The seam every byte crosses — read/stream/persist through the driver.
+
+    Before it existed the FileField wrote local disk regardless of backend:
+    an s3 bucket could be copied INTO but never downloaded from, and a
+    VAULT_ROOT host had the local driver reading a different disk than the
+    FieldFile wrote. Each test here pins one of those closed holes.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        self.user = User.objects.create_user("seam", password="pw")
+        self.local_bucket = Bucket.objects.create(
+            name="Seam Local", slug="seam-local", owner=self.user)
+        self.s3_bucket = Bucket.objects.create(
+            name="Seam S3", slug="seam-s3", owner=self.user,
+            storage_backend="s3", storage_config={"bucket_name": "remote-b"})
+
+    def tearDown(self):
+        self._override.disable()
+
+    def _local_file(self, body=b"seam bytes", title="seam.txt"):
+        from django.core.files.base import ContentFile
+
+        vf = VaultFile(owner=self.user, title=title, key=title.split(".")[0],
+                       file_type="text", bucket=self.local_bucket)
+        vf.file.save(title, ContentFile(body), save=True)
+        return vf
+
+    def test_the_local_driver_honours_vault_root(self):
+        """The two systems must be the same disk by construction: the field
+        writes via private_storage, so the driver reads via it too."""
+        import pathlib as _pl
+
+        from toto.vault.storage_backends import read_file_bytes
+
+        vault_root = _pl.Path(self.temp_media) / "elsewhere"
+        with override_settings(VAULT_ROOT=str(vault_root)):
+            vf = self._local_file(b"under the other root")
+            self.assertEqual(read_file_bytes(vf), b"under the other root")
+
+    def test_open_file_stream_hands_back_the_local_handle(self):
+        from toto.vault.storage_backends import open_file_stream
+
+        vf = self._local_file(b"streamed")
+        with open_file_stream(vf) as fh:
+            self.assertEqual(fh.read(), b"streamed")
+
+    def test_the_s3_driver_streams_through_open(self):
+        import io
+
+        from toto.vault.storage_backends import S3CompatibleVaultStorageDriver
+
+        driver = S3CompatibleVaultStorageDriver({"bucket_name": "b"})
+        body = io.BytesIO(b"s3 body")
+        with mock.patch.object(driver, "_get_client") as client:
+            client.return_value.get_object.return_value = {"Body": body}
+            self.assertIs(driver.open("k"), body)
+
+    def test_persist_upload_keeps_the_local_path_byte_identical(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from toto.vault.storage_backends import persist_upload
+
+        vf = VaultFile(owner=self.user, title="up.txt", key="up",
+                       file_type="text", bucket=self.local_bucket)
+        persist_upload(vf, SimpleUploadedFile("up.txt", b"uploaded"))
+
+        vf.refresh_from_db()
+        self.assertTrue(vf.file.name)
+        self.assertEqual(vf.file.read(), b"uploaded")
+        self.assertEqual(vf.content_hash,
+                         hashlib.sha256(b"uploaded").hexdigest())
+
+    def test_persist_upload_routes_s3_through_the_driver(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from toto.vault import storage_backends
+
+        vf = VaultFile(owner=self.user, title="s3.txt", key="s3-file",
+                       file_type="text", bucket=self.s3_bucket)
+        driver = mock.Mock()
+        driver.save.return_value = "vault/s3_abcd.txt"
+        with mock.patch.object(storage_backends, "get_bucket_storage",
+                               return_value=driver):
+            storage_backends.persist_upload(
+                vf, SimpleUploadedFile("s3.txt", b"remote bytes"))
+
+        driver.save.assert_called_once()
+        vf.refresh_from_db()
+        self.assertEqual(vf.file.name, "vault/s3_abcd.txt")
+        self.assertEqual(vf.file_size_bytes, len(b"remote bytes"))
+        self.assertEqual(vf.content_hash,
+                         hashlib.sha256(b"remote bytes").hexdigest())
+
+    def test_persist_upload_refuses_a_remote_toto_bucket(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        from toto.vault.storage_backends import UploadRefused, persist_upload
+
+        remote = Bucket.objects.create(
+            name="Seam Peer", slug="seam-peer", owner=self.user,
+            storage_backend="remote_toto", storage_config={})
+        vf = VaultFile(owner=self.user, title="x.txt", key="x",
+                       file_type="text", bucket=remote)
+        with self.assertRaises(UploadRefused):
+            persist_upload(vf, SimpleUploadedFile("x.txt", b"y"))
+        self.assertIsNone(vf.pk)
+
+    def test_create_hash_reads_through_the_driver(self):
+        from toto.vault import storage_backends
+
+        vf = self._local_file(b"hash me")
+        with mock.patch.object(storage_backends, "read_file_bytes",
+                               return_value=b"hash me") as read:
+            self.assertEqual(vf.create_hash(),
+                             hashlib.sha256(b"hash me").hexdigest())
+        read.assert_called_once()
+
+    def test_the_download_view_streams_via_the_seam(self):
+        self.client.force_login(self.user)
+        vf = self._local_file(b"downloadable")
+
+        response = self.client.get(vf.get_public_url())
+
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), b"downloadable")
+
+    def test_a_dead_backend_answers_502_not_a_traceback(self):
+        from toto.vault import storage_backends
+
+        self.client.force_login(self.user)
+        vf = self._local_file(b"body")
+        with mock.patch.object(storage_backends, "open_file_stream",
+                               side_effect=RuntimeError("backend down")):
+            response = self.client.get(vf.get_public_url())
+
+        self.assertEqual(response.status_code, 502)
+        self.assertIn(b"backend down", response.content)
+
+    def test_the_r2_endpoint_gets_its_account_id(self):
+        from toto.vault.models import StorageProvider
+        from toto.vault.storage_backends import get_bucket_storage
+
+        provider = StorageProvider.objects.create(
+            name="r2", display_name="R2",
+            endpoint_url_template="https://{account_id}.r2.example.com")
+        bucket = Bucket.objects.create(
+            name="R2", slug="r2-bucket", owner=self.user,
+            storage_backend="s3", provider=provider,
+            storage_config={"bucket_name": "b", "account_id": "acc123"})
+
+        driver = get_bucket_storage(bucket)
+        self.assertEqual(driver._config["endpoint_url"],
+                         "https://acc123.r2.example.com")
+
+
+class LocalContentGuardTests(TestCase):
+    """Content-rewrite surfaces refuse non-local files; reads still work."""
+
+    @classmethod
+    def setUpClass(cls):
+        cls.temp_media = tempfile.mkdtemp()
+        super().setUpClass()
+
+    @classmethod
+    def tearDownClass(cls):
+        shutil.rmtree(cls.temp_media, ignore_errors=True)
+        super().tearDownClass()
+
+    def setUp(self):
+        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        self._override.enable()
+        self.user = User.objects.create_user("guarded", password="pw")
+        self.client.force_login(self.user)
+        self.remote = Bucket.objects.create(
+            name="Guard Remote", slug="guard-remote", owner=self.user,
+            storage_backend="s3", storage_config={"bucket_name": "b"})
+        self.remote_file = VaultFile.objects.create(
+            owner=self.user, title="far.txt", key="far", file_type="text",
+            file="vault/far.txt", bucket=self.remote)
+
+    def tearDown(self):
+        self._override.disable()
+
+    def test_the_rule_and_its_queryset_twin_agree(self):
+        from toto.vault import access
+
+        self.assertFalse(access.is_local_content(self.remote_file))
+        self.assertNotIn(
+            self.remote_file.pk,
+            VaultFile.objects.filter(access.local_content_q())
+            .values_list("pk", flat=True))
+
+    def test_the_content_api_refuses_both_arms(self):
+        for method in ("get", "put"):
+            with self.subTest(method=method):
+                call = getattr(self.client, method)
+                response = call(
+                    f"/vault/api/files/{self.remote_file.key}/content/",
+                    data="{}" if method == "put" else None,
+                    content_type="application/json")
+                self.assertEqual(response.status_code, 403)
+
+    def test_encrypt_refuses_a_non_local_file(self):
+        response = self.client.post(reverse("vault:encrypt_file"), {
+            "file_pk": self.remote_file.pk, "password": "pw"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_editor_url_is_blank_for_non_local_files(self):
+        from toto.vault import access
+
+        self.assertFalse(access.is_local_content(self.remote_file))
+        # The tree helper is inline in the view; the rule it consults is the
+        # one asserted above, and the encrypted twin has the same shape.

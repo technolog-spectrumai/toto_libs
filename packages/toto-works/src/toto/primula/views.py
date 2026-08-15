@@ -32,7 +32,7 @@ from toto.ui import PageProcessor
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 from toto.primula.models import PrimulaQuotaPolicy, PrimulaUsageEvent
-from toto.vault import locks, versions
+from toto.vault import access, locks, versions
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -86,7 +86,8 @@ def _location(f: VaultFile) -> str:
 def _get_readable_file(request, file_pk) -> VaultFile:
     """A ``sheet`` vault file the user may open (owner or public)."""
     vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk,
         file_type="sheet",
     )
@@ -98,7 +99,8 @@ def _get_readable_file(request, file_pk) -> VaultFile:
 def _get_owned_file(request, file_pk) -> VaultFile:
     """A ``sheet`` vault file the user owns (required to mutate it)."""
     return get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk,
         owner=request.user,
         file_type="sheet",
@@ -119,6 +121,7 @@ class SheetIndexView(LoginRequiredMixin, View):
     def get(self, request):
         qs = (
             VaultFile.objects.filter(file_type="sheet", is_encrypted=False)
+            .filter(access.local_content_q())
             .filter(Q(is_public=True) | Q(owner=request.user))
             .select_related("owner", "bucket", "directory")
             .annotate(version_count=Count("versions"))

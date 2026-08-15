@@ -11,7 +11,8 @@ from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.db.models import Count, Q, Sum
 from django.db.models.functions import TruncDate
-from django.http import FileResponse, Http404, JsonResponse, HttpResponseForbidden
+from django.http import (FileResponse, Http404, HttpResponse,
+                         HttpResponseForbidden, JsonResponse)
 from django.views.decorators.csrf import csrf_exempt
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -25,6 +26,7 @@ from django.contrib import messages
 from django.utils.decorators import method_decorator
 from toto.ui import PageProcessor
 from . import access, scanning
+from . import storage_backends as _storage_backends
 from .models import VaultFile, Bucket, FileGateway, VaultDirectory, BucketCopyLog
 from .storage_backends import get_bucket_storage
 
@@ -84,8 +86,10 @@ class PublicFileListView(TemplateView):
         def _editor_url_for(f):
             # Encrypted files hold ciphertext — never editable. Blanking the URL hides
             # the "Open in editor" button in list, grid and the actions chooser at once
-            # (mirrors _play_url_for above).
-            if f.is_encrypted:
+            # (mirrors _play_url_for above). Non-local content gets the same
+            # treatment: the editors open local handles, and a remote file's
+            # bytes are on another host — download works, editing does not.
+            if f.is_encrypted or not access.is_local_content(f):
                 return ""
             plugin = VaultEditorPlugin.for_file_type(f.file_type)
             try:
@@ -336,10 +340,23 @@ class VaultFileDownloadView(View):
                     "You must be logged in to access this file.")
             raise Http404("No such file.")
 
+        # Through the bucket driver, not the FieldFile: an s3 or remote
+        # bucket's bytes are not on this disk, and before this seam existed a
+        # non-local bucket could be copied INTO but never downloaded from.
+        import os as _os
+
+        try:
+            stream = _storage_backends.open_file_stream(file_obj)
+        except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
+            label = file_obj.bucket.name if file_obj.bucket_id else "its storage"
+            return HttpResponse(
+                f"'{file_obj.title}' could not be fetched from {label}: "
+                f"{type(exc).__name__}: {exc}",
+                status=502, content_type="text/plain; charset=utf-8")
         return FileResponse(
-            file_obj.file.open(),
+            stream,
             as_attachment=True,
-            filename=file_obj.file.name
+            filename=_os.path.basename(file_obj.file.name)
         )
 
 
@@ -559,15 +576,12 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                     # would otherwise 500 the whole request with an HTML page and
                     # break the client's JSON parsing.
                     key=_unique_file_key(slugify(os.path.splitext(uploaded_file.name)[0]), gateway.bucket),
-                    file=uploaded_file,
                     file_type=file_type,
                     bucket=gateway.bucket,
                     directory=directory,
                     is_public=gateway.make_public,
                 )
-                vault_file.save()
-                vault_file.content_hash = vault_file.create_hash()
-                vault_file.save()
+                _storage_backends.persist_upload(vault_file, uploaded_file)
                 _scanning.record(vault_file, verdict, user=request.user,
                                  door="gateway")
             except Exception as _exc:  # noqa: BLE001 — one bad file mustn't 500 the batch
@@ -1218,6 +1232,8 @@ class EncryptFileView(LoginRequiredMixin, View):
         if not file_pk or not password:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if not access.is_local_content(vault_file):
+            return access.remote_lock_response(request, vault_file)
         if vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": "File is already encrypted."}, status=400)
 
@@ -1311,6 +1327,8 @@ class DecryptFileView(LoginRequiredMixin, View):
         if not file_pk or not password:
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
+        if not access.is_local_content(vault_file):
+            return access.remote_lock_response(request, vault_file)
         if not vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
         try:
@@ -1638,6 +1656,12 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
         directory = get_object_or_404(VaultDirectory, pk=int(dir_id))
         if directory.bucket.owner != request.user:
             return JsonResponse({"error": "Permission denied."}, status=403)
+        if not directory.bucket.is_local:
+            # An empty file exists to be edited, and editors need local bytes.
+            return JsonResponse(
+                {"error": "This bucket's storage is remote — files are "
+                          "uploaded or transferred into it, not created "
+                          "empty here."}, status=403)
 
         vault_file = create_empty_vault_file(
             request.user, directory.bucket, directory, title, file_type,
@@ -1684,6 +1708,9 @@ class CreateZipView(LoginRequiredMixin, View):
             return JsonResponse({"error": "Invalid file selection."}, status=400)
         valid_ids = list(
             VaultFile.objects.filter(pk__in=ids, bucket=source.bucket, is_encrypted=False)
+            # Non-local content is filtered the same way encrypted is: the
+            # zip task opens local handles, and a remote file has none.
+            .filter(access.local_content_q())
             .values_list("pk", flat=True)
         )
         if not valid_ids:

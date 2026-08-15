@@ -21,6 +21,13 @@ dependencies = [
     "PyYAML>=6.0",
 ]
 
+[project.optional-dependencies]
+# The vault's non-local storage backends. Hosts that use them add the extra to
+# their requirements; the drivers themselves degrade to a friendly RuntimeError
+# naming the missing package, so a host without the extra still boots.
+s3 = ["boto3>=1.34"]
+remote-vault = ["requests>=2.31"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 # Each package owns exactly the portions present under its own src/toto/.

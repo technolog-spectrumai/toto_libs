@@ -106,6 +106,12 @@ class FileServicePlugin(BasePlugin):
     def accepts(self, vault_file) -> bool:
         if vault_file.is_encrypted:
             return False
+        # Non-local content: a service run reads bytes it expects on this
+        # disk. Download crosses the wire; a service does not.
+        from toto.vault import access
+
+        if not access.is_local_content(vault_file):
+            return False
         if not self.accepted_file_types:
             return True
         return vault_file.file_type in self.accepted_file_types

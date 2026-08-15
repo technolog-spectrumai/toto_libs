@@ -158,6 +158,17 @@ class Bucket(models.Model):
         if self.storage_backend != StorageBackend.LOCAL and not external_buckets_allowed():
             raise ValidationError("External buckets are disabled on this host.")
 
+    @property
+    def is_local(self) -> bool:
+        """This bucket's bytes are on this host's disk.
+
+        The one question every content-rewrite surface asks — editors, zip,
+        encrypt, versions — because those paths open ``VaultFile.file``
+        directly and a non-local file there is someone else's bytes behind a
+        wire. Blank means local: rows predating the backend field carry "".
+        """
+        return self.storage_backend in ("", StorageBackend.LOCAL)
+
     def get_connection_url(self) -> str:
         from toto.vault.connection import BucketConnectionSpec
         return BucketConnectionSpec.from_bucket(self).to_url()
@@ -313,15 +324,20 @@ class VaultFile(models.Model):
         super().save(*args, **kwargs)
 
     def create_hash(self):
-        if self.file and hasattr(self.file, 'read'):
-            try:
-                self.file.seek(0)
-                content = self.file.read()
-                self.file.seek(0)
-                return hashlib.sha256(content).hexdigest()
-            except Exception:
-                return None
-        return None
+        """sha256 of the content, from wherever the bucket keeps it, or None.
+
+        Through the bucket driver rather than the FieldFile: the FieldFile
+        only ever opens local disk, and hashing an s3-backed file through it
+        answered None on every host that could not see the bytes.
+        """
+        if not self.file:
+            return None
+        try:
+            from toto.vault.storage_backends import read_file_bytes
+
+            return hashlib.sha256(read_file_bytes(self)).hexdigest()
+        except Exception:
+            return None
 
     def get_file_info(self):
         return {

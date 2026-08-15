@@ -38,9 +38,20 @@ import os
 import re
 
 from django.core.files.base import ContentFile
-from django.core.files.storage import default_storage
+
+from toto.vault.storage import private_storage
 
 logger = logging.getLogger(__name__)
+
+#: The ceiling for a single file written to a NON-local backend. External
+#: writes hold the whole body in memory (they already did on the scan path),
+#: and a network hop makes that a wire-sized problem rather than a disk-sized
+#: one — so the cap is explicit instead of discovered under load.
+EXTERNAL_UPLOAD_MAX_BYTES = 512 * 2**20
+
+
+class UploadRefused(RuntimeError):
+    """This bucket cannot take a direct upload; the message says why."""
 
 _UNSAFE_RE = re.compile(r"[^A-Za-z0-9._\-]")
 
@@ -70,6 +81,19 @@ class BaseVaultStorageDriver:
         """Return the full file content as bytes."""
         raise NotImplementedError
 
+    def open(self, name: str):
+        """A binary file-like over the content, for streaming responses.
+
+        The default buffers ``read()`` — correct everywhere, efficient only
+        locally. Drivers whose transport can hand back a real stream override it:
+        S3 returns botocore's StreamingBody, and a remote peer returns the
+        HTTP response's raw stream, so a download never holds the whole file
+        in this process's memory.
+        """
+        import io
+
+        return io.BytesIO(self.read(name))
+
     def save(self, name: str, content: bytes) -> str:
         """Persist *content* and return the opaque key to store in VaultFile.file."""
         raise NotImplementedError
@@ -86,22 +110,35 @@ class BaseVaultStorageDriver:
 # ---------------------------------------------------------------------------
 
 class LocalVaultStorageDriver(BaseVaultStorageDriver):
-    """Thin wrapper around Django's configured default_storage."""
+    """Thin wrapper around the vault's own private storage.
+
+    ``private_storage()``, NOT ``default_storage`` — the FileField writes
+    through the former (``VAULT_ROOT or MEDIA_ROOT``), and on a host that
+    sets ``VAULT_ROOT`` a driver wrapping default_storage read and purged
+    the wrong root entirely. The two must be the same disk by construction.
+    """
+
+    def _storage(self):
+        return private_storage()
 
     def read(self, name: str) -> bytes:
-        with default_storage.open(name, "rb") as fh:
+        with self._storage().open(name, "rb") as fh:
             return fh.read()
 
+    def open(self, name: str):
+        return self._storage().open(name, "rb")
+
     def save(self, name: str, content: bytes) -> str:
-        # default_storage.save appends a suffix automatically on collision.
-        return default_storage.save(name, ContentFile(content))
+        # FileSystemStorage.save appends a suffix automatically on collision.
+        return self._storage().save(name, ContentFile(content))
 
     def exists(self, name: str) -> bool:
-        return default_storage.exists(name)
+        return self._storage().exists(name)
 
     def delete(self, name: str) -> None:
-        if default_storage.exists(name):
-            default_storage.delete(name)
+        storage = self._storage()
+        if storage.exists(name):
+            storage.delete(name)
 
 
 # ---------------------------------------------------------------------------
@@ -179,6 +216,12 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
         # name is the full S3 key as returned by save() and stored in VaultFile.file
         response = self._get_client().get_object(Bucket=self._bucket_name, Key=name)
         return response["Body"].read()
+
+    def open(self, name: str):
+        # botocore's StreamingBody is file-like: FileResponse chunks it
+        # without ever holding the object in memory here.
+        response = self._get_client().get_object(Bucket=self._bucket_name, Key=name)
+        return response["Body"]
 
     def save(self, name: str, content: bytes) -> str:
         key = self._unique_object_key(name)
@@ -282,7 +325,11 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
         if not merged.get("endpoint_url") and getattr(bucket, "provider_id", None):
             provider = bucket.provider
             region = merged.get("region_name") or provider.default_region
-            endpoint_url = provider.resolve_endpoint_url(region=region)
+            # account_id reaches the template too — cloudflare_r2's endpoint
+            # is https://{account_id}.r2..., and a placeholder left unfilled
+            # is not an endpoint.
+            endpoint_url = provider.resolve_endpoint_url(
+                region=region, account_id=merged.get("account_id", ""))
             if endpoint_url:
                 merged["endpoint_url"] = endpoint_url
             if not merged.get("addressing_style"):
@@ -299,3 +346,67 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
         return RemoteTotoStorageDriver(server_url, bucket_slug, api_token)
 
     return LocalVaultStorageDriver()
+
+
+# ---------------------------------------------------------------------------
+# The seam every byte crosses
+# ---------------------------------------------------------------------------
+# Views never touch a driver directly: these three are the whole vocabulary,
+# so "which disk is this bucket" is answered in exactly one file. Before this
+# seam existed the FileField wrote local disk regardless of backend — an s3
+# bucket could be copied INTO but never downloaded from.
+
+def read_file_bytes(vault_file) -> bytes:
+    """The full content, from wherever the file's bucket keeps it."""
+    return get_bucket_storage(vault_file.bucket).read(vault_file.file.name)
+
+
+def open_file_stream(vault_file):
+    """A binary stream for FileResponse — local handle, S3 body, peer wire."""
+    return get_bucket_storage(vault_file.bucket).open(vault_file.file.name)
+
+
+def persist_upload(vault_file, uploaded_file) -> None:
+    """Store an upload where its bucket lives, then save the row.
+
+    The one write door for uploads. A LOCAL bucket keeps the FieldFile path
+    byte-identical to what the upload doors always did (same upload_to naming,
+    same collision suffixing). An S3 bucket goes through the driver and the
+    returned key becomes ``file.name``. A remote_toto bucket refuses: rows in
+    a mounted remote bucket come from the mirror, and a direct upload here
+    would invent a file the origin host never heard of.
+    """
+    import hashlib
+
+    bucket = vault_file.bucket
+    if bucket is None or bucket.is_local:
+        vault_file.file.save(uploaded_file.name, uploaded_file, save=True)
+        if not vault_file.content_hash:
+            vault_file.content_hash = vault_file.create_hash()
+            vault_file.save(update_fields=["content_hash"])
+        return
+
+    if bucket.storage_backend == "remote_toto":
+        raise UploadRefused(
+            "This bucket is mounted from another host — files arrive in it "
+            "through a Transfer, not a direct upload.")
+
+    size = getattr(uploaded_file, "size", None)
+    if size is not None and size > EXTERNAL_UPLOAD_MAX_BYTES:
+        raise UploadRefused(
+            f"{uploaded_file.name} is larger than the "
+            f"{EXTERNAL_UPLOAD_MAX_BYTES // 2**20} MB ceiling for external "
+            "storage.")
+
+    content = uploaded_file.read()
+    try:
+        uploaded_file.seek(0)
+    except (OSError, ValueError):
+        pass
+    key = get_bucket_storage(bucket).save(uploaded_file.name, content)
+    vault_file.file = key
+    if not vault_file.file_size_bytes:
+        vault_file.file_size_bytes = len(content)
+    if not vault_file.content_hash:
+        vault_file.content_hash = hashlib.sha256(content).hexdigest()
+    vault_file.save()

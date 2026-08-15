@@ -34,7 +34,7 @@ from toto.editor.views import BaseFileDisplayView
 from toto.memo.media import clean_svg_markup, image_bytes_to_data_uri
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import locks, versions
+from toto.vault import access, locks, versions
 from toto.vault.filetree import accessible_files
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -103,7 +103,8 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     a shared document actually needs: opening the writer, and saving it.
     """
     vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk, owner=request.user, file_type__in=["document", "xml"])
     if not _is_document_file(vault_file):
         raise Http404("Not a document.")
@@ -134,7 +135,8 @@ def _open_document(request, file_pk):
     say its own sentence.
     """
     vault_file = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk, file_type__in=["document", "xml"])
 
     if vault_file.is_encrypted:
@@ -258,6 +260,7 @@ class DocumentIndexView(View):
 
         qs = VaultFile.objects.filter(
             file_type__in=["document", "xml"], is_encrypted=False
+        ).filter(access.local_content_q()
         ).select_related("owner", "bucket", "directory")
         if request.user.is_authenticated:
             qs = qs.filter(Q(is_public=True) | Q(owner=request.user))
@@ -370,7 +373,8 @@ class DocumentReadView(View):
 
     def get(self, request, file_pk):
         vault_file = get_object_or_404(
-            VaultFile.objects.select_related("bucket", "directory", "owner"),
+            VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
             pk=file_pk, file_type__in=["document", "xml"])
 
         if vault_file.is_encrypted:

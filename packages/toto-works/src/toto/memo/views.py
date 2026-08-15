@@ -33,7 +33,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from toto.editor.views import BaseFileDisplayView
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import locks, versions
+from toto.vault import access, locks, versions
 from toto.vault.filetree import accessible_files
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
@@ -106,7 +106,8 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     cannot reach the slide editor.
     """
     vf = get_object_or_404(
-        VaultFile.objects.select_related("bucket", "directory", "owner"),
+        VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
         pk=file_pk,
         owner=request.user,
         file_type__in=["xml", "presentation"],
@@ -166,7 +167,8 @@ class PresentationView(View):
 
     def get(self, request, file_pk):
         vault_file = get_object_or_404(
-            VaultFile.objects.select_related("bucket", "directory", "owner"),
+            VaultFile.objects.select_related("bucket", "directory", "owner")
+        .filter(access.local_content_q()),
             pk=file_pk,
             file_type__in=["xml", "presentation"],
         )
@@ -593,6 +595,7 @@ class PresentationIndexView(View):
 
         qs = VaultFile.objects.filter(
             file_type__in=["xml", "presentation"], is_encrypted=False
+        ).filter(access.local_content_q()
         ).select_related("owner", "bucket", "directory")
         if request.user.is_authenticated:
             qs = qs.filter(Q(is_public=True) | Q(owner=request.user))

@@ -75,3 +75,58 @@ def _vault_url() -> str:
         return reverse("vault:public_list")
     except NoReverseMatch:
         return "/"
+
+
+# ---------------------------------------------------------------------------
+# Where the bytes are
+# ---------------------------------------------------------------------------
+
+def is_local_content(vault_file) -> bool:
+    """True when this file's bytes are on this host's disk.
+
+    The content-rewrite gate. Reading crosses the wire happily (downloads
+    stream through the bucket driver); REWRITING must not — editors, zip,
+    encrypt and versions all assume a local handle they can reopen, diff and
+    replace, and a remote file there would be someone else's bytes edited at
+    a distance. Pair with :data:`LOCAL_CONTENT_Q` exactly as ``may_read``
+    pairs with ``accessible_files``: one rule, two spellings, or the listing
+    and the door drift apart.
+    """
+    if vault_file is None:
+        return False
+    if vault_file.bucket_id is None:
+        return True
+    return vault_file.bucket.is_local
+
+
+def local_content_q():
+    """The queryset spelling of :func:`is_local_content`.
+
+    A function, not a module constant: building a ``Q`` imports nothing at
+    module load and keeps this importable before apps are ready.
+    """
+    from django.db.models import Q
+
+    from toto.vault.models import StorageBackend
+
+    return (Q(bucket__isnull=True)
+            | Q(bucket__storage_backend="")
+            | Q(bucket__storage_backend=StorageBackend.LOCAL))
+
+
+def remote_lock_response(request, vault_file):
+    """The refusal a content-rewrite surface returns for a non-local file.
+
+    Mirrors the encrypted-file lock: a plain page naming where the bytes
+    live and the door that still works (download), never a traceback.
+    """
+    from django.http import HttpResponse
+
+    label = ""
+    if vault_file.bucket_id:
+        label = vault_file.bucket.name
+    return HttpResponse(
+        f"'{vault_file.title}' lives in a remote bucket"
+        f"{f' ({label})' if label else ''} — its bytes are not on this host, "
+        "so it cannot be edited here. Downloading it still works.",
+        status=403, content_type="text/plain; charset=utf-8")

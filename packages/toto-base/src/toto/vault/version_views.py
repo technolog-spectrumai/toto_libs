@@ -19,6 +19,8 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
 from django.utils.translation import gettext as _
+
+from toto.vault import access
 from django.views.decorators.http import require_POST
 
 from . import locks, versions
@@ -146,6 +148,11 @@ def version_save(request, pk: int):
     and what they wanted to call it.
     """
     vault_file = _file_for(request, pk)
+    if not access.is_local_content(vault_file):
+        return JsonResponse(
+            {"error": _("This file's bytes live on remote storage — "
+                        "versions are cut and restored on the host that "
+                        "holds them.")}, status=403)
     if not locks.may_write(vault_file, request.user):
         lock = locks.holder_of(vault_file)
         return JsonResponse(
@@ -172,6 +179,11 @@ def version_restore(request, pk: int, version_pk: int):
     and a current state.
     """
     vault_file = _file_for(request, pk)
+    if not access.is_local_content(vault_file):
+        return JsonResponse(
+            {"error": _("This file's bytes live on remote storage — "
+                        "versions are cut and restored on the host that "
+                        "holds them.")}, status=403)
     if not locks.may_write(vault_file, request.user):
         lock = locks.holder_of(vault_file)
         return JsonResponse(
