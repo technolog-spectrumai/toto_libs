@@ -88,7 +88,7 @@ and no approval workflow, deliberately.
   station holding them, with the flagged person as holder. If several held the
   flag, the first becomes holder and the rest are named in the charter rather
   than silently dropped. The field stays for aurelian's templates.
-- The constitution this platform seeds has promised *"Executive decisions may be
+- An office is held by a member of the community it serves — the membership register replaced the retired signature-based citizenship.
   delegated to appointed **Magistrates**"* since it was written, and
   `people/civic.py::is_committed_citizen` has promised "eligibility for
   non-enforcement public roles". A Station is that office, and citizenship is

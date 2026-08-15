@@ -8,8 +8,6 @@ from .models import (
     CommunityNewsPost,
     CommunityNewsTopic,
     CommunityPrivilege,
-    Constitution,
-    ConstitutionSignature,
     MembershipApplication,
     ReferenceRequest,
     Station,
@@ -134,69 +132,6 @@ class CommunityNewsTopicAdmin(TotoModelAdmin):
     list_display = ("name", "slug")
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
-
-
-class ConstitutionSignatureInline(admin.TabularInline):
-    model = ConstitutionSignature
-    extra = 0
-    fields = ("person", "signed_at", "is_cryptographically_signed_display")
-    readonly_fields = ("signed_at", "is_cryptographically_signed_display")
-
-    @admin.display(boolean=True, description="Crypto signed")
-    def is_cryptographically_signed_display(self, obj):
-        return obj.is_cryptographically_signed
-
-
-@admin.register(Constitution)
-class ConstitutionAdmin(TotoModelAdmin):
-    list_display = ("title", "community", "version", "is_active", "signature_count", "created_at")
-    list_filter = ("is_active", "community")
-    search_fields = ("title", "body", "community__name")
-    prepopulated_fields = {"slug": ("title",)}
-    raw_id_fields = ("community",)
-    readonly_fields = ("created_at", "updated_at")
-    inlines = [ConstitutionSignatureInline]
-
-    @admin.display(description="Signatures")
-    def signature_count(self, obj):
-        return obj.signature_count
-
-
-@admin.register(ConstitutionSignature)
-class ConstitutionSignatureAdmin(TotoModelAdmin):
-    list_display = ("person", "constitution", "signed_at", "is_cryptographically_signed_display", "added_at")
-    list_filter = ("constitution__community",)
-    search_fields = ("person__display_name", "constitution__title")
-    raw_id_fields = ("constitution", "person", "signing_key")
-    readonly_fields = ("signed_at", "added_at", "signing_payload", "cryptographic_signature")
-
-    @admin.display(boolean=True, description="Crypto signed")
-    def is_cryptographically_signed_display(self, obj):
-        return obj.is_cryptographically_signed
-
-
-@admin.register(CommunityPrivilege)
-class CommunityPrivilegeAdmin(TotoModelAdmin):
-    """The ONLY editor for what communities grant. Deliberately admin-only.
-
-    No page in the product renders or edits privileges — the gates that consume
-    them simply work or refuse, and this changelist is where an operator sees
-    every grant on the platform at once. A person holds the UNION across their
-    communities (highest privilege always), and membership is invite-gated, so
-    admitting someone to a listed community IS the grant.
-    """
-
-    list_display = ("community", "may_see_community_chain",
-                    "may_administer_communities", "may_manage_community_news",
-                    "may_operate_mint")
-    list_editable = ("may_see_community_chain",
-                     "may_administer_communities", "may_manage_community_news",
-                     "may_operate_mint")
-    list_filter = ("may_see_community_chain",
-                   "may_administer_communities", "may_manage_community_news",
-                   "may_operate_mint")
-    search_fields = ("community__name", "community__slug")
-    autocomplete_fields = ("community",)
 
 
 @admin.register(Station)

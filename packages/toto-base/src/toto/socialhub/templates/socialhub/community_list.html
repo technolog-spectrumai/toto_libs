@@ -22,6 +22,23 @@
 
       <h1 class="text-xl sm:text-2xl font-extrabold">{% trans "Communities" %}</h1>
       <p class="text-sm opacity-80">{% trans "Browse all registered communities" %}</p>
+
+      {% comment %}One kind at a time. Companies are found here now that the
+         Business Center is retired — a company is a community whose type
+         says so, listed beside every other kind.{% endcomment %}
+      <nav class="flex flex-wrap items-center justify-center gap-2 pt-1"
+           aria-label="{% trans 'Filter by type' %}">
+        <a href="?"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80{% if not org_type %} ring-2 ring-current/30{% endif %}">
+          {% trans "All" %}</a>
+        {% for value, label in org_types %}
+          <a href="?org_type={{ value }}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80{% if org_type == value %} ring-2 ring-current/30{% endif %}">
+            {{ label }}</a>
+        {% endfor %}
+      </nav>
     </section>
 
     <!-- Desktop Table -->

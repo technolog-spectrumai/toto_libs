@@ -1,16 +1,14 @@
-"""Communities, their news and their charters.
+"""Communities and their news.
 
 `Community` is the one model in the whole scope with a real modification stamp
 (`updated_at` is auto_now), so it is also the only place a both-changed conflict can be
 broken by a timestamp — and even then the engine records that it did so rather than
 resolving silently.
 
-Note what is NOT here. `ConstitutionSignature` is refused: without gervazy the
-receiver cannot verify a signature made on the peer, because
-``SigningService.verify`` only ever consults local PersonSigningKey rows — yet
-``is_cryptographically_signed`` would still render a "cryptographically signed" badge,
-since it only checks that two text fields are non-empty. Replicating the row would
-make the receiver assert an authenticity it cannot check.
+Note what is NOT here. A community's `statute` is a vault file, and vault files
+replicate under their own scope with their own rules — the FK travels as an id
+that means nothing on the receiver unless that file came too, which is why the
+field is absent from the policy below rather than quietly copied.
 """
 from toto.datalink.registry import (
     IDENTITY_NATURAL,
@@ -92,30 +90,6 @@ register(SyncPolicy(
     ),
 ))
 
-register(SyncPolicy(
-    "socialhub.Constitution", stage=STAGE_CONTENT,
-    identity=IDENTITY_NATURAL, natural_key=("slug",),
-    unique_guards=(("slug",),),
-    fields=("community", "title", "slug", "body", "version", "is_active"),
-    timestamp_field="updated_at",
-    notes=(
-        "No uid — Constitution is not a DomainEntity — so its unique slug is the "
-        "identity. Written explicitly so save()'s slug derivation never runs."
-    ),
-))
-
-register(SyncPolicy(
-    "socialhub.ConstitutionSignature", stage=STAGE_CONTENT, identity=IDENTITY_REFUSE,
-    refuse_reason=(
-        "A signature the receiver cannot verify. SigningService.verify iterates only "
-        "local PersonSigningKey rows, so every signature made on the peer returns "
-        "False — while is_cryptographically_signed renders a 'signed' badge from two "
-        "non-empty text fields, and nothing in the UI calls verify at all. Copying "
-        "these rows would assert an authenticity this instance cannot check. Making "
-        "them portable needs a public_key_pem snapshot plus verify_with_public_key "
-        "(the pattern toto-economy's ledger already uses) — a separate change."
-    ),
-))
 
 register(SyncPolicy(
     "socialhub.MembershipApplication", stage=STAGE_CONTENT, identity=IDENTITY_REFUSE,

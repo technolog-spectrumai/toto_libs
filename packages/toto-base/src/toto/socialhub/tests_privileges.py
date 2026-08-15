@@ -18,8 +18,6 @@ from toto.socialhub import privileges
 from toto.socialhub.models import (
     Community,
     CommunityPrivilege,
-    Constitution,
-    ConstitutionSignature,
     Station,
 )
 
@@ -32,19 +30,7 @@ def make_member(name, *communities):
     return user
 
 
-def make_citizen(name, *communities):
-    """A member who has signed a constitution — the office-holding qualification."""
-    user = make_member(name, *communities)
-    community = communities[0] if communities else Community.objects.create(
-        name=f"{name}-home")
-    constitution, _ = Constitution.objects.get_or_create(
-        community=community, defaults={"title": "Charter", "body": "Be good."})
-    # signed_at is nullable and stays empty until the person actually signs —
-    # a pending signature is not citizenship.
-    ConstitutionSignature.objects.create(
-        constitution=constitution, person=user.community_profile,
-        signed_at=timezone.now())
-    return user
+
 
 
 class UnionTests(TestCase):
@@ -75,7 +61,7 @@ class UnionTests(TestCase):
         self.assertFalse(privileges.has_privilege(user, "may_administer_communities"))
 
     def test_an_office_grants_what_no_community_of_theirs_does(self):
-        user = make_citizen("archivist", self.plain)
+        user = make_member("archivist", self.plain)
         self.assertFalse(privileges.has_privilege(user, "may_administer_communities"))
 
         station = Station.objects.create(
@@ -91,7 +77,7 @@ class UnionTests(TestCase):
         self.assertFalse(privileges.has_privilege(user, "may_administer_communities"))
 
     def test_a_deactivated_office_grants_nothing(self):
-        user = make_citizen("suspended", self.plain)
+        user = make_member("suspended", self.plain)
         Station.objects.create(name="Dormant office", holder=user.community_profile,
                                may_operate_mint=True, active=False)
         self.assertFalse(privileges.has_privilege(user, "may_operate_mint"))
@@ -120,7 +106,7 @@ class LimitMultiplierTests(TestCase):
         self.community = Community.objects.create(name="Guild")
 
     def test_the_largest_office_wins_and_never_shrinks_the_limit(self):
-        user = make_citizen("busy", self.community)
+        user = make_member("busy", self.community)
         Station.objects.create(name="Small office", holder=user.community_profile,
                                limit_multiplier=Decimal("2"))
         Station.objects.create(name="Big office", holder=user.community_profile,
@@ -131,7 +117,7 @@ class LimitMultiplierTests(TestCase):
     def test_an_office_can_never_reduce_headroom(self):
         # A multiplier below 1 would make an office a punishment. Refuse it at
         # the read, so a mistyped admin value cannot lock someone out.
-        user = make_citizen("shrunk", self.community)
+        user = make_member("shrunk", self.community)
         Station.objects.create(name="Odd office", holder=user.community_profile,
                                limit_multiplier=Decimal("0.5"))
 
@@ -148,31 +134,30 @@ class StationIntegrityTests(TestCase):
     def setUp(self):
         self.community = Community.objects.create(name="Guild")
 
-    def test_only_a_committed_citizen_may_hold_an_office(self):
-        stranger = make_member("stranger", self.community)
-        station = Station(name="Warden", holder=stranger.community_profile)
+    def test_only_a_member_of_the_served_community_may_hold_an_office(self):
+        outsider = make_member("outsider")          # belongs to nothing
+        station = Station(name="Warden", serves=self.community,
+                          holder=outsider.community_profile)
 
         with self.assertRaises(ValidationError) as caught:
             station.full_clean()
         self.assertIn("holder", caught.exception.error_dict)
 
-        # Signing the constitution is what qualifies them — the promise
-        # people/civic.py has documented all along.
-        citizen = make_citizen("citizen", self.community)
-        Station(name="Warden", holder=citizen.community_profile).full_clean()
+        # Belonging to the community the office serves is the qualification.
+        member = make_member("insider", self.community)
+        Station(name="Warden", serves=self.community,
+                holder=member.community_profile).full_clean()
 
     def test_a_paid_office_needs_a_holder_with_a_login(self):
         # Person.user is nullable and nothing creates a Person on signup, so a
-        # loginless Person is an ordinary row — and a signature hangs off the
-        # Person, so they can be a full citizen with no way to log in. What
-        # they cannot be is PAID: there is no billing account to credit.
+        # loginless Person is an ordinary row — and membership hangs off the
+        # Person, so they can be a fully qualified member with no way to log
+        # in. What they cannot be is PAID: there is no billing account.
         person = Person.objects.create(display_name="No login")
-        constitution = Constitution.objects.create(
-            community=self.community, title="Charter", body="Be good.")
-        ConstitutionSignature.objects.create(
-            constitution=constitution, person=person, signed_at=timezone.now())
+        person.communities.add(self.community)
 
-        station = Station(name="Treasurer", holder=person, stipend=Decimal("1"))
+        station = Station(name="Treasurer", serves=self.community,
+                          holder=person, stipend=Decimal("1"))
         with self.assertRaises(ValidationError) as caught:
             station.full_clean()
         self.assertIn("login", str(caught.exception))
@@ -187,7 +172,7 @@ class StationIntegrityTests(TestCase):
         self.assertEqual(Station.objects.filter(active=True).count(), 1)
 
     def test_serves_is_attribution_and_the_office_survives_its_community(self):
-        citizen = make_citizen("local", self.community)
+        citizen = make_member("local", self.community)
         station = Station.objects.create(
             name="Master of the Guild", holder=citizen.community_profile,
             serves=self.community)
@@ -216,7 +201,7 @@ class RosterTests(TestCase):
     def test_the_roster_needs_no_login_and_names_the_federal_payer(self):
         from django.urls import reverse
 
-        holder = make_citizen("archivist", self.guild)
+        holder = make_member("archivist", self.guild)
         Station.objects.create(
             name="Archivist", charter="Keeps the books.",
             holder=holder.community_profile, serves=self.guild,
@@ -237,7 +222,7 @@ class RosterTests(TestCase):
     def test_capabilities_and_pay_never_reach_the_page(self):
         from django.urls import reverse
 
-        holder = make_citizen("treasurer", self.guild)
+        holder = make_member("treasurer", self.guild)
         Station.objects.create(
             name="Treasurer", holder=holder.community_profile,
             limit_multiplier=Decimal("10"), stipend=Decimal("7.5"),
@@ -285,7 +270,7 @@ class ProfileOfficeTests(TestCase):
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
         cls.guild = Community.objects.create(name="Weavers")
-        cls.holder = make_citizen("archivist", cls.guild)
+        cls.holder = make_member("archivist", cls.guild)
         cls.onlooker = make_member("onlooker", cls.guild)
         cls.station = Station.objects.create(
             name="Archivist", charter="Keeps the books.",

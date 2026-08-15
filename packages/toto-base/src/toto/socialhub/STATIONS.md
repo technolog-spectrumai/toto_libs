@@ -56,7 +56,7 @@ office adds headroom and can never take it away.
 
 ## Who may hold one
 
-A **committed citizen** — somebody who has signed a community constitution.
+A **member of the community the office serves** — membership is the register that says who belongs; the old signature-based citizenship was retired with the Constitution model.
 That is the promise `is_committed_citizen` already made, and `Station.clean()`
 is where it finally means something. A paid office additionally needs a holder
 with a login: `Person.user` is nullable and nothing creates a Person on signup,
@@ -66,7 +66,7 @@ so a user-less Person is an ordinary row here — and there is no account to pay
 
 **Django admin, and nowhere else.** Appointing is setting `holder`; vacating is
 clearing it; rotation is one edit. The shape is copied from
-`portfolio.BoardSeat` (an `appointed_at`, a decision record, no election).
+the retired Business Center's board seats did (an `appointed_at`, a decision record, no election).
 
 There is deliberately no election. `portfolio`'s vote machinery is
 company-scoped, zenobia-only and **explicitly non-binding** (*"nothing is
@@ -127,7 +127,7 @@ backfill `since` from. That is its own change, with its own test plan.
 Also not offices, because they are assignments, qualifications or property:
 `response.DeploymentAssignment`, `mobilization.Responder`,
 `kanban.Practitioner`/`ProjectCommitment`, `events.organizers`,
-`forum.ForumMember`, `portfolio.ShareHolding` and `portfolio.BoardSeat`.
+`forum.ForumMember` — and, before its retirement, the Business Center's registers.
 
 ## Federation
 

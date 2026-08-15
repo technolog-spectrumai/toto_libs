@@ -1,5 +1,6 @@
 import base64
 import os
+import unittest
 from unittest.mock import patch
 
 from django.contrib.auth import authenticate, get_user_model
@@ -75,10 +76,10 @@ class DefaultCommunityIngressTests(TestCase):
 
 
 class StationIngressTests(TestCase):
-    """`--full` seeds the offices, and the citizenship that makes them holdable.
+    """`--full` seeds the offices, and the membership that makes them holdable.
 
-    `Station.clean()` refuses a holder who has not signed an active
-    constitution, so a seed that forgot the signature would quietly produce a
+    `Station.clean()` refuses a holder who does not belong to the community the
+    office serves, so a seed that forgot to enrol them would quietly produce a
     roster of vacancies — which looks like working code and is not.
     """
 
@@ -90,15 +91,15 @@ class StationIngressTests(TestCase):
     def test_the_roster_is_not_empty(self):
         self.assertGreaterEqual(Station.objects.count(), 4)
 
-    def test_every_holder_is_a_committed_citizen(self):
+    def test_every_holder_belongs_to_the_community_it_serves(self):
         """The requirement the model enforces — asserted on the seed itself."""
-        from toto.people.civic import is_committed_citizen
-
         held = Station.objects.filter(holder__isnull=False)
         self.assertTrue(held.exists())
         for station in held:
             with self.subTest(station=station.name):
-                self.assertTrue(is_committed_citizen(station.holder))
+                self.assertTrue(
+                    station.holder.communities.filter(
+                        pk=station.serves_id).exists())
 
     def test_a_seeded_station_would_survive_its_own_validation(self):
         for station in Station.objects.filter(holder__isnull=False):
@@ -343,3 +344,150 @@ class StationListChromeTests(TestCase):
         """An institution nobody can see is not an institution."""
         self.assertEqual(
             self.client.get(reverse("socialhub:station_list")).status_code, 200)
+
+
+class StatuteTests(TestCase):
+    """The statute: a vault PDF on the community, for every kind of community."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+
+    def test_every_org_type_may_carry_one(self):
+        """Not only companies — the field is the community's, whatever it is."""
+        for org_type, _label in Community.ORG_TYPES:
+            with self.subTest(org_type=org_type):
+                community = Community.objects.create(
+                    name=f"statute-{org_type}", org_type=org_type)
+                self.assertIsNone(community.statute)
+
+    def test_deleting_the_pdf_never_deletes_the_community(self):
+        """SET_NULL is the point: the texlab/aralia precedent, not notarius's
+        CASCADE — a vault cleanup must not erase an institution."""
+        import tempfile
+
+        from django.contrib.auth import get_user_model
+        from django.core.files.base import ContentFile
+        from django.test import override_settings
+
+        from toto.vault.models import VaultFile
+
+        owner = get_user_model().objects.create_user("keeper", password="pw")
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            pdf = VaultFile(owner=owner, title="statute.pdf",
+                            key="statute-pdf", file_type="pdf")
+            pdf.file.save("statute.pdf", ContentFile(b"%PDF-1.4"), save=False)
+            pdf.content_hash = pdf.create_hash()
+            pdf.save()
+            community = Community.objects.create(name="Chartered", statute=pdf)
+
+            pdf.delete()
+
+        community.refresh_from_db()
+        self.assertIsNone(community.statute)
+
+    def test_the_company_type_has_existed_since_0001(self):
+        """A company is a community whose org_type says so — the whole premise
+        of retiring the Business Center."""
+        self.assertIn(Community.COMPANY,
+                      {value for value, _ in Community.ORG_TYPES})
+
+
+class CommunityListFilterTests(TestCase):
+    """?org_type=company is how companies are found now."""
+
+    @classmethod
+    def setUpTestData(cls):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        Community.objects.create(name="The Firm",
+                                 org_type=Community.COMPANY)
+        Community.objects.create(name="The Choir",
+                                 org_type=Community.NON_PROFIT)
+
+    def test_the_filter_narrows_to_one_kind(self):
+        response = self.client.get("/socialhub/communities/?org_type=company")
+
+        names = {c.name for c in response.context["communities"]}
+        self.assertEqual(names, {"The Firm"})
+
+    def test_no_filter_lists_everything(self):
+        response = self.client.get("/socialhub/communities/")
+
+        names = {c.name for c in response.context["communities"]}
+        self.assertEqual(names, {"The Firm", "The Choir"})
+
+    def test_an_unknown_value_narrows_to_nothing(self):
+        """A filter that quietly ignores itself is worse than an empty page."""
+        response = self.client.get("/socialhub/communities/?org_type=cabal")
+
+        self.assertEqual(len(response.context["communities"]), 0)
+
+
+class CommunityElectorateTests(TestCase):
+    """The polls seam: membership is the register, one voice each."""
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.polls"):
+            raise unittest.SkipTest("polls is not installed on this host")
+
+    def setUp(self):
+        Platform.objects.get_or_create(
+            site_name="Test",
+            defaults={"author": "t", "publication_year": 2026, "active": True})
+        self.community = Community.objects.create(name="Voters")
+
+    def test_the_registry_carries_the_community_default(self):
+        import toto.socialhub.electorates as module
+        from toto.polls import electorates as registry_module
+        from toto.polls.models import SCOPE_COMMUNITY
+
+        self.assertEqual(
+            registry_module._SCOPE_DEFAULTS.get(SCOPE_COMMUNITY),
+            module.COMMUNITY_MEMBERS)
+
+    def test_members_vote_and_strangers_do_not(self):
+        from django.contrib.auth import get_user_model
+
+        from toto.people.models import Person
+        from toto.polls.models import Kind, Question, SCOPE_COMMUNITY
+        from toto.socialhub.electorates import CommunityElectorate
+
+        User = get_user_model()
+        member_user = User.objects.create_user("member", password="pw")
+        member = Person.objects.create(user=member_user, display_name="Member")
+        member.communities.add(self.community)
+        stranger = User.objects.create_user("stranger", password="pw")
+
+        question = Question.objects.create(
+            title="Adopt the budget", question_text="Well?", kind=Kind.VOTE,
+            scope_type=SCOPE_COMMUNITY, scope_id=str(self.community.pk))
+        electorate = CommunityElectorate(self.community)
+
+        self.assertTrue(electorate.standing(question, member_user).allowed)
+        self.assertFalse(electorate.standing(question, stranger).allowed)
+        self.assertEqual(electorate.size(question), 1)
+
+    def test_a_vote_from_another_community_is_refused_by_the_engine(self):
+        from django.contrib.auth import get_user_model
+
+        from toto.polls.models import Kind, Question, SCOPE_COMMUNITY
+        from toto.socialhub.electorates import CommunityElectorate
+
+        other = Community.objects.create(name="Elsewhere")
+        user = get_user_model().objects.create_user("anyone", password="pw")
+        question = Question.objects.create(
+            title="Foreign vote", question_text="Well?", kind=Kind.VOTE,
+            scope_type=SCOPE_COMMUNITY, scope_id=str(other.pk))
+
+        standing = CommunityElectorate(self.community).standing(question, user)
+
+        self.assertFalse(standing.allowed)
+        self.assertIn("another community", standing.reason)

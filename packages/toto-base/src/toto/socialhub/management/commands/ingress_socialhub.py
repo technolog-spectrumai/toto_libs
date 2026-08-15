@@ -10,8 +10,6 @@ from toto.socialhub.models import (
     Community,
     CommunityNewsPost,
     CommunityNewsTopic,
-    Constitution,
-    ConstitutionSignature,
     Station,
 )
 from toto.locations.models import Address
@@ -81,7 +79,6 @@ class Command(IngressCommand):
 
         self.assign_senior_members(community, tester_person, members)
         self.create_community_news(community, tester_person)
-        self.create_constitution(community)
         self.create_stations(community, tester_person, members)
 
         self.stdout.write(self.style.NOTICE("🏘 Creating child communities..."))
@@ -109,7 +106,70 @@ class Command(IngressCommand):
         child_b.save()
         self.stdout.write(self.style.SUCCESS(f"✔ Created child community: {child_b.name}"))
 
+        self.create_company(address)
+
         self.stdout.write(self.style.SUCCESS("✅ SocialHub ingress complete."))
+
+    # ---------------------------------------------------------
+    # A company — a community whose org_type says so
+    # ---------------------------------------------------------
+
+    #: The demo firm. A company is not a different kind of object any more:
+    #: the Business Center was retired and `org_type` carries the whole
+    #: difference, so this seeds an ordinary community and votes on it run on
+    #: the same polls engine every other community uses.
+    COMPANY_NAME = "Farfarele Brokker Inc."
+    COMPANY_STAFF = [
+        ("fbrokker_ceo", "Dorotea Farfarele", "Founder, and the one who signs."),
+        ("fbrokker_cfo", "Ignacy Brokker", "Keeps the books and the receipts."),
+        ("fbrokker_ops", "Mira Wilkanowicz", "Runs the desk day to day."),
+        ("fbrokker_dev", "Piotr Lasocki", "Builds what the desk sells."),
+        ("fbrokker_sec", "Halina Ostrowska", "Company secretary; minutes and filings."),
+    ]
+
+    def create_company(self, address):
+        """Seed the demo company and the people who work there.
+
+        Members, not shareholders: weights are configured by an operator when
+        a community wants them, never derived from a cap table — the rule the
+        governance campaign settled on before the Business Center went away.
+        """
+        company, created = Community.objects.get_or_create(
+            name=self.COMPANY_NAME,
+            defaults={
+                "location": address,
+                "established_year": 2021,
+                "org_type": Community.COMPANY,
+                "email": "desk@farfarele.example",
+            },
+        )
+        if company.org_type != Community.COMPANY:
+            company.org_type = Community.COMPANY
+            company.save(update_fields=["org_type"])
+
+        staff = []
+        for username, display_name, bio in self.COMPANY_STAFF:
+            user, _ = User.objects.get_or_create(
+                username=username,
+                defaults={"email": f"{username}@example.com"},
+            )
+            person = Person.objects.filter(user=user).first()
+            if person is None:
+                person = Person.objects.create(
+                    user=user, display_name=display_name, bio=bio,
+                    joined_date=timezone.now())
+            person.communities.add(company)
+            staff.append(person)
+
+        if staff and company.head_id is None:
+            company.head = staff[0]
+            company.save(update_fields=["head"])
+        company.senior_members.add(*staff[:2])
+
+        verb = "Created" if created else "Kept"
+        self.stdout.write(self.style.SUCCESS(
+            f"✔ {verb} company: {company.name} — {len(staff)} on the register"))
+        return company
 
     # ---------------------------------------------------------
     # Baseline community (all ingress modes)
@@ -358,39 +418,6 @@ class Command(IngressCommand):
                 post.topics.set([topics[name] for name in data["topics"]])
                 self.stdout.write(self.style.SUCCESS(f"✔ Created community news: {post.display_title}"))
 
-    def create_constitution(self, community):
-        constitution, created = Constitution.objects.get_or_create(
-            community=community,
-            is_active=True,
-            defaults={
-                "title": f"{community.name} Constitution",
-                "version": "I",
-                "body": (
-                    f"Constitution of {community.name}\n"
-                    "Version I\n\n"
-                    "Article 1 — Purpose\n"
-                    f"{community.name} exists to advance the shared interests of its members through "
-                    "cooperation, transparency, and mutual accountability.\n\n"
-                    "Article 2 — Membership\n"
-                    "Membership is open to any person accepted through the standard application process. "
-                    "Members are expected to act in good faith and uphold the community's values.\n\n"
-                    "Article 3 — Governance\n"
-                    "Community governance is carried out through the Assembly. Executive decisions may be "
-                    "delegated to appointed Magistrates within the bounds set by the Assembly.\n\n"
-                    "Article 4 — Finances\n"
-                    "All financial decisions affecting the community treasury require Assembly ratification. "
-                    "Magistrates may issue Finance Directives as defined by community policy.\n\n"
-                    "Article 5 — Amendments\n"
-                    "This constitution may be amended by a supermajority vote of the Assembly. "
-                    "Amendments take effect upon publication of a new active version."
-                ),
-            },
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"✔ Created constitution for {community.name}"))
-        else:
-            self.stdout.write(self.style.WARNING(f"⚠ Constitution for {community.name} already exists"))
-
     def create_news_topics(self):
         names = ["announcements", "community", "microblog", "craft"]
         topics = {}
@@ -437,22 +464,15 @@ class Command(IngressCommand):
     ]
 
     def create_stations(self, community, tester_person, members):
-        """Seed the offices, and the citizenship that makes them holdable.
+        """Seed the offices, and the membership that makes them holdable.
 
-        `Station.clean()` refuses a holder who has not signed an active
-        constitution, so the signature is not decoration here — without it the
-        seed produces three vacant offices and no roster worth looking at.
+        `Station.clean()` refuses a holder who does not belong to the community
+        the office serves, so joining is not decoration here — without it the
+        seed produces vacant offices and no roster worth looking at.
         """
-        constitution = Constitution.objects.filter(
-            community=community, is_active=True).first()
-        if constitution is None:
-            self.stdout.write(self.style.WARNING(
-                "⚠ no active constitution — offices would have no eligible holder"))
-            return
-
         candidates = [p for p in ([tester_person] + list(members)) if p is not None]
         for spec, holder in zip(self.STATIONS, candidates):
-            self._sign_constitution(constitution, holder)
+            holder.communities.add(community)
             station, created = Station.objects.get_or_create(
                 name=spec["name"],
                 defaults={**{k: v for k, v in spec.items() if k != "name"},
@@ -480,12 +500,3 @@ class Command(IngressCommand):
         if created:
             self.stdout.write(self.style.SUCCESS(f"✔ Created office: {vacant.name} (vacant)"))
 
-    @staticmethod
-    def _sign_constitution(constitution, person):
-        """`signed_at` is nullable and an unsigned row does not make a citizen."""
-        signature, _ = ConstitutionSignature.objects.get_or_create(
-            constitution=constitution, person=person)
-        if signature.signed_at is None:
-            signature.signed_at = timezone.now()
-            signature.save(update_fields=["signed_at"])
-        return signature

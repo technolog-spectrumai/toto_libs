@@ -70,6 +70,20 @@ class Community(DomainEntity):
         help_text="Optional logo for this federation"
     )
 
+    #: The community's governing document, as a PDF in the vault — its
+    #: statute. SET_NULL and never CASCADE: deleting a file must not delete
+    #: the community that adopted it (the texlab/aralia precedent). Every
+    #: kind of community has one, not only companies; a reader reaches it
+    #: through the vault's own download route, which enforces may_read.
+    statute = models.ForeignKey(
+        "vault.VaultFile",
+        null=True,
+        blank=True,
+        on_delete=models.SET_NULL,
+        related_name="+",
+        help_text="The community's statute, as a PDF in the vault.",
+    )
+
     is_autonomous = models.BooleanField(
         default=False,
         help_text="Marks this community as self-governing, with its own internal leadership and rules."
@@ -213,11 +227,10 @@ class Station(models.Model):
     that, and a community that wants an office funded asks the federation for
     it, informally, and an admin creates one here.
 
-    The constitution this platform seeds has promised these for as long as it
-    has existed — *"Executive decisions may be delegated to appointed
-    Magistrates"* — and :func:`toto.people.civic.is_committed_citizen` has
-    promised "eligibility for non-enforcement public roles" for just as long.
-    This is that office, and citizenship is what qualifies a holder for it.
+    **Membership is what qualifies a holder.** An office serving a community is
+    held by somebody who belongs to it — the rule that replaced a platform-wide
+    "committed citizen" status, which was computed from signatures on a
+    governing document and retired with it.
 
     **The roster is public; the capabilities are not.** Which offices exist, what
     they are for and who holds them are the point of an institution and render
@@ -309,12 +322,22 @@ class Station(models.Model):
                 "holder": "A paid office needs a holder with a login — there is "
                           "no account to pay otherwise.",
             })
-        from toto.people.civic import is_committed_citizen
-
-        if not is_committed_citizen(self.holder):
+        # Membership is the qualification. It replaced a platform-wide
+        # citizenship test computed from signatures on a governing document;
+        # the membership register is what actually records who belongs.
+        # An office that SERVES a community is held by one of its members;
+        # a purely federal office (serves is nullable — "if any") asks only
+        # that the holder belong somewhere.
+        if self.serves_id:
+            if not self.holder.communities.filter(pk=self.serves_id).exists():
+                raise ValidationError({
+                    "holder": "An office is held by a member of the community "
+                              "it serves — this person is not one yet.",
+                })
+        elif not self.holder.communities.exists():
             raise ValidationError({
-                "holder": "Only a committed citizen may hold an office. They "
-                          "must sign a community constitution first.",
+                "holder": "An office is held by somebody who belongs to a "
+                          "community — this person belongs to none.",
             })
 
 
@@ -469,104 +492,3 @@ class ReferenceRequest(models.Model):
                 # 3. Add them to the community they applied to
                 member.communities.add(application.community)
                 member.save()
-
-
-def _constitution_slug(instance, value):
-    base = slugify(value) or "constitution"
-    slug = base
-    n = 1
-    qs = Constitution.objects.exclude(pk=instance.pk)
-    while qs.filter(slug=slug).exists():
-        slug = f"{base}-{n}"
-        n += 1
-    return slug
-
-
-class Constitution(models.Model):
-    community = models.ForeignKey(
-        Community,
-        on_delete=models.CASCADE,
-        related_name="constitutions",
-    )
-    title = models.CharField(max_length=255)
-    slug = models.SlugField(max_length=120, unique=True, blank=True)
-    body = models.TextField()
-    version = models.CharField(max_length=50, blank=True, help_text="e.g. I, II, 2025-rev1")
-    is_active = models.BooleanField(
-        default=True,
-        help_text="Only the active constitution is shown on the community page.",
-    )
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["-created_at"]
-        verbose_name = "Constitution"
-        verbose_name_plural = "Constitutions"
-
-    def __str__(self):
-        v = f" ({self.version})" if self.version else ""
-        return f"{self.community.name} — {self.title}{v}"
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            self.slug = _constitution_slug(self, self.title)
-        super().save(*args, **kwargs)
-
-    @property
-    def signature_count(self):
-        return self.signatures.filter(signed_at__isnull=False).count()
-
-
-class ConstitutionSignature(models.Model):
-    constitution = models.ForeignKey(
-        Constitution,
-        on_delete=models.CASCADE,
-        related_name="signatures",
-    )
-    person = models.ForeignKey(
-        "people.Person",
-        on_delete=models.CASCADE,
-        related_name="constitution_signatures",
-    )
-    signed_at = models.DateTimeField(null=True, blank=True)
-
-    signature_data = models.TextField(
-        blank=True,
-        help_text="Base64-encoded PNG — decorative handwritten signature image.",
-    )
-    signing_payload = models.TextField(
-        blank=True,
-        help_text="Canonical UTF-8 payload that was signed.",
-    )
-    cryptographic_signature = models.TextField(
-        blank=True,
-        help_text="Base64-encoded Ed25519 signature over signing_payload.",
-    )
-    signing_key = models.ForeignKey(
-        "gervazy.EncryptedPrivateKey",
-        null=True,
-        blank=True,
-        on_delete=models.SET_NULL,
-        related_name="constitution_signatures",
-        help_text="The EncryptedPrivateKey used to produce the cryptographic signature.",
-    )
-    added_at = models.DateTimeField(auto_now_add=True)
-
-    class Meta:
-        unique_together = [("constitution", "person")]
-        ordering = ["added_at"]
-        verbose_name = "Constitution signature"
-        verbose_name_plural = "Constitution signatures"
-
-    def __str__(self):
-        signed = "signed" if self.signed_at else "pending"
-        return f"{self.person} on {self.constitution.title} [{signed}]"
-
-    @property
-    def has_signed(self):
-        return self.signed_at is not None
-
-    @property
-    def is_cryptographically_signed(self):
-        return bool(self.cryptographic_signature and self.signing_payload)

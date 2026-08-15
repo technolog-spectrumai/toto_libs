@@ -74,14 +74,18 @@
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
           <i class="fa-solid fa-users"></i>{% trans "All profiles" %}</a>
 
-        {% if community.constitutions.all %}
+        {% comment %}The statute — the community's governing document, held as
+           an ordinary PDF in the vault. Linked through the vault's own
+           download route, which enforces may_read: this template never
+           decides who may read it.{% endcomment %}
+        {% if community.statute %}
         <a
-          href="{% url 'socialhub:constitution_detail' community.slug %}"
+          href="{% url 'vault:public_file' community.statute.bucket.slug community.statute.key %}"
           :class="darkMode
             ? 'border-accent-1 bg-bubble-bg-dark'
             : 'border-accent-2 bg-bubble-bg-light'"
           class="inline-flex items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
-          <i class="fa-solid fa-scroll"></i>{% trans "Constitution" %}</a>
+          <i class="fa-solid fa-scroll"></i>{% trans "Statute" %}</a>
         {% endif %}
       </nav>
     </header>

@@ -16,8 +16,26 @@ class CommunityListView(ListView):
     context_object_name = "communities"
     paginate_by = 10
 
+    def get_queryset(self):
+        """Optionally narrowed to one kind of community.
+
+        ``?org_type=company`` is how companies are found now that the Business
+        Center is retired: a company is a community whose org_type says so,
+        and it is listed beside every other kind rather than behind its own
+        desk. An unknown value narrows to nothing rather than silently
+        listing everything — a filter that quietly ignores itself is worse
+        than an empty page.
+        """
+        queryset = super().get_queryset()
+        wanted = (self.request.GET.get("org_type") or "").strip()
+        if wanted:
+            queryset = queryset.filter(org_type=wanted)
+        return queryset
+
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
+        context["org_types"] = Community.ORG_TYPES
+        context["org_type"] = (self.request.GET.get("org_type") or "").strip()
         return PageProcessor().decorate(context, self.request)
 
 
