@@ -36,16 +36,16 @@
 <script src="{% static 'steven/chat.js' %}"></script>
 
 <div x-data="window.stevenChat ? stevenChat({ askUrl: '{% url 'steven:ask' %}' })
-       : { open: false, draft: '', busy: false, includeDocument: false,
+       : { chatOpen: false, draft: '', busy: false, includeDocument: false,
            hasDocument: false, messages: [],
-           toggle() {}, close() {}, send() {} }"
-     @keydown.escape.window="close()"
+           toggleChat() {}, closeChat() {}, send() {} }"
+     @keydown.escape.window="closeChat()"
      class="fixed bottom-6 right-20 z-40">
 
   {% comment %}.stop so the chip's own click never doubles as the panel's
      outside-click — toggle would close-then-reopen otherwise.{% endcomment %}
-  <button type="button" @click.stop="toggle()"
-          :class="open
+  <button type="button" @click.stop="toggleChat()"
+          :class="chatOpen
                     ? (darkMode ? 'bg-accent-dark text-primary-bg-dark border-accent-dark' : 'bg-accent-light text-primary-bg-light border-accent-light')
                     : (darkMode ? 'border-accent-1 bg-bubble-bg-dark opacity-40' : 'border-accent-2 bg-bubble-bg-light opacity-40')"
           class="flex h-11 w-11 items-center justify-center rounded-full border shadow-md transition hover:opacity-95"
@@ -54,7 +54,7 @@
     <i class="fa-solid fa-comment-dots"></i>
   </button>
 
-  <div x-show="open" x-cloak style="display:none" @click.outside="close()"
+  <div x-show="chatOpen" x-cloak style="display:none" @click.outside="closeChat()"
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
        class="absolute bottom-14 right-0 flex max-h-[70vh] w-80 flex-col rounded-2xl border shadow-2xl sm:w-96">
 
@@ -63,7 +63,7 @@
         <i class="fa-solid fa-comment-dots opacity-70"></i>
         {% trans "Assistant" %}
       </h2>
-      <button type="button" @click="close()"
+      <button type="button" @click="closeChat()"
               class="opacity-50 transition hover:opacity-100"
               title="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
     </div>

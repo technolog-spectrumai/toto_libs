@@ -50,13 +50,23 @@
 {% trans "Ask the assistant to rewrite this document" as ai_doc_title %}
 {% trans "Ask the assistant about the selection" as ai_sel_title %}
 
-<span x-data="stevenAi({
+{% comment %}The inert stub is the same fail-safe the chat chip carries: if
+   actions.js never arrived, every binding below still evaluates against a
+   dead object instead of falling through to the GLOBAL scope, where `aiOpen`
+   would be undefined and a state named `open` would have resolved to
+   window.open — truthy — and shown this modal over the page.{% endcomment %}
+<span x-data="window.stevenAi ? stevenAi({
         surface: '{{ surface|escapejs }}',
         askUrl: '{% url 'steven:ask' %}',
         actionsUrl: '{% url 'steven:surface_actions' surface %}'
-      })"
+      }) : { aiOpen: false, anchor: null, canInsert: false, canRewrite: false,
+             scope: 'element', instruction: '', source: '', sourceLength: 0,
+             agent: null, language: '', busy: false, error: '', result: '',
+             tokens: 0, fullRewrite: false,
+             watchSelection() {}, openToolbar() {}, openSelection() {},
+             run() {}, accept() {}, reject() {}, closeAi() {} }"
       x-init="watchSelection()"
-      @keydown.escape.window="close()">
+      @keydown.escape.window="closeAi()">
 
   {% comment %}1. The toolbar button — add an element by default, whole
      document behind the Full-rewrite checkbox. The literal display:none here
@@ -87,9 +97,9 @@
      z-[9400] so it clears every editor-page modal it can be opened from
      (memo's block dialog and the standard editor modals sit at z-[9200],
      cyprian's stacked second level at z-[9300]).{% endcomment %}
-  <div x-show="open" x-cloak style="display:none"
+  <div x-show="aiOpen" x-cloak style="display:none"
        class="fixed inset-0 z-[9400] flex items-start justify-center overflow-y-auto p-4 sm:p-8">
-    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="close()"></div>
+    <div class="absolute inset-0 bg-black/50 backdrop-blur-sm" @click="closeAi()"></div>
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
          class="relative z-10 mt-8 w-full max-w-2xl rounded-2xl border p-5 shadow-2xl">
 
@@ -107,7 +117,7 @@
                    ? '{% trans 'Rewrites the whole document.' %}' + (language ? ' {% trans 'Returns' %} ' + language + '.' : '')
                    : '{% trans 'Rewrites what you selected.' %}')"></p>
         </div>
-        <button type="button" @click="close()"
+        <button type="button" @click="closeAi()"
                 class="shrink-0 opacity-50 transition hover:opacity-100"
                 title="{% trans 'Close' %}"><i class="fa-solid fa-xmark"></i></button>
       </div>
@@ -161,7 +171,7 @@
               <span x-show="!busy"><i class="fa-solid fa-play mr-1"></i>{% trans "Generate" %}</span>
               <span x-show="busy"><i class="fa-solid fa-spinner fa-spin"></i> {% trans "Working…" %}</span>
             </button>
-            <button type="button" @click="close()"
+            <button type="button" @click="closeAi()"
                     class="rounded-lg px-3 py-2 text-sm font-semibold opacity-60 transition hover:opacity-100">
               {% trans "Cancel" %}</button>
           </div>

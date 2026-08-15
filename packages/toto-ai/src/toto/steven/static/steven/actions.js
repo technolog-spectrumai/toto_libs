@@ -46,6 +46,13 @@
 (function (global) {
   "use strict";
 
+  /* NAMING RULE, learned the hard way. Alpine falls back to the GLOBAL scope
+     when x-data fails to evaluate, so a state named `open` resolves to
+     `window.open` — a function, therefore truthy — and x-show renders the
+     modal OPEN over the page, while `close()` calls `window.close()` and does
+     nothing at all. Hence aiOpen/closeAi; the gas pump's `gasOpen` is the
+     same defence, and it is why the pump never wedged the way this did. */
+
   /* Must match toto.core.ai_surfaces.DOCUMENT_ACTION. The server synthesises
      this action from the surface's own file type, so it is the one action key
      that appears in no action list and cannot be discovered — it is a name both
@@ -137,7 +144,7 @@
       askUrl: config.askUrl,
       actionsUrl: config.actionsUrl,
 
-      open: false,
+      aiOpen: false,
       scope: "document",
       instruction: "",
       source: "",
@@ -242,16 +249,16 @@
         this.error = error || "";
         this.tokens = 0;
         this.runId = null;
-        this.open = true;
+        this.aiOpen = true;
         var self = this;
         this.$nextTick(function () {
           if (self.$refs.prompt) self.$refs.prompt.focus();
         });
       },
 
-      close: function () {
+      closeAi: function () {
         if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-        this.open = false;
+        this.aiOpen = false;
         this.busy = false;
         this.result = "";
         this.error = "";
@@ -275,7 +282,7 @@
         this.canRewrite = typeof h.writeDocument === "function" &&
                           typeof (h.source || h.document) === "function";
         this.canInsert = typeof h.insert === "function";
-        if (this.open) { this.anchor = null; return; }
+        if (this.aiOpen) { this.anchor = null; return; }
 
         /* No `read` handler, no floating button: without one, the click has
            nothing to send, and a second surface on the same page (memo's deck
@@ -400,7 +407,7 @@
                        (e && e.message ? " (" + e.message + ")" : "");
           return;
         }
-        this.close();
+        this.closeAi();
       },
 
       reject: function () {

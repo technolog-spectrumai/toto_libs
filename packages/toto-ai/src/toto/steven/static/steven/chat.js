@@ -19,6 +19,13 @@
 (function (global) {
   "use strict";
 
+  /* NAMING RULE, learned the hard way. Alpine falls back to the GLOBAL scope
+   * when x-data fails to evaluate, so a component state named `open` resolves
+   * to `window.open` — a function, therefore truthy — and an x-show on it
+   * renders the panel OPEN over the page, while `close()` calls
+   * `window.close()` and silently does nothing. Every name here is prefixed
+   * for that reason; the gas pump's `gasOpen` is the same defence. */
+
   var POLL_MS = 1500;
   var MAX_POLLS = 240;
 
@@ -30,7 +37,7 @@
   function stevenChat(config) {
     return {
       askUrl: config.askUrl,
-      open: false,
+      chatOpen: false,
       draft: "",
       includeDocument: false,
       busy: false,
@@ -50,11 +57,11 @@
         } catch (e) { return false; }
       },
 
-      toggle: function () { this.open = !this.open; },
+      toggleChat: function () { this.chatOpen = !this.chatOpen; },
 
-      close: function () {
+      closeChat: function () {
         if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-        this.open = false;
+        this.chatOpen = false;
         this.busy = false;
         this.runId = null;
       },

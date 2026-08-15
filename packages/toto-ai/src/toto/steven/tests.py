@@ -871,6 +871,34 @@ class ChatChipTests(TestCase):
         self.assertNotIn("inset-0", template)
         self.assertNotIn("bg-black/", template)
 
+    def test_no_state_is_named_after_a_window_property(self):
+        """The bug that made the chip eat the whole app.
+
+        Alpine falls back to the GLOBAL scope when x-data fails, so a state
+        named `open` resolves to `window.open` — a function, therefore truthy
+        — and `x-show="open"` renders the panel OVER the page, while
+        `close()` calls `window.close()` and does nothing. The console said
+        both in as many words: "'open' called on an object that does not
+        implement interface Window" and "Scripts may only close windows that
+        were opened by a script". The gas pump never had this because it
+        names its state `gasOpen`.
+        """
+        import pathlib
+
+        base = pathlib.Path(__file__).parent
+        files = [
+            base / "templates" / "steven" / "plugins" / "_chat.html",
+            base / "templates" / "steven" / "_ai.html",
+            base / "static" / "steven" / "chat.js",
+            base / "static" / "steven" / "actions.js",
+        ]
+        for path in files:
+            body = path.read_text()
+            with self.subTest(path=path.name):
+                self.assertNotIn('x-show="open"', body)
+                self.assertNotIn('"close()"', body)
+                self.assertNotIn("open: false", body)
+
     def test_the_panel_cannot_render_open_without_alpine(self):
         """Three fail-safes, each alone sufficient. oya/alpine.js starts in a
         queueMicrotask BEFORE later deferred scripts run, Alpine strips
