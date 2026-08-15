@@ -12,7 +12,7 @@ from django.utils import timezone
 from .core import (AlreadyCast, Eligibility, NotEligible, NotOpen, OpenToAll,
                    Revisability, UnknownChoice, Visibility)
 from . import services
-from .models import (SCOPE_COMPANY, SCOPE_FORUM, SCOPE_GLOBAL, Ballot, Choice,
+from .models import (SCOPE_COMMUNITY, SCOPE_FORUM, SCOPE_GLOBAL, Ballot, Choice,
                      Kind, Question, Status)
 
 User = get_user_model()
@@ -31,11 +31,11 @@ class ScopeTests(TestCase):
     """Company A must never see Company B's votes."""
 
     def test_scopes_are_separate_sets(self):
-        _question(title="A's budget", scope_type=SCOPE_COMPANY, scope_id="1")
-        _question(title="B's budget", scope_type=SCOPE_COMPANY, scope_id="2")
+        _question(title="A's budget", scope_type=SCOPE_COMMUNITY, scope_id="1")
+        _question(title="B's budget", scope_type=SCOPE_COMMUNITY, scope_id="2")
 
-        a = Question.objects.in_scope(SCOPE_COMPANY, "1")
-        b = Question.objects.in_scope(SCOPE_COMPANY, "2")
+        a = Question.objects.in_scope(SCOPE_COMMUNITY, "1")
+        b = Question.objects.in_scope(SCOPE_COMMUNITY, "2")
 
         self.assertEqual([q.title for q in a], ["A's budget"])
         self.assertEqual([q.title for q in b], ["B's budget"])
@@ -49,14 +49,14 @@ class ScopeTests(TestCase):
     def test_two_scopes_may_use_the_same_slug(self):
         """Globally unique slugs meant two companies could not both hold a
         vote of the same name — the cross-tenant collision scoping prevents."""
-        first = _question(title="Budget 2027", scope_type=SCOPE_COMPANY, scope_id="1")
-        second = _question(title="Budget 2027", scope_type=SCOPE_COMPANY, scope_id="2")
+        first = _question(title="Budget 2027", scope_type=SCOPE_COMMUNITY, scope_id="1")
+        second = _question(title="Budget 2027", scope_type=SCOPE_COMMUNITY, scope_id="2")
 
         self.assertEqual(first.slug, second.slug)
 
     def test_slugs_still_do_not_collide_inside_one_scope(self):
-        first = _question(title="Budget", scope_type=SCOPE_COMPANY, scope_id="1")
-        second = _question(title="Budget", scope_type=SCOPE_COMPANY, scope_id="1")
+        first = _question(title="Budget", scope_type=SCOPE_COMMUNITY, scope_id="1")
+        second = _question(title="Budget", scope_type=SCOPE_COMMUNITY, scope_id="1")
 
         self.assertNotEqual(first.slug, second.slug)
 

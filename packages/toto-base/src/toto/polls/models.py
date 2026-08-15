@@ -38,7 +38,10 @@ from .core import Revisability, Visibility
 #: invisible outside it.
 SCOPE_GLOBAL = ""
 SCOPE_FORUM = "forum.channel"
-SCOPE_COMPANY = "portfolio.company"
+#: Communities. A company is one KIND of community now (socialhub's org_type),
+#: which is why this replaced "portfolio.company" when the Business Center was
+#: retired: a company's votes are community votes, on the same engine.
+SCOPE_COMMUNITY = "socialhub.community"
 
 
 class Kind(models.TextChoices):
@@ -90,7 +93,7 @@ class Question(models.Model):
 
     # -- where it belongs ---------------------------------------------------
     #: "" for a platform-wide question; otherwise "forum.channel" /
-    #: "portfolio.company". Never a ForeignKey — see the module docstring.
+    #: "socialhub.community". Never a ForeignKey — see the module docstring.
     scope_type = models.CharField(max_length=40, blank=True, db_index=True)
     scope_id = models.CharField(max_length=64, blank=True, db_index=True)
 

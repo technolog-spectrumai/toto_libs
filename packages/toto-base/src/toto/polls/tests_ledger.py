@@ -45,13 +45,13 @@ class LedgerScopeTests(TestCase):
 
     def test_a_company_decision_never_leaks_into_the_global_ledger(self):
         _decided("Global thing")
-        _decided("Company secret", scope_type="portfolio.company",
+        _decided("Community secret", scope_type="socialhub.community",
                  scope_id="1")
 
         response = self.client.get(reverse("polls:decision_ledger"))
 
         self.assertContains(response, "Global thing")
-        self.assertNotContains(response, "Company secret")
+        self.assertNotContains(response, "Community secret")
 
 
 class LedgerFilterTests(TestCase):

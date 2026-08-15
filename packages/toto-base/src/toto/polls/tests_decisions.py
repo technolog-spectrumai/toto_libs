@@ -195,7 +195,7 @@ class RecordOverdueTests(TestCase):
         no_deadline = _vote(title="Manual close only", closes_at=None)
         poll = _vote(title="A poll", kind=Kind.POLL)
         _expire(poll)
-        scoped = _vote(title="Company vote", scope_type="portfolio.company",
+        scoped = _vote(title="Community vote", scope_type="socialhub.community",
                        scope_id="1")
         _expire(scoped)
 

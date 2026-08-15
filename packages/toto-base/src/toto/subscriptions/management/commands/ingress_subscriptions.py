@@ -60,7 +60,7 @@ PLANS = [
             "cyprian", "memo", "primula", "sketch", "editor",
             "kanban", "polls", "locations",
             "aralia", "workflows", "mandragora", "notarius",
-            "repo", "gitea", "vod", "portfolio", "jess", "travels",
+            "repo", "gitea", "vod", "jess", "travels",
         ],
     },
 ]
