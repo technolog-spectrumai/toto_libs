@@ -1,9 +1,16 @@
-"""Seed one poll and one vote, so both tabs have something to show.
+"""Seed something for every tab: a poll, a vote, a quiz and an electorate.
 
-Two questions rather than one, because the pair is the point: the poll is
-revisable with a live count, the vote is cast once and sealed until it closes.
-Seeding only a poll would leave the Votes tab looking broken on a fresh
-install.
+The poll/vote pair is the point of the first two — the poll is revisable with
+a live count, the vote is cast once and sealed until it closes. Seeding only a
+poll would leave the Votes tab looking broken on a fresh install, and the same
+is true of the Quizzes and Electorates tabs, which is why they are seeded here
+too.
+
+The electorate is seeded from a real community's membership — the demo company
+socialhub's ingress creates — because that is the whole shape of governance
+after the Business Center went away: a company is a community, its register is
+its membership, and weights are DATA an operator edits rather than anything
+derived from a cap table.
 """
 
 import random
@@ -13,7 +20,9 @@ from django.utils import timezone
 
 from toto.ingress import IngressCommand
 from toto.polls.core import Revisability, Visibility
-from toto.polls.models import Ballot, Choice, Kind, Question
+from toto.polls.models import (SCOPE_COMMUNITY, Ballot, Choice, Kind, Question)
+from toto.polls.electorate_models import Electorate, ElectorateMember
+from toto.polls.quiz_models import Quiz, QuizAnswer, QuizQuestion
 
 User = get_user_model()
 
@@ -75,6 +84,9 @@ class Command(IngressCommand):
         if not self.full:
             return
 
+        self._seed_quiz()
+        self._seed_electorate()
+
         if Question.objects.filter(slug="favourite-colour").exists():
             print("[Ingress] Polls demo already exists — skipping.")
             return
@@ -117,3 +129,101 @@ class Command(IngressCommand):
                 defaults={"choice": random.choice(poll_choices)})
 
         print(f"[Ingress] Seeded 1 poll and 1 vote for {len(users)} user(s).")
+
+    # ---- the Quizzes tab -------------------------------------------------
+
+    #: (question, multi?, [(answer, correct?)])
+    QUIZ_QUESTIONS = [
+        ("What makes a formal vote different from a poll?", False, [
+            ("A ballot is final once cast", True),
+            ("It has more options", False),
+            ("Only staff may see it", False),
+        ]),
+        ("Which of these are frozen when a vote opens?", True, [
+            ("The register of who may vote", True),
+            ("The consensus rule and its percentage", True),
+            ("The number of ballots cast", False),
+        ]),
+        ("A decision's hash covers its own payload and what else?", False, [
+            ("The hash of the decision before it", True),
+            ("The voter's password", False),
+            ("Nothing else", False),
+        ]),
+    ]
+
+    def _seed_quiz(self):
+        """One quiz, so the tab has something real to open.
+
+        Completion-only (`pass_mark=None`) and unlimited attempts: the gentler
+        of the two shapes, and the one whose certificate says "completed"
+        rather than judging anybody on demo data.
+        """
+        if Quiz.objects.filter(slug="how-voting-works").exists():
+            print("[Ingress] Quiz demo already exists — skipping.")
+            return
+
+        author = User.objects.order_by("pk").first()
+        quiz = Quiz.objects.create(
+            title="How voting works here",
+            slug="how-voting-works",
+            description=("A short tour of the rules this platform enforces: "
+                         "what a formal vote freezes, and what a decision's "
+                         "hash actually covers."),
+            pass_mark=None,
+            max_attempts=None,
+            created_by=author,
+        )
+        for position, (text, multi, answers) in enumerate(self.QUIZ_QUESTIONS):
+            question = QuizQuestion.objects.create(
+                quiz=quiz, text=text, is_multiple_choice=multi,
+                position=position)
+            for answer_position, (answer_text, correct) in enumerate(answers):
+                QuizAnswer.objects.create(
+                    question=question, text=answer_text, is_correct=correct,
+                    position=answer_position)
+
+        print(f"[Ingress] Seeded 1 quiz with {len(self.QUIZ_QUESTIONS)} questions.")
+
+    # ---- the Electorates tab ---------------------------------------------
+
+    def _seed_electorate(self):
+        """An electorate for the demo company, seeded from its membership.
+
+        One member, one vote — weights are left at 1 deliberately. An operator
+        who wants weighted voting edits these rows; nothing here derives a
+        weight from anything, which is the rule the Business Center's removal
+        made general.
+        """
+        if Electorate.objects.filter(slug="farfarele-register").exists():
+            print("[Ingress] Electorate demo already exists — skipping.")
+            return
+
+        try:
+            from toto.socialhub.models import Community
+        except ImportError:      # a host with polls but no socialhub
+            return
+        company = Community.objects.filter(org_type="company").order_by("pk").first()
+        if company is None:
+            print("[Ingress] No company community — skipping the electorate.")
+            return
+
+        electorate = Electorate.objects.create(
+            slug="farfarele-register",
+            name=f"{company.name} — members",
+            kind=Electorate.Kind.EQUAL,
+            scope_type=SCOPE_COMMUNITY,
+            scope_id=str(company.pk),
+            description=("Everyone on the company's register, one voice each. "
+                         "Edit a weight here to make a vote weighted — nothing "
+                         "computes one for you."),
+        )
+        seeded = 0
+        for person in company.members.all().order_by("pk"):
+            ElectorateMember.objects.create(
+                electorate=electorate,
+                user=person.user,
+                label=person.display_name,
+                weight=1,
+            )
+            seeded += 1
+        print(f"[Ingress] Seeded 1 electorate with {seeded} member(s).")
