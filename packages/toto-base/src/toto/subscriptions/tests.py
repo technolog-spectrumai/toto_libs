@@ -41,10 +41,10 @@ def make_plans():
     standard = SubscriptionPlan.objects.create(
         code="standard", name="Standard", units=200, order=20,
         entitlements=["cyprian", "primula"])
-    studio = SubscriptionPlan.objects.create(
-        code="studio", name="Studio", units=600, order=30,
+    professional = SubscriptionPlan.objects.create(
+        code="professional", name="Professional", units=600, order=30,
         entitlements=["cyprian", "primula", "aralia", "workflows"])
-    return free, standard, studio
+    return free, standard, professional
 
 
 def member(name, *communities):
@@ -86,7 +86,7 @@ class CatalogueTests(TestCase):
 class DiscountTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         cls.students = Community.objects.create(name="Students")
         cls.founders = Community.objects.create(name="Founders")
 
@@ -111,7 +111,7 @@ class DiscountTests(TestCase):
 
     def test_a_discount_on_another_plan_changes_nothing(self):
         CommunityPlanDiscount.objects.create(
-            community=self.students, plan=self.studio, percent=50)
+            community=self.students, plan=self.professional, percent=50)
         user = member("student", self.students)
 
         self.assertEqual(services.best_discount(user, self.standard), (0, ""))
@@ -130,7 +130,7 @@ class DiscountTests(TestCase):
 class PlanResolutionTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
 
     def test_no_subscription_resolves_to_the_default_plan(self):
         self.assertEqual(plan_for(member("nobody")), self.free)
@@ -138,7 +138,7 @@ class PlanResolutionTests(TestCase):
     def test_a_lapsed_subscription_resolves_to_the_default_not_its_own(self):
         """The row records what they chose; this answers what they get."""
         user = member("lapsed")
-        subscription = services.subscribe(user, self.studio)
+        subscription = services.subscribe(user, self.professional)
         subscription.state = SubscriptionState.LAPSED
         subscription.save(update_fields=["state"])
 
@@ -146,17 +146,17 @@ class PlanResolutionTests(TestCase):
 
     def test_arrears_still_grants_because_that_is_what_grace_means(self):
         user = member("behind")
-        subscription = services.subscribe(user, self.studio)
+        subscription = services.subscribe(user, self.professional)
         subscription.state = SubscriptionState.ARREARS
         subscription.save(update_fields=["state"])
 
-        self.assertEqual(plan_for(user), self.studio)
+        self.assertEqual(plan_for(user), self.professional)
 
 
 class GateTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
 
     def test_a_free_user_is_refused_a_paid_app(self):
         self.assertFalse(is_entitled(member("plain"), "aralia"))
@@ -191,7 +191,7 @@ class GateTests(TestCase):
 class MiddlewareTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("reader")
 
     def setUp(self):
@@ -227,7 +227,7 @@ class MiddlewareTests(TestCase):
         self.assertEqual(payload["entitlement"], "aralia")
 
     def test_a_subscriber_writes_freely(self):
-        services.subscribe(self.user, self.studio)
+        services.subscribe(self.user, self.professional)
 
         response, request = self._run("post")
 
@@ -282,7 +282,7 @@ class PeriodTests(TestCase):
 class MaterializeTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
 
     def test_one_row_per_elapsed_month(self):
         user = member("old")
@@ -318,7 +318,7 @@ class MaterializeTests(TestCase):
 class SettleTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         Platform.objects.get_or_create(
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
@@ -388,13 +388,13 @@ class SettleTests(TestCase):
 class ArrearsTests(TestCase):
     @classmethod
     def setUpTestData(cls):
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
 
     def _in_arrears(self, days_ago):
         from django.utils import timezone
 
         user = member(f"late{days_ago}")
-        subscription = services.subscribe(user, self.studio)
+        subscription = services.subscribe(user, self.professional)
         subscription.state = SubscriptionState.ARREARS
         subscription.arrears_since = timezone.now() - timedelta(days=days_ago)
         subscription.save(update_fields=["state", "arrears_since"])
@@ -433,9 +433,9 @@ class ArrearsTests(TestCase):
         services.lapse_if_overdue(subscription)
         self.assertEqual(plan_for(subscription.user), self.free)
 
-        services.subscribe(subscription.user, self.studio)
+        services.subscribe(subscription.user, self.professional)
 
-        self.assertEqual(plan_for(subscription.user), self.studio)
+        self.assertEqual(plan_for(subscription.user), self.professional)
 
     def test_a_paid_month_clears_the_arrears_state(self):
         subscription = self._in_arrears(1)
@@ -455,7 +455,7 @@ class ViewTests(TestCase):
         Platform.objects.get_or_create(
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("shopper")
 
     def test_the_plans_page_is_readable_without_logging_in(self):
@@ -493,9 +493,9 @@ class ViewTests(TestCase):
     def test_subscribing_puts_you_on_the_plan(self):
         self.client.force_login(self.user)
 
-        self.client.post(reverse("subscriptions:subscribe", args=["studio"]))
+        self.client.post(reverse("subscriptions:subscribe", args=["professional"]))
 
-        self.assertEqual(plan_for(self.user), self.studio)
+        self.assertEqual(plan_for(self.user), self.professional)
 
     def test_my_page_materialises_but_never_settles(self):
         """A page render must not reach into somebody's wallet."""
@@ -514,7 +514,7 @@ class ViewTests(TestCase):
 
     def test_cancelling_keeps_the_free_plan(self):
         self.client.force_login(self.user)
-        services.subscribe(self.user, self.studio)
+        services.subscribe(self.user, self.professional)
 
         self.client.post(reverse("subscriptions:cancel"))
 
@@ -537,7 +537,7 @@ class IngressTests(TestCase):
         self._seed()
 
         codes = set(SubscriptionPlan.objects.values_list("code", flat=True))
-        self.assertEqual(codes, {"free", "standard", "studio"})
+        self.assertEqual(codes, {"free", "standard", "professional"})
 
     def test_running_it_twice_changes_nothing(self):
         self._seed()
@@ -548,7 +548,7 @@ class IngressTests(TestCase):
     def test_exactly_one_default_survives_a_hand_edit(self):
         """Two defaults would make 'what does a free user get' ambiguous."""
         self._seed()
-        SubscriptionPlan.objects.filter(code="studio").update(is_default=True)
+        SubscriptionPlan.objects.filter(code="professional").update(is_default=True)
 
         self._seed()
 
@@ -556,6 +556,43 @@ class IngressTests(TestCase):
             list(SubscriptionPlan.objects.filter(is_default=True)
                  .values_list("code", flat=True)),
             ["free"])
+
+    def test_seeding_renames_studio_in_place_keeping_subscribers(self):
+        """The ladder's third plan was renamed studio → professional (8/2026).
+        update_or_create keys on code, so without the rename pre-pass the old
+        row would survive as an active orphan and its subscribers would stop
+        matching the seeded ladder. Renaming IN PLACE keeps every
+        Subscription FK on the same row."""
+        legacy = SubscriptionPlan.objects.create(
+            code="studio", name="Studio", units=600, order=30)
+        user = User.objects.create_user("veteran", password="x")
+        subscription = services.subscribe(user, legacy)
+
+        self._seed()
+
+        legacy.refresh_from_db()
+        self.assertEqual(legacy.code, "professional")
+        subscription.refresh_from_db()
+        self.assertEqual(subscription.plan_id, legacy.pk)
+        self.assertEqual(SubscriptionPlan.objects.count(), 3)
+        self.assertFalse(
+            SubscriptionPlan.objects.filter(code="studio").exists())
+
+    def test_seeding_deactivates_studio_when_professional_already_exists(self):
+        """Never merge two plans by guess: if an operator already created
+        professional by hand, the legacy studio row is deactivated, not
+        renamed onto it."""
+        SubscriptionPlan.objects.create(
+            code="studio", name="Studio", units=600, order=30)
+        SubscriptionPlan.objects.create(
+            code="professional", name="Professional", units=600, order=30)
+
+        self._seed()
+
+        legacy = SubscriptionPlan.objects.get(code="studio")
+        self.assertFalse(legacy.active)
+        self.assertTrue(
+            SubscriptionPlan.objects.get(code="professional").active)
 
     def test_the_demo_discount_is_full_only(self):
         Community.objects.create(name="Demo")
@@ -618,7 +655,7 @@ class NavigationTests(TestCase):
         Platform.objects.get_or_create(
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("browser")
 
     def test_the_plans_page_carries_the_economy_strip(self):
@@ -634,7 +671,7 @@ class NavigationTests(TestCase):
 
     def test_the_apps_own_sub_nav_still_works_beside_it(self):
         """`with` scopes to the include, so the outer active_tab is untouched
-        and Plans/My subscription still highlight independently."""
+        and Plans/Current plan still highlight independently."""
         self.client.force_login(self.user)
 
         plans = self.client.get(reverse("subscriptions:plans"))
@@ -651,7 +688,7 @@ class NavigationTests(TestCase):
 
         self.assertIn(reverse("subscriptions:subscribe", args=["standard"]),
                       body)
-        self.assertIn(reverse("subscriptions:subscribe", args=["studio"]), body)
+        self.assertIn(reverse("subscriptions:subscribe", args=["professional"]), body)
 
 
 class LockedPageChromeTests(TestCase):
@@ -669,7 +706,7 @@ class LockedPageChromeTests(TestCase):
         Platform.objects.get_or_create(
             site_name="Test",
             defaults={"author": "t", "publication_year": 2026, "active": True})
-        cls.free, cls.standard, cls.studio = make_plans()
+        cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("locked-out")
 
     def _refuse(self):

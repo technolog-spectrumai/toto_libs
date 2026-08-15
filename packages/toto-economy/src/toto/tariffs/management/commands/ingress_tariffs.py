@@ -219,10 +219,10 @@ PRICES = {
     "ai.request": CHEAP,
     "ai.tokens_1k": NORMAL,
     # A month of a subscription plan. The QUANTITY is the plan's size (Standard
-    # is 200 units, Studio 600) less the best community discount, so this is the
-    # price of one unit and not of a plan — see subscriptions/services.py for
-    # why the variation has to live in the quantity. CHEAP × 200 is a plausible
-    # monthly bill; CHEAP × 600 is three times it, which is the shape intended.
+    # is 200 units, Professional 600) less the best community discount, so this
+    # is the price of one unit and not of a plan — see subscriptions/services.py
+    # for why the variation has to live in the quantity. CHEAP × 200 is a
+    # plausible monthly bill; CHEAP × 600 is three times it, as intended.
     "subscription.month": CHEAP,
 }
 

@@ -47,8 +47,8 @@ PLANS = [
         ],
     },
     {
-        "code": "studio",
-        "name": "Studio",
+        "code": "professional",
+        "name": "Professional",
         "units": 600,
         "is_default": False,
         "order": 30,
@@ -65,11 +65,17 @@ PLANS = [
     },
 ]
 
+#: Plans that changed code. update_or_create keys on code, so without this a
+#: rename would leave the old row behind as an active orphan while its
+#: subscribers silently stop matching the seeded ladder.
+RENAMED = {"studio": "professional"}
+
 
 class Command(IngressCommand):
     help = "Seed the subscription plans."
 
     def process(self):
+        self._apply_renames()
         created = 0
         for spec in PLANS:
             code = spec["code"]
@@ -91,6 +97,29 @@ class Command(IngressCommand):
         # Demo data: a community that makes its members' Standard cheaper, so
         # the discount line on the plans page has something to say.
         self._seed_demo_discount()
+
+    def _apply_renames(self):
+        """Carry a renamed plan's subscribers over instead of orphaning them.
+
+        Rename in place when only the old code exists — every Subscription FK
+        keeps its row. When both exist (an operator already made the new one),
+        the old row is deactivated instead: never merge two plans by guess.
+        """
+        for old, new in RENAMED.items():
+            old_row = SubscriptionPlan.objects.filter(code=old).first()
+            if old_row is None:
+                continue
+            if SubscriptionPlan.objects.filter(code=new).exists():
+                if old_row.active:
+                    old_row.active = False
+                    old_row.save(update_fields=["active"])
+                    self.stdout.write(
+                        f"subscriptions: '{old}' deactivated "
+                        f"('{new}' already exists)")
+                continue
+            old_row.code = new
+            old_row.save(update_fields=["code"])
+            self.stdout.write(f"subscriptions: '{old}' renamed to '{new}'")
 
     def _seed_demo_discount(self):
         from toto.socialhub.models import Community
