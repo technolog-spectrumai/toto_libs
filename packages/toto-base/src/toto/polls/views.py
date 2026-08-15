@@ -297,15 +297,156 @@ def decision_pdf(request, kind, slug):
 
 @login_required
 def ledger_pdf_export(request):
-    """The filtered ledger, on paper. Exactly the rows the HTML page shows."""
+    """The filtered ledger, on paper. Exactly the rows the HTML page shows.
+
+    ``?qr=1`` embeds a verification checkpoint: a FRESH one is taken at
+    export time (and stored, like any checkpoint), so the document carries
+    the head of the ledger it prints — the PDF becomes its own offline
+    witness. Falls back to unembellished export if the fold cannot run.
+    """
     services.record_overdue(SCOPE_GLOBAL)
     decisions, filters = _filtered_ledger(request)
+
+    checkpoint_row = None
+    if request.GET.get("qr") == "1":
+        from . import checkpoint
+
+        checkpoint_row = checkpoint.take(
+            scope_type=SCOPE_GLOBAL, scope_id="", by=request.user,
+            note=_("embedded in a ledger PDF export"))
     return downloads.metered_pdf(
         request,
-        lambda: render_pdf.ledger_pdf(list(decisions), filters=filters),
+        lambda: render_pdf.ledger_pdf(list(decisions), filters=filters,
+                                      checkpoint_row=checkpoint_row),
         "decision-ledger.pdf")
 
 # -- electorates (stage 5) and the ledger's chain (stage 6) -------------------
+
+def _checkpoint_qr(payload: str) -> str:
+    """The payload as an inline QR data-URI, or "" when nothing can draw one.
+
+    The payload TEXT is always shown beside the image (the sso pairing rule:
+    a QR is a transport, never the only copy), so a host whose cv2 cannot
+    encode simply shows the text to copy by hand.
+    """
+    try:
+        from toto.core import qr
+
+        return qr.render_data_uri(payload)
+    except Exception:  # noqa: BLE001 - a missing encoder must not 500 the list
+        return ""
+
+
+@login_required
+def ledger_checkpoints(request):
+    """Every checkpoint taken of the global ledger, each with its live verdict.
+
+    The page states the custody rule out loud: the stored row is the
+    convenience, the printed QR is the evidence — an attacker who can rewrite
+    decisions can rewrite this table, and cannot rewrite paper.
+    """
+    from . import checkpoint
+    from .checkpoint_models import LedgerCheckpoint
+
+    rows = []
+    for stored in (LedgerCheckpoint.objects
+                   .filter(scope_type=SCOPE_GLOBAL, scope_id="")[:50]):
+        result = checkpoint.verify_stored(stored)
+        rows.append({"checkpoint": stored, "result": result,
+                     "qr": _checkpoint_qr(stored.payload)})
+
+    count, head_hex = checkpoint.head_at(SCOPE_GLOBAL, "")
+    return _render(request, "polls/ledger_checkpoints.html", {
+        "active_tab": "ledger",
+        "rows": rows,
+        "current_count": count,
+        "current_head": head_hex,
+        "is_operator": _is_operator(request.user),
+        "verify_result": None,
+        "verify_payload": "",
+    })
+
+
+@login_required
+@require_POST
+def ledger_checkpoint_new(request):
+    """Take a checkpoint now. Staff — it writes an immutable evidence row."""
+    if not _is_operator(request.user):
+        raise PermissionDenied(_("Only staff take a ledger checkpoint."))
+    from . import checkpoint
+
+    services.record_overdue(SCOPE_GLOBAL)
+    stored = checkpoint.take(scope_type=SCOPE_GLOBAL, scope_id="",
+                             by=request.user,
+                             note=request.POST.get("note", "").strip()[:200])
+    messages.success(request, _(
+        "Checkpoint taken at %(count)s entries. Print or photograph the QR "
+        "now and keep it OUTSIDE this platform — the stored copy is a "
+        "convenience, the offline copy is the evidence.")
+        % {"count": stored.entry_count})
+    return redirect("polls:ledger_checkpoints")
+
+
+@login_required
+def ledger_checkpoint_verify(request):
+    """Scan or paste a checkpoint and compare it against the stored ledger.
+
+    Accepts the payload text or an uploaded QR photo. The verdict page says
+    MATCH / MISMATCH and, on mismatch, where the damage is localized — or
+    that the rewrite is self-consistent and which stored checkpoints bracket
+    it. Any logged-in member may verify: an audit tool that only staff can
+    run is not independent evidence.
+    """
+    from . import checkpoint
+
+    result = None
+    payload_text = ""
+    error = ""
+    if request.method == "POST":
+        payload_text = (request.POST.get("payload") or "").strip()
+        upload = request.FILES.get("image")
+        if not payload_text and upload:
+            try:
+                from toto.core import qr
+
+                payload_text = qr.read(upload.read())
+            except Exception as exc:  # noqa: BLE001 - a bad photo is user input
+                error = str(exc)
+        if payload_text and not error:
+            try:
+                parsed = checkpoint.parse_payload(payload_text)
+                result = checkpoint.verify(parsed)
+            except checkpoint.PayloadError as exc:
+                error = str(exc)
+        elif not payload_text and not error:
+            error = _("Paste the checkpoint text or upload a photo of the QR.")
+
+    bracket_hit = bracket_miss = None
+    if result is not None and result.verdict == "MISMATCH":
+        bracket_hit, bracket_miss = checkpoint.bracket(SCOPE_GLOBAL, "")
+
+    from .checkpoint_models import LedgerCheckpoint
+
+    rows = []
+    for stored in (LedgerCheckpoint.objects
+                   .filter(scope_type=SCOPE_GLOBAL, scope_id="")[:50]):
+        rows.append({"checkpoint": stored,
+                     "result": checkpoint.verify_stored(stored),
+                     "qr": _checkpoint_qr(stored.payload)})
+    count, head_hex = checkpoint.head_at(SCOPE_GLOBAL, "")
+    return _render(request, "polls/ledger_checkpoints.html", {
+        "active_tab": "ledger",
+        "rows": rows,
+        "current_count": count,
+        "current_head": head_hex,
+        "is_operator": _is_operator(request.user),
+        "verify_result": result,
+        "verify_payload": payload_text,
+        "verify_error": error,
+        "bracket_hit": bracket_hit,
+        "bracket_miss": bracket_miss,
+    })
+
 
 @login_required
 def electorate_list(request):

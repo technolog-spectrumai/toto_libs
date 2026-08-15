@@ -197,8 +197,64 @@ def vote_result_pdf(question, decision) -> bytes:
     return buf.getvalue()
 
 
-def ledger_pdf(decisions, *, filters: dict | None = None) -> bytes:
-    """The filtered ledger as a listing — one block per decision."""
+def _draw_checkpoint(page, c, cm, simpleSplit, stored) -> None:
+    """The verification block: the QR, its head hash and timestamp.
+
+    Drawn from a STORED checkpoint row so the PDF and the checkpoints page
+    show the same artifact. The payload text is always printed beside the
+    image — a QR is a transport, never the only copy — so the page verifies
+    even if the print blurs the code.
+    """
+    page.need(140)
+    page.line(_("Verification checkpoint"), font="Helvetica-Bold", size=11,
+              dy=16)
+    qr_drawn = False
+    try:
+        import base64
+
+        from reportlab.lib.utils import ImageReader
+
+        from toto.core import qr as qr_module
+
+        data_uri = qr_module.render_data_uri(stored.payload)
+        png = base64.b64decode(data_uri.split(",", 1)[1])
+        c.drawImage(ImageReader(io.BytesIO(png)), 2 * cm, page.y - 3.6 * cm,
+                    width=3.6 * cm, height=3.6 * cm)
+        qr_drawn = True
+    except Exception:  # noqa: BLE001 — a missing encoder must not kill the PDF
+        pass
+
+    x = (6 * cm) if qr_drawn else (2 * cm)
+    c.setFont("Helvetica", 8)
+    c.drawString(x, page.y - 12, _("Entries: %(n)s — algorithm %(algo)s") % {
+        "n": stored.entry_count, "algo": stored.algorithm})
+    c.drawString(x, page.y - 24, _("Head: %(head)s") % {
+        "head": stored.head_hash[:32]})
+    c.drawString(x, page.y - 34, "      " + stored.head_hash[32:])
+    c.drawString(x, page.y - 46, _("Taken: %(when)s") % {
+        "when": stored.taken_at.strftime("%Y-%m-%d %H:%M")})
+    if stored.signature:
+        c.drawString(x, page.y - 58, _("Signed, key %(key)s") % {
+            "key": stored.signed_key_id[:24]})
+    c.setFont("Helvetica", 6)
+    for offset, chunk in enumerate(
+            [stored.payload[i:i + 90]
+             for i in range(0, len(stored.payload), 90)][:4]):
+        c.drawString(x, page.y - 72 - offset * 8, chunk)
+    page.y -= 112
+    page.line(_("Verify at any time: recompute the ledger fold and compare "
+                "it to this head — the checkpoints page or the verify_ledger "
+                "command does both."), size=7)
+    page.gap(8)
+
+
+def ledger_pdf(decisions, *, filters: dict | None = None,
+               checkpoint_row=None) -> bytes:
+    """The filtered ledger as a listing — one block per decision.
+
+    ``checkpoint_row`` embeds the verification QR block: the document then
+    carries the evidence needed to audit itself against a future database.
+    """
     A4, cm, simpleSplit, canvas = _reportlab()
 
     buf = io.BytesIO()
@@ -209,6 +265,9 @@ def ledger_pdf(decisions, *, filters: dict | None = None) -> bytes:
     active = ", ".join(f"{k}={v}" for k, v in (filters or {}).items() if v)
     page.line(_("Filters: %(active)s") % {"active": active or _("none")},
               size=9, dy=18)
+
+    if checkpoint_row is not None:
+        _draw_checkpoint(page, c, cm, simpleSplit, checkpoint_row)
 
     for decision in decisions:
         page.need(46)

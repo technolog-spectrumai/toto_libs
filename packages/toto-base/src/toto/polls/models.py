@@ -496,6 +496,9 @@ from .electorate_models import (CONVENING_ASPECTS,  # noqa: E402,F401
 from .quiz_models import (Quiz, QuizAnswer, QuizAttempt,  # noqa: E402,F401
                           QuizAttemptAnswer, QuizCertificate, QuizQuestion)
 
+# -- ledger checkpoints: the chain's head, foldable onto paper ----------------
+from .checkpoint_models import LedgerCheckpoint  # noqa: E402,F401
+
 # -- metering (the polls.pdf metric's storage) -------------------------------
 
 

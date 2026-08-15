@@ -43,10 +43,22 @@
   <a href="{% url 'polls:ledger_verify' %}{% if querystring %}?{{ querystring }}{% endif %}"
      class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
     <i class="fa-solid fa-shield-halved"></i>{% trans "Verify the chain" %}</a>
-  <a href="{% url 'polls:ledger_pdf' %}{% if querystring %}?{{ querystring }}{% endif %}"
-     :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
-     class="ml-auto inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-    <i class="fa-solid fa-file-pdf"></i>{% trans "Export PDF" %}</a>
+  <a href="{% url 'polls:ledger_checkpoints' %}"
+     class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+    <i class="fa-solid fa-qrcode"></i>{% trans "Checkpoints" %}</a>
+  <span class="ml-auto inline-flex items-center gap-2">
+    {% comment %}The Export button submits THIS form to the PDF URL via
+       formaction, so the filters and the QR flag travel together — the PDF
+       is exactly the page plus the checkbox. The stray qr param on a normal
+       Filter submit is harmless; the ledger view ignores it.{% endcomment %}
+    <label class="inline-flex cursor-pointer items-center gap-1.5 text-xs">
+      <input type="checkbox" name="qr" value="1">
+      {% trans "Embed verification QR" %}</label>
+    <button type="submit" formaction="{% url 'polls:ledger_pdf' %}"
+            :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
+            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
+      <i class="fa-solid fa-file-pdf"></i>{% trans "Export PDF" %}</button>
+  </span>
 </form>
 
 {% if verification %}

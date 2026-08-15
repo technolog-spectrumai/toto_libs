@@ -478,6 +478,35 @@ def outcome_fixed(question, count=None) -> bool:
 
 # -- recording a decision -----------------------------------------------------
 
+def _assert_canonical(content, path="content"):
+    """Refuse a decision snapshot whose serialization could drift.
+
+    ``compute_hash`` re-serializes ``content`` from the stored object on
+    every verify with ``default=str`` — so a datetime or Decimal that slips
+    in hashes as its str() TODAY and as whatever the JSONField round-trip
+    returns TOMORROW, and the chain would report tampering that never
+    happened. Only the JSON-native leaves survive a round-trip bit-identical;
+    everything else must be converted by the caller, deliberately, before
+    the row is hashed. Raising here turns a future silent chain break into a
+    loud test failure at write time.
+    """
+    if isinstance(content, dict):
+        for key, value in content.items():
+            if not isinstance(key, str):
+                raise ValueError(
+                    f"{path}: non-string key {key!r} would not survive a "
+                    "JSON round-trip identically.")
+            _assert_canonical(value, f"{path}.{key}")
+    elif isinstance(content, (list, tuple)):
+        for index, value in enumerate(content):
+            _assert_canonical(value, f"{path}[{index}]")
+    elif not (content is None or isinstance(content, (str, int, float, bool))):
+        raise ValueError(
+            f"{path}: {type(content).__name__} is not JSON-native; convert "
+            "it before the snapshot is hashed, or the chain will break when "
+            "the stored copy re-serializes differently.")
+
+
 def record_decision(question, *, decided_by=None, when=None) -> Decision:
     """Close a formal vote and write its result down, once.
 
@@ -640,6 +669,7 @@ def record_decision(question, *, decided_by=None, when=None) -> Decision:
             "governance": verdict,
         }
 
+        _assert_canonical(content)
         try:
             return Decision.objects.create(
                 question=question,

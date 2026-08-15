@@ -1,0 +1,132 @@
+{% extends "polls/base.html" %}
+{% load i18n %}
+
+{% block polls_title %}{% trans "Ledger checkpoints" %}{% endblock %}
+{% block polls_heading %}{% trans "Ledger checkpoints" %}{% endblock %}
+
+{% block polls_lede %}
+<p class="max-w-3xl text-sm opacity-70">
+  {% trans "A checkpoint folds the whole decision chain into one hash and puts it in a QR you keep OUTSIDE this platform — printed, photographed, in a safe. Whoever holds that copy can later prove whether the ledger still says what it said that day. The rows stored here are a convenience; anyone who could rewrite the ledger could rewrite them too. The paper cannot be rewritten, which is the point." %}</p>
+{% endblock %}
+
+{% block polls_content %}
+
+<div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="flex flex-wrap items-center gap-4 rounded-2xl border p-4 text-sm shadow-sm">
+  <div class="min-w-0">
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "The ledger right now" %}</p>
+    <p class="mt-1">
+      {% blocktrans with count=current_count %}{{ count }} decisions.{% endblocktrans %}
+      <span class="ml-1 break-all font-mono text-xs opacity-70">{{ current_head|default:"—" }}</span>
+    </p>
+  </div>
+  {% if is_operator %}
+  <form method="post" action="{% url 'polls:ledger_checkpoint_new' %}" class="ml-auto flex items-end gap-2">
+    {% csrf_token %}
+    <label class="block">
+      <span class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Note" %}</span>
+      <input type="text" name="note" maxlength="200" placeholder="{% trans 'e.g. before the audit' %}"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="rounded-lg border px-3 py-1.5">
+    </label>
+    <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+      <i class="fa-solid fa-camera mr-1"></i>{% trans "Take a checkpoint" %}</button>
+  </form>
+  {% endif %}
+</div>
+
+{% comment %}Verify: paste text or upload a photo of a kept QR.{% endcomment %}
+<form method="post" action="{% url 'polls:ledger_checkpoint_verify' %}" enctype="multipart/form-data"
+      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+      class="space-y-3 rounded-2xl border p-4 text-sm shadow-sm">
+  {% csrf_token %}
+  <p class="text-xs font-semibold uppercase tracking-wide opacity-55">{% trans "Verify a kept checkpoint" %}</p>
+  <div class="flex flex-wrap items-end gap-3">
+    <label class="block min-w-0 flex-1">
+      <span class="mb-1 block text-xs opacity-55">{% trans "Paste the checkpoint text…" %}</span>
+      <input type="text" name="payload" value="{{ verify_payload }}" placeholder="totoledger:v=1&amp;…"
+             :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+             class="w-full rounded-lg border px-3 py-1.5 font-mono text-xs">
+    </label>
+    <label class="block">
+      <span class="mb-1 block text-xs opacity-55">{% trans "…or upload a photo of the QR" %}</span>
+      <input type="file" name="image" accept="image/*" class="text-xs">
+    </label>
+    <button type="submit"
+            class="inline-flex items-center gap-2 rounded-lg border border-current/30 px-4 py-2 text-sm font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-shield-halved"></i>{% trans "Verify" %}</button>
+  </div>
+</form>
+
+{% if verify_error %}
+  <p class="rounded border border-amber-500/40 bg-amber-500/10 px-4 py-2 text-sm font-semibold text-amber-600">
+    <i class="fa-solid fa-triangle-exclamation mr-1"></i>{{ verify_error }}</p>
+{% endif %}
+
+{% if verify_result %}
+  {% if verify_result.verdict == "MATCH" or verify_result.verdict == "MATCH_GROWN" %}
+    <div class="rounded border border-green-500/40 bg-green-500/10 px-4 py-3 text-sm text-green-600">
+      <p class="font-bold"><i class="fa-solid fa-circle-check mr-1"></i>MATCH
+        {% if verify_result.verdict == "MATCH_GROWN" %}<span class="font-normal">({% trans "the ledger has grown since; the checkpointed prefix is intact" %})</span>{% endif %}</p>
+      <p class="mt-1 text-xs opacity-80">
+        {% blocktrans with checked=verify_result.checked %}Recomputed {{ checked }} entries from the stored decisions; the fold reproduces the checkpoint's head exactly. The ledger still says what it said when this checkpoint was taken.{% endblocktrans %}
+        {% if verify_result.detail %}{{ verify_result.detail }}{% endif %}</p>
+    </div>
+  {% else %}
+    <div class="rounded border border-red-500/40 bg-red-500/10 px-4 py-3 text-sm text-red-600">
+      <p class="font-bold"><i class="fa-solid fa-circle-xmark mr-1"></i>{{ verify_result.verdict }}</p>
+      <p class="mt-1 text-xs">{{ verify_result.detail }}</p>
+      <p class="mt-2 break-all font-mono text-xs opacity-70">
+        {% trans "expected" %}: {{ verify_result.expected_head }}<br>
+        {% trans "recomputed" %}: {{ verify_result.recomputed_head|default:"—" }}</p>
+      {% if bracket_hit or bracket_miss %}
+        <p class="mt-2 text-xs">
+          {% if bracket_hit %}
+            {% blocktrans with count=bracket_hit.entry_count when=bracket_hit.taken_at|date:"Y-m-d H:i" %}The newest stored checkpoint that still verifies was taken {{ when }} at {{ count }} entries — the rewrite happened after that point.{% endblocktrans %}
+          {% else %}
+            {% trans "No stored checkpoint verifies any more — the stored rows were rewritten along with the ledger. An offline printout is now the only witness." %}
+          {% endif %}</p>
+      {% endif %}
+    </div>
+  {% endif %}
+{% endif %}
+
+<div class="space-y-4">
+  {% for row in rows %}
+  <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="flex flex-wrap items-start gap-4 rounded-2xl border p-4 text-sm shadow-sm">
+    {% if row.qr %}
+      <img src="{{ row.qr }}" alt="{% trans 'Checkpoint QR' %}" class="h-36 w-36 shrink-0 rounded bg-white p-1">
+    {% endif %}
+    <div class="min-w-0 flex-1 space-y-1">
+      <p class="font-bold">
+        {% blocktrans with count=row.checkpoint.entry_count %}Checkpoint at {{ count }} entries{% endblocktrans %}
+        {% if row.result.verdict == "MATCH" or row.result.verdict == "MATCH_GROWN" %}
+          <span class="ml-2 rounded-full border border-green-500/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-green-600">{% trans "verifies" %}</span>
+        {% else %}
+          <span class="ml-2 rounded-full border border-red-500/40 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-red-600">{{ row.result.verdict }}</span>
+        {% endif %}
+      </p>
+      <p class="text-xs opacity-70">
+        {{ row.checkpoint.taken_at|date:"Y-m-d H:i" }}
+        {% if row.checkpoint.taken_by %}· {{ row.checkpoint.taken_by.username }}{% endif %}
+        {% if row.checkpoint.note %}· {{ row.checkpoint.note }}{% endif %}
+        {% if row.checkpoint.signature %}· <i class="fa-solid fa-signature"></i> {% trans "signed" %} ({{ row.checkpoint.signed_key_id|truncatechars:16 }}){% endif %}</p>
+      <p class="break-all font-mono text-[11px] opacity-60" style="user-select:all">{{ row.checkpoint.payload }}</p>
+      {% if row.result.verdict != "MATCH" and row.result.verdict != "MATCH_GROWN" %}
+        <p class="text-xs text-red-600">{{ row.result.detail }}</p>
+      {% endif %}
+    </div>
+  </article>
+  {% empty %}
+  <p class="px-4 py-8 text-center text-sm opacity-50">
+    {% trans "No checkpoints yet. Take one, print it, and put it somewhere this platform cannot reach." %}</p>
+  {% endfor %}
+</div>
+
+<p class="text-xs opacity-55">
+  <a href="{% url 'polls:decision_ledger' %}" class="underline hover:opacity-80">{% trans "Back to the ledger" %}</a>
+</p>
+{% endblock %}
