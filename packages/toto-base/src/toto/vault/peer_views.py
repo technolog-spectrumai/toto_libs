@@ -236,13 +236,6 @@ def peer_file_download(request, grant_uid, magic_token, key):
         resp["X-Vault-Hash"] = file_obj.content_hash or ""
         resp["X-Vault-File-Type"] = file_obj.file_type or ""
         return resp
-    try:
-        stream = _storage_backends.open_file_stream(file_obj)
-    except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
-        label = file_obj.bucket.name if file_obj.bucket_id else "its storage"
-        return _plain(
-            f"'{file_obj.title}' could not be fetched from {label}: "
-            f"{type(exc).__name__}: {exc}", 502)
-    return FileResponse(
-        stream, as_attachment=True,
-        filename=os.path.basename(file_obj.file.name) or file_obj.key)
+    from .views import _file_response_or_bad_gateway
+
+    return _file_response_or_bad_gateway(file_obj)

@@ -308,6 +308,32 @@ class PublicFileListView(TemplateView):
         return PageProcessor().decorate(context, self.request)
 
 
+def _file_response_or_bad_gateway(file_obj):
+    """Stream a file's bytes, or say plainly why they could not be fetched.
+
+    The one shape every download door uses (this view and the peer API): a
+    dead backend or unreachable peer becomes a 502 in plain text naming the
+    bucket and the verbatim error — the jess honesty-sentence cascade, never
+    a traceback page. Reachability badges elsewhere come only from job
+    stamps; this sentence is the per-request truth.
+    """
+    import os as _os
+
+    try:
+        stream = _storage_backends.open_file_stream(file_obj)
+    except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
+        label = file_obj.bucket.name if file_obj.bucket_id else "its storage"
+        return HttpResponse(
+            f"'{file_obj.title}' could not be fetched from {label}: "
+            f"{type(exc).__name__}: {exc}",
+            status=502, content_type="text/plain; charset=utf-8")
+    return FileResponse(
+        stream,
+        as_attachment=True,
+        filename=_os.path.basename(file_obj.file.name) or file_obj.key
+    )
+
+
 class VaultFileDownloadView(View):
     """Download a file, if it is yours to download.
 
@@ -343,21 +369,7 @@ class VaultFileDownloadView(View):
         # Through the bucket driver, not the FieldFile: an s3 or remote
         # bucket's bytes are not on this disk, and before this seam existed a
         # non-local bucket could be copied INTO but never downloaded from.
-        import os as _os
-
-        try:
-            stream = _storage_backends.open_file_stream(file_obj)
-        except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
-            label = file_obj.bucket.name if file_obj.bucket_id else "its storage"
-            return HttpResponse(
-                f"'{file_obj.title}' could not be fetched from {label}: "
-                f"{type(exc).__name__}: {exc}",
-                status=502, content_type="text/plain; charset=utf-8")
-        return FileResponse(
-            stream,
-            as_attachment=True,
-            filename=_os.path.basename(file_obj.file.name)
-        )
+        return _file_response_or_bad_gateway(file_obj)
 
 
 @login_required
