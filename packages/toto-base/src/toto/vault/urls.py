@@ -8,6 +8,7 @@ from .api_views import (
     BucketTreeApiView, FileContentApiView, FileCreateApiView,
     DirectoryCreateApiView, DirectoryDeleteApiView,
 )
+from . import peer_views
 from . import version_views
 from .views import (
     PublicFileListView, VaultFileDownloadView,
@@ -24,6 +25,16 @@ from .views import (
 app_name = "vault"
 
 urlpatterns = [
+    # Peer API — the server half of the bucket link. Path shape is
+    # peering.PEER_PATH; tests assert the two cannot drift.
+    path("peer/<uuid:grant_uid>/<str:magic_token>/manifest/",
+         peer_views.peer_manifest, name="peer_manifest"),
+    path("peer/<uuid:grant_uid>/<str:magic_token>/files/",
+         peer_views.peer_files, name="peer_files"),
+    path("peer/<uuid:grant_uid>/<str:magic_token>/files/<slug:key>/",
+         peer_views.peer_file_detail, name="peer_file_detail"),
+    path("peer/<uuid:grant_uid>/<str:magic_token>/files/<slug:key>/download/",
+         peer_views.peer_file_download, name="peer_file_download"),
     # Enigma JSON API
     path("api/files/", FileListApiView.as_view(), name="api_file_list"),
     path("api/files/create/", FileCreateApiView.as_view(), name="api_file_create"),
