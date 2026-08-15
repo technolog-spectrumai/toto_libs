@@ -14,6 +14,7 @@ from __future__ import annotations
 
 from django.apps import apps
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from .mirror import BucketRefreshRun, RefreshStatus
 from .transfer import TransferRun, TransferStatus
@@ -43,7 +44,7 @@ def dispatch_refresh_run(run: BucketRefreshRun) -> BucketRefreshRun:
     from toto.celery_utils import celery_available
 
     if not celery_available():
-        raise CannotQueue("No worker is listening. Start one, and try again.")
+        raise CannotQueue(_("No worker is listening. Start one, and try again."))
 
     from toto.workflows.models import WorkflowRun
     from toto.workflows.tasks import start_workflow_run_task
@@ -104,7 +105,7 @@ def dispatch_transfer_run(run: TransferRun) -> TransferRun:
     from toto.celery_utils import celery_available
 
     if not celery_available():
-        raise CannotQueue("No worker is listening. Start one, and try again.")
+        raise CannotQueue(_("No worker is listening. Start one, and try again."))
 
     from toto.workflows.models import WorkflowRun
     from toto.workflows.tasks import start_workflow_run_task

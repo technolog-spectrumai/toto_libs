@@ -1,3 +1,5 @@
+from django.utils.translation import gettext_lazy as _
+
 from toto.core.connectors import BaseConnector, ConnectorExecutionError, register_connector
 
 from .client import ApiRequestError, execute_api_request
@@ -7,7 +9,7 @@ from .models import Connector as ApiConnectorModel
 @register_connector
 class ApiRequestConnector(BaseConnector):
     connector_type = "api_request"
-    label = "API request"
+    label = _("API request")
     app_label = "api"
 
     def validate(self) -> list[str]:

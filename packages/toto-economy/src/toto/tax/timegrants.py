@@ -16,6 +16,7 @@ from __future__ import annotations
 from django.apps import apps
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import Http404
+from django.utils.translation import gettext as _
 
 from toto.quota import rates
 from toto.quota.times import registry as time_registry
@@ -44,7 +45,7 @@ def _resolve_scope(decl, actor, scope_id):
             raise Http404("That workspace no longer exists.")
         owner_id = getattr(obj, decl.scope_owner_attr)
         if owner_id != actor.pk:
-            raise PermissionDenied("Only the owner may set this dial.")
+            raise PermissionDenied(_("Only the owner may set this dial."))
         return obj.owner if hasattr(obj, "owner") else actor, scope_id
     return actor, None
 

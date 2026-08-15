@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.connectors import (
     BaseConnector,
@@ -13,7 +14,7 @@ from toto.core.connectors import (
 @register_connector
 class FileReadConnector(BaseConnector):
     connector_type = "file_read"
-    label = "File read"
+    label = _("File read")
     app_label = "workflows"
 
     def validate(self) -> list[str]:
@@ -53,7 +54,7 @@ class FileReadConnector(BaseConnector):
 @register_connector
 class FileWriteConnector(BaseConnector):
     connector_type = "file_write"
-    label = "File write"
+    label = _("File write")
     app_label = "workflows"
 
     def validate(self) -> list[str]:

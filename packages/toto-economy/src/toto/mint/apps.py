@@ -1,4 +1,5 @@
 from django.apps import AppConfig
+from django.utils.translation import gettext_lazy as _
 
 
 class MintConfig(AppConfig):
@@ -22,4 +23,4 @@ class MintConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.mint"
     label = "mint"
-    verbose_name = "Mint (asset issuance)"
+    verbose_name = _("Mint (asset issuance)")

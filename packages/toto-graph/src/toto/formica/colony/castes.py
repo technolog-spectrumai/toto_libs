@@ -14,6 +14,8 @@ the environment (graph markings + the cycle context/SQL stats): stigmergy.
   ``ctx.add_op(...)`` for the review-gated proposal.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 CASTE_REGISTRY = {}
 
 
@@ -470,7 +472,7 @@ class ArchitectCaste(BaseCaste):
     """Termite construction: propose edges where material accumulated."""
 
     caste_key = "architect"
-    label = "Termite architect"
+    label = _("Termite architect")
     description = "Builds connections where trails co-visit and material piles up."
     order = 50
 

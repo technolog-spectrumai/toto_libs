@@ -18,6 +18,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.http import JsonResponse
 from django.shortcuts import render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET
 
 from toto.ui import PageProcessor
@@ -50,7 +51,7 @@ def index(request):
         except GiteaError as exc:
             error = str(exc)
         except Exception:
-            error = "Gitea did not answer. It may still be starting up."
+            error = _("Gitea did not answer. It may still be starting up.")
 
     context = {
         "gitea_enabled": _enabled(),

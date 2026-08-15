@@ -4,6 +4,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import user_passes_test
 from django.http import JsonResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.celery_utils import celery_available
@@ -57,20 +58,20 @@ def create_projection_plan(request):
 
     selected_labels = request.POST.getlist("models")
     if not selected_labels:
-        messages.warning(request, "Select at least one graph label.")
+        messages.warning(request, _("Select at least one graph label."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     errors = validate_configs(load_all_configs())
     if errors:
-        messages.error(request, "Graph config is invalid: " + "; ".join(errors))
+        messages.error(request, _("Graph config is invalid: %(errors)s") % {"errors": "; ".join(errors)})
         return redirect("sql_neo4j_sync:projection_sync")
 
     if not is_enabled():
-        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        messages.error(request, _("RAVIOLI_ENABLED is False — cannot connect to Neo4j."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     if not celery_available():
-        messages.error(request, "No Celery worker is running — cannot generate plan.")
+        messages.error(request, _("No Celery worker is running — cannot generate plan."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     try:
@@ -125,15 +126,15 @@ def apply_projection_plan_view(request, plan_id):
     plan = get_object_or_404(GraphProjectionPlan, pk=plan_id)
 
     if plan.status != GraphProjectionPlan.STATUS_READY:
-        messages.warning(request, "Only ready projection plans can be applied.")
+        messages.warning(request, _("Only ready projection plans can be applied."))
         return redirect("sql_neo4j_sync:projection_plan_detail", plan_id=plan.pk)
 
     if not is_enabled():
-        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        messages.error(request, _("RAVIOLI_ENABLED is False — cannot connect to Neo4j."))
         return redirect("sql_neo4j_sync:projection_plan_detail", plan_id=plan.pk)
 
     if not celery_available():
-        messages.error(request, "No Celery worker is running — cannot apply plan.")
+        messages.error(request, _("No Celery worker is running — cannot apply plan."))
         return redirect("sql_neo4j_sync:projection_plan_detail", plan_id=plan.pk)
 
     try:
@@ -156,11 +157,11 @@ def full_sync_view(request):
     from toto.ravioli.connection import is_enabled
 
     if not is_enabled():
-        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        messages.error(request, _("RAVIOLI_ENABLED is False — cannot connect to Neo4j."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     if not celery_available():
-        messages.error(request, "No Celery worker is running — cannot run full sync.")
+        messages.error(request, _("No Celery worker is running — cannot run full sync."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     try:
@@ -179,11 +180,11 @@ def clear_db_view(request):
     from toto.ravioli.connection import is_enabled
 
     if not is_enabled():
-        messages.error(request, "RAVIOLI_ENABLED is False — cannot connect to Neo4j.")
+        messages.error(request, _("RAVIOLI_ENABLED is False — cannot connect to Neo4j."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     if not celery_available():
-        messages.error(request, "No Celery worker is running — cannot clear database.")
+        messages.error(request, _("No Celery worker is running — cannot clear database."))
         return redirect("sql_neo4j_sync:projection_sync")
 
     try:

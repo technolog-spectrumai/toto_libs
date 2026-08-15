@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -12,7 +13,7 @@ class ReplaceAudioForm(forms.Form):
 
 class ReplaceAudioCommand(FfmpegCommand):
     key = "replace_audio"
-    label = "Replace audio"
+    label = _("Replace audio")
     inputs = {
         "video": {"file_type": "video", "name": "Video file"},
         "audio": {"file_type": "audio", "name": "Replacement audio"},

@@ -11,22 +11,24 @@ commit, branch, checkout, merge, log — which is cheap per call and therefore
 the one worth hammering, so it gets the larger limit and the tighter watch.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="repo.run",
-    label="Git run",
+    label=_("Git run"),
     app_label="repo",
     unit="request",
-    description="One init, push or pull — a worktree export plus a network git.",
+    description=_("One init, push or pull — a worktree export plus a network git."),
     default_limit=100,
 ))
 
 registry.register(Metric(
     code="repo.op",
-    label="Git operation",
+    label=_("Git operation"),
     app_label="repo",
     unit="request",
-    description="One git subprocess run inside the request: commit, branch, merge, log.",
+    description=_("One git subprocess run inside the request: commit, branch, merge, log."),
     default_limit=300,
 ))

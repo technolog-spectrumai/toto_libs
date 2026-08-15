@@ -54,14 +54,14 @@ def asset_create(request):
             description = request.POST.get("description", "").strip()
 
             if not name or not unit_name:
-                raise ValidationError("Name and unit name are required.")
+                raise ValidationError(_("Name and unit name are required."))
 
             reserve_choice = request.POST.get("reserve_choice", "auto")
             if reserve_choice == "existing":
                 reserve_pk = request.POST.get("reserve_account")
                 reserve = get_object_or_404(LedgerAccount, pk=reserve_pk)
             else:
-                reserve, _ = LedgerAccount.objects.get_or_create(
+                reserve, _created = LedgerAccount.objects.get_or_create(
                     code=f"RES-{unit_name}",
                     defaults={
                         "name": f"{name} Reserve",
@@ -566,18 +566,18 @@ def wallet_pin_set(request):
         pin = request.POST.get('pin', '').strip()
         confirm = request.POST.get('pin_confirm', '').strip()
         if not pin:
-            messages.error(request, 'PIN cannot be empty.')
+            messages.error(request, _('PIN cannot be empty.'))
         elif len(pin) < 4:
-            messages.error(request, 'PIN must be at least 4 characters.')
+            messages.error(request, _('PIN must be at least 4 characters.'))
         elif pin != confirm:
-            messages.error(request, 'PINs do not match.')
+            messages.error(request, _('PINs do not match.'))
         else:
             try:
                 set_wallet_pin(request.user, pin)
-                messages.success(request, 'Wallet PIN set successfully.')
+                messages.success(request, _('Wallet PIN set successfully.'))
                 return redirect('assets:wallet_pin_set')
             except Exception:
-                messages.error(request, 'Could not save PIN. Please try again.')
+                messages.error(request, _('Could not save PIN. Please try again.'))
     return assets_render(request, 'assets/wallet_pin_set.html', {'has_pin': has_pin})
 
 
@@ -626,7 +626,7 @@ def authorization_list(request):
                 auth.save(update_fields=['active', 'updated_at'])
                 messages.success(request, f"Authorization '{auth.name}' revoked.")
             except WalletAuthorization.DoesNotExist:
-                messages.error(request, "Authorization not found.")
+                messages.error(request, _("Authorization not found."))
         return redirect('assets:authorization_list')
 
     return assets_render(request, 'assets/authorization_list.html', {

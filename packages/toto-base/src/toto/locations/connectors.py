@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.connectors import (
     ReadOnlyModelConnector,
@@ -14,7 +15,7 @@ from toto.core.connectors import (
 @register_connector
 class LocationsReadConnector(ReadOnlyModelConnector):
     connector_type = "locations_read"
-    label = "Locations read"
+    label = _("Locations read")
     app_label = "locations"
     allowed_resources = {"address", "territory", "route_chain", "route", "map_layer"}
 

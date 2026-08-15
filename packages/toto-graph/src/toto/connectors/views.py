@@ -13,6 +13,7 @@ from django.db.models import Prefetch
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
@@ -131,7 +132,7 @@ def run_review(request, pk):
         ConnectorRun.objects.select_related("proposal", "connector"), pk=pk
     )
     if run.proposal is None:
-        messages.warning(request, "This run produced no reviewable proposal.")
+        messages.warning(request, _("This run produced no reviewable proposal."))
         return redirect("connectors:run_detail", pk=run.pk)
     run.sync_from_proposal()
 

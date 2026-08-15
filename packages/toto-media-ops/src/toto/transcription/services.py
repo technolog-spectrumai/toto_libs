@@ -19,6 +19,7 @@ from django.db.models import F, Q
 from django.utils import timezone
 from django.utils.module_loading import import_string
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
 
 from .models import (
     TranscriptAccessMode,
@@ -176,7 +177,7 @@ def create_vault_file_from_upload(*, uploaded_file, owner, bucket=None, title: s
 @transaction.atomic
 def create_source_from_vault_file(*, collection: TranscriptCollection, vault_file, title: str, description: str = "", language: str = "", status: str = TranscriptSource.Status.DRAFT) -> TranscriptSource:
     if getattr(vault_file, "file_type", None) not in {"audio", "video"}:
-        raise ValidationError("Selected vault file is not an audio or video file.")
+        raise ValidationError(_("Selected vault file is not an audio or video file."))
     return TranscriptSource.objects.create(
         collection=collection,
         source_file=vault_file,
@@ -197,7 +198,7 @@ def create_source_from_upload(*, collection: TranscriptCollection, uploaded_file
         make_public=collection.access_mode == TranscriptAccessMode.PUBLIC,
     )
     if getattr(source_file, "file_type", None) not in {"audio", "video"}:
-        raise ValidationError("Uploaded file is not a recognized audio or video file.")
+        raise ValidationError(_("Uploaded file is not a recognized audio or video file."))
     return TranscriptSource.objects.create(collection=collection, source_file=source_file, title=title, description=description, language=language, status=status)
 
 

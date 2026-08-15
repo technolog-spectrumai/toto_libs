@@ -24,13 +24,15 @@ already staff-only. Its value is the record — this is the only place that can
 say how much mail this host sent — rather than the refusal.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="jess.send",
-    label="Message queued",
+    label=_("Message queued"),
     app_label="jess",
     unit="message",
-    description="One outbound message queued from an attributable, staff-facing path.",
+    description=_("One outbound message queued from an attributable, staff-facing path."),
     default_limit=100,
 ))

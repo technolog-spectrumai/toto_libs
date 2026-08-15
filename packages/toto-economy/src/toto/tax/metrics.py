@@ -6,11 +6,13 @@ resource exists. The metric names the resource (extended time held), not the
 app, mirroring storage.gb_day.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="time.hold",
-    label="Extended time held",
+    label=_("Extended time held"),
     app_label="tax",
     unit="hour_day",
     description="Hours of time-limit extension held above the free defaults "

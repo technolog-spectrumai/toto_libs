@@ -24,6 +24,7 @@ from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.debug import sensitive_post_parameters
+from django.utils.translation import gettext
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
@@ -175,7 +176,7 @@ def personalization(request):
     if form.is_valid():
         form.save()
         django_messages.success(
-            request, "Saved. It is sent with every question you ask.")
+            request, gettext("Saved. It is sent with every question you ask."))
     else:
         django_messages.error(
             request, "; ".join(e for errors in form.errors.values()
@@ -311,8 +312,8 @@ def provider_edit(request, pk: int | None = None):
                 try:
                     services.store_api_key(saved, new_value, actor=request.user)
                     django_messages.success(
-                        request, "API key stored, encrypted. It will not be "
-                                 "shown again.")
+                        request, gettext("API key stored, encrypted. It will "
+                                         "not be shown again."))
                 except VaultUnavailable as exc:
                     django_messages.error(
                         request, f"Vault unavailable — the key was NOT "
@@ -321,7 +322,7 @@ def provider_edit(request, pk: int | None = None):
                     django_messages.error(
                         request, f"Could not store the key: {exc}")
             else:
-                django_messages.success(request, "Saved.")
+                django_messages.success(request, gettext("Saved."))
             return redirect(f"{reverse('steven:manage')}?tab=connection")
 
     return _render(request, "steven/provider_form.html", {
@@ -403,7 +404,8 @@ def agent_edit(request, pk: int | None = None):
             prompt = PromptForm(request.POST, instance=agent, kinds=kinds)
             if prompt.is_valid():
                 saved = prompt.save()
-                django_messages.success(request, "Saved. New questions use it.")
+                django_messages.success(
+                    request, gettext("Saved. New questions use it."))
                 return redirect(
                     f"{reverse('steven:agent_edit', args=[saved.pk])}?tab=prompt")
         else:
@@ -411,7 +413,7 @@ def agent_edit(request, pk: int | None = None):
             identity = IdentityForm(request.POST, instance=agent)
             if identity.is_valid():
                 saved = identity.save()
-                django_messages.success(request, "Saved.")
+                django_messages.success(request, gettext("Saved."))
                 return redirect(
                     f"{reverse('steven:agent_edit', args=[saved.pk])}?tab=identity")
 

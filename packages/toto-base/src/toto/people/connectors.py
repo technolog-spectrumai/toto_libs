@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.connectors import (
     ReadOnlyModelConnector,
@@ -14,7 +15,7 @@ from toto.locations.connectors import serialize_address
 @register_connector
 class PeopleReadConnector(ReadOnlyModelConnector):
     connector_type = "people_read"
-    label = "People read"
+    label = _("People read")
     app_label = "people"
 
     def execute(self, input_data: dict | None = None) -> dict:

@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 from .models import Bucket, VaultFile
 
 
@@ -7,13 +8,13 @@ class CopyFilesForm(forms.Form):
         queryset=VaultFile.objects.none(),
         widget=forms.CheckboxSelectMultiple,
         required=True,
-        error_messages={"required": "Select at least one file to copy."},
+        error_messages={"required": _("Select at least one file to copy.")},
     )
     destination_bucket = forms.ModelChoiceField(
         queryset=Bucket.objects.none(),
         required=True,
-        empty_label="— select destination —",
-        error_messages={"required": "Choose a destination bucket."},
+        empty_label=_("— select destination —"),
+        error_messages={"required": _("Choose a destination bucket.")},
     )
 
     def __init__(self, user, source_bucket, *args, **kwargs):

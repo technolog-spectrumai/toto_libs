@@ -24,6 +24,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils.translation import gettext as _
 
 
 def position_account_code(node: str, asset) -> str:
@@ -86,7 +87,7 @@ def allocate_to_branch(*, node: str, asset, amount: Decimal, reference: str):
 
     require_master("allocate funds to a branch")
     if amount <= 0:
-        raise ValidationError("An allocation must be positive.")
+        raise ValidationError(_("An allocation must be positive."))
     if asset.reserve_account is None:
         raise ValidationError(
             f"“{asset.unit_name}” has no reserve account to fund from.")

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
 
 from .models import ForumMember, ForumChannel, ForumMessage
 
@@ -20,7 +21,7 @@ class ForumChannelAdmin(admin.ModelAdmin):
     def get_queryset(self, request):
         return super().get_queryset(request).prefetch_related("forum_members")
 
-    @admin.display(description="Members")
+    @admin.display(description=_("Members"))
     def member_count(self, obj):
         return obj.forum_members.count()
 

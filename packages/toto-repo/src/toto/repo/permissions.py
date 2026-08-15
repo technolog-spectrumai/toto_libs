@@ -16,6 +16,7 @@ in tests.
 from __future__ import annotations
 
 from django.conf import settings
+from django.utils.translation import gettext as _
 
 
 def access_level() -> str:
@@ -35,6 +36,7 @@ def can_use(user) -> bool:
 
 def refusal() -> str:
     return (
-        "Version control is not enabled for your account "
-        f"(REPO_ACCESS is {access_level()!r})."
+        _("Version control is not enabled for your account "
+          "(REPO_ACCESS is %(level)s).")
+        % {"level": repr(access_level())}
     )

@@ -17,6 +17,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import transaction
+from django.utils.translation import gettext as _
 
 from toto.assets.models import Asset, AccountType, AssetHolding, LedgerAccount
 from toto.assets.queries import get_asset_balance
@@ -120,7 +121,7 @@ def check_credit(shared: SharedAsset, amount_base: int) -> None:
     if not shared.enabled:
         raise ValidationError(f"Trustline for {shared.asset.unit_name} is disabled.")
     if shared.peer.status != LedgerPeer.STATUS_ACTIVE:
-        raise ValidationError("Peer is not active.")
+        raise ValidationError(_("Peer is not active."))
     position = net_position_base(shared)
     if position + amount_base > shared.max_owed_base_units:
         raise ValidationError(

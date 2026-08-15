@@ -1,11 +1,12 @@
 from django.apps import AppConfig
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.translation import gettext_lazy as _
 
 
 class ConnectorsConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.connectors"
-    verbose_name = "Data Connectors"
+    verbose_name = _("Data Connectors")
 
     def ready(self):
         from django.apps import apps as django_apps

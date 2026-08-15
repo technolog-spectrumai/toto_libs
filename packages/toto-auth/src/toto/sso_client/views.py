@@ -12,6 +12,7 @@ from django.http import HttpResponseBadRequest
 from django.shortcuts import redirect
 from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 logger = logging.getLogger(__name__)
 
@@ -231,12 +232,12 @@ def _complete_link(request, claims):
 
     provider = _active_provider()
     if provider is None:
-        messages.error(request, "This host has no active sign-in provider configured.")
+        messages.error(request, _("This host has no active sign-in provider configured."))
         return redirect(reverse("core:dashboard"))
 
     sub = (claims.get("sub") or "").strip()
     if not sub:
-        messages.error(request, "The provider did not identify the account.")
+        messages.error(request, _("The provider did not identify the account."))
         return redirect(reverse("core:dashboard"))
 
     existing = FederatedIdentity.objects.filter(provider=provider, sub=sub).first()
@@ -249,7 +250,7 @@ def _complete_link(request, claims):
         )
         messages.error(
             request,
-            "That provider account is already linked to a different account here.",
+            _("That provider account is already linked to a different account here."),
         )
         return redirect(reverse("core:dashboard"))
 
@@ -259,10 +260,15 @@ def _complete_link(request, claims):
         )
         messages.success(
             request,
-            f"You can now sign in with {provider.label} as well as with your password.",
+            _("You can now sign in with %(provider)s as well as with your password.")
+            % {"provider": provider.label},
         )
     else:
-        messages.info(request, f"{provider.label} was already linked to this account.")
+        messages.info(
+            request,
+            _("%(provider)s was already linked to this account.")
+            % {"provider": provider.label},
+        )
 
     next_url = request.COOKIES.get("oidc_next", "") or reverse("core:dashboard")
     response = redirect(next_url)
@@ -666,19 +672,20 @@ def federation_console(request):
             if info:
                 messages.success(
                     request,
-                    "Connection OK — reached %s." % (info.get("site_name") or cfg.get("portal_url")),
+                    _("Connection OK — reached %s.")
+                    % (info.get("site_name") or cfg.get("portal_url")),
                 )
             else:
                 messages.error(
                     request,
-                    "Could not reach the parent with the stored credentials. Check it is "
-                    "running, or re-pair.",
+                    _("Could not reach the parent with the stored credentials. Check it is "
+                      "running, or re-pair."),
                 )
             return redirect(reverse("sso:federation_console"))
         if action == "redeem":
             result = _redeem_code(request, context)
             if result is not None:
-                messages.success(request, "Federated with %s." % result.label)
+                messages.success(request, _("Federated with %s.") % result.label)
                 return redirect(reverse("sso:federation_console"))
             # else: fall through and re-render with context["error"] + the typed values
 

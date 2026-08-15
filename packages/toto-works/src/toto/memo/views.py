@@ -491,10 +491,10 @@ class PresentationImportView(LoginRequiredMixin, View):
     def post(self, request):
         upload = request.FILES.get("archive")
         if upload is None:
-            messages.error(request, "Choose a .zip export to import.")
+            messages.error(request, _("Choose a .zip export to import."))
             return redirect("memo:index")
         if upload.size > getattr(settings, "MEMO_MAX_DECK_BYTES", 32 * 1024 * 1024):
-            messages.error(request, "That archive is too large to import.")
+            messages.error(request, _("That archive is too large to import."))
             return redirect("memo:index")
 
         try:

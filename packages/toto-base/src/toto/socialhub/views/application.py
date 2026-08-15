@@ -19,6 +19,7 @@ import logging
 from django.core.exceptions import PermissionDenied
 from django.views.decorators.http import require_POST
 from django.contrib.auth.decorators import login_required
+from django.utils.translation import gettext as _
 
 
 logger = logging.getLogger(__name__)
@@ -220,7 +221,7 @@ def reference_accept(request, ref_id):
 
     # Only the referrer can accept
     if ref.referrer.user != request.user:
-        raise PermissionDenied("You cannot modify this reference request.")
+        raise PermissionDenied(_("You cannot modify this reference request."))
 
     ref.status = "accepted"
     ref.responded_at = timezone.now()
@@ -260,7 +261,7 @@ def reference_reject(request, ref_id):
 
     # Only the referrer can reject
     if ref.referrer.user != request.user:
-        raise PermissionDenied("You cannot modify this reference request.")
+        raise PermissionDenied(_("You cannot modify this reference request."))
 
     ref.status = "declined"
     ref.responded_at = timezone.now()

@@ -26,6 +26,7 @@ from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST
+from django.utils.translation import gettext as _
 
 from toto.ui import PageProcessor
 
@@ -380,7 +381,7 @@ def message_retry(request, pk):
     message = get_object_or_404(MailMessage, pk=pk)
 
     if message.status == MailMessage.SENDING:
-        messages.info(request, "That message is already being sent.")
+        messages.info(request, _("That message is already being sent."))
         return redirect(reverse("jess:message_detail", args=[message.pk]))
 
     from django.utils import timezone
@@ -392,7 +393,7 @@ def message_retry(request, pk):
         MailMessage.objects.filter(pk=message.pk).update(
             status=MailMessage.HELD, error="", finished_at=None, started_at=None,
         )
-        messages.success(request, "Returned to held — release it with the passphrase.")
+        messages.success(request, _("Returned to held — release it with the passphrase."))
         return redirect(reverse("jess:message_detail", args=[message.pk]))
 
     MailMessage.objects.filter(pk=message.pk).update(
@@ -405,7 +406,7 @@ def message_retry(request, pk):
     # Reuse the backend's dispatch so a broker failure is recorded on the row the same
     # way it is for a first attempt, rather than 500ing this POST.
     JessEmailBackend()._dispatch(message)
-    messages.success(request, "Queued again.")
+    messages.success(request, _("Queued again."))
     return redirect(reverse("jess:message_detail", args=[message.pk]))
 
 
@@ -476,7 +477,7 @@ def inbox_fetch(request):
     if count:
         messages.success(request, f"Fetched {count} new message(s).")
     else:
-        messages.info(request, "No new mail.")
+        messages.info(request, _("No new mail."))
     return redirect(reverse("jess:inbox"))
 
 
@@ -563,7 +564,7 @@ def inbox_reply(request, pk):
             error = _release_ids(request, recorded, passphrase)
             if error:
                 messages.error(request, error)
-        messages.success(request, "Reply sent.")
+        messages.success(request, _("Reply sent."))
         return redirect(reverse("jess:message_detail", args=[recorded[0]]))
 
     messages.warning(
@@ -658,7 +659,7 @@ def release(request):
             .values_list("pk", flat=True)
         )
         if not ids:
-            messages.info(request, "That message is no longer held.")
+            messages.info(request, _("That message is no longer held."))
         else:
             error = _release_ids(request, ids, passphrase)
             if error:
@@ -668,7 +669,7 @@ def release(request):
     # The oldest batch, bounded by the cap.
     ids = list(held_qs.values_list("pk", flat=True)[:RELEASE_BATCH_CAP])
     if not ids:
-        messages.info(request, "Nothing is held.")
+        messages.info(request, _("Nothing is held."))
         return redirect(reverse("jess:outbox"))
     error = _release_ids(request, ids, passphrase)
     if error:
@@ -687,7 +688,7 @@ def vault_setup(request):
     """
     _staff_only(request)
     if vault.system_strongbox() is not None:
-        messages.info(request, "The mail vault is already set up.")
+        messages.info(request, _("The mail vault is already set up."))
         return redirect(reverse("jess:outbox"))
 
     context = {

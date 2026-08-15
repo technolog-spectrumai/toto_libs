@@ -1,4 +1,5 @@
 from django.db.models import Q
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.connectors import (
     ReadOnlyModelConnector,
@@ -15,7 +16,7 @@ from toto.locations.connectors import serialize_address
 @register_connector
 class SocialhubReadConnector(ReadOnlyModelConnector):
     connector_type = "socialhub_read"
-    label = "Socialhub read"
+    label = _("Socialhub read")
     app_label = "socialhub"
     allowed_resources = {"community", "news_post", "topic"}
 

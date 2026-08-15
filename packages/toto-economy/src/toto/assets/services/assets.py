@@ -3,6 +3,7 @@ from decimal import Decimal, ROUND_UP
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils.translation import gettext as _
 
 from toto.assets.hashing import attach_hash
 from toto.assets.models import (
@@ -65,9 +66,9 @@ def engrave_currency(
 
     with transaction.atomic():
         if max_supply <= 0:
-            raise ValidationError("max_supply must be positive.")
+            raise ValidationError(_("max_supply must be positive."))
         if not (0 <= decimals <= 19):
-            raise ValidationError("decimals must be between 0 and 19.")
+            raise ValidationError(_("decimals must be between 0 and 19."))
 
         max_supply_base = to_base_units(max_supply, decimals)
 
@@ -160,7 +161,7 @@ def distribute_asset(
     This is the mechanism for admin-controlled distribution / user purchases.
     """
     if not asset.reserve_account_id:
-        raise ValidationError("This asset has no reserve account configured.")
+        raise ValidationError(_("This asset has no reserve account configured."))
     return transfer_asset(
         asset=asset,
         sender_account=asset.reserve_account,
@@ -270,13 +271,13 @@ def _transfer_asset_locked(
         amount_base = to_base_units(amount, asset.decimals)
 
         if amount_base <= 0:
-            raise ValidationError("Transfer amount must be positive.")
+            raise ValidationError(_("Transfer amount must be positive."))
         if not asset.active:
-            raise ValidationError("Asset is not active.")
+            raise ValidationError(_("Asset is not active."))
         if not sender_account.active:
-            raise ValidationError("Sender account is not active.")
+            raise ValidationError(_("Sender account is not active."))
         if not receiver_account.active:
-            raise ValidationError("Receiver account is not active.")
+            raise ValidationError(_("Receiver account is not active."))
         from django.apps import apps as _apps
         try:
             AssetFreeze = _apps.get_model('magistrate', 'AssetFreeze')
@@ -302,7 +303,7 @@ def _transfer_asset_locked(
         if not from_outside and (
                 sender_holding is None
                 or sender_holding.balance_base_units < amount_base):
-            raise ValidationError("Insufficient balance.")
+            raise ValidationError(_("Insufficient balance."))
 
         if receiver_account.pk not in holding_map:
             receiver_holding = AssetHolding.objects.create(
@@ -337,7 +338,7 @@ def _transfer_asset_locked(
         if sender_holding is None:
             # Only reachable for an EXTERNAL sender: the first movement out of
             # a claim account has no prior holding row to decrement.
-            sender_holding, _ = AssetHolding.objects.get_or_create(
+            sender_holding, _created = AssetHolding.objects.get_or_create(
                 asset=asset, account=sender_account,
                 defaults={"balance_base_units": 0})
         sender_holding.balance_base_units -= amount_base
@@ -379,9 +380,9 @@ def reverse_transaction(
         original = LedgerTransaction.objects.select_for_update().get(pk=transaction.pk)
 
         if not original.posted:
-            raise ValidationError("Only posted transactions can be reversed.")
+            raise ValidationError(_("Only posted transactions can be reversed."))
         if original.reversal_set.exists():
-            raise ValidationError("This transaction has already been reversed.")
+            raise ValidationError(_("This transaction has already been reversed."))
 
         original_entries = list(original.entries.select_related("account", "asset").all())
 
@@ -491,9 +492,9 @@ def get_exchange_rate(from_asset: Asset, to_asset: Asset):
 def quote_exchange(*, from_asset: Asset, to_asset: Asset, amount: Decimal) -> ExchangeQuote:
     _require_trading_host()
     if amount <= 0:
-        raise ValidationError("Exchange amount must be positive.")
+        raise ValidationError(_("Exchange amount must be positive."))
 
-    _, rate, commission_percent, rate_source = get_exchange_rate(from_asset, to_asset)
+    _rate_pair, rate, commission_percent, rate_source = get_exchange_rate(from_asset, to_asset)
     converted = _round_display_amount(Decimal(amount) * rate, to_asset)
     commission = _round_display_amount(converted * (commission_percent / Decimal("100")), to_asset)
     gross = converted + commission

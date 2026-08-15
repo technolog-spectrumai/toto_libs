@@ -3,6 +3,8 @@ from __future__ import annotations
 import os
 import tempfile
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.fileservices.plugin import FileServicePlugin
 from toto.fileservices.runner import save_output, stage_input
 
@@ -21,8 +23,8 @@ class TranscriptionFileServicePlugin(FileServicePlugin):
     listed = False
     accepted_file_types = ["audio"]
     icon = "fa-solid fa-wave-square"
-    description = "Transcribe speech to text with Whisper. Saves a .txt transcript and an .srt subtitle file."
-    args_label = "Language code (optional)"
+    description = _("Transcribe speech to text with Whisper. Saves a .txt transcript and an .srt subtitle file.")
+    args_label = _("Language code (optional)")
     args_placeholder = "en    (leave blank to auto-detect)"
     args_required = False
 

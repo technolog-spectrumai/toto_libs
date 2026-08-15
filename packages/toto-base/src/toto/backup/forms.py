@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 
 class BackupAppsForm(forms.Form):
@@ -6,7 +7,7 @@ class BackupAppsForm(forms.Form):
         choices=[],
         widget=forms.CheckboxSelectMultiple(),
         required=True,
-        label="Apps",
+        label=_("Apps"),
     )
 
     def __init__(self, *args, **kwargs):
@@ -16,11 +17,11 @@ class BackupAppsForm(forms.Form):
 
 
 class ApplyBackupForm(forms.Form):
-    backup_file = forms.FileField(required=True, label="Backup ZIP")
-    verify_signature = forms.BooleanField(required=False, initial=True, label="Verify signature")
+    backup_file = forms.FileField(required=True, label=_("Backup ZIP"))
+    verify_signature = forms.BooleanField(required=False, initial=True, label=_("Verify signature"))
     clear_existing = forms.BooleanField(
         required=False,
         initial=False,
-        label="Clear existing data first",
-        help_text="Deletes existing objects for imported models before restoring.",
+        label=_("Clear existing data first"),
+        help_text=_("Deletes existing objects for imported models before restoring."),
     )

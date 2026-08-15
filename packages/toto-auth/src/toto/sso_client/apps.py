@@ -1,9 +1,10 @@
 from django.apps import AppConfig
+from django.utils.translation import gettext_lazy as _
 
 
 class SSOClientConfig(AppConfig):
     name = "toto.sso_client"
-    verbose_name = "SSO Client (Consumer)"
+    verbose_name = _("SSO Client (Consumer)")
     default_auto_field = "django.db.models.BigAutoField"
 
     def get_config(self):

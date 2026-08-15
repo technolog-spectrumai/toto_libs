@@ -8,11 +8,13 @@ the request, so the cap exists to stop a loop rather than to ration exporting
 your own document.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="cyprian.pdf",
-    label="Document export",
+    label=_("Document export"),
     app_label="cyprian",
     unit="request",
     description="One WeasyPrint render of a document, with contents and page numbers.",

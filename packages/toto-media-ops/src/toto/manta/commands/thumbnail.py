@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -13,7 +14,7 @@ class ThumbnailForm(forms.Form):
 
 class ThumbnailCommand(FfmpegCommand):
     key = "thumbnail"
-    label = "Thumbnail"
+    label = _("Thumbnail")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "image", "extension": "jpg", "name": "Thumbnail image"}}
     form_class = ThumbnailForm

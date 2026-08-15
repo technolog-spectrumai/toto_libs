@@ -12,6 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
@@ -705,7 +706,7 @@ def address_create(request):
 
         if form.is_valid():
             address = form.save()
-            messages.success(request, "Address saved.")
+            messages.success(request, _("Address saved."))
             return redirect("locations:address_detail", pk=address.pk)
 
     else:
@@ -764,17 +765,17 @@ def route_save(request):
     end_address_id = request.POST.get("end_address")
 
     if not name:
-        messages.error(request, "Route name is required.")
+        messages.error(request, _("Route name is required."))
         return redirect("locations:route_search")
 
     if not route_json:
-        messages.error(request, "No route geometry was provided.")
+        messages.error(request, _("No route geometry was provided."))
         return redirect("locations:route_search")
 
     try:
         payload = json.loads(route_json)
     except json.JSONDecodeError:
-        messages.error(request, "Route geometry is invalid.")
+        messages.error(request, _("Route geometry is invalid."))
         return redirect("locations:route_search")
 
     # Accept either:
@@ -784,13 +785,13 @@ def route_save(request):
     geometry_payload = payload.get("geometry") if payload.get("type") == "Feature" else payload
 
     if not geometry_payload:
-        messages.error(request, "Route geometry is missing.")
+        messages.error(request, _("Route geometry is missing."))
         return redirect("locations:route_search")
 
     try:
         geometry = GEOSGeometry(json.dumps(geometry_payload), srid=4326)
     except (TypeError, ValueError):
-        messages.error(request, "Route coordinates could not be converted.")
+        messages.error(request, _("Route coordinates could not be converted."))
         return redirect("locations:route_search")
 
     if geometry.geom_type == "LineString":
@@ -1059,7 +1060,7 @@ def note_save(request, kind, pk):
     obj = get_object_or_404(model, pk=pk)
     setattr(obj, field, request.POST.get("note", "").strip())
     obj.save(update_fields=[field])
-    messages.success(request, "Note saved.")
+    messages.success(request, _("Note saved."))
 
     return redirect(
         request.POST.get("next")

@@ -6,6 +6,7 @@ from decimal import Decimal
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils.translation import gettext as _
 
 #: How many times a losing appender re-reads the head and tries again. Minting
 #: is rare and operator-driven, so a genuine collision is already unlikely and
@@ -235,7 +236,7 @@ def _amount_base(asset, amount, amount_base_units, to_base_units) -> int:
     base = (int(amount_base_units) if amount_base_units is not None
             else to_base_units(amount, asset.decimals))
     if base <= 0:
-        raise ValidationError("A monetary act moves a positive amount.")
+        raise ValidationError(_("A monetary act moves a positive amount."))
     return base
 
 

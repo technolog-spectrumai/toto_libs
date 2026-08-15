@@ -1,5 +1,6 @@
 from django.db.models import Q
 from django.utils.dateparse import parse_datetime
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.connectors import (
     ConnectorExecutionError,
@@ -16,7 +17,7 @@ from toto.locations.connectors import serialize_address
 @register_connector
 class EventsReadConnector(ReadOnlyModelConnector):
     connector_type = "events_read"
-    label = "Events read"
+    label = _("Events read")
     app_label = "events"
     allowed_resources = {"scheduled_event", "category", "invite", "availability"}
 

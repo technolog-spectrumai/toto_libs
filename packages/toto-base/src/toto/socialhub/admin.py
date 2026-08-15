@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
 from toto.verbena.admin import make_section_form
@@ -65,7 +66,7 @@ class CommunityAdmin(TotoModelAdmin):
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
-    head_display.short_description = "Head of Community"
+    head_display.short_description = _("Head of Community")
 
     # --- FIX: expose property cleanly in admin ---
     def is_foreign_display(self, obj):

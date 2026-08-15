@@ -5,6 +5,7 @@ checked-out content changed)``. Views stay thin JSON adapters over these."""
 from __future__ import annotations
 
 from django.db import transaction
+from django.utils.translation import gettext as _
 
 from toto.vault.models import VaultDirectory
 
@@ -22,12 +23,13 @@ def create_repo(directory: VaultDirectory, user, default_branch: str = "") -> Gi
     conflict = sync.nesting_conflict(directory)
     if conflict:
         raise RepoError(
-            f"a git repo already exists on '{conflict.directory.full_path()}' "
-            "(nested repos are not allowed)"
+            _("a git repo already exists on '%(path)s' "
+              "(nested repos are not allowed)")
+            % {"path": conflict.directory.full_path()}
         )
     default_branch = (default_branch or "").strip() or "main"
     if any(c.isspace() for c in default_branch):
-        raise RepoError("invalid branch name")
+        raise RepoError(_("invalid branch name"))
     with transaction.atomic():
         repo = GitRepo.objects.create(
             directory=directory, owner=user, default_branch=default_branch)
@@ -101,12 +103,12 @@ def _provider_name(url: str) -> str:
 
 def commit(repo: GitRepo, user, message: str) -> str:
     if not message.strip():
-        raise RepoError("commit message is required")
+        raise RepoError(_("commit message is required"))
     with sync.repo_lock(repo):
         sync.export_worktree(repo)
         git_cli.add_all(repo.worktree)
         if not git_cli.status(repo.worktree):
-            raise RepoError("nothing to commit")
+            raise RepoError(_("nothing to commit"))
         return git_cli.commit(repo.worktree, message.strip(), user)
 
 
@@ -124,7 +126,7 @@ def branches(repo: GitRepo) -> dict:
 def branch_create(repo: GitRepo, name: str, checkout: bool, user) -> dict:
     name = name.strip()
     if not name or any(c.isspace() for c in name):
-        raise RepoError("invalid branch name")
+        raise RepoError(_("invalid branch name"))
     with sync.repo_lock(repo):
         git_cli.branch_create(repo.worktree, name)
         summary = None
@@ -137,10 +139,10 @@ def branch_create(repo: GitRepo, name: str, checkout: bool, user) -> dict:
 def branch_delete(repo: GitRepo, name: str) -> dict:
     name = name.strip()
     if not name:
-        raise RepoError("branch name is required")
+        raise RepoError(_("branch name is required"))
     with sync.repo_lock(repo):
         if name == git_cli.head_branch(repo.worktree):
-            raise RepoError("cannot delete the current branch — switch first")
+            raise RepoError(_("cannot delete the current branch — switch first"))
         git_cli.branch_delete(repo.worktree, name)
     return {"ok": True}
 
@@ -176,8 +178,8 @@ def restore_to(repo: GitRepo, sha: str, user) -> dict:
         git_cli.add_all(repo.worktree)
         if git_cli.status(repo.worktree):
             raise RepoError(
-                "there are uncommitted changes — commit them first, so the "
-                "restore stays undoable")
+                _("there are uncommitted changes — commit them first, so the "
+                  "restore stays undoable"))
         new_sha = git_cli.restore_to(repo.worktree, sha, user)
         summary = sync.import_worktree(repo)
     return {"ok": True, "sha": new_sha, "import_summary": summary}
@@ -198,10 +200,10 @@ def connect_remote(repo: GitRepo, user, url: str = "") -> dict:
     """
     url = (url or "").strip()
     if not url:
-        raise RepoError("a remote URL is required")
+        raise RepoError(_("a remote URL is required"))
     if not (url.startswith(("http://", "https://", "git://", "ssh://"))
             or "@" in url):
-        raise RepoError("that does not look like a git remote URL")
+        raise RepoError(_("that does not look like a git remote URL"))
     repo.remote_url = url
     repo.save(update_fields=["remote_url"])
     with sync.repo_lock(repo):

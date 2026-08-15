@@ -12,6 +12,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.core.paginator import Paginator
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.ui import PageProcessor
@@ -88,14 +89,14 @@ def overview(request):
 def params_view(request):
     colony = _colony()
     if colony is None:
-        messages.warning(request, "No colony yet — run `manage.py ingress_formica`.")
+        messages.warning(request, _("No colony yet — run `manage.py ingress_formica`."))
         return redirect("formica:overview")
 
     if request.method == "POST":
         if request.POST.get("reset"):
             colony.meta_params = {}
             colony.save(update_fields=["meta_params", "updated_at"])
-            messages.success(request, "Parameters reset to defaults.")
+            messages.success(request, _("Parameters reset to defaults."))
             return redirect("formica:params")
         new_params, errors = _parse_params(request.POST)
         try:
@@ -110,7 +111,7 @@ def params_view(request):
             colony.meta_params = new_params
             colony.save(update_fields=["meta_params", "interval_minutes", "updated_at"])
             _save_caste_configs(request, colony)
-            messages.success(request, "Colony parameters saved.")
+            messages.success(request, _("Colony parameters saved."))
             return redirect("formica:params")
 
     resolved = colony.params()

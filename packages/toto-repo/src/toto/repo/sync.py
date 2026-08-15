@@ -20,6 +20,7 @@ from contextlib import contextmanager
 from pathlib import Path
 
 from django.core.files.base import ContentFile
+from django.utils.translation import gettext as _
 
 from toto.vault.models import VaultDirectory, VaultFile
 from toto.vault.storage_backends import get_bucket_storage
@@ -83,7 +84,7 @@ def repo_lock(repo: GitRepo, timeout: bool = True):
         try:
             fcntl.flock(fd, fcntl.LOCK_EX | (fcntl.LOCK_NB if timeout else 0))
         except BlockingIOError:
-            raise RepoBusy("repository is busy with another operation")
+            raise RepoBusy(_("repository is busy with another operation"))
         yield
     finally:
         fcntl.flock(fd, fcntl.LOCK_UN)

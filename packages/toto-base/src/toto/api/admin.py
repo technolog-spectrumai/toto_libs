@@ -2,6 +2,7 @@ import uuid
 
 from django import forms
 from django.contrib import admin, messages
+from django.utils.translation import gettext_lazy as _
 
 from .models import Connector
 
@@ -17,9 +18,9 @@ def make_connector_secret_form(model_cls):
             "new_secret_value": forms.CharField(
                 required=False,
                 widget=forms.PasswordInput(render_value=False, attrs={"autocomplete": "new-password"}),
-                label="Set / replace secret value",
-                help_text="Leave blank to keep the current value. Stored encrypted in the "
-                          "vault; never displayed.",
+                label=_("Set / replace secret value"),
+                help_text=_("Leave blank to keep the current value. Stored encrypted in the "
+                            "vault; never displayed."),
             ),
             "Meta": type("Meta", (), {"model": model_cls, "fields": "__all__"}),
         },
@@ -62,7 +63,7 @@ class ApiConnectorSecretAdminMixin:
                 request.user, "set_connector_secret", secret,
                 reason=f"set via admin for {obj._meta.model_name} #{obj.pk}",
             )
-            messages.success(request, "Secret value stored (encrypted) and the connector updated.")
+            messages.success(request, _("Secret value stored (encrypted) and the connector updated."))
         except vault.VaultUnavailable as exc:
             messages.error(request, f"Vault unavailable — secret NOT changed: {exc}")
         except Exception as exc:  # noqa: BLE001 — surface, don't 500 (and never echo the value)

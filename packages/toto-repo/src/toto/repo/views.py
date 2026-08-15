@@ -10,6 +10,7 @@ import functools
 from django.contrib.auth.decorators import login_required
 from django.http import Http404, JsonResponse
 from django.shortcuts import get_object_or_404
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from toto.vault.models import VaultDirectory, VaultFile
@@ -46,7 +47,7 @@ def _json_errors(view):
             return JsonResponse({"error": str(exc), "busy": True}, status=409)
         except git_cli.MergeConflict as exc:
             return JsonResponse(
-                {"error": "merge conflicts — aborted", "conflicts": exc.paths,
+                {"error": _("merge conflicts — aborted"), "conflicts": exc.paths,
                  "details": exc.details, "aborted": True},
                 status=409,
             )
@@ -249,7 +250,7 @@ def _dispatch_recorded(run) -> None:
 def _dispatch_op(request, repo_pk: int, op: str):
     repo = _get_repo(request, repo_pk)
     if not repo.remote_connected:
-        return JsonResponse({"error": "repository has no remote — connect one first"}, status=400)
+        return JsonResponse({"error": _("repository has no remote — connect one first")}, status=400)
     run = create_git_run(request.user, repo, op)
     _dispatch_recorded(run)
     return JsonResponse({"run_id": run.pk})

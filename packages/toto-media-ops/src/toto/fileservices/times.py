@@ -7,16 +7,18 @@ before the plugins' nominal 7200 s subprocess timeout could. Raising the dial
 routes the run onto a directly-limited task (see fileservices.dispatch).
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.times import TimeLimit, registry
 
 registry.register(TimeLimit(
     key="fileservices.run_runtime",
-    label="Service run runtime",
+    label=_("Service run runtime"),
     app_label="fileservices",
     scope="user",
     free_seconds=1500,
     ceiling_seconds=7200,
     display_unit="minutes",
-    description="How long one of your file-service runs may run before it is "
-                "killed. Applies to runs you start after changing it.",
+    description=_("How long one of your file-service runs may run before it is "
+                  "killed. Applies to runs you start after changing it."),
 ))

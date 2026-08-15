@@ -10,13 +10,15 @@ point of declaring it now. The cap is already in place on the day someone sets
 the flag, rather than being remembered afterwards.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="manta.job",
-    label="ffmpeg job",
+    label=_("ffmpeg job"),
     app_label="manta",
     unit="request",
-    description="One ffmpeg command run over vault files — minutes of CPU, and the only tasks on this platform with a two-hour time limit rather than thirty minutes.",
+    description=_("One ffmpeg command run over vault files — minutes of CPU, and the only tasks on this platform with a two-hour time limit rather than thirty minutes."),
     default_limit=40,
 ))

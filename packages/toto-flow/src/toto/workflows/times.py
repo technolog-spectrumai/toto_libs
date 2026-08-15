@@ -15,11 +15,13 @@ far under the global 1500 s soft limit, the stuck-run sweep floors (node
 10800 s, run 21600 s) and the Redis visibility timeout (14700 s).
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.times import TimeLimit, registry
 
 registry.register(TimeLimit(
     key="workflows.lambda_timeout",
-    label="Lambda step timeout",
+    label=_("Lambda step timeout"),
     app_label="workflows",
     scope="workspace",              # = object-scoped; see module docstring
     scope_model="workflows.Workflow",
@@ -27,7 +29,7 @@ registry.register(TimeLimit(
     free_seconds=30,
     ceiling_seconds=300,
     display_unit="minutes",
-    description="How long each asynchronous lambda step of this workflow may "
-                "run before it is killed. Applies to runs started after "
-                "changing it; a longer kernel-configured timeout still wins.",
+    description=_("How long each asynchronous lambda step of this workflow may "
+                  "run before it is killed. Applies to runs started after "
+                  "changing it; a longer kernel-configured timeout still wins."),
 ))

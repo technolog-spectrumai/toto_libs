@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext as _
 
 from toto.vault.models import Bucket
 from toto.verbena.forms import apply_oya_field_styles
@@ -20,5 +21,5 @@ class NotebookForm(forms.ModelForm):
         self.fields["slug"].required = False
         self.fields["bucket"].required = False
         self.fields["bucket"].queryset = Bucket.objects.order_by("name")
-        self.fields["bucket"].empty_label = "— No bucket attached —"
+        self.fields["bucket"].empty_label = _("— No bucket attached —")
         apply_oya_field_styles(self.fields)

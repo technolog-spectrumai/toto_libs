@@ -5,6 +5,8 @@ import mimetypes
 import os
 import tempfile
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.fileservices.plugin import FileServicePlugin
 from toto.fileservices.runner import (
     run_subprocess,
@@ -21,8 +23,8 @@ class FFmpegServicePlugin(FileServicePlugin):
     listed = False
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-film"
-    description = "Run ffmpeg with custom arguments. The input is supplied as -i; end your args with an output filename."
-    args_label = "ffmpeg arguments"
+    description = _("Run ffmpeg with custom arguments. The input is supplied as -i; end your args with an output filename.")
+    args_label = _("ffmpeg arguments")
     args_placeholder = "-vf scale=640:-2 -c:v libx264 output.mp4"
     args_required = True
 
@@ -72,8 +74,8 @@ class FFprobeServicePlugin(FileServicePlugin):
     listed = False
     accepted_file_types = ["video", "audio", "image"]
     icon = "fa-solid fa-circle-info"
-    description = "Inspect a media file with ffprobe. Output JSON is saved as a new file."
-    args_label = "ffprobe arguments (optional)"
+    description = _("Inspect a media file with ffprobe. Output JSON is saved as a new file.")
+    args_label = _("ffprobe arguments (optional)")
     args_placeholder = "-show_format -show_streams"
     args_required = False
 

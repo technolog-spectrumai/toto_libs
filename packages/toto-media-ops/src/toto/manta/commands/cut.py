@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -14,7 +15,7 @@ class CutForm(forms.Form):
 
 class CutCommand(FfmpegCommand):
     key = "cut"
-    label = "Cut / trim"
+    label = _("Cut / trim")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "Trimmed video"}}
     form_class = CutForm

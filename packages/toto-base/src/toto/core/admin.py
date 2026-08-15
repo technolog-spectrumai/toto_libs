@@ -1,5 +1,6 @@
 from django.contrib import admin
 from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
 from toto.backup.admin import BackupAdminMixin
@@ -52,7 +53,7 @@ class ColorMixAdmin(TotoModelAdmin):
             obj.text_main_light, obj.accent_light,
             obj.footer_bg_light, obj.footer_text_light, "Light",
         )
-    preview_light.short_description = "Light Preview"
+    preview_light.short_description = _("Light Preview")
 
     def preview_dark(self, obj):
         return self._render_preview(
@@ -60,7 +61,7 @@ class ColorMixAdmin(TotoModelAdmin):
             obj.text_main_dark, obj.accent_dark,
             obj.footer_bg_dark, obj.footer_text_dark, "Dark",
         )
-    preview_dark.short_description = "Dark Preview"
+    preview_dark.short_description = _("Dark Preview")
 
     def _render_preview(self, bg, bubble, text, accent, footer_bg, footer_text, label):
         return format_html(

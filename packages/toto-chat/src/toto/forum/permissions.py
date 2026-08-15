@@ -94,8 +94,9 @@ def require_member(request, channel):
     they disagreed and a removed user kept posting.
     """
     from django.core.exceptions import PermissionDenied
+    from django.utils.translation import gettext as _
 
     member = member_for(request.user, channel)
     if member is None:
-        raise PermissionDenied("Join this room to see its pages.")
+        raise PermissionDenied(_("Join this room to see its pages."))
     return member

@@ -10,6 +10,7 @@ import json
 import logging
 
 from django.conf import settings
+from django.utils.translation import gettext_lazy as _
 
 from .. import validation
 from .base import MODE_REVIEW, IngestStrategy, existing_nodes_in_text, persist_review
@@ -140,7 +141,7 @@ def _normalize(raw, categories, edge_types, existing_by_uid=None, searchable=Non
 @IngestStrategy.register
 class LLMStrategy(IngestStrategy):
     key = "llm"
-    label = "LLM extraction (OpenAI)"
+    label = _("LLM extraction (OpenAI)")
     description = "GPT extracts entities & relationships into a reviewable proposal."
     mode = MODE_REVIEW
 

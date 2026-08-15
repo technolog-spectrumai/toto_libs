@@ -14,6 +14,7 @@ from django import forms
 from django.contrib import admin, messages
 from django.urls import NoReverseMatch, reverse
 from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
 
 from . import status as jess_status
 from . import vault
@@ -30,9 +31,9 @@ class EmailProviderForm(forms.ModelForm):
     new_password = forms.CharField(
         required=False,
         widget=forms.PasswordInput(render_value=False, attrs={"autocomplete": "new-password"}),
-        label="Set / replace SMTP password",
-        help_text="Leave blank to keep the current one. Stored encrypted in Jess's "
-                  "vault and never displayed again — not even here.",
+        label=_("Set / replace SMTP password"),
+        help_text=_("Leave blank to keep the current one. Stored encrypted in Jess's "
+                    "vault and never displayed again — not even here."),
     )
 
     class Meta:
@@ -114,7 +115,7 @@ class EmailProviderAdmin(admin.ModelAdmin):
                 request.user, "set_email_password", secret,
                 reason=f"set via admin for email provider #{obj.pk}",
             )
-            messages.success(request, "SMTP password stored, encrypted.")
+            messages.success(request, _("SMTP password stored, encrypted."))
         except vault.VaultUnavailable as exc:
             messages.error(request, f"Vault unavailable — the password was NOT changed: {exc}")
         except Exception as exc:  # noqa: BLE001 — surface it, never echo the value
@@ -157,12 +158,12 @@ class EmailProviderAdmin(admin.ModelAdmin):
         operator actually wants.
         """
         if queryset.count() != 1:
-            messages.error(request, "Select exactly one provider.")
+            messages.error(request, _("Select exactly one provider."))
             return
         provider = queryset.first()
         address = (request.user.email or "").strip()
         if not address:
-            messages.error(request, "Your account has no email address to send to.")
+            messages.error(request, _("Your account has no email address to send to."))
             return
 
         row = MailMessage.objects.create(

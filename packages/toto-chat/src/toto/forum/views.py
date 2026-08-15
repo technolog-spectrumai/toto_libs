@@ -3,6 +3,7 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import ListView, DetailView, View
 from django.db import models
+from django.utils.translation import gettext as _
 from toto.ui import PageProcessor
 from toto.forum import permissions
 from toto.forum.models import ForumMember, ForumChannel
@@ -106,13 +107,13 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
 
         if not context["can_send_messages"]:
             if context["can_join"]:
-                context["observer_reason"] = "Join this channel to read and send messages."
+                context["observer_reason"] = _("Join this channel to read and send messages.")
             elif not current_person:
-                context["observer_reason"] = (
+                context["observer_reason"] = _(
                     "You are observing because your user is not linked to a person profile."
                 )
             else:
-                context["observer_reason"] = "You are observing this channel."
+                context["observer_reason"] = _("You are observing this channel.")
         else:
             context["observer_reason"] = ""
 
@@ -125,7 +126,7 @@ class ChannelJoinView(LoginRequiredMixin, View):
 
         person = Person.objects.filter(user=request.user).first()
         if not person:
-            messages.error(request, "Your user is not linked to a person profile, so you can only observe this channel.")
+            messages.error(request, _("Your user is not linked to a person profile, so you can only observe this channel."))
             return redirect("forum:channel_detail", slug=channel.slug)
 
         member, created = ForumMember.objects.get_or_create(
@@ -170,12 +171,12 @@ class ChannelCreateView(LoginRequiredMixin, View):
 
         name = (request.POST.get("name") or "").strip()
         if not name:
-            messages.error(request, "A channel needs a name.")
+            messages.error(request, _("A channel needs a name."))
             return redirect("forum:channel_list")
 
         slug = slugify(name)[:50]
         if not slug:
-            messages.error(request, "That name cannot be turned into a URL slug.")
+            messages.error(request, _("That name cannot be turned into a URL slug."))
             return redirect("forum:channel_list")
 
         if ForumChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
@@ -331,7 +332,7 @@ def room_poll_create(request, slug):
         closes_at = tz.make_aware(closes_at)
 
     if not title:
-        messages.error(request, "A poll needs a question.")
+        messages.error(request, _("A poll needs a question."))
     else:
         try:
             voting.open_room_poll(channel, request.user, title=title,
@@ -340,7 +341,7 @@ def room_poll_create(request, slug):
         except ValidationError as exc:
             messages.error(request, "; ".join(exc.messages))
         else:
-            messages.success(request, "The poll is open.")
+            messages.success(request, _("The poll is open."))
     return redirect("forum:room_polls", slug=slug)
 
 
@@ -369,7 +370,7 @@ def room_poll_vote(request, slug, question_slug):
     except VotingError as exc:
         messages.error(request, str(exc))
     else:
-        messages.success(request, "Your answer has been recorded.")
+        messages.success(request, _("Your answer has been recorded."))
     return redirect("forum:room_polls", slug=slug)
 
 

@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w, _XBIND
@@ -10,7 +11,7 @@ class ResizeForm(forms.Form):
     preserve_aspect_ratio = forms.BooleanField(
         required=False, initial=True,
         widget=forms.CheckboxInput(attrs={"class": "rounded border", "x-bind:class": _XBIND, "x-model": "preserve"}),
-        help_text="Provide only one dimension; the other is computed automatically.",
+        help_text=_("Provide only one dimension; the other is computed automatically."),
     )
     width = forms.IntegerField(required=False, initial=1280,
         widget=forms.NumberInput(attrs=_w({"placeholder": "1280", "x-bind:required": "!preserve"})))
@@ -24,22 +25,22 @@ class ResizeForm(forms.Form):
         width, height = data.get("width"), data.get("height")
         if preserve:
             if width and height:
-                raise forms.ValidationError("Provide only one dimension when preserving aspect ratio.")
+                raise forms.ValidationError(_("Provide only one dimension when preserving aspect ratio."))
             if not width and not height:
-                raise forms.ValidationError("Provide either width or height when preserving aspect ratio.")
+                raise forms.ValidationError(_("Provide either width or height when preserving aspect ratio."))
             data["width"] = width or -2
             data["height"] = height or -2
         else:
             if not width:
-                self.add_error("width", "Width is required when not preserving aspect ratio.")
+                self.add_error("width", _("Width is required when not preserving aspect ratio."))
             if not height:
-                self.add_error("height", "Height is required when not preserving aspect ratio.")
+                self.add_error("height", _("Height is required when not preserving aspect ratio."))
         return data
 
 
 class ResizeCommand(FfmpegCommand):
     key = "resize"
-    label = "Resize"
+    label = _("Resize")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "Resized video"}}
     form_class = ResizeForm

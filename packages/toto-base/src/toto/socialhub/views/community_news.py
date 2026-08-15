@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 
 from toto.socialhub.forms import CommunityNewsPostForm
 from toto.socialhub.models import Community, CommunityNewsPost
@@ -15,7 +16,7 @@ def community_news_render(request, template_name, context):
 
 def require_news_manager(request, community):
     if not can_manage_community_news(request, community):
-        raise PermissionDenied("Only senior community members can manage community news.")
+        raise PermissionDenied(_("Only senior community members can manage community news."))
 
 
 @login_required
@@ -32,7 +33,7 @@ def community_news_create(request, community_slug):
             post.community = community
             post.save()
             form.save_m2m()
-            messages.success(request, "Community news published.")
+            messages.success(request, _("Community news published."))
             return redirect(post.get_absolute_url())
     else:
         form = CommunityNewsPostForm(initial=initial)
@@ -55,7 +56,7 @@ def community_news_update(request, pk):
         form = CommunityNewsPostForm(request.POST, instance=post)
         if form.is_valid():
             post = form.save()
-            messages.success(request, "Community news saved.")
+            messages.success(request, _("Community news saved."))
             return redirect(post.get_absolute_url())
     else:
         form = CommunityNewsPostForm(instance=post)
@@ -78,7 +79,7 @@ def community_news_delete(request, pk):
 
     if request.method == "POST":
         post.delete()
-        messages.success(request, "Community news deleted.")
+        messages.success(request, _("Community news deleted."))
         return redirect("socialhub:community_detail", slug=community.slug)
 
     return community_news_render(request, "socialhub/community_news_confirm_delete.html", {

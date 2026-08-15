@@ -7,16 +7,18 @@ still legitimately running — zenobia's settings raise visibility_timeout in
 lockstep and a settings test guards the pair. Dispatch additionally clamps.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.times import TimeLimit, registry
 
 registry.register(TimeLimit(
     key="manta.job_runtime",
-    label="Media job runtime",
+    label=_("Media job runtime"),
     app_label="manta",
     scope="user",
     free_seconds=7200,
     ceiling_seconds=14400,
     display_unit="hours",
-    description="How long one of your ffmpeg jobs may run before it is "
-                "killed. Applies to jobs you start after changing it.",
+    description=_("How long one of your ffmpeg jobs may run before it is "
+                  "killed. Applies to jobs you start after changing it."),
 ))

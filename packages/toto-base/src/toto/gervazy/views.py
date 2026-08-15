@@ -1,6 +1,7 @@
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
@@ -61,7 +62,7 @@ def initialize_strongbox_view(request, pk):
     password = request.POST.get("password", "").strip()
 
     if not password:
-        messages.error(request, "Password is required to initialize the strongbox.")
+        messages.error(request, _("Password is required to initialize the strongbox."))
         return redirect("gervazy:my_keys")
 
     try:
@@ -124,14 +125,14 @@ def provision_signing_key_view(request):
     try:
         person = Person.objects.get(user=request.user)
     except Person.DoesNotExist:
-        messages.error(request, "No Person profile linked to your account.")
+        messages.error(request, _("No Person profile linked to your account."))
         return redirect("gervazy:my_keys")
 
     strongbox_id = request.POST.get("strongbox_id", "").strip()
     password = request.POST.get("password", "").strip()
 
     if not password:
-        messages.error(request, "Password is required.")
+        messages.error(request, _("Password is required."))
         return redirect("gervazy:my_keys")
 
     try:
@@ -140,7 +141,7 @@ def provision_signing_key_view(request):
         else:
             strongbox = UserStrongbox.objects.filter(owner=request.user).first()
             if not strongbox:
-                messages.error(request, "No strongbox found.")
+                messages.error(request, _("No strongbox found."))
                 return redirect("gervazy:my_keys")
 
         wrapped_key = (

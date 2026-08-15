@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -12,7 +13,7 @@ class AddSubtitlesForm(forms.Form):
 
 class AddSubtitlesCommand(FfmpegCommand):
     key = "add_subtitles"
-    label = "Add subtitles"
+    label = _("Add subtitles")
     inputs = {
         "video": {"file_type": "video", "name": "Video file"},
         "subtitles": {"file_type": "subtitle", "name": "Subtitle file"},

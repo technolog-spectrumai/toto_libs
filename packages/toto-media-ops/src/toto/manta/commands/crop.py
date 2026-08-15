@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -22,7 +23,7 @@ class CropForm(forms.Form):
 
 class CropCommand(FfmpegCommand):
     key = "crop"
-    label = "Crop"
+    label = _("Crop")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "Cropped video"}}
     form_class = CropForm

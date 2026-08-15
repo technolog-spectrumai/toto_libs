@@ -4,23 +4,25 @@ Imported from QuotaConfig.ready(), so this module stays pure data — no models,
 no database, no settings.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="storage.request",
-    label="File upload",
+    label=_("File upload"),
     app_label="vault",
     unit="request",
-    description="One file accepted through a gateway or the file API.",
+    description=_("One file accepted through a gateway or the file API."),
     default_limit=500,
 ))
 
 registry.register(Metric(
     code="storage.transfer_mb",
-    label="Bytes transferred",
+    label=_("Bytes transferred"),
     app_label="vault",
     unit="mb",
-    description="Megabytes moved by an upload. Charged by size, not per call.",
+    description=_("Megabytes moved by an upload. Charged by size, not per call."),
     default_limit=2000,
 ))
 
@@ -30,9 +32,9 @@ registry.register(Metric(
 # and its absence keeps ingress_quota from seeding a policy row.
 registry.register(Metric(
     code="storage.gb_day",
-    label="Storage held",
+    label=_("Storage held"),
     app_label="vault",
     unit="gb_day",
-    description="Gigabytes stored, sampled nightly and billed from the first byte. "
-                "The rule that arms it lives in toto.tax; the price on the rate card.",
+    description=_("Gigabytes stored, sampled nightly and billed from the first byte. "
+                  "The rule that arms it lives in toto.tax; the price on the rate card."),
 ))

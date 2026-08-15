@@ -1,11 +1,12 @@
 from django.apps import AppConfig
 from django.core.checks import Error, register
+from django.utils.translation import gettext_lazy as _
 
 
 class SketchConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.sketch"
-    verbose_name = "Sketch Drawings"
+    verbose_name = _("Sketch Drawings")
 
     def ready(self):
         register(_antivirus_is_required)

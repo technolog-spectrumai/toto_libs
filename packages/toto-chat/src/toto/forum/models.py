@@ -5,6 +5,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 
 def message_attachment_upload_to(instance, filename):
@@ -108,7 +109,7 @@ class ForumMember(models.Model):
     def clean(self):
         super().clean()
         if not self.person_id:
-            raise ValidationError("A member must have a person profile.")
+            raise ValidationError(_("A member must have a person profile."))
 
     @property
     def display_name(self):

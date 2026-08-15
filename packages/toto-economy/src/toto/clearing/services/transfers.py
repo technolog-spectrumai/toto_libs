@@ -29,6 +29,7 @@ from datetime import timedelta
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from toto.assets.models import LedgerAccount, from_base_units
 from toto.assets.services.assets import transfer_asset
@@ -52,7 +53,7 @@ def send_to_peer(*, peer: LedgerPeer, shared: SharedAsset,
                  amount_base: int) -> ClearingTransfer:
     """Sender side. One transaction: hold + transfer row + signed prepare."""
     if shared.peer_id != peer.pk:
-        raise ValidationError("That asset is not shared with this peer.")
+        raise ValidationError(_("That asset is not shared with this peer."))
     trustline_service.check_credit(shared, amount_base)
 
     transfer_uuid = uuid_lib.uuid4()

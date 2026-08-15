@@ -17,13 +17,14 @@ run, and the arrears cases.
 """
 
 from django.apps import AppConfig
+from django.utils.translation import gettext_lazy as _
 
 
 class TaxConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.tax"
     label = "tax"
-    verbose_name = "Tax (recurring resource levies)"
+    verbose_name = _("Tax (recurring resource levies)")
 
     def ready(self):
         # Mirrors QuotaConfig.ready(): every installed app may declare a levy

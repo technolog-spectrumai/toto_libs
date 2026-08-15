@@ -10,11 +10,13 @@ and a refusal in the middle of preparing a talk is a support ticket, not a
 defence. It is here to stop a loop, not to ration the feature.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="memo.pdf",
-    label="Deck export",
+    label=_("Deck export"),
     app_label="memo",
     unit="request",
     description="One WeasyPrint render of a presentation, one page per slide.",

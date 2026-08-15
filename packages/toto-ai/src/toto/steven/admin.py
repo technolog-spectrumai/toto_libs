@@ -10,6 +10,7 @@ only place in the tree that had already solved this.
 
 from django import forms
 from django.contrib import admin, messages
+from django.utils.translation import gettext, gettext_lazy as _
 
 from . import services
 from .models import AiAgent, AiProvider, AiRun, StevenQuotaPolicy
@@ -23,9 +24,9 @@ class AiProviderForm(forms.ModelForm):
         required=False,
         widget=forms.PasswordInput(render_value=False,
                                    attrs={"autocomplete": "new-password"}),
-        label="Set / replace API key",
-        help_text=("Leave blank to keep the current one. Stored encrypted in "
-                   "Steven's vault and never displayed again — not even here."),
+        label=_("Set / replace API key"),
+        help_text=_("Leave blank to keep the current one. Stored encrypted in "
+                    "Steven's vault and never displayed again — not even here."),
     )
 
     class Meta:
@@ -57,13 +58,13 @@ class AiProviderAdmin(admin.ModelAdmin):
             return
         try:
             services.store_api_key(obj, new_value, actor=request.user)
-            messages.success(request, "API key stored, encrypted.")
+            messages.success(request, gettext("API key stored, encrypted."))
         except VaultUnavailable as exc:
             messages.error(request, f"Vault unavailable — the key was NOT changed: {exc}")
         except Exception as exc:  # noqa: BLE001 — surface it, never echo the value
             messages.error(request, f"Could not store the key: {exc}")
 
-    @admin.display(description="API key")
+    @admin.display(description=_("API key"))
     def secret_status(self, obj):
         secret = getattr(obj, "secret", None)
         if not secret:
@@ -71,7 +72,7 @@ class AiProviderAdmin(admin.ModelAdmin):
         rotated = f" · rotated {secret.rotated_at:%Y-%m-%d}" if secret.rotated_at else ""
         return f"set · {secret.state}{rotated}"
 
-    @admin.action(description="Test this provider")
+    @admin.action(description=_("Test this provider"))
     def test_provider(self, request, queryset):
         """Prove a provider works BEFORE switching it on.
 
@@ -81,7 +82,7 @@ class AiProviderAdmin(admin.ModelAdmin):
         independent of whether a worker is running.
         """
         if queryset.count() != 1:
-            messages.error(request, "Select exactly one provider.")
+            messages.error(request, gettext("Select exactly one provider."))
             return
         provider = queryset.first()
 
@@ -118,10 +119,10 @@ class AiAgentAdmin(admin.ModelAdmin):
     list_filter = ("active",)
     search_fields = ("name", "persona", "house_rules")
     fieldsets = (
-        ("Identity", {"fields": ("name", "icon", "tagline", "description",
-                                 "active")}),
-        ("Prompt", {"fields": ("persona", "language", "house_rules",
-                               "kind_notes")}),
+        (_("Identity"), {"fields": ("name", "icon", "tagline", "description",
+                                    "active")}),
+        (_("Prompt"), {"fields": ("persona", "language", "house_rules",
+                                  "kind_notes")}),
     )
     readonly_fields = ("created_at", "updated_at")
 

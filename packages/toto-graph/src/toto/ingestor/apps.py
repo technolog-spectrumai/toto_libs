@@ -1,11 +1,12 @@
 from django.apps import AppConfig
 from django.core.exceptions import ImproperlyConfigured
+from django.utils.translation import gettext_lazy as _
 
 
 class IngestorConfig(AppConfig):
     default_auto_field = "django.db.models.BigAutoField"
     name = "toto.ingestor"
-    verbose_name = "Graph Ingestor"
+    verbose_name = _("Graph Ingestor")
 
     def ready(self):
         from django.apps import apps as django_apps

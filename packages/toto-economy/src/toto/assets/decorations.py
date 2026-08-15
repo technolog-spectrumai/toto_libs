@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 
 from django.core.exceptions import ValidationError
 from django.db import IntegrityError, transaction
+from django.utils.translation import gettext as _
 
 from .models import (
     Asset,
@@ -62,7 +63,7 @@ def _entry_of(account, entry_id: int) -> LedgerEntry:
     """
     entry = LedgerEntry.objects.filter(pk=entry_id, account=account).first()
     if entry is None:
-        raise ValidationError("That movement is not on this account.")
+        raise ValidationError(_("That movement is not on this account."))
     return entry
 
 
@@ -75,9 +76,9 @@ def tag_for(account, name: str) -> LedgerTag:
     """
     cleaned = (name or "").lstrip("#").strip()
     if not cleaned:
-        raise ValidationError("A tag needs a name.")
+        raise ValidationError(_("A tag needs a name."))
     if len(cleaned) > 50:
-        raise ValidationError("That tag name is too long.")
+        raise ValidationError(_("That tag name is too long."))
 
     existing = LedgerTag.objects.filter(account=account, name__iexact=cleaned).first()
     if existing is not None:

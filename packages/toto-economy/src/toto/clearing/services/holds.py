@@ -16,6 +16,7 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import transaction
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from toto.assets.models import LedgerAccount, from_base_units
 from toto.assets.services.assets import transfer_asset
@@ -46,7 +47,7 @@ def create_hold(*, shared: SharedAsset, origin_account: LedgerAccount,
     import uuid as uuid_lib
 
     if amount_base <= 0:
-        raise ValidationError("Hold amount must be positive.")
+        raise ValidationError(_("Hold amount must be positive."))
 
     hold_uuid = hold_uuid or uuid_lib.uuid4()
     existing = ClearingHold.objects.filter(uuid=hold_uuid).first()
@@ -64,7 +65,7 @@ def create_hold(*, shared: SharedAsset, origin_account: LedgerAccount,
             reference=f"clr:hold:{hold_uuid}",
             description=f"Clearing {purpose} hold",
         )
-        hold, _ = ClearingHold.objects.get_or_create(
+        hold, _created = ClearingHold.objects.get_or_create(
             uuid=hold_uuid,
             defaults=dict(
                 purpose=purpose,

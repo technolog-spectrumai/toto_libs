@@ -1,3 +1,5 @@
+from django.utils.translation import gettext as _
+
 from rest_framework import serializers
 
 from .models import (
@@ -62,13 +64,13 @@ class WorkflowEdgeSerializer(serializers.ModelSerializer):
 
     def validate(self, attrs):
         if attrs.get("source") == attrs.get("target"):
-            raise serializers.ValidationError("source and target must be different nodes.")
+            raise serializers.ValidationError(_("source and target must be different nodes."))
         if attrs.get("source") and attrs.get("target"):
             source_wf = attrs["source"].workflow_id
             target_wf = attrs["target"].workflow_id
             if source_wf != target_wf:
                 raise serializers.ValidationError(
-                    "source and target must belong to the same workflow."
+                    _("source and target must belong to the same workflow.")
                 )
         return attrs
 

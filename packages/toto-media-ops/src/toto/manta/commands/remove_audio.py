@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -12,7 +13,7 @@ class RemoveAudioForm(forms.Form):
 
 class RemoveAudioCommand(FfmpegCommand):
     key = "remove_audio"
-    label = "Remove audio"
+    label = _("Remove audio")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "Muted video"}}
     form_class = RemoveAudioForm

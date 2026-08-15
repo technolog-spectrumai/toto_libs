@@ -18,6 +18,7 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
@@ -42,7 +43,7 @@ def _staff_only(request):
 
     if has_privilege(request.user, "may_operate_mint"):
         return
-    raise PermissionDenied("The mint is staff only.")
+    raise PermissionDenied(_("The mint is staff only."))
 
 
 def _master_only(request):

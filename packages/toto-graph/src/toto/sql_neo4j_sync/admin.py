@@ -1,6 +1,7 @@
 from django.contrib import admin, messages
 from django.shortcuts import redirect, render
 from django.urls import path
+from django.utils.translation import gettext as _
 
 from .models import (
     GraphChangeEvent,
@@ -87,7 +88,7 @@ class GraphSyncAdmin(admin.ModelAdmin):
         from .projection import ProjectionRunner
 
         if not is_enabled():
-            messages.error(request, "ravioli is not enabled (RAVIOLI_ENABLED=False).")
+            messages.error(request, _("ravioli is not enabled (RAVIOLI_ENABLED=False)."))
             return redirect("..")
 
         selected = request.POST.getlist("models")
@@ -96,7 +97,7 @@ class GraphSyncAdmin(admin.ModelAdmin):
         try:
             runner = ProjectionRunner(client, configs)
             if selected:
-                for _ in runner.run_with_progress(selected_labels=selected):
+                for _step in runner.run_with_progress(selected_labels=selected):
                     pass
             else:
                 runner.run()

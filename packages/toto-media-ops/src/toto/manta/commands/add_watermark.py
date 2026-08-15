@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -17,7 +18,7 @@ class AddWatermarkForm(forms.Form):
 
 class AddWatermarkCommand(FfmpegCommand):
     key = "add_watermark"
-    label = "Add watermark"
+    label = _("Add watermark")
     inputs = {
         "video": {"file_type": "video", "name": "Video file"},
         "watermark": {"file_type": "image", "name": "Watermark image"},

@@ -6,6 +6,7 @@ from django.contrib import admin, messages
 from django.http import FileResponse
 from django.shortcuts import redirect, render
 from django.urls import path
+from django.utils.translation import gettext_lazy as _
 
 from .forms import BackupAppsForm, ApplyBackupForm
 from .models import BackupProfile, StoredBackup
@@ -96,19 +97,19 @@ class BackupAdminMixin:
 
     def backup_console_action(self, request, queryset):
         if queryset.count() != 1:
-            self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
+            self.message_user(request, _("Select exactly one platform."), level=messages.ERROR)
             return
         return redirect(f"backup-console/{queryset.first().id}/")
 
-    backup_console_action.short_description = "Backup console"
+    backup_console_action.short_description = _("Backup console")
 
     def seed_console_action(self, request, queryset):
         if queryset.count() != 1:
-            self.message_user(request, "Select exactly one platform.", level=messages.ERROR)
+            self.message_user(request, _("Select exactly one platform."), level=messages.ERROR)
             return
         return redirect(f"seed-console/{queryset.first().id}/")
 
-    seed_console_action.short_description = "Seed console"
+    seed_console_action.short_description = _("Seed console")
 
     def backup_console_view(self, request, platform_id):
         from toto.core.models import Platform

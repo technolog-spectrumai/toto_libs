@@ -9,6 +9,7 @@ from django.shortcuts import render, redirect
 from django.contrib.admin.helpers import ACTION_CHECKBOX_NAME
 from django.utils import timezone
 from django.utils.html import format_html
+from django.utils.translation import gettext_lazy as _
 
 from toto.quota.admin import QuotaPolicyAdminBase, UsageEventAdminBase
 
@@ -101,7 +102,7 @@ class BucketAdmin(admin.ModelAdmin):
             )
         except Exception as exc:
             return f'(error: {exc})'
-    connection_url_display.short_description = 'Connection URL'
+    connection_url_display.short_description = _('Connection URL')
 
     def get_fieldsets(self, request, obj=None):
         # The storage-backend fieldset disappears on a local-only host AND for
@@ -137,19 +138,19 @@ class VaultFileAdmin(admin.ModelAdmin):
         if url:
             return format_html('<a href="{}" target="_blank">Open</a>', url)
         return "-"
-    public_url_display.short_description = "Public URL"
+    public_url_display.short_description = _("Public URL")
 
     def encrypt_selected_files(self, request, queryset):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
         url = reverse('admin:vaultfile_encrypt') + f'?ids={",".join(selected)}'
         return redirect(url)
-    encrypt_selected_files.short_description = "Encrypt selected public files with password"
+    encrypt_selected_files.short_description = _("Encrypt selected public files with password")
 
     def decrypt_selected_files(self, request, queryset):
         selected = request.POST.getlist(ACTION_CHECKBOX_NAME)
         url = reverse('admin:vaultfile_decrypt') + f'?ids={",".join(selected)}'
         return redirect(url)
-    decrypt_selected_files.short_description = "Decrypt selected encrypted files with password"
+    decrypt_selected_files.short_description = _("Decrypt selected encrypted files with password")
 
     def encrypt_view(self, request):
         ids = request.GET.get('ids', '').split(',')
@@ -226,7 +227,7 @@ class VaultFileAdmin(admin.ModelAdmin):
         result = BatchAction(queryset).run(hash_one)
         BatchAction.display_messages(result, self.message_user, request, verb="hash")
 
-    generate_content_hashes.short_description = "Generate content hash for selected files"
+    generate_content_hashes.short_description = _("Generate content hash for selected files")
 
 
 @admin.register(FileGateway)
@@ -466,16 +467,16 @@ class BucketPeerPairingForm(forms.ModelForm):
     """The add form: pick who you federated with, paste their pairing code."""
 
     paired_host = forms.ChoiceField(
-        required=False, label="Paired host",
-        help_text="Hosts known from SSO federation. Pick one, or leave on "
-                  "'Other host' and fill the URL below.")
+        required=False, label=_("Paired host"),
+        help_text=_("Hosts known from SSO federation. Pick one, or leave on "
+                    "'Other host' and fill the URL below."))
     base_url = forms.URLField(
-        required=False, label="Other host URL",
-        help_text="Only when the host is not in the list, "
-                  "e.g. https://placidia.example.org")
+        required=False, label=_("Other host URL"),
+        help_text=_("Only when the host is not in the list, "
+                    "e.g. https://placidia.example.org"))
     pairing_code = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 3}), label="Pairing code",
-        help_text="Minted once by a bucket grant on the exporting host.")
+        widget=forms.Textarea(attrs={"rows": 3}), label=_("Pairing code"),
+        help_text=_("Minted once by a bucket grant on the exporting host."))
 
     class Meta:
         model = BucketPeer

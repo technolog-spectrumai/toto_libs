@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w, _XBIND
@@ -10,14 +11,14 @@ class ConcatForm(forms.Form):
     reencode = forms.BooleanField(
         required=False, initial=False,
         widget=forms.CheckboxInput(attrs={"class": "rounded border", "x-bind:class": _XBIND}),
-        help_text="Re-encode (slower, but handles incompatible streams).",
+        help_text=_("Re-encode (slower, but handles incompatible streams)."),
     )
     output_name = forms.CharField(initial="merged", widget=forms.TextInput(attrs=_w({"placeholder": "merged"})))
 
 
 class ConcatCommand(FfmpegCommand):
     key = "concat"
-    label = "Concatenate"
+    label = _("Concatenate")
     inputs = {"videos": {"file_type": "video", "name": "Videos to concatenate", "multiple": True}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "Concatenated video"}}
     form_class = ConcatForm

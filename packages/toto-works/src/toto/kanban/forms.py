@@ -1,6 +1,7 @@
 from django import forms
 
 from django.utils import timezone
+from django.utils.translation import gettext as _
 
 from toto.events.models import ScheduledEvent
 from toto.people.models import Person
@@ -158,7 +159,7 @@ class TaskRelationForm(forms.ModelForm):
                 for a, b in pairs
             )
             if exists:
-                raise forms.ValidationError("These tasks are already linked that way.")
+                raise forms.ValidationError(_("These tasks are already linked that way."))
 
         return cleaned
 

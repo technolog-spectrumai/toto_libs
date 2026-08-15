@@ -5,6 +5,7 @@ from django.contrib.auth.decorators import login_required, user_passes_test
 from django.http import JsonResponse
 from django.shortcuts import redirect, render, get_object_or_404
 from django.urls import reverse
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_GET, require_POST
 
 from django.db import models as _models
@@ -740,7 +741,7 @@ def graph_export_preview(request, app_label, model_name, object_uuid):
     try:
         obj = model.objects.get(**{uuid_field: object_uuid})
     except model.DoesNotExist:
-        messages.error(request, "That object no longer exists.")
+        messages.error(request, _("That object no longer exists."))
         return redirect(back)
 
     client = Neo4jClient()
@@ -782,7 +783,7 @@ def graph_export_apply(request, app_label, model_name, object_uuid):
     try:
         obj = model.objects.get(**{uuid_field: object_uuid})
     except model.DoesNotExist:
-        messages.error(request, "That object no longer exists.")
+        messages.error(request, _("That object no longer exists."))
         return redirect(back)
 
     client = Neo4jClient()

@@ -10,13 +10,15 @@ point of declaring it now. The cap is already in place on the day someone sets
 the flag, rather than being remembered afterwards.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="fileservices.run",
-    label="File service run",
+    label=_("File service run"),
     app_label="fileservices",
     unit="request",
-    description="One ffmpeg-tier service run turning one vault file into another.",
+    description=_("One ffmpeg-tier service run turning one vault file into another."),
     default_limit=40,
 ))

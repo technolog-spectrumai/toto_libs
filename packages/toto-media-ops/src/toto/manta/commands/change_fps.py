@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -13,7 +14,7 @@ class ChangeFpsForm(forms.Form):
 
 class ChangeFpsCommand(FfmpegCommand):
     key = "change_fps"
-    label = "Change FPS"
+    label = _("Change FPS")
     inputs = {"video": {"file_type": "video", "name": "Input video"}}
     outputs = {"output": {"file_type": "video", "extension": "mp4", "name": "FPS-adjusted video"}}
     form_class = ChangeFpsForm

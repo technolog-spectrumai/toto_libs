@@ -16,6 +16,7 @@ repositories Gitea says are theirs.
 from __future__ import annotations
 
 from django.conf import settings
+from django.utils.translation import gettext as _
 
 
 def access_level() -> str:
@@ -35,6 +36,7 @@ def can_use(user) -> bool:
 
 def refusal() -> str:
     return (
-        "Code hosting is not enabled for your account "
-        f"(GITEA_ACCESS is {access_level()!r})."
+        _("Code hosting is not enabled for your account "
+          "(GITEA_ACCESS is %(level)s).")
+        % {"level": repr(access_level())}
     )

@@ -6,6 +6,7 @@ from channels.layers import get_channel_layer
 from django.http import JsonResponse
 from django.views.decorators.csrf import csrf_exempt
 from django.utils.decorators import method_decorator
+from django.utils.translation import gettext_lazy as _
 from django.db import models
 
 from toto.api.cors import CorsApiView
@@ -433,7 +434,7 @@ class MediaUploadApiView(CorsApiView):
 class ImageUploadApiView(MediaUploadApiView):
     msg_type = "image_message"
     form_field = "image"
-    error_label = "Unsupported file type. Send a JPEG, PNG, GIF, or WebP."
+    error_label = _("Unsupported file type. Send a JPEG, PNG, GIF, or WebP.")
 
     def _accepts(self, content_type):
         return content_type in _ALLOWED_IMAGE_TYPES
@@ -442,7 +443,7 @@ class ImageUploadApiView(MediaUploadApiView):
 class AudioUploadApiView(MediaUploadApiView):
     msg_type = "voice_message"
     form_field = "audio"
-    error_label = (
+    error_label = _(
         "Unsupported file type. Send audio/webm, audio/ogg, audio/mp4, audio/wav, or audio/mpeg."
     )
 

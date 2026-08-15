@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -14,7 +15,7 @@ class ExtractMp3Form(forms.Form):
 
 class ExtractMp3Command(FfmpegCommand):
     key = "extract_mp3"
-    label = "Extract MP3"
+    label = _("Extract MP3")
     inputs = {"media": {"file_type": "video", "name": "Source video"}}
     outputs = {"output": {"file_type": "audio", "extension": "mp3", "name": "Extracted MP3"}}
     form_class = ExtractMp3Form

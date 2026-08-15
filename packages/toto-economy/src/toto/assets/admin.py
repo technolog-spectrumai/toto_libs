@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils.translation import gettext_lazy as _
 
 from .hashing import verify_hash_chain
 from .models import (
@@ -46,7 +47,7 @@ class AssetAdmin(admin.ModelAdmin):
     @staticmethod
     def max_supply_display(obj):
         return f"{obj.max_supply_display} {obj.unit_name}"
-    max_supply_display.short_description = "Total supply"
+    max_supply_display.short_description = _("Total supply")
 
 
 @admin.register(LedgerAccount)
@@ -149,12 +150,12 @@ class LedgerHashAdmin(admin.ModelAdmin):
     @staticmethod
     def previous_hash_short(obj):
         return (obj.previous_hash[:16] + "…") if obj.previous_hash else "—"
-    previous_hash_short.short_description = "Previous hash"
+    previous_hash_short.short_description = _("Previous hash")
 
     def chain_valid(self, obj):
         return verify_hash_chain()
     chain_valid.boolean = True
-    chain_valid.short_description = "Chain valid"
+    chain_valid.short_description = _("Chain valid")
 
 
 @admin.register(LedgerAccountKey)

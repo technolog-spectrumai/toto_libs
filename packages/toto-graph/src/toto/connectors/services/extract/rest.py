@@ -28,6 +28,8 @@ Auth headers/params are injected inside ``execute_api_request`` from the
 ``FetchPage.url`` is safe to persist in the run's request_log.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.api.client import (
     ApiRequestError,
     _with_query_params,
@@ -59,7 +61,7 @@ def _display_url(data_connector, endpoint, params):
 @register
 class RestApiExtractor(BaseExtractor):
     kind = "rest_api"
-    label = "REST/JSON API"
+    label = _("REST/JSON API")
 
     def validate_config(self, config):
         errors = []

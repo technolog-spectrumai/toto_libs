@@ -13,6 +13,7 @@ from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.api.cors import render_access_denied
@@ -473,11 +474,11 @@ def promote_task(request, project_id, task_id):
     next_status = adjacent_status(task.status, "next")
 
     if next_status is None:
-        messages.warning(request, "Task is already done.")
+        messages.warning(request, _("Task is already done."))
         return redirect("kanban:project_detail", pk=project_id)
 
     if not is_project_auditor(request.user, project):
-        messages.error(request, "You are not allowed to move tasks in this project.")
+        messages.error(request, _("You are not allowed to move tasks in this project."))
         return redirect("kanban:project_detail", pk=project_id)
 
     # Pinned to `done` rather than "the last column by position", which used to
@@ -528,11 +529,11 @@ def demote_task(request, project_id, task_id):
     previous_status = adjacent_status(task.status, "prev")
 
     if previous_status is None:
-        messages.warning(request, "Task is already at the start of the board.")
+        messages.warning(request, _("Task is already at the start of the board."))
         return redirect("kanban:project_detail", pk=project_id)
 
     if not is_project_auditor(request.user, project):
-        messages.error(request, "You are not allowed to move tasks in this project.")
+        messages.error(request, _("You are not allowed to move tasks in this project."))
         return redirect("kanban:project_detail", pk=project_id)
 
     # No reviewer gate on the way back: gating it would strand finished tasks
@@ -561,7 +562,7 @@ def relation_create(request, project_id, task_id):
     form = TaskRelationForm(request.POST, from_task=task)
     if form.is_valid():
         form.save()
-        messages.success(request, "Relation added.")
+        messages.success(request, _("Relation added."))
     else:
         for error in form.errors.values():
             messages.error(request, "; ".join(error))
@@ -585,7 +586,7 @@ def relation_delete(request, project_id, pk):
         from_task__mission__campaign__project=project,
     )
     relation.delete()
-    messages.success(request, "Relation removed.")
+    messages.success(request, _("Relation removed."))
     return redirect("kanban:project_detail", pk=project_id)
 
 
@@ -1196,7 +1197,7 @@ def mission_event_link(request, pk):
         messages.success(request, f"Linked event: {event.title}.")
     else:
         mission.calendar_event = None
-        messages.success(request, "Event unlinked.")
+        messages.success(request, _("Event unlinked."))
     mission.save(update_fields=["calendar_event"])
     return redirect("kanban:mission_detail", pk=mission.pk)
 
@@ -1248,7 +1249,7 @@ def task_event_link(request, project_id, task_id):
         messages.success(request, f"Linked event: {event.title}.")
     else:
         task.calendar_event = None
-        messages.success(request, "Event unlinked.")
+        messages.success(request, _("Event unlinked."))
     task.save(update_fields=["calendar_event"])
     return redirect("kanban:project_detail", pk=project_id)
 
@@ -1301,10 +1302,10 @@ def mission_attachment_add(request, pk):
     from toto.vault.filetree import accessible_files
     vault_file = accessible_files(request.user).filter(pk=request.POST.get("vault_file")).first()
     if vault_file is None:
-        messages.error(request, "Pick a file you have access to.")
+        messages.error(request, _("Pick a file you have access to."))
         return redirect("kanban:mission_detail", pk=mission.pk)
 
-    _, created = MissionAttachment.objects.get_or_create(
+    _attachment, created = MissionAttachment.objects.get_or_create(
         mission=mission,
         vault_file=vault_file,
         defaults={

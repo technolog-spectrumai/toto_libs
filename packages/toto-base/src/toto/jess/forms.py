@@ -1,5 +1,6 @@
 """The compose form — the staff send page, and the thing that grows into a campaign."""
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .models import EmailProvider
 
@@ -17,25 +18,25 @@ class ComposeForm(forms.Form):
     """
 
     to = forms.CharField(
-        label="To",
-        help_text="One or more addresses, comma separated.",
+        label=_("To"),
+        help_text=_("One or more addresses, comma separated."),
         widget=forms.TextInput(attrs={"placeholder": "someone@example.org"}),
     )
-    subject = forms.CharField(label="Subject", max_length=255)
+    subject = forms.CharField(label=_("Subject"), max_length=255)
     body = forms.CharField(
-        label="Message", widget=forms.Textarea(attrs={"rows": 10}),
-        help_text="Plain text. Always sent, and used by clients that cannot show HTML.",
+        label=_("Message"), widget=forms.Textarea(attrs={"rows": 10}),
+        help_text=_("Plain text. Always sent, and used by clients that cannot show HTML."),
     )
     html_body = forms.CharField(
-        label="HTML (optional)", required=False,
+        label=_("HTML (optional)"), required=False,
         widget=forms.Textarea(attrs={"rows": 6}),
-        help_text="Attached as an alternative part, not a replacement.",
+        help_text=_("Attached as an alternative part, not a replacement."),
     )
     passphrase = forms.CharField(
-        label="Vault passphrase (to send now)", required=False,
+        label=_("Vault passphrase (to send now)"), required=False,
         widget=forms.PasswordInput(render_value=False),
-        help_text="Manual-release host: type it to send this message immediately. "
-                  "Leave blank to hold it for release later.",
+        help_text=_("Manual-release host: type it to send this message immediately. "
+                    "Leave blank to hold it for release later."),
     )
 
     def __init__(self, *args, manual: bool = False, **kwargs):
@@ -49,7 +50,7 @@ class ComposeForm(forms.Form):
         raw = self.cleaned_data["to"]
         addresses = [a.strip() for a in raw.split(",") if a.strip()]
         if not addresses:
-            raise forms.ValidationError("At least one recipient is required.")
+            raise forms.ValidationError(_("At least one recipient is required."))
         validate = forms.EmailField().clean
         for address in addresses:
             try:

@@ -11,12 +11,14 @@ us whether it ever needs a real cap; blocking it would be a rate card causing
 data loss.
 """
 
+from django.utils.translation import gettext_lazy as _
+
 from toto.quota.choices import Mode
 from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="primula.save",
-    label="Sheet save",
+    label=_("Sheet save"),
     app_label="primula",
     unit="request",
     description="One workbook save and the version snapshot it appends.",

@@ -1,4 +1,5 @@
 from django import forms
+from django.utils.translation import gettext_lazy as _
 
 from .. import builders
 from ..forms import _w
@@ -12,7 +13,7 @@ class HstackForm(forms.Form):
 
 class HstackCommand(FfmpegCommand):
     key = "hstack"
-    label = "Stack horizontally"
+    label = _("Stack horizontally")
     inputs = {
         "left_video": {"file_type": "video", "name": "Left video"},
         "right_video": {"file_type": "video", "name": "Right video"},

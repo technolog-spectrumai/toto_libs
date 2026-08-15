@@ -4,6 +4,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse_lazy
+from django.utils.translation import gettext as _
 from django.views.generic import ListView, DetailView
 from toto.ui import PageProcessor
 
@@ -74,15 +75,15 @@ def notebook_create(request):
         form = NotebookForm(request.POST)
         if form.is_valid():
             notebook = form.save()
-            messages.success(request, "Notebook created.")
+            messages.success(request, _("Notebook created."))
             return redirect("mandragora:notebook_detail", slug=notebook.slug)
     else:
         form = NotebookForm()
 
     return mandragora_render(request, "mandragora/notebook_form.html", {
         "form": form,
-        "title": "New notebook",
-        "submit_label": "Create notebook",
+        "title": _("New notebook"),
+        "submit_label": _("Create notebook"),
         "icon": "fa-solid fa-plus",
     })
 
@@ -95,7 +96,7 @@ def notebook_update(request, slug):
         form = NotebookForm(request.POST, instance=notebook)
         if form.is_valid():
             notebook = form.save()
-            messages.success(request, "Notebook saved.")
+            messages.success(request, _("Notebook saved."))
             return redirect("mandragora:notebook_detail", slug=notebook.slug)
     else:
         form = NotebookForm(instance=notebook)
@@ -103,8 +104,8 @@ def notebook_update(request, slug):
     return mandragora_render(request, "mandragora/notebook_form.html", {
         "form": form,
         "notebook": notebook,
-        "title": "Edit notebook",
-        "submit_label": "Save notebook",
+        "title": _("Edit notebook"),
+        "submit_label": _("Save notebook"),
         "icon": "fa-solid fa-pen-to-square",
     })
 
@@ -115,7 +116,7 @@ def notebook_delete(request, slug):
 
     if request.method == "POST":
         notebook.delete()
-        messages.success(request, "Notebook deleted.")
+        messages.success(request, _("Notebook deleted."))
         return redirect("mandragora:notebook_list")
 
     return mandragora_render(request, "mandragora/notebook_confirm_delete.html", {
