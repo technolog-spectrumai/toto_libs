@@ -615,3 +615,41 @@ class FileMoveApiTests(TestCase):
             self.assertEqual(res.status_code, 404, bad)
         self.vf.refresh_from_db()
         self.assertIsNone(self.vf.directory)
+
+
+class StrongboxApiTests(TestCase):
+    """The KDF record the desktop app derives its Fernet key from."""
+
+    def setUp(self):
+        self.owner = User.objects.create_user(username="sbowner", password="pass")
+        self.other = User.objects.create_user(username="sbother", password="pass")
+
+    def test_needs_auth(self):
+        self.client.logout()
+        self.assertEqual(self.client.get("/vault/api/strongbox/").status_code, 401)
+
+    def test_returns_my_record_and_creates_it_on_first_ask(self):
+        import base64
+
+        self.client.force_login(self.owner)
+        self.assertFalse(self.owner.user_strongboxes.exists())
+
+        data = self.client.get("/vault/api/strongbox/").json()
+        self.assertEqual(data["kdf"], "argon2id")
+        self.assertEqual(len(base64.b64decode(data["salt"])), 16)
+        self.assertGreaterEqual(data["memory_cost"], 19456)
+
+        # Idempotent: asking again must return the SAME salt, or a key derived
+        # on one device could never open a file sealed on another.
+        again = self.client.get("/vault/api/strongbox/").json()
+        self.assertEqual(again["salt"], data["salt"])
+        self.assertEqual(self.owner.user_strongboxes.count(), 1)
+
+    def test_never_reveals_anyone_elses(self):
+        import base64
+
+        self.client.force_login(self.owner)
+        mine = self.client.get("/vault/api/strongbox/").json()
+        self.client.force_login(self.other)
+        theirs = self.client.get("/vault/api/strongbox/").json()
+        self.assertNotEqual(mine["salt"], theirs["salt"])

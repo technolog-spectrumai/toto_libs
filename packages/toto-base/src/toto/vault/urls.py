@@ -3,6 +3,7 @@ from django.urls import path
 from . import views
 from django.views.generic import RedirectView
 from .api_views import (
+    StrongboxApiView,
     FileListApiView, FileUploadApiView, FileDetailApiView, FileDownloadApiView,
     FileEncryptApiView, FileDecryptApiView, VaultMetricsApiView,
     BucketTreeApiView, FileContentApiView, FileCreateApiView,
@@ -41,6 +42,7 @@ urlpatterns = [
     path("api/files/", FileListApiView.as_view(), name="api_file_list"),
     path("api/files/create/", FileCreateApiView.as_view(), name="api_file_create"),
     path("api/files/upload/", FileUploadApiView.as_view(), name="api_file_upload"),
+    path("api/strongbox/", StrongboxApiView.as_view(), name="api_strongbox"),
     path("api/buckets/", BucketTreeApiView.as_view(), name="api_bucket_tree"),
     path("api/directories/", DirectoryCreateApiView.as_view(), name="api_directory_create"),
     path("api/directories/<int:pk>/", DirectoryDeleteApiView.as_view(), name="api_directory_delete"),

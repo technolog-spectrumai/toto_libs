@@ -693,3 +693,39 @@ class FileCreateApiView(CorsApiView):
 
         vf = create_empty_vault_file(request.user, bucket, directory, title, file_type)
         return JsonResponse(_file_to_dict(request, vf), status=201)
+
+
+class StrongboxApiView(CorsApiView):
+    """`GET /vault/api/strongbox/` — the caller's own KDF record.
+
+    This is what makes a file lockable OFF the server: the desktop app derives
+    the same Fernet key zenobia derives — Argon2id over the same salt with the
+    same costs — so a file encrypted locally decrypts here and vice versa. The
+    salt is not a secret (it is stored unencrypted and reveals nothing without
+    the password), but it is YOURS: the view never resolves anyone else's, so
+    it cannot become an account oracle beyond what auth already grants.
+
+    Created on first ask, with the model's defaults — the same get-or-create
+    the seeder performs — so a desktop-first user does not need to have
+    encrypted anything through the web UI before locking a file.
+    """
+
+    def get(self, request):
+        if not request.user or not request.user.is_authenticated:
+            return JsonResponse({"error": "Not authenticated."}, status=401)
+        from toto.gervazy.models import UserStrongbox
+
+        strongbox = request.user.user_strongboxes.first()
+        if strongbox is None:
+            strongbox = UserStrongbox.objects.create(
+                owner=request.user, name="strongbox")
+        import base64
+
+        return JsonResponse({
+            "kdf": strongbox.kdf,
+            "kdf_version": strongbox.kdf_version,
+            "salt": base64.b64encode(bytes(strongbox.salt)).decode("ascii"),
+            "memory_cost": strongbox.argon2_memory_cost,
+            "iterations": strongbox.argon2_iterations,
+            "lanes": strongbox.argon2_lanes,
+        })
