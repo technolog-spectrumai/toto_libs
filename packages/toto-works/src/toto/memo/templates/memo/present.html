@@ -66,8 +66,11 @@ gone. A deck looks the same on whatever machine you present it from.
 
 <div class="present-toolbar">
   {% if read_url %}
+    {# Read, not Edit: decks are authored in the desktop app since 8/2026 and
+       this host only shows them. A pen icon on a link to a read-only page
+       promises an editor that is not there. #}
     <a href="{{ read_url }}" title="{% trans 'Read this deck as a page' %}">
-      <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+      <i class="fa-solid fa-book-open"></i> {% trans "Read" %}</a>
   {% endif %}
   <a href="{% url 'memo:index' %}" title="{% trans 'All presentations' %}">
     <i class="fa-solid fa-table-cells"></i> {% trans "All" %}</a>
