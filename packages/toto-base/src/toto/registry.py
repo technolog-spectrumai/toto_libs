@@ -91,36 +91,9 @@ FEATURE_APPS = {
     # messages can never leave. Such a host keeps reading EMAIL_* from its environment.
     "jess": ["toto.jess"],
     "mail": ["toto.mail"],
-    # Univer spreadsheets, vault-backed (BUILD_PRIMULA). Flag-gated because it vendors a
-    # large JS bundle that only the hosts offering sheets need baked into their image.
-    "primula": ["toto.primula"],
-    # What people pay to be here (BUILD_SUBSCRIPTIONS). In toto-base rather than
-    # toto-economy because the GATE has to work on a host with no economy at
-    # all; the charge reaches money only through the toto.quota façades, so an
-    # unbilled host gets working plans that cost nothing.
+
     "subscriptions": ["toto.subscriptions"],
-    # The SVG editor (BUILD_SKETCH). Flag-gated like the other editors, with one
-    # extra rule enforced by a system check in toto.sketch.apps: a host that sets
-    # this MUST also set BUILD_ANTIVIRUS. Sketch renders SVG inline, in our
-    # origin, and it has no screening of its own any more.
-    "sketch": ["toto.sketch"],
-    # Version control, in TOTO-REPO — two apps, and a host installs whichever
-    # half it can actually use.
-    #
-    # "repo" (BUILD_REPO) is local git over vault directories: init, commit,
-    # branch, merge, history, restore, and push to any URL. It carries the FK
-    # into workflows.WorkflowRun, which is why toto.features forces the engine
-    # on with it and why toto-repo depends on toto-flow.
-    #
-    # "gitea" (BUILD_GITEA) is the co-deployed forge: per-user accounts, a
-    # repository list, and the credentials the local half asks for when a remote
-    # belongs to it. No workflow engine, no celery — just the sidecar, which a
-    # consumer host cannot run at all (deploy.py refuses services.gitea there).
-    #
-    # They were one app, toto.gitvault, until the hosts diverged: zenobia hosts
-    # code and versions documents through toto.vault, placidia versions
-    # workspaces on its own disk and mounts no OIDC provider to sign a sidecar
-    # in with. One flag could not say that.
+
     "repo": ["toto.repo"],
     "gitea": ["toto.gitea"],
 }

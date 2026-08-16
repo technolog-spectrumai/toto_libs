@@ -30,7 +30,6 @@ class Features:
     workflows: bool
     weather: bool
     # Editing features (standalone - each enabled on its own; no labs tier).
-    sketch: bool
     canasta: bool
     media: bool
     vod: bool
@@ -56,7 +55,6 @@ class Features:
     # accounts. Neither implies the other — see toto-repo's README.
     repo: bool
     gitea: bool
-    primula: bool
     mail: bool
     subscriptions: bool
     monit: bool
@@ -153,16 +151,8 @@ def resolve_features(get) -> Features:
     # closures hold for ANY config, not just builder-written ones. gitvault was
     # in that list until it moved into a wheel and then split into repo+gitea,
     # both of which FEATURE_APPS now names like any other packaged app.)
-    # BUILD_SKETCH changed hands in 1.51 and this is the note about it: it used
-    # to name zenobia/limbo/sketch, a Paper.js/Yjs collaborative whiteboard that
-    # no host ever installed. It now names the packaged SVG editor in
-    # toto-works, which is why it has a FEATURE_APPS entry (the parked one never
-    # did) and why it left needs_channels below — the new one has no WebSocket.
-    # The parked app stays parked; it also registers the "svg" editor plugin key,
-    # so the two must never be installed together.
-    sketch = flag(get, "BUILD_SKETCH")                        # toto.sketch — SVG editor (requires BUILD_ANTIVIRUS)
-    # The pre-split alias: BUILD_AMBROSIA means both labs, and an explicit "0"
-    # on a specific flag still wins over it.
+
+
     _ambrosia = flag(get, "BUILD_AMBROSIA")
     antaresia = flag(get, "BUILD_ANTARESIA", _ambrosia)       # zenobia/toto/antaresia — Python lab
     texlab = flag(get, "BUILD_TEXLAB", _ambrosia)             # zenobia/toto/texlab — TeX lab
@@ -229,7 +219,6 @@ def resolve_features(get) -> Features:
     # the flag lives here; the sidecar itself is services.gitea in the deploy
     # config, and deploy.py refuses that pair on a consumer host.
     gitea = flag(get, "BUILD_GITEA")
-    primula = flag(get, "BUILD_PRIMULA")                      # toto.primula — Univer spreadsheets (vault-backed)
     mail = flag(get, "BUILD_MAIL")
     subscriptions = flag(get, "BUILD_SUBSCRIPTIONS")          # toto.subscriptions — plans, entitlements and the monthly charge
     # Lightweight read-only monitoring dashboard (grafana alternative). No
@@ -377,7 +366,6 @@ def resolve_features(get) -> Features:
         chat=chat,
         workflows=workflows,
         weather=weather,
-        sketch=sketch,
         canasta=canasta,
         media=media,
         vod=vod,
@@ -395,7 +383,6 @@ def resolve_features(get) -> Features:
         travels=travels,
         repo=repo,
         gitea=gitea,
-        primula=primula,
         mail=mail,
         subscriptions=subscriptions,
         geo=geo,

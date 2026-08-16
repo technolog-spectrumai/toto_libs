@@ -28,8 +28,6 @@ class YamlEditorPlugin(VaultEditorPlugin):
 
 
 # NOTE: the SVG editor plugin lives in toto.sketch (sketch/plugins/vault_editor_plugins.py),
-# not here — its editor URL (sketch:svg_file_display) is only mounted when BUILD_SKETCH=1,
-# so registering it alongside toto.editor (BUILD_LATEX/BUILD_PYEDITOR) would 500 the vault
 # listing on any SVG file when sketch is off.
 
 

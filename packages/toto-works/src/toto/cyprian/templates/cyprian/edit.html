@@ -48,10 +48,6 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
           <i class="fa-solid fa-arrow-left"></i>
         </a>
       {% else %}
-        <a href="{% url 'cyprian:index' %}" title="{% trans 'All documents' %}"
-           class="opacity-60 transition hover:opacity-100">
-          <i class="fa-solid fa-arrow-left"></i>
-        </a>
       {% endif %}
 
       {% comment %} No name field. The file was named when it was created and

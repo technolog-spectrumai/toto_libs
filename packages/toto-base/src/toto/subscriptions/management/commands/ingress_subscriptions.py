@@ -42,7 +42,7 @@ PLANS = [
             "Metered work is still charged per use on top."
         ),
         "entitlements": [
-            "cyprian", "memo", "primula", "sketch", "editor",
+            "cyprian", "memo", "editor",
             "kanban", "polls", "locations",
         ],
     },
@@ -60,7 +60,7 @@ PLANS = [
         # to every plan (see catalogue.py: plans differ by functionality,
         # not internals; everyone gets celery and workers).
         "entitlements": [
-            "cyprian", "memo", "primula", "sketch", "editor",
+            "cyprian", "memo", "editor",
             "kanban", "polls", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",

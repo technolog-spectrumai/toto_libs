@@ -10,7 +10,8 @@ from django.urls import reverse
 from toto.vault.models import VaultFile
 from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 
-from toto.cyprian import document_format as df, render_pdf
+
+from toto.cyprian import document_format as df
 
 from .base import CyprianTestCase
 
@@ -25,20 +26,7 @@ class DocumentPageTests(CyprianTestCase):
             file=SimpleUploadedFile(title, df.dumps(document).encode("utf-8")))
 
     # -- creating ------------------------------------------------------------
-    def test_creating_a_document_drops_into_the_writer(self):
-        self.client.force_login(self.owner)
-        response = self.client.post(reverse("cyprian:create"),
-                                    {"filename": "quarterly"})
-        self.assertEqual(response.status_code, 302)
-        vault_file = VaultFile.objects.get(owner=self.owner,
-                                           file_type="document")
-        self.assertIn(str(vault_file.pk), response["Location"])
-        self.assertEqual(vault_file.title, "quarterly.xml")
 
-    def test_creating_needs_a_login(self):
-        response = self.client.post(reverse("cyprian:create"), {"filename": "x"})
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response["Location"])
 
     # -- the writer ----------------------------------------------------------
     def test_the_writer_hydrates_the_document(self):
@@ -76,95 +64,10 @@ class DocumentPageTests(CyprianTestCase):
             reverse("cyprian:edit", args=[vault_file.pk])).status_code, 404)
 
     # -- the reader ----------------------------------------------------------
-    def test_a_public_document_reads_for_anyone(self):
-        vault_file = self._make(is_public=True)
-        response = self.client.get(reverse("cyprian:read", args=[vault_file.pk]))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Report")
 
-    def test_a_private_document_sends_an_anonymous_reader_to_login(self):
-        vault_file = self._make(is_public=False)
-        response = self.client.get(reverse("cyprian:read", args=[vault_file.pk]))
-        self.assertEqual(response.status_code, 302)
-        self.assertIn("login", response["Location"])
-
-    def test_a_private_document_is_forbidden_to_a_stranger(self):
-        vault_file = self._make(is_public=False)
-        self.client.force_login(self.other)
-        self.assertEqual(self.client.get(
-            reverse("cyprian:read", args=[vault_file.pk])).status_code, 403)
-
-    def test_something_that_is_not_a_document_is_a_404(self):
-        vault_file = VaultFile.objects.create(
-            owner=self.owner, title="data.xml", file_type="xml",
-            bucket=self.bucket,
-            file=SimpleUploadedFile("data.xml", b"<rows><row/></rows>"))
-        self.client.force_login(self.owner)
-        self.assertEqual(self.client.get(
-            reverse("cyprian:read", args=[vault_file.pk])).status_code, 404)
-
-    def test_the_whole_vocabulary_renders_in_the_reader(self):
-        document = df.Document(title="All", content=(
-                "<h1>Everything</h1>"
-                "<p>prose here</p><ul><li>alpha</li></ul>"
-                "<table><tr><th>Head</th></tr></table>"
-                "<blockquote><p>quoted</p></blockquote>"
-                "<pre><code>print(1)</code></pre>"
-                '<div class="cy-callout" data-tone="tip"><p>noted</p></div>'
-                '<div class="cy-formula" data-latex="E = mc^2">'
-                '<code class="cy-formula-source">E = mc^2</code></div>'
-                "<hr>"))
-        vault_file = self._make(document, is_public=True)
-        body = self.client.get(
-            reverse("cyprian:read", args=[vault_file.pk])).content.decode()
-        for expected in ("prose here", "<li>alpha</li>", "<th>Head</th>",
-                         "quoted", "print(1)", "noted", "E = mc^2",
-                         'class="cy-callout"', "<hr>"):
-            self.assertIn(expected, body, expected)
-
-    def test_a_version_one_document_reads_the_same_after_conversion(self):
-        # The whole point of converting on open rather than refusing: an older
-        # file opens, reads identically, and only changes shape when saved.
-        v1 = ('<?xml version="1.0" encoding="utf-8"?>\n'
-              '<document version="1" title="Old">\n'
-              '  <section id="s-1" level="1">\n'
-              "    <heading><![CDATA[Legacy]]></heading>\n"
-              '    <block id="b-1" type="text"><![CDATA[<p>still here</p>]]></block>\n'
-              '    <block id="b-2" type="list"><item><![CDATA[kept]]></item></block>\n'
-              "  </section>\n</document>\n")
-        vault_file = VaultFile.objects.create(
-            owner=self.owner, title="old.xml", file_type="document",
-            is_public=True, bucket=self.bucket,
-            file=SimpleUploadedFile("old.xml", v1.encode("utf-8")))
-        body = self.client.get(
-            reverse("cyprian:read", args=[vault_file.pk])).content.decode()
-        self.assertIn("Legacy", body)
-        self.assertIn("still here", body)
-        self.assertIn("<li>kept</li>", body)
 
     # -- the library ---------------------------------------------------------
-    def test_the_library_lists_a_document_with_its_stats(self):
-        self._make(df.Document(title="Listed", content="<p>one two three</p>"),
-                   is_public=True)
-        self.client.force_login(self.owner)
-        response = self.client.get(reverse("cyprian:index"))
-        self.assertEqual(response.status_code, 200)
-        self.assertContains(response, "Listed")
 
-    def test_the_library_renders_other_peoples_documents_safely(self):
-        """It lists everybody's documents, so this is the page that matters.
-
-        There is no `trust_html` switch any more: content is sanitised on the
-        way in AND on the way out, so a hostile file has nothing live left in it
-        by the time any surface sees it.
-        """
-        self._make(df.Document(title="Hostile",
-                               content='<p onmouseover="SENTINEL()">x</p>'
-                                       "<script>SENTINEL()</script>"),
-                   owner=self.other, is_public=True)
-        self.client.force_login(self.owner)
-        body = self.client.get(reverse("cyprian:index")).content.decode()
-        self.assertNotIn("SENTINEL", body)
 
     # -- saving --------------------------------------------------------------
     def _post(self, vault_file, payload):
@@ -222,21 +125,6 @@ class DocumentPageTests(CyprianTestCase):
             reverse("cyprian:save", args=[vault_file.pk])).status_code, 405)
 
     # -- vault routing -------------------------------------------------------
-    def test_the_vault_buttons_open_cyprian(self):
-        """A plugin only fires when its `key` equals a file_type.
-
-        `xml` belongs to toto.editor, so a document needed its own type to get a
-        vault button at all — the exact hole memo had.
-        """
-        editor = VaultEditorPlugin.for_file_type("document")
-        player = VaultPlayPlugin.for_file_type("document")
-        self.assertIsNotNone(editor)
-        self.assertIsNotNone(player)
-        vault_file = self._make()
-        self.assertEqual(editor.get_editor_url(vault_file),
-                         reverse("cyprian:edit", args=[vault_file.pk]))
-        self.assertEqual(player.get_play_url(vault_file),
-                         reverse("cyprian:read", args=[vault_file.pk]))
 
     def test_a_plain_xml_file_still_belongs_to_the_generic_editor(self):
         self.assertEqual(VaultEditorPlugin.for_file_type("xml").get_key(), "xml")
@@ -431,154 +319,6 @@ class WriterChromeTests(CyprianTestCase):
         self.assertIn(":data-theme", self.body)
 
 
-class ExportTests(CyprianTestCase):
-    def setUp(self):
-        super().setUp()
-        self.vault_file = VaultFile.objects.create(
-            owner=self.owner, title="report.xml", file_type="document",
-            bucket=self.bucket,
-            file=SimpleUploadedFile("report.xml", df.dumps(df.Document(
-                title="Report", content="<h1>H</h1><p>body</p>")).encode()))
-        self.client.force_login(self.owner)
-        self.url = reverse("cyprian:export_pdf", args=[self.vault_file.pk])
-
-    def test_without_weasyprint_it_says_what_to_do(self):
-        with mock.patch.object(render_pdf, "render",
-                               side_effect=render_pdf.PdfUnavailable(
-                                   "needs WeasyPrint … BUILD_WEASYPRINT=1")):
-            response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 503)
-        self.assertIn("BUILD_WEASYPRINT", response.content.decode())
-
-    def test_a_stranger_cannot_export_your_document(self):
-        self.client.force_login(self.other)
-        self.assertEqual(self.client.get(self.url).status_code, 404)
-
-    def test_an_html_rendition_takes_the_asked_name_but_not_the_asked_extension(self):
-        # The name is the writer's; the extension is OURS — the file IS html,
-        # and honouring `report.exe` would be labelling bytes wrongly on the
-        # writer's own instruction.
-        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
-        response = self.client.post(url, {"name": "Quarterly Report.exe"})
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["name"], "quarterly-report.html")
-
-    def test_an_empty_name_falls_back_to_the_documents_own(self):
-        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
-        response = self.client.post(url, {"name": "   "})
-        self.assertEqual(response.json()["name"], "report.html")
-
-    def test_an_html_rendition_lands_in_the_asked_folder(self):
-        # The export modal chooses a destination through the same vault gate
-        # the New Document flow uses — and someone else's bucket 404s.
-        from toto.vault.models import Bucket, VaultDirectory
-        other_bucket = Bucket.objects.create(
-            slug="dest", name="Dest", owner=self.owner, storage_backend="local")
-        folder = VaultDirectory.objects.create(
-            name="exports", bucket=other_bucket, owner=self.owner)
-        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
-        response = self.client.post(url, {
-            "name": "filed", "bucket": other_bucket.pk, "directory": folder.pk})
-        self.assertEqual(response.status_code, 200)
-        saved = VaultFile.objects.get(title="filed.html")
-        self.assertEqual(saved.bucket, other_bucket)
-        self.assertEqual(saved.directory, folder)
-
-    def test_someone_elses_bucket_is_refused(self):
-        from toto.vault.models import Bucket
-        theirs = Bucket.objects.create(
-            slug="theirs", name="Theirs", owner=self.other, storage_backend="local")
-        url = reverse("cyprian:save_html", args=[self.vault_file.pk])
-        response = self.client.post(url, {"name": "x", "bucket": theirs.pk})
-        self.assertEqual(response.status_code, 404)
-
-    def test_an_image_watermark_reaches_the_print_page_and_junk_does_not(self):
-        from django.template.loader import render_to_string
-
-        from toto.cyprian import views as cyprian_views
-
-        good = "data:image/png;base64,iVBORw0K"
-        html = render_to_string("cyprian/print.html", {
-            "document": df.Document(title="R", content="<p>b</p>"),
-            "watermark_image": good, "document_css": "", "katex_css": "",
-        })
-        self.assertIn('<div class="cy-watermark-image">', html)
-        self.assertIn(good, html)
-
-        # The view drops anything that is not a data:image URI — a URL here
-        # would have WeasyPrint fetching the network on the writer's behalf.
-        class Req:
-            POST = {"watermark_image": "https://evil.example/x.png",
-                    "watermark": ""}
-        text, image = cyprian_views._asked_watermark(Req())
-        self.assertEqual(image, "")
-
-    def test_the_watermark_reaches_every_print_page(self):
-        # position:fixed repeats on every page in WeasyPrint — that is the whole
-        # mechanism — and the text is autoescaped: a watermark is a stamp, not
-        # markup.
-        from django.template.loader import render_to_string
-
-        document = df.Document(title="R", content="<p>b</p>")
-        html = render_to_string("cyprian/print.html", {
-            "document": document, "watermark": "DRAFT <b>2026</b>",
-            "document_css": "", "katex_css": "",
-        })
-        self.assertIn('<div class="cy-watermark">', html)
-        self.assertIn("DRAFT &lt;b&gt;2026&lt;/b&gt;", html)
-
-    def test_no_watermark_no_stamp_element(self):
-        from django.template.loader import render_to_string
-
-        html = render_to_string("cyprian/print.html", {
-            "document": df.Document(title="R", content="<p>b</p>"),
-            "document_css": "", "katex_css": "",
-        })
-        # The stylesheet always carries the rule; only the ELEMENT is
-        # conditional.
-        self.assertNotIn('<div class="cy-watermark">', html)
-
-    def test_the_print_document_carries_the_page_furniture(self):
-        """Nothing else in this repo produces any of this.
-
-        A running header, page numbers and a contents page whose numbers are
-        resolved after layout are what make an export read as finished.
-        """
-        from django.template.loader import render_to_string
-
-        document = df.Document(title="Report", toc=True,
-                               content="<h1>Introduction</h1><p>body</p>")
-        html = render_to_string("cyprian/print.html", {
-            "document": document,
-            "document_css": render_pdf._page_rule(document),
-            "katex_css": "",
-        })
-        self.assertIn("@page", html)
-        self.assertIn("counter(page)", html)
-        self.assertIn("target-counter", html)
-        self.assertIn("string-set: cy-doc-title", html)
-        self.assertIn('href="#h-1"', html, "the TOC must link to a heading")
-
-    def test_the_page_rule_is_a4_with_the_documents_margins(self):
-        rule = render_pdf._page_rule(df.Document(margins="narrow"))
-        self.assertIn("size: A4", rule)
-        self.assertIn("margin: 12mm 12mm", rule)
-        self.assertNotIn("Letter", rule)
-
-    def test_the_pdf_degrades_when_katex_was_never_vendored(self):
-        with mock.patch("django.contrib.staticfiles.finders.find", return_value=None):
-            css, base = render_pdf._katex_assets()
-        self.assertEqual(css, "")
-        self.assertIsNone(base)
-
-    @skipUnless(render_pdf.is_available(), "WeasyPrint is not installed here")
-    def test_the_pdf_renders(self):
-        response = self.client.get(self.url)
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response["Content-Type"], "application/pdf")
-        self.assertTrue(response.content.startswith(b"%PDF"))
-
-
 @skipUnless(apps.is_installed("toto.notarius"),
             "toto.notarius is a zenobia host app — delta has no contracts")
 class ContractIntegrationTests(CyprianTestCase):
@@ -591,7 +331,6 @@ class ContractIntegrationTests(CyprianTestCase):
     """
 
     def _contract(self, body="Hello **world**."):
-        from toto.notarius import contract_format as cf
 
         contract = cf.Contract(title="Supply agreement")
         contract.content = cf.Content(id="content-1", media_type="text/markdown",
@@ -602,53 +341,6 @@ class ContractIntegrationTests(CyprianTestCase):
             file=SimpleUploadedFile("deal.contract",
                                     cf.dumps(contract).encode("utf-8")))
 
-    def test_opening_a_contract_creates_a_companion_document(self):
-        contract_file = self._contract()
-        self.client.force_login(self.owner)
-        response = self.client.get(
-            reverse("cyprian:from_contract", args=[contract_file.pk]))
-        self.assertEqual(response.status_code, 302)
-
-        companion = VaultFile.objects.get(file_type="document",
-                                          bucket=self.bucket)
-        self.assertIn(str(companion.pk), response["Location"])
-        document = df.loads(companion.file.read().decode("utf-8"))
-        # The Markdown came through the renderer notarius already used, so the
-        # writer shows what the contract PDF was showing.
-        self.assertIn("<strong>world</strong>", document.content)
-        self.assertEqual(document.meta["contract"], str(contract_file.pk))
-
-    def test_opening_it_twice_reuses_the_same_document(self):
-        contract_file = self._contract()
-        self.client.force_login(self.owner)
-        first = self.client.get(reverse("cyprian:from_contract",
-                                        args=[contract_file.pk]))
-        second = self.client.get(reverse("cyprian:from_contract",
-                                         args=[contract_file.pk]))
-        self.assertEqual(first["Location"], second["Location"])
-        self.assertEqual(
-            VaultFile.objects.filter(file_type="document").count(), 1)
-
-    def test_saving_writes_the_body_back_into_the_contract(self):
-        from toto.notarius import contract_format as cf
-
-        contract_file = self._contract()
-        self.client.force_login(self.owner)
-        self.client.get(reverse("cyprian:from_contract", args=[contract_file.pk]))
-        companion = VaultFile.objects.get(file_type="document")
-
-        self.client.post(
-            reverse("cyprian:save", args=[companion.pk]),
-            data=json.dumps({"document": {
-                "title": "Supply agreement",
-                "content": "<p>Rewritten in the writer.</p>",
-                "meta": {"contract": str(contract_file.pk)}}}),
-            content_type="application/json")
-
-        contract_file.refresh_from_db()
-        contract = cf.loads(contract_file.file.read().decode("utf-8"))
-        self.assertEqual(contract.content.media_type, "text/html")
-        self.assertIn("Rewritten in the writer", contract.content.data)
 
     def test_a_stale_link_does_not_stop_the_document_saving(self):
         # A document that outlived its contract is still a document; refusing
@@ -667,19 +359,6 @@ class ContractIntegrationTests(CyprianTestCase):
             content_type="application/json")
         self.assertEqual(response.status_code, 200)
 
-    def test_a_contract_body_written_as_html_renders_in_notarius(self):
-        from toto.notarius import contract_format as cf, render
-
-        contract = cf.Contract(title="T")
-        contract.content = cf.Content(
-            id="content-1", media_type="text/html", encoding="text",
-            data='<p>Prose <strong>from the writer</strong>.</p>'
-                 "<script>alert(1)</script>")
-        html = render._body_html(contract)
-        self.assertIn("<strong>from the writer</strong>", html)
-        # Sanitised there AND here: a `.contract` can arrive by upload.
-        self.assertNotIn("alert(1)", html)
-
 
 class DeletionTests(CyprianTestCase):
     """Deleting a document is the VAULT's delete, surfaced — not a second one."""
@@ -692,13 +371,6 @@ class DeletionTests(CyprianTestCase):
             file=SimpleUploadedFile("doomed.xml", df.dumps(
                 df.Document(title="Doomed", content="<p>x</p>")).encode()))
 
-    def test_the_library_offers_delete_to_the_owner_only(self):
-        self.client.force_login(self.owner)
-        body = self.client.get(reverse("cyprian:index")).content.decode()
-        self.assertIn("destroy(%d" % self.vault_file.pk, body)
-        self.client.force_login(self.other)
-        body = self.client.get(reverse("cyprian:index")).content.decode()
-        self.assertNotIn("destroy(%d" % self.vault_file.pk, body)
 
     def test_the_writer_offers_delete_through_the_vault(self):
         self.client.force_login(self.owner)

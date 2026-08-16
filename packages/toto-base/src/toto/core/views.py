@@ -227,45 +227,6 @@ def dashboard_view(request):
 
 
 
-#: The Office area: the productivity apps, in the order somebody meets them.
-#: Each entry is (app label, url name, title, icon, description). Kept here
-#: rather than in settings because it is not a per-host choice — a host either
-#: installed the app or it did not, and `_mounted` answers that.
-OFFICE_APPS = [
-    ("toto.cyprian", "cyprian:index", "Documents", "fa-solid fa-feather-pointed",
-     "Long documents with real pages, and a PDF export whose page numbers are real."),
-    ("toto.memo", "memo:index", "Presentations", "fa-solid fa-person-chalkboard",
-     "Slideshows you build in the browser and present full-screen."),
-    ("toto.primula", "primula:index", "Sheets", "fa-solid fa-table-cells",
-     "Spreadsheets, each one a file in your vault with a version kept on every save."),
-    ("toto.sketch", "sketch:index", "Drawings", "fa-solid fa-pen-ruler",
-     "Diagrams and sketches, and any SVG you already have."),
-    ("toto.aralia", "aralia:template_list", "HTML generator", "fa-solid fa-file-invoice",
-     "Fill an HTML template with YAML data and generate a PDF."),
-]
-
-
-def office_view(request):
-    """One place for the tools you make things with.
-
-    The five apps are spread across three wheels and a host portion, so this
-    lists whichever of them this server actually installed AND mounted — the
-    same two guards oya/_office_tabs.html uses, because an app can be in
-    INSTALLED_APPS and serve no page at all.
-    """
-    from django.apps import apps as django_apps
-    from django.urls import reverse
-
-    processor = PageProcessor()
-    listed = []
-    for label, url_name, title, icon, description in OFFICE_APPS:
-        if not django_apps.is_installed(label) or not _mounted(url_name):
-            continue
-        listed.append({"title": title, "icon": icon, "description": description,
-                       "url": reverse(url_name)})
-
-    context = processor.decorate({"apps": listed, "page_title": "Office"}, request)
-    return render(request, _get_template("office.html"), context)
 
 
 def _mounted(url_name: str) -> bool:

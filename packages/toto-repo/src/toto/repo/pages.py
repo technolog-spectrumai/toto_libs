@@ -73,9 +73,6 @@ def _surface_link(repo: GitRepo) -> dict:
         if vault_file.file_type == "document" and django_apps.is_installed("toto.cyprian"):
             return {"label": vault_file.title, "kind": "document",
                     "url": reverse("cyprian:edit", args=[vault_file.pk])}
-        if vault_file.file_type == "presentation" and django_apps.is_installed("toto.memo"):
-            return {"label": vault_file.title, "kind": "presentation",
-                    "url": reverse("memo:edit", args=[vault_file.pk])}
     return {"label": repo.directory.full_path(), "kind": "folder", "url": ""}
 
 

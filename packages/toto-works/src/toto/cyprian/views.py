@@ -36,20 +36,16 @@ from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import access, locks, versions
 from toto.vault.filetree import accessible_files
-from toto.quota import QuotaExceeded, check_quota, record_usage
-from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
-from toto.cyprian.models import CyprianQuotaPolicy, CyprianUsageEvent
 from toto.vault.models import VaultFile
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
 from toto.memo import tiptap
 
-from . import clean_html, document_format, render_pdf
+from . import document_format
 from .bridge import DocumentBridge, open_document
 from .bridge import may_edit as bridge_may_edit
 from .bridge import write_back as _bridge_write_back
 from .sanitize_html import sanitize_content
-from .surface import document_editor_shown
 
 # Vault file types that can be embedded into a document.
 _MEDIA_TYPES = ["image", "svg"]
@@ -242,199 +238,8 @@ def _picker_data(user):
 # Library
 # ---------------------------------------------------------------------------
 
-class DocumentIndexView(View):
-    """Every document the current user can open."""
-
-    template_name = "cyprian/index.html"
-    PER_PAGE = 12
-    SNIFF_CAP = 300
-
-    def get(self, request):
-        from django.core.paginator import Paginator
-        from django.db.models import Q
-
-        # The library is the browsable half of this app, so it is what
-        # SHOW_DOCUMENT_EDITOR turns off — 404, the same answer a host that
-        # never installed cyprian gives, rather than an empty page that implies
-        # the feature is here and you have nothing. The writer itself stays
-        # mounted either way: kanban's wiki pages open at cyprian:edit and must
-        # keep opening.
-        if not document_editor_shown():
-            raise Http404("The document library is not enabled on this host.")
-
-        qs = VaultFile.objects.filter(
-            file_type__in=["document", "xml"], is_encrypted=False
-        ).filter(access.local_content_q()
-        ).select_related("owner", "bucket", "directory")
-        if request.user.is_authenticated:
-            qs = qs.filter(Q(is_public=True) | Q(owner=request.user))
-        else:
-            qs = qs.filter(is_public=True)
-        qs = qs.order_by("-uploaded_at", "title")
-
-        rows, stale, sniffed = [], [], 0
-        for f in qs:
-            if f.file_type != "document":
-                if sniffed >= self.SNIFF_CAP:
-                    continue
-                sniffed += 1
-                try:
-                    head = _read_head(f)
-                except Exception:                      # noqa: BLE001
-                    continue
-                if not document_format.sniff_is_document(head):
-                    continue
-                stale.append(f.pk)
-            rows.append(f)
-
-        if stale:
-            VaultFile.objects.filter(pk__in=stale).update(file_type="document")
-
-        page = Paginator(rows, self.PER_PAGE).get_page(request.GET.get("page"))
-
-        documents = []
-        for f in page.object_list:
-            location = f.bucket.name if f.bucket else "—"
-            if f.directory:
-                location = f"{location} / {f.directory.full_path()}"
-            # Only the current page is parsed — which is the point of paginating.
-            try:
-                doc = document_format.loads(_read_raw(f))
-            except Exception:                          # noqa: BLE001
-                continue
-            documents.append({
-                "file_pk": f.pk,
-                "title": doc.title or f.title,
-                "owner": f.owner.username,
-                "uploaded": f.uploaded_at,
-                "location": location,
-                "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
-                "read_url": reverse("cyprian:read", args=[f.pk]),
-                "edit_url": reverse("cyprian:edit", args=[f.pk]),
-                "words": doc.word_count,
-                "minutes": doc.reading_time_minutes,
-                "headings": len(doc.outline),
-                "document": doc,
-            })
-
-        buckets_json, directories_json = new_file_picker_json(request.user)
-        context = PageProcessor().decorate({
-            "documents": documents,
-            "page_obj": page,
-            "is_paginated": page.has_other_pages(),
-            "buckets_json": buckets_json,
-            "directories_json": directories_json,
-        }, request)
-        return render(request, self.template_name, context)
 
 
-class DocumentCreateView(LoginRequiredMixin, View):
-    """Create a blank document and drop straight into the writer."""
-
-    login_url = reverse_lazy("core:login")
-
-    def post(self, request):
-        # Goes with the library: a standalone document is the thing this app
-        # offers on its own account, and the only button that reaches here lives
-        # on the index. A wiki page is minted by its owning app's bridge, not
-        # through this view, so nothing the boards need runs through this gate.
-        if not document_editor_shown():
-            raise Http404("The document library is not enabled on this host.")
-
-        bucket, directory = resolve_new_file_target(
-            request.user, request.POST.get("bucket_id"),
-            request.POST.get("directory_id"))
-
-        raw = (request.POST.get("filename") or "").strip()
-        base = raw[:-4] if raw.lower().endswith(".xml") else raw
-        base = base.strip() or "untitled-document"
-        title = f"{base}.xml"
-
-        xml = document_format.dumps(document_format.new_document(base))
-        xml_bytes = xml.encode("utf-8")
-
-        vault_file = VaultFile(
-            owner=request.user, title=title,
-            key=_unique_key(slugify(base) or "document", bucket),
-            file_type="document", bucket=bucket, directory=directory,
-            is_public=False)
-        vault_file.file.save(title, ContentFile(xml_bytes), save=False)
-        vault_file.content_hash = hashlib.sha256(xml_bytes).hexdigest()
-        vault_file.file_size_bytes = len(xml_bytes)
-        vault_file.save()
-
-        return redirect(reverse("cyprian:edit", args=[vault_file.pk]))
-
-
-# ---------------------------------------------------------------------------
-# Reader
-# ---------------------------------------------------------------------------
-
-class DocumentReadView(View):
-    """The document, rendered for reading and sharing."""
-
-    template_name = "cyprian/read.html"
-
-    def get(self, request, file_pk):
-        vault_file = get_object_or_404(
-            VaultFile.objects.select_related("bucket", "directory", "owner")
-        .filter(access.local_content_q()),
-            pk=file_pk, file_type__in=["document", "xml"])
-
-        if vault_file.is_encrypted:
-            return HttpResponseForbidden("Cannot display an encrypted file.")
-
-        # Read once, parse once. The sniff, the visibility ladder and the render
-        # all want the same bytes, and this page used to fetch them from storage
-        # three times over to answer three questions about one file.
-        try:
-            raw = _read_raw(vault_file)
-        except (FileNotFoundError, UnicodeDecodeError, ValueError):
-            raise Http404("Not a document.")
-        if not document_format.is_document(raw):
-            raise Http404("Not a document.")
-        _adopt(vault_file)
-
-        try:
-            document = document_format.loads(raw)
-        except document_format.DocumentParseError:
-            document = document_format.new_document(title=vault_file.title)
-
-        # The owning app, if this document is really a view onto one of its
-        # objects — a wiki page, a contract's prose.
-        match = DocumentBridge.for_file(vault_file, document)
-
-        # Visibility ladder, mirroring toto.memo's player.
-        if not vault_file.is_public:
-            if not request.user.is_authenticated:
-                return redirect_to_login(request.get_full_path())
-            allowed = vault_file.owner == request.user
-            # The owning app's readers come BEFORE the vault's folder ACL: a
-            # wiki page's readers are decided by its project, and none of them
-            # are in the file owner's directory whitelist.
-            if not allowed and match is not None:
-                allowed = match[0].can_read(request.user, match[1])
-            if not allowed and vault_file.directory:
-                allowed = vault_file.directory.user_can_access(request.user)
-            if not allowed:
-                return HttpResponseForbidden()
-
-        can_edit = request.user.is_authenticated and (
-            vault_file.owner == request.user
-            or (match is not None and match[0].can_edit(request.user, match[1])))
-
-        context = PageProcessor().decorate({
-            "vault_file": vault_file,
-            "document": document,
-            "edit_url": reverse("cyprian:edit", args=[file_pk]) if can_edit else "",
-            "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]) if can_edit else "",
-        }, request)
-        return render(request, self.template_name, context)
-
-
-# ---------------------------------------------------------------------------
-# Writer
-# ---------------------------------------------------------------------------
 
 class DocumentEditView(LoginRequiredMixin, View):
     template_name = "cyprian/edit.html"
@@ -474,13 +279,10 @@ class DocumentEditView(LoginRequiredMixin, View):
                 "urls": {
                     "save": reverse("cyprian:save", args=[file_pk]),
                     "source": reverse("cyprian:source", args=[file_pk]),
-                    "savePdf": reverse("cyprian:save_pdf", args=[file_pk]),
-                    "saveHtml": reverse("cyprian:save_html", args=[file_pk]),
                     "embed": reverse("cyprian:media_embed"),
                     "upload": reverse("cyprian:media_upload"),
                     # The vault's own delete — reused, not duplicated.
                     "destroy": reverse("vault:delete_file"),
-                    "index": reverse("cyprian:index"),
                 },
                 # The suggestion the save prompt starts from: the file's own
                 # name, which is the only name the writer has ever given this
@@ -504,8 +306,6 @@ class DocumentEditView(LoginRequiredMixin, View):
             # the rest of the site — see memo/tiptap.py, which owns the vendored
             # files because both editors in this wheel run on TipTap.
             "tiptap_import_map": tiptap.import_map_json(),
-            "read_url": reverse("cyprian:read", args=[file_pk]),
-            "pdf_url": reverse("cyprian:export_pdf", args=[file_pk]),
             # "" on a host without the assistant, or for a file whose
             # bucket carries the AI shield — the template renders nothing at
             # all. See toto.core.assistant, which is why cyprian never names
@@ -722,88 +522,6 @@ def document_media_upload(request):
 # ---------------------------------------------------------------------------
 
 @login_required
-def document_export_pdf(request, file_pk):
-    """The document as a PDF, with a contents page and real page numbers."""
-    vault_file = _get_owned_file(request, file_pk)
-    document = _read_document(vault_file)
-
-    tariff = price_for(request.user, "cyprian")
-    try:
-        check_quota(CyprianQuotaPolicy, "cyprian.pdf", 1, request.user)
-        check_funds(request.user, tariff, "cyprian.pdf", 1)
-    except (QuotaExceeded, InsufficientFunds) as exc:
-        # Plain text, not messages+redirect: this is a download target.
-        return HttpResponse(str(exc), status=exc.status_code, content_type="text/plain")
-
-    try:
-        raw = render_pdf.render(document)
-    except render_pdf.PdfUnavailable as exc:
-        # A deployment fact, not something the user can fix by retrying.
-        return HttpResponse(str(exc), status=503, content_type="text/plain")
-
-    # Charged after the render succeeds — nothing to refund on a synchronous
-    # call that either returns bytes or raised before this line.
-    _src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk),
-            "source_label": vault_file.title or ""}
-    record_usage(CyprianUsageEvent, "cyprian.pdf", 1, request.user, **_src)
-    charge(request.user, tariff, "cyprian.pdf", 1, **_src)
-
-    base = slugify(document.title or vault_file.title or "document") or "document"
-    response = HttpResponse(raw, content_type="application/pdf")
-    response["Content-Disposition"] = f'attachment; filename="{base}.pdf"'
-    return response
-
-
-# ---------------------------------------------------------------------------
-# Contracts — toto.notarius writes its body here
-# ---------------------------------------------------------------------------
-
-@login_required
-def from_contract(request, file_pk):
-    """Open a `.contract`'s body in the writer, and keep them linked.
-
-    notarius owns the contract — the parties, the signatures, the audit trail —
-    and it is a poor place to write prose: its body is a textarea holding
-    Markdown. Cyprian is the writer, so this is where the body is edited, and
-    notarius keeps the buttons that are genuinely its own.
-
-    The companion document is created once and reused, and it remembers which
-    contract it belongs to in `meta["contract"]` — which round-trips through the
-    format for free, so the link survives a download, an edit by hand and a
-    restore from backup.
-
-    The minting, the reuse and the write-back all live in `bridge.py` now; this
-    is the entry point and the Markdown conversion, which are the only parts
-    that are actually about contracts. See `plugins/cyprian_bridges.py`.
-    """
-    if not apps.is_installed("toto.notarius"):
-        raise Http404("No contracts on this host.")
-    from toto.notarius import contract_format
-
-    # Imported here, not at module scope: the bridge module registers a plugin
-    # on import and asks the app registry whether notarius is installed, and
-    # this module is imported from urls.py. Keeping it lazy means views.py
-    # never forces that question at an hour when the registry cannot answer it.
-    from .plugins.cyprian_bridges import CONTRACT_META
-
-    contract_file = _owned_file(request, file_pk, types=["contract"])
-    raw = _read_raw(contract_file)
-    try:
-        contract = contract_format.loads(raw)
-    except contract_format.ContractParseError as exc:
-        raise Http404(str(exc))
-
-    companion = open_document(
-        key=CONTRACT_META,
-        ref=str(contract_file.pk),
-        title=f"{slugify(contract.title or contract_file.title)}-body.xml",
-        seed_html=_contract_body_html(contract),
-        owner=request.user,
-        bucket=contract_file.bucket,
-        directory=contract_file.directory,
-        document_title=contract.title or "Contract",
-    )
-    return redirect("cyprian:edit", file_pk=companion.pk)
 
 
 def _contract_body_html(contract) -> str:
@@ -927,64 +645,3 @@ def rendition(request, file_pk):
     response["Content-Disposition"] = f'inline; filename="{vault_file.title}"'
     return response
 
-
-@require_POST
-@login_required
-def document_save_pdf(request, file_pk):
-    """Render the PDF and file it in the vault, beside the document."""
-    vault_file = _get_owned_file(request, file_pk)
-    document = _read_document(vault_file)
-    watermark, watermark_image = _asked_watermark(request)
-    bucket, directory = _asked_target(request, vault_file)
-    try:
-        raw = render_pdf.render(document, watermark=watermark,
-                                watermark_image=watermark_image)
-    except render_pdf.PdfUnavailable as exc:
-        return JsonResponse({"error": str(exc)}, status=503)
-    except Exception:                                  # noqa: BLE001
-        # A corrupt embedded image (or any other render-time surprise) must
-        # come back as a sentence, not a 500: the document itself is fine and
-        # still saves — only this export failed.
-        return JsonResponse({"error": "The PDF could not be rendered. An "
-                             "embedded image may be corrupt — try removing "
-                             "the most recently added one."}, status=422)
-
-    saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "pdf"),
-                         data=raw, file_type="pdf", owner=request.user,
-                         bucket=bucket, directory=directory)
-    return JsonResponse({
-        "name": saved.title, "kind": "PDF",
-        "url": reverse("cyprian:rendition", args=[saved.pk])})
-
-
-@require_POST
-@login_required
-def document_save_html(request, file_pk):
-    """The document as one standalone HTML file, filed in the vault.
-
-    Standalone in the same sense the XML is: the stylesheet is inlined and the
-    pictures are already data URIs, so the file opens anywhere — in a browser,
-    in an email, on a machine that has never heard of this platform. That is the
-    point of exporting HTML at all rather than linking to the reader.
-
-    The body is indented on the way out. Storage keeps it as one line — the
-    format wraps it in a single CDATA section and the tests pin that to the byte
-    — but a file someone downloads is a file someone may open in an editor, and
-    one 40 kB line is not a document you can read.
-    """
-    vault_file = _get_owned_file(request, file_pk)
-    document = _read_document(vault_file)
-
-    html = render_to_string("cyprian/standalone.html", {
-        "document": document,
-        "body_html": clean_html.pretty(document.anchored_content),
-        "document_css": render_pdf.document_css(),
-        "katex_css": render_pdf.katex_css(),
-    })
-    bucket, directory = _asked_target(request, vault_file)
-    saved = _save_beside(vault_file, name=_asked_name(request, vault_file, document, "html"),
-                         data=html.encode("utf-8"), file_type="html",
-                         owner=request.user, bucket=bucket, directory=directory)
-    return JsonResponse({
-        "name": saved.title, "kind": "HTML",
-        "url": reverse("cyprian:rendition", args=[saved.pk])})
