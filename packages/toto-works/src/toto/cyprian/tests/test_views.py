@@ -323,6 +323,28 @@ class WriterChromeTests(CyprianTestCase):
         self.body = self.client.get(
             reverse("cyprian:edit", args=[self.file.pk])).content.decode()
 
+    def test_the_lock_banner_is_up_by_the_toolbar_not_buried_in_the_panel(self):
+        """The message a locked-out writer needs must be where they are looking.
+
+        It used to render only inside oya/_file_versions.html, which every
+        editor puts in a `showVersions` panel that starts collapsed at the foot
+        of the page — so the person whose save just 423'd saw nothing to explain
+        it. Pinned by position: the banner must come before the versions panel.
+        """
+        self.assertIn("vault-lock", self.body)          # the event it listens for
+        self.assertIn("is editing this right now", self.body)
+        self.assertLess(self.body.index("vault-lock"),
+                        self.body.index("showVersions"))
+
+    def test_the_page_claims_the_lock_exactly_once(self):
+        """The banner listens; it must not instantiate a second fileVersions.
+
+        Two instances would claim the lock twice and run two heartbeats against
+        the same file — which is why the state is published as an event rather
+        than read from a second component.
+        """
+        self.assertEqual(self.body.count("fileVersions("), 1)
+
     def test_prose_is_edited_in_tiptap(self):
         # An import map and one module: the bare specifiers inside the vendored
         # files resolve to our own static URLs. See tiptap.py.
