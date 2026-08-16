@@ -595,6 +595,71 @@
 
 @page { size: 1280px 720px; margin: 0; }
 
+/* --------------------------------------------------------------------------
+ * Showing a 1280x720 slide somewhere smaller.
+ *
+ * These three rules were in editor.css and were orphaned when the editor was
+ * removed — the templates that use them survived, so the gallery thumbnail had
+ * no size and the legacy chip had no styling, while index.html went on linking
+ * a stylesheet that no longer exists. They belong here now: they are about
+ * DISPLAYING a slide, which is what this file is for, and this file is the one
+ * every remaining surface loads.
+ *
+ * The trick is the same in both cases — a fixed box, and the slide scaled into
+ * its top-left corner. Scaling rather than reflowing is what keeps a slide
+ * looking like the slide it is: the same layout, the same proportions, just
+ * smaller.
+ * ------------------------------------------------------------------------ */
+
+/* The gallery card thumbnail. 240 / 1280 = 0.1875. */
+.memo-card-thumb {
+  --memo-scale: 0.1875;
+  width: 240px;
+  height: 135px;
+  position: relative;
+  overflow: hidden;
+}
+.memo-card-thumb > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale));
+  transform-origin: top left;
+}
+
+/* The read page: one slide per column-width block, scaled to whatever width
+ * the column happens to be. The ratio is measured in read.html rather than
+ * computed here, because deriving it in CSS needs length-over-length division
+ * in calc(), which is too new to rely on for a page that must simply work. The
+ * default below is the ratio at the page's own max width (960 / 1280), so the
+ * slides are already the right size before the script runs and never flash at
+ * full scale. */
+.memo-read-slide {
+  --memo-read-scale: 0.75;
+  width: 100%;
+  aspect-ratio: 1280 / 720;
+  position: relative;
+  overflow: hidden;
+}
+.memo-read-slide > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-read-scale));
+  transform-origin: top left;
+}
+
+/* A legacy v1 slide renders as an inert chip rather than live HTML wherever
+ * trust_html is false — see _slide.html. Give it something to look like. */
+.memo-legacy {
+  display: inline-block;
+  font-size: 0.5em;
+  opacity: 0.6;
+  border: 1px dashed currentColor;
+  border-radius: 6px;
+  padding: 0.3em 0.6em;
+}
+
 @media print {
   .memo-print .memo-slide {
     page-break-after: always;

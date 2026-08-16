@@ -334,7 +334,7 @@ def _cover(vault_file) -> dict:
     }
 
 
-class PresentationReadView(View):
+class PresentationReadView(LoginRequiredMixin, View):
     """A deck as a page.
 
     The player is for standing up in front of people; this is for reading one
@@ -343,13 +343,23 @@ class PresentationReadView(View):
 
     Read-only like everything else left here — it renders what the file says
     and offers nothing that could change it.
+
+    LoginRequiredMixin is load-bearing, not decoration: `_get_owned_file`
+    filters on `owner=request.user`, and handing an AnonymousUser to a foreign
+    key comparison raises TypeError — so without the mixin an anonymous visitor
+    got a 500 where they should have got the login page.
     """
 
     def get(self, request, file_pk):
         vault_file = _get_owned_file(request, file_pk)
         presentation = _read_presentation(vault_file)
-        return render(request, "memo/read.html", {
+        # Decorated like every other page that extends oya/base.html. Without
+        # it there is no `theme`, and base.html writes the Tailwind config as
+        # `colors: {{ theme.theme.colors }}` — which with no theme becomes
+        # `colors: }`, a JS syntax error that takes the whole config down with
+        # it, so the page loses its palette and dark mode stops working.
+        return render(request, "memo/read.html", PageProcessor().decorate({
             "vault_file": vault_file,
             "presentation": presentation,
             "slides": presentation.slides,
-        })
+        }, request))

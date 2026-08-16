@@ -25,7 +25,13 @@
           fontFamily: {
             sans: ['{{ font.name }}', '{{ font.style_family|default:"sans-serif" }}'],
           },
-          colors: {{ theme.theme.colors|safe }}
+          {% comment %} The default is not cosmetic: with nothing here the line
+             reads `colors:` followed by the closing brace, which is a JS syntax
+             error that takes the WHOLE tailwind config down — so one unthemed
+             platform row, or one view that forgot PageProcessor, silently costs
+             every page its palette and its dark mode. An empty object degrades
+             instead of breaking. {% endcomment %}
+          colors: {{ theme.theme.colors|default:"{}"|safe }}
         }
       }
     };
