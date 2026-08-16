@@ -65,8 +65,8 @@ gone. A deck looks the same on whatever machine you present it from.
 <body class="memo-player memo-theme-{{ presentation.theme|default:'black' }}">
 
 <div class="present-toolbar">
-  {% if edit_url %}
-    <a href="{{ edit_url }}" title="{% trans 'Edit this deck' %}">
+  {% if read_url %}
+    <a href="{{ read_url }}" title="{% trans 'Read this deck as a page' %}">
       <i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
   {% endif %}
   <a href="{% url 'memo:index' %}" title="{% trans 'All presentations' %}">

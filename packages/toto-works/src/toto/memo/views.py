@@ -167,14 +167,13 @@ class PresentationView(View):
 
         presentation = _read_presentation(vault_file)
 
-        # Owner gets an Edit link back into the browser editor.
-        can_edit = request.user.is_authenticated and vault_file.owner == request.user
-
+        # Read-only since 8/2026: decks are authored in the desktop app, so
+        # the player links back to the READ page, never to an editor.
         context = PageProcessor().decorate(
             {
                 "vault_file": vault_file,
                 "presentation": presentation,
-                "edit_url": reverse("memo:edit", args=[vault_file.pk]) if can_edit else "",
+                "read_url": reverse("memo:read", args=[vault_file.pk]),
             },
             request,
         )
@@ -287,7 +286,7 @@ class PresentationIndexView(View):
                 "location": _location_of(f),
                 "is_owner": request.user.is_authenticated and f.owner_id == request.user.id,
                 "present_url": reverse("memo:present", args=[f.pk]),
-                "edit_url": reverse("memo:edit", args=[f.pk]),
+                "read_url": reverse("memo:read", args=[f.pk]),
                 # Only the current page is parsed — which is the point of
                 # paginating at all. A gallery of 300 decks used to read and
                 # fully parse all 300 files on every visit.
