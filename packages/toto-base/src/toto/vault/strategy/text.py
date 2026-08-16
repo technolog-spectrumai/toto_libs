@@ -1,6 +1,6 @@
 import os
 import tempfile
-from cryptography.fernet import Fernet
+from toto.gervazy import sealed
 from .base import FileStrategy
 from .forms import EncryptFileForm, DecryptFileForm
 
@@ -15,13 +15,15 @@ class TextStrategy(FileStrategy):
         if not keyring:
             raise ValueError("No UserVault associated with user.")
 
-        key = keyring.derive_key(password)
-        fernet = Fernet(key)
 
         with open(input_path, 'rb') as f:
             data = f.read()
 
-        encrypted_data = fernet.encrypt(data)
+        encrypted_data = sealed.seal(
+            password, bytes(keyring.salt), data,
+            memory_cost=keyring.argon2_memory_cost,
+            iterations=keyring.argon2_iterations,
+            lanes=keyring.argon2_lanes)
 
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp.write(encrypted_data)
@@ -45,14 +47,16 @@ class TextStrategy(FileStrategy):
         if not keyring:
             raise ValueError("No UserVault associated with user.")
 
-        key = keyring.derive_key(password)
-        fernet = Fernet(key)
 
         with open(input_path, 'rb') as f:
             encrypted_data = f.read()
 
         try:
-            decrypted_data = fernet.decrypt(encrypted_data)
+            decrypted_data = sealed.open_any(
+            password, bytes(keyring.salt), encrypted_data,
+            memory_cost=keyring.argon2_memory_cost,
+            iterations=keyring.argon2_iterations,
+            lanes=keyring.argon2_lanes)
         except Exception as e:
             raise ValueError(f"Decryption failed: {str(e)}")
 
@@ -75,12 +79,14 @@ class TextStrategy(FileStrategy):
         keyring = file_instance.owner.user_strongboxes.first()
         if not keyring:
             raise ValueError("No strongbox associated with user.")
-        key = keyring.derive_key(password)
-        fernet = Fernet(key)
         with open(file_instance.file.path, "rb") as f:
             encrypted_data = f.read()
         try:
-            decrypted = fernet.decrypt(encrypted_data)
+            decrypted = sealed.open_any(
+            password, bytes(keyring.salt), encrypted_data,
+            memory_cost=keyring.argon2_memory_cost,
+            iterations=keyring.argon2_iterations,
+            lanes=keyring.argon2_lanes)
         except Exception:
             raise ValueError("Incorrect password.")
         mime, _ = mimetypes.guess_type(file_instance.file.name)
