@@ -1,0 +1,102 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{# The wiki's front door.
+   Search first, because the reason to come here rather than to a board is that
+   you do not know which board the page is on. With no query it shows what was
+   written most recently — a landing page that is blank until you type teaches
+   nothing about what exists.
+
+   Every row is a page from a project the viewer belongs to; the scoping is done
+   in the queryset, not here. See WikiSearchView. #}
+
+{% block title %}{% trans "Wiki" %}{% endblock %}
+
+{% block content %}
+<div x-data="{ darkMode: $store.theme ? $store.theme.dark : false }"
+     class="mx-auto w-full max-w-4xl space-y-6 p-4">
+
+  <div>
+    <h1 class="flex items-center gap-3 text-2xl font-bold">
+      <i class="fa-solid fa-book"></i>{% trans "Wiki" %}
+    </h1>
+    <p class="mt-1 text-sm opacity-70">
+      {% trans "Every page from the projects you work on." %}
+    </p>
+  </div>
+
+  {# The search box IS the page. Autofocus, because arriving here is itself the
+     intention to search. #}
+  <form method="get" class="flex gap-2">
+    <input type="search" name="q" value="{{ query }}" autofocus
+           placeholder="{% trans 'Search titles and text…' %}"
+           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+           class="min-w-0 flex-1 rounded-lg border px-4 py-2.5 text-base">
+    <button type="submit"
+            class="shrink-0 rounded-lg bg-accent-light px-5 py-2.5 text-sm font-bold text-primary-bg-light transition hover:opacity-90 dark:bg-accent-dark dark:text-primary-bg-dark">
+      <i class="fa-solid fa-magnifying-glass"></i>
+      <span class="hidden sm:inline">{% trans "Search" %}</span>
+    </button>
+  </form>
+
+  {% if query %}
+    <p class="text-sm opacity-70">
+      {% blocktrans count n=total %}{{ n }} page matches “{{ query }}”{% plural %}{{ n }} pages match “{{ query }}”{% endblocktrans %}
+    </p>
+  {% elif rows %}
+    <p class="text-xs font-semibold uppercase tracking-wide opacity-50">
+      {% trans "Recently written" %}
+    </p>
+  {% endif %}
+
+  <div class="space-y-2">
+    {% for row in rows %}
+      <a href="{{ row.url }}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:border-accent-dark' : 'border-accent-2 bg-bubble-bg-light hover:border-accent-light'"
+         class="block rounded-lg border p-4 transition">
+        <div class="flex items-baseline gap-2">
+          <span class="min-w-0 flex-1 truncate font-bold">{{ row.page.title }}</span>
+          {# Which board a page belongs to is the thing you most need to see in
+             a cross-project list, so it rides on every row. #}
+          <span class="shrink-0 rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-60">
+            {{ row.project.name }}
+          </span>
+        </div>
+        {% if row.snippet %}
+          {# Plain text, never |safe: this is a page's own prose, and letting it
+             bring its markup into a results list would let one page restyle
+             the list it appears in. #}
+          <p class="mt-1.5 text-sm opacity-65">{{ row.snippet }}</p>
+        {% endif %}
+      </a>
+    {% empty %}
+      <div class="rounded-lg border border-dashed px-4 py-12 text-center text-sm opacity-60"
+           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+        {% if query %}
+          {% blocktrans %}Nothing matches “{{ query }}”.{% endblocktrans %}
+        {% else %}
+          {% trans "No wiki pages yet. They are written on a project's board." %}
+        {% endif %}
+      </div>
+    {% endfor %}
+  </div>
+
+  {% if page_obj and page_obj.paginator.num_pages > 1 %}
+    <div class="flex items-center justify-center gap-3 text-sm">
+      {% if page_obj.has_previous %}
+        <a class="underline hover:opacity-80"
+           href="?q={{ query|urlencode }}&page={{ page_obj.previous_page_number }}">
+          <i class="fa-solid fa-arrow-left"></i> {% trans "Previous" %}</a>
+      {% endif %}
+      <span class="opacity-60">
+        {% blocktrans with n=page_obj.number of=page_obj.paginator.num_pages %}Page {{ n }} of {{ of }}{% endblocktrans %}
+      </span>
+      {% if page_obj.has_next %}
+        <a class="underline hover:opacity-80"
+           href="?q={{ query|urlencode }}&page={{ page_obj.next_page_number }}">
+          {% trans "Next" %} <i class="fa-solid fa-arrow-right"></i></a>
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}

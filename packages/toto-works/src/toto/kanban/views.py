@@ -4,6 +4,7 @@ from collections import defaultdict
 from django.core.exceptions import ValidationError
 from django.apps import apps
 from django.http import Http404, HttpResponseForbidden, JsonResponse
+from django.views import View
 from django.views.generic import DetailView, ListView, UpdateView, CreateView, DeleteView
 from django.contrib.auth.models import AnonymousUser
 from django.contrib.auth.mixins import LoginRequiredMixin
@@ -11,6 +12,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib import messages
 from django.db.models import Q, Sum
 from django.shortcuts import get_object_or_404, redirect, render
+from django.utils.html import strip_tags
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.translation import gettext as _
@@ -869,6 +871,117 @@ def can_read_project(user, project) -> bool:
         )
         .exists()
     )
+
+
+def readable_projects(user):
+    """Every project `user` may read, as a QUERYSET.
+
+    `can_read_project` answers the same question for one project; this is the
+    set form, and both spell the membership rule the same way — lead, active
+    commitment, or auditor — because two spellings of "who works here" is how a
+    wiki search starts showing people other teams' pages.
+    """
+    if not user.is_authenticated:
+        return Project.objects.none()
+    if user.is_staff or user.is_superuser:
+        return Project.objects.all()
+    return Project.objects.filter(
+        Q(project_lead__user=user)
+        | Q(commitments__practitioner__person__user=user, commitments__is_active=True)
+        | Q(auditors__person__user=user)
+    ).distinct()
+
+
+class WikiSearchView(LoginRequiredMixin, View):
+    """The wiki, across every project you belong to.
+
+    Project wikis were only ever reachable one board at a time, which is fine
+    when you know where a page lives and useless when you do not — the common
+    case for a wiki. This is the other door: search first, everything you can
+    read, newest underneath when you have not typed anything.
+
+    Scoped by `readable_projects`, so the search can only ever return pages
+    from projects the user is already in. The filter is applied to the QUERY,
+    never to the results — a view that fetched everything and then hid rows
+    would leak through counts, pagination and timing.
+    """
+
+    template_name = "kanban/wiki_search.html"
+    PER_PAGE = 20
+    #: Recently touched pages when there is no query — a landing page that is
+    #: blank until you type teaches nothing about what exists.
+    RECENT = 12
+
+    def get(self, request):
+        from django.core.paginator import Paginator
+
+        query = (request.GET.get("q") or "").strip()
+        pages = (
+            DocumentationPage.objects
+            .filter(project__in=readable_projects(request.user))
+            .select_related("project")
+        )
+
+        if query:
+            # Title AND body. `body_html` is the sanitised read model the
+            # bridge writes on every save, so it is present for any page
+            # somebody has actually written — searching it is what makes a
+            # half-remembered sentence findable.
+            pages = pages.filter(
+                Q(title__icontains=query) | Q(body_html__icontains=query)
+            )
+            pages = pages.order_by("project__name", "order", "title")
+        else:
+            # AbstractPage carries created_at and no updated_at, so "recent"
+            # means recently CREATED. Honest ordering beats a field that does
+            # not exist.
+            pages = pages.order_by("-created_at", "title")[: self.RECENT]
+
+        page_obj = None
+        if query:
+            paginator = Paginator(pages, self.PER_PAGE)
+            page_obj = paginator.get_page(request.GET.get("page"))
+            rows = page_obj.object_list
+        else:
+            rows = pages
+
+        return render(request, self.template_name, PageProcessor().decorate({
+            "query": query,
+            "rows": [self._row(p, query) for p in rows],
+            "page_obj": page_obj,
+            # `is not None`, not truthiness: a Page defines __len__, so the
+            # page of a search that matched nothing is FALSY — and testing it
+            # for truth reported "no search was run" on exactly the searches
+            # that most need to say "nothing matched".
+            "total": page_obj.paginator.count if page_obj is not None else None,
+        }, request))
+
+    @staticmethod
+    def _row(page, query):
+        """One result, with a snippet built around the first body match.
+
+        The snippet is cut from TEXT, never from `body_html`: slicing markup
+        mid-tag produces broken HTML, and this is rendered as plain text on
+        purpose so a page's own formatting cannot style the results list.
+        """
+        text = strip_tags(page.body_html or "")
+        text = " ".join(text.split())
+        snippet = ""
+        if text:
+            at = text.lower().find(query.lower()) if query else -1
+            if at == -1:
+                snippet = text[:180]
+            else:
+                start = max(0, at - 60)
+                snippet = ("…" if start else "") + text[start:start + 180]
+            if len(text) > len(snippet):
+                snippet = snippet.rstrip() + "…"
+        return {
+            "page": page,
+            "project": page.project,
+            "snippet": snippet,
+            "url": reverse("kanban:wiki_page", args=[page.project_id, page.slug]),
+        }
 
 
 def _wiki_context(request, project, page=None):

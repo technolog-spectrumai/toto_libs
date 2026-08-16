@@ -20,6 +20,7 @@ from .views import (
     WikiPageUpdateView,
     WikiPageDeleteView,
     wiki_page_write,
+    WikiSearchView,
     documentation_page_redirect,
     ProjectDetailView,
     EisenhowerMatrixView,
@@ -89,6 +90,10 @@ urlpatterns = [
     ),
 
     # ── The wiki ────────────────────────────────────────────────────────────
+    # Across every project you belong to. Deliberately NOT under project/<pk>/:
+    # it is the door you use when you do not know which board a page is on,
+    # which is the ordinary case for a wiki.
+    path("wiki/", WikiSearchView.as_view(), name="wiki_search"),
     # A project is the space; `slug` is unique within it, which is why these are
     # keyed on slug rather than pk — a wiki URL should be readable and should
     # survive being pasted into a page.
