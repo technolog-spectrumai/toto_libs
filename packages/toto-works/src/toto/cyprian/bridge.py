@@ -127,6 +127,35 @@ class DocumentBridge(BasePlugin):
         return ""
 
 
+def may_edit(user, vault_file, document=None) -> bool:
+    """May this user write this document file? Owner, or a bridge says so.
+
+    The single source of the answer. ``views._open_document`` asks it to decide
+    whether to hand back the writer, and ``plugins.vault_access_plugins`` asks
+    it on the vault's behalf so the lock and version endpoints reach the same
+    verdict. They used to disagree — the vault's endpoints never consulted a
+    bridge at all — which is precisely the drift this function exists to stop.
+
+    Deliberately free of side effects (no ``_adopt``): the caller that owns the
+    file does that in its own branch, because looking at a file must not retype
+    somebody else's row.
+
+    ``document`` is the already-parsed document when the caller has one, purely
+    so a bridge that reads meta need not re-read the file. Never a permission.
+    """
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+    if vault_file.owner_id == user.pk:
+        return True
+    if vault_file.is_encrypted:
+        # No readable meta, so no bridge can claim it: owner only, and the
+        # owner branch above already answered.
+        return False
+
+    match = DocumentBridge.for_file(vault_file, document)
+    return match is not None and match[0].can_edit(user, match[1])
+
+
 def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
                   bucket=None, directory=None, toc: bool = False,
                   document_title: str = "") -> VaultFile:

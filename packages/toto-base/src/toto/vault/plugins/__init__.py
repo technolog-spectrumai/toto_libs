@@ -49,6 +49,45 @@ class VaultEditorPlugin(BasePlugin):
         raise NotImplementedError
 
 
+class VaultAccessPlugin(BasePlugin):
+    """Who, besides the owner, may WRITE a file of this type.
+
+    The vault decides access from what it can see on the row: owner, staff, a
+    directory ACL, or public. That is the whole truth for a file the vault
+    owns outright — and it is wrong for a file some other app lends to a team.
+    A cyprian project-wiki page is held by the project lead and written by the
+    whole team, and the vault cannot know that: the rule lives in
+    ``toto.cyprian``'s DocumentBridge, in a package this one must not import.
+
+    So the question is inverted. An app that lends its files out registers one
+    plugin here, keyed by file_type, and the vault asks it. Without this, a
+    wiki collaborator could open the writer and save (cyprian's own gate lets
+    them) but could not claim the editing lock or see the version history,
+    because those endpoints only ever asked the vault — which said no.
+
+    Deliberately a registry of its own rather than a method on
+    ``VaultEditorPlugin``: that one is gated on whether a host SHOWS the editor
+    (``should_register`` → ``document_editor_shown()``), and hiding a dashboard
+    tile must never quietly withdraw a team's locks. Access is not visibility.
+    """
+
+    registry: ClassVar[dict[str, "VaultAccessPlugin"]] = {}
+
+    file_type: ClassVar[str] = ""
+
+    @classmethod
+    def for_file_type(cls, file_type: str) -> "VaultAccessPlugin | None":
+        return cls.registry.get(file_type)
+
+    def may_edit(self, user, vault_file) -> bool:
+        """True when this user may write the file despite not owning it.
+
+        Answer only for the rights this plugin's app grants. Never widen: the
+        vault's own checks have already run and said no.
+        """
+        raise NotImplementedError
+
+
 class FileServicePlugin(BasePlugin):
     """A background operation somebody can run over a VaultFile.
 

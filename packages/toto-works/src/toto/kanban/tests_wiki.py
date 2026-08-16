@@ -467,6 +467,81 @@ class BridgeTests(WikiWorld):
         self.page.refresh_from_db()
         self.assertNotIn("defaced", self.page.body_html)
 
+    def test_a_team_member_can_hold_the_editing_lock(self):
+        """The writer let them in; the lock endpoints used to refuse them.
+
+        `version_views._file_for` asked the vault only — owner, staff, ACL,
+        public — and a wiki collaborator is none of those. So two members
+        editing one page each believed they held it, and the loser's autosave
+        met a 423 with no banner to explain it. The vault now asks the owning
+        app through VaultAccessPlugin.
+        """
+        self._write(self.member_user)
+        self.page.refresh_from_db()
+        self.assertNotEqual(self.page.vault_file.owner, self.member_user)
+
+        self.client.force_login(self.member_user)
+        response = self.client.post(
+            reverse("vault:lock_acquire", args=[self.page.vault_file_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.json()["mine"])
+
+    def test_a_team_member_sees_the_pages_history(self):
+        self._write(self.member_user)
+        self.page.refresh_from_db()
+
+        self.client.force_login(self.member_user)
+        response = self.client.get(
+            reverse("vault:version_list", args=[self.page.vault_file_id]))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("versions", response.json())
+
+    def test_a_stranger_still_cannot_touch_the_lock(self):
+        """The widening is the bridge's answer, not an open door."""
+        self._write(self.member_user)
+        self.page.refresh_from_db()
+
+        self.client.force_login(self.stranger_user)
+        self.assertEqual(
+            self.client.post(
+                reverse("vault:lock_acquire", args=[self.page.vault_file_id])
+            ).status_code, 404)
+        self.assertEqual(
+            self.client.get(
+                reverse("vault:version_list", args=[self.page.vault_file_id])
+            ).status_code, 404)
+
+    def test_the_writer_and_the_lock_agree_about_who_may_edit(self):
+        """One decision, asked twice — the drift this refactor removes.
+
+        Whatever `bridge.may_edit` says must be what BOTH the writer and the
+        vault's lock endpoints do, for every actor in the fixture. Asserting
+        the agreement rather than each verdict is what keeps a later change to
+        one path from quietly disagreeing with the other.
+        """
+        from toto.cyprian.bridge import may_edit
+
+        self._write(self.member_user)
+        self.page.refresh_from_db()
+        vault_file = self.page.vault_file
+
+        for user in (self.lead_user, self.member_user, self.reader_user,
+                     self.stranger_user):
+            with self.subTest(user=user.get_username()):
+                allowed = may_edit(user, vault_file)
+                self.client.force_login(user)
+                writer = self.client.get(
+                    reverse("cyprian:edit", args=[vault_file.pk]))
+                lock = self.client.post(
+                    reverse("vault:lock_acquire", args=[vault_file.pk]))
+                self.client.post(
+                    reverse("vault:lock_release", args=[vault_file.pk]))
+                # The lead reaches the writer as OWNER, so may_edit is true for
+                # them by the ownership arm rather than the bridge; every other
+                # actor's two answers must match the helper exactly.
+                self.assertEqual(writer.status_code == 200, allowed)
+                self.assertEqual(lock.status_code == 200, allowed)
+
     def test_source_stays_owner_only_even_with_a_bridge(self):
         """Raw XML, no renderer, no sanitiser — deliberately not widened.
 

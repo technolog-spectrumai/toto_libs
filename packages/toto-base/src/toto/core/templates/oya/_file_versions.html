@@ -17,21 +17,10 @@
 
 <div x-data="fileVersions({{ file_pk }})" x-init="init()" class="space-y-3">
 
-  {# ---- Lock banner. Only rendered once the server has answered. ---- #}
-  <template x-if="lock.locked && !lock.mine">
-    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-         class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
-      <i class="fa-solid fa-lock mt-0.5 text-warn-light"></i>
-      <div>
-        <p class="font-semibold">
-          <span x-text="lock.holder"></span> {% trans "is editing this right now." %}
-        </p>
-        <p class="mt-1 opacity-70">
-          {% trans "You can read it, but not save. It frees up automatically a couple of minutes after they close it." %}
-        </p>
-      </div>
-    </div>
-  </template>
+  {# ---- Lock banner moved to oya/_lock_banner.html, which the editors render
+         beside their toolbar. This panel is collapsed by default, so the one
+         message a locked-out writer needs was the one they never saw. The
+         inputs below still disable themselves from the same lock state. ---- #}
 
   {# ---- Save version ---- #}
   <div class="flex flex-wrap items-center gap-2">

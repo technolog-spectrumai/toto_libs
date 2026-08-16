@@ -44,6 +44,22 @@
       busy: false,
       _timer: null,
 
+      // Tell the page who holds the document. The banner that says so sits up
+      // by the toolbar, outside this component's scope, because the panel it
+      // used to live in is collapsed by default — so the one message a second
+      // editor needs was the one nobody saw. A CustomEvent rather than a
+      // shared scope: four editors in three packages include this, and none of
+      // them can be assumed to have a particular parent component. Instantiating
+      // fileVersions twice would claim the lock and beat it twice, which is why
+      // the banner listens instead of asking.
+      _publish: function () {
+        try {
+          global.dispatchEvent(new CustomEvent("vault-lock", {
+            detail: Object.assign({}, this.lock),
+          }));
+        } catch (e) { /* nothing here is worth breaking an editor over */ }
+      },
+
       init: function () {
         var self = this;
         this.claim().then(function () { self.refresh(); });
@@ -65,6 +81,7 @@
         return post(base + "/lock/")
           .then(function (r) { return r.json().then(function (d) {
             self.lock = Object.assign(self.lock, d);
+            self._publish();
             if (r.status === 423) { self.error = d.error || ""; }
             else { self.error = ""; self.beat(); }
           }); })
@@ -80,6 +97,7 @@
             .then(function (r) { return r.json(); })
             .then(function (d) {
               self.lock = Object.assign(self.lock, d);
+              self._publish();
               // Lost it while asleep. Say so rather than letting them keep
               // typing into a document somebody else now owns.
               if (d.held === false && !d.mine && d.locked) {
@@ -97,6 +115,7 @@
           .then(function (d) {
             self.items = d.versions || [];
             self.lock = Object.assign(self.lock, d);
+            self._publish();
           })
           .catch(function () { /* the panel is not the document; stay quiet */ });
       },

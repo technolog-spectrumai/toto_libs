@@ -106,6 +106,8 @@ a JS string is never a place to render a template tag into. {% endcomment %}
     {% endif %}
   </div>
 
+  {% include "oya/_lock_banner.html" %}
+
   <!-- Client-side refusal twin (a hostile file that slipped a differential) -->
   <div x-show="refusal" x-cloak
        :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

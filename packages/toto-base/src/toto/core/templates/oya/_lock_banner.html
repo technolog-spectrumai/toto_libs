@@ -1,0 +1,38 @@
+{% load i18n %}
+{% comment %}"Somebody else is editing this" — for the top of an editor page.
+
+Lives here rather than in any one editor for the reason oya/_file_versions.html
+gives: four editors in three packages show it, and a partial in one app's
+templates vanishes on a host that does not install that app.
+
+It used to be INSIDE _file_versions.html, which every editor renders inside a
+collapsed "Versions" panel at the foot of the page. So the message that explains
+why saving just failed was one click and a scroll away from the person who
+needed it, and the server's own 423 text was the only thing they ever saw.
+
+State arrives as a `vault-lock` CustomEvent from oya/file_versions.js. It is not
+read from a scope and this partial does NOT instantiate fileVersions: doing that
+twice would claim the lock and heartbeat it twice. Include this near the toolbar
+and _file_versions.html wherever the panel goes; order does not matter, because
+the component republishes on every claim, beat and refresh.
+
+Renders nothing until the server has answered and somebody else holds the file.
+{% endcomment %}
+
+<div x-data="{ lock: { locked: false, mine: false, holder: '' } }"
+     @vault-lock.window="lock = $event.detail"
+     x-show="lock.locked && !lock.mine" x-cloak
+     class="mx-auto w-full max-w-5xl px-4 pt-3">
+  <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
+    <i class="fa-solid fa-lock mt-0.5 text-warn-light"></i>
+    <div>
+      <p class="font-semibold">
+        <span x-text="lock.holder"></span> {% trans "is editing this right now." %}
+      </p>
+      <p class="mt-1 opacity-70">
+        {% trans "You can read it, but your changes will not save until they close it. It frees up automatically a couple of minutes after they leave." %}
+      </p>
+    </div>
+  </div>
+</div>

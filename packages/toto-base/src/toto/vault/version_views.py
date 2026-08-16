@@ -46,6 +46,15 @@ def _file_for(request, pk: int) -> VaultFile:
         return vault_file
     if vault_file.is_public:
         return vault_file
+    # A file another app lends out — a cyprian project-wiki page is held by the
+    # project lead and written by the team. The module docstring above always
+    # promised this ("cyprian deliberately lets a team edit a wiki page none of
+    # them owns, so an owner-only rule here would break the one app that most
+    # needs the history"), but the four clauses above never asked, so a
+    # collaborator could save through cyprian and still be refused the lock and
+    # the history by these endpoints.
+    if access.may_edit_via_app(request.user, vault_file):
+        return vault_file
     raise Http404("No such file.")
 
 

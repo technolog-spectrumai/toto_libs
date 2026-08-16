@@ -11,6 +11,10 @@ class VaultConfig(AppConfig):
         from toto.core.plugin_autodiscover import autodiscover_plugins
         autodiscover_plugins("plugins.vault_play_plugins")
         autodiscover_plugins("plugins.vault_editor_plugins")
+        # Who may write a borrowed file (see VaultAccessPlugin). Discovered
+        # unconditionally and separately from the editor buttons above: those
+        # are gated on whether a host shows an editor, and access must not be.
+        autodiscover_plugins("plugins.vault_access_plugins")
         # File services — discovered HERE rather than in FileservicesConfig, so
         # a host without toto-media-ops still collects the plugins that do not
         # need its run substrate (the builder-backed ones).

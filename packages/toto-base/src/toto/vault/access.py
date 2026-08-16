@@ -50,6 +50,34 @@ def may_read(user, vault_file) -> bool:
     return False
 
 
+def may_edit_via_app(user, vault_file) -> bool:
+    """May this user write a file the vault itself would refuse them?
+
+    The per-object twin of :func:`may_read` for the one case the vault cannot
+    decide alone: a file another app lends to people who do not own it. Asks
+    the ``VaultAccessPlugin`` registered for this file type, if any.
+
+    Call this AFTER the vault's own checks have said no — it only ever widens,
+    and only for the type whose owning app registered a rule. A plugin that
+    raises is treated as "no": an app failing to answer must not hand out a
+    write right, and the vault's endpoints stay up.
+    """
+    if vault_file is None:
+        return False
+    if user is None or not getattr(user, "is_authenticated", False):
+        return False
+
+    from .plugins import VaultAccessPlugin
+
+    plugin = VaultAccessPlugin.for_file_type(vault_file.file_type)
+    if plugin is None:
+        return False
+    try:
+        return bool(plugin.may_edit(user, vault_file))
+    except Exception:  # noqa: BLE001 - a broken plugin refuses, it does not 500
+        return False
+
+
 def encrypted_lock_response(request, vault_file=None):
     """Render the 'file is encrypted — decrypt it first' page with HTTP 403.
 

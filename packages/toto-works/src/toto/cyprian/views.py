@@ -46,6 +46,7 @@ from toto.memo import tiptap
 
 from . import clean_html, document_format, render_pdf
 from .bridge import DocumentBridge, open_document
+from .bridge import may_edit as bridge_may_edit
 from .bridge import write_back as _bridge_write_back
 from .sanitize_html import sanitize_content
 from .surface import document_editor_shown
@@ -165,11 +166,14 @@ def _open_document(request, file_pk):
         _adopt(vault_file)
         return vault_file, document
 
-    match = DocumentBridge.for_file(vault_file, document)
-    if match is not None and match[0].can_edit(request.user, match[1]):
-        # Deliberately AFTER the ownership branch: _adopt writes to the row, and
-        # a non-owner should not be able to retype somebody's file by looking at
-        # it. A bridged document was minted as file_type="document" anyway.
+    # Deliberately AFTER the ownership branch: _adopt writes to the row, and a
+    # non-owner should not be able to retype somebody's file by looking at it.
+    # A bridged document was minted as file_type="document" anyway.
+    #
+    # The decision itself lives in bridge.may_edit, which the vault's lock and
+    # version endpoints also ask (through VaultAccessPlugin) — one answer, so
+    # "may open the writer" and "may hold the lock" cannot drift apart.
+    if bridge_may_edit(request.user, vault_file, document):
         return vault_file, document
 
     raise Http404("Not a document.")
