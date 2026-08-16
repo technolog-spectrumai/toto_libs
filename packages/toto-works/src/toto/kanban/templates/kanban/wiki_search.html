@@ -1,23 +1,36 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
 
-{# The wiki's front door.
+{% comment %} The wiki's front door.
    Search first, because the reason to come here rather than to a board is that
    you do not know which board the page is on. With no query it shows what was
    written most recently — a landing page that is blank until you type teaches
    nothing about what exists.
 
    Every row is a page from a project the viewer belongs to; the scoping is done
-   in the queryset, not here. See WikiSearchView. #}
+   in the queryset, not here. See WikiSearchView.
+
+   Comments here use the block form: the short hash form is SINGLE-LINE ONLY,
+   and spanning lines with it renders the comment into the page as visible
+   text. {% endcomment %}
 
 {% block title %}{% trans "Wiki" %}{% endblock %}
 
 {% block content %}
-<div x-data="{ darkMode: $store.theme ? $store.theme.dark : false }"
-     class="mx-auto w-full max-w-4xl space-y-6 p-4">
+{% comment %} No x-data here on purpose: `darkMode` is declared once on <html>
+   in oya/base.html and every page just reads it. Re-declaring it locally — as
+   this page did, from a store that does not exist — shadows the real one with
+   `false` and pins the page to light mode whatever the user chose.
+{% endcomment %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+<div class="mx-auto w-full max-w-4xl space-y-6">
 
   <div>
-    <h1 class="flex items-center gap-3 text-2xl font-bold">
+    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="text-xs font-semibold uppercase tracking-wide">{% trans "Documentation" %}</p>
+    <h1 class="mt-1 flex items-center gap-3 text-3xl font-bold">
       <i class="fa-solid fa-book"></i>{% trans "Wiki" %}
     </h1>
     <p class="mt-1 text-sm opacity-70">
@@ -25,15 +38,16 @@
     </p>
   </div>
 
-  {# The search box IS the page. Autofocus, because arriving here is itself the
-     intention to search. #}
+  {% comment %} The search box IS the page. Autofocus, because arriving here is
+     itself the intention to search. {% endcomment %}
   <form method="get" class="flex gap-2">
     <input type="search" name="q" value="{{ query }}" autofocus
            placeholder="{% trans 'Search titles and text…' %}"
            :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
            class="min-w-0 flex-1 rounded-lg border px-4 py-2.5 text-base">
     <button type="submit"
-            class="shrink-0 rounded-lg bg-accent-light px-5 py-2.5 text-sm font-bold text-primary-bg-light transition hover:opacity-90 dark:bg-accent-dark dark:text-primary-bg-dark">
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="shrink-0 rounded-lg px-5 py-2.5 text-sm font-bold shadow-sm transition hover:opacity-90">
       <i class="fa-solid fa-magnifying-glass"></i>
       <span class="hidden sm:inline">{% trans "Search" %}</span>
     </button>
@@ -53,25 +67,26 @@
     {% for row in rows %}
       <a href="{{ row.url }}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark hover:border-accent-dark' : 'border-accent-2 bg-bubble-bg-light hover:border-accent-light'"
-         class="block rounded-lg border p-4 transition">
+         class="block rounded-xl border p-4 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
         <div class="flex items-baseline gap-2">
           <span class="min-w-0 flex-1 truncate font-bold">{{ row.page.title }}</span>
-          {# Which board a page belongs to is the thing you most need to see in
-             a cross-project list, so it rides on every row. #}
+          {% comment %} Which board a page belongs to is the thing you most
+             need to see in a cross-project list, so it rides on every row.
+             {% endcomment %}
           <span class="shrink-0 rounded-full border border-current/20 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide opacity-60">
             {{ row.project.name }}
           </span>
         </div>
         {% if row.snippet %}
-          {# Plain text, never |safe: this is a page's own prose, and letting it
-             bring its markup into a results list would let one page restyle
-             the list it appears in. #}
+          {% comment %} Plain text, never |safe: this is a page's own prose,
+             and letting it bring its markup into a results list would let one
+             page restyle the list it appears in. {% endcomment %}
           <p class="mt-1.5 text-sm opacity-65">{{ row.snippet }}</p>
         {% endif %}
       </a>
     {% empty %}
-      <div class="rounded-lg border border-dashed px-4 py-12 text-center text-sm opacity-60"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-2xl border border-dashed px-4 py-12 text-center text-sm opacity-60 shadow-sm">
         {% if query %}
           {% blocktrans %}Nothing matches “{{ query }}”.{% endblocktrans %}
         {% else %}
@@ -99,4 +114,5 @@
     </div>
   {% endif %}
 </div>
+</section>
 {% endblock %}

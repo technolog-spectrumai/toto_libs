@@ -195,6 +195,26 @@ class WikiSearchTests(TestCase):
         self.assertEqual(self.get(q="Deployment").context["rows"][0]["project"],
                          self.mine)
 
+    # ── the page itself ──────────────────────────────────────────────────────
+
+    def test_no_template_comment_leaks_onto_the_page(self):
+        # Django's `{#` comment is SINGLE-LINE. Spanning lines with it does not
+        # comment anything out — it prints the comment to the reader.
+        self.commit(self.my_person, self.mine)
+        self.client.force_login(self.me)
+        body = self.get().content.decode()
+        self.assertNotIn("{#", body)
+        self.assertNotIn("#}", body)
+
+    def test_the_page_follows_light_and_dark(self):
+        # `darkMode` is declared once on <html>; a page that re-declares it in
+        # its own x-data shadows the real one and is stuck in light mode.
+        self.commit(self.my_person, self.mine)
+        self.client.force_login(self.me)
+        body = self.get().content.decode()
+        self.assertIn("darkMode ?", body)
+        self.assertNotIn("$store.theme", body)
+
     def test_a_row_links_to_the_page_on_its_own_board(self):
         self.commit(self.my_person, self.mine)
         self.client.force_login(self.me)
