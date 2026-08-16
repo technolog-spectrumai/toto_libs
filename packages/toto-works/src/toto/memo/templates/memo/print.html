@@ -1,0 +1,32 @@
+{% load i18n %}<!DOCTYPE html>
+{% comment %}The print document, for WeasyPrint.
+
+Standalone and self-contained: no {% static %}, no site chrome, and slide.css
+inlined rather than linked, because WeasyPrint runs inside the container and
+resolving a hashed static URL over HTTP from there is a needless dependency on
+the server being able to reach itself.
+
+`trust_html=True` here for the same reason as the player: you are exporting your
+own deck, and a v1 `html` block has to render as it presents or the PDF is not
+the deck.
+{% endcomment %}
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ presentation.title }}</title>
+  {% if katex_css %}<style>{{ katex_css|safe }}</style>{% endif %}
+  <style>{{ slide_css|safe }}</style>
+  <style>
+    /* WeasyPrint honours @page from slide.css; this only removes the page's
+       own margins and stops a slide being split across two sheets. */
+    html, body { margin: 0; padding: 0; }
+    .memo-slide { page-break-after: always; break-after: page; }
+    .memo-slide:last-child { page-break-after: auto; break-after: auto; }
+  </style>
+</head>
+<body class="memo-print memo-theme-{{ theme|default:'black' }}">
+  {% for slide in presentation.slides %}
+    {% include "memo/_slide.html" with slide=slide theme=theme font=font trust_html=True %}
+  {% endfor %}
+</body>
+</html>

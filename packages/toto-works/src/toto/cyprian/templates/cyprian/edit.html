@@ -642,7 +642,7 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
                       spellcheck="false" @input="previewFormula()"
                       placeholder="{% trans 'e.g. \frac{a}{b}' %}"
                       class="w-full resize-y rounded-lg border border-current/30 bg-transparent px-3 py-2 text-center font-mono text-sm"></textarea>
-            {% include "memo/_formula_help.html" %}
+            {% include "cyprian/_formula_help.html" %}
           </div>
         </template>
 
@@ -749,9 +749,9 @@ toolbar partial's own docstring demands the pair. {% endcomment %}
   <script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
   {% comment %} Reused wholesale from memo: snapshot undo, and the client mirror
   of the Python allowlist for pasted content.{% endcomment %}
-  <script src="{% static 'memo/history.js' %}"></script>
-  <script src="{% static 'memo/sanitize.js' %}"></script>
-  <script src="{% static 'memo/model.js' %}"></script>
+  <script src="{% static 'cyprian/history.js' %}"></script>
+  <script src="{% static 'antivirus/sanitize.js' %}"></script>
+  <script src="{% static 'cyprian/memo_model.js' %}"></script>
   <script src="{% static 'cyprian/model.js' %}"></script>
   <script src="{% static 'cyprian/editor.js' %}"></script>
 
@@ -760,7 +760,7 @@ toolbar partial's own docstring demands the pair. {% endcomment %}
   The import map has to come BEFORE any module script, so it is rendered here
   ahead of the one module on the page. It maps the bare specifiers inside the
   vendored TipTap and ProseMirror files ("@tiptap/core", "prosemirror-state") to
-  our own hashed static URLs — see memo/tiptap.py, and memo/vendor/tiptap/
+  our own hashed static URLs — see cyprian/tiptap.py, and cyprian/vendor/tiptap/
   VERSION.txt for why this app is the exception to the UMD rule everywhere else.
 
   The module publishes window.CyprianTipTap and fires `cyprian-tiptap-ready`;

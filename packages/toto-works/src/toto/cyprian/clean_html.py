@@ -30,7 +30,7 @@ import re
 from dataclasses import dataclass
 from html.parser import HTMLParser
 
-from .sanitize_html import SELF_CLOSING
+from toto.antivirus.sanitize import SELF_CLOSING
 
 #: Elements that own a line. Everything else is inline and is emitted in the
 #: flow of the text, because a newline inside a sentence is a space in HTML and

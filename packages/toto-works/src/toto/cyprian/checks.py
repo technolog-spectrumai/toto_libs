@@ -18,19 +18,17 @@ from django.core.checks import Error, register
 def cyprian_dependencies(app_configs, **kwargs):
     errors = []
 
-    if not apps.is_installed("toto.memo"):
-        errors.append(Error(
-            "toto.cyprian requires toto.memo.",
-            hint=(
-                "Cyprian reuses memo's sanitisers (toto.memo.sanitize) and its "
-                "editor modules (static/memo/{drag,history,sanitize}.js). memo "
-                "is installed unconditionally on this host, so this normally "
-                "cannot happen — if it has been removed, either restore it or "
-                "vendor those pieces into cyprian."
-            ),
-            id="cyprian.E001",
-        ))
 
+    if not apps.is_installed("toto.antivirus"):
+        errors.append(Error(
+            "Cyprian needs toto.antivirus.",
+            hint=("The writer's sanitisers live in toto.antivirus.sanitize since "
+                  "8/2026. This is a HARD requirement, not a degradation: "
+                  "unsanitised rich text stored once is stored forever, so a "
+                  "build without the app must refuse to start rather than save "
+                  "whatever the browser sent. Set BUILD_ANTIVIRUS=1."),
+            id="cyprian.E003",
+        ))
     if not apps.is_installed("toto.verbena"):
         errors.append(Error(
             "toto.cyprian requires toto.verbena.",

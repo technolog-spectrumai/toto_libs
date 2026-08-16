@@ -1,12 +1,13 @@
-"""Embed helpers for inserting vault images/SVGs into a self-contained ``.pml``.
+"""Media helpers for the writer.
 
-A presentation is a single self-contained file: raster images are embedded as
-base64 ``data:`` URIs and SVGs are inlined verbatim (see
-:mod:`toto.memo.presentation_format`). These helpers turn a vault file's bytes
-into the same snippet the editor's local-file "Insert image / SVG" path produces,
-so a picked vault image lands in the slide body with no external dependency.
+Turns a vault file's bytes into the snippet the editor inserts: raster images
+as base64 ``data:`` URIs so a document stays self-contained, with no external
+dependency to break when it is moved or exported.
+
+Moved out of memo in 8/2026 when the presentation editor left: the image work
+is the writer's, and the SVG cleaner that used to sit beside it is
+sanitisation, so it went to toto.antivirus with the rest.
 """
-
 from __future__ import annotations
 
 import base64

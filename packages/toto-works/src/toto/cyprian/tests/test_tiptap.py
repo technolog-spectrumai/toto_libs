@@ -13,12 +13,11 @@ writer simply not appearing.
 
 from django.test import SimpleTestCase
 
-from toto.memo import tiptap
+from toto.cyprian import tiptap
 
-# VENDOR_DIR is …/memo/static/memo/vendor/tiptap; parents[4] is the src/toto
-# both apps share.
-SETUP = (tiptap.VENDOR_DIR.parents[4]
-         / "cyprian" / "static" / "cyprian" / "tiptap_setup.js")
+# VENDOR_DIR is …/cyprian/static/cyprian/vendor/tiptap, so the setup module is
+# three levels up beside it.
+SETUP = tiptap.VENDOR_DIR.parents[1] / "tiptap_setup.js"
 
 
 class SetupModuleTests(SimpleTestCase):
@@ -34,10 +33,11 @@ class SetupModuleTests(SimpleTestCase):
             with self.subTest(spec=spec):
                 self.assertIn(spec, tiptap.manifest())
 
-    def test_it_imports_from_memos_vendor_directory(self):
-        # The move is easy to half-undo: a stale cyprian/static/cyprian/vendor/
-        # would resolve locally and ship nothing.
-        self.assertEqual(tiptap.STATIC_PREFIX, "memo/vendor/tiptap/")
-        self.assertFalse(
-            (SETUP.parent / "vendor" / "tiptap").exists(),
-            "cyprian still has its own copy of the vendored TipTap")
+    def test_it_imports_from_cyprians_own_vendor_directory(self):
+        # The bundle moved out of memo in 8/2026 with the rest of the editor
+        # machinery. A stale memo copy would still resolve on a dev box and
+        # ship nothing, so assert the old home is really gone.
+        self.assertEqual(tiptap.STATIC_PREFIX, "cyprian/vendor/tiptap/")
+        self.assertTrue(tiptap.VENDOR_DIR.is_dir(), "the vendored bundle is missing")
+        memo_copy = tiptap.VENDOR_DIR.parents[3] / "memo" / "static" / "memo" / "vendor"
+        self.assertFalse(memo_copy.exists(), "memo still has a copy of the vendored TipTap")

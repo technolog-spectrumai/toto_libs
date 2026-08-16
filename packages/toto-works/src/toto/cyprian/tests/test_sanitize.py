@@ -7,7 +7,7 @@ and the PDF.
 
 from django.test import SimpleTestCase
 
-from toto.cyprian.sanitize_html import ALLOWED_CLASSES, sanitize_content as clean
+from toto.antivirus.sanitize import ALLOWED_CLASSES, sanitize_content as clean
 
 
 class TagTests(SimpleTestCase):

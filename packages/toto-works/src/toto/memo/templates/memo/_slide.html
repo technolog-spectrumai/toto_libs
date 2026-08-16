@@ -1,0 +1,97 @@
+{% load i18n %}{% comment %}One slide, rendered once, for every surface.
+
+Included by the player, the gallery thumbnail and the PDF export, so there is a
+single definition of what a slide *is* — matching slide.css, which is the single
+definition of what one looks like.
+
+Context:
+  slide       a presentation_format.Slide
+  theme       "black" | "white"
+  font        "sans" | "serif" | "mono" | "rounded" | "condensed"
+  trust_html  whether a legacy `html` block is rendered live or escaped
+
+`trust_html` is the one thing a caller must think about. Every block type is
+sanitised on the way in, EXCEPT `html` — the v1 escape hatch, which is
+deliberately preserved verbatim because its trust model is exactly what v1's
+`{{ slide.body|safe }}` already was. That is defensible in the player, where you
+have navigated to one deck. It is not defensible in the gallery, which lists
+*other people's public decks*: one hostile deck would then run script on every
+visitor. So the gallery passes trust_html=False and gets an inert placeholder.
+{% endcomment %}
+<div class="memo-slide memo-theme-{{ theme|default:"black" }} memo-font-{{ font|default:"sans" }}"
+     data-layout="{{ slide.layout }}" data-slide-id="{{ slide.id }}">
+
+  <h2 class="memo-title" data-placeholder="{% trans 'Slide title' %}">{{ slide.title }}</h2>
+
+  {% for slot, blocks in slide.columns %}
+    <div class="memo-flow" data-slot="{{ slot }}">
+      {% for block in blocks %}
+        {% if block.type == "heading" %}
+          <div class="memo-block" data-type="heading" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
+            {% if block.attrs.level == "1" %}<h1>{{ block.payload|safe }}</h1>
+            {% elif block.attrs.level == "3" %}<h3>{{ block.payload|safe }}</h3>
+            {% elif block.attrs.level == "4" %}<h4>{{ block.payload|safe }}</h4>
+            {% else %}<h2>{{ block.payload|safe }}</h2>{% endif %}
+          </div>
+
+        {% elif block.type == "text" %}
+          <div class="memo-block" data-type="text" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload|safe }}</div>
+
+        {% elif block.type == "list" %}
+          <div class="memo-block" data-type="list" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
+            {% if block.attrs.ordered == "true" %}
+              <ol>{% for item in block.items %}<li>{{ item|safe }}</li>{% endfor %}</ol>
+            {% else %}
+              <ul>{% for item in block.items %}<li>{{ item|safe }}</li>{% endfor %}</ul>
+            {% endif %}
+          </div>
+
+        {% elif block.type == "image" %}
+          <div class="memo-block" data-type="image" data-block-id="{{ block.id }}"
+               data-fit="{{ block.attrs.fit|default:'contain' }}">
+            {% if block.payload %}
+              <img src="{{ block.payload }}" alt="{{ block.attrs.alt|default:'' }}">
+            {% endif %}
+          </div>
+
+        {% elif block.type == "svg" %}
+          <div class="memo-block" data-type="svg" data-block-id="{{ block.id }}"
+               role="img" aria-label="{{ block.attrs.alt|default:'' }}">{{ block.payload|safe }}</div>
+
+        {% elif block.type == "code" %}
+          {% comment %} Escaped, not |safe: a code block is plain text by definition, and
+             showing the markup is the entire point of it.{% endcomment %}
+          <pre class="memo-block" data-type="code" data-block-id="{{ block.id }}"
+               data-language="{{ block.attrs.language|default:'' }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>{{ block.payload }}</pre>
+
+        {% elif block.type == "formula" %}
+          {% comment %} The cached KaTeX markup if it survived sanitising, otherwise the
+             LaTeX source, escaped. Never a blank: a formula you can read as
+             source beats an empty space where one used to be.{% endcomment %}
+          <div class="memo-block" data-type="formula" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
+            {% if block.render %}{{ block.render|safe }}{% else %}<code class="memo-formula-source">{{ block.payload }}</code>{% endif %}
+          </div>
+
+        {% elif block.type == "quote" %}
+          <blockquote class="memo-block" data-type="quote" data-block-id="{{ block.id }}"{% if block.scale_css %} style="--memo-block-scale: {{ block.scale_css }}"{% endif %}>
+            {{ block.payload|safe }}
+            {% if block.attrs.cite %}<cite class="memo-cite">{{ block.attrs.cite }}</cite>{% endif %}
+          </blockquote>
+
+        {% elif block.type == "html" %}
+          <div class="memo-block" data-type="html" data-block-id="{{ block.id }}">
+            {% if trust_html %}{{ block.payload|safe }}{% else %}
+              <span class="memo-legacy">{% trans "Legacy HTML slide" %}</span>
+            {% endif %}
+          </div>
+
+        {% else %}
+          {% comment %} A block from a newer build. It round-trips through the file
+             untouched; rendering a guess at it would be worse than nothing.{% endcomment %}
+          <div class="memo-block" data-type="{{ block.type }}" data-unknown="1"
+               data-block-id="{{ block.id }}">{{ block.type }}</div>
+        {% endif %}
+      {% endfor %}
+    </div>
+  {% endfor %}
+</div>

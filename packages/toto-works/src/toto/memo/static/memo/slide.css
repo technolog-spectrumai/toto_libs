@@ -1,0 +1,608 @@
+/* How a slide looks — the ONE stylesheet, loaded by every surface.
+ *
+ *   slide.css ──► the editor canvas   .memo-slide
+ *             ──► present.html        .reveal section > .memo-slide
+ *             ──► the PDF export      one @page per slide
+ *             ──► the gallery         a scaled-down thumbnail
+ *
+ * That is the whole isomorphism mechanism. Before this file, the editor's
+ * "preview" copied two hex colours and one `img { max-width }` rule out of
+ * reveal's theme by hand, so editing and presenting drifted apart the first
+ * time either was touched.
+ *
+ * WHY REVEAL'S OWN THEME IS NOT LOADED HERE. `theme-black.css` and
+ * `theme-white.css` put their variables on `:root` and set global typography
+ * and background. On the editor page that fights the surrounding oya chrome,
+ * and in the gallery it is simply impossible — several decks with different
+ * themes appear on one page, and `:root` can only hold one of them. So the
+ * variables below are declared as two *scoped* classes, values copied verbatim
+ * from those two files. That duplication is 20 lines and it buys per-element
+ * theming; everything else here is written once and used everywhere.
+ *
+ * Reveal still supplies its own machinery on the player — transitions, the
+ * progress bar, controls, hash navigation. It just no longer decides what a
+ * slide looks like.
+ *
+ * No url() and no @import: `collectstatic` runs under a hashed-manifest storage
+ * in the host gate, and an unresolvable reference degrades silently there.
+ * Reveal's themes @import a Source Sans Pro directory that is not vendored,
+ * which is exactly the trap being avoided — the font stack falls back instead.
+ */
+
+/* --------------------------------------------------------------------------
+ * Themes
+ * ------------------------------------------------------------------------ */
+
+.memo-theme-black {
+  --r-background-color: #191919;
+  --r-main-color: #fff;
+  --r-heading-color: #fff;
+  --r-link-color: #42affa;
+  --r-link-color-hover: #8dcffc;
+  --r-selection-background-color: rgba(66, 175, 250, 0.75);
+  --memo-rule-color: rgba(255, 255, 255, 0.22);
+  --memo-muted-color: rgba(255, 255, 255, 0.62);
+  --memo-code-bg: rgba(255, 255, 255, 0.08);
+}
+
+.memo-theme-white {
+  --r-background-color: #fff;
+  --r-main-color: #222;
+  --r-heading-color: #222;
+  --r-link-color: #2a76dd;
+  --r-link-color-hover: #6ca0e8;
+  --r-selection-background-color: #98bdef;
+  --memo-rule-color: rgba(0, 0, 0, 0.18);
+  --memo-muted-color: rgba(0, 0, 0, 0.55);
+  --memo-code-bg: rgba(0, 0, 0, 0.06);
+}
+
+/* --------------------------------------------------------------------------
+ * Fonts. Per deck, and system stacks only.
+ *
+ * No webfont is vendored, this file may not use url() under the hashed-manifest
+ * storage, and the PDF is rendered by WeasyPrint inside a container — so every
+ * stack ends in a generic, and the named fallbacks include the DejaVu families
+ * that notarius/render.py already relies on being in the image. A family the
+ * container lacks would silently substitute and the PDF would stop matching the
+ * screen, which is the one thing this stylesheet exists to prevent.
+ *
+ * Qualified with `.memo-slide` on purpose. The theme class below also declares
+ * --r-main-font and sits on the SAME element, so two bare single-class rules
+ * would be decided by source order alone — and the theme block comes later.
+ * (0,2,0) beats (0,1,0) whatever the order, which is one less thing to break
+ * when somebody moves a block of this file.
+ * ------------------------------------------------------------------------ */
+
+.memo-slide.memo-font-sans {
+  --r-main-font: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+                 "DejaVu Sans", Arial, sans-serif;
+}
+.memo-slide.memo-font-serif {
+  --r-main-font: Georgia, Cambria, "Times New Roman", "DejaVu Serif", Times, serif;
+}
+.memo-slide.memo-font-mono {
+  --r-main-font: ui-monospace, SFMono-Regular, Menlo, Consolas,
+                 "DejaVu Sans Mono", monospace;
+}
+.memo-slide.memo-font-rounded {
+  --r-main-font: "Trebuchet MS", "Segoe UI", Verdana, "DejaVu Sans", sans-serif;
+}
+.memo-slide.memo-font-condensed {
+  --r-main-font: "Arial Narrow", "Liberation Sans Narrow",
+                 "DejaVu Sans Condensed", "Helvetica Neue", sans-serif;
+}
+
+.memo-theme-black,
+.memo-theme-white {
+  /* The default, for a slide rendered without a font class at all. */
+  --r-main-font: system-ui, -apple-system, "Segoe UI", Roboto, "DejaVu Sans",
+                 Arial, sans-serif;
+  --r-heading-font: var(--r-main-font);
+  --r-code-font: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  /* Reveal's own value is 42px against its 960px stage. This stage is 1280px
+   * wide, so 42 would render proportionally smaller than a reveal deck; 44
+   * keeps text at a sane ~3.4% of slide width for 16:9. */
+  --r-main-font-size: 44px;
+  --r-block-margin: 20px;
+  --r-heading-line-height: 1.2;
+  --r-heading-font-weight: 600;
+  --r-heading-text-transform: uppercase;
+  --r-heading1-size: 2.5em;
+  --r-heading2-size: 1.6em;
+  --r-heading3-size: 1.3em;
+  --r-heading4-size: 1em;
+}
+
+/* --------------------------------------------------------------------------
+ * The slide box — 1280 × 720, always, on every surface
+ * ------------------------------------------------------------------------ */
+
+.memo-slide {
+  box-sizing: border-box;
+  width: 1280px;
+  height: 720px;
+  padding: 48px 72px;
+  overflow: hidden;
+  background: var(--r-background-color);
+  color: var(--r-main-color);
+  font-family: var(--r-main-font);
+  font-size: var(--r-main-font-size);
+  line-height: 1.3;
+  /* Left, deliberately. Reveal centres its text, which is unusable in a block
+   * editor — the caret jumps as you type. The layouts below centre the two
+   * cases that actually want it. */
+  text-align: left;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-areas: "title" "main";
+  row-gap: 24px;
+}
+
+.memo-slide *,
+.memo-slide *::before,
+.memo-slide *::after { box-sizing: border-box; }
+
+/* --------------------------------------------------------------------------
+ * Typography
+ * ------------------------------------------------------------------------ */
+
+.memo-title {
+  grid-area: title;
+  margin: 0;
+  font-family: var(--r-heading-font);
+  font-size: var(--r-heading2-size);
+  font-weight: var(--r-heading-font-weight);
+  line-height: var(--r-heading-line-height);
+  text-transform: var(--r-heading-text-transform);
+  color: var(--r-heading-color);
+  word-wrap: break-word;
+}
+
+.memo-slide h1, .memo-slide h2, .memo-slide h3, .memo-slide h4 {
+  margin: 0;
+  font-family: var(--r-heading-font);
+  font-weight: var(--r-heading-font-weight);
+  line-height: var(--r-heading-line-height);
+  text-transform: var(--r-heading-text-transform);
+  color: var(--r-heading-color);
+  word-wrap: break-word;
+}
+.memo-slide h1 { font-size: var(--r-heading1-size); }
+.memo-slide h2 { font-size: var(--r-heading2-size); }
+.memo-slide h3 { font-size: var(--r-heading3-size); }
+.memo-slide h4 { font-size: var(--r-heading4-size); }
+
+.memo-slide p { margin: 0 0 var(--r-block-margin) 0; }
+.memo-slide p:last-child { margin-bottom: 0; }
+
+.memo-slide ul, .memo-slide ol { margin: 0; padding-left: 1.2em; }
+.memo-slide li { margin-bottom: 0.35em; }
+.memo-slide li:last-child { margin-bottom: 0; }
+
+.memo-slide a { color: var(--r-link-color); text-decoration: none; }
+.memo-slide a:hover { color: var(--r-link-color-hover); text-decoration: underline; }
+
+.memo-slide code {
+  font-family: var(--r-code-font);
+  font-size: 0.85em;
+  background: var(--memo-code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+
+.memo-slide ::selection {
+  background: var(--r-selection-background-color);
+  color: #fff;
+}
+
+/* --------------------------------------------------------------------------
+ * Layouts. `data-layout`, not a class — a JS-assembled class name would not
+ * exist under the Tailwind JIT build, and an attribute sidesteps that entirely.
+ * ------------------------------------------------------------------------ */
+
+.memo-flow {
+  grid-area: main;
+  display: flex;
+  flex-direction: column;
+  gap: var(--r-block-margin);
+  min-height: 0;
+  min-width: 0;
+}
+
+.memo-slide[data-layout="two-column"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-areas: "title title" "left right";
+  column-gap: 56px;
+}
+.memo-slide[data-layout="two-column"] .memo-flow[data-slot="left"]  { grid-area: left; }
+.memo-slide[data-layout="two-column"] .memo-flow[data-slot="right"] { grid-area: right; }
+/* Blocks with no slot fall into the left column rather than vanishing — which
+ * is what switching a title-content slide to two-column produces. */
+.memo-slide[data-layout="two-column"] .memo-flow[data-slot=""] { grid-area: left; }
+
+/* Three columns. Past three the text is too narrow to read at 1280px, which is
+ * why there is no four-column layout and a grid is offered instead. */
+.memo-slide[data-layout="three-column"] {
+  grid-template-columns: 1fr 1fr 1fr;
+  grid-template-areas: "title title title" "left middle right";
+  column-gap: 40px;
+}
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="left"]   { grid-area: left; }
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="middle"] { grid-area: middle; }
+.memo-slide[data-layout="three-column"] .memo-flow[data-slot="right"]  { grid-area: right; }
+
+/* A picture beside prose, in both directions. The media box is the wider one
+ * and centres its contents, so a portrait photo and a landscape one both sit
+ * sensibly without anybody choosing a size. */
+.memo-slide[data-layout="image-left"] {
+  grid-template-columns: 1.15fr 1fr;
+  grid-template-areas: "title title" "media body";
+  column-gap: 48px;
+}
+.memo-slide[data-layout="image-right"] {
+  grid-template-columns: 1fr 1.15fr;
+  grid-template-areas: "title title" "body media";
+  column-gap: 48px;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="media"],
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="media"] {
+  grid-area: media;
+  justify-content: center;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="body"],
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="body"] {
+  grid-area: body;
+  justify-content: center;
+}
+.memo-slide[data-layout="image-left"] .memo-flow[data-slot="media"] img,
+.memo-slide[data-layout="image-right"] .memo-flow[data-slot="media"] img {
+  max-height: 100%;
+  object-fit: contain;
+}
+
+/* Two stacked bands — a before and an after, a claim and its evidence. */
+.memo-slide[data-layout="two-row"] {
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "title" "top" "bottom";
+  row-gap: 28px;
+}
+.memo-slide[data-layout="two-row"] .memo-flow[data-slot="top"]    { grid-area: top; }
+.memo-slide[data-layout="two-row"] .memo-flow[data-slot="bottom"] { grid-area: bottom; }
+
+/* Four quadrants. The one layout where an empty box is normal — a 2x2 with
+ * three things in it reads as deliberate. */
+.memo-slide[data-layout="grid"] {
+  grid-template-columns: 1fr 1fr;
+  grid-template-rows: auto minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-areas: "title title" "a b" "c d";
+  gap: 28px 40px;
+}
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="a"] { grid-area: a; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="b"] { grid-area: b; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="c"] { grid-area: c; }
+.memo-slide[data-layout="grid"] .memo-flow[data-slot="d"] { grid-area: d; }
+
+/* One big thing, and the sentence that explains it: a number, a logo, a result.
+ * The lead box types large by rule rather than by anyone choosing a size. */
+.memo-slide[data-layout="lead"] {
+  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1.6fr) minmax(0, 1fr);
+  grid-template-areas: "title" "lead" "body";
+  row-gap: 20px;
+  text-align: center;
+}
+.memo-slide[data-layout="lead"] .memo-flow[data-slot="lead"] {
+  grid-area: lead;
+  justify-content: flex-end;
+  font-size: 2.6em;
+  line-height: 1.05;
+  font-weight: 700;
+}
+.memo-slide[data-layout="lead"] .memo-flow[data-slot="body"] {
+  grid-area: body;
+  justify-content: flex-start;
+}
+
+/* A block whose slot this layout does not name still shows — in the first box,
+ * never nowhere. Switching layouts must not look like losing content. */
+.memo-slide .memo-flow[data-slot=""] { grid-area: main; }
+
+.memo-slide[data-layout="section"] {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "main";
+  place-content: center;
+  text-align: center;
+}
+.memo-slide[data-layout="section"] .memo-title { display: none; }
+.memo-slide[data-layout="section"] .memo-flow { align-items: center; justify-content: center; }
+
+.memo-slide[data-layout="quote"] {
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "main";
+  place-content: center;
+}
+.memo-slide[data-layout="quote"] .memo-title { display: none; }
+.memo-slide[data-layout="quote"] .memo-flow { justify-content: center; }
+
+.memo-slide[data-layout="full-bleed"] {
+  padding: 0;
+  grid-template-rows: minmax(0, 1fr);
+  grid-template-areas: "main";
+}
+.memo-slide[data-layout="full-bleed"] .memo-flow { gap: 0; }
+.memo-slide[data-layout="full-bleed"] .memo-title {
+  grid-area: main;
+  align-self: end;
+  z-index: 1;
+  margin: 0;
+  padding: 48px 72px 40px;
+  /* A scrim, so a title stays readable over any photograph. */
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.72), rgba(0, 0, 0, 0));
+  color: #fff;
+}
+.memo-slide[data-layout="full-bleed"] .memo-block[data-type="image"] { height: 100%; }
+.memo-slide[data-layout="full-bleed"] .memo-block[data-type="image"] img {
+  width: 100%; height: 100%; object-fit: cover;
+}
+
+/* --------------------------------------------------------------------------
+ * Blocks
+ * ------------------------------------------------------------------------ */
+
+/* Auto-fit. The editor measures the block against the space it has and writes
+ * the resolved number back into the document, so the player and the PDF — which
+ * cannot measure — render exactly what the author saw. An inline custom
+ * property, never a class: a JS-assembled Tailwind class does not exist under
+ * the JIT build.
+ *
+ * NOT `--memo-scale` — that one is the stage's zoom, set on an ancestor, and
+ * custom properties inherit. Sharing the name would make every block on a
+ * scaled-down canvas shrink its text by the zoom factor as well. */
+.memo-block {
+  min-width: 0;
+  font-size: calc(1em * var(--memo-block-scale, 1));
+}
+
+.memo-block[data-type="image"],
+.memo-block[data-type="svg"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+.memo-block[data-type="image"] img,
+.memo-block[data-type="svg"] svg,
+.memo-block img,
+.memo-block svg {
+  max-width: 100%;
+  max-height: 100%;
+  height: auto;
+  object-fit: var(--memo-fit, contain);
+}
+.memo-block[data-fit="cover"] img { object-fit: cover; width: 100%; height: 100%; }
+
+.memo-block[data-type="code"] {
+  font-family: var(--r-code-font);
+  font-size: 0.62em;
+  line-height: 1.45;
+  background: var(--memo-code-bg);
+  border-radius: 8px;
+  padding: 0.7em 0.9em;
+  overflow: auto;
+  white-space: pre;
+  tab-size: 4;
+}
+
+.memo-block[data-type="formula"] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  min-width: 0;
+}
+/* The fallback when there is no cached render — a readable source line rather
+ * than an empty space. */
+.memo-formula-source {
+  font-family: var(--r-code-font);
+  font-size: 0.7em;
+  opacity: 0.75;
+  background: var(--memo-code-bg);
+  border-radius: 6px;
+  padding: 0.25em 0.5em;
+}
+/* KaTeX sizes itself from the inherited font-size, so auto-fit scales a formula
+ * exactly as it scales prose. */
+.memo-block[data-type="formula"] .katex { font-size: 1.1em; }
+
+.memo-block[data-type="quote"] {
+  font-size: 1.15em;
+  font-style: italic;
+  border-left: 4px solid var(--memo-rule-color);
+  padding-left: 0.7em;
+}
+.memo-block[data-type="quote"] .memo-cite {
+  display: block;
+  margin-top: 0.5em;
+  font-size: 0.6em;
+  font-style: normal;
+  color: var(--memo-muted-color);
+}
+.memo-block[data-type="quote"] .memo-cite::before { content: "— "; }
+
+/* An unknown type — a block written by a newer build. It round-trips through
+ * the file untouched; here it just takes up no space rather than rendering
+ * something misleading. */
+.memo-block[data-unknown] { display: none; }
+
+/* --------------------------------------------------------------------------
+ * Player. Reveal has already sized and scaled the <section> to the stage, so
+ * the box fills it rather than scaling itself.
+ * ------------------------------------------------------------------------ */
+
+/* The letterbox around the slide. Reveal's theme would normally paint this from
+ * :root, but the themes are not loaded — see the header — so the player carries
+ * the theme class on <body> and paints it here. */
+.memo-player { background: var(--r-background-color); }
+
+/* The slide keeps its real 1280x720 here too — that is the whole point of the
+ * shared stylesheet, and overriding it to percentages was what broke the player.
+ *
+ * Reveal's own default is `center: true`, which positions each <section> from
+ * its MEASURED height; sections are absolutely positioned with height:auto, so a
+ * `height: 100%` child resolves against auto, collapses to nothing, and takes
+ * every layout that depends on the 720px box with it. present.html therefore
+ * sets `center: false`, reveal pins the section to the top-left of the stage it
+ * has already sized to exactly 1280x720, and the box lands precisely. */
+.reveal .slides section {
+  padding: 0;                     /* reveal insets sections by default */
+  width: 100%;
+  height: 100%;
+}
+.reveal .slides section .memo-slide { transform: none; }
+
+/* Reveal keeps past and future slides in the DOM for the transition. An
+ * off-screen slide must never take a click. */
+.reveal .slides section:not(.present) { pointer-events: none; }
+
+/* --------------------------------------------------------------------------
+ * The editor stage: a 16:9 box that scales the 1280px slide down to fit.
+ * `--memo-scale` is set as an inline custom property by canvas.js.
+ * ------------------------------------------------------------------------ */
+
+.memo-stage {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  overflow: hidden;
+  border-radius: 12px;
+}
+/* While editing, spilled content has to be visible outside the box — see the
+ * overflow section. The stage keeps its own height so the page does not jump. */
+.memo-stage:has(> .memo-editing) { overflow: visible; }
+.memo-stage > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale, 1));
+  transform-origin: top left;
+}
+
+/* --------------------------------------------------------------------------
+ * Editor-only affordances.
+ *
+ * They live in THIS file rather than editor.css on purpose: a focus ring has to
+ * sit exactly on the block box, so it has to move whenever the layout rules
+ * move. Split across two files they would desync. The player never sets
+ * `.memo-editing`, so all of this costs it nothing.
+ * ------------------------------------------------------------------------ */
+
+.memo-editing .memo-block,
+.memo-editing .memo-title {
+  position: relative;
+  border-radius: 6px;
+  outline: 2px solid transparent;
+  outline-offset: 6px;
+  transition: outline-color 120ms ease, background-color 120ms ease;
+}
+.memo-editing .memo-block:hover,
+.memo-editing .memo-title:hover { outline-color: var(--memo-rule-color); }
+.memo-editing .memo-block[data-focused],
+.memo-editing .memo-title[data-focused] { outline-color: var(--r-link-color); }
+
+/* Overflow, below the scale floor.
+ *
+ * The slide clips on every surface EXCEPT while editing, where clipping would
+ * hide the very thing you need to fix. Here the content spills past the border,
+ * dimmed and marked, so it is visible and obviously wrong. The presented
+ * geometry is unchanged — what spills here is what the player will clip.
+ */
+.memo-editing.memo-slide { overflow: visible; }
+.memo-editing .memo-flow { overflow: visible; }
+
+.memo-editing .memo-block[data-overflow] {
+  outline: 2px dashed rgba(245, 158, 11, 0.85);
+  outline-offset: 6px;
+}
+.memo-editing .memo-block[data-overflow]::after {
+  content: attr(data-overflow);
+  position: absolute;
+  right: 0;
+  bottom: -1.6em;
+  font-size: 0.42em;
+  font-family: var(--r-main-font);
+  color: rgb(245, 158, 11);
+  white-space: nowrap;
+}
+
+/* Everything past the bottom edge of the slide, dimmed. A gradient rather than
+ * a hard line, so it reads as "this is falling off" rather than as a design. */
+.memo-editing.memo-slide::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 100%;
+  height: 240px;
+  pointer-events: none;
+  background: linear-gradient(to bottom,
+              var(--r-background-color), transparent 65%);
+  opacity: 0.55;
+}
+.memo-editing.memo-slide { position: relative; }
+
+/* Empty blocks say what they are, instead of being an invisible click target. */
+.memo-editing [data-placeholder]:empty::before {
+  content: attr(data-placeholder);
+  color: var(--memo-muted-color);
+  pointer-events: none;
+}
+
+.memo-editing [contenteditable] { outline: none; }
+.memo-editing [contenteditable]:focus-visible { outline: none; }
+
+/* An unknown block is visible while editing so it can be deleted — hiding it
+ * would mean a block you cannot see, cannot remove, and that keeps saving. */
+.memo-editing .memo-block[data-unknown] {
+  display: block;
+  font-size: 0.5em;
+  font-family: var(--r-code-font);
+  color: var(--memo-muted-color);
+  border: 1px dashed var(--memo-rule-color);
+  border-radius: 8px;
+  padding: 0.6em 0.8em;
+}
+
+/* Where a dragged block would land. */
+.memo-editing .memo-drop-line {
+  height: 0;
+  border-top: 3px solid var(--r-link-color);
+  border-radius: 3px;
+  margin: -1px 0;
+}
+
+/* Handles own the pointer so the page still scrolls everywhere else. */
+.memo-editing .memo-handle { touch-action: none; cursor: grab; }
+.memo-editing .memo-handle:active { cursor: grabbing; }
+
+.memo-dragging, .memo-dragging * { cursor: grabbing !important; user-select: none; }
+
+/* --------------------------------------------------------------------------
+ * Print / PDF export. One page per slide at the same 1280 × 720 geometry, so
+ * the exported deck is the deck.
+ * ------------------------------------------------------------------------ */
+
+@page { size: 1280px 720px; margin: 0; }
+
+@media print {
+  .memo-print .memo-slide {
+    page-break-after: always;
+    break-after: page;
+    transform: none;
+  }
+  .memo-print .memo-slide:last-child {
+    page-break-after: auto;
+    break-after: auto;
+  }
+}

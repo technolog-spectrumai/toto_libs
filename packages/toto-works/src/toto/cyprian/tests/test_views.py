@@ -53,9 +53,9 @@ class DocumentPageTests(CyprianTestCase):
             self.assertIn(module, body)
         # Reused from memo rather than copied. `drag.js` is NOT among them any
         # more: a section is one document and there is nothing to drag.
-        for module in ("memo/history.js", "memo/sanitize.js"):
+        for module in ("cyprian/history.js", "antivirus/sanitize.js"):
             self.assertIn(module, body)
-        self.assertNotIn("memo/drag.js", body)
+        self.assertNotIn("cyprian/drag.js", body)
 
     def test_a_stranger_cannot_open_the_writer(self):
         vault_file = self._make()

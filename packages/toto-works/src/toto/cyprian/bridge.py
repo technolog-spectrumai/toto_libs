@@ -174,7 +174,7 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     app's column safe to authorise against.
     """
     from . import document_format
-    from .sanitize_html import sanitize_content
+    from toto.antivirus.sanitize import sanitize_content
 
     if bucket is None:
         from toto.vault.views import resolve_new_file_target

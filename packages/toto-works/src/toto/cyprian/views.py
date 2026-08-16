@@ -31,7 +31,8 @@ from django.views import View
 from django.views.decorators.http import require_POST
 
 from toto.editor.views import BaseFileDisplayView
-from toto.memo.media import clean_svg_markup, image_bytes_to_data_uri
+from toto.antivirus.sanitize import sanitize_svg as clean_svg_markup
+from toto.cyprian.media import image_bytes_to_data_uri
 from toto.core import assistant
 from toto.ui import PageProcessor
 from toto.vault import access, locks, versions
@@ -39,13 +40,13 @@ from toto.vault.filetree import accessible_files
 from toto.vault.models import VaultFile
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
-from toto.memo import tiptap
+from toto.cyprian import tiptap
 
 from . import document_format
 from .bridge import DocumentBridge, open_document
 from .bridge import may_edit as bridge_may_edit
 from .bridge import write_back as _bridge_write_back
-from .sanitize_html import sanitize_content
+from toto.antivirus.sanitize import sanitize_content
 
 # Vault file types that can be embedded into a document.
 _MEDIA_TYPES = ["image", "svg"]

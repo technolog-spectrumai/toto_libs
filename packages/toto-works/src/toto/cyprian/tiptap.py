@@ -1,32 +1,13 @@
-"""The import map that makes a bundler-free TipTap possible.
+"""The vendored TipTap bundle, and the import map that points at it.
 
-It lives in **memo** because both editors in this wheel run on TipTap and only
-one of them can own the 54 vendored files. cyprian already imports memo (its
-sanitisers and media helpers) and memo must not import cyprian — a host can
-install decks without documents — so the shared half sits at the bottom, here,
-and each app keeps its own `tiptap_setup.js` with the extensions it actually
-needs.
+It lives in **cyprian** because cyprian is the only editor left in this wheel:
+the presentation editor moved to the zinnia desktop app in 8/2026 and memo kept
+only the read-only presenter, which needs none of this. The dependency that
+used to run memo → cyprian now runs the other way.
 
-TipTap is ESM. Everything else vendored in this suite is a UMD bundle loaded
-with a plain `<script src>`, because there is no bundler in this repo and adding
-one is a far bigger change than the alternative — which is an **import map**:
-the browser resolves the bare specifiers inside the vendored modules
-(`import { Editor } from "@tiptap/core"`) to our own static URLs.
-
-Four things had to be true for that to work here, and all four are:
-
-* nginx emits `'unsafe-inline'` with no `script-src` override, so an inline
-  `<script type="importmap">` is allowed (`scripts/deploy.py`);
-* Django's `support_js_module_import_aggregation` is off, so bare specifiers
-  pass through `collectstatic` untouched rather than being rewritten;
-* unhashed originals are kept alongside the hashed ones, so nothing dangles;
-* `toto.core.storage.ResilientManifestStaticFilesStorage` degrades instead of
-  hard-failing on a reference it cannot resolve.
-
-The map is built HERE rather than written into the template so that every
-module goes through `static()` and is cache-busted with the rest of the site —
-and so the closure test can prove the map covers every specifier the vendored
-files actually import.
+The 54 vendored files are served from cyprian's static dir and named through an
+import map, so the browser resolves bare specifiers to our own hashed URLs
+rather than reaching the network.
 """
 
 from __future__ import annotations
@@ -38,9 +19,9 @@ from pathlib import Path
 
 from django.templatetags.static import static
 
-VENDOR_DIR = Path(__file__).resolve().parent / "static" / "memo" / "vendor" / "tiptap"
+VENDOR_DIR = Path(__file__).resolve().parent / "static" / "cyprian" / "vendor" / "tiptap"
 MANIFEST = VENDOR_DIR / "manifest.json"
-STATIC_PREFIX = "memo/vendor/tiptap/"
+STATIC_PREFIX = "cyprian/vendor/tiptap/"
 
 # Every `from "…"` in a vendored file whose target is a package rather than a
 # relative path. The map has to answer all of them or the module 404s.

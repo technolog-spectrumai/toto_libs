@@ -1,0 +1,35 @@
+{% extends "oya/base.html" %}
+{% load i18n static %}
+
+{# A deck as a page: every slide stacked, nothing editable. Shares _slide.html
+   with the player, so the two cannot drift about what a slide looks like. #}
+
+{% block title %}{{ presentation.title|default:vault_file.title }}{% endblock %}
+
+{% block extra_head %}
+  <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
+{% endblock %}
+
+{% block content %}
+<div class="mx-auto w-full max-w-5xl space-y-6 p-4">
+  <div class="flex flex-wrap items-center gap-3">
+    <h1 class="min-w-0 flex-1 truncate text-xl font-bold">
+      {{ presentation.title|default:vault_file.title }}
+    </h1>
+    <a class="rounded-lg border px-3 py-1.5 text-sm" href="{% url 'memo:present' vault_file.pk %}">
+      {% trans "Present" %}
+    </a>
+    <a class="rounded-lg border px-3 py-1.5 text-sm" href="{% url 'memo:export_pdf' vault_file.pk %}">
+      {% trans "PDF" %}
+    </a>
+  </div>
+
+  {% for slide in slides %}
+    <div class="overflow-hidden rounded-xl border">
+      {% include "memo/_slide.html" with slide=slide presentation=presentation %}
+    </div>
+  {% empty %}
+    <p class="py-12 text-center text-sm opacity-60">{% trans "This deck has no slides." %}</p>
+  {% endfor %}
+</div>
+{% endblock %}

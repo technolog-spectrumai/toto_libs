@@ -56,9 +56,9 @@ from xml.etree import ElementTree as ET
 # security-critical parsing to avoid one import would be the worse trade — see
 # checks.py, which turns a build without memo into a `manage.py check` error
 # rather than a 500 on first save.
-from toto.memo import sanitize
+from toto.antivirus import sanitize
 
-from .sanitize_html import sanitize_content
+from toto.antivirus.sanitize import sanitize_content
 
 FORMAT_VERSION = "3"
 
