@@ -15,6 +15,10 @@ from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allo
 # the toto editor app handles, kept deliberately narrow (no binary/media).
 EDITABLE_FILE_TYPES = {
     "text", "json", "yaml", "xml", "csv", "latex", "bib", "python", "svg", "html",
+    # Decks are text (XML) and zinnia reads and writes them through this API —
+    # it is the authoring client now, so leaving pxml out 415s every cloud deck.
+    # "presentation" is the legacy spelling of the same class.
+    "pxml", "presentation",
 }
 # Refuse to load very large files into the editor.
 MAX_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB

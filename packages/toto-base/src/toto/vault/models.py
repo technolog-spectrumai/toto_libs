@@ -257,7 +257,8 @@ class VaultFile(models.Model):
         ('python', 'Python'),
         ('neojson', 'NeoJSON'),
         ('sheet', 'Primula Sheet'),   # a Univer workbook snapshot (JSON), edited in toto.primula
-        ('presentation', 'Presentation'),  # a slide deck (XML), edited in toto.memo
+        ('pxml', 'Presentation'),     # a slide deck (.pxml), authored in zinnia, shown by toto.memo
+        ('presentation', 'Presentation'),  # LEGACY spelling of 'pxml' — see below
         ('document', 'Document'),     # a written document (XML), edited in toto.cyprian
         ('zip', 'Archive'),
     ]
@@ -265,14 +266,30 @@ class VaultFile(models.Model):
     # now, content-sniffed by mandragora/notarius. Existing rows keep their old
     # file_type string (choices aren't DB-enforced) and still open.
     #
-    # 'presentation' came BACK, and the reason is worth knowing before removing it
-    # again. The plugin registries are dict[key -> plugin] and `for_file_type` is
+    # WHY A DECK HAS ITS OWN CLASS AND ITS OWN EXTENSION.
+    # The plugin registries are dict[key -> plugin] and `for_file_type` is
     # `registry.get(file_type)`, so a plugin only ever fires when its `key` equals
     # a file_type — and `key="xml"` is already taken by toto.editor, with
-    # BasePlugin.register raising on a duplicate. With decks typed 'xml' there was
-    # therefore no way to give them a Play button at all, and Edit opened the
-    # generic XML editor. What is retired is the '.pml' EXTENSION, not the type:
-    # deck files are still named .xml and _EXT_MAP still has no .pml entry.
+    # BasePlugin.register raising on a duplicate. So a deck needs a type of its
+    # own to have a Play button at all.
+    #
+    # It also needs an EXTENSION of its own. While decks were typed by class but
+    # named `.xml`, nothing could tell a deck from a cyprian document or a
+    # notebook without reading the bytes — so toto.memo content-sniffed up to 300
+    # files on every gallery visit and retyped rows behind the user's back. A
+    # `.pxml` file says what it is in its name, which is what `_EXT_MAP` below
+    # turns into a type at every ingest door, and the sniffing is gone.
+    #
+    # 'presentation' is the LEGACY spelling of this same class, kept in the list
+    # on purpose. Migration 0021 retypes local rows, but it cannot reach every
+    # one: mirrored stubs are re-stamped from the peer on each refresh, rows in
+    # s3/remote buckets are unreadable from a migration, and an ENCRYPTED deck
+    # typed 'xml' cannot be identified at all. Dropping the string would make
+    # those rows unnameable in admin and rejected by RenameFileView. toto.memo
+    # reads both spellings.
+    #
+    # The '.pml' extension of the first deck era stays retired and is NOT in
+    # _EXT_MAP; it was never the same format's current spelling.
 
     _EXT_MAP = {
         ".tex": "latex", ".sty": "latex", ".cls": "latex", ".dtx": "latex", ".ins": "latex",
@@ -283,6 +300,10 @@ class VaultFile(models.Model):
         ".json": "json",
         ".neojson": "neojson",
         ".yaml": "yaml", ".yml": "yaml",
+        # Before ".xml" is irrelevant (dict lookup, not a scan) but the pairing
+        # is the point: a deck is ".pxml", everything else XML-shaped — cyprian
+        # documents, notebooks, contracts — stays ".xml".
+        ".pxml": "pxml",
         ".xml": "xml",
         ".html": "html", ".htm": "html",
         ".md": "text", ".txt": "text", ".rst": "text",

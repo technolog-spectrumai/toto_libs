@@ -202,6 +202,15 @@ class PublicFileListView(TemplateView):
         bucket_slug = self.request.GET.get("bucket", "")
         user = self.request.user
 
+        # The rename dialog's type dropdown, from the one list that defines
+        # them. It used to be hand-written in the template and had drifted:
+        # it still offered the retired "notebook" and was missing half the
+        # real classes. That is not cosmetic — the dialog posts the selected
+        # type back on every rename, and a browser shown no matching option
+        # selects the FIRST one, so renaming a file of an unlisted type
+        # silently retyped it to "pdf".
+        context["file_types"] = VaultFile.FILE_TYPES
+
         dir_qs = VaultDirectory.objects.select_related(
             "bucket", "parent"
         ).prefetch_related("allowed_users")

@@ -156,10 +156,57 @@ class JsonScannerTests(SimpleTestCase):
         self.assertFalse(json_scan.scan_json("").ok)
 
 
+#: A minimal but REAL deck: presentation_format.dumps CDATA-wraps every block,
+#: which is the whole reason decks cannot ride on the xml scanner.
+DECK = """<?xml version="1.0"?>
+<presentation version="2" title="Q" theme="black" font="sans">
+  <slide id="s-1" layout="title-content">
+    <title>t</title>
+    <block id="b-1" type="text"><![CDATA[<p>hello</p>]]></block>
+  </slide>
+</presentation>
+"""
+
+
 class RegistryTests(SimpleTestCase):
     def test_the_built_in_scanners_registered(self):
         self.assertEqual(set(scanned_types()),
-                         {"svg", "html", "xml", "json", "pdf"})
+                         {"svg", "html", "xml", "json", "pdf", "pxml"})
+
+    def test_a_deck_is_screened_by_its_own_scanner(self):
+        # Not by scan_xml. A deck CDATA-wraps every block payload and the xml
+        # scanner refuses CDATA outright, so routing decks there refused every
+        # deck ever written — unread, for its envelope rather than its contents.
+        from .scanners import scanner_for
+        from .scanners.markup import scan_pxml, scan_xml
+
+        self.assertIs(scanner_for("pxml"), scan_pxml)
+        self.assertIsNot(scanner_for("pxml"), scan_xml)
+        self.assertFalse(scan_xml(DECK).ok)
+        self.assertTrue(scan_pxml(DECK).ok)
+
+    def test_a_hostile_slide_payload_is_still_refused(self):
+        from .scanners.markup import scan_pxml
+
+        for bad in ("<script>alert(1)</script>",
+                    "<b onclick=\"evil()\">x</b>",
+                    "<iframe src=/></iframe>",
+                    "<a href=\"javascript:evil()\">x</a>"):
+            with self.subTest(payload=bad):
+                verdict = scan_pxml(DECK.replace("<p>hello</p>", bad))
+                self.assertFalse(verdict.ok)
+                self.assertIn("in a slide block", verdict.detail)
+
+    def test_the_deck_around_the_payloads_is_screened_too(self):
+        # A second CDATA smuggled into the skeleton still meets the blanket
+        # refusal, and a file that is not a deck is not accepted as one.
+        from .scanners.markup import scan_pxml
+
+        self.assertFalse(scan_pxml(
+            DECK.replace("<title>t</title>", "<title>t</title><script>x()</script>")).ok)
+        self.assertFalse(scan_pxml(DECK.replace("presentation", "notadeck")).ok)
+        self.assertFalse(scan_pxml(
+            DECK.replace('<?xml version="1.0"?>', '<!DOCTYPE p [<!ENTITY x "y">]>')).ok)
 
     def test_two_scanners_cannot_claim_one_type(self):
         from .scanners import DuplicateScanner, register
@@ -290,7 +337,7 @@ class ScanViewTests(TestCase):
         self.assertEqual(set(ScanPreference.types_for(self.user)), {"svg", "html"})
         # Untouched for everyone else.
         self.assertEqual(set(ScanPreference.types_for(self.stranger)),
-                         {"svg", "html", "xml", "json", "pdf"})
+                         {"svg", "html", "xml", "json", "pdf", "pxml"})
 
     def test_an_unknown_type_cannot_be_smuggled_into_preferences(self):
         from .models import ScanPreference

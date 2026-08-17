@@ -156,7 +156,8 @@
             text:'fa-file-lines', json:'fa-code', yaml:'fa-code', csv:'fa-table',
             html:'fa-file-code', xml:'fa-file-code', svg:'fa-object-group',
             latex:'fa-file-lines', bib:'fa-book', notebook:'fa-book',
-            presentation:'fa-person-chalkboard', zip:'fa-file-zipper' };
+            pxml:'fa-person-chalkboard', presentation:'fa-person-chalkboard',
+            document:'fa-file-lines', sheet:'fa-table-cells', zip:'fa-file-zipper' };
           return map[ft] || 'fa-file';
         },
         fileTypeColor(ft) {
@@ -597,7 +598,7 @@
         },
 
         // ── Create new file ───────────────────────────────────
-        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', xml: '.xml', csv: '.csv', html: '.html', latex: '.tex', bib: '.bib', svg: '.svg', notebook: '.tpy', presentation: '.pml' },
+        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', xml: '.xml', csv: '.csv', html: '.html', latex: '.tex', bib: '.bib', svg: '.svg', pxml: '.pxml' },
 
         openCreateFile(dirItem) {
           this.createDirId = dirItem.id;
@@ -1865,21 +1866,13 @@
                       ? 'bg-bubble-bg-dark border-accent-1 text-text-main-dark'
                       : 'bg-bubble-bg-light border-accent-2 text-text-main-light'"
                     class="w-full rounded-xl border px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-current/20 transition">
-              <option value="pdf">pdf</option>
-              <option value="image">image</option>
-              <option value="html">html</option>
-              <option value="text">text</option>
-              <option value="json">json</option>
-              <option value="yaml">yaml</option>
-              <option value="xml">xml</option>
-              <option value="presentation">presentation</option>
-              <option value="latex">latex</option>
-              <option value="bib">bib</option>
-              <option value="csv">csv</option>
-              <option value="svg">svg</option>
-              <option value="notebook">notebook</option>
-              <option value="audio">audio</option>
-              <option value="video">video</option>
+              {% comment %} Rendered from VaultFile.FILE_TYPES, never hand-listed:
+                 this select posts its value back on every rename, so a type
+                 missing from the list is a type the browser silently replaces
+                 with the first option. {% endcomment %}
+              {% for value, label in file_types %}
+                <option value="{{ value }}">{{ value }}</option>
+              {% endfor %}
             </select>
           </div>
 

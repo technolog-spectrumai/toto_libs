@@ -135,7 +135,7 @@
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     {% if features.vod %}<li><span class="font-semibold">Video</span> — video files play directly in the browser.</li>{% endif %}
     <li><span class="font-semibold">Images</span> — images open in a preview window.</li>
-    {% if features.memo %}<li><span class="font-semibold">Presentations</span> — <code>.pml</code> presentation files: <span class="font-semibold">Play</span> starts the slideshow, <span class="font-semibold">Edit</span> opens the slide editor.</li>{% endif %}
+    {% if features.memo %}<li><span class="font-semibold">Presentations</span> — <code>.pxml</code> presentation files: <span class="font-semibold">Play</span> starts the slideshow, <span class="font-semibold">Read</span> opens it as a page. Decks are written in the Zinnia desktop app.</li>{% endif %}
     {% if features.notarius %}<li><span class="font-semibold">Contracts</span> — <code>.contract</code> documents can be viewed, edited and signed.</li>{% endif %}
     {% if features.editor %}<li><span class="font-semibold">Text files</span> — text, JSON, YAML, XML, CSV and HTML files open in the built-in editor.</li>{% endif %}
         {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}

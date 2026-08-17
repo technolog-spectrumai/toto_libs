@@ -572,42 +572,6 @@ def dumps(presentation: Presentation) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Identity
-# ---------------------------------------------------------------------------
-
-def is_presentation(xml: "str | bytes") -> bool:
-    """True if ``xml`` is a presentation document (root ``<presentation>``).
-
-    A full parse. Correct, and the right thing for a view that is about to
-    render the document anyway — but see ``sniff_is_presentation`` for the
-    listing path, where this would parse megabytes of base64 to read one tag.
-    """
-    try:
-        if isinstance(xml, bytes):
-            xml = xml.decode("utf-8")
-        return ET.fromstring(xml).tag == "presentation"
-    except Exception:
-        return False
-
-
-_SNIFF_RE = re.compile(rb"<\s*presentation\s*[/>]|<\s*presentation\s", re.IGNORECASE)
-_SNIFF_SKIP = re.compile(rb"<\?xml[^>]*\?>|<!--.*?-->|<!DOCTYPE[^>]*>", re.DOTALL)
-
-
-def sniff_is_presentation(head: "str | bytes") -> bool:
-    """Cheap identity check over the first bytes of a file.
-
-    The gallery lists up to a few hundred XML files and has to know which are
-    decks. Doing that with a full parse means reading and parsing every embedded
-    image in every candidate, which is most of what makes the index slow.
-    """
-    if isinstance(head, str):
-        head = head.encode("utf-8", errors="ignore")
-    head = _SNIFF_SKIP.sub(b"", head[:2048]).lstrip()
-    return bool(_SNIFF_RE.match(head))
-
-
-# ---------------------------------------------------------------------------
 # Parsing
 # ---------------------------------------------------------------------------
 

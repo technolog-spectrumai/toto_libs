@@ -137,7 +137,7 @@
   <ul class="mt-3 list-disc space-y-1 pl-5 text-sm leading-6 opacity-80">
     {% if features.vod %}<li><span class="font-semibold">Wideo</span> — pliki wideo odtwarzane są bezpośrednio w przeglądarce.</li>{% endif %}
     <li><span class="font-semibold">Obrazy</span> — obrazy otwierają się w oknie podglądu.</li>
-    {% if features.memo %}<li><span class="font-semibold">Prezentacje</span> — pliki prezentacji <code>.pml</code>: <span class="font-semibold">Odtwórz</span> uruchamia pokaz slajdów, <span class="font-semibold">Edytuj</span> otwiera edytor slajdów.</li>{% endif %}
+    {% if features.memo %}<li><span class="font-semibold">Prezentacje</span> — pliki prezentacji <code>.pxml</code>: <span class="font-semibold">Odtwórz</span> uruchamia pokaz slajdów, <span class="font-semibold">Czytaj</span> otwiera ją jako stronę. Prezentacje tworzy się w aplikacji Zinnia.</li>{% endif %}
     {% if features.notarius %}<li><span class="font-semibold">Kontrakty</span> — dokumenty <code>.contract</code> można przeglądać, edytować i podpisywać.</li>{% endif %}
     {% if features.editor %}<li><span class="font-semibold">Pliki tekstowe</span> — pliki tekstowe, JSON, YAML, XML, CSV i HTML otwierają się we wbudowanym edytorze.</li>{% endif %}
         {% if features.notebooks %}<li><span class="font-semibold">Notatniki</span> — notatniki <code>.tpy</code> łączą komórki z kodem i ich wyniki; edytuj je i uruchamiaj w edytorze notatników.</li>{% endif %}

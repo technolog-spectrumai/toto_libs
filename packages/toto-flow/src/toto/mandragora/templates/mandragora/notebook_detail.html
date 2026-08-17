@@ -320,6 +320,7 @@ const _fileTypeIcon = {
   video:  "fa-solid fa-file-video text-pink-400",
   yaml:   "fa-solid fa-file-code text-yellow-400",
   xml:    "fa-solid fa-file-code text-orange-400",
+  pxml:   "fa-solid fa-person-chalkboard text-orange-400",
   latex:  "fa-solid fa-file-alt text-teal-400",
 };
 
@@ -406,7 +407,7 @@ async function _previewFile(f) {
   content.innerHTML = '<p class="text-xs opacity-40 text-center py-8"><i class="fa-solid fa-circle-notch fa-spin"></i></p>';
 
   const isImage = ["image"].includes(f.file_type) || /\.(png|jpg|jpeg|gif|webp|svg)$/i.test(f.title);
-  const isText  = ["text","csv","json","yaml","xml","latex","bib"].includes(f.file_type);
+  const isText  = ["text","csv","json","yaml","xml","pxml","latex","bib"].includes(f.file_type);
 
   if (isImage && f.download_url) {
     content.innerHTML = `<img src="${f.download_url}" class="max-w-full rounded" alt="${f.title}">`;
@@ -449,7 +450,7 @@ async function insertVaultGuideCell() {
   ).join("\n");
 
   const examples = files.slice(0, 2).map(f => {
-    const isText = ["text","csv","json","yaml","xml"].includes(f.file_type);
+    const isText = ["text","csv","json","yaml","xml","pxml"].includes(f.file_type);
     const isCsv  = f.file_type === "csv" || f.title.endsWith(".csv");
     if (isCsv)   return `import pandas as pd\ndf = pd.read_csv(vault_files['${f.title}'])\ndf.head()`;
     if (isText)  return `with open(vault_files['${f.title}']) as _f:\n    print(_f.read())`;

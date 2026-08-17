@@ -36,7 +36,10 @@ from django.apps import apps
 # "pdf" is the one binary member: its scanner reads raw bytes for the marker
 # tokens of active content (JavaScript, auto-run actions, launched programs)
 # and parses nothing.
-SCANNABLE_TYPES = ("svg", "html", "xml", "json", "pdf")
+# "pxml" (slide decks) has its own scanner rather than riding on "xml": a deck
+# CDATA-wraps every block payload, and the xml scanner refuses CDATA outright,
+# so decks were being refused unread at every write door. See markup.scan_pxml.
+SCANNABLE_TYPES = ("svg", "html", "xml", "json", "pdf", "pxml")
 
 
 @dataclass(frozen=True)

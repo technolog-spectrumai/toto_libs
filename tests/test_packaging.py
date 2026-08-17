@@ -396,6 +396,21 @@ def test_primula_ships_in_toto_works(owner):
     assert owner.get("toto/vault/migrations/0010_alter_vaultfile_file_type.py") == "toto-base"
 
 
+def test_the_pxml_deck_class_ships_in_the_right_wheels(owner):
+    """The deck file class straddles two packages, and both halves are droppable.
+
+    The 'pxml' choice and its migration live in vault (toto-base); the plugin
+    that gives a deck its Play button lives in memo (toto-works). The migration
+    inlines a frozen copy of memo's deck sniff precisely so toto-base need not
+    import toto-works — placidia installs the vault with no toto-works on disk
+    at all, so an import there is a hard crash at migrate time.
+    """
+    assert owner.get("toto/vault/migrations/0021_pxml_file_type.py") == "toto-base"
+    # A directory with no __init__.py: it ships only because toto-works sets
+    # namespaces = true, which is exactly the kind of thing a wheel drops.
+    assert owner.get("toto/memo/plugins/vault_play_plugins.py") == "toto-works"
+
+
 def test_the_media_sub_nav_ships_in_toto_base(owner):
     # Not in vod or ocr, deliberately: Django only loads template dirs for
     # INSTALLED apps, so a shared partial living in either app would vanish

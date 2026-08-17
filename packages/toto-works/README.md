@@ -67,19 +67,21 @@ See `src/toto/memo/README.md` for the full picture. In brief:
   their variables on `:root`, which cannot work in a gallery showing several
   decks with different themes. Reveal still supplies transitions, controls and
   hash navigation.
-- **The editor** (`memo:edit`) is a block canvas: the real slide at 1280×720,
-  scaled to fit, with `contenteditable` text, a selection popover, layout
-  presets, undo/redo, autosave with optimistic-concurrency 409s, and hand-rolled
-  pointer-event drag and drop for slides, blocks, vault media and desktop files.
-  All of its logic lives in `static/memo/*.js`.
-- **Detection.** `file_type="presentation"`; the `.pml` extension stays retired
-  and deck files are ordinary `.xml`. The type exists because the vault plugin
-  registries are `dict[key -> plugin]` and only fire when `key == file_type` —
-  with decks typed `xml` (already claimed by `toto.editor`) they could not have a
-  Play button at all. Legacy `xml` rows are retyped the first time memo opens one.
+- **There is no editor.** Decks are authored in the zinnia desktop app and
+  arrive here as vault files; this app shows them and nothing else. Nothing in
+  memo writes a deck.
+- **Detection.** `file_type="pxml"`, in a file named `.pxml`, mapped in the
+  vault's `_EXT_MAP` so every ingest door types a deck by its name. The type
+  exists because the vault plugin registries are `dict[key -> plugin]` and only
+  fire when `key == file_type` — with decks typed `xml` (already claimed by
+  `toto.editor`) they could not have a Play button at all. There is **no content
+  sniffing**: decks were once typed `presentation` but named `.xml`, so listings
+  read up to 300 files off disk and retyped rows as a side effect of rendering a
+  page. Vault migration `0021_pxml_file_type` retyped the existing ones. The
+  legacy string `presentation` is still read, for the rows that migration could
+  not reach (mirrored stubs, s3/remote buckets, encrypted decks).
 - **URLs** (`urls.py`): `memo:index` (gallery, paginated, real thumbnails),
-  `memo:create`, `memo:import`, `memo:present`, `memo:edit`, `memo:save`,
-  `memo:export_pdf`, `memo:export_zip`, `memo:media_embed`, `memo:media_upload`.
+  `memo:read`, `memo:present`, `memo:export_pdf`. That is all of them.
   The raw-XML source editor is **retired**; its git toolbar moved onto the
   editor.
 - **Export.** PDF via WeasyPrint, lazily imported and gated by

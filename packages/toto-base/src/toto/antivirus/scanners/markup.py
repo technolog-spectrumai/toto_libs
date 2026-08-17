@@ -200,6 +200,49 @@ def scan_xml(text: str) -> Verdict:
     return _scan_markup(text, svg=False, links_allowed=True)
 
 
+#: A deck's block payloads. `presentation_format.dumps` CDATA-wraps every one.
+_CDATA = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
+
+
+def scan_pxml(text: str) -> Verdict:
+    """Screen a slide deck: the payloads as HTML, the deck around them as XML.
+
+    A deck may NOT be screened with `scan_xml`, and the reason is the CDATA rule
+    above. Refusing CDATA outright is right for anonymous XML — `html.parser`
+    does not look inside it and a browser's `DOMParser` does, and refusing
+    closes that differential without betting on which is right. But a deck
+    CDATA-wraps every single block payload, so `scan_xml` refuses every deck
+    ever written, unread, for its envelope rather than its contents. (It does
+    today: decks typed 'xml' are refused at every write door.)
+
+    The differential is real, so it is closed the other way — by looking. Each
+    payload IS html and is screened with the html rules; then the deck around
+    them is screened as xml with the payloads lifted out, so a second CDATA
+    smuggled into the skeleton still meets the blanket refusal. Nothing is
+    rewritten, and a hostile payload is refused with the line it sits on.
+    """
+    if not isinstance(text, str) or not text.strip():
+        return Verdict.refused(REASON_SHAPE, "empty document")
+
+    for match in _CDATA.finditer(text):
+        payload = match.group(1)
+        if not payload.strip():
+            continue                      # an empty block is not a threat
+        verdict = _scan_markup(payload, svg=False, links_allowed=True)
+        if not verdict.ok:
+            # The payload's own line numbers mean nothing to someone looking at
+            # the deck, so report where the block starts.
+            return Verdict.refused(
+                verdict.reason,
+                f"in a slide block: {verdict.detail}",
+                line=text.count("\n", 0, match.start()) + 1)
+
+    return _scan_markup(
+        _CDATA.sub("", text), svg=False, links_allowed=True,
+        require_root="presentation")
+
+
 register("svg", scan_svg)
 register("html", scan_html)
 register("xml", scan_xml)
+register("pxml", scan_pxml)

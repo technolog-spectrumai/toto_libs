@@ -103,9 +103,15 @@ class BucketRefreshRun(models.Model):
 #: The listing fields a stub mirrors, in one place so the upsert and its
 #: change-detection cannot disagree.
 def _stub_fields(row: dict) -> dict:
+    # A peer that has not taken the pxml migration yet keeps sending the legacy
+    # spelling, and _upsert_stub re-applies whatever arrives on EVERY refresh —
+    # so normalising here, not in a migration, is what makes it stick.
+    file_type = row.get("file_type") or "text"
+    if file_type == "presentation":
+        file_type = "pxml"
     return {
         "title": row.get("title") or row.get("key") or "",
-        "file_type": row.get("file_type") or "text",
+        "file_type": file_type,
         "file_size_bytes": int(row.get("size") or 0),
         "content_hash": row.get("hash") or "",
         "is_encrypted": bool(row.get("is_encrypted")),

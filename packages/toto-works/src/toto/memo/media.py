@@ -1,4 +1,4 @@
-"""Embed helpers for inserting vault images/SVGs into a self-contained ``.pml``.
+"""Embed helpers for inserting vault images/SVGs into a self-contained ``.pxml``.
 
 A presentation is a single self-contained file: raster images are embedded as
 base64 ``data:`` URIs and SVGs are inlined verbatim (see

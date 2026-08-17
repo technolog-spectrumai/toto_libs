@@ -27,6 +27,9 @@ class StevenFileServicePlugin(FileServicePlugin):
     accepted_file_types = [
         "text", "html", "json", "yaml", "xml", "csv", "latex", "bib",
         "python", "svg", "document", "neojson",
+        # Decks are text too. They reached this list as "xml" before they had a
+        # class of their own; "presentation" is the legacy spelling.
+        "pxml", "presentation",
     ]
 
     def accepts(self, vault_file) -> bool:

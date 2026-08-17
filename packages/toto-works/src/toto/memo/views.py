@@ -1,11 +1,17 @@
 """
 File-based presentation viewer + browser editor.
 
-A presentation is a single self-contained ``.pml`` vault file
-(``file_type="presentation"``) parsed by :mod:`toto.memo.presentation_format`.
-These views never touch the database for presentation content — the vault file
-is the single source of truth, mirroring the ``.tpy`` notebook editor in
-:mod:`toto.mandragora.tpy_views`.
+A presentation is a single self-contained ``.pxml`` vault file
+(``file_type="pxml"``) parsed by :mod:`toto.memo.presentation_format`. These
+views never touch the database for presentation content — the vault file is the
+single source of truth.
+
+A deck is identified by its TYPE and nothing else. It used to be identified by
+reading it: decks were typed ``presentation`` but named ``.xml``, so every
+listing sniffed up to 300 files off disk and retyped rows behind the user's
+back. ``.pxml`` and vault migration 0021 replaced that with a name. The legacy
+spelling ``presentation`` is still read, for the rows 0021 could not reach
+(mirrored stubs, s3/remote buckets, encrypted decks).
 """
 
 from __future__ import annotations
@@ -63,60 +69,26 @@ def _read_raw(vault_file: VaultFile) -> str:
         return fh.read().decode("utf-8")
 
 
-def _read_head(vault_file: VaultFile, size: int = 2048) -> bytes:
-    """The first bytes of a file, for the identity sniff.
-
-    A fresh storage handle, so it never disturbs the `FieldFile` cursor, and a
-    bounded read — the gallery does this for every candidate file on the page,
-    and a full read there means pulling every deck's embedded images off disk
-    just to look at one tag.
-    """
-    with vault_file.file.storage.open(vault_file.file.name, "rb") as fh:
-        return fh.read(size)
-
-
-def _adopt(vault_file: VaultFile) -> None:
-    """Retype a legacy deck that is still filed as generic XML.
-
-    Decks were briefly stored as ``file_type="xml"`` and identified purely by
-    sniffing their content. That left them with no Play button at all and an
-    Edit button that opened the generic XML editor — because a vault plugin only
-    fires when its `key` equals a file_type, and `xml` belongs to `toto.editor`.
-    Rather than migrate every host's vault, memo repairs a row the first time it
-    touches one: the fix arrives with the deck being opened, and costs nothing
-    for anyone who has none.
-    """
-    if vault_file.file_type != "presentation":
-        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="presentation")
-        vault_file.file_type = "presentation"
-
-
-def _is_presentation_file(vault_file: VaultFile) -> bool:
-    try:
-        return presentation_format.is_presentation(_read_raw(vault_file))
-    except (FileNotFoundError, UnicodeDecodeError, ValueError):
-        return False
+#: Both spellings of the deck class. 0021 renamed it; the legacy string stays
+#: readable because that migration cannot reach mirrored, remote or encrypted
+#: rows, and a deck it missed should be dull rather than missing.
+DECK_TYPES = ["pxml", "presentation"]
 
 
 def _get_owned_file(request, file_pk) -> VaultFile:
-    """Fetch a presentation vault file owned by the user and validate its content.
+    """Fetch a deck owned by the user.
 
-    Both types are accepted on the way in: ``presentation`` is what memo writes
-    today, and ``xml`` is what the brief content-sniffing era left behind. Only
-    files whose content really is a ``<presentation>`` open here, so other XML
-    cannot reach the slide editor.
+    The type is the whole check now. Reading the bytes to confirm the file
+    really is a deck bought nothing here — this view is about to parse it
+    anyway, and a mistyped file renders as an empty deck rather than a 404.
     """
-    vf = get_object_or_404(
+    return get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner")
         .filter(access.local_content_q()),
         pk=file_pk,
         owner=request.user,
-        file_type__in=["xml", "presentation"],
+        file_type__in=DECK_TYPES,
     )
-    if not _is_presentation_file(vf):
-        raise Http404("Not a presentation.")
-    _adopt(vf)
-    return vf
 
 
 def _read_presentation(vault_file: VaultFile) -> presentation_format.Presentation:
@@ -146,14 +118,11 @@ class PresentationView(View):
             VaultFile.objects.select_related("bucket", "directory", "owner")
         .filter(access.local_content_q()),
             pk=file_pk,
-            file_type__in=["xml", "presentation"],
+            file_type__in=DECK_TYPES,
         )
 
         if vault_file.is_encrypted:
             return HttpResponseForbidden("Cannot display an encrypted file.")
-        if not _is_presentation_file(vault_file):
-            raise Http404("Not a presentation.")
-        _adopt(vault_file)
 
         # Visibility check mirrors toto.vod.views.vault_file_play.
         if not vault_file.is_public:
@@ -234,16 +203,16 @@ class PresentationIndexView(View):
     template_name = "memo/index.html"
     PER_PAGE = 12
 
-    # Only legacy rows still need sniffing, and only until they are opened
-    # once — a typed deck is found by the database. This bounds the tail.
-    SNIFF_CAP = 300
-
     def get(self, request):
         from django.core.paginator import Paginator
         from django.db.models import Q
 
+        # One query, no file reads. This listing used to open up to 300 files
+        # off disk on every visit — including anonymous ones — to find out
+        # which generic .xml rows were decks, and rewrote their file_type as a
+        # side effect of rendering a page. Decks say what they are now.
         qs = VaultFile.objects.filter(
-            file_type__in=["xml", "presentation"], is_encrypted=False
+            file_type__in=DECK_TYPES, is_encrypted=False
         ).filter(access.local_content_q()
         ).select_related("owner", "bucket", "directory")
         if request.user.is_authenticated:
@@ -252,29 +221,7 @@ class PresentationIndexView(View):
             qs = qs.filter(is_public=True)
         qs = qs.order_by("-uploaded_at", "title")
 
-        rows, stale, sniffed = [], [], 0
-        for f in qs:
-            if f.file_type != "presentation":
-                # A legacy row. Read the first 2 KB, not the whole file: a full
-                # parse here means pulling every deck's embedded images off disk
-                # just to look at one tag.
-                if sniffed >= self.SNIFF_CAP:
-                    continue
-                sniffed += 1
-                try:
-                    head = _read_head(f)
-                except Exception:                      # noqa: BLE001
-                    continue
-                if not presentation_format.sniff_is_presentation(head):
-                    continue
-                stale.append(f.pk)
-            rows.append(f)
-
-        # One query, not one per row — see _adopt.
-        if stale:
-            VaultFile.objects.filter(pk__in=stale).update(file_type="presentation")
-
-        page = Paginator(rows, self.PER_PAGE).get_page(request.GET.get("page"))
+        page = Paginator(qs, self.PER_PAGE).get_page(request.GET.get("page"))
 
         presentations = []
         for f in page.object_list:

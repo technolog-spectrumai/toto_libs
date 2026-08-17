@@ -45,14 +45,15 @@ class PresentationReadTests(TestCase):
             owner=self.user, name="B", slug="b", storage_backend="local")
         self.deck = self._deck(theme="white", font="serif")
 
-    def _deck(self, *, theme, font):
+    def _deck(self, *, theme, font, file_type="pxml", key="deck-1",
+              name="deck.pxml"):
         presentation = presentation_format.new_presentation(
             title="Quarterly", theme=theme, font=font)
         vault_file = VaultFile.objects.create(
-            owner=self.user, bucket=self.bucket, title="deck.pml",
-            key="deck-1", file_type="presentation")
+            owner=self.user, bucket=self.bucket, title=name,
+            key=key, file_type=file_type)
         vault_file.file.save(
-            "deck.pml",
+            name,
             ContentFile(presentation_format.dumps(presentation).encode()),
             save=True)
         return vault_file
@@ -122,6 +123,44 @@ class PresentationReadTests(TestCase):
     def test_the_owner_can_read_their_own_deck(self):
         self.client.force_login(self.user)
         self.assertEqual(self.read().status_code, 200)
+
+    # ── the file class ───────────────────────────────────────────────────────
+
+    def test_a_pxml_file_types_itself(self):
+        # The whole point of the extension: no ingest door has to read a deck
+        # to find out that it is one.
+        self.assertEqual(VaultFile.detect_type("", "talk.pxml"), "pxml")
+        self.assertEqual(VaultFile.detect_type("application/xml", "talk.pxml"), "pxml")
+        # And a cyprian document is still an ordinary xml file.
+        self.assertEqual(VaultFile.detect_type("", "notes.xml"), "xml")
+
+    def test_pxml_is_a_real_file_class(self):
+        self.assertIn("pxml", dict(VaultFile.FILE_TYPES))
+
+    def test_a_deck_still_typed_with_the_legacy_spelling_opens(self):
+        # Migration 0021 cannot reach mirrored, remote or encrypted rows, so
+        # the old string has to keep working — a deck it missed should be dull,
+        # not missing.
+        legacy = self._deck(theme="black", font="sans", file_type="presentation",
+                            key="legacy-deck", name="legacy.xml")
+        self.client.force_login(self.user)
+        self.assertEqual(self.read(legacy).status_code, 200)
+
+    def test_an_xml_file_holding_deck_bytes_is_not_a_deck(self):
+        # The sniff is gone: type is the whole answer. This is the deliberate
+        # cost of not reading 300 files on every listing.
+        sniffable = self._deck(theme="black", font="sans", file_type="xml",
+                               key="sniffable", name="looks-like-one.xml")
+        self.client.force_login(self.user)
+        self.assertEqual(self.read(sniffable).status_code, 404)
+
+    def test_the_gallery_lists_both_spellings_and_reads_no_files(self):
+        legacy = self._deck(theme="black", font="sans", file_type="presentation",
+                            key="legacy-deck", name="legacy.xml")
+        self.client.force_login(self.user)
+        response = self.client.get(reverse("memo:index"))
+        listed = {row["file_pk"] for row in response.context["presentations"]}
+        self.assertEqual(listed, {self.deck.pk, legacy.pk})
 
     # ── what is left on the page ─────────────────────────────────────────────
 

@@ -226,6 +226,9 @@ _DOCUMENT_SYSTEM = (
 LANGUAGE_NAMES = {
     "html": "HTML",
     "xml": "XML",
+    # A deck is XML; without this the model is told to "Return valid pxml."
+    "pxml": "XML",
+    "presentation": "XML",
     "json": "JSON",
     "svg": "SVG",
     "yaml": "YAML",
