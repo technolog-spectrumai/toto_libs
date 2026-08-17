@@ -77,9 +77,19 @@ def _is_local(vault_file) -> bool:
     return (getattr(bucket, "storage_backend", "") or "") in ("", "local")
 
 
-def _retitle(title: str, frm: str, to: str) -> str:
+#: `VaultFile.title` is varchar(255), and ".xml" -> ".pxml" grows it by one. A
+#: title already at the limit would overflow and abort the whole migrate on
+#: PostgreSQL — sqlite, which the gate runs, does not enforce the width and
+#: would never show it. Clip the STEM, never the tail: the extension is the
+#: thing this migration exists to make authoritative.
+def _retitle(title: str, frm: str, to: str, limit: int = 255) -> str:
     stem, ext = os.path.splitext(title or "")
-    return f"{stem}{to}" if ext.lower() == frm else (title or "")
+    if ext.lower() != frm:
+        return title or ""
+    renamed = f"{stem}{to}"
+    if len(renamed) <= limit:
+        return renamed
+    return f"{stem[:limit - len(to)]}{to}"
 
 
 def forward(apps, schema_editor):

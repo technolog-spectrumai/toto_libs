@@ -193,9 +193,52 @@ class RegistryTests(SimpleTestCase):
                     "<iframe src=/></iframe>",
                     "<a href=\"javascript:evil()\">x</a>"):
             with self.subTest(payload=bad):
-                verdict = scan_pxml(DECK.replace("<p>hello</p>", bad))
-                self.assertFalse(verdict.ok)
-                self.assertIn("in a slide block", verdict.detail)
+                self.assertFalse(scan_pxml(DECK.replace("<p>hello</p>", bad)).ok)
+
+    def test_a_payload_is_screened_however_it_was_spelled(self):
+        """The bypass this scanner shipped with, pinned.
+
+        The first version matched `<![CDATA[...]]>` and screened what was inside
+        it. But CDATA is only ONE spelling of character data: the same script
+        written `&lt;script&gt;` carries no CDATA at all, so nothing screened
+        it, while the skeleton scan saw inert entity references and passed the
+        file. XML then decodes those references straight back into a live
+        <script> for the template, which renders block payloads with |safe.
+
+        Every spelling below decodes to the identical bytes, so every one of
+        them must be refused identically.
+        """
+        from .scanners.markup import scan_pxml
+
+        spellings = {
+            "cdata": "<![CDATA[<script>alert(1)</script>]]>",
+            "entity": "&lt;script&gt;alert(1)&lt;/script&gt;",
+            "numeric charref": "&#60;script&#62;alert(1)&#60;/script&#62;",
+            "entity onerror": "&lt;img src=x onerror=evil()&gt;",
+            "entity iframe": "&lt;iframe src=/&gt;&lt;/iframe&gt;",
+            "entity script url": '&lt;a href="javascript:evil()"&gt;x&lt;/a&gt;',
+        }
+        for name, payload in spellings.items():
+            with self.subTest(spelling=name):
+                self.assertFalse(
+                    scan_pxml(DECK.replace("<![CDATA[<p>hello</p>]]>", payload)).ok,
+                    f"{name} got past the scanner")
+
+    def test_ordinary_prose_is_not_mistaken_for_markup(self):
+        # The screening must not refuse a deck for containing "<" in a sentence.
+        from .scanners.markup import scan_pxml
+
+        self.assertTrue(scan_pxml(DECK.replace("<p>hello</p>", "5 &lt; 6")).ok)
+        self.assertTrue(scan_pxml(DECK.replace("<title>t</title>",
+                                               "<title>Q1 &amp; Q2</title>")).ok)
+
+    def test_a_deck_that_is_not_well_formed_xml_is_refused(self):
+        # The parse is what makes the two spellings one thing, so a file the
+        # parser cannot read cannot be screened and must not be stored.
+        from .scanners.markup import scan_pxml
+
+        self.assertFalse(scan_pxml(DECK.replace("</presentation>", "")).ok)
+        self.assertFalse(scan_pxml(DECK.replace("<![CDATA[", "")).ok)
 
     def test_the_deck_around_the_payloads_is_screened_too(self):
         # A second CDATA smuggled into the skeleton still meets the blanket

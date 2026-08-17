@@ -28,6 +28,7 @@ from __future__ import annotations
 
 import re
 from html.parser import HTMLParser
+from xml.etree import ElementTree
 
 from toto.vault.scanning import Verdict
 
@@ -205,41 +206,68 @@ _CDATA = re.compile(r"<!\[CDATA\[(.*?)\]\]>", re.DOTALL)
 
 
 def scan_pxml(text: str) -> Verdict:
-    """Screen a slide deck: the payloads as HTML, the deck around them as XML.
+    """Screen a slide deck: its character data as HTML, its skeleton as XML.
 
     A deck may NOT be screened with `scan_xml`, and the reason is the CDATA rule
     above. Refusing CDATA outright is right for anonymous XML — `html.parser`
     does not look inside it and a browser's `DOMParser` does, and refusing
     closes that differential without betting on which is right. But a deck
     CDATA-wraps every single block payload, so `scan_xml` refuses every deck
-    ever written, unread, for its envelope rather than its contents. (It does
-    today: decks typed 'xml' are refused at every write door.)
+    ever written, unread, for its envelope rather than its contents.
 
-    The differential is real, so it is closed the other way — by looking. Each
-    payload IS html and is screened with the html rules; then the deck around
-    them is screened as xml with the payloads lifted out, so a second CDATA
-    smuggled into the skeleton still meets the blanket refusal. Nothing is
-    rewritten, and a hostile payload is refused with the line it sits on.
+    So the differential is closed the other way, by looking. The rule that
+    matters: **screen what the RENDERER will receive, not what the file looks
+    like.** The renderer parses this file as XML and hands each block's decoded
+    text to the template, so that decoded text is what gets scanned — which is
+    why this parses rather than pattern-matching for `<![CDATA[`.
+
+    Screening CDATA sections specifically was the first version of this
+    function, and it was bypassable: `<block>&lt;script&gt;…</block>` carries no
+    CDATA at all, so nothing screened it, while the skeleton scan saw only
+    entity references and passed it — and XML decodes those references straight
+    back into a live `<script>` for the template. CDATA and entity-escaping are
+    two spellings of one thing (character data), and the parser is what makes
+    them one thing again.
+
+    Order matters. Declarations are refused before any parse, so no entity
+    expansion can happen; the parse is what proves the file well-formed; and the
+    skeleton scan runs last, on a document already known to have balanced CDATA.
     """
     if not isinstance(text, str) or not text.strip():
         return Verdict.refused(REASON_SHAPE, "empty document")
 
-    for match in _CDATA.finditer(text):
-        payload = match.group(1)
-        if not payload.strip():
-            continue                      # an empty block is not a threat
-        verdict = _scan_markup(payload, svg=False, links_allowed=True)
-        if not verdict.ok:
-            # The payload's own line numbers mean nothing to someone looking at
-            # the deck, so report where the block starts.
-            return Verdict.refused(
-                verdict.reason,
-                f"in a slide block: {verdict.detail}",
-                line=text.count("\n", 0, match.start()) + 1)
+    # Before the parser sees it — this is what keeps ElementTree safe below.
+    match = _DECL_RE.search(text)
+    if match is not None:
+        return Verdict.refused(
+            REASON_DECLARATION, "a document declaration (entity expansion)",
+            line=text.count("\n", 0, match.start()) + 1)
 
-    return _scan_markup(
-        _CDATA.sub("", text), svg=False, links_allowed=True,
-        require_root="presentation")
+    try:
+        root = ElementTree.fromstring(text)
+    except Exception:  # noqa: BLE001 - a parse error is not a threat
+        return Verdict.refused(REASON_SHAPE, "could not be parsed")
+
+    if root.tag != "presentation":
+        return Verdict.refused(
+            REASON_SHAPE, f"root is <{root.tag}>, expected <presentation>")
+
+    # Every piece of character data, however it was spelled in the file. The
+    # parser has already turned CDATA sections and `&lt;` alike into text, which
+    # is precisely the form the template renders.
+    for element in root.iter():
+        for chunk in (element.text, element.tail):
+            if not chunk or not chunk.strip():
+                continue           # empty or whitespace: nothing to screen
+            verdict = _scan_markup(chunk, svg=False, links_allowed=True)
+            if not verdict.ok:
+                return Verdict.refused(
+                    verdict.reason, f"in <{element.tag}>: {verdict.detail}")
+
+    # And the deck itself, for anything hostile written as real markup rather
+    # than as content. CDATA is lifted out first so it does not meet the blanket
+    # refusal; the document is well-formed by now, so those spans are balanced.
+    return _scan_markup(_CDATA.sub("", text), svg=False, links_allowed=True)
 
 
 register("svg", scan_svg)

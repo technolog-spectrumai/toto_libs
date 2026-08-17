@@ -107,6 +107,20 @@ class PxmlMigrationTests(TestCase):
         self.migrate()
         self.assertEqual(self.reread(row).key, "g")
 
+    def test_a_title_at_the_column_limit_does_not_overflow(self):
+        # `.xml` -> `.pxml` grows the title by one, and title is varchar(255).
+        # PostgreSQL would abort the whole migrate; sqlite (what this test runs
+        # on) would not notice, which is exactly why this asserts on length.
+        limit = VaultFile._meta.get_field("title").max_length
+        row = self.file(key="q", file_type="presentation",
+                        name="a" * (limit - 4) + ".xml")
+        self.migrate()
+        row = self.reread(row)
+        self.assertLessEqual(len(row.title), limit)
+        self.assertTrue(row.title.endswith(".pxml"),
+                        "the extension must survive — it is what types the file")
+        self.assertEqual(row.file_type, "pxml")
+
     # ── what it deliberately does not touch ──────────────────────────────────
 
     def test_an_encrypted_xml_deck_is_left_alone(self):

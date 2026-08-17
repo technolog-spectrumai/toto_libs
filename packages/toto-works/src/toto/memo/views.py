@@ -24,9 +24,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.base import ContentFile
 from django.contrib import messages
-from django.http import (
-    Http404, HttpResponse, HttpResponseForbidden, JsonResponse,
-)
+from django.http import HttpResponse, HttpResponseForbidden
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
