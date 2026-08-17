@@ -20,6 +20,15 @@ EDITABLE_FILE_TYPES = {
     # it is the authoring client now, so leaving pxml out 415s every cloud deck.
     # "presentation" is the legacy spelling of the same class.
     "pxml", "presentation",
+    # Cyprian documents, for the same reason: the desktop writer edits them, and
+    # they are XML text like everything else here. Adding decks but not
+    # documents left the desktop app able to open half of what it can edit.
+    "document",
+    # "sheet" is deliberately ABSENT. A primula workbook is JSON and would work
+    # fine byte-wise, but primula keeps its own SheetVersion history and grows
+    # it in its save view — a raw PUT here writes the bytes and that history
+    # silently stops advancing. Sheets need a door that goes through primula,
+    # not this one.
 }
 # Refuse to load very large files into the editor.
 MAX_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB

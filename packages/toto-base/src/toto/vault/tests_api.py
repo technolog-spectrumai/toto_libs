@@ -788,6 +788,25 @@ class FileCreateWithContentApiTests(TestCase):
         self.assertEqual(res.status_code, 400)
         self.assertFalse(VaultFile.objects.filter(title="bad.svg").exists())
 
+    def test_the_desktop_writer_can_reach_a_cyprian_document(self):
+        # Decks were added and documents were not, which left the desktop app
+        # able to open half of what it can edit.
+        res = self.create(bucket_slug="push", title="notes.xml",
+                          file_type="document",
+                          content='<?xml version="1.0"?><document title="N"/>')
+        self.assertEqual(res.status_code, 201)
+        key = res.json()["key"]
+        self.assertEqual(
+            self.client.get(f"/vault/api/files/{key}/content/").status_code, 200)
+
+    def test_a_sheet_is_refused_because_primula_owns_its_history(self):
+        # Byte-wise a workbook would save fine; the problem is that primula
+        # grows SheetVersion in its own save view, and a raw PUT here would
+        # write the bytes while that history silently stopped advancing.
+        self.assertEqual(
+            self.create(bucket_slug="push", title="book.json", file_type="sheet",
+                        content="{}").status_code, 415)
+
     def test_a_type_that_is_not_writable_here_is_refused(self):
         self.assertEqual(
             self.create(bucket_slug="push", title="clip.mp4", file_type="video",
