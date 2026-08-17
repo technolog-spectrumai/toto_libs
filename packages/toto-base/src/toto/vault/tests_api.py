@@ -223,6 +223,85 @@ class FileContentApiTests(TestCase):
         self.assertEqual(body["content"], "line one\nline two")
         self.assertTrue(body["is_editable"])
 
+    def test_get_content_carries_the_hash_a_save_must_send_back(self):
+        # Without this the client has nothing to prove its edit was based on
+        # the current state, and every desktop save is a blind overwrite.
+        key = self._upload("notes.txt", b"line one", "text/plain")
+        body = self.client.get(f"/vault/api/files/{key}/content/").json()
+        self.assertTrue(body["content_hash"])
+        self.assertIsNone(body["locked_by"])
+
+    def test_a_save_built_on_a_stale_read_is_refused_and_kept(self):
+        # The clobber this endpoint used to allow, and the reason the desktop
+        # client opened vault files read-only.
+        from toto.vault.models import FileVersion
+
+        key = self._upload("shared.txt", b"original", "text/plain")
+        stale = self.client.get(f"/vault/api/files/{key}/content/").json()["content_hash"]
+
+        # Somebody else saves first.
+        self.client.put(f"/vault/api/files/{key}/content/",
+                        data=json.dumps({"content": "their work"}),
+                        content_type="application/json")
+
+        # Our save, built on what we read before that.
+        res = self.client.put(
+            f"/vault/api/files/{key}/content/",
+            data=json.dumps({"content": "my work", "base_hash": stale}),
+            content_type="application/json")
+        self.assertEqual(res.status_code, 409)
+
+        # Refused — and their work is still what is stored.
+        stored = self.client.get(f"/vault/api/files/{key}/content/").json()
+        self.assertEqual(stored["content"], "their work")
+
+        # But ours was not thrown away.
+        self.assertIsNotNone(res.json()["kept_as_version"])
+        vf = VaultFile.objects.get(key=key, owner=self.user)
+        rescued = FileVersion.objects.filter(file=vf, is_conflict=True)
+        self.assertEqual(rescued.count(), 1)
+
+    def test_a_save_on_the_current_state_goes_through(self):
+        key = self._upload("mine.txt", b"original", "text/plain")
+        current = self.client.get(f"/vault/api/files/{key}/content/").json()["content_hash"]
+        res = self.client.put(
+            f"/vault/api/files/{key}/content/",
+            data=json.dumps({"content": "revised", "base_hash": current}),
+            content_type="application/json")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(
+            self.client.get(f"/vault/api/files/{key}/content/").json()["content"],
+            "revised")
+
+    def test_a_save_snapshots_what_it_replaces(self):
+        # A desktop client holds no lock, so the state it overwrites is the
+        # only copy of whatever it did not see.
+        from toto.vault.models import FileVersion
+
+        key = self._upload("hist.txt", b"first", "text/plain")
+        self.client.put(f"/vault/api/files/{key}/content/",
+                        data=json.dumps({"content": "second"}),
+                        content_type="application/json")
+        vf = VaultFile.objects.get(key=key, owner=self.user)
+        self.assertTrue(FileVersion.objects.filter(file=vf).exists())
+
+    def test_a_file_someone_else_is_editing_refuses_the_save(self):
+        # 423, not 409: a retry cannot succeed until they leave.
+        from toto.vault import locks
+
+        other = User.objects.create_user(username="holder", password="pass")
+        key = self._upload("locked.txt", b"body", "text/plain")
+        vf = VaultFile.objects.get(key=key, owner=self.user)
+        locks.acquire(vf, other)
+
+        res = self.client.put(f"/vault/api/files/{key}/content/",
+                              data=json.dumps({"content": "mine"}),
+                              content_type="application/json")
+        self.assertEqual(res.status_code, 423)
+        self.assertEqual(res.json()["locked_by"], "holder")
+        self.assertEqual(
+            self.client.get(f"/vault/api/files/{key}/content/").json()["content"], "body")
+
     def test_get_content_rejects_binary_type(self):
         key = self._upload("pic.png", b"\x89PNG\r\n\x1a\n", "image/png")
         res = self.client.get(f"/vault/api/files/{key}/content/")
@@ -653,3 +732,88 @@ class StrongboxApiTests(TestCase):
         self.client.force_login(self.other)
         theirs = self.client.get("/vault/api/strongbox/").json()
         self.assertNotEqual(mine["salt"], theirs["salt"])
+
+
+@override_settings(MEDIA_ROOT=_MEDIA)
+class FileCreateWithContentApiTests(TestCase):
+    """Pushing a NEW file the client already holds the bytes for.
+
+    The desktop client writes a document offline and then wants it in the
+    vault. Before this it could only ask the server to mint an EMPTY file of a
+    type the server knew a starter for, which is a different question and a
+    much narrower one.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user(username="pusher", password="pass")
+        self.other = User.objects.create_user(username="bystander", password="pass")
+        self.bucket = Bucket.objects.create(
+            owner=self.user, name="Push", slug="push", storage_backend="local")
+        self.client.force_login(self.user)
+
+    def create(self, **payload):
+        return self.client.post("/vault/api/files/create/",
+                                data=json.dumps(payload),
+                                content_type="application/json")
+
+    def test_it_pushes_a_file_with_its_content(self):
+        res = self.create(bucket_slug="push", title="notes.txt",
+                          file_type="text", content="written offline")
+        self.assertEqual(res.status_code, 201)
+        key = res.json()["key"]
+        body = self.client.get(f"/vault/api/files/{key}/content/").json()
+        self.assertEqual(body["content"], "written offline")
+        self.assertTrue(body["content_hash"], "a pushed file must be saveable next time")
+
+    def test_an_empty_create_still_needs_a_starter(self):
+        # The New-file case is unchanged: we must know what an empty one is.
+        self.assertEqual(self.create(bucket_slug="push", title="a.txt",
+                                     file_type="text").status_code, 201)
+        self.assertEqual(self.create(bucket_slug="push", title="b.deck",
+                                     file_type="pxml").status_code, 400)
+
+    def test_a_type_with_no_starter_can_still_be_pushed_with_content(self):
+        # This is the whole point: the client has the bytes, so "what does an
+        # empty one look like?" is a question nobody needs answered.
+        res = self.create(bucket_slug="push", title="talk.pxml", file_type="pxml",
+                          content=DECK)
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(res.json()["file_type"], "pxml")
+
+    def test_a_pushed_file_is_screened(self):
+        # A file arriving with its bytes is an upload in all but name.
+        res = self.create(bucket_slug="push", title="bad.svg", file_type="svg",
+                          content='<svg xmlns="http://www.w3.org/2000/svg">'
+                                  "<script>alert(1)</script></svg>")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(VaultFile.objects.filter(title="bad.svg").exists())
+
+    def test_a_type_that_is_not_writable_here_is_refused(self):
+        self.assertEqual(
+            self.create(bucket_slug="push", title="clip.mp4", file_type="video",
+                        content="not really").status_code, 415)
+
+    def test_it_will_not_push_into_somebody_elses_bucket(self):
+        Bucket.objects.create(owner=self.other, name="Theirs", slug="theirs",
+                              storage_backend="local")
+        self.assertEqual(
+            self.create(bucket_slug="theirs", title="x.txt", file_type="text",
+                        content="hi").status_code, 404)
+
+    def test_two_pushes_of_one_name_do_not_collide(self):
+        first = self.create(bucket_slug="push", title="notes.txt",
+                            file_type="text", content="one")
+        second = self.create(bucket_slug="push", title="notes.txt",
+                             file_type="text", content="two")
+        self.assertEqual(second.status_code, 201)
+        self.assertNotEqual(first.json()["key"], second.json()["key"])
+
+
+#: A real deck — `pxml` has no starter content, which is exactly why it is the
+#: interesting case for a push.
+DECK = (
+    '<?xml version="1.0"?>\n'
+    '<presentation version="2" title="T" theme="black" font="sans">'
+    '<slide id="s-1" layout="title-content"><title>t</title></slide>'
+    "</presentation>\n"
+)

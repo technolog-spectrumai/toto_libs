@@ -9,6 +9,7 @@ from django.utils.text import slugify
 
 from toto.api.cors import CorsApiView
 from toto.vault import access
+from toto.vault import locks, versions
 from toto.vault.models import VaultFile, Bucket, VaultDirectory, file_edits_allowed
 
 # Text-ish file types editable in the Enigma Ace editor. Mirrors the file types
@@ -585,6 +586,16 @@ class FileContentApiView(CorsApiView):
             "is_editable": file_edits_allowed(),
             "size": vf.file_size_bytes,
             "content": content,
+            # The state this content came from. A client that means to save it
+            # back sends it as `base_hash`, which is what lets PUT tell an
+            # ordinary save from an overwrite of somebody else's work.
+            "content_hash": vf.content_hash or "",
+            # Whoever is in the editor right now, if anyone. Advisory: the PUT
+            # enforces it, but a client that shows it can stop a doomed edit
+            # before the user has typed anything.
+            "locked_by": (
+                locks.holder_of(vf).holder.get_username()
+                if locks.holder_of(vf) else None),
         })
 
     def put(self, request, key):
@@ -614,6 +625,44 @@ class FileContentApiView(CorsApiView):
         if len(encoded) > MAX_EDIT_BYTES:
             return JsonResponse({"error": "Content is too large to save."}, status=413)
 
+        # ── the two guards that make a desktop push safe ──────────────────────
+        #
+        # This endpoint had neither, and that was the documented reason the
+        # zinnia desktop app opened vault files READ-ONLY: a save here was a
+        # last-writer-wins clobber of whatever anyone else had open. Both rules
+        # are cyprian's, deliberately — the browser editor and the desktop
+        # client are two doors onto one file, and two answers to "may I write
+        # this?" is how one of them silently eats the other's work.
+
+        # The lock first: someone else in the editor means this save should
+        # never have been attempted. 423, not 409 — a retry cannot succeed
+        # until they leave, so inviting one would be a lie.
+        if not locks.may_write(vf, request.user):
+            held = locks.holder_of(vf)
+            return JsonResponse(
+                {"error": f"{held.holder} is editing this file.",
+                 "locked_by": held.holder.get_username()}, status=423)
+
+        # Optimistic concurrency. `base_hash` is what the client last read;
+        # if the stored file has moved on, this save is built on a state that
+        # no longer exists.
+        base_hash = data.get("base_hash")
+        if base_hash and vf.content_hash and base_hash != vf.content_hash:
+            # Refuse the write but KEEP the work — refusing alone is what a
+            # user experiences as "it lost my file". These files cannot be
+            # merged, so the honest answer is two versions and a human.
+            rescued = None
+            try:
+                rescued = versions.save_conflicting_draft(
+                    vf, body=encoded, author=request.user)
+            except Exception:                          # noqa: BLE001
+                pass                                   # never turn a 409 into a 500
+            return JsonResponse(
+                {"error": "This file changed somewhere else since you opened it. "
+                          "Your version was kept so nothing is lost.",
+                 "content_hash": vf.content_hash,
+                 "kept_as_version": rescued.number if rescued else None}, status=409)
+
         # The desktop client's save is the API twin of editor.save_file and gets
         # the same screening — a door that is guarded in the browser and open
         # over the API is not guarded.
@@ -627,12 +676,27 @@ class FileContentApiView(CorsApiView):
         else:
             verdict = None
 
+        # Snapshot what is being replaced. The browser editor does not do this
+        # on every save because it holds a lock and autosaves constantly; a
+        # desktop client holds no lock, so the state it is about to overwrite
+        # is the only copy of whatever it did not see. Deduped by digest, so
+        # repeated identical saves add nothing, and capped by versions.prune.
+        try:
+            if vf.content_hash:
+                versions.save_version(vf, author=request.user)
+        except Exception:                              # noqa: BLE001
+            pass                                       # history is not worth failing a save
+
         try:
             with vf.file.open("w") as f:
                 f.write(content)
             vf.file_size_bytes = len(encoded)
             vf.content_hash = hashlib.sha256(encoded).hexdigest()
             vf.save(update_fields=["file_size_bytes", "content_hash"])
+            try:
+                versions.prune(vf)
+            except Exception:                          # noqa: BLE001
+                pass
             if verdict is not None:
                 scanning.record(vf, verdict, user=request.user, door="api")
         except Exception as e:
@@ -668,13 +732,31 @@ class FileCreateApiView(CorsApiView):
         file_type = (data.get("file_type") or "").strip()
         bucket_slug = (data.get("bucket_slug") or "").strip()
         directory_id = data.get("directory_id")
+        content = data.get("content")
 
         if not title:
             return JsonResponse({"error": "Filename is required."}, status=400)
-        # Creatable (has starter content) AND editable in the client's Ace editor.
-        creatable = set(CreateEmptyFileView._INITIAL) & EDITABLE_FILE_TYPES
-        if file_type not in creatable:
-            return JsonResponse({"error": f"Cannot create an editable {file_type or '?'} file."}, status=400)
+        if content is not None and not isinstance(content, str):
+            return JsonResponse({"error": "content must be a string."}, status=400)
+
+        # Two different questions, and conflating them is what kept the desktop
+        # client from pushing anything the server could not already mint empty.
+        #   * with no content — the New-file case. The type must be CREATABLE:
+        #     we have to know what an empty one looks like (`_INITIAL`).
+        #   * with content — the push case. The caller already has the bytes,
+        #     so only "may this type be written through this API at all?"
+        #     applies, which is EDITABLE_FILE_TYPES.
+        if content is None:
+            creatable = set(CreateEmptyFileView._INITIAL) & EDITABLE_FILE_TYPES
+            if file_type not in creatable:
+                return JsonResponse(
+                    {"error": f"Cannot create an empty {file_type or '?'} file."}, status=400)
+        elif file_type not in EDITABLE_FILE_TYPES:
+            return JsonResponse(
+                {"error": f"Cannot write a {file_type or '?'} file here."}, status=415)
+
+        if content is not None and len(content.encode("utf-8")) > MAX_EDIT_BYTES:
+            return JsonResponse({"error": "Content is too large to save."}, status=413)
         if not bucket_slug:
             return JsonResponse({"error": "bucket_slug is required."}, status=400)
 
@@ -691,11 +773,27 @@ class FileCreateApiView(CorsApiView):
         directory = None
         if directory_id not in (None, "", 0, "0"):
             try:
-                directory = VaultDirectory.objects.get(pk=int(directory_id), bucket=bucket)
+                # owner= as well as bucket=: the bucket check above already
+                # bounds this, but this was the one directory lookup in the file
+                # that did not name an owner, and a belt that depends on
+                # somebody else's braces is how those get removed.
+                directory = VaultDirectory.objects.get(
+                    pk=int(directory_id), bucket=bucket, owner=request.user)
             except (VaultDirectory.DoesNotExist, ValueError, TypeError):
                 return JsonResponse({"error": "Directory not found."}, status=404)
 
-        vf = create_empty_vault_file(request.user, bucket, directory, title, file_type)
+        # Screened like every other write door. A file arriving with its bytes
+        # is an upload in everything but name, and the upload door screens.
+        if content is not None:
+            from toto.vault import scanning
+
+            if scanning.should_scan(request.user, file_type, door="api"):
+                verdict = scanning.scan(content, file_type=file_type, filename=title)
+                if not verdict.ok:
+                    return JsonResponse(verdict.as_error(), status=400)
+
+        vf = create_empty_vault_file(
+            request.user, bucket, directory, title, file_type, content=content)
         return JsonResponse(_file_to_dict(request, vf), status=201)
 
 

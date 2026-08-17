@@ -1066,11 +1066,22 @@ def _delegate_to_transfer(request, source_bucket, destination_bucket,
     })
 
 
-def create_empty_vault_file(owner, bucket, directory, title, file_type):
-    """Create + persist an empty editable vault file seeded with the type's starter
-    content. Caller validates ownership and that file_type is creatable. Pre-assigns a
-    bucket-unique key (see _unique_file_key) so colliding slugs don't raise."""
+def create_empty_vault_file(owner, bucket, directory, title, file_type, content=None):
+    """Create + persist a vault file. Caller validates ownership and the type.
+
+    Pre-assigns a bucket-unique key (see _unique_file_key) so colliding slugs
+    don't raise.
+
+    ``content`` is the file's actual bytes when the caller already has them —
+    the desktop client pushing a document it wrote offline. Without it the file
+    is seeded with the type's starter content, which is the New-file case and
+    the reason `_INITIAL` gates that path: a type is "creatable" when we know
+    what an empty one looks like. A caller supplying content needs no such
+    answer, so it may create any editable type.
+    """
     from django.core.files.base import ContentFile
+    if content is None:
+        content = CreateEmptyFileView._INITIAL[file_type]
     vault_file = VaultFile(
         owner=owner,
         title=title,
@@ -1081,7 +1092,7 @@ def create_empty_vault_file(owner, bucket, directory, title, file_type):
         is_public=False,
     )
     vault_file.save()
-    vault_file.file.save(title, ContentFile(CreateEmptyFileView._INITIAL[file_type].encode("utf-8")), save=True)
+    vault_file.file.save(title, ContentFile(content.encode("utf-8")), save=True)
     vault_file.content_hash = vault_file.create_hash()
     vault_file.save()
     return vault_file
