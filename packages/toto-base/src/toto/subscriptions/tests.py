@@ -7,6 +7,7 @@ not enforcement.
 """
 
 from datetime import date, timedelta
+from unittest import skipIf
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
@@ -33,6 +34,27 @@ from .models import (
 )
 
 User = get_user_model()
+
+
+def _host_gates_anonymous_access() -> bool:
+    """True on a host that requires a login for every page.
+
+    Zenobia does: it is one company's private system, so its ledger, staff
+    directory and price list are not public documents. Other hosts have no such
+    middleware and these pages stay open, which is why this is a host question
+    rather than a library decision — the tests below assert the library's
+    behaviour and are skipped only where the host has deliberately overridden it.
+    """
+    from django.conf import settings
+
+    return any("LoginRequired" in m for m in settings.MIDDLEWARE)
+
+
+#: What a platform charges is not a secret — unless the whole platform is.
+needs_public_pages = skipIf(
+    _host_gates_anonymous_access(),
+    "this host requires a login for every page (see its middleware), so it has "
+    "no public plans page to test")
 
 
 def make_plans():
@@ -578,6 +600,7 @@ class ViewTests(TestCase):
         cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("shopper")
 
+    @needs_public_pages
     def test_the_plans_page_is_readable_without_logging_in(self):
         """What a platform charges is not a secret."""
         response = self.client.get(reverse("subscriptions:plans"))
@@ -585,6 +608,7 @@ class ViewTests(TestCase):
         self.assertEqual(response.status_code, 200)
         self.assertContains(response, "Standard")
 
+    @needs_public_pages
     def test_a_card_lists_what_the_gate_will_actually_grant(self):
         response = self.client.get(reverse("subscriptions:plans"))
 
@@ -779,11 +803,13 @@ class NavigationTests(TestCase):
         cls.free, cls.standard, cls.professional = make_plans()
         cls.user = member("browser")
 
+    @needs_public_pages
     def test_the_plans_page_carries_the_economy_strip(self):
         body = self.client.get(reverse("subscriptions:plans")).content.decode()
 
         self.assertIn(reverse("quota:my_usage"), body)
 
+    @needs_public_pages
     def test_the_strip_marks_subscriptions_as_where_you_are(self):
         body = self.client.get(reverse("subscriptions:plans")).content.decode()
 

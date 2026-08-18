@@ -47,9 +47,42 @@ class EventCalendarView(ListView):
     ordering = ['start_time']
 
     def get_queryset(self):
-        if not self.request.user.is_authenticated:
-            return ScheduledEvent.objects.filter(public=True).order_by('start_time')
-        return ScheduledEvent.objects.all().order_by('start_time')
+        """Public events, plus the ones this person is actually part of.
+
+        The ``public`` flag used to apply to anonymous visitors ONLY: a signed-in
+        user got ``ScheduledEvent.objects.all()``, so ``public=False`` meant
+        nothing the moment somebody logged in. Everybody could read every
+        meeting on the platform.
+
+        ``toto.tax.notices`` documents having worked around exactly this — it
+        writes deliberately neutral titles and keeps the numbers in the
+        description, because "the shared calendar shows every event to any
+        signed-in user". That workaround should not have been necessary, and
+        anything using the calendar as a reminder channel needs it not to be.
+
+        Note the default is still ``public=True``, so nothing that was meant to
+        be seen disappears; only an event somebody explicitly marked private
+        starts behaving like one.
+        """
+        from django.db.models import Q
+
+        qs = ScheduledEvent.objects.order_by('start_time')
+        user = self.request.user
+        if not user.is_authenticated:
+            return qs.filter(public=True)
+
+        person = getattr(user, "community_profile", None)
+        if person is None:
+            # A login with no Person cannot own, organise or be invited to
+            # anything, so there is nothing private for them to see.
+            return qs.filter(public=True)
+
+        return qs.filter(
+            Q(public=True)
+            | Q(owner=person)
+            | Q(organizers=person)
+            | Q(invites__person=person)
+        ).distinct()
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
