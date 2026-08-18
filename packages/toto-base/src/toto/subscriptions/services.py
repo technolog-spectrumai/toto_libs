@@ -196,7 +196,11 @@ def quote(user, plan) -> dict:
 # Subscribing
 # ---------------------------------------------------------------------------
 
-def subscribe(user, plan) -> Subscription:
+class UnapprovedStipend(Exception):
+    """A negative plan was assigned with nobody accountable for it."""
+
+
+def subscribe(user, plan, *, approved_by=None) -> Subscription:
     """Put this user on this plan, from the start of the current month.
 
     Changing plan does NOT re-bill the month already charged: the
@@ -204,7 +208,31 @@ def subscribe(user, plan) -> Subscription:
     spoken for, and the new size applies from the next one. That is the least
     surprising rule and the only one that cannot be gamed by switching plans
     twice in a month.
+
+    **A NEGATIVE plan needs an approver, and this refuses without one.**
+
+    A negative plan pays its holder every period, out of the treasury, for as
+    long as it is attached. Nothing else on the platform creates a recurring
+    outbound payment, so this is the only place where somebody could quietly
+    arrange to be paid — including arranging it for themselves. The ledger would
+    record the money and nothing would record the decision.
+
+    Refusing here rather than in a form or a view is the point: this is the one
+    function every path goes through, so a new screen, a management command, a
+    fixture or an admin action cannot forget the check. It fails CLOSED, the way
+    ``polls`` refuses a formal vote whose roll it cannot resolve.
+
+    ``approved_by`` is a Person who is accountable. From ``toto.jobs`` it is the
+    approver on the accepted Offer; until that app exists, an operator seeding a
+    position passes one explicitly, and the argument being mandatory is what
+    makes the omission visible rather than convenient.
     """
+    if getattr(plan, "units", 0) < 0 and approved_by is None:
+        raise UnapprovedStipend(
+            f"Plan {plan.code!r} pays its holder ({plan.units} units per period). "
+            "Assigning it needs an accountable approver: pass approved_by, or "
+            "create it through an accepted Offer in toto.jobs.")
+
     today = timezone.now().date()
     subscription = Subscription.objects.filter(user=user).first()
     if subscription is None:

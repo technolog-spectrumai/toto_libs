@@ -343,6 +343,35 @@ class SettleTests(TestCase):
         charge.refresh_from_db()
         self.assertEqual(charge.status, ChargeStatus.PAID)
 
+    def test_a_negative_plan_refuses_to_be_assigned_without_an_approver(self):
+        """The hole `1034f557` opened. A negative plan pays its holder every
+        period out of the treasury, forever, and nothing else on the platform
+        creates a recurring outbound payment — so this is the one place somebody
+        could arrange to be paid, including for themselves."""
+        stipend = SubscriptionPlan.objects.create(
+            code="unapproved", name="Unapproved", units=-4000, order=44)
+        user = member("opportunist")
+
+        with self.assertRaises(services.UnapprovedStipend):
+            services.subscribe(user, stipend)
+
+        self.assertFalse(Subscription.objects.filter(user=user).exists())
+
+    def test_an_approved_negative_plan_is_allowed(self):
+        stipend = SubscriptionPlan.objects.create(
+            code="approved", name="Approved", units=-4000, order=45)
+        user = member("hired")
+        approver = Person.objects.create(display_name="Chair")
+
+        subscription = services.subscribe(user, stipend, approved_by=approver)
+
+        self.assertEqual(subscription.plan, stipend)
+
+    def test_a_positive_plan_needs_no_approver(self):
+        """Paying to be here is nobody's decision but the payer's."""
+        user = member("customer")
+        self.assertIsNotNone(services.subscribe(user, self.standard))
+
     def test_a_negative_plan_pays_the_subscriber(self):
         """A stipend. Same plan, same period, same ledger — other direction.
 
@@ -355,7 +384,9 @@ class SettleTests(TestCase):
         stipend = SubscriptionPlan.objects.create(
             code="engineer", name="Engineer", units=-500, order=40)
         user = member("engineer-1")
-        subscription = services.subscribe(user, stipend)
+        subscription = services.subscribe(
+            user, stipend,
+            approved_by=Person.objects.create(display_name="Approver engineer-1"))
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -377,7 +408,9 @@ class SettleTests(TestCase):
         stipend = SubscriptionPlan.objects.create(
             code="tech", name="Technician", units=-300, order=41)
         user = member("tech-1")
-        subscription = services.subscribe(user, stipend)
+        subscription = services.subscribe(
+            user, stipend,
+            approved_by=Person.objects.create(display_name="Approver tech-1"))
         services.materialize(subscription)
         charge = subscription.charges.get()
 
@@ -406,7 +439,9 @@ class SettleTests(TestCase):
         stipend = SubscriptionPlan.objects.create(
             code="board", name="Board", units=-900, order=43)
         user = member("board-1")
-        subscription = services.subscribe(user, stipend)
+        subscription = services.subscribe(
+            user, stipend,
+            approved_by=Person.objects.create(display_name="Approver board-1"))
         services.materialize(subscription)
         charge = subscription.charges.get()
 
