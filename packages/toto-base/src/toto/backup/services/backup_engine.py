@@ -75,6 +75,28 @@ class BackupEngine:
             return False
         return self._model_has_field(model, "uid")
 
+    @staticmethod
+    def natural_ref(related):
+        """A portable reference to an object with no uid, or None.
+
+        Reads the lookups the model names in ``BACKUP_NATURAL_REF``. Any lookup
+        that cannot be followed (a null link in the chain) disqualifies the whole
+        reference — a partial natural key would resolve to the wrong row, which
+        is the failure this exists to prevent.
+        """
+        lookups = getattr(type(related), "BACKUP_NATURAL_REF", None)
+        if not lookups:
+            return None
+        key = {}
+        for lookup in lookups:
+            value = related
+            for part in lookup.split("__"):
+                value = getattr(value, part, None)
+                if value is None:
+                    return None
+            key[lookup] = value
+        return {"__natref__": True, "model": related._meta.label, "key": key}
+
     def _model_has_field(self, model, field_name):
         try:
             model._meta.get_field(field_name)
@@ -135,9 +157,20 @@ class BackupEngine:
         """
         Export object by uid. FK references to uid-enabled models are exported as:
           {"__ref__": true, "model": "app.Model", "uid": "..."}
-        Non-domain FKs fall back to the raw *_id column value.
+        A model with no uid may still declare a stable cross-host identity as
+        ``BACKUP_NATURAL_REF`` (a tuple of ORM lookups), exported as:
+          {"__natref__": true, "model": "app.Model", "key": {"lookup": value}}
+        Anything else still falls back to the raw *_id column value.
         GeoDjango geometries are exported as:
           {"__geo__": true, "ewkt": "SRID=4326;POINT(...)"}
+
+        The natural-reference arm exists because the raw-pk fallback is not a
+        neutral default — it is silent corruption. A restore renumbers primary
+        keys, so an exported ``statute_id`` of 47 comes back attached to whatever
+        file now happens to be 47. ``vault.VaultFile`` is the standing case: it
+        may not have a ``uid`` (that field name is what makes a model eligible
+        for the archive, and vault rows carry peering credentials), so before
+        this it had no way to be referred to correctly at all.
         """
         data = {"uid": str(obj.uid), "fields": {}}
         for field in obj._meta.fields:
@@ -154,7 +187,11 @@ class BackupEngine:
                         "uid": str(related.uid),
                     }
                 else:
-                    data["fields"][field.attname] = getattr(obj, field.attname)
+                    natural = self.natural_ref(related)
+                    if natural is not None:
+                        data["fields"][field.name] = natural
+                    else:
+                        data["fields"][field.attname] = getattr(obj, field.attname)
                 continue
             data["fields"][field.name] = self._to_serializable(getattr(obj, field.name))
         return data
