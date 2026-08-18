@@ -17,10 +17,11 @@
 
 <div x-data="fileVersions({{ file_pk }})" x-init="init()" class="space-y-3">
 
-  {# ---- Lock banner moved to oya/_lock_banner.html, which the editors render
-         beside their toolbar. This panel is collapsed by default, so the one
-         message a locked-out writer needs was the one they never saw. The
-         inputs below still disable themselves from the same lock state. ---- #}
+  {% comment %}Lock banner moved to oya/_lock_banner.html, which the editors
+         render beside their toolbar. This panel is collapsed by default, so
+         the one message a locked-out writer needs was the one they never saw.
+         The inputs below still disable themselves from the same lock
+         state.{% endcomment %}
 
   {# ---- Save version ---- #}
   <div class="flex flex-wrap items-center gap-2">
