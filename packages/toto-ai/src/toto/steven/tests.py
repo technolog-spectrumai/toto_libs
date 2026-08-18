@@ -30,6 +30,7 @@ from .client import ProviderError
 from .models import AiProvider, AiRun, RunStatus
 from toto.core.ai_surfaces import Action, AiSurface, registry
 from .vault import VaultUnavailable, vault
+from toto.core.testing import assert_refused
 
 User = get_user_model()
 
@@ -1180,8 +1181,8 @@ class ManageViewTests(TestCase):
         self.assertEqual(self.client.get(self.url).status_code, 403)
         self.assertEqual(self.client.get(self.new_url).status_code, 403)
 
-    def test_an_anonymous_visitor_gets_the_same_403(self):
-        self.assertEqual(self.client.get(self.url).status_code, 403)
+    def test_an_anonymous_visitor_is_refused_too(self):
+        assert_refused(self, self.client.get(self.url), "steven manage")
 
     def test_a_superuser_who_is_not_staff_may_still_open_it(self):
         """is_superuser does not imply is_staff in Django."""

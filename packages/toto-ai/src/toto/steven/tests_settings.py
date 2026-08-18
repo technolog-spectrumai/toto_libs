@@ -18,6 +18,7 @@ from . import services
 from .client import ProviderError
 from .models import AiAgent, AiProvider
 from .vault import vault
+from toto.core.testing import assert_refused
 
 User = get_user_model()
 
@@ -64,12 +65,11 @@ class GateTests(SettingsBase):
                 response = getattr(self.client, method)(url)
                 self.assertEqual(response.status_code, 403)
 
-    def test_anonymous_gets_403_everywhere_too(self):
+    def test_anonymous_is_refused_everywhere_too(self):
         provider = AiProvider.objects.create(label="p")
         for method, url in self._endpoints(provider.pk):
             with self.subTest(url=url):
-                response = getattr(self.client, method)(url)
-                self.assertEqual(response.status_code, 403)
+                assert_refused(self, getattr(self.client, method)(url), url)
 
     def test_staff_can_open_all_three_tabs(self):
         self.client.force_login(self.staff)

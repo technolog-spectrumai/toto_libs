@@ -19,6 +19,7 @@ from . import dispatch, services
 from .models import AiProvider, AiRun
 from .surfaces import registry
 from .vault import vault
+from toto.core.testing import assert_refused
 
 User = get_user_model()
 
@@ -94,7 +95,7 @@ class ChatAskTests(TestCase):
     def test_anonymous_cannot_chat(self):
         response = self._say()
 
-        self.assertEqual(response.status_code, 302)
+        assert_refused(self, response, "steven chat")
         self.assertEqual(AiRun.objects.count(), 0)
 
     def test_an_empty_message_is_refused(self):
