@@ -161,6 +161,55 @@ class ExclusionEffectTests(ExclusionBase):
         self.assertTrue(services.outcome_fixed(question))
 
 
+class LabelOnlyExclusionTests(TestCase):
+    """A member with no login must be excludable, and it must COUNT.
+
+    The defect these pin: `exclude_voter` has always accepted `user=None` — the
+    model allows it precisely for an institution, an estate, or somebody acting
+    through counsel — and the weights then matched exclusions by user id only.
+    So the exclusion was written to the record, `excluded_weight` stayed 0, and
+    the barred weight remained inside `eligible_weight`. That wrong snapshot
+    goes INSIDE the hashed Decision, where nothing can amend it afterwards.
+    """
+
+    def setUp(self):
+        self.staff = User.objects.create_user("op2", password="pw", is_staff=True)
+        self.a = User.objects.create_user("a2", password="pw")
+        self.question = _vote()
+        # One member with a login, one institution with only a name — exactly
+        # what a shareholders' register looks like.
+        services.freeze_roll(self.question, entries=[
+            (self.a, "A", 60), (None, "Farfarele Sp. z o.o.", 40)])
+
+    def test_a_label_only_exclusion_reduces_the_eligible_weight(self):
+        services.exclude_voter(self.question, label="Farfarele Sp. z o.o.",
+                               reason="Art. 244 — its own liability.",
+                               excluded_by=self.staff)
+
+        procedure = services.procedure_of(self.question)
+        self.assertEqual(procedure.excluded_weight, 40)
+        self.assertEqual(procedure.members_excluded, 1)
+        self.assertEqual(procedure.eligible_weight, 60)
+
+    def test_the_electorate_weight_is_untouched_by_an_exclusion(self):
+        """Exclusion is a fact about THIS question, never about membership."""
+        services.exclude_voter(self.question, label="Farfarele Sp. z o.o.",
+                               reason="Art. 244.", excluded_by=self.staff)
+
+        self.assertEqual(services.procedure_of(self.question).electorate_weight, 100)
+
+    def test_a_mistyped_label_is_refused_rather_than_barring_nobody(self):
+        """A formal act that silently matches nothing is worse than an error."""
+        with self.assertRaises(ValueError):
+            services.exclude_voter(self.question, label="Farfarelle Sp. z o.o.",
+                                   reason="typo", excluded_by=self.staff)
+
+    def test_an_exclusion_must_name_somebody(self):
+        with self.assertRaises(ValueError):
+            services.exclude_voter(self.question, reason="vague",
+                                   excluded_by=self.staff)
+
+
 class ExclusionPayloadTests(ExclusionBase):
     def test_the_decision_carries_every_exclusion(self):
         self._exclude(self.a)

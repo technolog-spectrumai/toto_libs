@@ -323,6 +323,17 @@ def take(*, scope_type: str = "", scope_id: str = "", by=None,
     from .checkpoint_models import LedgerCheckpoint
 
     count, head_hex = head_at(scope_type, scope_id)
+    if not head_hex:
+        # An empty ledger folds to "", and build_payload would then write a
+        # payload whose `h` is blank — which parse_payload refuses by design
+        # ("scan the whole code"). The row is append-only and delete() raises,
+        # so one click on "Take a checkpoint" before the first decision used to
+        # leave an unparseable, undeletable witness that broke the checkpoints
+        # page for good. There is also nothing to witness: a checkpoint of no
+        # decisions attests to nothing.
+        raise ValueError(
+            "There is nothing to check point yet — this ledger has no "
+            "decisions. Take one after the first decision is recorded.")
     taken_at = timezone.now()
     payload = build_payload(
         scope_type=scope_type, scope_id=scope_id, entry_count=count,

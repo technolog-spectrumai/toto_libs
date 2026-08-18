@@ -44,6 +44,75 @@ def _decide(roll, title):
     return services.record_decision(question)
 
 
+class TwoBodiesOneScopeTests(TestCase):
+    """Two organs of ONE company share a scope, and both chains must verify.
+
+    This is the shape every fixture in this module avoided by giving each
+    electorate its own ``scope_id`` — which is why a real defect survived a
+    230-line suite. ``Decision.save()`` links ``prev_hash`` from the previous
+    decision in the SCOPE, so an assembly decision and a board decision
+    interleave on one chain; a walk restricted to one electorate then expects
+    the second body's first row to start from ``prev == ""`` and reports an
+    untampered ledger as tampered.
+
+    One company = one scope with several bodies, so this is the normal case,
+    not an edge one.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        _platform()
+        cls.assembly = Electorate.objects.create(
+            slug="assembly", name="Assembly",
+            scope_type="socialhub.community", scope_id="7")
+        cls.board = Electorate.objects.create(
+            slug="board", name="Board",
+            scope_type="socialhub.community", scope_id="7")
+
+    def _decide_in_scope(self, roll, title):
+        question = Question.objects.create(
+            kind=Kind.VOTE, title=title, question_text="Well?", electorate=roll,
+            scope_type=roll.scope_type, scope_id=roll.scope_id,
+            closes_at=timezone.now() + timedelta(hours=1))
+        Choice.objects.create(question=question, label="For", value=1)
+        Choice.objects.create(question=question, label="Against", value=-1)
+        Question.objects.filter(pk=question.pk).update(
+            closes_at=timezone.now() - timedelta(minutes=1))
+        question.refresh_from_db()
+        return services.record_decision(question)
+
+    def test_both_bodies_chains_verify_when_they_share_a_scope(self):
+        self._decide_in_scope(self.assembly, "Approve the accounts")
+        self._decide_in_scope(self.board, "Note the report")
+        self._decide_in_scope(self.assembly, "Distribute the profit")
+
+        self.assertTrue(snapshots.verify_chain(self.assembly).ok)
+        self.assertTrue(snapshots.verify_chain(self.board).ok)
+
+    def test_the_interleaved_chain_is_one_chain(self):
+        """Three decisions across two bodies are three links, not two chains."""
+        self._decide_in_scope(self.assembly, "One")
+        self._decide_in_scope(self.board, "Two")
+        self._decide_in_scope(self.assembly, "Three")
+
+        verification = Decision.verify_chain("socialhub.community", "7")
+        self.assertTrue(verification.ok)
+        self.assertEqual(verification.checked, 3)
+
+    def test_each_body_still_folds_its_own_subset(self):
+        """The per-electorate FOLD stays per-electorate — a hash of a subset is
+        a legitimate statement about that subset, unlike a walk of one."""
+        self._decide_in_scope(self.assembly, "One")
+        self._decide_in_scope(self.board, "Two")
+
+        assembly_count, assembly_head, _ = snapshots.head_of(self.assembly)
+        board_count, board_head, _ = snapshots.head_of(self.board)
+
+        self.assertEqual(assembly_count, 1)
+        self.assertEqual(board_count, 1)
+        self.assertNotEqual(assembly_head, board_head)
+
+
 class LedgerBelongsToAnElectorateTests(TestCase):
     @classmethod
     def setUpTestData(cls):

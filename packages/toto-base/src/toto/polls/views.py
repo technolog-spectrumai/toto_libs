@@ -443,9 +443,21 @@ def ledger_checkpoints(request):
     rows = []
     for stored in (LedgerCheckpoint.objects
                    .filter(scope_type=SCOPE_GLOBAL, scope_id="")[:50]):
-        result = checkpoint.verify_stored(stored)
+        # A checkpoint row cannot be deleted (checkpoint_models.delete raises),
+        # so one unparseable row must never take the page down with it — the
+        # page's job is to show the others. Older builds could write such a row
+        # by checkpointing an empty ledger; take() now refuses that, and this
+        # keeps any already-stored one readable rather than fatal.
+        try:
+            result = checkpoint.verify_stored(stored)
+        except checkpoint.PayloadError as exc:
+            result = None
+            unreadable = str(exc)
+        else:
+            unreadable = ""
         rows.append({"checkpoint": stored, "result": result,
-                     "qr": _checkpoint_qr(stored.payload)})
+                     "unreadable": unreadable,
+                     "qr": _checkpoint_qr(stored.payload) if not unreadable else ""})
 
     count, head_hex = checkpoint.head_at(SCOPE_GLOBAL, "")
     return _render(request, "polls/ledger_checkpoints.html", {

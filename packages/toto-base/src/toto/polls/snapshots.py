@@ -57,19 +57,29 @@ def head_of(electorate):
 
 
 def verify_chain(electorate):
-    """Recompute one roll's chain and name the first broken entry."""
-    from .models import ChainVerification, compute_hash
+    """Verify the chain this electorate's decisions belong to — its SCOPE's.
 
-    prev = ""
-    checked = 0
-    for row in ledger_of(electorate).iterator():
-        expected = compute_hash(row.content, prev)
-        if row.prev_hash != prev or row.content_hash != expected:
-            return ChainVerification(ok=False, checked=checked,
-                                     first_bad_pk=row.pk)
-        prev = row.content_hash
-        checked += 1
-    return ChainVerification(ok=True, checked=checked, first_bad_pk=None)
+    **The walk must follow the same key the links were written with.**
+    ``Decision.save()`` sets ``prev_hash`` from the previous decision in the
+    SCOPE, so a walk restricted to one electorate walks a subsequence of that
+    chain: as soon as a second body decides in the same scope, the second
+    body's first decision points at the first body's, a per-electorate walk
+    expects ``prev == ""``, and the page reports an untampered ledger as
+    tampered. Not hypothetical for a company — one company is one scope with an
+    assembly and a board.
+
+    It went unnoticed because every fixture gave each electorate its own
+    ``scope_id``, so the two keys never diverged in a test.
+
+    Contrast :func:`head_of`, which folds the SAME subset and is correct: a
+    fold over a subset is a self-consistent hash OF that subset, while a chain
+    walk over a subset is a claim about links that were never written that way.
+    """
+    from .models import Decision
+
+    if electorate is None:
+        return Decision.verify_chain()
+    return Decision.verify_chain(electorate.scope_type, electorate.scope_id)
 
 
 def payload_for(electorate, count, head_hex, last_modified):

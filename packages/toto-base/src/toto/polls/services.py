@@ -17,7 +17,7 @@ from __future__ import annotations
 
 from django.core.exceptions import PermissionDenied
 from django.db import IntegrityError, transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from django.utils.translation import gettext_lazy as _
@@ -216,11 +216,47 @@ def freeze_roll(question, *, electorate=None, entries=None):
 # -- exclusions (stage 9) -----------------------------------------------------
 
 def excluded_user_ids(question) -> set:
-    """Logins barred from this one vote. Cheap enough for every render."""
+    """Logins barred from this one vote. Cheap enough for every render.
+
+    LOGINS only, on purpose: this feeds the casting gate, and a member with no
+    login cannot cast in the first place. The weights are a different question
+    and use :func:`excluded_entry_pks`, which also matches label-only
+    exclusions — an institution, an estate, a member acting through counsel.
+    """
     from .electorate_models import VoteExclusion
 
     return set(VoteExclusion.objects.filter(question=question)
                .exclude(user=None).values_list("user_id", flat=True))
+
+
+def excluded_entry_pks(question) -> set:
+    """Roll entries barred from this vote — matched by login OR by label.
+
+    The defect this closes: an exclusion recorded with ``user=None`` (the model
+    allows it precisely for members with no account) was written to the record
+    and then matched against nothing. ``excluded_weight`` stayed 0 and the
+    barred weight silently remained in ``eligible_weight`` — and that wrong
+    snapshot went inside the hashed Decision, where nothing can amend it.
+    Art. 244's exclusion was mis-summed for exactly the member type the model
+    was widened to hold.
+
+    Label matching is exact and case-sensitive: an exclusion is a formal act
+    naming somebody, and fuzzy-matching a formal act would bar people by
+    typo.
+    """
+    from .electorate_models import VoteExclusion
+
+    user_ids, labels = set(), set()
+    for user_id, label in VoteExclusion.objects.filter(
+            question=question).values_list("user_id", "label"):
+        if user_id is not None:
+            user_ids.add(user_id)
+        elif label:
+            labels.add(label)
+
+    return set(question.roll
+               .filter(Q(user_id__in=user_ids) | Q(label__in=labels))
+               .values_list("pk", flat=True))
 
 
 def is_excluded(question, user) -> bool:
@@ -248,6 +284,16 @@ def exclude_voter(question, *, user=None, label="", reason, excluded_by=None):
         if entry is None:
             raise ValueError(
                 "That person is not on this vote's register.")
+    elif label:
+        # A label-only exclusion is how a member with no login is barred, and
+        # it is matched by exact label. So a typo would record a formal
+        # exclusion that bars nobody and changes no weight — refuse instead.
+        entry = RollEntry.objects.filter(question=question, label=label).first()
+        if entry is None:
+            raise ValueError(
+                f"No register entry is labelled {label!r} on this vote.")
+    else:
+        raise ValueError("An exclusion must name somebody: a user or a label.")
     exclusion = VoteExclusion.objects.create(
         question=question, user=user,
         label=label or (entry.label if entry else ""),
@@ -274,10 +320,9 @@ def snapshot_procedure(question):
     from .electorate_models import VoteProcedure
 
     rows = list(question.roll.all())
-    barred = excluded_user_ids(question)
+    barred = excluded_entry_pks(question)
     represented = [row for row in rows if row.is_represented]
-    excluded = [row for row in rows
-                if row.user_id is not None and row.user_id in barred]
+    excluded = [row for row in rows if row.pk in barred]
     procedure, _created = VoteProcedure.objects.update_or_create(
         question=question,
         defaults={
@@ -287,7 +332,7 @@ def snapshot_procedure(question):
             # is in the room and may not vote on it.
             "eligible_weight": sum(
                 row.weight for row in rows
-                if row.can_act and row.user_id not in barred),
+                if row.can_act and row.pk not in barred),
             "excluded_weight": sum(row.weight for row in excluded),
             "members_total": len(rows),
             "members_represented": len(represented),
