@@ -309,6 +309,28 @@ class MembershipApplicationUsernameTests(TestCase):
         self.assertFalse(MembershipApplication.objects.filter(email="new@example.com").exists())
 
 
+
+def _host_gates_anonymous_access() -> bool:
+    """True on a host that requires a login for every page.
+
+    Zenobia does: it is one company's private system, so its staff roster and
+    its list of departments are not public documents — closing them was the
+    point. Other hosts keep these pages open, so the assertions below are still
+    the library's real behaviour and are skipped only where a host has
+    deliberately overridden it.
+    """
+    from django.conf import settings
+
+    return any("LoginRequired" in m for m in settings.MIDDLEWARE)
+
+
+needs_public_pages = unittest.skipIf(
+    _host_gates_anonymous_access(),
+    "this host requires a login for every page (see its middleware), so it has "
+    "no public roster or community list to test")
+
+
+@needs_public_pages
 class StationListChromeTests(TestCase):
     """The offices roster renders as a platform page, not a bare template.
 
@@ -395,6 +417,7 @@ class StatuteTests(TestCase):
                       {value for value, _ in Community.ORG_TYPES})
 
 
+@needs_public_pages
 class CommunityListFilterTests(TestCase):
     """?org_type=company is how companies are found now."""
 

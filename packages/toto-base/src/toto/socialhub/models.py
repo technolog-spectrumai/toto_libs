@@ -249,12 +249,16 @@ class Station(models.Model):
     )
     holder = models.ForeignKey(
         "people.Person", on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="stations",
+        # No reverse accessor. `person.stations` and `community.stations` now
+        # belong to toto.stations, the app that replaced this model's only
+        # load-bearing part. Nothing ever read either reverse here — verified by
+        # a full sweep across every host — so this frees the name at no cost.
+        related_name="+",
         help_text="Empty means VACANT: the office keeps existing and pays nobody.",
     )
     serves = models.ForeignKey(
         Community, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="stations",
+        related_name="+",
         help_text=(
             "Which community this office works for, if any. Attribution only — "
             "the federal treasury pays every special role and a community "
