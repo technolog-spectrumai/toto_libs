@@ -102,6 +102,34 @@ def check_and_charge(user, tariff, metric_code: str, quantity, unit: str = "", *
     return _f(user, tariff, metric_code, quantity, unit=unit, **kwargs)
 
 
+def credit(user, tariff, metric_code: str, quantity, unit: str = "", **kwargs):
+    """Pay the user — the opposite direction to :func:`charge`, same door.
+
+    For a **negative-quantity subscription**: a stipend. The treasury pays a
+    member for being here instead of the member paying to be here.
+
+    This is deliberately NOT :func:`refund`. A refund reverses a *posted*
+    charge and declines a record that is not POSTED or is already reversed —
+    it undoes something. A stipend undoes nothing; there was never a debit.
+
+    ``quantity`` is the magnitude to pay, always positive: the caller has
+    already read the sign and chosen this function because of it. Returns the
+    ledger transaction, or ``None`` when there is no economy on this host or no
+    price for the metric — the same two sentinels every function here honours,
+    so a call site still needs no guard of its own.
+
+    The payer is the platform treasury, exactly as ``toto.tax.payroll`` pays a
+    stipend today. That account is credited by every tariff and every levy and
+    is otherwise **never debited**, against a capped supply — which is why this
+    function exists at all: it is the only thing that puts value back.
+    """
+    if not tariff:
+        return None
+    from toto.tariffs.charge import credit_user
+
+    return credit_user(user, tariff, metric_code, quantity, unit=unit, **kwargs)
+
+
 def refund(usage_record, *, reference: str = "", description: str = ""):
     """Reverse a posted charge — for work that was paid for and then failed.
 

@@ -52,6 +52,19 @@ class SubscriptionPlan(models.Model):
     unit is one number on the rate card that everybody pays. A plan of 0 units
     is free however the rate card is set, which is what makes the free plan a
     real row rather than a special case in every query.
+
+    **The quantity is SIGNED, and the sign is the direction.** Positive means
+    the subscriber pays to be here. Negative means the platform pays *them* —
+    a stipend — and that is one mechanism, not two: the same plan, the same
+    period, the same ledger, read in the other direction.
+
+    That replaced ``socialhub.Station``, which fused three unrelated things into
+    one row: an office, an authorisation grant and a payslip. Only the payslip
+    was load-bearing, and it was load-bearing for a reason worth writing down:
+    the treasury account every tariff and levy credits was, before it existed,
+    **never debited by anything**, against a hard-capped supply. A negative
+    subscription is the only thing that puts value back, so the currency keeps
+    circulating instead of seizing.
     """
 
     code = models.SlugField(max_length=64, unique=True, help_text=_(
@@ -60,10 +73,11 @@ class SubscriptionPlan(models.Model):
     description = models.TextField(blank=True, help_text=_(
         "One or two sentences. What the entitlement list cannot say by itself."))
 
-    units = models.PositiveIntegerField(default=0, help_text=_(
+    units = models.IntegerField(default=0, help_text=_(
         "Billed quantity per month of the 'subscription.month' metric. NOT a "
         "price: one unit costs whatever the rate card says it costs, the same "
-        "for every subscriber. 0 is free on any rate card."))
+        "for every subscriber. 0 is free on any rate card. NEGATIVE pays the "
+        "subscriber instead of charging them — a stipend."))
 
     entitlements = models.JSONField(default=list, blank=True, help_text=_(
         "Entitlement codes this plan unlocks — see subscriptions/catalogue.py. "

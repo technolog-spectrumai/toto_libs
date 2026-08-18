@@ -144,9 +144,18 @@ def billed_units(plan, percent: int) -> Decimal:
 
     Rounded DOWN, so a discount is never worth fractionally less than the
     percentage says it is.
+
+    **A discount never applies to a negative plan.** A negative quantity is a
+    stipend — the platform paying the subscriber — and "20 % off" a stipend
+    would quietly pay somebody less for belonging to a community that was
+    supposed to be a benefit. Worse, ROUND_DOWN truncates toward zero, so the
+    shrinking would be silent and slightly wrong in the same direction every
+    month. A discount reduces what you owe; it has no meaning when you are owed.
     """
     if plan is None or not plan.units:
         return Decimal("0")
+    if plan.units < 0:
+        return Decimal(plan.units)
     gross = Decimal(plan.units)
     net = gross * (Decimal(100 - int(percent)) / Decimal(100))
     return net.quantize(Decimal("0.01"), rounding="ROUND_DOWN")
@@ -303,13 +312,25 @@ def settle(charge, *, user=None) -> SubscriptionCharge:
     charge.discount_source = source
 
     tariff = price_for(user, "subscriptions")
-    if units <= 0 or tariff is None:
+    if units == 0 or tariff is None:
         charge.status = ChargeStatus.PAID
         charge.detail = ""
         charge.settled_at = timezone.now()
         charge.save()
         _clear_arrears(subscription)
         return charge
+
+    if units < 0:
+        # A stipend: the platform pays the subscriber. Same plan, same period,
+        # same ledger — read in the other direction. This is what replaced
+        # socialhub.Station, and it is the only thing that ever debits the
+        # revenue account, so it is what keeps a capped currency circulating.
+        #
+        # No affordability check: `check_funds` guards the SUBSCRIBER's wallet,
+        # and here it is the treasury that must have the money. An empty
+        # treasury leaves the charge DUE and the next run tries again — the
+        # member is still owed, exactly as payroll has always treated it.
+        return _settle_credit(charge, subscription, user, plan, units)
 
     try:
         # Both halves, the way every metered app does it: the event is this
@@ -338,6 +359,55 @@ def settle(charge, *, user=None) -> SubscriptionCharge:
         charge.detail = f"{type(exc).__name__}: {exc}"[:300]
         charge.save()
         _enter_arrears(subscription)
+        return charge
+
+    charge.status = ChargeStatus.PAID
+    charge.detail = ""
+    charge.settled_at = timezone.now()
+    charge.save()
+    _clear_arrears(subscription)
+    return charge
+
+
+def _settle_credit(charge, subscription, user, plan, units) -> SubscriptionCharge:
+    """Pay the subscriber for this period. Never raises.
+
+    The mirror of the paying branch, and deliberately NOT its inverse in every
+    respect — two differences are load-bearing:
+
+    * **No arrears.** Arrears mean "you owe us and access is at risk". A member
+      the platform could not pay owes nothing; the debt runs the other way. The
+      charge stays DUE and the next run retries, which is how ``toto.tax``
+      already treats an unpayable stipend.
+    * **The usage event is still recorded**, with the same period-keyed
+      idempotency key as the paying branch, so the usage bars and this app's
+      own trail read one month once — whichever direction the money went.
+    """
+    from toto.quota.charge import credit
+
+    magnitude = -units
+    tariff = None
+    try:
+        from toto.quota.charge import price_for
+
+        tariff = price_for(user, "subscriptions")
+        record_usage(SubscriptionUsageEvent, METRIC, units, user,
+                     unit="month",
+                     source_type="subscriptions.SubscriptionCharge",
+                     source_id=str(charge.pk),
+                     source_label=f"{plan.name} {charge.period_label}",
+                     idempotency_key=f"subscription:{subscription.pk}:{charge.period_label}")
+        credit(user, tariff, METRIC, magnitude,
+               unit="month",
+               source_type="subscriptions.SubscriptionCharge",
+               source_id=str(charge.pk),
+               description=f"{plan.name} — {charge.period_label} (stipend)",
+               reference=f"subscription-credit:{subscription.pk}:{charge.period_label}")
+    except Exception as exc:  # noqa: BLE001 - a billing fault is not a 500 here
+        # DUE, not FAILED, and no arrears: nobody defaulted. The treasury is
+        # empty or the ledger refused, and the member is still owed.
+        charge.detail = f"{type(exc).__name__}: {exc}"[:300]
+        charge.save()
         return charge
 
     charge.status = ChargeStatus.PAID

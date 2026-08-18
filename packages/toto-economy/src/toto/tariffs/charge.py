@@ -326,6 +326,80 @@ def check_and_charge(
 
 
 # ---------------------------------------------------------------------------
+# credit_user — the treasury pays the user (a negative-quantity subscription)
+# ---------------------------------------------------------------------------
+
+def credit_user(
+    user,
+    tariff: "Tariff",
+    metric_code: str,
+    quantity: int | float | Decimal,
+    unit: str = "",
+    source_type: str = "",
+    source_id: str = "",
+    description: str = "",
+    reference: str = "",
+):
+    """Pay the user from the treasury. Returns the LedgerTransaction, or None.
+
+    The other direction from :func:`charge_user`, for a subscription whose
+    quantity is negative — a stipend. ``quantity`` is the magnitude, always
+    positive: the caller read the sign and chose this function because of it.
+
+    **This deliberately does not go through the usage pipeline.**
+    ``record_and_post_usage`` is built around "the payer's holding is debited,
+    the item's ``receiving_account`` is credited", and inverting it would mean
+    inverting rating, the balance lock and the insufficient-funds path — three
+    places where money would be wrong if the inversion were subtly off. Instead
+    this prices the work with the same pure calculator the charge path uses
+    (:func:`calculate_tariff_charge`) and then moves the money the way
+    ``toto.tax.payroll`` has always moved a stipend: one ``transfer_asset`` out
+    of the revenue account.
+
+    ``reference`` is the idempotency key and callers should pass a stable one —
+    ``transfer_asset`` refuses a duplicate, which is what makes paying the same
+    period twice impossible rather than merely unlikely.
+    """
+    from django.core.exceptions import ValidationError
+
+    from toto.assets.models import from_base_units
+    from toto.assets.services.assets import transfer_asset
+    from toto.tariffs.rate_card import revenue_account
+    from toto.tariffs.services import calculate_tariff_charge
+
+    drafts = calculate_tariff_charge(tariff, metric_code, Decimal(str(quantity)), unit)
+    if not drafts:
+        # Unpriced metric — free, exactly as the charge path reads it. Nothing
+        # to pay, and that is not a failure.
+        return None
+
+    total = sum(d.amount_base_units for d in drafts)
+    if total <= 0:
+        return None
+
+    asset = drafts[0].tariff_item.charged_asset
+    payer = revenue_account()
+    payee = _get_billing_account(user)
+
+    try:
+        return transfer_asset(
+            asset=asset,
+            sender_account=payer,
+            receiver_account=payee,
+            amount=from_base_units(total, asset.decimals),
+            reference=reference or f"credit-{metric_code}-{source_type}-{source_id}",
+            description=description or f"{metric_code} × {quantity} (credit)",
+            metadata={"kind": "credit", "metric_code": metric_code,
+                      "source_type": source_type, "source_id": str(source_id)},
+        )
+    except ValidationError:
+        # Almost always an empty treasury, which is the same condition payroll
+        # meets and treats as "still owed". Let the caller decide: it holds the
+        # row that records the debt.
+        raise
+
+
+# ---------------------------------------------------------------------------
 # refund_usage_record — undo a charge for work that failed
 # ---------------------------------------------------------------------------
 

@@ -343,6 +343,83 @@ class SettleTests(TestCase):
         charge.refresh_from_db()
         self.assertEqual(charge.status, ChargeStatus.PAID)
 
+    def test_a_negative_plan_pays_the_subscriber(self):
+        """A stipend. Same plan, same period, same ledger — other direction.
+
+        This is what replaced socialhub.Station: an office that fused a charter,
+        four rights and a payslip into one row, of which only the payslip was
+        load-bearing.
+        """
+        from unittest import mock
+
+        stipend = SubscriptionPlan.objects.create(
+            code="engineer", name="Engineer", units=-500, order=40)
+        user = member("engineer-1")
+        subscription = services.subscribe(user, stipend)
+        services.materialize(subscription)
+        charge = subscription.charges.get()
+
+        with mock.patch("toto.quota.charge.price_for", return_value=object()), \
+             mock.patch("toto.quota.charge.credit") as paid:
+            services.settle(charge)
+
+        charge.refresh_from_db()
+        self.assertEqual(charge.status, ChargeStatus.PAID)
+        self.assertEqual(charge.units, Decimal("-500"))
+        self.assertTrue(paid.called, "a negative plan must reach the credit door")
+        # The magnitude is paid, not the sign: the caller chose the direction.
+        self.assertEqual(paid.call_args.args[3], 500)
+
+    def test_a_negative_plan_never_charges(self):
+        """The failure that would matter most: paying somebody by debiting them."""
+        from unittest import mock
+
+        stipend = SubscriptionPlan.objects.create(
+            code="tech", name="Technician", units=-300, order=41)
+        user = member("tech-1")
+        subscription = services.subscribe(user, stipend)
+        services.materialize(subscription)
+        charge = subscription.charges.get()
+
+        with mock.patch("toto.quota.charge.price_for", return_value=object()), \
+             mock.patch("toto.quota.charge.credit"), \
+             mock.patch("toto.quota.charge.charge") as debited:
+            services.settle(charge)
+
+        self.assertFalse(debited.called, "a stipend must never debit the member")
+
+    def test_a_discount_never_shrinks_a_stipend(self):
+        """A community discount reduces what you OWE. It has no meaning when
+        you are owed — and ROUND_DOWN would have shrunk it silently."""
+        community = Community.objects.create(name="Perks", slug="perks")
+        CommunityDiscount.objects.create(community=community, percent=20)
+        stipend = SubscriptionPlan.objects.create(
+            code="marketing", name="Marketing", units=-1000, order=42)
+
+        self.assertEqual(services.billed_units(stipend, 20), Decimal("-1000"))
+
+    def test_an_unpayable_stipend_stays_due_without_arrears(self):
+        """An empty treasury is not a default. Arrears mean 'you owe us and
+        access is at risk'; a member the platform could not pay owes nothing."""
+        from unittest import mock
+
+        stipend = SubscriptionPlan.objects.create(
+            code="board", name="Board", units=-900, order=43)
+        user = member("board-1")
+        subscription = services.subscribe(user, stipend)
+        services.materialize(subscription)
+        charge = subscription.charges.get()
+
+        with mock.patch("toto.quota.charge.price_for", return_value=object()), \
+             mock.patch("toto.quota.charge.credit",
+                        side_effect=RuntimeError("treasury empty")):
+            services.settle(charge)
+
+        charge.refresh_from_db()
+        subscription.refresh_from_db()
+        self.assertNotEqual(charge.status, ChargeStatus.PAID)
+        self.assertNotEqual(subscription.state, SubscriptionState.ARREARS)
+
     def test_a_free_plan_costs_nothing_and_settles(self):
         user = member("freeloader")
         subscription = services.subscribe(user, self.free)
