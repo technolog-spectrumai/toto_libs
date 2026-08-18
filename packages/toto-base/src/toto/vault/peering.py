@@ -6,15 +6,16 @@ row-replication engine that used to share this vocabulary is parked
 copied here with attribution, its transport never existed, and the sealing
 decision made the bucket link the only data plane.
 
-**None of these models may carry a field named ``uid``.**
-``backup_engine.is_backup_model()`` decides whether a model belongs in a
-backup archive purely by asking whether it has a field with that exact name —
-for every app named in ``settings.APPS_TO_SYNC``, and "vault" is on that list
-everywhere. A grant's magic token and a peer's api key must never enter a
-signed, pullable ZIP, so the identity columns are ``grant_uid`` and
-``peer_uid``, ``VaultConfig.ready()`` asserts it over every vault model, and a
-test asserts it independently of the app loading. (The parked datalink app
-learned and recorded this exact rule.)
+**The identity columns are ``grant_uid`` and ``peer_uid``, not ``uid``.**
+Historical, but the history is worth keeping: the retired app-level backup
+engine selected models for a signed, pullable archive purely by the presence
+of a field named ``uid``, and a grant's magic token or a peer's api key in
+such an archive would have handed the puller the bucket link — so vault models
+were structurally barred from the name. (The parked datalink app learned and
+recorded this exact rule.) The engine is gone — backups are a pg_dump sidecar
+now, and a database dump of THIS host never leaves it by design — but the
+column names stay: renaming identity columns buys nothing, and the caution
+they encode is still true of any future export mechanism.
 
 **The credential pair is two directional models, not one symmetric row.**
 A host can export one bucket while mounting another, and rotating the key it

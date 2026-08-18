@@ -77,7 +77,7 @@ class NotTheMasterTests(TestCase):
         self.assertFalse(issuer_module.is_monetary_master())
 
     def test_the_key_material_without_the_secret_to_open_it(self):
-        # The restored-backup case: assets rows travel in APPS_TO_SYNC, the
+        # The restored-backup case: assets rows travel in every DB dump, the
         # issuer secret deliberately does not. The clone holds ciphertext it
         # cannot open and must degrade to inert, not to master.
         with override_settings(MONETARY_ISSUER_KEY=ISSUER_SECRET):
@@ -176,7 +176,7 @@ class SecretSeparationTests(TestCase):
 
     Sealing the issuer key under FIELD_ENCRYPTION_KEY would make any restored
     production backup a second monetary master: assets rows travel in
-    APPS_TO_SYNC and that key travels in the deploy config. Asserted
+    every database dump and that key travels in the deploy config. Asserted
     behaviourally rather than by reading the source, so a fallback added
     anywhere in the chain fails this — not just one added to one function.
     """

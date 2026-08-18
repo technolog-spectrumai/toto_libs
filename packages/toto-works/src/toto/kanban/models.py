@@ -615,9 +615,9 @@ class TaskRelation(DomainEntity):
     def save(self, *args, **kwargs):
         self._canonicalize()
         if self._state.adding:
-            # Strict on insert only. SyncService restores rows with
-            # update_or_create, and a historical cross-campaign edge must not
-            # abort a whole restore.
+            # Strict on insert only: a historical row written back by
+            # machinery (bulk loads, data migrations) must not abort on a
+            # cross-campaign edge that was legal when it was made.
             self.full_clean()
         super().save(*args, **kwargs)
 

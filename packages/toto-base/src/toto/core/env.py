@@ -18,7 +18,6 @@ _DEV_DEFAULTS = {
     "FULL_INGRESS":    "1",
     # SSO / backup vault — no default; must be set explicitly
     "SSO_VAULT_PASSWORD":    "",
-    "BACKUP_VAULT_PASSWORD": "",
     # Sabbia agent-credential vault — no default; must be set explicitly
     "SABBIA_VAULT_PASSWORD": "",
     # Jess email-provider vault — no default; must be set explicitly. NOT in

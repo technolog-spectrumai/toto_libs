@@ -9,7 +9,6 @@ the portal host has always used.
 CORE_APPS = [
     "toto.core",
     "toto.api",
-    "toto.backup",
     "toto.gervazy",       # encryption and vault management
     "toto.vault",
     "toto.people",

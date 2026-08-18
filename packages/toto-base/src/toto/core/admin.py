@@ -3,7 +3,6 @@ from django.utils.html import format_html
 from django.utils.translation import gettext_lazy as _
 
 from toto.core.base_admin import TotoModelAdmin
-from toto.backup.admin import BackupAdminMixin
 from .models import Platform, Font, Theme, ColorMix, Federation
 
 
@@ -89,7 +88,14 @@ class FederationAdmin(TotoModelAdmin):
 
 
 @admin.register(Platform)
-class PlatformAdmin(BackupAdminMixin, TotoModelAdmin):
+# No BackupAdminMixin any more. The app-level backup engine is gone — it
+# covered 32 of ~130 models and could not restore an append-only ledger
+# without weakening it; what replaced it is a pg_dump + media-tar sidecar
+# pair in the deploy stack (scripts/deploy.py, `backups:` block), where
+# coverage is total by construction. The Backup and Seed consoles died with
+# the engine; seeding is `manage.py ingress_all`, restoring is two documented
+# commands in the config's DEPLOY.md.
+class PlatformAdmin(TotoModelAdmin):
     list_display = (
         'site_name', 'domain', 'publication_year', 'active',
         'get_theme_name', 'rate_limit_window', 'rate_limit_max_requests',
@@ -97,7 +103,6 @@ class PlatformAdmin(BackupAdminMixin, TotoModelAdmin):
     search_fields = ('site_name', 'domain', 'theme__name')
     list_filter = ('active', 'publication_year', 'theme')
     ordering = ['publication_year']
-    actions = ["backup_console_action", "seed_console_action"]
 
     def get_theme_name(self, obj):
         return obj.theme.name if obj.theme else '-'

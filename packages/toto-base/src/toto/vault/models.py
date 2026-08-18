@@ -384,29 +384,6 @@ class VaultFile(models.Model):
         null=True, blank=True, related_name='files'
     )
 
-    #: How a backup should refer to this file from ANOTHER app's row.
-    #:
-    #: Five models in the backup set point at VaultFile — Community.statute,
-    #: kanban's DocumentationPage and MissionAttachment, and governance's
-    #: UmowaAmendment.document and Mandate.document. Without this, the backup
-    #: engine falls back to exporting the raw ``*_id`` integer, and a restore
-    #: renumbers primary keys: a company's statute would come back pointing at
-    #: whichever unrelated file now holds that number, silently.
-    #:
-    #: The obvious fix — give VaultFile a ``uid`` — is FORBIDDEN here, and for a
-    #: good reason: ``backup_engine.is_backup_model()`` selects models purely by
-    #: the presence of a field named ``uid``, so one on any vault model would
-    #: make bucket-peering credentials eligible for a signed, pullable archive.
-    #: ``vault/apps.py`` enforces that at startup.
-    #:
-    #: ``(bucket.slug, key)`` is better than a uid would have been anyway: it is
-    #: already this system's cross-host identity for a file. Bucket slugs are
-    #: unique, ``unique_together`` below makes the pair unique, and the mirror
-    #: resolves a file on a peer with exactly ``filter(bucket=..., key=...)``
-    #: (see mirror.py). So on a host that has mirrored the bucket, the reference
-    #: RESOLVES rather than merely surviving as an identifier.
-    BACKUP_NATURAL_REF = ("bucket__slug", "key")
-
     class Meta:
         verbose_name = "Vault File"
         verbose_name_plural = "Vault Files"

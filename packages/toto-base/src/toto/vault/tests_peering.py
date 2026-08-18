@@ -175,22 +175,6 @@ class PeerCustodyTests(TestCase):
             peer.delete()
 
 
-class BackupExclusionTests(TestCase):
-    def test_no_vault_model_has_a_uid_field(self):
-        # backup_engine.is_backup_model() selects a model for a signed,
-        # pullable archive purely on having a field named 'uid'. Asserted here
-        # independently of VaultConfig.ready(), so the guard survives even if
-        # ready() is refactored.
-        from django.apps import apps as django_apps
-        for model in django_apps.get_app_config("vault").get_models():
-            names = {f.name for f in model._meta.get_fields()
-                     if getattr(f, "concrete", False)}
-            self.assertNotIn(
-                "uid", names,
-                f"{model._meta.label} has a 'uid' field — backup serialization "
-                "would carry peering credentials. Use grant_uid / peer_uid.")
-
-
 class PairingCodeTests(TestCase):
     @classmethod
     def setUpTestData(cls):

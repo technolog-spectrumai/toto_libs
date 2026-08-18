@@ -6,8 +6,9 @@ an operator can type, and no flag a branch can flip. A host either can produce a
 signature the world will verify, or it cannot.
 
 The private half is sealed under ``MONETARY_ISSUER_KEY``, a secret **deliberately
-separate from FIELD_ENCRYPTION_KEY**. `toto.assets` is in `APPS_TO_SYNC`, so its
-rows travel in backups; FIELD_ENCRYPTION_KEY travels in the deploy config. Had
+separate from FIELD_ENCRYPTION_KEY**. Backups are full database dumps (the
+pg_dump sidecar), so these rows travel in every backup by construction;
+FIELD_ENCRYPTION_KEY travels in the deploy config. Had
 the issuer key been sealed under it, restoring a production backup onto a
 staging box would produce a second monetary master able to sign genesis
 documents indistinguishable from the real ones. With a separate secret the
