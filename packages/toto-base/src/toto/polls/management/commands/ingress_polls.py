@@ -221,7 +221,12 @@ class Command(IngressCommand):
         for person in company.members.all().order_by("pk"):
             ElectorateMember.objects.create(
                 electorate=electorate,
-                user=person.user,
+                # A member is a PERSON, not a login. Migration 0012 moved this
+                # column and this call site was missed, so `ingress_all --full`
+                # has raised TypeError ever since: a person with no account
+                # still sits on a register, still counts toward turnout, and
+                # simply cannot cast.
+                person=person,
                 label=person.display_name,
                 weight=1,
             )
