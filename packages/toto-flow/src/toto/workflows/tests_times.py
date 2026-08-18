@@ -8,7 +8,7 @@ is autodiscovered.
 from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.core.exceptions import PermissionDenied, ValidationError
-from django.test import TestCase
+from django.test import TestCase, override_settings
 
 from toto.quota import sweeps, times
 
@@ -145,6 +145,7 @@ class InvariantTests(TestCase):
         self.assertLess(decl.ceiling_seconds + 5, min(workflow_floors))
 
 
+@override_settings(ROOT_URLCONF="toto.workflows.tests_urlconf")
 class UiTests(TestCase):
     @classmethod
     def setUpTestData(cls):

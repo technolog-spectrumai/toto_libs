@@ -272,7 +272,16 @@ def _manual_features(request):
         "editor": apps.is_installed("toto.editor"),
         "sketch": apps.is_installed("toto.sketch"),
         "chat": apps.is_installed("toto.forum"),
-        "workflows": apps.is_installed("toto.workflows"),
+        # Mounted, not installed — and the distinction is load-bearing here.
+        # toto.workflows is the platform's job runner: the antivirus queues
+        # scans through it and weather loads through it, so a host may not
+        # uninstall it. A host may still decline to OFFER it: zenobia is a
+        # company-management product and does not hand its users a DAG
+        # builder, so it drops the route while keeping the runner. Asking the
+        # app registry would keep documenting a page that host does not serve
+        # — and the section below reverses `workflows:workflow_list`, so it
+        # would 500 the manual outright rather than merely mislead.
+        "workflows": _mounted("workflows:workflow_list"),
         "notebooks": _mounted("mandragora:notebook_list"),
         "graph": apps.is_installed("toto.ravioli"),
         "ocr": apps.is_installed("toto.ocr"),

@@ -8,7 +8,7 @@ Runs under zenobia settings (BUILD_WORKFLOWS=1 in the gate stanza).
 from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
-from django.test import TestCase
+from django.test import TestCase, override_settings
 from django.urls import reverse
 
 from .api import trigger_workflow
@@ -23,6 +23,7 @@ def make_users(test):
     test.staff = User.objects.create_user("staff", password="pw", is_staff=True)
 
 
+@override_settings(ROOT_URLCONF="toto.workflows.tests_urlconf")
 class AttributionTests(TestCase):
     def setUp(self):
         make_users(self)
@@ -78,6 +79,7 @@ class AttributionTests(TestCase):
         self.assertIsNone(data[0]["owner_username"])
 
 
+@override_settings(ROOT_URLCONF="toto.workflows.tests_urlconf")
 class PermissionMatrixTests(TestCase):
     def setUp(self):
         make_users(self)
@@ -138,6 +140,7 @@ class PermissionMatrixTests(TestCase):
         self.assertFalse(TimeGrant.objects.exists())
 
 
+@override_settings(ROOT_URLCONF="toto.workflows.tests_urlconf")
 class CancelMatrixTests(TestCase):
     def setUp(self):
         make_users(self)
