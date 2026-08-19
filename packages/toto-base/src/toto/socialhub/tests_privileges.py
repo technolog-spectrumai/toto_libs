@@ -359,7 +359,7 @@ class ProfileOfficeTests(TestCase):
         self.assertNotIn("Archivist", body)
 
     def test_a_second_office_costs_no_extra_query(self):
-        """The Prefetch works: offices do not cost one query each."""
+        """The office lookup does not cost one query per office."""
         from django.db import connection
         from django.test.utils import CaptureQueriesContext
         from django.urls import reverse
@@ -381,7 +381,7 @@ class ProfileOfficeTests(TestCase):
 
         self.assertEqual(
             len(two_offices.captured_queries), len(one_office.captured_queries),
-            "a second office cost extra queries — the Prefetch is not in effect")
+            "a second office cost extra queries")
 
     def test_the_profile_row_is_fetched_once(self):
         """get_context_data must read `self.object`, not call get_object().

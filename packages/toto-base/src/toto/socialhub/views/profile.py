@@ -3,7 +3,6 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.exceptions import PermissionDenied
-from django.db.models import Prefetch
 from django.shortcuts import redirect
 from django.urls import reverse
 from django.utils import translation
@@ -34,22 +33,10 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
     context_object_name = "profile"
 
     def get_queryset(self):
-        prefetches = [
-            "communities",
-            # Offices, filtered and ordered here so the template neither
-            # filters nor sorts, and so a vacated one never appears.
-            Prefetch(
-                "stations",
-                queryset=Station.objects.filter(active=True)
-                .select_related("serves")
-                .order_by("serves__name", "name"),
-                to_attr="held_stations",
-            ),
-        ]
         return (
             super()
             .get_queryset()
-            .prefetch_related(*prefetches)
+            .prefetch_related("communities")
             .select_related(
                 "address",
                 "user",
@@ -59,8 +46,7 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         # `self.object`, NOT get_object(): DetailView has already fetched it,
-        # and re-fetching runs the queryset again and throws the prefetch above
-        # away — the offices would then cost one query each.
+        # and re-fetching runs the queryset again.
         profile = self.object
 
         is_own_profile = profile.user == self.request.user
@@ -79,7 +65,11 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
         # only to its holder. The profile page is visible to every logged-in
         # user for any person, so an unconditional stipend would publish every
         # officer's pay platform-wide — see STATIONS.md, "Visibility".
-        context["stations"] = getattr(profile, "held_stations", [])
+        context["stations"] = list(
+            Station.objects.filter(holder=profile, active=True)
+            .select_related("serves")
+            .order_by("serves__name", "name")
+        )
         show_pay = is_own_profile and rates.pricing_enabled()
         context["show_station_pay"] = show_pay
         # Absent rather than blank on a host that does not bill: a currency
@@ -126,4 +116,3 @@ def set_preferred_language(request):
         return redirect(reverse("socialhub:profile_details", args=[slug]))
     except Exception:
         return redirect("/")
-
