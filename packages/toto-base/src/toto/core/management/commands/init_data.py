@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.core.management.base import BaseCommand, CommandError
 from django.core.management import call_command
 import os
@@ -130,9 +131,15 @@ class Command(BaseCommand):
         call_command("create_platform", *create_platform_args)
         self.stdout.write(self.style.SUCCESS("Platform created."))
 
-        self.stdout.write(self.style.NOTICE("Creating federation..."))
-        self._create_federation()
-        self.stdout.write(self.style.SUCCESS("Federation created."))
+        if getattr(settings, "FEDERATION_ENABLED", True):
+            self.stdout.write(self.style.NOTICE("Creating federation..."))
+            self._create_federation()
+            self.stdout.write(self.style.SUCCESS("Federation created."))
+        else:
+            from toto.core.models import Platform  # noqa: PLC0415
+
+            Platform.objects.filter(active=True).update(federation=None)
+            self.stdout.write(self.style.SUCCESS("Federation disabled for this host."))
 
     def _create_federation(self) -> None:
         """Always (even at non-full ingress) create the "Toto-Federation", give it the
@@ -205,4 +212,3 @@ class Command(BaseCommand):
             return Font.objects.get(name=name)
         except Font.DoesNotExist:
             return None
-
