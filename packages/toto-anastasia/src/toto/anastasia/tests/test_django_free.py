@@ -24,8 +24,25 @@ from django.test import SimpleTestCase
 
 #: The modules the manager needs, and therefore the ones that may not touch
 #: Django. Everything else in the package is free to.
-DJANGO_FREE = ("toto.anastasia.limits", "toto.anastasia.families",
-               "toto.anastasia.choices")
+DJANGO_FREE = (
+    # The shared core the manager reads its vocabulary from.
+    "toto.anastasia.limits",
+    "toto.anastasia.families",
+    "toto.anastasia.choices",
+    # The manager itself. This is the half that runs in the container holding
+    # the Docker socket, with no settings module and no database.
+    "toto.anastasia.manager",
+    "toto.anastasia.manager.protocol",
+    "toto.anastasia.manager.staging",
+    "toto.anastasia.manager.slices",
+    "toto.anastasia.manager.containers",
+    "toto.anastasia.manager.runners",
+    "toto.anastasia.manager.gears",
+    "toto.anastasia.manager.reconcile",
+    "toto.anastasia.manager.pressure",
+    "toto.anastasia.manager.service",
+    "toto.anastasia.manager.__main__",
+)
 
 PACKAGE_SRC = Path(__file__).resolve().parents[3]
 
@@ -77,7 +94,13 @@ class DjangoFreeCoreTests(SimpleTestCase):
         import ast
 
         for dotted in DJANGO_FREE:
-            path = PACKAGE_SRC / (dotted.replace(".", "/") + ".py")
+            base = PACKAGE_SRC / dotted.replace(".", "/")
+            # A package (toto.anastasia.manager) is its __init__.py; a module
+            # is <name>.py. Both are in the list, so resolve both.
+            path = base.with_suffix(".py")
+            if not path.exists():
+                path = base / "__init__.py"
+            self.assertTrue(path.exists(), f"{dotted} resolves to no file")
             tree = ast.parse(path.read_text())
             for node in tree.body:            # module scope only, by design
                 names = []

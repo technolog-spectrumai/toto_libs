@@ -92,6 +92,68 @@ price on compute. Reserved capacity is held over time, which is a levy rather
 than a per-request count; metering resources here as well would charge twice
 for one thing. The reservation levy is a documented TODO.
 
+## The manager
+
+`toto.anastasia.manager` is the trusted half — a small `http.server` process
+that runs in its own container with the Docker socket and, deliberately,
+nothing else. Start it with `python -m toto.anastasia.manager`; it refuses to
+start without `ANASTASIA_SHARED_SECRET`, because an unauthenticated Docker
+manager is a remote shell.
+
+**It keeps no database.** Everything it needs is derivable from Docker labels
+(`anastasia.gear`, `anastasia.exec`, `anastasia.warm`, `anastasia.deadline`),
+the cgroup tree, and the staging directory layout. That is what makes "destroy
+every runner, every scratch area and the manager itself" survivable rather than
+a data loss — and it means a restarted manager rebuilds its view by looking, so
+it cannot drift from reality. Timeouts are enforced from the `deadline` label
+by the reconcile loop rather than by a thread per execution, for the same
+reason: a thread dies with the manager and leaves its runner running forever.
+
+| Concern | Where |
+|---|---|
+| HMAC over method + path + body digest + timestamp + nonce | `protocol.py` |
+| Hardened tar in and out (no links, budgets, resolved-path containment) | `staging.py` |
+| The Gear cgroup: systemd transient slice, cgroupfs fallback, honest null | `slices.py` |
+| Every Docker flag a runner gets — assembled, never accepted | `containers.py` |
+| Operation → argv, on the trusted side only | `runners.py` |
+| Mount / execute / collect / unmount | `gears.py` |
+| Deadlines, orphans, staging sweep, adoption | `reconcile.py` |
+| Refuse new mounts under memory or disk pressure | `pressure.py` |
+
+Two details worth knowing before changing any of it:
+
+* **`StartTransientUnit` is asynchronous.** `ensure()` waits for the cgroup to
+  actually carry the limits it asked for; returning early would let a runner
+  launch into a slice whose ceiling systemd had not written yet.
+* **systemd expands every dash into a level**, so
+  `anastasia-gear-<hex>.slice` lives at
+  `anastasia.slice/anastasia-gear.slice/anastasia-gear-<hex>.slice`. The
+  obvious shallow path finds nothing and reports a healthy Gear as
+  unmeasurable.
+
+`ManagerRuntimeBackend` (in `manager_backend.py`) is the Django side of the
+wire and the only module in the app that knows the manager exists. Point
+`ANASTASIA_RUNTIME_BACKEND` at it once a manager is deployed.
+
+## Tests
+
+Run them by module name — `toto` is a PEP 420 namespace package, so directory
+discovery cannot walk it:
+
+```bash
+python manage.py test toto.anastasia.tests.test_booking \
+    toto.anastasia.tests.test_mount toto.anastasia.tests.test_execute \
+    toto.anastasia.tests.test_limits toto.anastasia.tests.test_protocol \
+    toto.anastasia.tests.test_manager toto.anastasia.tests.test_service \
+    toto.anastasia.tests.test_django_free
+```
+
+`test_docker_integration` additionally needs a reachable Docker daemon and
+skips itself without one. It is the only place the claims about confinement are
+actually proven — that the memory ceiling OOM-kills, that the pids limit stops
+a fork bomb, that the scratch tmpfs is hard, that a runner has no network, no
+root, no credentials and no Docker socket.
+
 ## Installing
 
 Add `toto-anastasia==<version>` to a host's `requirements.toto.txt`, put

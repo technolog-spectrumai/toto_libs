@@ -1,0 +1,91 @@
+"""Operation name + validated parameters -> the argv a runner is given.
+
+This table lives on the TRUSTED side on purpose. ``families.py`` says what a
+caller may *ask for*; this says what actually runs, and a caller never sees it.
+Keeping them apart is what stops a parameter from growing into a command: every
+value below arrives already validated by ``Operation.clean`` — an enum, a
+bounded int, or a path matched against ``_SAFE_PATH`` — so nothing here has to
+quote or escape, and nothing here may start doing so. If an operation ever
+needs free text on a command line, it needs a different design, not a quoting
+function.
+
+Each runner image exposes the same contract:
+
+    /in       staged input, read-only
+    /scratch  writable tmpfs, hard-sized
+    /out      where results go; whatever lands here comes back
+
+Django-free.
+"""
+
+from __future__ import annotations
+
+from ..families import Operation
+
+
+def build_argv(operation: Operation, params: dict) -> list[str]:
+    """The command line for one execution."""
+    builder = _BUILDERS.get(operation.name)
+    if builder is None:                       # pragma: no cover - catalogue drift
+        raise KeyError(
+            f"operation {operation.name!r} has no runner argv; families.py and "
+            "runners.py have drifted apart")
+    return [str(part) for part in builder(params)]
+
+
+def _render_pdf(params: dict) -> list:
+    # The runner reads /in/input.html and writes /out/output.pdf. No parameters
+    # at all: base_url is pinned to None inside the runner, so a document
+    # cannot fetch anything — and the container has no network to fetch over.
+    return ["anastasia-render-pdf"]
+
+
+def _compile_latex(params: dict) -> list:
+    return [
+        "anastasia-compile-latex",
+        "--main", params["main"],
+        "--engine", params["engine"],
+        "--max-passes", params["max_passes"],
+        "--latexmk" if params["use_latexmk"] else "--no-latexmk",
+    ]
+
+
+def _normalize_media(params: dict) -> list:
+    return [
+        "anastasia-normalize-media",
+        "--input", params["input"],
+        "--preset", params["preset"],
+    ]
+
+
+def _run_ocr(params: dict) -> list:
+    return [
+        "anastasia-run-ocr",
+        "--input", params["input"],
+        "--lang", params["lang"],
+        "--psm", params["psm"],
+    ]
+
+
+def _start_python_runtime(params: dict) -> list:
+    # The kernel runner is the one long-lived family: it starts a kernel, writes
+    # /out/connection.json, and stays up until the Gear is unmounted or the
+    # idle deadline passes. Dracena owns everything the user calls a session;
+    # this is only the runtime under it.
+    return [
+        "anastasia-python-runtime",
+        "--idle-seconds", params["idle_seconds"],
+    ]
+
+
+_BUILDERS = {
+    "render_pdf": _render_pdf,
+    "compile_latex": _compile_latex,
+    "normalize_media": _normalize_media,
+    "run_ocr": _run_ocr,
+    "start_python_runtime": _start_python_runtime,
+}
+
+
+def known_operations() -> frozenset:
+    return frozenset(_BUILDERS)
