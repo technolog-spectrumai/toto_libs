@@ -10,6 +10,7 @@ better than a mocked now() anyway.
 """
 
 import json
+import re
 from datetime import datetime, time, timedelta
 
 from django.contrib.auth import get_user_model
@@ -591,6 +592,30 @@ class SprintMetricsViewTests(TestCase):
         res = self.client.get(self.url)
         self.assertEqual(res.status_code, 200)
         self.assertIn("kanban/sprint_metrics.html", [t.name for t in res.templates])
+
+    def test_chart_canvases_are_inside_bounded_containers(self):
+        res = self.client.get(self.url)
+        chart_ids = [
+            "sprintCompletionChart",
+            "sprintTaskChart",
+            "burndownChart",
+            "statusChart",
+            "velocityChart",
+            "leadTimeChart",
+            "assigneeWorkloadChart",
+        ]
+        html = res.content.decode()
+        for chart_id in chart_ids:
+            with self.subTest(chart_id=chart_id):
+                self.assertRegex(
+                    html,
+                    re.compile(
+                        rf'<div class="h-72">\s*'
+                        rf'<div class="chart-container"[^>]*>\s*'
+                        rf'<canvas id="{chart_id}">',
+                        re.MULTILINE,
+                    ),
+                )
 
     def test_every_chart_key_is_present_and_parses(self):
         res = self.client.get(self.url)

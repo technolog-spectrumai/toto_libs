@@ -229,7 +229,9 @@
           {% trans "Completion by sprint" %}
         </h2>
 
-        {% include "oya/partials/chart.html" with chart_id="sprintCompletionChart" data=sprint_completion_chart_json %}
+        <div class="h-72">
+          {% include "oya/partials/chart.html" with chart_id="sprintCompletionChart" data=sprint_completion_chart_json %}
+        </div>
       </article>
 
       <article
@@ -240,7 +242,9 @@
           {% trans "Open vs completed tasks" %}
         </h2>
 
-        {% include "oya/partials/chart.html" with chart_id="sprintTaskChart" data=sprint_task_chart_json %}
+        <div class="h-72">
+          {% include "oya/partials/chart.html" with chart_id="sprintTaskChart" data=sprint_task_chart_json %}
+        </div>
       </article>
     </section>
 
@@ -337,7 +341,9 @@
           </p>
 
           {% if selected_sprint %}
-            {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+            <div class="h-72">
+              {% include "oya/partials/chart.html" with chart_id="burndownChart" data=burndown_chart_json %}
+            </div>
           {% else %}
             <div
               :class="darkMode
@@ -366,7 +372,9 @@
             {% trans "Every task in the project, by board state." %}
           </p>
 
-          {% include "oya/partials/chart.html" with chart_id="statusChart" data=status_chart_json %}
+          <div class="h-72">
+            {% include "oya/partials/chart.html" with chart_id="statusChart" data=status_chart_json %}
+          </div>
 
           <dl class="mt-4 grid grid-cols-3 gap-3 text-center">
             {% for item in status_counts %}
@@ -396,7 +404,9 @@
               {% trans "Velocity" %}
             </h3>
 
-            {% include "oya/partials/chart.html" with chart_id="velocityChart" data=velocity_chart_json %}
+            <div class="h-72">
+              {% include "oya/partials/chart.html" with chart_id="velocityChart" data=velocity_chart_json %}
+            </div>
           </article>
 
           <article
@@ -414,7 +424,9 @@
               {% trans "Measured from the sprint start, not from when the work was requested — tasks record no creation time." %}
             </p>
 
-            {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
+            <div class="h-72">
+              {% include "oya/partials/chart.html" with chart_id="leadTimeChart" data=lead_time_chart_json %}
+            </div>
           </article>
         </section>
 
@@ -430,7 +442,9 @@
             {% trans "Assignee workload" %}
           </h3>
 
-          {% include "oya/partials/chart.html" with chart_id="assigneeWorkloadChart" data=assignee_workload_chart_json %}
+          <div class="h-72">
+            {% include "oya/partials/chart.html" with chart_id="assigneeWorkloadChart" data=assignee_workload_chart_json %}
+          </div>
         </article>
 
         <!-- Campaign Progress -->
