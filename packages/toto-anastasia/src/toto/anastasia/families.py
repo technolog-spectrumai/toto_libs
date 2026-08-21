@@ -34,6 +34,14 @@ _SAFE_PATH = re.compile(r"^(?!/)(?!.*(?:^|/)\.\.(?:/|$))[\w][\w .+@/-]{0,199}$")
 #: command line that is assembled from it.
 _SAFE_LANG = re.compile(r"^[a-z]{3}(\+[a-z]{3}){0,3}$")
 
+#: A plain name — an output stem, never a path and never an extension.
+_SAFE_NAME = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_-]{0,59}$")
+
+#: An ffmpeg time position: seconds, or HH:MM:SS with optional milliseconds.
+#: Bounded because it is interpolated into an argv, and because "whatever
+#: ffmpeg accepts" is a much larger surface than anything a form needs.
+_SAFE_TIME = re.compile(r"^(\d{1,2}:\d{2}:\d{2}(\.\d{1,3})?|\d{1,6}(\.\d{1,3})?)$")
+
 
 class ParamError(ValueError):
     """A parameter a person can be told about in one sentence."""
@@ -42,7 +50,7 @@ class ParamError(ValueError):
 @dataclass(frozen=True)
 class Param:
     name: str
-    kind: str                      # "str" | "int" | "bool" | "enum" | "path" | "lang"
+    kind: str      # "str"|"int"|"bool"|"enum"|"path"|"lang"|"time"
     required: bool = False
     default: object = None
     choices: tuple = ()
@@ -87,6 +95,24 @@ class Param:
                 raise ParamError(
                     f"{self.name} must be a relative path inside the staged "
                     "input, with no “..” segments.")
+            return raw
+        if self.kind == "str":
+            # A NAME, and it becomes a filename in the runner's scratch — so
+            # the safe set is deliberately narrower than "text": letters,
+            # digits, and the three separators a person actually types. No
+            # dots (an extension is the runner's to choose), no slashes, no
+            # spaces. Without this the kind fell through to "unknown parameter
+            # kind" and every command carrying one was refused.
+            if not _SAFE_NAME.match(raw):
+                raise ParamError(
+                    f"{self.name} may contain only letters, digits, dashes "
+                    "and underscores.")
+            return raw
+        if self.kind == "time":
+            if not _SAFE_TIME.match(raw):
+                raise ParamError(
+                    f"{self.name} must be a time like “00:01:30” or a number "
+                    "of seconds.")
             return raw
         if self.kind == "lang":
             if not _SAFE_LANG.match(raw):
@@ -229,17 +255,57 @@ COMPILE_LATEX = Operation(
     outputs=("output.pdf", "output.log"),
 )
 
-NORMALIZE_MEDIA = Operation(
-    name="normalize_media", family=MEDIA, label="Normalize a media file",
+#: What manta's command builder offers, by key. Each one maps to a pure argv
+#: builder in the runner image (``anastasia_runner.ffmpeg_builders``), and the
+#: parameters below are what that builder takes.
+#:
+#: This is the whole vocabulary — there is no "other" and no escape hatch. The
+#: fileservices path this replaces let a user type ffmpeg arguments and
+#: defended itself by rejecting shell metacharacters, which is a defence that
+#: has to be right every time. A closed set of commands with typed parameters
+#: needs no such defence: there is no user text on the command line at all.
+MEDIA_COMMANDS = (
+    "probe", "compress", "resize", "cut", "extract_mp3", "thumbnail", "gif",
+    "concat", "crop", "change_fps", "remove_audio", "replace_audio",
+    "add_subtitles", "add_watermark", "vstack", "hstack",
+)
+
+#: ffmpeg time positions: "90", "00:01:30", "00:01:30.5". Anything else is
+#: refused rather than passed through for ffmpeg to interpret.
+_TIME = r"^\d{1,2}:\d{2}:\d{2}(\.\d{1,3})?$|^\d{1,6}(\.\d{1,3})?$"
+
+RUN_MEDIA_COMMAND = Operation(
+    name="run_media_command", family=MEDIA, label="Run a media command",
     params=(
+        Param("command", "enum", required=True, choices=MEDIA_COMMANDS),
         Param("input", "path", required=True),
-        # A named preset, never an ffmpeg argument string. The old
-        # fileservices/manta path let a user type ffmpeg arguments and defended
-        # itself by rejecting shell tokens; a fixed preset needs no such
-        # defence because there is no user text on the command line at all.
-        Param("preset", "enum", required=True,
-              choices=("probe", "mp4_h264", "webm_vp9", "mp3", "wav",
-                       "thumbnail", "gif")),
+        #: A second input, for the commands that take one (replace_audio's
+        #: audio track, add_watermark's image, concat's extra files,
+        #: add_subtitles' subtitle file, the stack commands' second video).
+        Param("second", "path"),
+        Param("output_name", "str", default="output", max_length=60),
+
+        # Geometry. -2 is ffmpeg's "compute from the other dimension keeping
+        # the aspect ratio", which is why the minimum is negative.
+        Param("width", "int", default=0, minimum=-2, maximum=16384),
+        Param("height", "int", default=0, minimum=-2, maximum=16384),
+        Param("x", "int", default=0, minimum=0, maximum=16384),
+        Param("y", "int", default=0, minimum=0, maximum=16384),
+
+        Param("quality", "enum", default="medium",
+              choices=("tiny", "small", "medium", "high", "archive")),
+        Param("bitrate", "enum", default="192k",
+              choices=("64k", "96k", "128k", "192k", "256k", "320k")),
+        Param("fps", "int", default=0, minimum=1, maximum=240),
+
+        Param("start_time", "time", default="00:00:00"),
+        Param("end_time", "time"),
+        Param("duration", "time", default="5"),
+
+        Param("position", "enum", default="bottom_right",
+              choices=("top_left", "top_right", "bottom_left",
+                       "bottom_right", "center")),
+        Param("reencode", "bool", default=False),
     ),
     default_timeout=900, max_timeout=7200,
     outputs=("output.*", "probe.json"),
@@ -274,7 +340,7 @@ START_PYTHON_RUNTIME = Operation(
 
 OPERATIONS = {
     op.name: op for op in (
-        RENDER_PDF, COMPILE_LATEX, NORMALIZE_MEDIA, RUN_OCR,
+        RENDER_PDF, COMPILE_LATEX, RUN_MEDIA_COMMAND, RUN_OCR,
         START_PYTHON_RUNTIME,
     )
 }

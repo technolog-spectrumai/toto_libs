@@ -94,6 +94,50 @@ class CatalogueTests(SimpleTestCase):
         longest = max(op.max_timeout for op in families.OPERATIONS.values())
         self.assertLess(longest, 10800)
 
+    def test_every_media_command_is_a_closed_choice(self):
+        """The vocabulary has no escape hatch.
+
+        The fileservices ffmpeg plugin this replaces took a free-text argument
+        string and rejected shell metacharacters — a defence that has to be
+        right every time. A closed enum needs no defence.
+        """
+        op = families.operation("run_media_command")
+        command = next(p for p in op.params if p.name == "command")
+        self.assertEqual(command.kind, "enum")
+        self.assertEqual(set(command.choices), set(families.MEDIA_COMMANDS))
+        with self.assertRaises(families.ParamError):
+            op.clean({"command": "rm -rf /", "input": "a.mp4"})
+
+    def test_a_media_output_name_cannot_become_a_path_or_an_extension(self):
+        op = families.operation("run_media_command")
+        for hostile in ("../evil", "a/b", "with space", "clip.mp4", ""):
+            with self.subTest(name=hostile):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"command": "resize", "input": "a.mp4",
+                              "output_name": hostile})
+
+    def test_media_geometry_is_bounded(self):
+        op = families.operation("run_media_command")
+        for field, value in (("width", 99999), ("height", -3), ("fps", 0),
+                             ("x", -1)):
+            with self.subTest(field=field):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"command": "resize", "input": "a.mp4",
+                              field: value})
+
+    def test_a_time_parameter_cannot_carry_a_command(self):
+        op = families.operation("run_media_command")
+        for hostile in ("; rm -rf /", "$(id)", "00:00:00 && ls", "yesterday"):
+            with self.subTest(value=hostile):
+                with self.assertRaises(families.ParamError):
+                    op.clean({"command": "cut", "input": "a.mp4",
+                              "start_time": hostile})
+        # …and the real forms still pass.
+        for good in ("90", "00:01:30", "00:01:30.500", "5"):
+            with self.subTest(value=good):
+                op.clean({"command": "cut", "input": "a.mp4",
+                          "start_time": good})
+
     def test_defaults_survive_a_clean_round_trip(self):
         op = families.operation("run_ocr")
         self.assertEqual(op.clean({"input": "a.png"}),

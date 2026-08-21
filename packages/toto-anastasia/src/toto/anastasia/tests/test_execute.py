@@ -169,14 +169,14 @@ class NarrowApiTests(AnastasiaTestCase):
             execute.submit(lease=self.lease, operation="run_ocr",
                            params={"input": "s.png", "lang": "eng; id"})
 
-    def test_a_media_preset_is_named_never_typed(self):
+    def test_a_media_command_is_named_never_typed(self):
         """The old fileservices path let a user type ffmpeg arguments and
-        defended itself by rejecting shell tokens. A fixed preset needs no
-        such defence: there is no user text on the command line at all."""
+        defended itself by rejecting shell tokens. A closed command set needs
+        no such defence: there is no user text on the command line at all."""
         with self.assertRaises(ValidationError):
-            execute.submit(lease=self.lease, operation="normalize_media",
+            execute.submit(lease=self.lease, operation="run_media_command",
                            params={"input": "v.mp4",
-                                   "preset": "-vf drawtext=x"})
+                                   "command": "-vf drawtext=x"})
 
     def test_the_timeout_is_bounded_by_the_operation(self):
         with self.assertRaises(ValidationError):

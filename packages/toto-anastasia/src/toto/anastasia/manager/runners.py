@@ -50,12 +50,37 @@ def _compile_latex(params: dict) -> list:
     ]
 
 
-def _normalize_media(params: dict) -> list:
-    return [
-        "anastasia-normalize-media",
+def _run_media_command(params: dict) -> list:
+    """Every declared parameter, as an explicit flag.
+
+    Passed one flag at a time rather than as a JSON blob, and that is not
+    style: a blob is an open channel, and the moment one exists somebody adds
+    a key to it that reaches ffmpeg. Every value here has already been through
+    ``Operation.clean`` — an enum, a bounded int, a matched time, or a path
+    that cannot escape the staged input — so the runner receives nothing it
+    has to re-parse.
+    """
+    argv = [
+        "anastasia-run-media-command",
+        "--command", params["command"],
         "--input", params["input"],
-        "--preset", params["preset"],
+        "--output-name", params["output_name"],
+        "--quality", params["quality"],
+        "--bitrate", params["bitrate"],
+        "--start-time", params["start_time"],
+        "--duration", params["duration"],
+        "--position", params["position"],
     ]
+    if params.get("second"):
+        argv += ["--second", params["second"]]
+    if params.get("end_time"):
+        argv += ["--end-time", params["end_time"]]
+    for name in ("width", "height", "x", "y", "fps"):
+        if params.get(name):
+            argv += [f"--{name}", params[name]]
+    if params.get("reencode"):
+        argv.append("--reencode")
+    return argv
 
 
 def _run_ocr(params: dict) -> list:
@@ -81,7 +106,7 @@ def _start_python_runtime(params: dict) -> list:
 _BUILDERS = {
     "render_pdf": _render_pdf,
     "compile_latex": _compile_latex,
-    "normalize_media": _normalize_media,
+    "run_media_command": _run_media_command,
     "run_ocr": _run_ocr,
     "start_python_runtime": _start_python_runtime,
 }
