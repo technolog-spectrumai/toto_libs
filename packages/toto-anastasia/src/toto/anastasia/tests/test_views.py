@@ -65,10 +65,25 @@ class OwnershipTests(DeskTestCase):
         names = [gear["name"] for gear in response.context["gears"]]
         self.assertEqual(names, ["mine"])
 
+    # LOGIN_URL is pinned to a plain path, and ROOT_URLCONF to the package's
+    # own: @login_required REVERSES the host's login route, which on a real
+    # host is namespaced (sso:login) and is not in this URLconf. Without this
+    # the test fails on a namespace lookup that has nothing to do with the
+    # thing being tested.
+    @override_settings(LOGIN_URL="/login/")
     def test_anonymous_users_are_sent_to_log_in(self):
-        self.client.logout()
-        response = self.client.get(reverse("anastasia:index"))
+        """Called directly, through no middleware — the only question here is
+        whether @login_required refuses an anonymous caller."""
+        from django.contrib.auth.models import AnonymousUser
+        from django.test import RequestFactory
+
+        from toto.anastasia import views
+
+        request = RequestFactory().get("/gears/")
+        request.user = AnonymousUser()
+        response = views.index(request)
         self.assertEqual(response.status_code, 302)
+        self.assertNotIn("thesis", response.content.decode(errors="replace"))
 
     def test_a_get_cannot_mount(self):
         """Every state change is a POST; a GET that mounted would be
