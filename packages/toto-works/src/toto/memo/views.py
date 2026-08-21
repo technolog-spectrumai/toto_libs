@@ -172,10 +172,27 @@ def presentation_export_pdf(request, file_pk):
         # redirect would replace the page the user is looking at.
         return HttpResponse(str(exc), status=exc.status_code, content_type="text/plain")
 
+    # In a Compute Gear where there is one, in this process where there is not.
+    #
+    # Still SYNCHRONOUS either way, which is the point: a deck export returns
+    # bytes to a download, and turning it into a poll-and-wait would change a
+    # working interaction for no benefit. A Gear render costs a container
+    # start (~a second) on top of the render itself — worth it to keep the
+    # heavy library out of this image, and cheap enough not to notice.
     try:
-        raw = render_pdf.render(presentation)
+        lease = render_pdf.gear_for(request.user)
+        if lease is None:
+            raw = render_pdf.render(presentation)
+        else:
+            raw = render_pdf.render_in_gear(presentation, lease=lease,
+                                            user=request.user)
     except render_pdf.PdfUnavailable as exc:
         # A deployment fact, not something the user can fix by trying again.
+        return HttpResponse(str(exc), status=503, content_type="text/plain")
+    except Exception as exc:  # noqa: BLE001 — a Gear that could not run it
+        # NoGear and JobFailed both land here. Neither is a 500: the first is
+        # something the user fixes on the Compute Gears page, the second is a
+        # render that genuinely failed.
         return HttpResponse(str(exc), status=503, content_type="text/plain")
 
     # Charged after the render succeeds. A synchronous call that returns bytes
