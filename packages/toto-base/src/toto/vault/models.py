@@ -166,12 +166,41 @@ class Bucket(models.Model):
     def __str__(self):
         return f"Bucket {self.name}"
 
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        instance = super().from_db(db, field_names, values)
+        # Remember what the row said when we read it, so clean() can tell a
+        # backend CHANGE from a backend that was always this value.
+        instance._loaded_storage_backend = instance.storage_backend
+        return instance
+
     def clean(self):
         super().clean()
         # Model-level belt for the host contract: whatever code path tries to
         # persist a non-local bucket on a local-only host must fail loudly.
         if self.storage_backend != StorageBackend.LOCAL and not external_buckets_allowed():
             raise ValidationError("External buckets are disabled on this host.")
+        # A bucket's backend is immutable once it holds files. Flipping it
+        # moves money in BOTH directions — StorageLevy._billable excludes only
+        # remote_toto and attribution is VaultFile.owner, so local->remote_toto
+        # silently stops billing bytes that are still on this disk, and
+        # remote_toto->local starts billing owners for stubs whose bytes live
+        # on another host. It also changes an access decision (access.py's
+        # local_content_q) and points the driver at a store that does not hold
+        # the existing objects.
+        #
+        # This is reached by every ModelForm and by the admin. It is NOT
+        # reached by .save() or .update(), deliberately: a data migration must
+        # still be able to do it.
+        loaded = getattr(self, "_loaded_storage_backend", None)
+        if self.pk and loaded is not None and loaded != self.storage_backend:
+            held = self.files.count()
+            if held:
+                raise ValidationError(
+                    f"This bucket holds {held} file(s). Changing its backend "
+                    f"from '{loaded}' to '{self.storage_backend}' would change "
+                    "who pays for those bytes and whether they can be edited. "
+                    "Move the files to a new bucket instead.")
         # A mounted bucket without a live pairing is a mount to nowhere; the
         # peer row is the only transport identity there is (no URL, no secret
         # ever lives in storage_config).

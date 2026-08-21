@@ -174,6 +174,12 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
 
         client_kwargs: dict = {}
         if endpoint_url := self._config.get("endpoint_url"):
+            # The SSRF chokepoint for every S3 call: read/open/save/exists/
+            # delete all reach botocore through this one client. It fires for
+            # rows written before the guard existed, which is the point.
+            from .outbound import assert_outbound_allowed
+
+            assert_outbound_allowed(endpoint_url, label="S3 endpoint")
             client_kwargs["endpoint_url"] = endpoint_url
         if region_name := self._config.get("region_name"):
             client_kwargs["region_name"] = region_name

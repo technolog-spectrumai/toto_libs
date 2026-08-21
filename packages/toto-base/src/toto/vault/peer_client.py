@@ -73,7 +73,13 @@ class PeerClient:
 
     def __init__(self, peer):
         self.peer = peer
-        self._base = (peer.base_url.rstrip("/") + "/vault/"
+        # The SSRF chokepoint for every peer call. One check here covers
+        # manifest / list / meta / download / upload / delete, because all six
+        # go through _request() and all six build on self._base.
+        from .outbound import assert_outbound_allowed
+
+        base = assert_outbound_allowed(peer.base_url, label="Peer URL")
+        self._base = (base.rstrip("/") + "/vault/"
                       + PEER_PATH.format(grant_uid=peer.grant_uid,
                                          magic_token=peer.magic_token))
 

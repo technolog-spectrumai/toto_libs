@@ -18,7 +18,23 @@ from .models import (
     VaultQuotaPolicy, VaultUsageEvent,
     external_buckets_allowed,
 )
-from .peering import BUCKET_RIGHTS, BucketGrant, BucketPeer
+from .forms import BucketPeerPairingForm
+from .peering import (
+    BUCKET_RIGHTS,
+    BucketGrant,
+    BucketPeer,
+    apply_manifest,
+    decode_pairing_code,
+    federated_host_choices,
+    pairing_code_for,
+)
+
+# The wire format and the SSO host lookup moved to peering.py so a non-admin
+# door can use them. These aliases stay because tests import the private names
+# from this module, and because one wire format means one definition.
+_pairing_code_for = pairing_code_for
+_decode_pairing_code = decode_pairing_code
+_federated_host_choices = federated_host_choices
 from toto.core.batch import BatchAction
 
 
@@ -51,15 +67,33 @@ class StorageProviderAdmin(admin.ModelAdmin):
         return obj.buckets.count()
     bucket_count.short_description = 'Buckets'
 
+    # A preset's endpoint_url_template repoints EVERY bucket that leans on it
+    # (storage_backends.get_bucket_storage fills the endpoint from the provider
+    # whenever the bucket does not override it), so editing one is the same
+    # authority as editing a bucket's storage backend — which admin.py already
+    # reserves to superusers. has_module_permission alone is a MENU-level
+    # guarantee: a staff user holding vault.change_storageprovider can still
+    # reach the change view by direct URL. These four close that.
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_view_permission(request, obj)
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser and super().has_add_permission(request)
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_change_permission(request, obj)
+
     def has_delete_permission(self, request, obj=None):
         if obj and obj.is_builtin:
             return False
-        return super().has_delete_permission(request, obj)
+        return request.user.is_superuser and super().has_delete_permission(request, obj)
 
     def has_module_permission(self, request):
         # Provider presets only exist to configure S3 buckets — pointless (and
         # misleading) on a local-only host.
-        return external_buckets_allowed() and super().has_module_permission(request)
+        return (external_buckets_allowed()
+                and request.user.is_superuser
+                and super().has_module_permission(request))
 
 
 @admin.register(Bucket)
@@ -103,6 +137,21 @@ class BucketAdmin(admin.ModelAdmin):
         except Exception as exc:
             return f'(error: {exc})'
     connection_url_display.short_description = _('Connection URL')
+
+    def get_readonly_fields(self, request, obj=None):
+        """The POST-side half of the storage gate.
+
+        ``get_fieldsets`` below only decides what is RENDERED — a hand-crafted
+        POST carrying storage_backend still binds. Django drops readonly fields
+        from the form's field set entirely, so listing them here makes a posted
+        value ignored rather than merely unshown.
+        """
+        readonly = list(super().get_readonly_fields(request, obj))
+        if not (external_buckets_allowed() and request.user.is_superuser):
+            readonly += [f for f in ("storage_backend", "provider", "peer",
+                                     "storage_config", "public_base_url")
+                         if f not in readonly]
+        return readonly
 
     def get_fieldsets(self, request, obj=None):
         # The storage-backend fieldset disappears on a local-only host AND for
@@ -296,82 +345,6 @@ class VaultDirectoryAdmin(admin.ModelAdmin):
 
 
 
-def _pairing_code_for(grant, raw_key):
-    """The one wire format for handing a grant to the peer's operator.
-
-    base64 over JSON, versioned. Carries the raw api key, so it exists only in
-    the admin message that shows it — never in a column (the grant stores a
-    hash, the peer that pastes it stores Fernet ciphertext).
-    """
-    payload = {
-        "v": 1,
-        "grant_uid": str(grant.grant_uid),
-        "magic_token": grant.magic_token,
-        "api_key": raw_key,
-        "bucket": grant.bucket.slug,
-        "rights": [r for r in BUCKET_RIGHTS if getattr(grant, r)],
-    }
-    return base64.b64encode(json.dumps(payload).encode()).decode()
-
-
-def _decode_pairing_code(code):
-    """Inverse of :func:`_pairing_code_for`. Raises ValidationError with a
-    sentence an operator can act on — the code travels through a chat window
-    and arrives mangled more often than wrong."""
-    try:
-        payload = json.loads(base64.b64decode(code.strip().encode()))
-    except Exception:
-        raise forms.ValidationError(
-            "That does not decode as a pairing code. Paste the whole code, "
-            "with no surrounding quotes or line breaks.")
-    if not isinstance(payload, dict) or payload.get("v") != 1:
-        raise forms.ValidationError(
-            "Unsupported pairing-code version — mint a fresh code on the "
-            "exporting host.")
-    missing = [k for k in ("grant_uid", "magic_token", "api_key")
-               if not payload.get(k)]
-    if missing:
-        raise forms.ValidationError(
-            f"Pairing code is missing {', '.join(missing)} — mint a fresh "
-            "code on the exporting host.")
-    return payload
-
-
-def _federated_host_choices():
-    """Base URLs of hosts this one is federated with, from the SSO pairing
-    rows — looked up at runtime so toto-base never imports toto-auth. Empty
-    when neither side of SSO is installed; the form then falls back to the
-    free-text URL field."""
-    choices = []
-    try:
-        SSORelyingParty = django_apps.get_model("sso_master", "SSORelyingParty")
-    except LookupError:
-        SSORelyingParty = None
-    if SSORelyingParty is not None:
-        from urllib.parse import urlsplit
-        for rp in SSORelyingParty.objects.filter(active=True):
-            uris = rp.redirect_uri_list()
-            if not uris:
-                continue
-            parts = urlsplit(uris[0])
-            base = f"{parts.scheme}://{parts.netloc}"
-            choices.append((base, f"{rp.name} ({base})"))
-    try:
-        OIDCProviderConfig = django_apps.get_model("sso_client", "OIDCProviderConfig")
-    except LookupError:
-        OIDCProviderConfig = None
-    if OIDCProviderConfig is not None:
-        for cfg in OIDCProviderConfig.objects.filter(active=True):
-            base = cfg.portal_url.rstrip("/")
-            choices.append((base, f"{cfg.label} ({base})"))
-    seen, unique = set(), []
-    for value, label in choices:
-        if value not in seen:
-            seen.add(value)
-            unique.append((value, label))
-    return unique
-
-
 @admin.register(BucketGrant)
 class BucketGrantAdmin(admin.ModelAdmin):
     """Exports: "that peer may use this bucket". Superuser-only.
@@ -421,6 +394,19 @@ class BucketGrantAdmin(admin.ModelAdmin):
         return ", ".join(granted) or "none"
     rights_display.short_description = "Rights"
 
+    # has_module_permission is MENU-level only: a staff user holding the model
+    # permission reaches the change view by direct URL regardless. The vault's
+    # "Superuser-only" contract for peering has to be an access control, not a
+    # navigation hint.
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_view_permission(request, obj)
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser and super().has_add_permission(request)
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_change_permission(request, obj)
+
     def has_module_permission(self, request):
         return (external_buckets_allowed()
                 and request.user.is_superuser
@@ -463,43 +449,6 @@ class BucketGrantAdmin(admin.ModelAdmin):
                 messages.WARNING)
 
 
-class BucketPeerPairingForm(forms.ModelForm):
-    """The add form: pick who you federated with, paste their pairing code."""
-
-    paired_host = forms.ChoiceField(
-        required=False, label=_("Paired host"),
-        help_text=_("Hosts known from SSO federation. Pick one, or leave on "
-                    "'Other host' and fill the URL below."))
-    base_url = forms.URLField(
-        required=False, label=_("Other host URL"),
-        help_text=_("Only when the host is not in the list, "
-                    "e.g. https://placidia.example.org"))
-    pairing_code = forms.CharField(
-        widget=forms.Textarea(attrs={"rows": 3}), label=_("Pairing code"),
-        help_text=_("Minted once by a bucket grant on the exporting host."))
-
-    class Meta:
-        model = BucketPeer
-        fields = ("label",)
-
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self.fields["paired_host"].choices = (
-            [("", "Other host (enter URL below)")] + _federated_host_choices())
-
-    def clean(self):
-        cleaned = super().clean()
-        base_url = cleaned.get("paired_host") or cleaned.get("base_url", "")
-        if not base_url:
-            raise forms.ValidationError(
-                "Pick a paired host or enter the host URL.")
-        cleaned["resolved_base_url"] = base_url.rstrip("/")
-        if cleaned.get("pairing_code"):
-            cleaned["decoded_code"] = _decode_pairing_code(
-                cleaned["pairing_code"])
-        return cleaned
-
-
 @admin.register(BucketPeer)
 class BucketPeerAdmin(admin.ModelAdmin):
     """Mounts: "we use that host's bucket". Superuser-only.
@@ -516,6 +465,19 @@ class BucketPeerAdmin(admin.ModelAdmin):
                        "remote_bucket_slug", "capabilities", "probe_error",
                        "peer_site_name", "last_ok_at", "last_error",
                        "paired_by", "paired_at", "last_pull_at", "pull_count")
+
+    # has_module_permission is MENU-level only: a staff user holding the model
+    # permission reaches the change view by direct URL regardless. The vault's
+    # "Superuser-only" contract for peering has to be an access control, not a
+    # navigation hint.
+    def has_view_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_view_permission(request, obj)
+
+    def has_add_permission(self, request):
+        return request.user.is_superuser and super().has_add_permission(request)
+
+    def has_change_permission(self, request, obj=None):
+        return request.user.is_superuser and super().has_change_permission(request, obj)
 
     def has_module_permission(self, request):
         return (external_buckets_allowed()
@@ -587,15 +549,7 @@ class BucketPeerAdmin(admin.ModelAdmin):
                 "the grant on the exporting host, then re-pair.",
                 messages.ERROR)
             return
-        obj.probe_error = ""
-        obj.peer_site_name = manifest.get("site_name", "")
-        obj.remote_bucket_slug = manifest.get("bucket", obj.remote_bucket_slug)
-        obj.capabilities = manifest.get("rights", obj.capabilities)
-        obj.last_ok_at = timezone.now()
-        obj.last_error = ""
-        obj.save(update_fields=["probe_error", "peer_site_name",
-                                "remote_bucket_slug", "capabilities",
-                                "last_ok_at", "last_error"])
+        apply_manifest(obj, manifest)
         self.message_user(
             request,
             f"Probe OK — {obj.base_url} answered for bucket "

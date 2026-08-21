@@ -1,0 +1,134 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}The Remote tab: every bucket whose bytes live somewhere else.
+
+   Health is read from stamped columns only — last_ok_at, last_error,
+   last_refreshed_at. No page render ever probes a peer, so "never checked" is
+   shown as itself rather than guessed at.
+
+   The nav chip and headings deliberately avoid the literal phrase "Remote
+   bucket": tests_remote_ui asserts that string is absent from a LOCAL bucket's
+   metrics page, and a shared chrome string would break it.
+{% endcomment %}
+
+{% block vault_title %}{% trans "Remote storage" %}{% endblock %}
+{% block vault_heading %}{% trans "Remote storage" %}{% endblock %}
+{% block vault_subtitle %}
+  <p class="mt-1 text-sm opacity-70">
+    {% trans "Buckets held by an S3-compatible provider or mounted from another Toto host. Figures are as of the last refresh — nothing here contacts anyone." %}</p>
+{% endblock %}
+
+{% block vault_content %}
+<div class="space-y-6">
+
+  <section class="grid gap-3 sm:grid-cols-3">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Cloud buckets" %}</p>
+      <p class="mt-2 text-3xl font-bold">{{ s3_rows|length }}</p>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Mounted from a peer" %}</p>
+      <p class="mt-2 text-3xl font-bold">{{ mount_rows|length }}</p>
+    </div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="rounded-lg border p-4">
+      <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Held on this host" %}</p>
+      <p class="mt-2 text-3xl font-bold">{{ local_count }}</p>
+    </div>
+  </section>
+
+  {% if mount_rows %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="overflow-hidden rounded-xl border">
+      <div class="border-b border-current/10 px-4 py-3">
+        <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-link"></i>{% trans "Mounted from another host" %}</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[760px] text-left text-sm">
+          <thead class="border-b border-current/10 text-xs uppercase tracking-wide opacity-60">
+            <tr>
+              <th class="px-4 py-2">{% trans "Bucket" %}</th>
+              <th class="px-4 py-2">{% trans "Peer" %}</th>
+              <th class="px-4 py-2">{% trans "Reachability" %}</th>
+              <th class="px-4 py-2">{% trans "Mirrored" %}</th>
+              <th class="px-4 py-2">{% trans "As of" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-current/10">
+            {% for row in mount_rows %}
+              <tr>
+                <td class="px-4 py-3 font-semibold">{{ row.bucket.name }}</td>
+                <td class="px-4 py-3">
+                  {% if row.info.peer %}{{ row.info.peer.label }}
+                    <span class="block text-xs opacity-50">{{ row.info.peer.base_url }}</span>
+                  {% else %}<span class="opacity-50">{% trans "no pairing" %}</span>{% endif %}
+                </td>
+                <td class="px-4 py-3">
+                  {% if row.reachability == "ok" %}<i class="fa-solid fa-circle-check mr-1"></i>{% trans "answered" %}
+                  {% elif row.reachability == "down" %}<i class="fa-solid fa-triangle-exclamation mr-1"></i>{% trans "last contact failed" %}
+                  {% else %}<span class="opacity-60">{% trans "never checked" %}</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 tabular-nums">{{ row.bucket.file_count }}</td>
+                <td class="px-4 py-3 text-xs opacity-60">
+                  {% if row.bucket.last_refreshed_at %}{{ row.bucket.last_refreshed_at|date:"Y-m-d H:i" }}
+                  {% else %}{% trans "never mirrored" %}{% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  {% endif %}
+
+  {% if s3_rows %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="overflow-hidden rounded-xl border">
+      <div class="border-b border-current/10 px-4 py-3">
+        <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+          <i class="fa-solid fa-cloud"></i>{% trans "S3-compatible storage" %}</h2>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="w-full min-w-[760px] text-left text-sm">
+          <thead class="border-b border-current/10 text-xs uppercase tracking-wide opacity-60">
+            <tr>
+              <th class="px-4 py-2">{% trans "Bucket" %}</th>
+              <th class="px-4 py-2">{% trans "Provider" %}</th>
+              <th class="px-4 py-2">{% trans "Endpoint" %}</th>
+              <th class="px-4 py-2">{% trans "Prefix" %}</th>
+              <th class="px-4 py-2 text-right">{% trans "Written here" %}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-current/10">
+            {% for row in s3_rows %}
+              <tr>
+                <td class="px-4 py-3 font-semibold">{{ row.bucket.name }}
+                  {% if row.remote_bucket_name %}
+                    <span class="block text-xs opacity-50">{{ row.remote_bucket_name }}</span>{% endif %}
+                </td>
+                <td class="px-4 py-3">{{ row.bucket.provider.display_name|default:"—" }}</td>
+                <td class="px-4 py-3 text-xs">{{ row.endpoint|default:"—" }}
+                  {% if row.region %}<span class="block opacity-50">{{ row.region }}</span>{% endif %}
+                </td>
+                <td class="px-4 py-3 text-xs">{{ row.prefix|default:"—" }}</td>
+                <td class="px-4 py-3 text-right tabular-nums">{{ row.bucket.file_count }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <p class="border-t border-current/10 px-4 py-2 text-xs opacity-60">
+        {% trans "\"Written here\" counts what this host put in the bucket. Anything else in it is invisible from this side." %}</p>
+    </section>
+  {% endif %}
+
+  {% if not rows %}
+    <p :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-xl border px-4 py-10 text-center text-sm opacity-70">
+      {% trans "No remote storage is configured on this host." %}</p>
+  {% endif %}
+</div>
+{% endblock %}

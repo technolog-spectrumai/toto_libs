@@ -10,6 +10,7 @@ from .api_views import (
     DirectoryCreateApiView, DirectoryDeleteApiView,
 )
 from . import peer_views
+from . import remote_views
 from . import version_views
 from .views import (
     PublicFileListView, VaultFileDownloadView,
@@ -62,6 +63,12 @@ urlpatterns = [
     path("gateways/dir/<int:dir_pk>/", FileGatewayPageView.as_view(), name="gateway_page"),
     path("gateways/dir/<int:dir_pk>/upload/", FileGatewayUploadView.as_view(), name="gateway_upload"),
     path("metrics/", VaultMetricsView.as_view(), name="metrics"),
+    # The Remote tab. Deliberately NOT under /vault/metrics/<slug>/ —
+    # tests_remote_ui asserts that substring is absent for a stranger, so a
+    # page nested there would break it by substring alone.
+    path("remote/", remote_views.RemoteBucketsView.as_view(), name="remote_buckets"),
+    # The Archive tab: the same tree as Files, carrying the zip actions.
+    path("archive/", remote_views.ArchiveView.as_view(), name="archive"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),
     path("copy/<slug:source_slug>/", CopyFilesToBucketView.as_view(), name="copy_files"),
     path("copy/<slug:source_slug>/ajax/", BucketCopyAjaxView.as_view(), name="copy_files_ajax"),

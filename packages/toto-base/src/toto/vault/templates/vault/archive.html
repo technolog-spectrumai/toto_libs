@@ -1,0 +1,122 @@
+{% extends "vault/base.html" %}
+{% load i18n %}
+{% comment %}The Archive tab: the Files tree again, with the zip actions.
+
+   The shape is vault/_file_tree.html's, rewritten here rather than included —
+   the same call antivirus/_scan_tree.html made, and for the same reason: these
+   rows carry an ACTION and a selection checkbox, which the reading tree must
+   not grow.
+
+   The tree is built from exactly what CreateZipView accepts (same bucket, not
+   encrypted, local content only), so every row's button can actually work.
+{% endcomment %}
+
+{% block vault_title %}{% trans "Archive" %}{% endblock %}
+{% block vault_heading %}{% trans "Archive" %}{% endblock %}
+{% block vault_subtitle %}
+  <p class="mt-1 text-sm opacity-70">
+    {% trans "Bundle files into a .zip. Encrypted files and files stored on another host are not listed — archiving opens local handles, and those have none." %}</p>
+{% endblock %}
+
+{% block vault_content %}
+<div x-data="archiveTab()" class="space-y-6">
+
+  {% if not zip_enabled %}
+    <p :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+       class="rounded-lg border px-4 py-3 text-sm">
+      <i class="fa-solid fa-circle-info mr-2"></i>
+      {% trans "Archiving runs on a worker, and this build has none." %}</p>
+  {% endif %}
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="overflow-hidden rounded-xl border">
+    <div class="flex flex-wrap items-center justify-between gap-3 border-b border-current/10 px-4 py-3">
+      <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-folder-tree"></i>{% trans "Files you can archive" %}</h2>
+      <button type="button" @click="startZip()"
+              :disabled="selected.length === 0 || running"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-bold disabled:opacity-40">
+        <i class="fa-solid fa-file-zipper"></i>
+        <span x-text="running ? '{% trans "Archiving…" %}' : '{% trans "Create .zip" %}'"></span>
+        <span x-show="selected.length" x-cloak x-text="'(' + selected.length + ')'"></span>
+      </button>
+    </div>
+
+    {% for group in tree %}
+      <div class="border-b border-current/10 last:border-b-0">
+        <p class="px-4 pt-3 text-xs font-semibold uppercase tracking-wide opacity-60">
+          {{ group.bucket.name }}</p>
+        {% for dirgroup in group.groups %}
+          <p class="px-4 pt-2 text-xs opacity-50">
+            {% if dirgroup.dir %}{{ dirgroup.dir }}{% else %}{% trans "bucket root" %}{% endif %}</p>
+          <ul class="divide-y divide-current/10">
+            {% for file in dirgroup.files %}
+              <li class="flex items-center gap-3 px-4 py-2 text-sm">
+                <input type="checkbox" :value="{{ file.pk }}" x-model.number="selected"
+                       class="h-4 w-4 shrink-0" />
+                <i class="fa-solid fa-file opacity-40"></i>
+                <span class="min-w-0 flex-1 truncate">{{ file.title }}</span>
+                <span class="shrink-0 text-xs tabular-nums opacity-50">{{ file.size_display }}</span>
+              </li>
+            {% endfor %}
+          </ul>
+        {% endfor %}
+      </div>
+    {% empty %}
+      <p class="px-4 py-8 text-center text-sm opacity-60">
+        {% trans "Nothing here can be archived yet." %}</p>
+    {% endfor %}
+  </section>
+
+  <p x-show="message" x-cloak x-text="message"
+     :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+     class="rounded-lg border px-4 py-3 text-sm font-semibold"></p>
+
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="overflow-hidden rounded-xl border">
+    <div class="border-b border-current/10 px-4 py-3">
+      <h2 class="flex items-center gap-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+        <i class="fa-solid fa-box-archive"></i>{% trans "Archives you have made" %}</h2>
+    </div>
+    <ul class="divide-y divide-current/10">
+      {% for archive in archives %}
+        <li class="flex items-center gap-3 px-4 py-3 text-sm">
+          <i class="fa-solid fa-file-zipper opacity-40"></i>
+          <span class="min-w-0 flex-1 truncate font-semibold">{{ archive.title }}</span>
+          <span class="shrink-0 text-xs opacity-50">{{ archive.uploaded_at|date:"Y-m-d H:i" }}</span>
+        </li>
+      {% empty %}
+        <li class="px-4 py-8 text-center text-sm opacity-60">
+          {% trans "No archives yet." %}</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
+
+<script>
+function archiveTab() {
+  return {
+    selected: [], running: false, message: '',
+    startZip() {
+      if (!this.selected.length || this.running) return;
+      this.running = true; this.message = '';
+      fetch('{% url "vault:create_zip" %}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json',
+                  'X-CSRFToken': '{{ csrf_token }}'},
+        body: JSON.stringify({file_ids: this.selected}),
+      }).then(r => r.json().then(d => ({ok: r.ok, d})))
+        .then(({ok, d}) => {
+          this.running = false;
+          this.message = ok ? '{% trans "Archiving started." %}'
+                            : (d.error || '{% trans "Could not start archiving." %}');
+          if (ok) this.selected = [];
+        })
+        .catch(() => { this.running = false;
+                       this.message = '{% trans "Could not start archiving." %}'; });
+    },
+  };
+}
+</script>
+{% endblock %}

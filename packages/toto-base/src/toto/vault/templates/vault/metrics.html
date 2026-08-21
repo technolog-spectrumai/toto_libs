@@ -1,4 +1,4 @@
-{% extends "oya/base.html" %}
+{% extends "vault/base.html" %}
 {% load static %}
 {% load i18n %}
 {% load quota_tags %}
@@ -9,7 +9,7 @@
 <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 
-{% block content %}
+{% block vault_content %}
 {{ files_by_type|json_script:"files-by-type" }}
 {{ files_by_bucket|json_script:"files-by-bucket" }}
 {{ daily_series|json_script:"daily-series" }}

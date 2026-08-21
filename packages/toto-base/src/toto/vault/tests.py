@@ -753,7 +753,15 @@ class StorageDriverTest(TestCase):
         with self.assertRaises(ValueError):
             driver.save("file.txt", b"x")
 
+    @override_settings(VAULT_OUTBOUND_ALLOWED_HOSTS=["minio"])
     def test_s3_driver_ssl_disabled_passes_flag(self):
+        """An internal MinIO over plain http — the allowlist case.
+
+        The outbound guard refuses plain http by default (credentials in
+        flight), so a host that genuinely runs one names it in
+        VAULT_OUTBOUND_ALLOWED_HOSTS. That is the documented escape hatch, and
+        exercising it here is what proves it works.
+        """
         import sys
         from toto.vault.storage_backends import S3CompatibleVaultStorageDriver
 

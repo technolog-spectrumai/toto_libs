@@ -44,9 +44,12 @@ API refuses to serve them and transfers skip them, each saying why.
 """
 from __future__ import annotations
 
+import base64
+import json
 import secrets
 import uuid
 
+from django.apps import apps as django_apps
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -265,3 +268,112 @@ class BucketPeer(models.Model):
         if not self.api_key_encrypted:
             return ""
         return _fernet().decrypt(bytes(self.api_key_encrypted)).decode()
+
+
+# ---------------------------------------------------------------------------
+# The pairing wire format
+# ---------------------------------------------------------------------------
+# Moved here from admin.py so a non-admin door can mint and read the same code.
+# ONE wire format only: two toto hosts on different versions must keep pairing,
+# so this is the single place that knows the shape. admin.py keeps underscore
+# aliases because tests import the old names from there.
+
+
+def pairing_code_for(grant, raw_key):
+    """The one wire format for handing a grant to the peer's operator.
+
+    base64 over JSON, versioned. Carries the raw api key, so it exists only in
+    the message that shows it — never in a column (the grant stores a hash, the
+    peer that pastes it stores sealed ciphertext).
+    """
+    payload = {
+        "v": 1,
+        "grant_uid": str(grant.grant_uid),
+        "magic_token": grant.magic_token,
+        "api_key": raw_key,
+        "bucket": grant.bucket.slug,
+        "rights": [r for r in BUCKET_RIGHTS if getattr(grant, r)],
+    }
+    return base64.b64encode(json.dumps(payload).encode()).decode()
+
+
+def decode_pairing_code(code):
+    """Inverse of :func:`pairing_code_for`.
+
+    Raises ``ValidationError`` with a sentence an operator can act on — the
+    code travels through a chat window and arrives mangled more often than
+    wrong.
+    """
+    from django import forms
+
+    try:
+        payload = json.loads(base64.b64decode(code.strip().encode()))
+    except Exception:
+        raise forms.ValidationError(
+            "That does not decode as a pairing code. Paste the whole code, "
+            "with no surrounding quotes or line breaks.")
+    if not isinstance(payload, dict) or payload.get("v") != 1:
+        raise forms.ValidationError(
+            "Unsupported pairing-code version — mint a fresh code on the "
+            "exporting host.")
+    missing = [k for k in ("grant_uid", "magic_token", "api_key")
+               if not payload.get(k)]
+    if missing:
+        raise forms.ValidationError(
+            f"Pairing code is missing {', '.join(missing)} — mint a fresh "
+            "code on the exporting host.")
+    return payload
+
+
+def federated_host_choices():
+    """Base URLs of hosts this one is federated with, from the SSO pairing
+    rows — looked up at runtime so toto-base never imports toto-auth. Empty
+    when neither side of SSO is installed; the form then falls back to the
+    free-text URL field."""
+    choices = []
+    try:
+        SSORelyingParty = django_apps.get_model("sso_master", "SSORelyingParty")
+    except LookupError:
+        SSORelyingParty = None
+    if SSORelyingParty is not None:
+        from urllib.parse import urlsplit
+        for rp in SSORelyingParty.objects.filter(active=True):
+            uris = rp.redirect_uri_list()
+            if not uris:
+                continue
+            parts = urlsplit(uris[0])
+            base = f"{parts.scheme}://{parts.netloc}"
+            choices.append((base, f"{rp.name} ({base})"))
+    try:
+        OIDCProviderConfig = django_apps.get_model("sso_client", "OIDCProviderConfig")
+    except LookupError:
+        OIDCProviderConfig = None
+    if OIDCProviderConfig is not None:
+        for cfg in OIDCProviderConfig.objects.filter(active=True):
+            base = cfg.portal_url.rstrip("/")
+            choices.append((base, f"{cfg.label} ({base})"))
+    seen, unique = set(), []
+    for value, label in choices:
+        if value not in seen:
+            seen.add(value)
+            unique.append((value, label))
+    return unique
+
+
+def apply_manifest(peer, manifest):
+    """Stamp a successful probe onto the peer row.
+
+    Extracted from ``BucketPeerAdmin._probe`` so the admin and any other door
+    that probes write the SAME columns. The caller owns the message it shows;
+    this owns what is persisted.
+    """
+    peer.probe_error = ""
+    peer.peer_site_name = manifest.get("site_name", "")
+    peer.remote_bucket_slug = manifest.get("bucket", peer.remote_bucket_slug)
+    peer.capabilities = manifest.get("rights", peer.capabilities)
+    peer.last_ok_at = timezone.now()
+    peer.last_error = ""
+    peer.save(update_fields=["probe_error", "peer_site_name",
+                             "remote_bucket_slug", "capabilities",
+                             "last_ok_at", "last_error"])
+    return peer

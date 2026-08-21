@@ -1,4 +1,4 @@
-{% extends "oya/base.html" %}
+{% extends "vault/base.html" %}
 {% load static %}
 {% load i18n quota_tags app_tags %}
 
@@ -815,7 +815,7 @@
 </script>
 {% endblock %}
 
-{% block content %}
+{% block vault_content %}
 <div
   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
   class="min-h-screen px-4 py-8 transition-colors duration-300 sm:px-6 lg:px-8">

@@ -1,0 +1,84 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The File Vault: four tabs over one store.
+
+   Files is the tree you work in; Metrics is the aggregate picture; Remote is
+   where buckets that live elsewhere are configured and watched; Archive is the
+   same tree again, carrying the zip actions the Files tree deliberately does
+   not.
+
+   Same tab idiom as antivirus/base.html and polls/base.html: the view sets
+   `active_tab`, the bar renders itself. Before this, every vault page was a
+   standalone {% templatetag openblock %} extends "oya/base.html" {% templatetag closeblock %}
+   with an ad-hoc back-link in its header.
+{% endcomment %}
+
+{% block title %}{% block vault_title %}{% trans "Storage" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}
+{{ block.super }}
+{% comment %}oya/base.html declares no [x-cloak] rule, so every page with an
+   Alpine-hidden element declares its own — the trap quota/base.html records.{% endcomment %}
+<style>[x-cloak]{display:none!important}</style>
+{% block vault_head %}{% endblock %}
+{% endblock %}
+
+{% block content %}
+<div
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <div>
+      <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+        <i class="fa-solid fa-vault"></i>{% block vault_heading %}{% trans "Storage" %}{% endblock %}</h1>
+      {% block vault_subtitle %}{% endblock %}
+    </div>
+
+    <nav class="flex flex-wrap gap-1" aria-label="{% trans 'Storage navigation' %}">
+      {% url 'vault:public_list' as files_url %}
+      {% if files_url %}
+        <a href="{{ files_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                  {% if active_tab == 'files' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'files' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-folder-tree"></i>{% trans "Files" %}</a>
+      {% endif %}
+      {% url 'vault:metrics' as metrics_url %}
+      {% if metrics_url %}
+        <a href="{{ metrics_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                  {% if active_tab == 'metrics' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'metrics' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-chart-simple"></i>{% trans "Metrics" %}</a>
+      {% endif %}
+      {% comment %}Remote is operator-only, so the tab is too. A tab that always
+         answered 403 would be worse than no tab.{% endcomment %}
+      {% if request.user.is_staff or request.user.is_superuser %}
+        {% url 'vault:remote_buckets' as remote_url %}
+        {% if remote_url %}
+          <a href="{{ remote_url }}"
+             :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+             class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                    {% if active_tab == 'remote' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+             {% if active_tab == 'remote' %}aria-current="page"{% endif %}>
+            <i class="fa-solid fa-cloud"></i>{% trans "Remote" %}</a>
+        {% endif %}
+      {% endif %}
+      {% url 'vault:archive' as archive_url %}
+      {% if archive_url %}
+        <a href="{{ archive_url }}"
+           :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+           class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                  {% if active_tab == 'archive' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
+           {% if active_tab == 'archive' %}aria-current="page"{% endif %}>
+          <i class="fa-solid fa-file-zipper"></i>{% trans "Archive" %}</a>
+      {% endif %}
+    </nav>
+
+    {% block vault_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}

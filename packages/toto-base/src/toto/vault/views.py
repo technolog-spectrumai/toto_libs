@@ -318,9 +318,14 @@ class PublicFileListView(TemplateView):
         # "New file" type pills — only types whose editor is installed on this deployment.
         context["create_file_types"] = available_create_types()
 
-        # Zip is workflow-backed (Celery); only offer it where the engine exists.
-        from django.apps import apps as _apps
-        context["zip_enabled"] = _apps.is_installed("toto.workflows")
+        # Archiving moved to the Archive tab, which is the same tree carrying
+        # the zip actions this one deliberately no longer offers. The Alpine
+        # state below (zipModal, zipFiles, openZip) is left in place rather than
+        # torn out: `zipEnabled` false hides the only control that reaches it,
+        # so the modal is unreachable, and removing the state would mean editing
+        # a 2000-line component for no behavioural gain.
+        context["zip_enabled"] = False
+        context["active_tab"] = "files"
 
         return PageProcessor().decorate(context, self.request)
 
@@ -760,6 +765,7 @@ class VaultMetricsView(LoginRequiredMixin, TemplateView):
         from toto.vault.models import VaultQuotaPolicy
         context["quota_data"] = usage_summary(VaultQuotaPolicy, self.request.user)
 
+        context["active_tab"] = "metrics"
         return PageProcessor().decorate(context, self.request)
 
 
@@ -935,29 +941,14 @@ class BucketMetricsView(LoginRequiredMixin, TemplateView):
 
     @staticmethod
     def _remote_info(bucket):
-        """The Remote card's payload, from stamps only — never a probe.
+        """Delegates to :func:`toto.vault.remote_status.peer_info`.
 
-        This page is owner-or-superuser now, so naming the peer host here is
-        operator information reaching an operator. ``reachability`` is
-        tri-state on purpose: "never checked" is a true answer, and a green
-        badge nobody earned would be a lie (the antivirus tooltip doctrine).
+        Kept as a staticmethod so this page's callers and its tests are
+        unchanged; the body moved so the Remote listing shares it.
         """
-        if bucket.storage_backend != StorageBackend.REMOTE_TOTO:
-            return None
-        peer = bucket.peer if bucket.peer_id else None
-        if peer is None:
-            return {"peer": None}
-        if peer.last_error:
-            reachability = "down"
-        elif peer.last_ok_at:
-            reachability = "ok"
-        else:
-            reachability = "unknown"
-        return {
-            "peer": peer,
-            "reachability": reachability,
-            "last_refreshed_at": bucket.last_refreshed_at,
-        }
+        from . import remote_status
+
+        return remote_status.peer_info(bucket)
 
     def _service_stats(self, bucket):
         """Per-service run counts + success/failure for this bucket's files."""
