@@ -41,6 +41,9 @@ NOT_MOUNTED = "not_mounted"
 GEAR_FULL = "gear_full"
 TOO_BIG_FOR_GEAR = "too_big_for_gear"
 RUNTIME_UNAVAILABLE = "runtime_unavailable"
+#: Not a capacity refusal at all — the daily submission allowance is spent.
+#: Distinct from GEAR_FULL, which is about this instant and clears by itself.
+QUOTA_EXCEEDED = "quota_exceeded"
 
 
 class CapacityError(ValidationError):

@@ -93,6 +93,29 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
         raise CannotExecute(
             _not_accepting_sentence(lease, state), services.NOT_MOUNTED)
 
+    # The rate limit, at the ONE door every caller comes through — texlab,
+    # memo, ocr, manta and dracena all reach a runner via this function, so a
+    # guard here cannot be gone round by adding a sixth caller.
+    #
+    # Checked, recorded, and NOT charged. Each caller already prices its own
+    # action (texlab.compile, memo.pdf, ...); pricing the execution as well
+    # would charge twice for one job. What compute genuinely costs is the
+    # RESERVATION, which is a levy over time and belongs to toto.tax — see
+    # metrics.py and the TODO in portal/anastasia.md.
+    #
+    # Checked after the Gear is known to be accepting so a refusal names the
+    # useful reason first, and before the row is created so a rejected
+    # submission leaves nothing behind.
+    if requested_by is not None and getattr(requested_by, "pk", None):
+        from toto.quota import QuotaExceeded, check_quota
+
+        from .models import AnastasiaQuotaPolicy
+        try:
+            check_quota(AnastasiaQuotaPolicy, "anastasia.execution", 1,
+                        requested_by)
+        except QuotaExceeded as exc:
+            raise CannotExecute(str(exc), services.QUOTA_EXCEEDED) from exc
+
     with transaction.atomic():
         # Lock the lease row so two submissions into one Gear cannot both read
         # the same headroom — the pool race, one level down.
@@ -126,6 +149,20 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
             subject_label=subject_label, subject_id=str(subject_id or ""),
             requested_by=requested_by if getattr(requested_by, "pk", None) else None,
         )
+
+    if execution.requested_by_id:
+        from toto.quota import record_usage
+
+        from .models import AnastasiaUsageEvent
+        # Keyed on the execution uuid: submit is retried by callers on a
+        # transient manager failure, and a retry must not spend the allowance
+        # twice for the same job.
+        record_usage(AnastasiaUsageEvent, "anastasia.execution", 1,
+                     execution.requested_by,
+                     idempotency_key=f"anastasia.execution:{execution.uuid}",
+                     source_type="anastasia.Execution",
+                     source_id=str(execution.uuid),
+                     source_label=execution.operation)
 
     backend = get_backend()
     try:

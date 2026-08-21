@@ -1,6 +1,6 @@
 """What the platform remembers about reserved compute.
 
-Five tables, and the reason each exists:
+Seven tables, and the reason each exists:
 
 - ``ComputeLease`` — capacity a user consciously reserved. It is deducted from
   the pool **while idle**, because that is what a reservation means; a booking
@@ -15,6 +15,12 @@ Five tables, and the reason each exists:
   other), and the same table has to serve texlab, ocr and dracena.
 - ``GearEvent`` — the append-only history, refusals included.
 - ``PoolGuard`` — one row, locked to serialise admission (see its docstring).
+- ``AnastasiaUsageEvent`` / ``AnastasiaQuotaPolicy`` — the concrete pair every
+  metered app must declare, because ``toto.quota`` owns no tables of its own.
+  Without them ``policy_model_for("anastasia")`` returns None and the metric in
+  ``metrics.py`` has nowhere to store a limit: the limits grid renders it as a
+  row it cannot save, and ``toto.quota``'s own suite fails with "anastasia
+  declares anastasia.execution but ships no quota table".
 
 Where the truth lives: these rows are the DURABLE record (they survive
 destroying every container). The manager's cgroups and containers are the
@@ -32,6 +38,8 @@ from django.core.exceptions import ValidationError
 from django.db import models
 from django.db.models import Q
 from django.utils import timezone
+
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
 
 from . import choices
 from .limits import Limits
@@ -359,3 +367,24 @@ class GearEvent(models.Model):
     def delete(self, *args, **kwargs):
         raise ValidationError(
             "The gear history is append-only; an event cannot be deleted.")
+
+
+# --------------------------------------------------------------------------- #
+# toto.quota owns no tables, so each metered app declares its own concrete pair
+# and the rows live in that app's migrations. See toto/quota/models.py.
+# Metric: anastasia.execution (one heavy job in a Gear) — a rate limit on
+# submissions, NOT a price on compute. What compute costs is the reservation,
+# which is a levy over time and belongs to toto.tax; see metrics.py.
+
+class AnastasiaUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Compute Gear usage event"
+        verbose_name_plural = "Compute Gear usage events"
+
+
+class AnastasiaQuotaPolicy(AbstractQuotaPolicy):
+    events = AnastasiaUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Compute Gear quota policy"
+        verbose_name_plural = "Compute Gear quota policies"
