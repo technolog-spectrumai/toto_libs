@@ -70,7 +70,7 @@ class Features:
     # their closures cannot be forgotten: a Python lab whose image lacks the
     # jupyter packages, or a TeX lab whose image lacks pdflatex, is a lab in
     # name only). BUILD_AMBROSIA is the pre-split alias enabling both.
-    antaresia: bool
+    dracena: bool
     texlab: bool
     # Derived.
     editor: bool
@@ -155,7 +155,12 @@ def resolve_features(get) -> Features:
 
 
     _ambrosia = flag(get, "BUILD_AMBROSIA")
-    antaresia = flag(get, "BUILD_ANTARESIA", _ambrosia)       # zenobia/toto/antaresia — Python lab
+    # toto.dracena — interactive Python: kernel and session semantics, with the
+    # interpreter itself running in a Compute Gear. Was BUILD_ANTARESIA until
+    # 1.50; the old name is still read so a profile written for the placidia
+    # host keeps resolving while that host is dismantled.
+    dracena = flag(get, "BUILD_DRACENA",
+                   flag(get, "BUILD_ANTARESIA", _ambrosia))
     texlab = flag(get, "BUILD_TEXLAB", _ambrosia)             # zenobia/toto/texlab — TeX lab
     # toto.canasta lives in zenobia's own portion (zenobia/toto/canasta). Its
     # table is a websocket, so it belongs in the needs_channels closure below —
@@ -300,10 +305,16 @@ def resolve_features(get) -> Features:
 
     # Derived infrastructure.
     # toto.editor — the shared ACE base, carrying EIGHT file-type plugins
-    # (text/json/yaml/xml/csv/html/latex/bib). Explicit-only since 1.46: it used
-    # to default from BUILD_LATEX, and that flag left with the workspace split —
-    # the hosts that want the editors (all of them, today) say BUILD_EDITOR=1.
-    editor = flag(get, "BUILD_EDITOR")
+    # (text/json/yaml/xml/csv/html/latex/bib). Explicit-only from 1.46, when it
+    # stopped defaulting from the departed BUILD_LATEX.
+    #
+    # Since 1.50 it derives from the LABS as well, for the reason texlive used
+    # to derive from texlab: a workspace room is a place to type, and one whose
+    # build left the editors out is a lab in name only — the tabs render with
+    # no editor behind them and every file opens empty. Every profile that ran
+    # the labs already set BUILD_EDITOR=1 by hand; this makes forgetting it
+    # impossible rather than merely unusual.
+    editor = flag(get, "BUILD_EDITOR", dracena or texlab)
     # toto.antivirus — screens file content at the doors and on demand.
     antivirus = flag(get, "BUILD_ANTIVIRUS")
     # toto.anastasia — booked compute capacity: users reserve CPU/RAM/scratch/
@@ -339,10 +350,12 @@ def resolve_features(get) -> Features:
     # boot. It does not join the workflows closure — it has no FK to WorkflowRun and
     # dispatches its own task. Whether a worker container actually runs is still
     # services.celery in the profile; without one, mail queues and never leaves.
-    # antaresia is here for its pip layer, not a websocket: jupyter_client and
-    # ipykernel ride requirements.realtime.txt, and a Python lab without them
-    # boots fine and then fails on the first Run click.
-    realtime = chat or workflows or weather or needs_channels or manta or jess or antaresia
+    # dracena is here for its pip layer, not a websocket — but a much smaller
+    # one than antaresia needed. It speaks the Jupyter protocol to a kernel
+    # running in a Compute Gear, so the host needs jupyter_client (the CLIENT)
+    # and no longer ipykernel or matplotlib: those are the anastasia-python
+    # image's, along with the interpreter itself.
+    realtime = chat or workflows or weather or needs_channels or manta or jess or dracena
     neo4j = graph
 
     # Native binaries, each following the feature that shells out to it. tesseract
@@ -403,7 +416,7 @@ def resolve_features(get) -> Features:
         subscriptions=subscriptions,
         geo=geo,
         kanban=kanban,
-        antaresia=antaresia,
+        dracena=dracena,
         texlab=texlab,
         editor=editor,
         antivirus=antivirus,
