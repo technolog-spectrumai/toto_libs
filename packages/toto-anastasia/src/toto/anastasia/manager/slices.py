@@ -149,8 +149,11 @@ class SystemdSliceDriver(SliceDriver):
                 "call", "org.freedesktop.systemd1", "/org/freedesktop/systemd1",
                 "org.freedesktop.systemd1.Manager", "StartTransientUnit",
                 "ssa(sv)a(sa(sv))", cls.PROBE_UNIT, "replace", "0", "0",
-                check=False)
+                check=False, timeout=cls.PROBE_TIMEOUT)
         except (OSError, subprocess.SubprocessError):
+            log.warning("anastasia: the system bus did not answer the slice "
+                        "probe in %ss; the Gear ceiling falls back",
+                        cls.PROBE_TIMEOUT)
             return False
         if probe.returncode != 0:
             log.warning("anastasia: systemd will not create slices for this "
@@ -163,10 +166,19 @@ class SystemdSliceDriver(SliceDriver):
             cls.PROBE_UNIT, "replace", check=False)
         return True
 
-    def _busctl(self, *args: str, check: bool = True) -> subprocess.CompletedProcess:
-        return subprocess.run(["busctl", "--system", *args],
-                              capture_output=True, text=True, timeout=30,
-                              check=check)
+    #: The availability probe runs BEFORE the manager binds its port, so it
+    #: must be quick. busctl's own default D-Bus reply timeout is 25s, which
+    #: turned an unresponsive polkit into half a minute of apparent hang with
+    #: nothing in the log yet — so the limit is passed to busctl (which is what
+    #: actually bounds the CALL) as well as to the subprocess (which bounds the
+    #: process if busctl itself wedges).
+    PROBE_TIMEOUT = 5
+
+    def _busctl(self, *args: str, check: bool = True,
+                timeout: int = 30) -> subprocess.CompletedProcess:
+        return subprocess.run(
+            ["busctl", "--system", f"--timeout={timeout}", *args],
+            capture_output=True, text=True, timeout=timeout + 2, check=check)
 
     def ensure(self, gear_uuid, limits: Limits) -> None:
         unit = slice_name(gear_uuid)
