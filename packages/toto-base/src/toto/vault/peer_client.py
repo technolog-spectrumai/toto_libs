@@ -71,8 +71,13 @@ def _reason(resp) -> str:
 class PeerClient:
     """Speaks to one :class:`~toto.vault.peering.BucketPeer`."""
 
-    def __init__(self, peer):
+    def __init__(self, peer, *, api_key: str | None = None):
         self.peer = peer
+        #: A sealed api key an operator just opened. When absent the legacy
+        #: path applies and peer.get_api_key() reads the Fernet column — which
+        #: is what keeps every already-paired peer working the day sealed
+        #: credentials ship.
+        self._api_key = api_key or None
         # The SSRF chokepoint for every peer call. One check here covers
         # manifest / list / meta / download / upload / delete, because all six
         # go through _request() and all six build on self._base.
@@ -93,7 +98,7 @@ class PeerClient:
         BucketPeer.objects.filter(pk=self.peer.pk).update(**fields)
 
     def _request(self, method, path, *, stream=False, **kwargs):
-        headers = {API_KEY_HEADER: self.peer.get_api_key()}
+        headers = {API_KEY_HEADER: self._api_key or self.peer.get_api_key()}
         try:
             resp = _http().request(
                 method, self._base + path, headers=headers,

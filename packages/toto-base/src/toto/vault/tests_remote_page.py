@@ -172,3 +172,66 @@ class ArchiveTabTests(RemoteTabTestCase):
 
         archive = self.client.get(reverse("vault:archive")).content.decode()
         self.assertIn(reverse("vault:create_zip"), archive)
+
+
+class CachedViewsNeedNoPinTests(RemoteTabTestCase):
+    """Everything that reads stamped columns stays open without a PIN.
+
+    Sealed credentials must not creep into pages that never touch the network.
+    The check is aggressive on purpose: both the PIN door and the outbound guard
+    are patched to explode, so any page that reached either would fail loudly
+    rather than quietly work in the test environment.
+    """
+
+    def setUp(self):
+        self.client.force_login(self.operator)
+
+    def test_the_pages_that_do_no_network_io_render_with_no_pin(self):
+        from toto.vault import outbound, storage_pin
+
+        def explode(*args, **kwargs):
+            raise AssertionError("a cached page asked for a credential")
+
+        original_authorize = storage_pin.authorize
+        original_guard = outbound.assert_outbound_allowed
+        storage_pin.authorize = explode
+        outbound.assert_outbound_allowed = explode
+        try:
+            for name, args in (
+                ("vault:remote_buckets", ()),
+                ("vault:metrics", ()),
+                ("vault:public_list", ()),
+                ("vault:transfer_panel", ()),
+                ("vault:archive", ()),
+            ):
+                with self.subTest(route=name):
+                    response = self.client.get(reverse(name, args=args))
+                    self.assertEqual(response.status_code, 200)
+
+            # bucket_metrics is owner-or-superuser, and answers 404 to anyone
+            # else on purpose — a 403 on a guessable slug is an enumeration
+            # oracle. So it is checked as the OWNER, which is the only actor
+            # for whom "no PIN needed" is a meaningful claim.
+            self.client.force_login(self.member)
+            response = self.client.get(
+                reverse("vault:bucket_metrics", args=(self.mount.slug,)))
+            self.assertEqual(response.status_code, 200)
+        finally:
+            storage_pin.authorize = original_authorize
+            outbound.assert_outbound_allowed = original_guard
+
+
+class SealedModeTests(RemoteTabTestCase):
+    """An ambient bucket behaves exactly as it always did."""
+
+    def test_every_existing_bucket_is_ambient(self):
+        for bucket in (self.local, self.cloud, self.mount):
+            with self.subTest(bucket=bucket.slug):
+                self.assertEqual(bucket.credential_mode, "ambient")
+
+    def test_the_listing_says_which_buckets_are_sealed(self):
+        self.cloud.credential_mode = "sealed"
+        self.cloud.save(update_fields=["credential_mode"])
+        self.client.force_login(self.operator)
+        response = self.client.get(reverse("vault:remote_buckets"))
+        self.assertEqual(response.status_code, 200)

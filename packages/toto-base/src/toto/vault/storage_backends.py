@@ -146,8 +146,17 @@ class LocalVaultStorageDriver(BaseVaultStorageDriver):
 class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
     """boto3-backed driver for AWS S3 and S3-compatible stores (OVH, MinIO, …)."""
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, *, credential: dict | None = None):
         self._config = config
+        #: A sealed credential, already opened by an operator's PIN. Held for
+        #: the lifetime of THIS DRIVER only.
+        #:
+        #: get_bucket_storage() builds a fresh driver per call, so a credential
+        #: dies with the driver. The lazy per-instance memoization below is
+        #: therefore load-bearing rather than incidental: turning it into a
+        #: module-level cache would turn one-action authorization into an
+        #: ambient unlock. Do not "optimise" it.
+        self._credential = credential or None
         self._client = None  # lazy — built on first use
 
     # ------------------------------------------------------------------
@@ -170,7 +179,19 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
             )
 
         profile = self._config.get("aws_profile")
-        session = boto3.Session(profile_name=profile) if profile else boto3.Session()
+        if self._credential:
+            # Sealed mode: the key came from a RemoteCredential an operator
+            # just opened. Never from the environment, never from a column.
+            session = boto3.Session(
+                aws_access_key_id=self._credential.get("aws_access_key_id"),
+                aws_secret_access_key=self._credential.get("aws_secret_access_key"),
+                aws_session_token=self._credential.get("session_token") or None,
+            )
+        elif profile:
+            session = boto3.Session(profile_name=profile)
+        else:
+            # Ambient mode, unchanged: boto3's own chain.
+            session = boto3.Session()
 
         client_kwargs: dict = {}
         if endpoint_url := self._config.get("endpoint_url"):
@@ -260,10 +281,10 @@ class RemoteTotoStorageDriver(BaseVaultStorageDriver):
     peer API (``vault/peer_views.py``) is its real counterpart.
     """
 
-    def __init__(self, peer):
+    def __init__(self, peer, *, api_key: str | None = None):
         from .peer_client import PeerClient
 
-        self._client = PeerClient(peer)
+        self._client = PeerClient(peer, api_key=api_key)
 
     def read(self, name: str) -> bytes:
         return self._client.read(name)
@@ -291,8 +312,15 @@ class RemoteTotoStorageDriver(BaseVaultStorageDriver):
 # Factory
 # ---------------------------------------------------------------------------
 
-def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
-    """Return the appropriate storage driver for *bucket*."""
+def get_bucket_storage(bucket, *, credential: dict | None = None) -> BaseVaultStorageDriver:
+    """Return the appropriate storage driver for *bucket*.
+
+    ``credential`` is a plaintext credential an operator's storage PIN has just
+    opened (or a queued run redeemed from a capability). Omit it and the driver
+    behaves exactly as it always has: boto3's ambient chain for S3, the
+    Fernet-sealed peer key for a mount. That is what ``credential_mode
+    == "ambient"`` means, and it is the default on every existing row.
+    """
     backend = getattr(bucket, "storage_backend", None) or "local"
     config: dict = getattr(bucket, "storage_config", None) or {}
 
@@ -321,7 +349,7 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
                 merged["addressing_style"] = provider.addressing_style
             if "use_ssl" not in merged:
                 merged["use_ssl"] = provider.use_ssl
-        return S3CompatibleVaultStorageDriver(merged)
+        return S3CompatibleVaultStorageDriver(merged, credential=credential)
 
     if backend == "remote_toto":
         # The peer FK is the whole transport identity — no URL and no secret
@@ -334,7 +362,8 @@ def get_bucket_storage(bucket) -> BaseVaultStorageDriver:
         if not peer.is_active:
             raise RuntimeError(
                 f"Bucket peer '{peer.label}' is deactivated.")
-        return RemoteTotoStorageDriver(peer)
+        return RemoteTotoStorageDriver(
+            peer, api_key=(credential or {}).get("api_key"))
 
     return LocalVaultStorageDriver()
 

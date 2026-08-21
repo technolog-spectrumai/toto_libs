@@ -140,6 +140,24 @@ class Bucket(models.Model):
             "When set, get_public_file_url() returns a direct link per file."
         ),
     )
+    #: How this bucket's storage credentials are obtained.
+    #:
+    #: ``ambient`` is what every bucket did before sealed credentials existed
+    #: and is the default for exactly that reason: boto3's own chain (env vars,
+    #: ~/.aws, IAM role) for S3, and the Fernet-sealed BucketPeer.api_key_encrypted
+    #: for a mount. Nothing about an existing row changes.
+    #:
+    #: ``sealed`` means the credential lives in a RemoteCredential, encrypted
+    #: under an operator's storage PIN, and every action that needs it asks for
+    #: that PIN. Opt in per bucket.
+    credential_mode = models.CharField(
+        max_length=16,
+        choices=(("ambient", "Ambient (environment / legacy)"),
+                 ("sealed", "Sealed under a storage PIN")),
+        default="ambient",
+        help_text="Sealed credentials are opened per action by an operator's "
+                  "storage PIN and are never recoverable from a database dump.",
+    )
     #: When a remote_toto bucket's mirror last completed. Listings render from
     #: local stub rows, so this stamp is the honest answer to "as of when?" —
     #: a page never probes the peer to find out.
@@ -831,4 +849,10 @@ from .transfer import (  # noqa: E402,F401
     CopyPolicy,
     TransferRun,
     TransferStatus,
+)
+from .credentials import (  # noqa: E402,F401
+    CredentialEnrollment,
+    CredentialWrap,
+    RemoteCredential,
+    RunCapability,
 )
