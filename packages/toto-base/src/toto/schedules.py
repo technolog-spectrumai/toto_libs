@@ -24,6 +24,8 @@ def beat_schedule(
     subscriptions_hour=5,
     subscriptions_minute=5,
     sweep=False,
+    anastasia=False,
+    anastasia_minutes=2,
 ):
     """Build the CELERY_BEAT_SCHEDULE dict for the enabled features."""
     schedule = {}
@@ -127,6 +129,20 @@ def beat_schedule(
         schedule["quota-sweep-stuck-runs"] = {
             "task": "toto.quota.tasks.sweep_stuck_runs",
             "schedule": crontab(minute="41"),
+        }
+
+    if anastasia:
+        # Expire lapsed reservations, tell the manager which Gears still exist,
+        # and fold each mounted Gear's live sample onto its row.
+        #
+        # Minutes, not hours: this is what makes a stale reading visible. A
+        # Gear whose manager has stopped answering must show as DEGRADED while
+        # somebody can still act on it, and the staleness threshold is three
+        # minutes by default — a schedule slower than that would mean every
+        # Gear looked degraded between ticks.
+        schedule["anastasia-reconcile"] = {
+            "task": "toto.anastasia.tasks.reconcile",
+            "schedule": float(anastasia_minutes) * 60.0,
         }
 
     return schedule

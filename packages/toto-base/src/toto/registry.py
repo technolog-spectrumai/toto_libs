@@ -129,6 +129,13 @@ TASK_MODULES = [
     # this entry the worker answers KeyError and discards the job (the exact
     # transcription failure mode above). Inert where the ops wheel is absent.
     "toto.fileservices",
+    # Compute Gears (BUILD_ANASTASIA): the reconcile beat task. It NEEDS an
+    # entry, unlike aralia and texlab, because its worker entry point is a BEAT
+    # task rather than a workflow predefined task — without this the schedule
+    # enqueues toto.anastasia.tasks.reconcile every two minutes and the worker
+    # answers KeyError every two minutes, which is the exact failure the
+    # weather and monit notes above record. Inert where the wheel is absent.
+    "toto.anastasia",
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
     "toto.tax",         # the daily levy sweep; inert where toto-economy is absent
