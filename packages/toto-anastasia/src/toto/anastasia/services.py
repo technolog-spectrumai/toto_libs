@@ -371,6 +371,63 @@ def derive_state(runtime: GearRuntime, now=None) -> str:
     return choices.READY
 
 
+def refresh_runtime(lease: ComputeLease) -> GearRuntime:
+    """Ask the manager what this Gear is doing, and record the answer.
+
+    Never raises. A manager that does not answer leaves the PREVIOUS sample in
+    place with its timestamp untouched, which is what lets ``derive_state``
+    notice the silence and report DEGRADED. Overwriting the sample with an
+    empty one would erase exactly the evidence that something is wrong, and
+    clearing ``sampled_at`` would make a silent manager look like a Gear that
+    has simply never been sampled.
+    """
+    runtime = runtime_for(lease)
+    if not runtime.is_mounted:
+        return runtime
+
+    try:
+        answer = get_backend().status(lease) or {}
+    except Exception:  # noqa: BLE001 - a status read must never break a page
+        log.exception("anastasia: could not read status for %s", lease.uuid)
+        return runtime
+
+    sample = answer.get("sample")
+    if not sample:
+        return runtime
+
+    fields = ["last_sample", "sampled_at"]
+    runtime.last_sample = sample
+    runtime.sampled_at = timezone.now()
+
+    # A manager generation that has moved means the process we mounted against
+    # is gone. The runtime it created went with it, so this Gear is DEAD until
+    # its owner mounts it again — the reservation is untouched either way.
+    generation = str(answer.get("manager_generation") or "")
+    if (generation and runtime.manager_generation
+            and generation != runtime.manager_generation):
+        runtime.state = choices.DEAD
+        runtime.state_at = timezone.now()
+        runtime.detail = (
+            "The compute manager restarted, so this Gear's runtime is gone. "
+            "Your reservation is intact — mount it again.")
+        fields += ["state", "state_at", "detail"]
+        record(lease=lease, kind=GearEvent.RECONCILE,
+               from_state=choices.READY, to_state=choices.DEAD,
+               reason="manager generation changed",
+               was=runtime.manager_generation, now=generation)
+    elif not answer.get("mounted", True):
+        # The manager is the same process but has no record of this Gear —
+        # it was torn down out from under us (a reconcile, an operator).
+        runtime.state = choices.DEAD
+        runtime.state_at = timezone.now()
+        runtime.detail = ("The compute manager no longer holds this Gear. "
+                          "Mount it again to bring it back.")
+        fields += ["state", "state_at", "detail"]
+
+    runtime.save(update_fields=fields)
+    return runtime
+
+
 def gear_report(lease: ComputeLease, now=None) -> dict:
     """One Gear, as the page draws it."""
     now = now or timezone.now()
