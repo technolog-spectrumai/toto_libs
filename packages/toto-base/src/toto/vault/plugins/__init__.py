@@ -93,8 +93,11 @@ class FileServicePlugin(BasePlugin):
 
     **Moved here from `toto.fileservices` in 1.51, and the move is the point.**
     The class is 78 lines with no media imports at all, but it lived in
-    **toto-media-ops** — a wheel only placidia pins. So the vault, which owns
-    every file, could not name the registry describing what may be done to one:
+    **toto-media-ops**, which at the time only the placidia host pinned (zenobia
+    pins it again since 1.50, but the argument does not depend on that — a wheel
+    ANY host may decline is a wheel the vault cannot import). So the vault, which
+    owns every file, could not name the registry describing what may be done to
+    one:
     `vault/views.py` reached for it inside a bare `try/except`, and on zenobia —
     the host with all six editors — the whole "run something over this file"
     affordance silently did not exist.

@@ -54,10 +54,13 @@ def _surface_link(repo: GitRepo) -> dict:
     worse than none.
 
     Workspace attribution was deleted in 8/2026 on the premise that this app
-    could never follow the labs to placidia. It ships in a wheel now and runs
-    there — and after the split placidia is the ONLY host that runs it — so
-    without this the host that owns the workspaces would be the one host whose
-    repositories all render as unclickable folder paths.
+    could never follow the labs to placidia; it shipped in a wheel and followed
+    them, so the attribution came back. Since 1.50 NO host installs `toto.repo`
+    — placidia was dismantled and the labs went to zenobia, which keeps document
+    history in `toto.vault` rather than in a worktree. This code is kept working
+    rather than deleted because the app itself is: the `is_installed` guard
+    below is what makes that safe, and a host that installs both apps still gets
+    clickable repositories instead of unclickable folder paths.
     """
     from .sync import subtree_files
 
