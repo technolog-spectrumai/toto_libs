@@ -1,0 +1,10 @@
+{% comment %}A stand-in for the platform base, for this app's own tests.
+
+The desk extends `oya/base.html`, which toto.core ships. Installing toto.core
+to render one page would make these tests depend on a whole host's chrome —
+and on it not changing. The stub gives them the two blocks the page fills and
+nothing else, so a failure here is always about the desk.
+{% endcomment %}
+<!doctype html>
+<html><head><title>{% block title %}{% endblock %}</title></head>
+<body>{% block content %}{% endblock %}</body></html>
