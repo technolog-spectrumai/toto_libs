@@ -101,3 +101,62 @@ class OcrHelper:
         """
         data = self.run_tesseract(image.get_image_path())
         return self.extract_lines(data)
+
+
+# ---------------------------------------------------------------------------
+# Where the scan actually happens
+# ---------------------------------------------------------------------------
+
+def gear_for(user):
+    """The Compute Gear to scan in, or None to scan in this process.
+
+    None on a host with no toto.anastasia. Where Gears exist but this user
+    holds none, the fallback is only offered if THIS host has tesseract — and
+    since 1.50 Zenobia does not, so the refusal is the honest answer there.
+    """
+    import shutil
+
+    from django.apps import apps
+
+    if not apps.is_installed("toto.anastasia"):
+        return None
+    from toto.anastasia import jobs
+
+    try:
+        return jobs.require_gear(user)
+    except jobs.NoGear:
+        if shutil.which("tesseract"):
+            return None
+        raise
+
+
+def scan_in_gear(data: bytes, *, filename: str, language: str, lease, user):
+    """Read text from an image inside a bounded runner.
+
+    Returns the same ``lines`` structure ``OcrHelper.extract_lines`` produces,
+    because the page renders it and should not learn that tesseract moved.
+
+    This is the path that closed the worst hole in the old media tier: OCR ran
+    tesseract SYNCHRONOUSLY INSIDE A POST HANDLER, with no run row, no metric,
+    no timeout and no memory bound — on bytes a user had just uploaded. It is
+    now a job in a container with all four.
+    """
+    import json
+    import os
+
+    from toto.anastasia import jobs
+
+    extension = os.path.splitext(filename or "")[1].lower() or ".png"
+    staged = f"input{extension}"
+    result = jobs.run(
+        lease=lease, operation="run_ocr",
+        params={"input": staged, "lang": language},
+        inputs={staged: data},
+        subject_label="ocr.scan", subject_id=user.pk if user else "",
+        requested_by=user)
+
+    payload = result["outputs"].get("output.json")
+    if not payload:
+        raise RuntimeError("The Compute Gear produced no OCR output.")
+    parsed = json.loads(payload.decode("utf-8"))
+    return parsed.get("lines") or []

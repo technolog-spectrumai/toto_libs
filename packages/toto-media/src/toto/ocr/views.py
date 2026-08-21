@@ -120,17 +120,36 @@ def ocr_run(request):
     data = screenshot.read()
     ext = os.path.splitext(screenshot.name or "")[1] or ".png"
 
-    # --- Tesseract ---
+    # --- Tesseract, in a Compute Gear where there is one ---
+    #
+    # This used to run tesseract synchronously inside this POST handler, on
+    # bytes a user had just uploaded, with no timeout and no memory bound. In a
+    # Gear it is a job with both, in a container with no network and no
+    # credentials. Still synchronous from the browser's side: a scan is
+    # seconds, and turning it into a poll would change a working interaction
+    # for no benefit.
+    from toto.ocr import ocr as ocr_mod
+
     tmp_path = None
     try:
-        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-            tmp.write(data)
-            tmp_path = tmp.name
-        helper = OcrHelper(language)
-        lines = helper.extract_lines(helper.run_tesseract(tmp_path))
+        lease = ocr_mod.gear_for(request.user)
+        if lease is not None:
+            lines = ocr_mod.scan_in_gear(
+                data, filename=screenshot.name or "", language=language,
+                lease=lease, user=request.user)
+        else:
+            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+                tmp.write(data)
+                tmp_path = tmp.name
+            helper = OcrHelper(language)
+            lines = helper.extract_lines(helper.run_tesseract(tmp_path))
         text = "\n".join(line["text"] for line in lines).strip()
-    except Exception as exc:  # noqa: BLE001 — surface the tesseract error to the UI
-        return JsonResponse({"error": f"OCR failed: {exc}"}, status=500)
+    except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
+        # 409 rather than 500 when the answer is "mount a Gear": that is
+        # something the person clicking can act on.
+        status = 409 if exc.__class__.__name__ == "NoGear" else 500
+        message = "; ".join(getattr(exc, "messages", [])) or f"OCR failed: {exc}"
+        return JsonResponse({"error": message}, status=status)
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

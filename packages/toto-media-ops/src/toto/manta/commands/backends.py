@@ -82,10 +82,89 @@ class FfmpegCommand(BaseCommand):
             job.save(update_fields=["status", "output", "finished_at"])
             raise
 
+    #: manta's form field names -> the operation's declared parameters.
+    #: Only these cross; anything else a form carries stays on this host.
+    _GEAR_PARAMS = ("width", "height", "x", "y", "fps", "quality", "bitrate",
+                    "start_time", "end_time", "duration", "position",
+                    "reencode", "output_name")
+
+    def _run_in_gear(self, job, inputs, lease) -> None:
+        """Stage the inputs, run the command in a runner, file the outputs.
+
+        The command and its parameters travel as DECLARED VALUES, never as an
+        argv: the runner rebuilds the command line from the same pure builders
+        this module used to call directly. That is what makes the move safe —
+        the argv is assembled on the trusted side either way, and the only
+        thing that changed is which side of a container wall it happens on.
+        """
+        import os
+
+        from toto.anastasia import jobs
+        from toto.vault.storage_backends import read_file_bytes
+
+        from .. import models as manta_models  # noqa: F401 - FileJob's app
+
+        params = dict(job.params or {})
+        staged = {}
+        for index, vault_file in enumerate(inputs[:2]):
+            extension = os.path.splitext(vault_file.file.name)[1]
+            staged[f"input{index}{extension}"] = read_file_bytes(vault_file)
+        names = list(staged)
+
+        call = {"command": job.command, "input": names[0]}
+        if len(names) > 1:
+            call["second"] = names[1]
+        for key in self._GEAR_PARAMS:
+            value = params.get(key)
+            if value not in (None, ""):
+                call[key] = value
+
+        try:
+            result = jobs.run(
+                lease=lease, operation="run_media_command", params=call,
+                inputs=staged, subject_label="manta.FileJob",
+                subject_id=job.pk, requested_by=job.owner,
+                timeout=int(params.get("time_budget_seconds") or 900))
+        except jobs.JobFailed as exc:
+            raise RuntimeError(
+                str(exc) or "The media command failed in its Compute Gear"
+            ) from exc
+
+        output = {"command": f"{job.command} (in a Compute Gear)",
+                  "outputs": [], "files": []}
+        for name, data in sorted(result["outputs"].items()):
+            path = os.path.join(_work_root(), f"job{job.pk}-{name}")
+            os.makedirs(_work_root(), exist_ok=True)
+            with open(path, "wb") as handle:
+                handle.write(data)
+            try:
+                output["files"].append(_save_output(job, path, name).id)
+                output["outputs"].append(name)
+            finally:
+                try:
+                    os.unlink(path)
+                except OSError:
+                    pass
+        if result["report"].get("duration_seconds") is not None:
+            output["probe"] = {"duration": result["report"]["duration_seconds"]}
+
+        job.output = output
+        job.status = FileJob.Status.DONE
+        job.finished_at = timezone.now()
+        job.save(update_fields=["output", "status", "finished_at"])
+
     def _run(self, job, VaultFile) -> None:
         inputs = [VaultFile.objects.get(pk=i) for i in (job.inputs or [])]
         if not inputs:
             raise ValueError("Job has no input file.")
+
+        # In a Compute Gear where the user has one; here where they do not and
+        # this host still has ffmpeg. Zenobia has none since 1.50, so on that
+        # host the first branch is the only one that runs — which is exactly
+        # what lets it offer the command builder without the binary.
+        lease = _gear_for(job)
+        if lease is not None:
+            return self._run_in_gear(job, inputs, lease)
 
         with tempfile.TemporaryDirectory(dir=_work_root()) as tmpdir:
             staged = [
@@ -142,3 +221,25 @@ class FfprobeCommand(FfmpegCommand):
     backend = "ffprobe"
     backend_label = "ffprobe"
     tab = "ffprobe"
+
+
+def _gear_for(job):
+    """The Gear this job runs in, or None to run here.
+
+    None on a host with no toto.anastasia — the whole of the old world — so
+    this module keeps one code path for "there is nowhere else".
+    """
+    from django.apps import apps
+
+    if not apps.is_installed("toto.anastasia"):
+        return None
+    from toto.anastasia import jobs
+
+    try:
+        return jobs.require_gear(job.owner)
+    except jobs.NoGear:
+        import shutil
+
+        if shutil.which("ffmpeg"):
+            return None          # this host can still do it itself
+        raise
