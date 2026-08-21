@@ -756,8 +756,13 @@ class AllSurfacesTests(TestCase):
         self.assertIsNotNone(surface, f"{key} was not registered")
         return surface
 
-    def test_memo_is_screened_because_a_block_is_html(self):
-        self.assertEqual(self._surface("memo", "toto.memo").file_type, "html")
+    # test_memo_is_screened_because_a_block_is_html stood here. memo's AI
+    # surface was deleted in 8/2026 along with memo's EDITOR — decks are
+    # "presented, read and exported — never edited" now, so there is no place
+    # to put a suggestion and nothing to screen. The surface went; this
+    # assertion did not, and it has been failing ever since with "memo was not
+    # registered", which reads like a registration bug rather than a feature
+    # that was removed on purpose. The surviving surfaces are covered below.
 
     def test_primula_has_its_own_vocabulary(self):
         """A range is not prose. "Improve this text" over a column of numbers

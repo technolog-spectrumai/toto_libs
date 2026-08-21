@@ -178,9 +178,13 @@ class PriceHintLiveTests(TestCase):
         # rates.set_price, not tariffs.upsert_price: the quota-side API takes a
         # metric CODE, which is the only thing a caller on this side of the
         # boundary has. upsert_price wants the registry object.
-        self.assertTrue(rates.set_price("cyprian.pdf", "0.001"))
+        # memo.pdf, not cyprian.pdf: the cyprian metric was deleted in 8/2026
+        # when the PDF export left that app (cyprian migration 0003), and a
+        # code no metric registers cannot be priced — set_price returns False
+        # and this test failed for a reason that had nothing to do with prices.
+        self.assertTrue(rates.set_price("memo.pdf", "0.001"))
 
-        out = render('{% price_hint "cyprian.pdf" %}')
+        out = render('{% price_hint "memo.pdf" %}')
         self.assertIn("0.001", out)
 
     def test_an_unpriced_metric_stays_silent_against_a_real_card(self):

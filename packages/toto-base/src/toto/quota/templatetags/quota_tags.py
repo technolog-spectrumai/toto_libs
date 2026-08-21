@@ -50,7 +50,7 @@ def price_hint(context, *metric_codes, label=None):
     it::
 
         {% load quota_tags %}
-        <button>Export PDF {% price_hint "cyprian.pdf" %}</button>
+        <button>Export PDF {% price_hint "memo.pdf" %}</button>
 
     Several codes when one action meters several things — a vault upload is
     charged per call AND per megabyte, and quoting only the first would be a

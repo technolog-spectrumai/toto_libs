@@ -2,8 +2,8 @@
 
 Voting itself is unmetered — charging to cast a ballot would price
 participation. The export is different: a generated document on request.
-Like every other PDF metric on the platform (portfolio.pdf, memo.pdf,
-cyprian.pdf) it is registered and quota-capped but carries no PRICES entry:
+Like every other PDF metric on the platform (memo.pdf) it is registered and
+quota-capped but carries no PRICES entry:
 metered, free by default, priceable by a host that wants to.
 """
 
