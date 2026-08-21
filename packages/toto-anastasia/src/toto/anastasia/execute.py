@@ -1,0 +1,222 @@
+"""Submitting one heavy job into a Gear the user chose.
+
+The three-function shape every run table on this platform uses — ``submit``
+makes the row, the backend starts the runner, ``finish``/``fail`` close it —
+so there is exactly one place an execution can start and exactly one where it
+can end badly.
+
+**Nothing here runs inline.** A caller submits and polls. That is the decision
+aralia's ``dispatch.py`` documents (a render in the request is a blocked socket
+pretending to be a spinner), and it is what makes a killed worker recoverable:
+the row outlives the process.
+
+The caller supplies an OPERATION NAME and DECLARED PARAMETERS. It cannot supply
+an image, a mount, a flag, a capability or a command — the vocabulary in
+:mod:`toto.anastasia.families` has no word for those.
+"""
+
+from __future__ import annotations
+
+import logging
+
+from django.core.exceptions import ValidationError
+from django.db import transaction
+from django.utils import timezone
+
+from . import choices, families, services
+from .limits import Limits, LimitsError
+from .models import ComputeLease, Execution, GearEvent
+from .runtime import RuntimeUnavailable, get_backend
+
+log = logging.getLogger("toto.anastasia.execute")
+
+
+class CannotExecute(ValidationError):
+    """No way to run this right now. The message is for a user."""
+
+    def __init__(self, message, code: str = ""):
+        super().__init__(message)
+        self.refusal_code = code
+
+
+def _resolve_limits(operation, requested) -> Limits:
+    """What this execution books against its Gear.
+
+    Defaults come from the family; a caller may ask for less (a small OCR job
+    need not book a media-sized runner) but never for more than its Gear holds,
+    which the admission check below enforces.
+    """
+    if requested is None:
+        return operation.family.default_limits
+    try:
+        wanted = (requested if isinstance(requested, Limits)
+                  else Limits.from_mapping(requested))
+    except LimitsError as exc:
+        raise CannotExecute(str(exc)) from exc
+    # Any dimension left at zero means "use the family default for it", so a
+    # caller can raise RAM alone without having to restate the other three.
+    default = operation.family.default_limits
+    return Limits(
+        wanted.cpu_millicores or default.cpu_millicores,
+        wanted.ram_mb or default.ram_mb,
+        wanted.scratch_mb or default.scratch_mb,
+        wanted.pids or default.pids,
+    )
+
+
+def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
+           payload=None, limits=None, timeout: int | None = None,
+           subject_label: str = "", subject_id="", requested_by=None) -> Execution:
+    """Start a job in this Gear, or refuse with a sentence.
+
+    ``payload`` is the staged input — bytes the caller has already gathered
+    from the Vault through its own permissions. Anastasia never reaches into
+    a vault; it receives what the caller decided this job may see.
+    """
+    op = families.operation(operation)          # raises ParamError by name
+    try:
+        clean_params = op.clean(params)
+        clean_timeout = op.clean_timeout(timeout)
+    except families.ParamError as exc:
+        raise CannotExecute(str(exc)) from exc
+
+    wanted = _resolve_limits(op, limits)
+
+    if not lease.is_open():
+        raise CannotExecute(
+            "That Gear's reservation has ended. Reserve a new one to keep "
+            "working.", services.LEASE_CLOSED)
+
+    runtime = services.runtime_for(lease)
+    state = services.derive_state(runtime)
+    if state not in choices.ACCEPTING:
+        raise CannotExecute(
+            _not_accepting_sentence(lease, state), services.NOT_MOUNTED)
+
+    with transaction.atomic():
+        # Lock the lease row so two submissions into one Gear cannot both read
+        # the same headroom — the pool race, one level down.
+        locked = ComputeLease.objects.select_for_update().get(pk=lease.pk)
+
+        # Two different refusals wear the same shape, and telling a user the
+        # wrong one is worse than telling them nothing: "the Gear is busy" sent
+        # to somebody whose Gear is idle reads as a bug in the platform. So ask
+        # the bigger question first — would this EVER fit in this Gear?
+        if not wanted.fits_in(locked.limits):
+            raise CannotExecute(
+                f"This job needs more than “{locked.name}” holds in total: "
+                + "; ".join(wanted.shortfalls(locked.limits))
+                + f". Reserve a larger Gear, or ask for less than the "
+                f"{op.family.label} default.",
+                services.TOO_BIG_FOR_GEAR)
+
+        free = services.gear_available(locked)
+        if not wanted.fits_in(free):
+            raise CannotExecute(
+                f"“{locked.name}” is already running as much as it holds: "
+                + "; ".join(wanted.shortfalls(free))
+                + ". Wait for a job to finish, or reserve a bigger Gear.",
+                services.GEAR_FULL)
+
+        execution = Execution.objects.create(
+            lease=locked, operation=op.name, family=op.family.key,
+            cpu_millicores=wanted.cpu_millicores, ram_mb=wanted.ram_mb,
+            scratch_mb=wanted.scratch_mb, pids=wanted.pids,
+            timeout_seconds=clean_timeout,
+            subject_label=subject_label, subject_id=str(subject_id or ""),
+            requested_by=requested_by if getattr(requested_by, "pk", None) else None,
+        )
+
+    backend = get_backend()
+    try:
+        result = backend.start_execution(execution, params=clean_params,
+                                         payload=payload)
+    except RuntimeUnavailable as exc:
+        fail(execution, str(exc), code=services.RUNTIME_UNAVAILABLE)
+        raise CannotExecute(str(exc), services.RUNTIME_UNAVAILABLE) from exc
+    except Exception as exc:  # noqa: BLE001 — the row is the error channel
+        log.exception("anastasia: could not start execution %s", execution.uuid)
+        fail(execution, f"The runner could not be started: {exc}")
+        raise CannotExecute(
+            "The compute manager could not start this job. It has been closed; "
+            "try again.") from exc
+
+    execution.status = choices.RUNNING
+    execution.started_at = timezone.now()
+    execution.served_warm = bool(result.get("served_warm"))
+    execution.save(update_fields=["status", "started_at", "served_warm"])
+    services.record(lease=lease, kind=GearEvent.EXECUTE,
+                    actor=requested_by, operation=op.name,
+                    execution=str(execution.uuid), warm=execution.served_warm)
+    return execution
+
+
+def _not_accepting_sentence(lease, state) -> str:
+    if state == choices.UNMOUNTED:
+        return (f"“{lease.name}” is not mounted. Mount it on the Compute Gears "
+                "page and try again.")
+    if state == choices.DEGRADED:
+        return (f"“{lease.name}” is degraded — something in it ran out of "
+                "memory or the manager has stopped answering. Unmount and "
+                "mount it again.")
+    if state == choices.DEAD:
+        return (f"“{lease.name}” is dead: its runtime is gone. Your reservation "
+                "is intact — mount it again to bring it back.")
+    return f"“{lease.name}” is not accepting work right now."
+
+
+def finish(execution: Execution, *, exit_code: int = 0, usage: dict | None = None
+           ) -> Execution:
+    """Close a run that completed. Idempotent — a redelivered result must not
+    reopen a row the reconciler already closed."""
+    if execution.is_finished:
+        return execution
+    execution.status = (choices.SUCCESS if exit_code == 0 else choices.FAILED)
+    execution.exit_code = exit_code
+    execution.usage = usage or {}
+    execution.finished_at = timezone.now()
+    if exit_code != 0 and not execution.error:
+        execution.error = f"The runner exited with status {exit_code}."
+    execution.save(update_fields=["status", "exit_code", "usage",
+                                  "finished_at", "error"])
+    return execution
+
+
+def fail(execution: Execution, message: str, *, code: str = "",
+         status: str = choices.FAILED) -> Execution:
+    """Close a run that will never finish. Idempotent; also the sweeper's closer."""
+    if execution.is_finished:
+        return execution
+    execution.status = status
+    execution.error = (message or "This job was closed without finishing.")[:500]
+    execution.finished_at = timezone.now()
+    execution.save(update_fields=["status", "error", "finished_at"])
+    if code:
+        log.info("anastasia: execution %s closed (%s)", execution.uuid, code)
+    return execution
+
+
+def kill(execution: Execution, *, reason: str = "") -> Execution:
+    """Stop a running job on purpose."""
+    if execution.is_finished:
+        return execution
+    try:
+        get_backend().kill_execution(execution)
+    except Exception:  # noqa: BLE001 — the row closes either way
+        log.exception("anastasia: backend kill failed for %s", execution.uuid)
+    return fail(execution, reason or "This job was stopped.",
+                status=choices.KILLED)
+
+
+def close_stuck(execution_pk) -> None:
+    """The dotted-path closer ``sweeps.py`` registers.
+
+    Takes a pk because the sweeper holds nothing else — the shape
+    ``toto.quota.sweeps`` requires.
+    """
+    execution = Execution.objects.filter(pk=execution_pk).first()
+    if execution is None:
+        return
+    fail(execution,
+         "This job outlived its Gear's ceiling and was closed by the sweeper.",
+         status=choices.LOST)

@@ -19,7 +19,18 @@
 {% endblock %}
 
 {% block vault_content %}
-<div class="space-y-6">
+<div class="space-y-6" x-data="remoteTests()">
+
+  <div class="flex flex-wrap justify-end gap-2">
+    <a href="{% url 'vault:remote_mount_new' %}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="inline-flex items-center gap-2 rounded border px-3 py-2 text-sm font-semibold">
+      <i class="fa-solid fa-link"></i>{% trans "Mount a federated bucket" %}</a>
+    <a href="{% url 'vault:remote_s3_new' %}"
+       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+       class="inline-flex items-center gap-2 rounded px-3 py-2 text-sm font-bold">
+      <i class="fa-solid fa-cloud"></i>{% trans "Add S3 storage" %}</a>
+  </div>
 
   <section class="grid gap-3 sm:grid-cols-3">
     <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -55,6 +66,7 @@
               <th class="px-4 py-2">{% trans "Reachability" %}</th>
               <th class="px-4 py-2">{% trans "Mirrored" %}</th>
               <th class="px-4 py-2">{% trans "As of" %}</th>
+              <th class="w-28 px-4 py-2"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-current/10">
@@ -76,6 +88,7 @@
                   {% if row.bucket.last_refreshed_at %}{{ row.bucket.last_refreshed_at|date:"Y-m-d H:i" }}
                   {% else %}{% trans "never mirrored" %}{% endif %}
                 </td>
+                <td class="px-4 py-3">{% include "vault/partials/_test_button.html" with slug=row.bucket.slug %}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -100,6 +113,7 @@
               <th class="px-4 py-2">{% trans "Endpoint" %}</th>
               <th class="px-4 py-2">{% trans "Prefix" %}</th>
               <th class="px-4 py-2 text-right">{% trans "Written here" %}</th>
+              <th class="w-28 px-4 py-2"></th>
             </tr>
           </thead>
           <tbody class="divide-y divide-current/10">
@@ -115,6 +129,7 @@
                 </td>
                 <td class="px-4 py-3 text-xs">{{ row.prefix|default:"—" }}</td>
                 <td class="px-4 py-3 text-right tabular-nums">{{ row.bucket.file_count }}</td>
+                <td class="px-4 py-3">{% include "vault/partials/_test_button.html" with slug=row.bucket.slug %}</td>
               </tr>
             {% endfor %}
           </tbody>
@@ -131,4 +146,26 @@
       {% trans "No remote storage is configured on this host." %}</p>
   {% endif %}
 </div>
+
+<script>
+function remoteTests() {
+  return {
+    testing: {},   // slug -> true while in flight
+    results: {},   // slug -> {ok, detail}
+    runTest(slug) {
+      if (this.testing[slug]) return;
+      this.testing[slug] = true;
+      delete this.results[slug];
+      fetch('{% url "vault:remote_buckets" %}buckets/' + slug + '/test/', {
+        method: 'POST',
+        headers: {'X-CSRFToken': '{{ csrf_token }}'},
+      }).then(r => r.json())
+        .then(d => { this.testing[slug] = false; this.results[slug] = d; })
+        .catch(() => { this.testing[slug] = false;
+                       this.results[slug] = {ok: false,
+                                             detail: '{% trans "The test could not run." %}'}; });
+    },
+  };
+}
+</script>
 {% endblock %}

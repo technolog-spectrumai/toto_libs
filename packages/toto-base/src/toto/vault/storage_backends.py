@@ -168,7 +168,29 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
             self._client = self._build_client()
         return self._client
 
-    def _build_client(self):
+    def probe(self) -> tuple[bool, str]:
+        """One bounded head_bucket: can this host reach the bucket at all?
+
+        The first health signal an S3 bucket has ever had — the client is lazy
+        and otherwise fails on the first real read, long after configuration.
+        Bounded timeouts because this runs inline on an operator's click; the
+        default botocore 60s would hold a web worker for a minute per typo.
+        Returns (ok, sentence); never raises.
+        """
+        try:
+            client = self._build_client(probe_timeouts=True)
+            client.head_bucket(Bucket=self._config["bucket_name"])
+        except Exception as exc:  # noqa: BLE001 — one sentence, whatever failed
+            detail = str(exc)
+            if "403" in detail or "Forbidden" in detail:
+                return False, ("The bucket answered but refused these "
+                               "credentials (403).")
+            if "404" in detail or "NoSuchBucket" in detail:
+                return False, "The endpoint answered but knows no such bucket (404)."
+            return False, detail
+        return True, "The bucket answered."
+
+    def _build_client(self, probe_timeouts: bool = False):
         try:
             import boto3
             from botocore.config import Config
@@ -208,7 +230,12 @@ class S3CompatibleVaultStorageDriver(BaseVaultStorageDriver):
             client_kwargs["use_ssl"] = False
 
         addressing_style = self._config.get("addressing_style", "auto")
-        client_kwargs["config"] = Config(s3={"addressing_style": addressing_style})
+        config_kwargs = {"s3": {"addressing_style": addressing_style}}
+        if probe_timeouts:
+            # An operator is waiting on this click.
+            config_kwargs.update(connect_timeout=5, read_timeout=10,
+                                 retries={"max_attempts": 1})
+        client_kwargs["config"] = Config(**config_kwargs)
 
         return session.client("s3", **client_kwargs)
 

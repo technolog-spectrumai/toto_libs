@@ -4,16 +4,20 @@ requires = ["setuptools>=69"]
 build-backend = "setuptools.build_meta"
 
 [project]
-# monit is the read-only ops dashboard. (aster and nomad used to live here;
-# they are faros-owned now — see the suite README.)
-name = "toto-ops"
+# anastasia is the execution subsystem: booked capacity, mounted Gears, and
+# disposable runners. It owns no product data — see portal/anastasia.md.
+name = "toto-anastasia"
 version = "1.50"
-description = "toto operations: read-only monitoring dashboard"
+description = "toto compute: reserved capacity, mounted Gears, disposable runners"
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
+#
+# toto-base only: the Django half needs quota/vault conventions. The MANAGER
+# half (toto.anastasia.manager) must import with no Django at all, so it may
+# never grow a dependency that pulls Django in. A test asserts that.
 dependencies = [
     "toto-base==1.50",
 ]
@@ -26,9 +30,7 @@ include = ["toto*"]
 namespaces = true
 
 [tool.setuptools.package-data]
-# 'templates/**/*' (not '*.html'): sso_master ships a .txt email template.
 "*" = [
     "templates/**/*",
     "static/**/*",
-    "graph/*.yaml",
 ]

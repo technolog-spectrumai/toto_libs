@@ -67,6 +67,12 @@ urlpatterns = [
     # tests_remote_ui asserts that substring is absent for a stranger, so a
     # page nested there would break it by substring alone.
     path("remote/", remote_views.RemoteBucketsView.as_view(), name="remote_buckets"),
+    path("remote/new/s3/", remote_views.RemoteS3CreateView.as_view(),
+         name="remote_s3_new"),
+    path("remote/new/mount/", remote_views.RemoteMountCreateView.as_view(),
+         name="remote_mount_new"),
+    path("remote/buckets/<slug:slug>/test/",
+         remote_views.RemoteBucketTestView.as_view(), name="remote_bucket_test"),
     # The Archive tab: the same tree as Files, carrying the zip actions.
     path("archive/", remote_views.ArchiveView.as_view(), name="archive"),
     path("metrics/<slug:bucket_slug>/", BucketMetricsView.as_view(), name="bucket_metrics"),

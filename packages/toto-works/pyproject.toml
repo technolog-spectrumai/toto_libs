@@ -12,7 +12,7 @@ build-backend = "setuptools.build_meta"
 # toto-flow dep left with antaresia — nothing else in this wheel touches the
 # workflow engine.
 name = "toto-works"
-version = "1.49"
+version = "1.50"
 description = "toto workflow-backed file, document and data services"
 readme = "README.md"
 license = { text = "MIT" }
@@ -20,7 +20,7 @@ requires-python = ">=3.10"
 # Versions are lockstep across the whole toto suite and are rewritten only by
 # scripts/release.py — never edit them by hand.
 dependencies = [
-    "toto-base==1.49",
+    "toto-base==1.50",
 ]
 
 [tool.setuptools.packages.find]
