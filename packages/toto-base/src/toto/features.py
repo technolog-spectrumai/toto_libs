@@ -356,12 +356,20 @@ def resolve_features(get) -> Features:
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
     tesseract = ocr or explicit_tess
     ffmpeg = fileservices or manta or explicit_ffmpeg
-    # texlive (pdflatex) has exactly ONE consumer since 1.47: TeX Lab
-    # compilation. (notarius went WeasyPrint in 1.44 and signature-only in the
-    # rework — no pdflatex anywhere else.) So it now DERIVES from texlab: a TeX
-    # workspace whose image lacks the compiler is a lab in name only. An
-    # explicit INSTALL_TEXLIVE=0 still wins, for the deliberate edit-only host.
-    texlive = flag(get, "INSTALL_TEXLIVE", texlab)
+    # texlive (pdflatex) has exactly ONE consumer: TeX Lab compilation.
+    # (notarius went WeasyPrint in 1.44 and signature-only in the rework — no
+    # pdflatex anywhere else.)
+    #
+    # It DERIVED from texlab in 1.47, on the reasoning that a TeX workspace
+    # whose image lacks the compiler is a lab in name only. Since 1.50 that is
+    # no longer where the compiler has to be: texlab compiles in an
+    # anastasia-latex runner inside the user's Compute Gear, and the ~450 MB
+    # layer belongs to that image rather than to every host that offers the
+    # lab. So the derivation is now conditional on there being nowhere else to
+    # run — with Compute Gears installed, texlab implies NO local texlive, and
+    # a host that wants a local fallback anyway says INSTALL_TEXLIVE=1 and
+    # means it.
+    texlive = flag(get, "INSTALL_TEXLIVE", texlab and not anastasia)
     # WeasyPrint (HTML→PDF) is a PIP layer, not an apt one: its native libraries
     # (cairo/pango/gdk-pixbuf/libffi) already ship in every host's base image, so all
     # that is gated is the wheel and the feature. Its own explicit flag: the
