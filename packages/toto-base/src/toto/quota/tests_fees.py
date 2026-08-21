@@ -440,7 +440,11 @@ class IncomeBoardLiveTests(TestCase):
         from toto.tariffs.models import TariffItem
 
         banana = make_asset(unit_name="BANANA", decimals=2)
-        rates.set_price("cyprian.pdf", "0.001")
+        # Asserted, not just called: this said "cyprian.pdf" until 1.50, and
+        # that metric was deleted in 8/2026 — so set_price quietly returned
+        # False, no item was priced, and the drift check below had nothing to
+        # be a check OF. memo.pdf is the live PDF metric.
+        self.assertTrue(rates.set_price("memo.pdf", "0.001"))
         TariffItem.objects.update(charged_asset=banana)
 
         self.assertEqual(
