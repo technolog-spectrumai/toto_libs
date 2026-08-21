@@ -49,6 +49,20 @@ INSTALLED_APPS = [
     "toto.editor",
     "toto.memo",
     "toto.cyprian",
+    # Not optional: cyprian.E003 is a hard system check, because the writer's
+    # sanitisers live here since 8/2026 and unsanitised rich text stored once is
+    # stored forever. Django refuses to start without it, so leaving it out did
+    # not degrade these tests — it stopped them running at all.
+    "toto.antivirus",
+    # antivirus.E001 in turn: the job runner has been compulsory since 8/2026,
+    # and a settings file that installs antivirus without it is hand-broken
+    # rather than configured. Same one-line chain the real hosts resolve
+    # through toto.features.
+    # mandragora before workflows: workflows.0001_initial depends on
+    # mandragora.0001_initial, so without it the migration graph itself will
+    # not build.
+    "toto.mandragora",
+    "toto.workflows",
     "toto.kanban",
 ]
 
