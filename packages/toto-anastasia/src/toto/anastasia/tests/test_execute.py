@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from unittest import mock
+
 from django.core.exceptions import ValidationError
 from django.test import override_settings
 
@@ -246,3 +248,78 @@ class ClosureTests(AnastasiaTestCase):
         job.refresh_from_db()
         self.assertEqual(job.status, choices.KILLED)
         self.assertIn("stop", job.error)
+
+
+class MeteringRefusalTests(AnastasiaTestCase):
+    """The two ways toto.quota can say no, and neither may be a traceback.
+
+    ``check_quota`` raises TWO distinct exceptions, and the second one is easy
+    to miss: ``InArrears`` is raised BEFORE it looks for a policy, so it fires
+    on a host where anastasia has no policy row at all. Catching only
+    ``QuotaExceeded`` let it escape ``submit()`` uncaught — a 500 on the one
+    code path whose entire job is to refuse in a sentence a person can act on.
+
+    They stay separate refusal codes for the reason toto.quota keeps the
+    exceptions separate: "over a rate limit, try later" and "a levy went
+    unpaid, top up" have different fixes, and one message for both tells half
+    the users the wrong thing.
+    """
+
+    def setUp(self):
+        super().setUp()
+        self.lease = services.reserve(owner=self.user, name="lab",
+                                      limits=Limits(3000, 6144, 6144, 768))
+        services.mount(lease=self.lease)
+
+    def _submit(self):
+        return execute.submit(lease=self.lease, operation="render_pdf",
+                              requested_by=self.user)
+
+    def test_a_spent_allowance_refuses_with_its_own_code(self):
+        from toto.quota import QuotaExceeded
+
+        from toto.anastasia.models import AnastasiaQuotaPolicy
+
+        # A real policy row, not a stub: QuotaExceeded.__str__ reads
+        # policy.period/name/unit, and the sentence it builds is what the user
+        # is shown, so a stub would test a message nobody ever sees.
+        policy = AnastasiaQuotaPolicy.objects.create(
+            metric_code="anastasia.execution", limit=200)
+
+        def boom(*a, **k):
+            raise QuotaExceeded(policy, 200, 200)
+
+        with mock.patch("toto.quota.check_quota", boom):
+            with self.assertRaises(execute.CannotExecute) as caught:
+                self._submit()
+        self.assertEqual(caught.exception.refusal_code, services.QUOTA_EXCEEDED)
+        self.assertFalse(Execution.objects.exists(),
+                         "a refused submission must leave no row behind")
+
+    def test_arrears_refuses_rather_than_escaping_as_a_500(self):
+        from toto.quota import InArrears
+
+        def boom(*a, **k):
+            raise InArrears()
+
+        with mock.patch("toto.quota.check_quota", boom):
+            with self.assertRaises(execute.CannotExecute) as caught:
+                self._submit()
+        self.assertEqual(caught.exception.refusal_code, services.IN_ARREARS)
+        self.assertNotEqual(caught.exception.refusal_code,
+                            services.QUOTA_EXCEEDED,
+                            "arrears is a payment problem, not a rate one")
+        self.assertFalse(Execution.objects.exists())
+
+    def test_both_exceptions_are_reachable_from_the_package_root(self):
+        """A caller doing the documented thing must be able to name them.
+
+        ``InArrears`` was absent from ``toto.quota.__all__`` while
+        ``check_quota`` was exported, which is how the miss above happened.
+        """
+        import toto.quota as quota
+
+        for name in ("check_quota", "QuotaExceeded", "InArrears"):
+            with self.subTest(name=name):
+                self.assertIn(name, quota.__all__)
+                self.assertTrue(hasattr(quota, name))

@@ -44,6 +44,13 @@ RUNTIME_UNAVAILABLE = "runtime_unavailable"
 #: Not a capacity refusal at all — the daily submission allowance is spent.
 #: Distinct from GEAR_FULL, which is about this instant and clears by itself.
 QUOTA_EXCEEDED = "quota_exceeded"
+#: Also not capacity: a recurring fee went unpaid and the account has stopped
+#: accepting new metered work. Kept distinct from QUOTA_EXCEEDED because
+#: toto.quota keeps the exceptions distinct for the same reason — "over a rate
+#: limit, try later" and "a levy went unpaid, top up" are different problems
+#: with different fixes, and one message for both tells half the users the
+#: wrong thing. It is 402 to quota's 429.
+IN_ARREARS = "in_arrears"
 
 
 class CapacityError(ValidationError):

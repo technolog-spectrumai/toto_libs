@@ -107,7 +107,7 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
     # useful reason first, and before the row is created so a rejected
     # submission leaves nothing behind.
     if requested_by is not None and getattr(requested_by, "pk", None):
-        from toto.quota import QuotaExceeded, check_quota
+        from toto.quota import InArrears, QuotaExceeded, check_quota
 
         from .models import AnastasiaQuotaPolicy
         try:
@@ -115,6 +115,15 @@ def submit(*, lease: ComputeLease, operation: str, params: dict | None = None,
                         requested_by)
         except QuotaExceeded as exc:
             raise CannotExecute(str(exc), services.QUOTA_EXCEEDED) from exc
+        except InArrears as exc:
+            # check_quota raises this BEFORE it looks for a policy, so it fires
+            # whether or not anastasia has one — catching only QuotaExceeded
+            # let it escape submit() as an unhandled exception, which is a 500
+            # on a page whose whole job is to refuse in a sentence.
+            raise CannotExecute(
+                str(exc) or "This account is behind on a recurring fee, so it "
+                "cannot start new work until the balance clears.",
+                services.IN_ARREARS) from exc
 
     with transaction.atomic():
         # Lock the lease row so two submissions into one Gear cannot both read
