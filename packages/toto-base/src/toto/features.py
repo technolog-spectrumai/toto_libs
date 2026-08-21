@@ -367,8 +367,18 @@ def resolve_features(get) -> Features:
     # and one is not a reason to ship the other's binary.
     explicit_tess = flag(get, "INSTALL_TESSERACT")
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
-    tesseract = ocr or explicit_tess
-    ffmpeg = fileservices or manta or explicit_ffmpeg
+    # Same rule texlive follows since 1.50, and for the same reason: with
+    # Compute Gears installed these binaries belong to the anastasia-ocr and
+    # anastasia-media runner IMAGES, not to every host that offers the
+    # features. Deriving them from their apps would put a tesseract layer and
+    # a ~100 MB ffmpeg layer straight back into an application image whose
+    # whole point is not having them.
+    #
+    # A host that wants a local fallback anyway says INSTALL_TESSERACT=1 or
+    # INSTALL_FFMPEG=1 and means it — which is what a host with no manager
+    # must do, since there is nowhere else for its work to run.
+    tesseract = explicit_tess or (ocr and not anastasia)
+    ffmpeg = explicit_ffmpeg or ((fileservices or manta) and not anastasia)
     # texlive (pdflatex) has exactly ONE consumer: TeX Lab compilation.
     # (notarius went WeasyPrint in 1.44 and signature-only in the rework — no
     # pdflatex anywhere else.)
