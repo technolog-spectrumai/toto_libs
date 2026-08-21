@@ -172,6 +172,100 @@ def run(*, lease: ComputeLease, operation: str, params: dict | None = None,
     return {"outputs": outputs, "report": report, "execution": execution}
 
 
+def start_runtime(*, lease: ComputeLease, operation: str,
+                  params: dict | None = None, inputs: dict | None = None,
+                  limits=None, timeout: int | None = None,
+                  expect: str = "connection.json",
+                  ready_seconds: float = 60.0,
+                  subject_label: str = "", subject_id="",
+                  requested_by=None, poll_seconds: float = 0.5) -> dict:
+    """Start something that KEEPS RUNNING, and wait only for it to be ready.
+
+    The counterpart to :func:`run` for the one family that is not a job. A
+    LaTeX compile ends and hands back a PDF; a Python kernel comes up and then
+    waits for somebody to talk to it, so waiting for exit would mean waiting
+    for the user to finish their afternoon.
+
+    Ready is defined by a FILE APPEARING in the output area — the runner writes
+    its connection details there and then blocks. That works because ``/out``
+    is a bind mount rather than a copy taken at exit: the manager can read it
+    while the container is still alive, which is exactly the property a
+    long-lived runtime needs and a batch job never exercises.
+
+    Returns ``{execution, ready}`` where ``ready`` is the parsed file. The
+    execution stays RUNNING and is the caller's to stop.
+    """
+    import json
+
+    execution = execute.submit(
+        lease=lease, operation=operation, params=params,
+        payload=tar_of(inputs or {}), limits=limits, timeout=timeout,
+        subject_label=subject_label, subject_id=subject_id,
+        requested_by=requested_by)
+
+    backend = get_backend()
+    deadline = time.monotonic() + ready_seconds
+    while True:
+        status = backend.execution_status(execution)
+        if not status.get("found"):
+            execute.fail(execution,
+                         "The compute manager lost the runtime while it was "
+                         "starting.", status=choices.LOST)
+            raise JobFailed(execution.error, execution=execution)
+
+        # Look for the file BEFORE reacting to a dead container: a runtime that
+        # wrote its details and then exited still handed us something usable,
+        # and the caller should hear about the exit rather than about a
+        # missing file.
+        outputs, report = _collect(backend, execution)
+        if expect in outputs:
+            try:
+                ready = json.loads(outputs[expect].decode("utf-8"))
+            except (ValueError, UnicodeDecodeError) as exc:
+                _stop(backend, execution,
+                      f"The runtime wrote unreadable {expect} ({exc}).")
+                raise JobFailed(execution.error, report=report,
+                                execution=execution) from None
+            return {"execution": execution, "ready": ready, "report": report}
+
+        if not status.get("running"):
+            _finish(execution, status, report)
+            _cleanup(backend, execution)
+            raise JobFailed(
+                execution.error or "The runtime stopped before it was ready.",
+                report=report, execution=execution)
+
+        if time.monotonic() > deadline:
+            _stop(backend, execution,
+                  f"The runtime did not become ready within {ready_seconds:.0f}s.")
+            raise JobFailed(execution.error, report=report,
+                            execution=execution)
+        time.sleep(poll_seconds)
+
+
+def stop_runtime(execution, *, reason: str = "") -> None:
+    """Destroy a runtime and its scratch. Idempotent.
+
+    Killing a CONTAINER, note, rather than signalling a pid. The app this
+    replaced had to guard every kill with a cmdline check because "from a
+    container that did not start the kernel, session.pid may name an innocent
+    process" — its own words. A container id names one thing on the machine
+    and cannot come to mean another.
+    """
+    backend = get_backend()
+    _stop(backend, execution, reason or "The runtime was stopped.")
+    _cleanup(backend, execution)
+
+
+def _stop(backend, execution, message: str) -> None:
+    try:
+        backend.kill_execution(execution)
+    except Exception:  # noqa: BLE001 - the row closes either way
+        log.warning("anastasia: could not kill %s", execution.uuid,
+                    exc_info=True)
+    execute.fail(execution, message, status=choices.KILLED)
+
+
 def _wait(backend, execution, deadline, poll_seconds) -> dict:
     while True:
         status = backend.execution_status(execution)
