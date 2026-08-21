@@ -75,6 +75,7 @@ class Features:
     # Derived.
     editor: bool
     antivirus: bool
+    anastasia: bool
     vicuna: bool
     sabbia_openai: bool
     sabbia_ollama: bool
@@ -305,6 +306,13 @@ def resolve_features(get) -> Features:
     editor = flag(get, "BUILD_EDITOR")
     # toto.antivirus — screens file content at the doors and on demand.
     antivirus = flag(get, "BUILD_ANTIVIRUS")
+    # toto.anastasia — booked compute capacity: users reserve CPU/RAM/scratch/
+    # PIDs, mount a Compute Gear, and heavy work runs in a disposable runner
+    # inside its limits. Explicit only, and NEVER derived from a consumer like
+    # weasyprint or ocr: those callers still work without it (they refuse, and
+    # say so), and a flag that switched itself on would hand out this machine's
+    # memory because somebody enabled a PDF export.
+    anastasia = flag(get, "BUILD_ANASTASIA")
     # Channels/ASGI back every WebSocket consumer.
     needs_channels = chat or sabbia or canasta
     # Ollama/Qwen service layer — scoped to the features that actually use it.
@@ -391,6 +399,7 @@ def resolve_features(get) -> Features:
         texlab=texlab,
         editor=editor,
         antivirus=antivirus,
+        anastasia=anastasia,
         vicuna=vicuna,
         sabbia_openai=sabbia_openai,
         sabbia_ollama=sabbia_ollama,
