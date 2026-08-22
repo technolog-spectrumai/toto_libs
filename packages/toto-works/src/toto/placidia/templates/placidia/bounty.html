@@ -1,0 +1,111 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ bounty.mission.title }} | {% trans "Bounty" %}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <a href="{% url 'placidia:board' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Bounty Board" %}
+    </a>
+
+    <header>
+      <p class="text-xs uppercase tracking-wide opacity-60">{{ bounty.mission.campaign.name }}</p>
+      <h1 class="mt-1 text-3xl font-bold">{{ bounty.mission.title }}</h1>
+      {% if open_now %}
+        <span class="mt-2 inline-block rounded-full bg-green-600/15 px-2 py-1 text-xs font-semibold text-green-600">{% trans "Open" %}</span>
+      {% else %}
+        <span class="mt-2 inline-block rounded-full bg-slate-500/15 px-2 py-1 text-xs font-semibold opacity-70">{% trans "Closed" %}</span>
+      {% endif %}
+    </header>
+
+    {% if bounty.instructions %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-5 shadow-sm">
+        <h2 class="mb-2 font-bold">{% trans "What to collect" %}</h2>
+        <p class="whitespace-pre-line text-sm opacity-85">{{ bounty.instructions }}</p>
+      </div>
+    {% endif %}
+
+    <div class="grid grid-cols-1 gap-4 sm:grid-cols-3">
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase tracking-wide opacity-60">{% trans "Sent" %}</p>
+        <p class="text-2xl font-bold">{{ counts.sent }}</p>
+      </div>
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase tracking-wide opacity-60">{% trans "In review" %}</p>
+        <p class="text-2xl font-bold">{{ counts.awaiting }}</p>
+      </div>
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg px-4 py-3 shadow-sm">
+        <p class="text-xs uppercase tracking-wide opacity-60">{% trans "Accepted" %}</p>
+        <p class="text-2xl font-bold">{{ counts.accepted }}</p>
+      </div>
+    </div>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-5 text-sm shadow-sm">
+      {% if reward %}
+        <p><i class="fa-solid fa-gem"></i>
+          <strong>{{ reward.amount_base_units }} {{ reward.asset_code }}</strong>
+          {% trans "for each accepted observation." %}</p>
+      {% endif %}
+      {% if policy %}
+        <p class="mt-1 opacity-75">
+          <i class="fa-solid fa-scale-balanced"></i>
+          {% blocktrans with name=policy.name %}Reviewed under “{{ name }}”.{% endblocktrans %}
+        </p>
+      {% else %}
+        <p class="mt-1 opacity-75">{% trans "No review rule is set on this bounty yet." %}</p>
+      {% endif %}
+      <p class="mt-1 opacity-60">
+        {% trans "Rewards never affect whether data is accepted — consensus decides that." %}
+      </p>
+    </div>
+
+    {% if open_now %}
+      <a href="{% url 'placidia:contribute' bounty.pk %}"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="inline-flex items-center gap-2 rounded-lg border px-5 py-3 font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-paper-plane"></i> {% trans "Contribute an observation" %}
+      </a>
+    {% endif %}
+
+    <section>
+      <h2 class="mb-3 text-xl font-bold">{% trans "Your contributions" %}</h2>
+      {% if my_submissions %}
+        <ul class="space-y-3">
+          {% for submission in my_submissions %}
+            <li :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+                class="rounded-lg border p-4 text-sm shadow-sm">
+              <div class="flex flex-wrap items-center justify-between gap-2">
+                <span class="font-semibold">{{ submission.get_state_display }}</span>
+                <span class="rounded-full px-2 py-1 text-xs font-semibold
+                  {% if submission.resolution == 'accepted' %}bg-green-600/15 text-green-600
+                  {% elif submission.resolution == 'rejected' %}bg-red-600/15 text-red-600
+                  {% else %}bg-slate-500/15 opacity-70{% endif %}">
+                  {{ submission.get_resolution_display }}
+                </span>
+              </div>
+              {% if submission.notes %}<p class="mt-2 opacity-80">{{ submission.notes|truncatechars:220 }}</p>{% endif %}
+              {% if submission.files.all %}
+                <p class="mt-2 text-xs opacity-70">
+                  <i class="fa-solid fa-paperclip"></i>
+                  {% for f in submission.files.all %}{{ f.display_name }}{% if not forloop.last %}, {% endif %}{% endfor %}
+                </p>
+              {% endif %}
+              <p class="mt-2 text-xs opacity-60">
+                {% blocktrans count n=submission.reviews.all|length %}{{ n }} review{% plural %}{{ n }} reviews{% endblocktrans %}
+              </p>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="text-sm opacity-70">{% trans "You have not contributed to this bounty yet." %}</p>
+      {% endif %}
+    </section>
+
+  </div>
+</section>
+{% endblock %}

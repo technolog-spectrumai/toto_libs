@@ -1,0 +1,34 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Datasets" %} | {{ platform.site_name }}{% endblock %}
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+    <a href="{% url 'placidia:board' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Bounty Board" %}
+    </a>
+    <h1 class="flex items-center gap-3 text-3xl font-bold">
+      <i class="fa-solid fa-database"></i> {% trans "Datasets" %}
+    </h1>
+    {% if datasets %}
+      <ul class="space-y-3">
+        {% for dataset in datasets %}
+          <li :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+              class="rounded-xl border p-5 shadow-sm">
+            <a href="{% url 'placidia:dataset' dataset.pk %}" class="text-lg font-bold underline hover:opacity-80">{{ dataset.name }}</a>
+            <p class="text-xs uppercase tracking-wide opacity-60">{{ dataset.campaign.campaign.name }}</p>
+            {% if dataset.description %}<p class="mt-2 text-sm opacity-80">{{ dataset.description|truncatechars:180 }}</p>{% endif %}
+            <p class="mt-2 text-xs opacity-70">
+              {% blocktrans count n=dataset.versions.all|length %}{{ n }} published version{% plural %}{{ n }} published versions{% endblocktrans %}
+            </p>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="text-sm opacity-70">{% trans "No datasets yet." %}</p>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}

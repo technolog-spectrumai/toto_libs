@@ -1,0 +1,100 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Review queue" %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <a href="{% url 'placidia:board' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Bounty Board" %}
+    </a>
+
+    <header>
+      <h1 class="flex items-center gap-3 text-3xl font-bold">
+        <i class="fa-solid fa-scale-balanced"></i> {% trans "Review queue" %}
+      </h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Contributions waiting on your verdict. You never see your own." %}
+      </p>
+    </header>
+
+    {% if submissions %}
+      <ul class="space-y-4">
+        {% for submission in submissions %}
+          <li :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+              class="space-y-3 rounded-xl border p-5 shadow-sm">
+
+            <div class="flex flex-wrap items-baseline justify-between gap-2">
+              <div>
+                <p class="text-xs uppercase tracking-wide opacity-60">
+                  {{ submission.task.mission.campaign.name }}
+                </p>
+                <h2 class="text-lg font-bold">{{ submission.task.mission.title }}</h2>
+              </div>
+              <p class="text-xs opacity-70">
+                {% blocktrans with who=submission.submitted_by %}by {{ who }}{% endblocktrans %}
+                · {{ submission.submitted_at|date:"j M Y H:i" }}
+              </p>
+            </div>
+
+            {% if submission.notes %}
+              <p class="whitespace-pre-line text-sm opacity-85">{{ submission.notes }}</p>
+            {% endif %}
+
+            {% if submission.files.all %}
+              <p class="text-xs opacity-70">
+                <i class="fa-solid fa-paperclip"></i>
+                {% for f in submission.files.all %}
+                  {% comment %}
+                    `get_public_url` guarded by an {% if %}, exactly as
+                    kanban's mission page links a MissionAttachment. NOT a
+                    {% url %} into vault: there is no per-file detail route to
+                    reverse, and an unguarded one here would 500 the whole
+                    queue for every submission that has a file.
+                  {% endcomment %}
+                  {% if f.vault_file.get_public_url %}
+                    <a href="{{ f.vault_file.get_public_url }}" class="underline hover:opacity-80">{{ f.display_name }}</a>
+                  {% else %}
+                    <span>{{ f.display_name }}</span>
+                  {% endif %}{% if not forloop.last %}, {% endif %}
+                {% endfor %}
+              </p>
+            {% endif %}
+
+            <p class="text-xs opacity-60">
+              {% blocktrans count n=submission.reviews.all|length %}{{ n }} review so far{% plural %}{{ n }} reviews so far{% endblocktrans %}
+            </p>
+
+            <form method="post" action="{% url 'placidia:review' submission.pk %}" class="space-y-3 border-t pt-3">
+              {% csrf_token %}
+              <div class="flex flex-wrap gap-4 text-sm">
+                {% for choice in form.verdict %}
+                  <label class="flex items-center gap-2">{{ choice.tag }} {{ choice.choice_label }}</label>
+                {% endfor %}
+              </div>
+              {{ form.comment }}
+              <button type="submit"
+                      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
+                      :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+                <i class="fa-solid fa-check"></i> {% trans "Record verdict" %}
+              </button>
+            </form>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'"
+           class="rounded-xl p-10 text-center shadow-sm">
+        <i class="fa-solid fa-mug-hot text-3xl opacity-40"></i>
+        <p class="mt-3 font-semibold">{% trans "Nothing waiting on you." %}</p>
+        <p class="mt-1 text-sm opacity-70">{% trans "Every contribution you may review has been reviewed." %}</p>
+      </div>
+    {% endif %}
+
+  </div>
+</section>
+{% endblock %}

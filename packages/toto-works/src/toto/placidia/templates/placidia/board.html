@@ -38,6 +38,19 @@
         </p>
       </div>
 
+      <nav class="flex flex-wrap gap-2">
+        <a href="{% url 'placidia:review_queue' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-scale-balanced"></i> {% trans "Review queue" %}
+        </a>
+        <a href="{% url 'placidia:datasets' %}"
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-database"></i> {% trans "Datasets" %}
+        </a>
+      </nav>
+
       {% if my_gems and my_gems.total %}
         <div
           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
@@ -167,7 +180,7 @@
               {% endif %}
             </div>
 
-            <a href="{% url 'kanban:mission_detail' bounty.mission_id %}"
+            <a href="{% url 'placidia:bounty' bounty.pk %}"
                class="text-sm font-semibold underline hover:opacity-80">
               {% trans "Open bounty" %} <i class="fa-solid fa-arrow-right"></i>
             </a>

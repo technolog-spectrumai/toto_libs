@@ -1,0 +1,67 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Contribute" %} | {{ bounty.mission.title }}{% endblock %}
+
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <a href="{% url 'placidia:bounty' bounty.pk %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {{ bounty.mission.title }}
+    </a>
+
+    <h1 class="text-3xl font-bold">{% trans "Contribute an observation" %}</h1>
+
+    <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-4 text-sm shadow-sm">
+      <p class="opacity-80">
+        {% trans "Once sent, a contribution cannot be edited — that is what lets reviewers judge what you actually claimed. If you need to correct it, send a new one that supersedes it." %}
+      </p>
+    </div>
+
+    <form method="post" class="space-y-5"
+          :class="darkMode ? 'text-text-main-dark' : 'text-text-main-light'">
+      {% csrf_token %}
+
+      {% if form.non_field_errors %}
+        <div class="rounded-lg bg-red-600/10 p-3 text-sm text-red-600">{{ form.non_field_errors }}</div>
+      {% endif %}
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold" for="{{ form.notes.id_for_label }}">{{ form.notes.label }}</label>
+        {{ form.notes }}
+        {% if form.notes.errors %}<p class="mt-1 text-xs text-red-600">{{ form.notes.errors|join:", " }}</p>{% endif %}
+      </div>
+
+      <div>
+        <label class="mb-1 block text-sm font-semibold" for="{{ form.observed_at.id_for_label }}">{{ form.observed_at.label }}</label>
+        {{ form.observed_at }}
+      </div>
+
+      <div>
+        <p class="mb-1 text-sm font-semibold">{{ form.files.label }}</p>
+        <p class="mb-2 text-xs opacity-70">
+          {% trans "Files stay in your vault; attaching one links it, it does not copy it." %}
+        </p>
+        <div :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
+             class="max-h-64 space-y-1 overflow-y-auto rounded-lg border p-3 text-sm">
+          {% for choice in form.files %}
+            <label class="flex items-center gap-2">{{ choice.tag }} <span>{{ choice.choice_label }}</span></label>
+          {% empty %}
+            <p class="opacity-60">{% trans "You have no vault files to attach." %}</p>
+          {% endfor %}
+        </div>
+      </div>
+
+      <button type="submit"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-5 py-3 font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-paper-plane"></i> {% trans "Send for review" %}
+      </button>
+    </form>
+
+  </div>
+</section>
+{% endblock %}
