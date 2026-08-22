@@ -10,7 +10,7 @@ from .models import (
     DocumentationPage,
     Practitioner, ProjectCommitment,
     Assignment, ConsensusPolicy, Review, Submission, SubmissionFile,
-    TaskReviewer,
+    TaskReviewer, RewardGrant, RewardPolicy,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
@@ -366,3 +366,40 @@ class TaskReviewerAdmin(admin.ModelAdmin):
     list_display = ("task", "person", "created_at")
     search_fields = ("task__title", "person__display_name")
     raw_id_fields = ("task", "person")
+
+
+@admin.register(RewardPolicy)
+class RewardPolicyAdmin(admin.ModelAdmin):
+    list_display = (
+        "trigger", "asset_code", "amount_base_units", "mission", "campaign",
+        "funding_account_code", "active",
+    )
+    list_filter = ("trigger", "active", "asset_code")
+    raw_id_fields = ("mission", "campaign")
+
+
+@admin.register(RewardGrant)
+class RewardGrantAdmin(admin.ModelAdmin):
+    """Read-only. A grant is a record of what happened, not a form.
+
+    Editing one by hand would either desync it from the ledger transaction its
+    reference names, or — worse — free the reference to be reused.
+    """
+
+    list_display = (
+        "reference", "recipient", "asset_code", "amount_base_units", "state",
+        "settled_at",
+    )
+    list_filter = ("state", "asset_code")
+    search_fields = ("reference", "recipient__display_name", "detail")
+    raw_id_fields = ("policy", "submission", "review", "recipient")
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_change_permission(self, request, obj=None):
+        return False
+
+    def get_readonly_fields(self, request, obj=None):
+        return [f.name for f in self.model._meta.fields]
+

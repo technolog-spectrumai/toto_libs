@@ -293,10 +293,16 @@ def _on_resolved(submission: Submission) -> None:
     """Extension point for Stage 2 (rewards). A no-op until then.
 
     Called INSIDE ``resolve``'s transaction so anything it records rolls back
-    with the resolution; actual settlement is expected to defer itself to
-    ``transaction.on_commit`` so a ledger failure can never undo a review.
+    with the resolution; settlement defers itself to ``transaction.on_commit``
+    so a ledger failure can never undo a review.
+
+    Imported here rather than at module scope to keep ``work`` importable
+    without the reward machinery, and because ``rewards`` reaches an economy
+    that most hosts do not have.
     """
-    return None
+    from .rewards import on_submission_resolved  # noqa: PLC0415
+
+    on_submission_resolved(submission)
 
 
 # ── helpers ──────────────────────────────────────────────────────────────────

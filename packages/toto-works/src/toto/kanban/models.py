@@ -1179,3 +1179,123 @@ class TaskReviewer(DomainEntity):
     def __str__(self):
         return f"{self.person} may review {self.task}"
 
+
+# ── Rewards ──────────────────────────────────────────────────────────────────
+#
+# Generic and OPTIONAL. Kanban records the intent to pay; it does not know what
+# a Gem is, cannot reach a ledger, and has no foreign key into one.
+#
+# `asset_code` is a SYMBOL, deliberately, exactly as `Mission.budget_currency`
+# was before it was removed (see migration 0006/0007). The reason has changed
+# since then and is now the stronger of the two: `toto.assets` is not in
+# INSTALLED_APPS on every host that installs kanban — aurelian runs the boards
+# with no economy wheel at all — and a ForeignKey into an app the registry does
+# not have is `fields.E300` at `manage.py check`, on every command, forever.
+#
+# `funding_account_code` is opaque here on purpose. It is what lets a caller
+# fund rewards per campaign, per platform, or however it likes, without kanban
+# learning any of those words.
+
+
+class RewardTrigger(models.TextChoices):
+    SUBMISSION_ACCEPTED = "submission_accepted", _("Submission accepted")
+    REVIEW_RESOLVED = "review_resolved", _("Review resolved")
+    ACCURACY_BONUS = "accuracy_bonus", _("Accuracy bonus")
+
+
+class RewardPolicy(DomainEntity):
+    """What to pay, to whom, on which event.
+
+    Scoped to a mission or to a campaign. A mission-scoped policy is the
+    specific one; a campaign-scoped policy applies to every mission under it
+    that does not carry its own.
+    """
+
+    mission = models.ForeignKey(
+        Mission, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="reward_policies")
+    campaign = models.ForeignKey(
+        Campaign, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="reward_policies")
+    trigger = models.CharField(
+        max_length=32, choices=RewardTrigger.choices, db_index=True)
+    asset_code = models.CharField(
+        max_length=32,
+        help_text="The asset's symbol, e.g. GEM. A SYMBOL, never a foreign key.")
+    amount_base_units = models.BigIntegerField(
+        help_text="Amount in the asset's smallest unit. Integers; no floats, ever.")
+    funding_account_code = models.CharField(
+        max_length=100, blank=True,
+        help_text="Opaque account identifier the reward backend resolves.")
+    active = models.BooleanField(default=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        verbose_name_plural = "reward policies"
+        ordering = ("trigger", "pk")
+        constraints = [
+            models.CheckConstraint(
+                check=(models.Q(mission__isnull=False)
+                       | models.Q(campaign__isnull=False)),
+                name="kanban_reward_policy_has_a_scope",
+            ),
+            models.CheckConstraint(
+                check=models.Q(amount_base_units__gt=0),
+                name="kanban_reward_policy_amount_positive",
+            ),
+        ]
+
+    def __str__(self):
+        scope = self.mission or self.campaign
+        return f"{self.get_trigger_display()}: {self.amount_base_units} {self.asset_code} ({scope})"
+
+
+class RewardGrantState(models.TextChoices):
+    PENDING = "pending", _("Pending")
+    SETTLED = "settled", _("Settled")
+    FAILED = "failed", _("Failed")
+    #: No backend, or no economy on this host. Recorded rather than skipped
+    #: silently, so "what would we have paid" stays answerable.
+    SKIPPED = "skipped", _("Skipped")
+
+
+class RewardGrant(DomainEntity):
+    """One intended payment, and whether it happened.
+
+    ``reference`` is THE idempotency key and is why this table exists rather
+    than firing a transfer straight from ``work.resolve``. It is unique here,
+    and it is passed verbatim to the ledger — whose ``transfer_asset``
+    implements Stripe semantics: a duplicate reference returns the existing
+    transaction, and a duplicate reference with DIFFERENT parameters raises
+    rather than silently doing either thing. Double payment is therefore
+    impossible on both sides independently, which is the property worth having
+    when the two sides can fail separately.
+    """
+
+    policy = models.ForeignKey(
+        RewardPolicy, on_delete=models.PROTECT, related_name="grants")
+    submission = models.ForeignKey(
+        Submission, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="reward_grants")
+    review = models.ForeignKey(
+        Review, on_delete=models.CASCADE, null=True, blank=True,
+        related_name="reward_grants")
+    recipient = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="kanban_reward_grants")
+    asset_code = models.CharField(max_length=32)
+    amount_base_units = models.BigIntegerField()
+    funding_account_code = models.CharField(max_length=100, blank=True)
+    reference = models.CharField(max_length=200, unique=True)
+    state = models.CharField(
+        max_length=16, choices=RewardGrantState.choices,
+        default=RewardGrantState.PENDING, db_index=True)
+    settled_at = models.DateTimeField(null=True, blank=True)
+    detail = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+
+    def __str__(self):
+        return f"{self.amount_base_units} {self.asset_code} -> {self.recipient} ({self.state})"
+
