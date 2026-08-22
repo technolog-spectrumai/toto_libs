@@ -374,10 +374,14 @@
   </p>
   <p class="mt-3 text-sm leading-6 opacity-80">
     Kompilacja uruchamia <code>latexmk</code> w Twoim Gearze, a nie na platformie — dlatego
-    ten serwer w ogóle nie ma zainstalowanego TeX-a. Gear wybierasz w formularzu kompilacji.
-    PDF i log kompilatora wracają do pokoju, a PDF trafia do magazynu jak każdy inny
-    dokument.{% if features.workflows %} Kompilacja jest kolejkowana, a nie trzymana otwarta,
-    więc możesz opuścić stronę i wrócić do niej później.{% endif %}
+    ten serwer w ogóle nie ma zainstalowanego TeX-a; który Gear — mówią Ustawienia obszaru
+    roboczego. Log kompilatora wraca do konsoli pokoju, a wszystko, co kompilacja
+    wytworzyła — przede wszystkim PDF — trafia do folderu <code>build/</code> (tylko do
+    odczytu) w obszarze roboczym, gdzie drzewo plików po lewej pokazuje go jak każdy inny
+    plik w magazynie. Kliknij PDF, aby otworzyć go w nowej karcie, w przeglądarkowej
+    przeglądarce PDF; osobnego panelu podglądu nie ma.{% if features.workflows %}
+    Kompilacja jest kolejkowana, a nie trzymana otwarta, więc możesz opuścić stronę i
+    wrócić do niej później.{% endif %}
   </p>
 </section>
 {% endif %}

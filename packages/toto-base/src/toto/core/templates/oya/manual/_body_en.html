@@ -367,10 +367,13 @@
   </p>
   <p class="mt-3 text-sm leading-6 opacity-80">
     Compiling runs <code>latexmk</code> in your Compute Gear, not on the platform, so this
-    server carries no TeX installation at all. Pick the Gear on the Compile form. The PDF
-    and the compiler log come back into the room, and the PDF is filed into your storage
-    like any other document.{% if features.workflows %} A compile is queued rather than
-    held open, so you can leave the page and come back to it.{% endif %}
+    server carries no TeX installation at all; the workspace's Settings say which Gear.
+    The compiler log comes back into the room's console, and everything the compile
+    produced — the PDF first of all — is filed into a read-only <code>build/</code>
+    folder in the workspace, where the file tree on the left lists it like any other
+    file in the bucket. Click the PDF to open it in a new tab in the browser's own
+    viewer; there is no preview pane.{% if features.workflows %} A compile is queued
+    rather than held open, so you can leave the page and come back to it.{% endif %}
   </p>
 </section>
 {% endif %}
