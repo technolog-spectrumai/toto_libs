@@ -95,7 +95,25 @@ class PriceHintQuoteTests(SimpleTestCase):
         self.assertNotIn("0.0002", out)
 
 
+def _tariffs_shipped() -> bool:
+    """Whether the economy wheel is on the path at all.
+
+    The test below patches ``toto.tariffs.rate_card`` by dotted name, and
+    ``mock.patch`` imports the module to do it — so on a host that does not
+    ship toto-economy (irena since 2026-08-22; studio and aurelian before it)
+    the test cannot even be set up. That is the situation the hint handles
+    by being silent, and it is exercised just above; this one is about a
+    tariffs app that IS installed and has no tables yet.
+    """
+    try:
+        import toto.tariffs  # noqa: F401
+    except ImportError:
+        return False
+    return True
+
+
 class PriceHintResilienceTests(SimpleTestCase):
+    @unittest.skipUnless(_tariffs_shipped(), "toto.tariffs is not shipped on this host")
     def test_an_unmigrated_database_is_silent_rather_than_a_500(self):
         """The failure the hint made dangerous.
 
