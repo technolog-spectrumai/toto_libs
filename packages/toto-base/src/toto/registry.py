@@ -95,6 +95,12 @@ FEATURE_APPS = {
 
     "repo": ["toto.repo"],
     "gitea": ["toto.gitea"],
+
+    # The Bounty Board and its datasets. Ships in toto-works beside kanban,
+    # whose engine it reuses; it also needs toto.assets, which its AppConfig
+    # checks for rather than installing — a feature list that switched on
+    # another feature's app would make INSTALLED_APPS depend on read order.
+    "placidia": ["toto.placidia"],
 }
 
 
