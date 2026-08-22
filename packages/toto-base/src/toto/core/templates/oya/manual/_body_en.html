@@ -19,6 +19,7 @@
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Tasks</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Locations</a>{% endif %}
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Polls</a>{% endif %}
+    {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Company</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Chat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Compute Gears</a>{% endif %}
@@ -261,7 +262,41 @@
     <i class="fa-solid fa-square-poll-vertical"></i>Polls</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     <a href="{% url 'polls:poll_list' %}" class="font-semibold underline hover:opacity-80">Polls</a>
-    hosts interactive polls: open a poll, cast your vote, and watch the results.
+    asks the community a question: pick an option, and watch the count come in.
+    Some polls let you change your mind while they are open; others take one
+    answer each and show nothing until they close. Either way the result is
+    <span class="font-semibold">informational</span> — a poll here records what
+    people think, and decides nothing. Formal company decisions are not made on
+    this page; they are made in Irena and shown, verified, on the Company
+    dashboard.
+  </p>
+</section>
+{% endif %}
+
+{% if features.ireneo %}
+<!-- Company -->
+<section id="company"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-building-columns"></i>Company</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'ireneo:overview' as ireneo_url %}
+    The <a href="{{ ireneo_url }}" class="font-semibold underline hover:opacity-80">Company</a>
+    dashboard shows who owns the company, who runs it, how it is organised and
+    what it has decided: shareholders with their share of the capital
+    <em>and</em> of the votes — which are not the same number when share classes
+    carry different voting rights — the board with its executive and
+    non-executive members, the departments, and the register of decisions.
+  </p>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Everything on it is <span class="font-semibold">a read-only copy</span>.
+    The register of record is Irena, a separate application; this platform
+    receives verified copies and displays them. Nothing here creates a vote,
+    decides a quorum, changes who owns what or alters a decision that has been
+    taken, and there is no route from this dashboard back into Irena's ledger.
+    Being able to open the page is a viewing permission on this platform and
+    confers no authority in the company.
   </p>
 </section>
 {% endif %}

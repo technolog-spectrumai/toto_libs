@@ -19,6 +19,7 @@
     {% if features.kanban %}<a href="#tasks" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Zadania</a>{% endif %}
     {% if features.locations %}<a href="#locations" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Lokalizacje</a>{% endif %}
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Ankiety</a>{% endif %}
+    {% if features.ireneo %}<a href="#company" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Spółka</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Czat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
     {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moc obliczeniowa</a>{% endif %}
@@ -265,7 +266,42 @@
     <i class="fa-solid fa-square-poll-vertical"></i>Ankiety</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
     <a href="{% url 'polls:poll_list' %}" class="font-semibold underline hover:opacity-80">Ankiety</a>
-    to interaktywne głosowania: otwórz ankietę, oddaj głos i śledź wyniki.
+    zadają społeczności pytanie: wybierz odpowiedź i śledź, jak rosną wyniki.
+    W jednych ankietach można zmienić zdanie, dopóki są otwarte; inne przyjmują
+    jedną odpowiedź i nie pokazują nic aż do zamknięcia. Tak czy inaczej wynik
+    ma charakter <span class="font-semibold">informacyjny</span> — ankieta
+    zapisuje, co ludzie myślą, i o niczym nie rozstrzyga. Formalne decyzje
+    spółki nie zapadają na tej stronie: powstają w Irenie i są pokazywane, po
+    weryfikacji, na pulpicie Spółki.
+  </p>
+</section>
+{% endif %}
+
+{% if features.ireneo %}
+<!-- Spółka -->
+<section id="company"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-building-columns"></i>Spółka</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'ireneo:overview' as ireneo_url %}
+    Pulpit <a href="{{ ireneo_url }}" class="font-semibold underline hover:opacity-80">Spółka</a>
+    pokazuje, kto jest właścicielem spółki, kto nią kieruje, jak jest
+    zorganizowana i co postanowiła: akcjonariuszy wraz z ich udziałem w
+    kapitale <em>oraz</em> w głosach — a to nie jest ta sama liczba, gdy klasy
+    akcji dają różną liczbę głosów — zarząd z podziałem na członków
+    wykonawczych i niewykonawczych, działy oraz rejestr decyzji.
+  </p>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    Wszystko tutaj jest <span class="font-semibold">kopią tylko do
+    odczytu</span>. Rejestrem właściwym jest Irena — osobna aplikacja; ta
+    platforma otrzymuje zweryfikowane kopie i je wyświetla. Nic tutaj nie
+    tworzy głosowania, nie rozstrzyga kworum, nie zmienia struktury
+    właścicielskiej ani nie modyfikuje podjętej decyzji, i nie ma drogi
+    powrotnej z tego pulpitu do rejestru Ireny. Możliwość otwarcia tej strony
+    jest uprawnieniem do <em>oglądania</em> na tej platformie i nie nadaje
+    żadnej władzy w spółce.
   </p>
 </section>
 {% endif %}

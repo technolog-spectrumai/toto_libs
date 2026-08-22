@@ -294,6 +294,9 @@ def _manual_features(request):
         "ocr": _mounted("ocr:home"),
         "latex": _mounted("texlab:lobby"),
         "anastasia": _mounted("anastasia:index"),
+        # Ireneo: the read-only company dashboard. _mounted, like the rest of
+        # the pages the manual describes — and its section links into it.
+        "ireneo": _mounted("ireneo:overview"),
         "dracena": _mounted("dracena:lobby"),
         "manta": _mounted("manta:command_builder"),
         "steven": apps.is_installed("toto.steven"),
