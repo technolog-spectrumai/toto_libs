@@ -9,6 +9,8 @@ from .models import (
     Project, Task, TaskRelation, Sprint, Mission, MissionAttachment, Campaign,
     DocumentationPage,
     Practitioner, ProjectCommitment,
+    Assignment, ConsensusPolicy, Review, Submission, SubmissionFile,
+    TaskReviewer,
 )
 from toto.core.batch import BatchAction
 from toto.events.models import ScheduledEvent
@@ -285,3 +287,82 @@ class TaskRelationAdmin(admin.ModelAdmin):
     list_filter = ("relation_type",)
     search_fields = ("from_task__title", "to_task__title", "note")
     raw_id_fields = ("from_task", "to_task", "created_by")
+
+
+# ── The work engine ───────────────────────────────────────────────────────────
+#
+# ConsensusPolicy is the one that MUST be here. The design claim is that the
+# review rule is editable data rather than a branch in code — and a rule nobody
+# can edit is a branch in code with extra steps.
+
+
+@admin.register(ConsensusPolicy)
+class ConsensusPolicyAdmin(admin.ModelAdmin):
+    list_display = (
+        "name", "required_reviews", "required_accepts", "reject_threshold",
+        "changes_threshold", "is_default",
+    )
+    list_filter = ("is_default",)
+    search_fields = ("name",)
+
+
+class SubmissionFileInline(admin.TabularInline):
+    model = SubmissionFile
+    extra = 0
+    raw_id_fields = ("vault_file",)
+
+
+class ReviewInline(admin.TabularInline):
+    model = Review
+    extra = 0
+    raw_id_fields = ("reviewer",)
+    readonly_fields = ("created_at",)
+
+
+@admin.register(Submission)
+class SubmissionAdmin(admin.ModelAdmin):
+    """Read-mostly on purpose.
+
+    A submitted submission is frozen — ``Submission.save`` refuses a content
+    edit and a CheckConstraint backs it — so offering those fields here would
+    render a form that throws on save. The state fields stay editable because
+    an operator occasionally has to withdraw something; the CONTENT never does.
+    """
+
+    list_display = (
+        "pk", "task", "submitted_by", "state", "resolution", "submitted_at",
+        "resolved_at",
+    )
+    list_filter = ("state", "resolution")
+    search_fields = ("task__title", "submitted_by__display_name", "notes")
+    raw_id_fields = ("task", "submitted_by", "supersedes")
+    inlines = [SubmissionFileInline, ReviewInline]
+
+    def get_readonly_fields(self, request, obj=None):
+        base = ["created_at", "submitted_at", "resolved_at"]
+        if obj is not None and obj.is_submitted:
+            base += ["task", "submitted_by", "notes", "metadata", "supersedes"]
+        return base
+
+
+@admin.register(Review)
+class ReviewAdmin(admin.ModelAdmin):
+    list_display = ("submission", "reviewer", "verdict", "created_at")
+    list_filter = ("verdict",)
+    search_fields = ("reviewer__display_name", "comment")
+    raw_id_fields = ("submission", "reviewer")
+
+
+@admin.register(Assignment)
+class AssignmentAdmin(admin.ModelAdmin):
+    list_display = ("task", "person", "claimed_at", "released_at")
+    list_filter = ("released_at",)
+    search_fields = ("task__title", "person__display_name")
+    raw_id_fields = ("task", "person")
+
+
+@admin.register(TaskReviewer)
+class TaskReviewerAdmin(admin.ModelAdmin):
+    list_display = ("task", "person", "created_at")
+    search_fields = ("task__title", "person__display_name")
+    raw_id_fields = ("task", "person")
