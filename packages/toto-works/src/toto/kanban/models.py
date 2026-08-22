@@ -99,6 +99,14 @@ class Campaign(DomainEntity):
         blank=True,
         related_name="campaigns",
     )
+    consensus_policy = models.ForeignKey(
+        "ConsensusPolicy",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="campaigns",
+        help_text="Default review rule for this campaign's missions.",
+    )
 
     def __str__(self):
         return self.name
@@ -163,9 +171,30 @@ class Mission(DomainEntity):
     )
     owner = models.ForeignKey(Person, on_delete=models.SET_NULL, null=True, blank=True)
     metadata = models.JSONField(blank=True, null=True)
+    consensus_policy = models.ForeignKey(
+        "ConsensusPolicy",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="missions",
+        help_text="Overrides the campaign's review rule. Blank means no review gate.",
+    )
 
     def __str__(self):
         return f"{self.title} ({self.campaign.name})"
+
+    @property
+    def effective_consensus_policy(self):
+        """This mission's rule, its campaign's, or None.
+
+        None is the ORDINARY case and means "no review gate" — which is what
+        every board that predates the work engine has, and why adding these
+        columns changed no existing behaviour. There is deliberately no
+        fallback to the global default row here: a default that applied itself
+        to every mission on every host would have turned the engine on
+        everywhere the moment it shipped.
+        """
+        return self.consensus_policy or self.campaign.consensus_policy
 
     @property
     def urgency_label(self):
@@ -826,4 +855,327 @@ KANBAN_PAGE_META = "kanban_page"
 # include. Not a limit on what can be created — clean() already refuses loops —
 # but a floor under the cost of drawing a tree somebody nested absurdly.
 WIKI_MAX_DEPTH = 12
+
+
+# ── The work engine ──────────────────────────────────────────────────────────
+#
+# Assignment → Submission → Review → Consensus. Everything below is ADDITIVE:
+# a board that uses none of it behaves exactly as it did before, which is what
+# `tests_regression_board.py` exists to prove.
+#
+# The split is deliberate. `Task.assignee` stays the board's single lead
+# assignee — every card, filter and metric reads it — and `Assignment` is the
+# MANY side, which is how one mission can take many contributors without a
+# second task system growing beside this one.
+
+
+class Assignment(DomainEntity):
+    """One person's live claim on a task.
+
+    Distinct from ``Task.assignee``: that names who leads the work, this
+    records everyone who took a piece of it. A release is a timestamp rather
+    than a delete, so "who worked on this" survives someone dropping it.
+    """
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="assignments")
+    person = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="kanban_assignments")
+    claimed_at = models.DateTimeField(auto_now_add=True)
+    released_at = models.DateTimeField(null=True, blank=True)
+    metadata = models.JSONField(blank=True, null=True)
+
+    class Meta:
+        ordering = ("claimed_at", "pk")
+        constraints = [
+            # Partial: one LIVE claim per person per task, while still allowing
+            # the history of earlier claim/release cycles to accumulate.
+            models.UniqueConstraint(
+                fields=["task", "person"],
+                condition=models.Q(released_at__isnull=True),
+                name="kanban_one_live_assignment_per_person",
+            ),
+        ]
+
+    def __str__(self):
+        return f"{self.person} on {self.task}"
+
+    @property
+    def is_live(self):
+        return self.released_at is None
+
+
+class SubmissionState(models.TextChoices):
+    DRAFT = "draft", _("Draft")
+    SUBMITTED = "submitted", _("Submitted")
+    WITHDRAWN = "withdrawn", _("Withdrawn")
+
+
+class SubmissionResolution(models.TextChoices):
+    PENDING = "pending", _("Pending")
+    ACCEPTED = "accepted", _("Accepted")
+    REJECTED = "rejected", _("Rejected")
+    CHANGES_REQUESTED = "changes_requested", _("Changes requested")
+
+
+class Submission(DomainEntity):
+    """An artifact somebody offers against a task.
+
+    A draft is freely editable. ``work.submit`` is a ONE-WAY DOOR: once
+    ``submitted_at`` is stamped the content is frozen, and a correction is a
+    NEW submission pointing back through ``supersedes`` rather than an edit.
+    That is what keeps "what was actually claimed" answerable after the fact —
+    editing a submission in place would silently rewrite what reviewers read.
+
+    Two mechanisms hold the line, for the same reason ``Task`` needs two:
+
+    * ``save()`` refuses a content change on a submitted row. It catches every
+      ordinary write — forms, views, the API, the shell.
+    * The check constraints below catch what ``save()`` never sees.
+      ``loaddata`` goes through ``save_base(raw=True)``, and ``update()`` /
+      ``bulk_update()`` do not call ``save()`` at all, so a guard alone would
+      leave exactly the machinery paths unprotected. Compare
+      ``kanban_task_completed_at_matches_status``.
+    """
+
+    #: What may never change once submitted. `resolution`/`resolved_at` are
+    #: deliberately absent: consensus writes those AFTER the freeze, and that
+    #: is the one legitimate write to a submitted row.
+    FROZEN_FIELDS = ("task_id", "submitted_by_id", "notes", "metadata", "supersedes_id")
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="submissions")
+    submitted_by = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="kanban_submissions")
+    notes = models.TextField(blank=True)
+    metadata = models.JSONField(blank=True, null=True)
+    supersedes = models.ForeignKey(
+        "self",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="corrections",
+        help_text="The submission this one corrects. Never edit in place.",
+    )
+    state = models.CharField(
+        max_length=20, choices=SubmissionState.choices,
+        default=SubmissionState.DRAFT, db_index=True)
+    submitted_at = models.DateTimeField(null=True, blank=True)
+    resolution = models.CharField(
+        max_length=20, choices=SubmissionResolution.choices,
+        default=SubmissionResolution.PENDING, db_index=True)
+    resolved_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("-created_at", "-pk")
+        constraints = [
+            # A draft has no submission time; a submitted row must have one.
+            # WITHDRAWN is unconstrained on purpose: it can be reached from
+            # either side, and a withdrawn-after-submitting row keeps its
+            # original timestamp because that is when it was in fact offered.
+            models.CheckConstraint(
+                check=(
+                    (models.Q(state=SubmissionState.DRAFT)
+                     & models.Q(submitted_at__isnull=True))
+                    | (models.Q(state=SubmissionState.SUBMITTED)
+                       & models.Q(submitted_at__isnull=False))
+                    | models.Q(state=SubmissionState.WITHDRAWN)
+                ),
+                name="kanban_submission_state_matches_submitted_at",
+            ),
+            # A resolution and its timestamp move together, the same pairing
+            # Task keeps between `status` and `completed_at`.
+            models.CheckConstraint(
+                check=(
+                    (models.Q(resolution=SubmissionResolution.PENDING)
+                     & models.Q(resolved_at__isnull=True))
+                    | (~models.Q(resolution=SubmissionResolution.PENDING)
+                       & models.Q(resolved_at__isnull=False))
+                ),
+                name="kanban_submission_resolution_matches_resolved_at",
+            ),
+        ]
+        indexes = [
+            models.Index(fields=["task", "state"], name="kanban_sub_task_state"),
+        ]
+
+    def __str__(self):
+        return f"Submission #{self.pk} on {self.task}"
+
+    @classmethod
+    def from_db(cls, db, field_names, values):
+        """Stash what the database held, so save() can spot a frozen-field edit.
+
+        Done here rather than with a re-read in save(): a query per save on a
+        table written once per contribution is a cost paid on every board that
+        never submits anything.
+        """
+        instance = super().from_db(db, field_names, values)
+        instance._loaded_values = dict(zip(field_names, values))
+        return instance
+
+    @property
+    def is_submitted(self):
+        return self.submitted_at is not None
+
+    @property
+    def is_resolved(self):
+        return self.resolution != SubmissionResolution.PENDING
+
+    def save(self, *args, **kwargs):
+        loaded = getattr(self, "_loaded_values", None)
+        if loaded is not None and loaded.get("submitted_at") is not None:
+            changed = [
+                name for name in self.FROZEN_FIELDS
+                if name in loaded and getattr(self, name) != loaded[name]
+            ]
+            if changed:
+                raise ValidationError(
+                    _("A submitted submission cannot be edited (%(fields)s). "
+                      "Create a correction that supersedes it instead.")
+                    % {"fields": ", ".join(sorted(changed))}
+                )
+        super().save(*args, **kwargs)
+
+    def clean(self):
+        if self.supersedes_id and self.supersedes_id == self.pk:
+            raise ValidationError({"supersedes": _("A submission cannot supersede itself.")})
+
+
+class SubmissionFile(DomainEntity):
+    """A vault file offered as part of a submission.
+
+    Same shape as ``MissionAttachment``: the link is data, the bytes stay
+    vault-governed, and CASCADE rather than PROTECT because this row is a
+    pointer and PROTECT would make vault deletions fail with an error vault's
+    own UI cannot explain.
+    """
+
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="files")
+    vault_file = models.ForeignKey(
+        "vault.VaultFile", on_delete=models.CASCADE, related_name="kanban_submission_files")
+    label = models.CharField(max_length=200, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["submission", "vault_file"], name="kanban_unique_submission_file"),
+        ]
+
+    def __str__(self):
+        return self.label or self.vault_file.title
+
+    @property
+    def display_name(self):
+        return self.label or self.vault_file.title
+
+
+class ConsensusPolicy(DomainEntity):
+    """How many reviews settle a submission, and which way.
+
+    EDITABLE DATA, never a rule in code — the Irena doctrine, "a calculator and
+    a notary, not a rulebook". ``work.evaluate`` only counts; every threshold
+    that decides an outcome is a column here, so changing the rule is an admin
+    edit rather than a release.
+
+    "2 of 3" reads as: three reviews settle it, and two accepts carry it.
+    """
+
+    name = models.CharField(max_length=100, unique=True)
+    required_reviews = models.PositiveSmallIntegerField(
+        default=1, help_text="How many reviews resolve a submission (the M in 'N of M').")
+    required_accepts = models.PositiveSmallIntegerField(
+        default=1, help_text="Accepts needed to resolve as accepted (the N in 'N of M').")
+    reject_threshold = models.PositiveSmallIntegerField(
+        default=1, help_text="Rejects that resolve it as rejected.")
+    changes_threshold = models.PositiveSmallIntegerField(
+        null=True, blank=True,
+        help_text="Change requests that resolve it. Falls back to reject_threshold.")
+    is_default = models.BooleanField(default=False)
+
+    class Meta:
+        ordering = ("name",)
+        verbose_name_plural = "consensus policies"
+        constraints = [
+            # Partial unique: many rows, at most one default. A plain
+            # unique on the column would allow exactly one non-default too.
+            models.UniqueConstraint(
+                fields=["is_default"],
+                condition=models.Q(is_default=True),
+                name="kanban_one_default_consensus_policy",
+            ),
+        ]
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def effective_changes_threshold(self):
+        return self.reject_threshold if self.changes_threshold is None else self.changes_threshold
+
+    def clean(self):
+        if self.required_accepts > self.required_reviews:
+            raise ValidationError({
+                "required_accepts": _(
+                    "A policy needing more accepts than reviews can never resolve."),
+            })
+
+
+class ReviewVerdict(models.TextChoices):
+    ACCEPT = "accept", _("Accept")
+    REJECT = "reject", _("Reject")
+    REQUEST_CHANGES = "request_changes", _("Request changes")
+
+
+class Review(DomainEntity):
+    """One reviewer's independent verdict on one submission.
+
+    This is what replaced ``Task.reviewer``: several people can now review the
+    same artifact without overwriting each other, and what each of them decided
+    survives as a row. Consensus READS these and never rewrites them, so
+    re-evaluating after a policy edit produces a new answer without touching
+    anybody's recorded opinion.
+    """
+
+    submission = models.ForeignKey(Submission, on_delete=models.CASCADE, related_name="reviews")
+    reviewer = models.ForeignKey(Person, on_delete=models.CASCADE, related_name="kanban_reviews")
+    verdict = models.CharField(max_length=20, choices=ReviewVerdict.choices)
+    comment = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ("created_at", "pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["submission", "reviewer"], name="kanban_one_review_per_reviewer"),
+        ]
+
+    def __str__(self):
+        return f"{self.reviewer}: {self.get_verdict_display()}"
+
+
+class TaskReviewer(DomainEntity):
+    """Somebody named as eligible to review this task's submissions.
+
+    The roster ``Task.reviewer`` became. It is a grant, not a gate: eligibility
+    still runs through ``work.can_review``, which also refuses the submitter and
+    checks mission visibility. A task with an empty roster falls back to the
+    project's own reviewers, so adding a row narrows rather than widens.
+    """
+
+    task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="eligible_reviewers")
+    person = models.ForeignKey(
+        Person, on_delete=models.CASCADE, related_name="kanban_reviewable_tasks")
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ("created_at", "pk")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["task", "person"], name="kanban_unique_task_reviewer"),
+        ]
+
+    def __str__(self):
+        return f"{self.person} may review {self.task}"
 
