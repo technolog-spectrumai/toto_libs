@@ -65,6 +65,24 @@ class OwnershipTests(DeskTestCase):
         names = [gear["name"] for gear in response.context["gears"]]
         self.assertEqual(names, ["mine"])
 
+    def test_the_index_is_a_decorated_page_not_a_bare_context(self):
+        """The page must go through PageProcessor, and this pins WHY.
+
+        oya/base.html builds its Tailwind palette from `theme.theme.colors` —
+        with no `theme` in the context that expression renders `{}`, and every
+        custom colour class silently stops existing. This desk shipped exactly
+        that way: it ignored the dark-mode toggle, the browser tab read
+        "Compute Gears – " with a dangling dash (`platform.site_name` missing),
+        and the Reserve button rendered white-on-nothing — present, clickable,
+        invisible. base.html's own comment above the `colors:` line warns that
+        one view forgetting PageProcessor costs the page its palette AND its
+        dark mode, and every symptom looked like a different bug.
+        """
+        response = self.client.get(reverse("anastasia:index"))
+        for key in ("theme", "platform", "font", "header_nav_items"):
+            self.assertIn(key, response.context,
+                          f"{key} missing — the view skipped PageProcessor")
+
     # LOGIN_URL is pinned to a plain path, and ROOT_URLCONF to the package's
     # own: @login_required REVERSES the host's login route, which on a real
     # host is namespaced (sso:login) and is not in this URLconf. Without this

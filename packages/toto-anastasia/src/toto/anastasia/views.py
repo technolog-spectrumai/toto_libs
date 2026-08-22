@@ -28,6 +28,8 @@ from django.urls import reverse
 from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
+from toto.ui import PageProcessor
+
 from . import choices, conf, families, services
 from .limits import Limits, LimitsError
 from .models import ComputeLease
@@ -81,7 +83,16 @@ def index(request):
         for gear in gears if gear["state"] in choices.MOUNTED
     }
 
-    return render(request, "anastasia/index.html", {
+    # PageProcessor, like every other page on the platform. It is not
+    # decoration: oya/base.html builds the Tailwind palette from
+    # `theme.theme.colors`, and with no theme in the context that expression
+    # renders `{}` — so every custom colour class silently stops existing.
+    # This page shipped without it and the result was a desk that ignored the
+    # dark-mode toggle, drew its cards with default hairline borders, and
+    # rendered the Reserve button as white text on a background that was never
+    # applied: present, clickable, invisible. base.html warns about exactly
+    # this in the comment above that `colors:` line.
+    return render(request, "anastasia/index.html", PageProcessor().decorate({
         "pool": report,
         "pool_rows": _pool_rows(report),
         "gears": gears,
@@ -92,7 +103,7 @@ def index(request):
         "held": len(leases),
         "poll_urls_json": json.dumps(poll_urls),
         "stale_seconds": conf.sample_stale_seconds(),
-    })
+    }, request))
 
 
 #: (field, label, unit) for the pool strip. A list rather than four template

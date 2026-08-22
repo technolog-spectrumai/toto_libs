@@ -30,6 +30,16 @@ class AnastasiaTestCase(TestCase):
     def setUp(self):
         super().setUp()
         FakeRuntimeBackend.reset()
+        # A scratch DB needs a Platform row: index() goes through
+        # PageProcessor, whose _get_config raises Http404 when no active
+        # platform exists — so without this every page test dies with a 404
+        # whose context has none of the view's keys, and the KeyError it
+        # produces ("gears") points nowhere near the cause. Same fixture the
+        # ocr tests carry, for the same reason.
+        from toto.core.models import Platform
+
+        Platform.objects.create(site_name="Test", author="Test",
+                                publication_year=2024, active=True)
         User = get_user_model()
         self.user = User.objects.create_user("gearowner", password="x")
         self.other = User.objects.create_user("someoneelse", password="x")
