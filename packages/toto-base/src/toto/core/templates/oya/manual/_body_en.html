@@ -21,6 +21,10 @@
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Polls</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Chat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Workflows</a>{% endif %}
+    {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Compute Gears</a>{% endif %}
+    {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
+    {% if features.dracena %}<a href="#python-lab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Python Lab</a>{% endif %}
+    {% if features.manta %}<a href="#media-conversion" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Media conversion</a>{% endif %}
     {% if features.vod %}<a href="#video" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Video</a>{% endif %}
     {% if features.ocr %}<a href="#ocr" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">OCR</a>{% endif %}
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Knowledge Graph</a>{% endif %}
@@ -293,6 +297,124 @@
     <li>Every run is recorded — open it to inspect the status and output of each step.</li>
     <li>Some modules (for example file services) run their jobs as workflows automatically, so you can track them here too.</li>
   </ul>
+</section>
+{% endif %}
+
+{% if features.anastasia %}
+<!-- Compute Gears -->
+<section id="gears"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-gears"></i>Compute Gears</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'anastasia:index' as gears_url %}
+    Heavy work does not run on the platform itself. Compiling a document, converting a
+    video, reading text out of a scan, running Python — each of those needs real CPU and
+    memory, and this server hands that out deliberately rather than to whoever asks first.
+    You reserve it in advance on the
+    <a href="{{ gears_url }}" class="font-semibold underline hover:opacity-80">Compute Gears</a>
+    page. One reservation is called a <span class="font-semibold">Gear</span>.
+  </p>
+  <ul class="mt-3 space-y-1 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Reserve</span> — choose how much CPU, memory, scratch
+      space and how many processes you want, and give it a name. The page shows what is
+      still free in the pool before you ask.</li>
+    <li><span class="font-semibold">Mount</span> — the Gear becomes alive and shows
+      <em>READY</em>. Until you mount it the booking is held but nothing can run in it.</li>
+    <li><span class="font-semibold">Use it</span> — go to the feature you actually want
+      and pick your Gear there: Compile in TeX Lab, Run in Python Lab, a command in Media
+      conversion, Read in Text recognition. Each job runs in a throwaway container inside
+      your Gear's limits and is destroyed the moment it finishes.</li>
+    <li><span class="font-semibold">Unmount or release</span> — unmount stops the runtime
+      and keeps the booking; release gives the capacity back to the pool.</li>
+  </ul>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    A reservation is held whether or not anything is running in it — that is what makes it
+    a reservation and not a queue, and it is why releasing a Gear you have finished with
+    matters. Scratch space is memory rather than disk, so a Gear's real ceiling is its RAM
+    plus its scratch. If a job asks for more than the whole Gear holds, the refusal says
+    so and names the shortfall; if the Gear is merely busy, it says that instead.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Nothing heavy works without a mounted Gear. That is on purpose: a page that quietly
+    borrowed the server's memory because you pressed a button is how one export takes a
+    platform down. When you have none, the button refuses and points you back here.
+  </p>
+</section>
+{% endif %}
+
+{% if features.latex %}
+<!-- TeX Lab -->
+<section id="texlab"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-file-lines"></i>TeX Lab</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'texlab:lobby' as texlab_url %}
+    <a href="{{ texlab_url }}" class="font-semibold underline hover:opacity-80">TeX Lab</a>
+    turns a folder in your storage into a LaTeX workspace: a file tree on the left, an
+    editor in the middle, and a Compile button. Multi-file documents work the way you
+    expect — <code>\input{}</code> and <code>\include{}</code> resolve against the
+    workspace, and the whole tree is sent to the compiler together.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Compiling runs <code>latexmk</code> in your Compute Gear, not on the platform, so this
+    server carries no TeX installation at all. Pick the Gear on the Compile form. The PDF
+    and the compiler log come back into the room, and the PDF is filed into your storage
+    like any other document.{% if features.workflows %} A compile is queued rather than
+    held open, so you can leave the page and come back to it.{% endif %}
+  </p>
+</section>
+{% endif %}
+
+{% if features.dracena %}
+<!-- Python Lab -->
+<section id="python-lab"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-brands fa-python"></i>Python Lab</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'dracena:lobby' as dracena_url %}
+    <a href="{{ dracena_url }}" class="font-semibold underline hover:opacity-80">Python Lab</a>
+    is a workspace you can run code in, notebook style: write a cell, run it, keep the
+    result. Variables persist between runs, errors come back as results rather than as
+    failures, and pictures a cell draws are shown inline.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    The interpreter itself is a runner inside your Compute Gear — the platform only speaks
+    the protocol. Closing the page does not lose the session: reconnecting attaches to the
+    same kernel, and Restart gives you a clean one without touching your files. If you keep
+    a kernel <span class="font-semibold">warm</span> in your Gear, coming back is instant
+    instead of waiting for one to start; a warm kernel counts against that Gear's
+    reservation like anything else, and dies with it.
+  </p>
+</section>
+{% endif %}
+
+{% if features.manta %}
+<!-- Media conversion -->
+<section id="media-conversion"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-film"></i>Media conversion</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'manta:command_builder' as manta_url %}
+    The <a href="{{ manta_url }}" class="font-semibold underline hover:opacity-80">Media
+    conversion</a> desk does the ordinary things to an audio or video file you already have
+    in storage: resize it, compress it, cut a section out, change the frame rate, strip the
+    audio, crop it, or turn a clip into a GIF. You pick the file and the command and fill in
+    its options — you never write a command line.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    The conversion runs in your Compute Gear, so this server carries no media tooling
+    itself, and the result is filed back into your storage as a new file. The original is
+    never modified. Longer jobs keep going after you leave the page; the job's own page
+    shows where it got to.
+  </p>
 </section>
 {% endif %}
 

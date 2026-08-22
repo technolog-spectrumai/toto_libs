@@ -21,6 +21,10 @@
     {% if features.polls %}<a href="#polls" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Ankiety</a>{% endif %}
     {% if features.chat %}<a href="#chat" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Czat</a>{% endif %}
     {% if features.workflows %}<a href="#workflows" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Przepływy pracy</a>{% endif %}
+    {% if features.anastasia %}<a href="#gears" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Moc obliczeniowa</a>{% endif %}
+    {% if features.latex %}<a href="#texlab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">TeX Lab</a>{% endif %}
+    {% if features.dracena %}<a href="#python-lab" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Python Lab</a>{% endif %}
+    {% if features.manta %}<a href="#media-conversion" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Konwersja mediów</a>{% endif %}
     {% if features.vod %}<a href="#video" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Wideo</a>{% endif %}
     {% if features.ocr %}<a href="#ocr" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">OCR</a>{% endif %}
     {% if features.graph %}<a href="#graph" :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'" class="rounded-full border px-3 py-1 font-semibold hover:opacity-80">Graf wiedzy</a>{% endif %}
@@ -297,6 +301,127 @@
     <li>Każde uruchomienie jest zapisywane — otwórz je, aby sprawdzić status i wynik każdego kroku.</li>
     <li>Niektóre moduły (np. usługi plikowe) automatycznie uruchamiają swoje zadania jako przepływy pracy, więc tutaj też można je śledzić.</li>
   </ul>
+</section>
+{% endif %}
+
+{% if features.anastasia %}
+<!-- Moc obliczeniowa -->
+<section id="gears"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-gears"></i>Moc obliczeniowa (Compute Gears)</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'anastasia:index' as gears_url %}
+    Ciężkie zadania nie działają na samej platformie. Kompilacja dokumentu, konwersja
+    wideo, odczyt tekstu ze skanu, uruchomienie kodu w Pythonie — każde z nich potrzebuje
+    realnego procesora i pamięci, a ten serwer przydziela je świadomie, a nie temu, kto
+    pierwszy poprosi. Rezerwujesz je z góry na stronie
+    <a href="{{ gears_url }}" class="font-semibold underline hover:opacity-80">Moc obliczeniowa</a>.
+    Pojedyncza rezerwacja nazywa się <span class="font-semibold">Gear</span>.
+  </p>
+  <ul class="mt-3 space-y-1 text-sm leading-6 opacity-80">
+    <li><span class="font-semibold">Zarezerwuj</span> — wybierz, ile procesora, pamięci i
+      miejsca roboczego oraz ile procesów chcesz, i nadaj rezerwacji nazwę. Strona pokazuje,
+      ile zostało jeszcze w puli, zanim poprosisz.</li>
+    <li><span class="font-semibold">Zamontuj</span> — Gear staje się żywy i pokazuje
+      <em>READY</em>. Dopóki go nie zamontujesz, rezerwacja jest utrzymywana, ale nic się w
+      niej nie uruchomi.</li>
+    <li><span class="font-semibold">Użyj</span> — przejdź do funkcji, o którą naprawdę
+      chodzi, i wskaż tam swój Gear: Kompiluj w TeX Lab, Uruchom w Python Lab, polecenie w
+      Konwersji mediów, Odczytaj w Rozpoznawaniu tekstu. Każde zadanie działa w
+      jednorazowym kontenerze, w granicach Twojego Gearu, i znika zaraz po zakończeniu.</li>
+    <li><span class="font-semibold">Odmontuj lub zwolnij</span> — odmontowanie zatrzymuje
+      środowisko i zachowuje rezerwację; zwolnienie oddaje moc z powrotem do puli.</li>
+  </ul>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Rezerwacja jest utrzymywana niezależnie od tego, czy coś w niej działa — na tym polega
+    rezerwacja, w odróżnieniu od kolejki, i dlatego warto zwalniać Gear, z którego już nie
+    korzystasz. Miejsce robocze to pamięć, a nie dysk, więc rzeczywisty limit Gearu to jego
+    RAM powiększony o miejsce robocze. Jeśli zadanie potrzebuje więcej, niż mieści cały
+    Gear, odmowa mówi to wprost i podaje, czego brakuje; jeśli Gear jest po prostu zajęty,
+    mówi właśnie to.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Bez zamontowanego Gearu nic ciężkiego nie zadziała. To celowe: strona, która po cichu
+    pożycza pamięć serwera, bo ktoś nacisnął przycisk, to sposób, w jaki jeden eksport
+    kładzie całą platformę. Gdy nie masz żadnego Gearu, przycisk odmawia i odsyła Cię tutaj.
+  </p>
+</section>
+{% endif %}
+
+{% if features.latex %}
+<!-- TeX Lab -->
+<section id="texlab"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-file-lines"></i>TeX Lab</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'texlab:lobby' as texlab_url %}
+    <a href="{{ texlab_url }}" class="font-semibold underline hover:opacity-80">TeX Lab</a>
+    zamienia folder w magazynie w obszar roboczy LaTeX-a: drzewo plików po lewej, edytor
+    pośrodku i przycisk Kompiluj. Dokumenty wieloplikowe działają tak, jak należy —
+    <code>\input{}</code> i <code>\include{}</code> rozwiązują się względem obszaru
+    roboczego, a całe drzewo trafia do kompilatora razem.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Kompilacja uruchamia <code>latexmk</code> w Twoim Gearze, a nie na platformie — dlatego
+    ten serwer w ogóle nie ma zainstalowanego TeX-a. Gear wybierasz w formularzu kompilacji.
+    PDF i log kompilatora wracają do pokoju, a PDF trafia do magazynu jak każdy inny
+    dokument.{% if features.workflows %} Kompilacja jest kolejkowana, a nie trzymana otwarta,
+    więc możesz opuścić stronę i wrócić do niej później.{% endif %}
+  </p>
+</section>
+{% endif %}
+
+{% if features.dracena %}
+<!-- Python Lab -->
+<section id="python-lab"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-brands fa-python"></i>Python Lab</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'dracena:lobby' as dracena_url %}
+    <a href="{{ dracena_url }}" class="font-semibold underline hover:opacity-80">Python Lab</a>
+    to obszar roboczy, w którym uruchamiasz kod w stylu notatnika: piszesz komórkę,
+    uruchamiasz ją, zachowujesz wynik. Zmienne przeżywają między uruchomieniami, błędy
+    wracają jako wynik, a nie jako awaria, a wykresy rysowane przez komórkę pokazują się
+    od razu na stronie.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Sam interpreter jest procesem w Twoim Gearze — platforma jedynie rozmawia z nim
+    protokołem. Zamknięcie strony nie gubi sesji: po ponownym wejściu podłączasz się do tego
+    samego jądra, a Restart daje czyste jądro, nie ruszając plików. Jeśli trzymasz jądro
+    <span class="font-semibold">ciepłe</span> w swoim Gearze, powrót jest natychmiastowy
+    zamiast czekania na start; ciepłe jądro liczy się do rezerwacji tego Gearu jak wszystko
+    inne i znika razem z nim.
+  </p>
+</section>
+{% endif %}
+
+{% if features.manta %}
+<!-- Konwersja mediów -->
+<section id="media-conversion"
+  :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+  class="rounded-2xl border p-5 shadow-sm sm:p-6">
+  <h2 class="flex items-center gap-2 text-lg font-bold">
+    <i class="fa-solid fa-film"></i>Konwersja mediów</h2>
+  <p class="mt-2 text-sm leading-6 opacity-80">
+    {% url 'manta:command_builder' as manta_url %}
+    Pulpit <a href="{{ manta_url }}" class="font-semibold underline hover:opacity-80">Konwersji
+    mediów</a> robi zwykłe rzeczy z plikiem audio lub wideo, który masz już w magazynie:
+    zmienia rozmiar, kompresuje, wycina fragment, zmienia liczbę klatek, usuwa dźwięk,
+    kadruje albo zamienia urywek w GIF-a. Wybierasz plik i polecenie oraz wypełniasz jego
+    opcje — nigdy nie piszesz linii poleceń.
+  </p>
+  <p class="mt-3 text-sm leading-6 opacity-80">
+    Konwersja działa w Twoim Gearze, więc sam serwer nie ma narzędzi multimedialnych, a
+    wynik trafia do magazynu jako nowy plik. Oryginał nigdy nie jest zmieniany. Dłuższe
+    zadania działają dalej po opuszczeniu strony; strona samego zadania pokazuje, na jakim
+    jest etapie.
+  </p>
 </section>
 {% endif %}
 

@@ -284,8 +284,18 @@ def _manual_features(request):
         "workflows": _mounted("workflows:workflow_list"),
         "notebooks": _mounted("mandragora:notebook_list"),
         "graph": apps.is_installed("toto.ravioli"),
-        "ocr": apps.is_installed("toto.ocr"),
-        "latex": apps.is_installed("toto.texlab"),
+        # The tier that runs its work in a Compute Gear. Every one of these
+        # sections LINKS to the page it describes, so all of them are gated on
+        # `_mounted` rather than `is_installed` — the distinction the workflows
+        # comment above spells out. `ocr` and `latex` moved to _mounted with
+        # them: the OCR section has reversed `ocr:home` since it was written,
+        # which made it a 500 waiting for the first host that installed the app
+        # without mounting it.
+        "ocr": _mounted("ocr:home"),
+        "latex": _mounted("texlab:lobby"),
+        "anastasia": _mounted("anastasia:index"),
+        "dracena": _mounted("dracena:lobby"),
+        "manta": _mounted("manta:command_builder"),
         "steven": apps.is_installed("toto.steven"),
         # Cosmetic gate like the dashboard "Monitoring" card — Grafana enforces
         # its own superuser-only access via OIDC role mapping.
