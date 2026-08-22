@@ -36,9 +36,9 @@
    block as visible page text.{% endcomment %}
 <nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Media navigation' %}">
 
-  {# `show_video` defaults to on: an include that says nothing gets the tab it
+  {% comment %} `show_video` defaults to on: an include that says nothing gets the tab it
      always had. A page passes show_video=False when a link to the player is
-     noise there — the OCR scanner does. #}
+     noise there — the OCR scanner does. {% endcomment %}
   {% if show_video|default_if_none:True %}
   {% if "toto.vod"|app_installed %}{% url 'vod:library' as vod_url %}{% if vod_url %}
   <a href="{{ vod_url }}"

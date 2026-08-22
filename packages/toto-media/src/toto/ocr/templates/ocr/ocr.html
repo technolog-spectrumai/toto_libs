@@ -28,10 +28,10 @@
         <p class="mt-1 text-sm opacity-60">
           {% trans "Load a screenshot → extract its text with Tesseract → forward it to the ingestor." %}</p>
       </div>
-      {# No Video tab here: playback is something you do to a file you are
+      {% comment %} No Video tab here: playback is something you do to a file you are
          already looking at (the vault's play button), not a place to navigate
          to from a scanner — the same reasoning that retired the dashboard's
-         Video tile. vod:library still exists for anyone who wants it. #}
+         Video tile. vod:library still exists for anyone who wants it. {% endcomment %}
       {% include "oya/_media_tabs.html" with active_tab="ocr" show_video=False %}
     </div>
 
@@ -65,9 +65,9 @@
         </label>
 
         {% if gear_choices %}
-          {# Which Compute Gear runs tesseract. Only when there is a choice:
+          {% comment %} Which Compute Gear runs tesseract. Only when there is a choice:
              with one Gear it is chosen for you, and with two anastasia refuses
-             to guess — so without this control Read could only fail. #}
+             to guess — so without this control Read could only fail. {% endcomment %}
           <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
             {% trans "Compute Gear" %}
             <select x-model="gear"
