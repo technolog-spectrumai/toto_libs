@@ -12,9 +12,12 @@ view, which silently made every ballot editable forever.
 governance engine: resolving an electorate from a registry, freezing a roll,
 snapshotting quorum and consensus rules, evaluating them, excluding voters,
 recording an immutable chain-linked Decision, and rendering paper results.
-Twenty-four functions of it. All of that is Irena's now — it is the register of
-record for company governance — and Ireneo presents verified copies. What is
-left counts responses to a question and says so.
+Twenty-four functions of it. All of that went to Irena, the register of record
+for company governance, with Ireneo presenting verified copies. What is left
+counts responses to a question and says so.
+
+Irena was DELETED on 2026-08-22. No host implements formal votes now; the code
+is parked in zenobia/limbo/polls_governance and zenobia/limbo/ireneo.
 
 The electorate seam survives as exactly one implementation, `OpenToAll`:
 everyone signed in, one vote each. It is kept as a seam rather than inlined

@@ -49,10 +49,16 @@ class Kind(models.TextChoices):
 
     There was a VOTE kind beside POLL until 1.50: the same object with formal
     rules — an electorate, a quorum, a consensus threshold, a chain-linked
-    Decision. It has gone to Irena, which is the register of record for
-    company governance, and to Ireneo, which presents verified copies of it.
+    Decision. It went to Irena, which was the register of record for company
+    governance, and to Ireneo, which presented verified copies of it.
     What is left is a consultation: a question, some options, members'
     responses and an informational result that binds nobody.
+
+    Irena was DELETED on 2026-08-22, so no host implements formal votes
+    any more; that code is parked in zenobia/limbo/polls_governance and
+    zenobia/limbo/ireneo. Nothing below changes — this app was already
+    a consultation — but do not read the paragraph above as a pointer to
+    somewhere the feature still runs.
 
     The enum survives with one member rather than being deleted because
     `toto.forum` filters rooms' questions on `Kind.POLL`, and because a

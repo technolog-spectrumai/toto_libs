@@ -47,7 +47,8 @@ class Command(IngressCommand):
     def process(self):
         # Nothing is seeded unconditionally any more. The consensus profiles
         # and quorum rules that used to be created on every ingress were the
-        # machinery of formal votes, and formal votes are Irena's since 1.50.
+        # machinery of formal votes, and formal votes went to Irena in 1.50 —
+        # a host deleted on 2026-08-22, so they run nowhere at all now.
         if not self.full:
             return
 

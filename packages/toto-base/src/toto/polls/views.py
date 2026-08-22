@@ -7,10 +7,12 @@ a consensus threshold and wrote an immutable chain-linked Decision.
 
 The second tab has gone, with ~20 of this module's 30 views: the ledger, its
 PDF export, the checkpoint pages, the snapshot pages, the electorate pages, the
-paper-result recorder and the vote creator. Formal company governance is
-Irena's — it is the register of record — and Ireneo presents verified copies of
-it inside Zenobia. Nothing here produces a legally or institutionally binding
-outcome, and there is no longer any page that could suggest otherwise.
+paper-result recorder and the vote creator. Formal company governance went to
+Irena, the register of record, with Ireneo presenting verified copies inside
+Zenobia. Irena was DELETED on 2026-08-22, so it runs nowhere now — the code is
+parked in zenobia/limbo/polls_governance and zenobia/limbo/ireneo. Nothing here
+produces a legally or institutionally binding outcome, and there is no longer
+any page that could suggest otherwise.
 
 What is left: question -> options -> members' responses -> informational
 result. Only platform-wide questions appear here; one scoped to a Forum room
