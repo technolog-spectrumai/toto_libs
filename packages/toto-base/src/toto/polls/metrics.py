@@ -1,10 +1,13 @@
-"""What polls meters: decision PDFs, and nothing else.
+"""What polls meters: generated PDFs, and nothing else.
 
-Voting itself is unmetered — charging to cast a ballot would price
-participation. The export is different: a generated document on request.
-Like every other PDF metric on the platform (memo.pdf) it is registered and
-quota-capped but carries no PRICES entry:
-metered, free by default, priceable by a host that wants to.
+Answering is unmetered — charging to respond to a consultation would price
+participation. A generated document is different: it is work done on request.
+
+The metric was ``Decision PDF export`` until 1.50, when formal votes and their
+decision ledger left for Irena. The CODE is unchanged on purpose: it is the
+key a deployed host's quota rows and any priced rate card are already keyed
+on, and renaming it would silently reset every limit somebody had set. What it
+counts today is the quiz certificate.
 """
 
 from django.utils.translation import gettext_lazy as _
@@ -13,10 +16,10 @@ from toto.quota.metrics import Metric, registry
 
 registry.register(Metric(
     code="polls.pdf",
-    label=_("Decision PDF export"),
+    label=_("Polls PDF export"),
     app_label="polls",
     unit="request",
     default_limit=20,
-    description=_("One PDF export of a vote's recorded decision or of the "
-                  "decision ledger. Voting itself is free and unlimited."),
+    description=_("One generated PDF — today, a quiz certificate. Answering "
+                  "a consultation is free and unlimited."),
 ))

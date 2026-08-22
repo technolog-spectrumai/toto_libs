@@ -5,16 +5,10 @@ class PollsConfig(AppConfig):
     default_auto_field = 'django.db.models.BigAutoField'
     name = 'toto.polls'
 
-    def ready(self):
-        # Electorates other apps declare in <app>/electorates.py — the same
-        # contract as antivirus scanners: discovery runs from HERE, pure data,
-        # no DB, ready()-safe.
-        from toto.core.plugin_autodiscover import autodiscover_plugins
-
-        from . import electorates  # noqa: F401  - registers the built-ins
-        from . import governance  # noqa: F401
-
-        autodiscover_plugins("electorates")
-        # Judges: what a scope's own rules make of a finished count. The
-        # engine ships none — it counts, it does not judge.
-        autodiscover_plugins("governance")
+    # No plugin discovery any more. This app used to import an `electorates`
+    # and a `governance` registry here and scan every installed app for more:
+    # who was entitled to vote on a formal question, and what a scope's rules
+    # made of a finished count. Both were governance, both left in 1.50 —
+    # formal company governance belongs to Irena, and its presentation to
+    # Ireneo. What is left counts responses, and a consultation has no
+    # electorate to resolve: everyone who may see the question may answer it.

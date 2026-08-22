@@ -1,10 +1,13 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
-{% comment %}The Polls app: two tabs over one engine.
+{% comment %}The Polls app: community consultations, and quizzes.
 
-   Polls are lightweight and revisable; Votes are formal, cast once, and show
-   nothing until they close. They share a page shape because they share a
-   mechanism — what differs is stated on each question, not in two designs.
+   There were five tabs here until 1.50 — Polls, Votes, Quizzes, Electorates
+   and the decision Ledger. Everything that made a question BINDING went to
+   Irena, which is the register of record for company governance, and to
+   Ireneo, which presents verified copies of it. What is left is informal:
+   a question, its options, members' responses, and a result that binds
+   nobody.
 {% endcomment %}
 
 {% block title %}{% block polls_title %}{% trans "Polls" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
@@ -25,7 +28,7 @@
 
     <header class="space-y-2">
       <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
-         class="text-xs font-semibold uppercase tracking-wide">{% trans "Decisions" %}</p>
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Community" %}</p>
       <h1 class="flex items-center gap-3 text-3xl font-bold">
         <i class="fa-solid fa-square-poll-vertical"></i>
         {% block polls_heading %}{% trans "Polls" %}{% endblock %}
@@ -40,37 +43,13 @@
                 {% if active_tab == 'polls' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
          {% if active_tab == 'polls' %}aria-current="page"{% endif %}>
         <i class="fa-solid fa-square-poll-vertical"></i>{% trans "Polls" %}</a>
-      <a href="{% url 'polls:vote_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% if active_tab == 'votes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-         {% if active_tab == 'votes' %}aria-current="page"{% endif %}>
-        <i class="fa-solid fa-check-to-slot"></i>{% trans "Votes" %}</a>
       <a href="{% url 'polls:quiz_list' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
                 {% if active_tab == 'quizzes' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
          {% if active_tab == 'quizzes' %}aria-current="page"{% endif %}>
         <i class="fa-solid fa-graduation-cap"></i>{% trans "Quizzes" %}</a>
-      <a href="{% url 'polls:electorate_list' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% if active_tab == 'electorates' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-         {% if active_tab == 'electorates' %}aria-current="page"{% endif %}>
-        <i class="fa-solid fa-users"></i>{% trans "Electorates" %}</a>
-      <a href="{% url 'polls:decision_ledger' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% if active_tab == 'ledger' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-         {% if active_tab == 'ledger' %}aria-current="page"{% endif %}>
-        <i class="fa-solid fa-book"></i>{% trans "Ledger" %}</a>
-      <a href="{% url 'polls:snapshots' %}"
-         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
-         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
-                {% if active_tab == 'snapshots' %}border-b-2 border-current -mb-px{% else %}opacity-50{% endif %}"
-         {% if active_tab == 'snapshots' %}aria-current="page"{% endif %}>
-        <i class="fa-solid fa-camera"></i>{% trans "Snapshots" %}</a>
-    </nav>
+</nav>
 
     {% if messages %}
       {% for message in messages %}

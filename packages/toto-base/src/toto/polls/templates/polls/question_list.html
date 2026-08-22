@@ -1,28 +1,16 @@
 {% extends "polls/base.html" %}
 {% load i18n %}
 
-{% block polls_title %}{% if active_tab == 'votes' %}{% trans "Votes" %}{% else %}{% trans "Polls" %}{% endif %}{% endblock %}
-{% block polls_heading %}{% if active_tab == 'votes' %}{% trans "Votes" %}{% else %}{% trans "Polls" %}{% endif %}{% endblock %}
+{% block polls_title %}{% trans "Polls" %}{% endblock %}
+{% block polls_heading %}{% trans "Polls" %}{% endblock %}
 
 {% block polls_lede %}
 <p class="max-w-3xl text-sm opacity-70">
-  {% if active_tab == 'votes' %}
-    {% trans "Formal decisions. A ballot is cast once and cannot be changed, and the count stays sealed until voting closes." %}
-  {% else %}
-    {% trans "Quick questions. Answer as often as you like while a poll is open, and watch the count as it comes in." %}
-  {% endif %}
+  {% trans "Quick questions for the community. Answer as often as you like while a poll is open, and watch the count as it comes in. Results are informational and bind nobody." %}
 </p>
 {% endblock %}
 
 {% block polls_content %}
-{% if active_tab == 'votes' and is_operator %}
-  <div class="flex justify-end">
-    <a href="{% url 'polls:vote_create' %}"
-       :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-       class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
-      <i class="fa-solid fa-plus"></i>{% trans "New vote" %}</a>
-  </div>
-{% endif %}
 <div class="grid gap-4 sm:grid-cols-2">
   {% for card in cards %}
     <a href="{{ card.url }}"
@@ -46,21 +34,10 @@
           {% if card.is_open %}{% trans "Closes" %}{% else %}{% trans "Closed" %}{% endif %}
           {{ card.question.closes_at|date:"Y-m-d H:i" }}</p>
       {% endif %}
-      {% if card.decision %}
-        <p class="mt-2 text-xs font-semibold"
-           :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          {% if card.decision.winner_label %}
-            {% trans "Decided:" %} {{ card.decision.winner_label }}
-          {% else %}{{ card.decision.get_outcome_display }}{% endif %}</p>
-      {% endif %}
     </a>
   {% empty %}
     <p class="text-sm opacity-60 sm:col-span-2">
-      {% if active_tab == 'votes' %}
-        {% trans "No votes have been opened." %}
-      {% else %}
-        {% trans "No polls yet." %}
-      {% endif %}
+      {% trans "No polls yet." %}
     </p>
   {% endfor %}
 </div>

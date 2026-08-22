@@ -122,7 +122,7 @@ class CastTests(TestCase):
 
     def test_a_formal_ballot_cannot_be_changed(self):
         """The rule the old view defeated by using update_or_create."""
-        question = _question(kind=Kind.VOTE, revisability=Revisability.FINAL)
+        question = _question(revisability=Revisability.FINAL)
         yes, no = question.choices.all()[0], question.choices.all()[1]
         services.cast(question, self.user, yes)
 
@@ -261,12 +261,12 @@ class ResultVisibilityTests(TestCase):
 
     def test_a_formal_vote_stays_sealed_until_it_closes(self):
         """A running tally in a formal decision is an instrument for changing it."""
-        question = _question(kind=Kind.VOTE, visibility=Visibility.ON_CLOSE)
+        question = _question(visibility=Visibility.ON_CLOSE)
 
         self.assertFalse(services.may_see_results(question, self.user))
 
     def test_it_opens_once_the_deadline_passes(self):
-        question = _question(kind=Kind.VOTE, visibility=Visibility.ON_CLOSE,
+        question = _question(visibility=Visibility.ON_CLOSE,
                              closes_at=timezone.now() - timezone.timedelta(minutes=1))
 
         self.assertTrue(services.may_see_results(question, self.user))
@@ -277,7 +277,7 @@ class ResultVisibilityTests(TestCase):
                 return Eligibility(False, reason="not yours")
             def size(self, question): return 0
 
-        question = _question(kind=Kind.VOTE,
+        question = _question(
                              visibility=Visibility.ON_CLOSE_PRIVATE,
                              closes_at=timezone.now() - timezone.timedelta(minutes=1))
 
@@ -288,17 +288,6 @@ class ResultVisibilityTests(TestCase):
 class KindInvariantTests(TestCase):
     """`kind` is a rule, not a label."""
 
-    def test_a_vote_is_always_final(self):
-        """Asked for a revisable vote, the model says no — something revisable
-        is a poll. The old app's whole failure was that this was left to the
-        caller and one caller forgot."""
-        question = Question.objects.create(
-            kind=Kind.VOTE, title="Resolution", question_text="Well?",
-            revisability=Revisability.OPEN)
-
-        question.refresh_from_db()
-        self.assertEqual(question.revisability, Revisability.FINAL)
-
     def test_a_poll_keeps_whatever_it_was_given(self):
         question = Question.objects.create(
             kind=Kind.POLL, title="Colour", question_text="Which?",
@@ -306,20 +295,6 @@ class KindInvariantTests(TestCase):
 
         question.refresh_from_db()
         self.assertEqual(question.revisability, Revisability.OPEN)
-
-    def test_the_invariant_survives_a_later_edit(self):
-        question = Question.objects.create(
-            kind=Kind.VOTE, title="Resolution 2", question_text="Well?")
-
-        question.revisability = Revisability.OPEN
-        question.save()
-
-        question.refresh_from_db()
-        self.assertEqual(question.revisability, Revisability.FINAL)
-
-
-class OpenNowConsistencyTests(TestCase):
-    """open_now() and Question.is_open must tell the same story."""
 
     def test_no_deadline_means_open_in_both_tellings(self):
         question = _question(closes_at=None)
@@ -348,7 +323,7 @@ class BallotGuardTests(TestCase):
         self.voter = User.objects.create_user("v", password="pw")
 
     def test_a_formal_ballot_refuses_update_and_delete(self):
-        vote = _question(kind=Kind.VOTE)
+        vote = _question(revisability=Revisability.FINAL)
         ballot = services.cast(vote, self.voter, vote.choices.first())
 
         ballot.weight = 99

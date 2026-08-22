@@ -1,8 +1,12 @@
-"""Two tabs, and one detail shape shared by both.
+"""One shape: a list, a question, an answer, a result.
 
-`<str:kind>` rather than two parallel URL trees: a poll and a vote are the same
-object with different rules, and two sets of near-identical routes is how the
-two drift apart.
+``<str:kind>`` is kept in the path even though there is only one kind now.
+Removing it would change every existing URL to a consultation somebody has
+already linked to or bookmarked, which is a real cost for a cosmetic gain — and
+the day a second kind of consultation appears, the route is already shaped for
+it. What is NOT coming back is the formal vote: the ~17 governance routes that
+stood here (the ledger, its PDF, checkpoints, snapshots, electorates, the paper
+recorder, the vote creator) went to Irena in 1.50.
 """
 
 from django.urls import path
@@ -13,23 +17,6 @@ app_name = "polls"
 
 urlpatterns = [
     path("", views.poll_list, name="poll_list"),
-    path("votes/", views.vote_list, name="vote_list"),
-    # Fixed routes BEFORE the <kind>/<slug> catch-alls: "votes/new/" would
-    # otherwise match as kind="votes", slug="new".
-    path("votes/new/", views.vote_create, name="vote_create"),
-    path("votes/record-paper/", views.vote_record_paper, name="vote_record_paper"),
-    path("ledger/", views.decision_ledger, name="decision_ledger"),
-    path("ledger/verify/", views.ledger_verify, name="ledger_verify"),
-    path("snapshots/", views.snapshot_list, name="snapshots"),
-    path("snapshots/take/", views.snapshot_take, name="snapshot_take"),
-    path("snapshots/verify/", views.snapshot_verify, name="snapshot_verify"),
-    path("snapshots/<int:pk>/delete/", views.snapshot_delete, name="snapshot_delete"),
-    path("ledger/checkpoints/", views.ledger_checkpoints, name="ledger_checkpoints"),
-    path("ledger/checkpoints/new/", views.ledger_checkpoint_new, name="ledger_checkpoint_new"),
-    path("ledger/checkpoints/verify/", views.ledger_checkpoint_verify, name="ledger_checkpoint_verify"),
-    path("electorates/", views.electorate_list, name="electorate_list"),
-    path("electorates/<slug:slug>/", views.electorate_detail, name="electorate_detail"),
-    path("ledger/export.pdf", views.ledger_pdf_export, name="ledger_pdf"),
     # Quizzes: fixed prefix, so it can never collide with the kind catch-all.
     path("quizzes/", quiz_views.quiz_list, name="quiz_list"),
     path("quizzes/<slug:slug>/", quiz_views.quiz_take, name="quiz_take"),
@@ -40,5 +27,4 @@ urlpatterns = [
     path("<str:kind>/<slug:slug>/vote/", views.question_vote, name="question_vote"),
     path("<str:kind>/<slug:slug>/results/", views.question_results, name="question_results"),
     path("<str:kind>/<slug:slug>/close/", views.question_close, name="question_close"),
-    path("<str:kind>/<slug:slug>/decision.pdf", views.decision_pdf, name="decision_pdf"),
 ]

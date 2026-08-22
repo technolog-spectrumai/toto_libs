@@ -3,7 +3,7 @@
 The poll/vote pair is the point of the first two — the poll is revisable with
 a live count, the vote is cast once and sealed until it closes. Seeding only a
 poll would leave the Votes tab looking broken on a fresh install, and the same
-is true of the Quizzes and Electorates tabs, which is why they are seeded here
+is true of the Quizzes tab, which is why it is seeded here
 too.
 
 The electorate is seeded from a real community's membership — the demo company
@@ -21,7 +21,6 @@ from django.utils import timezone
 from toto.ingress import IngressCommand
 from toto.polls.core import Revisability, Visibility
 from toto.polls.models import (SCOPE_COMMUNITY, Ballot, Choice, Kind, Question)
-from toto.polls.electorate_models import Electorate, ElectorateMember
 from toto.polls.quiz_models import Quiz, QuizAnswer, QuizQuestion
 
 User = get_user_model()
@@ -45,47 +44,14 @@ class Command(IngressCommand):
          "More than four fifths of the decided weight."),
     ]
 
-    def _seed_profiles(self):
-        from decimal import Decimal
-
-        from toto.polls.models import ConsensusProfile
-
-        for name, percent, description in self.PROFILES:
-            ConsensusProfile.objects.get_or_create(
-                name=name,
-                defaults={"percent": Decimal(percent),
-                          "description": description})
-
-    QUORUM_RULES = [
-        ("No additional quorum", "none", None,
-         "The session decides with whoever attends."),
-        ("Half the voting weight", "percent", "50.00",
-         "At least half of the electorate weight must be represented."),
-        ("Manual confirmation", "manual", None,
-         "The chair confirms quorum on the record."),
-    ]
-
-    def _seed_quorum_rules(self):
-        from decimal import Decimal
-
-        from toto.polls.models import QuorumRule
-
-        for name, mode, threshold, description in self.QUORUM_RULES:
-            QuorumRule.objects.get_or_create(
-                name=name,
-                defaults={"mode": mode,
-                          "threshold": (Decimal(threshold)
-                                        if threshold else None),
-                          "description": description})
-
     def process(self):
-        self._seed_profiles()
-        self._seed_quorum_rules()
+        # Nothing is seeded unconditionally any more. The consensus profiles
+        # and quorum rules that used to be created on every ingress were the
+        # machinery of formal votes, and formal votes are Irena's since 1.50.
         if not self.full:
             return
 
         self._seed_quiz()
-        self._seed_electorate()
 
         if Question.objects.filter(slug="favourite-colour").exists():
             print("[Ingress] Polls demo already exists — skipping.")
@@ -107,20 +73,23 @@ class Command(IngressCommand):
         for position, label in enumerate(colours):
             Choice.objects.create(question=poll, label=label, position=position)
 
-        vote = Question.objects.create(
-            kind=Kind.VOTE,
-            title="Adopt the code of conduct",
-            question_text="Do you adopt the proposed code of conduct?",
-            body=("The full text was circulated a week before this vote "
-                  "opened. A ballot is final once cast."),
-            # A formal vote: one ballot each, and no running tally.
+        # A consultation with the OTHER pair of settings — one answer each and
+        # no running count — to show that both shapes are still available.
+        # It is not a formal vote and does not decide anything: it asks.
+        sealed = Question.objects.create(
+            kind=Kind.POLL,
+            title="Should we adopt the proposed code of conduct?",
+            question_text="What does the community think?",
+            body=("The full text was circulated a week before this poll "
+                  "opened. This is a consultation, not a formal vote: the "
+                  "result is advisory."),
             revisability=Revisability.FINAL,
             visibility=Visibility.ON_CLOSE,
             closes_at=timezone.now() + timezone.timedelta(days=7),
             created_by=users[0],
         )
-        for position, label in enumerate(["Yes", "No", "Abstain"]):
-            Choice.objects.create(question=vote, label=label, position=position)
+        for position, label in enumerate(["Yes", "No", "No opinion"]):
+            Choice.objects.create(question=sealed, label=label, position=position)
 
         poll_choices = list(poll.choices.all())
         for user in users:
@@ -128,7 +97,7 @@ class Command(IngressCommand):
                 question=poll, voter=user,
                 defaults={"choice": random.choice(poll_choices)})
 
-        print(f"[Ingress] Seeded 1 poll and 1 vote for {len(users)} user(s).")
+        print(f"[Ingress] Seeded 2 polls for {len(users)} user(s).")
 
     # ---- the Quizzes tab -------------------------------------------------
 
@@ -184,51 +153,4 @@ class Command(IngressCommand):
 
         print(f"[Ingress] Seeded 1 quiz with {len(self.QUIZ_QUESTIONS)} questions.")
 
-    # ---- the Electorates tab ---------------------------------------------
 
-    def _seed_electorate(self):
-        """An electorate for the demo company, seeded from its membership.
-
-        One member, one vote — weights are left at 1 deliberately. An operator
-        who wants weighted voting edits these rows; nothing here derives a
-        weight from anything, which is the rule the Business Center's removal
-        made general.
-        """
-        if Electorate.objects.filter(slug="farfarele-register").exists():
-            print("[Ingress] Electorate demo already exists — skipping.")
-            return
-
-        try:
-            from toto.socialhub.models import Community
-        except ImportError:      # a host with polls but no socialhub
-            return
-        company = Community.objects.filter(org_type="company").order_by("pk").first()
-        if company is None:
-            print("[Ingress] No company community — skipping the electorate.")
-            return
-
-        electorate = Electorate.objects.create(
-            slug="farfarele-register",
-            name=f"{company.name} — members",
-            kind=Electorate.Kind.EQUAL,
-            scope_type=SCOPE_COMMUNITY,
-            scope_id=str(company.pk),
-            description=("Everyone on the company's register, one voice each. "
-                         "Edit a weight here to make a vote weighted — nothing "
-                         "computes one for you."),
-        )
-        seeded = 0
-        for person in company.members.all().order_by("pk"):
-            ElectorateMember.objects.create(
-                electorate=electorate,
-                # A member is a PERSON, not a login. Migration 0012 moved this
-                # column and this call site was missed, so `ingress_all --full`
-                # has raised TypeError ever since: a person with no account
-                # still sits on a register, still counts toward turnout, and
-                # simply cannot cast.
-                person=person,
-                label=person.display_name,
-                weight=1,
-            )
-            seeded += 1
-        print(f"[Ingress] Seeded 1 electorate with {seeded} member(s).")
