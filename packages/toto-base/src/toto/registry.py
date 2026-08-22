@@ -136,6 +136,11 @@ TASK_MODULES = [
     # answers KeyError every two minutes, which is the exact failure the
     # weather and monit notes above record. Inert where the wheel is absent.
     "toto.anastasia",
+    # Ireneo's bundle export/import (BUILD_IRENEO). Its worker entry points are
+    # plain tasks a VIEW enqueues, not workflow predefined tasks — so without
+    # this line the worker answers KeyError and the page waits forever on a job
+    # that will never run. Inert where the app is absent.
+    "toto.ireneo",
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
     "toto.tax",         # the daily levy sweep; inert where toto-economy is absent
