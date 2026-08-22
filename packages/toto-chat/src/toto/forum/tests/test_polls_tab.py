@@ -107,8 +107,14 @@ class RoomPollViewTests(RoomPollBase):
         self.assertNotContains(response, "Room only")
 
 
-class RoomElectorateTests(RoomPollBase):
-    """The second line of defence: the ENGINE refuses non-members."""
+class RoomAudienceTests(RoomPollBase):
+    """The second line of defence: the ENGINE refuses non-members.
+
+    A room's polls are answered by the room — a visibility rule, the same one
+    that decides who reads its messages. Refused here and not merely in the
+    view, because a mis-scoped question that reaches somebody must get "no"
+    rather than a response filed into the wrong room.
+    """
 
     def test_the_engine_refuses_a_non_member_directly(self):
         from toto.polls import services as polls_services
@@ -131,7 +137,7 @@ class RoomElectorateTests(RoomPollBase):
 
         self.assertFalse(verdict.allowed)
 
-    def test_the_electorate_counts_active_members_only(self):
+    def test_the_audience_counts_active_members_only(self):
         from toto.people.models import Person
         from toto.polls import services as polls_services
 
@@ -143,13 +149,31 @@ class RoomElectorateTests(RoomPollBase):
 
         self.assertEqual(polls_services.tally(question).electorate, 1)
 
+    def test_a_poll_outside_a_room_is_open_to_everyone_signed_in(self):
+        """The seam is per place, not per question: an ordinary poll keeps
+        the lightweight default."""
+        from toto.polls import services as polls_services
+        from toto.polls.core import OpenToAll
+
+        question = self._poll()
+        question.scope_type = ""
+        self.assertIsInstance(polls_services.electorate_for(question), OpenToAll)
+
+    def test_a_room_that_is_gone_admits_nobody(self):
+        from toto.polls import services as polls_services
+
+        question = self._poll()
+        self.room.delete()
+        verdict = polls_services.standing(question, self.member_user)
+        self.assertFalse(verdict.allowed)
+
     def test_a_question_from_another_room_is_refused_by_belongs(self):
-        from toto.forum.electorates import RoomElectorate
+        from toto.forum.audience import RoomAudience
 
         question = self._poll()
 
-        verdict = RoomElectorate(self.other_room).standing(question,
-                                                           self.member_user)
+        verdict = RoomAudience(self.other_room).standing(question,
+                                                         self.member_user)
 
         self.assertFalse(verdict.allowed)
         self.assertIn("another room", verdict.reason)

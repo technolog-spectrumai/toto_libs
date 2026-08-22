@@ -34,16 +34,61 @@ from .models import Ballot, Question, Status                      # noqa: F401
 from django.db.models import Count, Sum
 
 
-def electorate_for(question) -> object:
-    """Who may answer this question. Always everyone signed in.
+#: Who may answer a poll posted in a given kind of place, by scope type.
+#:
+#: **This is a visibility rule and nothing more.** A poll in a forum room is
+#: answered by that room's members for the same reason a message in that room
+#: is read by them — it is where the poll lives. It confers no authority, it
+#: is not configurable by anybody using the platform, and there is no way to
+#: point a poll at a different audience than the place it was posted in. The
+#: parked governance electorates were the opposite of all three, which is why
+#: they are parked and this is four lines.
+#:
+#: An app that owns a scope registers its audience from its own ``ready()``.
+#: Nothing is discovered; a host without that app simply has no entry.
+SCOPE_AUDIENCES: dict[str, object] = {}
 
-    Kept as a function rather than deleted because `toto.forum` calls it, and
-    because the day a scope wants a narrower audience this is where that
-    belongs — a *visibility* rule, not an instrument of authority. There is no
-    registry behind it any more: a consultation whose audience could be
-    configured per scope is one step from being a formal vote again.
+
+def register_audience(scope_type: str, factory) -> None:
+    """Say who answers polls posted in this kind of place.
+
+    ``factory(question)`` returns an object with ``standing(question, user)``
+    and ``size(question)``.
     """
-    return OpenToAll()
+    SCOPE_AUDIENCES[scope_type] = factory
+
+
+def electorate_for(question) -> object:
+    """Who may answer this question.
+
+    Everyone signed in, unless the poll lives somewhere with its own audience
+    — a forum room answers its own polls. Refused HERE and not merely in the
+    view: if a mis-scoped question ever reaches somebody, the answer has to be
+    no rather than a response counted into the wrong room.
+    """
+    factory = SCOPE_AUDIENCES.get(getattr(question, "scope_type", "") or "")
+    if factory is None:
+        return OpenToAll()
+    try:
+        audience = factory(question)
+    except Exception:  # noqa: BLE001 — a missing room is not a crash
+        return _Nobody("The place this poll belongs to is no longer there.")
+    return audience or OpenToAll()
+
+
+class _Nobody:
+    """An audience that admits no one, with a reason. Used when the place a
+    poll was posted in cannot be found: answering it would file the answer
+    nowhere."""
+
+    def __init__(self, reason: str):
+        self.reason = reason
+
+    def standing(self, question, user) -> Eligibility:
+        return Eligibility(False, reason=self.reason)
+
+    def size(self, question) -> int:
+        return 0
 
 
 def standing(question, user, *, electorate=None) -> Eligibility:
