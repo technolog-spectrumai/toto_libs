@@ -36,6 +36,10 @@
    block as visible page text.{% endcomment %}
 <nav class="flex flex-wrap items-center gap-2" aria-label="{% trans 'Media navigation' %}">
 
+  {# `show_video` defaults to on: an include that says nothing gets the tab it
+     always had. A page passes show_video=False when a link to the player is
+     noise there — the OCR scanner does. #}
+  {% if show_video|default_if_none:True %}
   {% if "toto.vod"|app_installed %}{% url 'vod:library' as vod_url %}{% if vod_url %}
   <a href="{{ vod_url }}"
      class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85"
@@ -46,6 +50,7 @@
      {% endif %}>
     <i class="fa-solid fa-video"></i>{% trans "Video" %}</a>
   {% endif %}{% endif %}
+  {% endif %}
 
   {% if "toto.ocr"|app_installed %}{% url 'ocr:home' as ocr_url %}{% if ocr_url %}
   <a href="{{ ocr_url }}"

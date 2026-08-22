@@ -197,6 +197,41 @@ _DEFAULTS = (
     Entitlement("travels", "Travels", order=49,
                 icon="fa-solid fa-route",
                 description="Routes, journeys and who went where."),
+
+    # -- compute, and the apps that run on it (1.50) -------------------------
+    # These arrived when the placidia host was dismantled: the apps came back
+    # to this host, their binaries did not. Every one of them does its work in
+    # a Compute Gear (see portal/anastasia.md), which is why `anastasia` is
+    # declared beside them rather than treated as plumbing — unlike celery and
+    # the workflows engine above, reserved compute is a real, finite thing a
+    # deployment hands out, and a plan is exactly where "how much" belongs.
+    #
+    # Gears themselves are NOT free, and that is the one judgement here: a
+    # plan that included the labs but not the capacity to run them would sell
+    # four buttons that all refuse. Everything a lapsed member STORED stays
+    # reachable — the workspaces, the files, the PDFs already compiled are all
+    # toto.vault, which is free — so lapsing loses the ability to run new
+    # work, never the work already done.
+    Entitlement("anastasia", "Compute Gears", order=50,
+                icon="fa-solid fa-gears",
+                description="Reserve CPU, memory and scratch space, and run "
+                            "heavy work inside it."),
+    Entitlement("texlab", "TeX Lab", order=51,
+                icon="fa-solid fa-file-lines",
+                description="LaTeX workspaces that compile a whole folder to PDF."),
+    Entitlement("dracena", "Python Lab", order=52,
+                icon="fa-brands fa-python",
+                description="Notebook-style Python in a workspace, with a "
+                            "kernel that survives reconnects."),
+    Entitlement("manta", "Media conversion", order=53,
+                icon="fa-solid fa-film",
+                description="Resize, compress, cut and convert audio and video."),
+    Entitlement("fileservices", "File services", order=54,
+                icon="fa-solid fa-wand-magic-sparkles",
+                description="Run a conversion over a file straight from the vault."),
+    Entitlement("ocr", "Text recognition", order=55,
+                icon="fa-solid fa-file-invoice",
+                description="Read the text out of a screenshot, a photo or a scan."),
 )
 
 for _entitlement in _DEFAULTS:
