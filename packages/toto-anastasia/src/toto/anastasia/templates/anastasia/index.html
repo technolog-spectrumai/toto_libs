@@ -69,23 +69,28 @@ Two ideas the page has to carry, or it is just a form:
       <div class="mt-3 grid gap-3 sm:grid-cols-5">
         <label class="text-xs sm:col-span-1">{% trans "Name" %}
           <input name="name" required maxlength="60" placeholder="{% trans 'thesis' %}"
-                 class="mt-1 w-full rounded border bg-transparent px-2 py-1 text-sm">
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
         </label>
         <label class="text-xs">{% trans "CPU (mCPU)" %}
           <input name="cpu_millicores" type="number" min="100" step="100" value="1000"
-                 class="mt-1 w-full rounded border bg-transparent px-2 py-1 text-sm">
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
         </label>
         <label class="text-xs">{% trans "RAM (MB)" %}
           <input name="ram_mb" type="number" min="128" step="128" value="1024"
-                 class="mt-1 w-full rounded border bg-transparent px-2 py-1 text-sm">
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
         </label>
         <label class="text-xs">{% trans "Scratch (MB)" %}
           <input name="scratch_mb" type="number" min="64" step="64" value="512"
-                 class="mt-1 w-full rounded border bg-transparent px-2 py-1 text-sm">
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
         </label>
         <label class="text-xs">{% trans "Processes" %}
           <input name="pids" type="number" min="32" step="32" value="128"
-                 class="mt-1 w-full rounded border bg-transparent px-2 py-1 text-sm">
+                 :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                 class="mt-1 w-full rounded border px-2 py-1 text-sm">
         </label>
       </div>
       <p class="mt-2 text-xs opacity-60">
@@ -176,7 +181,8 @@ Two ideas the page has to carry, or it is just a form:
                 <label class="text-xs">{{ key }}
                   <input name="warm_{{ key }}" type="number" min="0" max="4"
                          value="{{ gear.warm_policy|default_if_none:''|dictget:key|default:0 }}"
-                         class="mt-1 w-16 rounded border bg-transparent px-2 py-1 text-sm">
+                         :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+                         class="mt-1 w-16 rounded border px-2 py-1 text-sm">
                 </label>
               {% endfor %}
               <button class="rounded border px-3 py-1 text-sm font-semibold">{% trans "Save" %}</button>
