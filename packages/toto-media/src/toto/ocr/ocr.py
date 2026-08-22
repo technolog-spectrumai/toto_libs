@@ -107,12 +107,18 @@ class OcrHelper:
 # Where the scan actually happens
 # ---------------------------------------------------------------------------
 
-def gear_for(user):
+def gear_for(user, uuid=None):
     """The Compute Gear to scan in, or None to scan in this process.
 
     None on a host with no toto.anastasia. Where Gears exist but this user
     holds none, the fallback is only offered if THIS host has tesseract — and
     since 1.50 Zenobia does not, so the refusal is the honest answer there.
+
+    ``uuid`` is the Gear the form asked for. A CHOSEN Gear never falls back:
+    "scan it there" has no local equivalent, and scanning somewhere else
+    quietly is the answer nobody asked for. Without a choice the old
+    behaviour stands, which is what keeps a one-Gear user from having to
+    answer a question with one possible reply.
     """
     import shutil
 
@@ -123,11 +129,21 @@ def gear_for(user):
     from toto.anastasia import jobs
 
     try:
-        return jobs.require_gear(user)
+        return jobs.require_gear(user, uuid)
     except jobs.NoGear:
-        if shutil.which("tesseract"):
+        if uuid is None and shutil.which("tesseract"):
             return None
         raise
+
+
+def gear_choices(user) -> list:
+    """The Gears this person may scan in, for the form. Empty without Gears."""
+    from django.apps import apps
+
+    if not apps.is_installed("toto.anastasia"):
+        return []
+    from toto.anastasia import jobs
+    return jobs.gear_options(user)
 
 
 def scan_in_gear(data: bytes, *, filename: str, language: str, lease, user):

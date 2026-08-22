@@ -200,6 +200,20 @@ def _resolve_op(tab, op_req):
     return "compress"
 
 
+def _anastasia_installed() -> bool:
+    from django.apps import apps
+    return apps.is_installed("toto.anastasia")
+
+
+def _gear_choices(user) -> list:
+    """The Gears this person may send a job to, for the form. Empty on a host
+    with no Compute Gears, and the control is then absent entirely."""
+    if not _anastasia_installed():
+        return []
+    from toto.anastasia import jobs as gear_jobs
+    return gear_jobs.gear_options(user)
+
+
 @login_required
 def command_builder(request):
     from toto.vault.filetree import build_file_tree
@@ -272,6 +286,9 @@ def command_builder(request):
         "extra_tree": [],
         "form": None,
         "output_label": out_slot.get("name", "Output"),
+        # Which Gears this person could send the job to. The form shows the
+        # control only when there is a choice to make — see _command_form.html.
+        "gear_choices": _gear_choices(request.user),
         "errors": [source_error] if source_error else [],
         "allow_upload": allow_upload,
         "upload_buckets": upload_buckets,
@@ -344,11 +361,25 @@ def _run(request, vf, cmd_cls, params, extra_objs):
     budget = min(budget, _visibility - 200)
 
     # The command family owns execution; we just create the record and enqueue.
+    # Which Gear, if the form said. Validated HERE rather than on the worker:
+    # a refusal a person can act on belongs in the response to the button they
+    # pressed, and a job row queued for a Gear that was never theirs is a
+    # failure discovered a minute later by somebody who has left the page.
+    gear_uuid = (request.POST.get("gear") or "").strip() or None
+    if gear_uuid and _anastasia_installed():
+        from toto.anastasia import jobs as gear_jobs
+        try:
+            gear_uuid = gear_jobs.require_gear(request.user, gear_uuid).uuid
+        except gear_jobs.NoGear as exc:
+            messages.error(request, "; ".join(exc.messages))
+            return redirect("manta:command_builder")
+
     job = FileJob.objects.create(
         name=f"{cmd_cls.label}: {vf.title}",
         command=cmd_cls.key,
         owner=request.user,
         inputs=[vf.id] + [o.id for o in extra_objs],
+        gear_uuid=gear_uuid,
         params={**dict(params), "time_budget_seconds": budget},
         status=FileJob.Status.PENDING,
     )

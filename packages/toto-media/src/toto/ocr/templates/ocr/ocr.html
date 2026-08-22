@@ -28,7 +28,11 @@
         <p class="mt-1 text-sm opacity-60">
           {% trans "Load a screenshot → extract its text with Tesseract → forward it to the ingestor." %}</p>
       </div>
-      {% include "oya/_media_tabs.html" with active_tab="ocr" %}
+      {# No Video tab here: playback is something you do to a file you are
+         already looking at (the vault's play button), not a place to navigate
+         to from a scanner — the same reasoning that retired the dashboard's
+         Video tile. vod:library still exists for anyone who wants it. #}
+      {% include "oya/_media_tabs.html" with active_tab="ocr" show_video=False %}
     </div>
 
     <!-- ── Load + run ── -->
@@ -59,6 +63,27 @@
             <option value="fra">fra</option>
           </select>
         </label>
+
+        {% if gear_choices %}
+          {# Which Compute Gear runs tesseract. Only when there is a choice:
+             with one Gear it is chosen for you, and with two anastasia refuses
+             to guess — so without this control Read could only fail. #}
+          <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+            {% trans "Compute Gear" %}
+            <select x-model="gear"
+              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
+              class="rounded-lg border px-2 py-1 text-sm font-normal normal-case tracking-normal">
+              {% if gear_choices|length > 1 %}
+                <option value="">{% trans "Automatic" %}</option>
+              {% endif %}
+              {% for choice in gear_choices %}
+                <option value="{{ choice.value }}"{% if not choice.ready %} disabled{% endif %}>
+                  {{ choice.label }}{% if not choice.ready %} — {% trans "mount it first" %}{% endif %}
+                </option>
+              {% endfor %}
+            </select>
+          </label>
+        {% endif %}
       </div>
 
       <!-- Save to bucket -->
@@ -138,6 +163,7 @@
       file: null,
       fileName: "",
       language: "eng",
+      gear: "",
       saveToVault: false,
       bucket: "",
       directory: "",
@@ -168,6 +194,7 @@
           const fd = new FormData();
           fd.append("screenshot", this.file);
           fd.append("language", this.language);
+          if (this.gear) fd.append("gear", this.gear);
           if (this.saveToVault && this.bucket) {
             fd.append("save_to_vault", "on");
             fd.append("bucket", this.bucket);

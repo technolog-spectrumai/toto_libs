@@ -79,6 +79,11 @@ def _unique_key(bucket, base_key):
     return key
 
 
+def _gear_choices(user) -> list:
+    from toto.ocr import ocr as ocr_mod
+    return ocr_mod.gear_choices(user)
+
+
 @login_required
 @superuser_required
 def ocr_home(request):
@@ -100,6 +105,7 @@ def ocr_home(request):
         "directories": directories,  # rendered via json_script (XSS-safe)
         "run_url": reverse("ocr:run"),
         "ingest_enabled": ingest_enabled,
+        "gear_choices": _gear_choices(request.user),
     }
     return render(request, "ocr/ocr.html", PageProcessor().decorate(context, request))
 
@@ -132,7 +138,8 @@ def ocr_run(request):
 
     tmp_path = None
     try:
-        lease = ocr_mod.gear_for(request.user)
+        lease = ocr_mod.gear_for(
+            request.user, (request.POST.get("gear") or "").strip() or None)
         if lease is not None:
             lines = ocr_mod.scan_in_gear(
                 data, filename=screenshot.name or "", language=language,

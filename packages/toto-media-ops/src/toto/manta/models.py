@@ -26,6 +26,12 @@ class FileJob(models.Model):
     celery_task_id = models.CharField(max_length=100, blank=True)  # the job id
     status = models.CharField(max_length=12, choices=Status.choices, default=Status.PENDING)
     inputs = models.JSONField(default=list)                   # input VaultFile ids
+    #: The Compute Gear this job was submitted for, chosen on the form. Blank
+    #: means "whichever one you hold", which only resolves while you hold
+    #: exactly one — `require_gear` refuses to guess between two. Recorded
+    #: here rather than resolved on the worker for the reason texlab records
+    #: it on its run row: the choice is the submitter's and it is made now.
+    gear_uuid = models.UUIDField(null=True, blank=True)
     params = models.JSONField(default=dict)
     output = models.JSONField(default=dict)                   # full serialized output
     created_at = models.DateTimeField(auto_now_add=True)

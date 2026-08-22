@@ -236,10 +236,14 @@ def _gear_for(job):
     from toto.anastasia import jobs
 
     try:
-        return jobs.require_gear(job.owner)
+        return jobs.require_gear(job.owner, job.gear_uuid)
     except jobs.NoGear:
         import shutil
 
-        if shutil.which("ffmpeg"):
+        # Falling back to a local ffmpeg is right only when NOTHING was
+        # chosen. A job that named a Gear and cannot have it is a refusal to
+        # show: "run it there" has no local equivalent, and quietly running it
+        # somewhere else is the answer nobody asked for.
+        if job.gear_uuid is None and shutil.which("ffmpeg"):
             return None          # this host can still do it itself
         raise

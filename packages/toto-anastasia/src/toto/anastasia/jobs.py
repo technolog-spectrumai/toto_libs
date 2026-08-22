@@ -98,6 +98,31 @@ def usable_gears(user):
     return ready
 
 
+def gear_options(user) -> list[dict]:
+    """This user's Gears as a page can render them: value, label, ready.
+
+    One list, built here, because three pages need the same one and each had
+    been deciding for itself what to call a Gear. A page shows it when the
+    user holds more than one — `require_gear` refuses to guess between them,
+    so with two open Gears a form that does not ask is a form that can only
+    fail. Open rather than only mounted: somebody may pick the Gear they are
+    about to mount, and `ready` is what lets the page say so.
+    """
+    options = []
+    for lease in (ComputeLease.objects.open().filter(owner=user)
+                  .select_related("runtime").order_by("-created_at")):
+        state = services.derive_state(services.runtime_for(lease))
+        ready = state in choices.ACCEPTING
+        options.append({
+            "value": str(lease.uuid),
+            "name": lease.name,
+            "state": state,
+            "ready": ready,
+            "label": lease.name if ready else f"{lease.name} ({state.lower()})",
+        })
+    return options
+
+
 def require_gear(user, uuid=None) -> ComputeLease:
     """The Gear this job will run in, or a refusal naming the desk.
 
