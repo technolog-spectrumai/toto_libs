@@ -326,10 +326,12 @@
       Compile in TeX Lab, Run in Python Lab, a command in Media conversion, Read in Text
       recognition. Each job runs in a throwaway container inside your Gear's limits and is
       destroyed the moment it finishes. While you hold exactly one mounted Gear it is
-      chosen for you; you may hold up to <span class="font-semibold">three</span> at once,
-      and from the second one on a workspace has to say which it runs in — open its
-      Settings and pick the Gear there. A compile can still name a different Gear on its
-      own form, which wins for that one job.</li>
+      chosen for you. You may hold up to <span class="font-semibold">three</span> at once,
+      and from the second one on, a <em>workspace</em> (TeX Lab, Python Lab) has to say
+      which it runs in — open its Settings and pick the Gear there; a Python kernel moves
+      on its next restart, a compile on its next run. Media conversion, Text recognition
+      and the deck export have no workspace to carry that choice yet, so they still need
+      you to hold exactly one mounted Gear.</li>
     <li><span class="font-semibold">Unmount or release</span> — unmount stops the runtime
       and keeps the booking; release gives the capacity back to the pool.</li>
   </ul>
