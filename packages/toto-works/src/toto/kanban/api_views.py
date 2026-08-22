@@ -11,6 +11,7 @@ from toto.kanban.models import (
     TaskStatus, STATUS_ORDER, adjacent_status, FIB_SCALE,
     visible_missions_for, visible_tasks_for,
 )
+from toto.kanban import work
 from toto.kanban.views import is_project_auditor
 
 
@@ -265,15 +266,13 @@ class TaskPromoteApiView(CorsApiView):
         if next_status is None:
             return JsonResponse({"error": "Already done."}, status=400)
 
+        # Same gate as the HTML view, through the same helper — two spellings
+        # of "may this be finished" is how a board and its API start
+        # disagreeing about what is done.
         if next_status == TaskStatus.DONE:
-            reviewer_user_id = getattr(
-                getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
-            )
-            if reviewer_user_id and reviewer_user_id != request.user.id:
-                return JsonResponse(
-                    {"error": "Only the assigned reviewer can complete this task."},
-                    status=403,
-                )
+            blocked = work.done_blocked_reason(task)
+            if blocked:
+                return JsonResponse({"error": str(blocked)}, status=403)
 
         blockers = list(task.open_blockers().values_list("title", flat=True)[:5])
 

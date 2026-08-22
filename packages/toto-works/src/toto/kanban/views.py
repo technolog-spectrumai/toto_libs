@@ -33,6 +33,7 @@ from toto.kanban.models import (
     DocumentationPage, Practitioner, KANBAN_PAGE_META, WIKI_MAX_DEPTH,
     visible_missions_for, visible_tasks_for,
 )
+from toto.kanban import work
 from toto.kanban.plugins.mission_plugins import MissionPlugin
 from toto.kanban.plugins.mission_tab_plugins import MissionTabPlugin
 
@@ -467,7 +468,9 @@ def promote_task(request, project_id, task_id):
     task = get_object_or_404(
         visible_tasks_for(
             request.user,
-            Task.objects.select_related("mission", "mission__campaign", "reviewer__person__user"),
+            Task.objects.select_related(
+                "mission", "mission__campaign", "mission__consensus_policy",
+                "mission__campaign__consensus_policy"),
         ),
         id=task_id,
         mission__campaign__project=project,
@@ -485,15 +488,16 @@ def promote_task(request, project_id, task_id):
 
     # Pinned to `done` rather than "the last column by position", which used to
     # follow any column an admin added after Done.
+    #
+    # The gate here was `task.reviewer`: one named person, and only they could
+    # finish the task. It went in 1.50 for the consensus result — several
+    # reviewers, each opinion recorded, and a rule that is editable data rather
+    # than a branch. `done_blocked_reason` returns None for any mission that
+    # names no policy, which is every board that has not opted in.
     if next_status == TaskStatus.DONE:
-        reviewer_user_id = getattr(
-            getattr(getattr(task.reviewer, "person", None), "user", None), "id", None
-        )
-        if reviewer_user_id and reviewer_user_id != request.user.id:
-            messages.error(
-                request,
-                "This task has an assigned reviewer and only that reviewer can complete it.",
-            )
+        blocked = work.done_blocked_reason(task)
+        if blocked:
+            messages.error(request, blocked)
             return redirect("kanban:project_detail", pk=project_id)
 
     # Blockers advise, they do not refuse: a board that blocks the move gets

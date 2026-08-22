@@ -266,6 +266,29 @@ def resolve(submission: Submission) -> Submission:
     return fresh
 
 
+def done_blocked_reason(task) -> str | None:
+    """Why this task may not move to DONE, or None if nothing stops it.
+
+    THE replacement for the single-reviewer gate. Until 1.50 a task could name
+    one ``Task.reviewer`` and only that person could complete it — one opinion,
+    unrecorded, and unusable the moment that person was on holiday. What
+    replaces it is the consensus result: a mission that names a
+    ``ConsensusPolicy`` needs a submission its reviewers actually accepted.
+
+    A mission with no policy returns None, which is why every board that never
+    opted in still moves tasks exactly as before.
+    """
+    policy = task.mission.effective_consensus_policy
+    if policy is None:
+        return None
+    if task.submissions.filter(resolution=SubmissionResolution.ACCEPTED).exists():
+        return None
+    return _(
+        "This task is reviewed under \"%(policy)s\" and needs an accepted "
+        "submission before it can be completed."
+    ) % {"policy": policy.name}
+
+
 def _on_resolved(submission: Submission) -> None:
     """Extension point for Stage 2 (rewards). A no-op until then.
 

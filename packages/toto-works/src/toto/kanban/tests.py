@@ -17,6 +17,7 @@ from django.utils import timezone
 
 from toto.api.testutils import add_to_mesh
 from toto.core.models import Platform
+from toto.kanban import work
 from toto.kanban.metrics import SprintMetricsCalculator
 from toto.kanban.models import (
     Campaign, Mission, Practitioner, Project, ProjectCommitment, RelationType,
@@ -433,7 +434,19 @@ class BlockedPromotionTests(TestCase):
         self.assertFalse(any("blocker" in message for message in messages), messages)
 
 
-class ReviewerGateTests(TestCase):
+class ConsensusGateTests(TestCase):
+    """What gates DONE, since the single reviewer stopped doing it.
+
+    ``Task.reviewer`` named one person who alone could finish a task. That was
+    one unrecorded opinion, and it stranded the task whenever that person was
+    unavailable. It went in 1.50; the gate is now an accepted Submission under
+    the mission's ``ConsensusPolicy`` — several reviewers, each verdict kept,
+    and a threshold an operator can edit.
+
+    The class that stood here asserted the old rule, and its first test is the
+    one that failed when the rule changed. That is what it was for.
+    """
+
     def setUp(self):
         Platform.objects.create(
             site_name="Test", author="Test", publication_year=2026, active=True
@@ -441,10 +454,11 @@ class ReviewerGateTests(TestCase):
         self.user, self.project, _, self.mission, self.practitioner = _make_world()
 
         reviewer_user = User.objects.create_user(username="reviewer", password="pass")
-        reviewer_person = Person.objects.create(
+        self.reviewer_person = Person.objects.create(
             user=reviewer_user, display_name="Rev", email="rev@x.com"
         )
-        self.reviewer = Practitioner.objects.create(person=reviewer_person, role="reviewer")
+        self.reviewer = Practitioner.objects.create(
+            person=self.reviewer_person, role="reviewer")
         self.project.auditors.add(self.reviewer)
 
         self.task = Task.objects.create(
@@ -453,23 +467,51 @@ class ReviewerGateTests(TestCase):
         )
         self.reviewer_user = reviewer_user
 
-    def test_someone_else_cannot_complete_a_reviewed_task(self):
+    def _promote(self):
+        return self.client.post(
+            f"/kanban/{self.project.pk}/task/{self.task.pk}/promote/")
+
+    def test_the_reviewer_column_no_longer_gates_completion(self):
+        """The retired rule, asserted as retired so it cannot creep back."""
         self.client.force_login(self.user)
-        self.client.post(f"/kanban/{self.project.pk}/task/{self.task.pk}/promote/")
+        self._promote()
+        self.task.refresh_from_db()
+        self.assertEqual(self.task.status, TaskStatus.DONE)
+
+    def test_a_mission_with_no_policy_has_no_gate_at_all(self):
+        self.assertIsNone(self.mission.effective_consensus_policy)
+        self.assertIsNone(work.done_blocked_reason(self.task))
+
+    def test_a_policy_gates_done_until_consensus_accepts(self):
+        from toto.kanban.models import ConsensusPolicy, ReviewVerdict
+
+        self.mission.consensus_policy = ConsensusPolicy.objects.get(name="1 of 1")
+        self.mission.save(update_fields=["consensus_policy"])
+        self.task.refresh_from_db()
+
+        self.client.force_login(self.user)
+        self._promote()
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, TaskStatus.IN_PROGRESS)
 
-    def test_the_reviewer_can(self):
-        self.client.force_login(self.reviewer_user)
-        self.client.post(f"/kanban/{self.project.pk}/task/{self.task.pk}/promote/")
+        author = Person.objects.get(user=self.user)
+        submission = work.submit(work.start_submission(self.task, author))
+        work.record_review(submission, self.reviewer_person, ReviewVerdict.ACCEPT)
+        work.resolve(submission)
+
+        self._promote()
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, TaskStatus.DONE)
 
     def test_the_gate_only_applies_on_the_way_to_done(self):
         """It used to key on "the last column by position", which an added column moved."""
+        from toto.kanban.models import ConsensusPolicy
+
+        self.mission.consensus_policy = ConsensusPolicy.objects.get(name="1 of 1")
+        self.mission.save(update_fields=["consensus_policy"])
         self.task.status = TaskStatus.TODO
         self.task.save()
         self.client.force_login(self.user)
-        self.client.post(f"/kanban/{self.project.pk}/task/{self.task.pk}/promote/")
+        self._promote()
         self.task.refresh_from_db()
         self.assertEqual(self.task.status, TaskStatus.IN_PROGRESS)

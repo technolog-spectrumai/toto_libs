@@ -67,9 +67,9 @@ class PlainBoardTests(TestCase):
         There IS a default row — the migration seeds one — and this is the test
         that stops `effective_consensus_policy` from quietly reaching for it.
         """
-        ConsensusPolicy.objects.create(
-            name="global", required_reviews=1, required_accepts=1,
-            reject_threshold=1, is_default=True)
+        # The default row already exists: migration 0009 seeds "1 of 1" as
+        # the default. That is precisely the row that must not apply itself.
+        self.assertTrue(ConsensusPolicy.objects.filter(is_default=True).exists())
         self.mission.refresh_from_db()
         self.assertIsNone(self.mission.effective_consensus_policy)
 
@@ -126,9 +126,7 @@ class EngineOptInTests(TestCase):
             user=_u, display_name="Lead", email="l@x.com")
         project = Project.objects.create(name="P", project_lead=person)
         campaign = Campaign.objects.create(project=project, name="C")
-        policy = ConsensusPolicy.objects.create(
-            name="1 of 1", required_reviews=1, required_accepts=1,
-            reject_threshold=1)
+        policy = ConsensusPolicy.objects.get(name="1 of 1")
         gated = Mission.objects.create(
             campaign=campaign, title="gated", consensus_policy=policy)
         plain = Mission.objects.create(campaign=campaign, title="plain")
@@ -141,9 +139,7 @@ class EngineOptInTests(TestCase):
         person = Person.objects.create(
             user=_u, display_name="Lead", email="l2@x.com")
         project = Project.objects.create(name="P", project_lead=person)
-        policy = ConsensusPolicy.objects.create(
-            name="2 of 3", required_reviews=3, required_accepts=2,
-            reject_threshold=2)
+        policy = ConsensusPolicy.objects.get(name="2 of 3")
         campaign = Campaign.objects.create(
             project=project, name="C", consensus_policy=policy)
         mission = Mission.objects.create(campaign=campaign, title="M")
