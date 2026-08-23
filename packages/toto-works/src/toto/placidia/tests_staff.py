@@ -29,10 +29,21 @@ class RecordingBackend(rewards.RewardBackend):
         rewards._finish(grant, RewardGrantState.SETTLED, "paid")
 
 
+def _gem():
+    """A ledger asset to pay in, with real provenance.
+
+    `make_asset` mints it the way the issuance path does — every Asset carries
+    a signed genesis hash behind a CHECK constraint, so a bare
+    `Asset.objects.create` is refused by the database."""
+    from toto.assets.testing import make_asset
+    return make_asset(unit_name="GEM", name="Gem", decimals=0, code="GEM")
+
+
 class StaffTestBase(TestCase):
     def setUp(self):
         Platform.objects.create(
             site_name="Test", author="t", publication_year=2026, active=True)
+        self.gem = _gem()
         self.staff_user, self.staff = self._person("boss", staff=True)
         self.plain_user, self.plain = self._person("plain")
         self.project = Project.objects.create(name="P", project_lead=self.staff)
@@ -71,7 +82,7 @@ class AccessTests(StaffTestBase):
         self.client.force_login(self.plain_user)
         self.client.post("/placidia/manage/bounty/new/", {
             "campaign": campaign.pk, "title": "Sneaky", "reward_amount": 999,
-            "reward_asset": "GEM"})
+            "reward_asset": self.gem.pk})
         self.assertEqual(PlacidiaBounty.objects.count(), 0)
 
     def test_non_staff_cannot_distribute(self):
@@ -116,7 +127,7 @@ class BountyCreateTests(StaffTestBase):
         response = self.client.post("/placidia/manage/bounty/new/", {
             "campaign": self.campaign.pk, "title": "Photograph the bridges",
             "instructions": "One per span.", "consensus_policy": self.rule.pk,
-            "reward_amount": 5, "reward_asset": "GEM",
+            "reward_amount": 5, "reward_asset": self.gem.pk,
             "funding_account": "purse"})
         self.assertEqual(response.status_code, 302)
         bounty = PlacidiaBounty.objects.get()
@@ -142,7 +153,7 @@ class BountyCreateTests(StaffTestBase):
         self.pc.save(update_fields=["treasury_account"])
         self.client.post("/placidia/manage/bounty/new/", {
             "campaign": self.campaign.pk, "title": "Paid",
-            "reward_amount": 3, "reward_asset": "GEM"})
+            "reward_amount": 3, "reward_asset": self.gem.pk})
         self.assertEqual(RewardPolicy.objects.get().funding_account_code, "rivers_purse")
 
     def test_only_placidia_campaigns_are_offered(self):
@@ -160,6 +171,40 @@ class BountyCreateTests(StaffTestBase):
             "closes_at": now.strftime("%Y-%m-%dT%H:%M")})
         self.assertEqual(response.status_code, 200)
         self.assertEqual(PlacidiaBounty.objects.count(), 0)
+
+    def test_the_asset_is_a_dropdown_of_real_ledger_assets(self):
+        """Free text used to be accepted here; 'GEM' typed on a host with no
+        GEM asset produced a policy the backend could never settle."""
+        response = self.client.get("/placidia/manage/bounty/new/")
+        offered = list(response.context["form"].fields["reward_asset"].queryset)
+        self.assertEqual(offered, [self.gem])
+
+    def test_an_inactive_asset_is_not_offered(self):
+        from toto.assets.testing import make_asset
+        make_asset(unit_name="OLD", name="Old", decimals=0, active=False)
+        response = self.client.get("/placidia/manage/bounty/new/")
+        codes = [a.unit_name for a in
+                 response.context["form"].fields["reward_asset"].queryset]
+        self.assertNotIn("OLD", codes)
+
+    def test_the_policy_stores_the_unit_name_the_backend_resolves(self):
+        self.client.post("/placidia/manage/bounty/new/", {
+            "campaign": self.campaign.pk, "title": "Paid",
+            "reward_amount": 4, "reward_asset": self.gem.pk})
+        self.assertEqual(RewardPolicy.objects.get().asset_code, "GEM")
+
+    def test_an_amount_without_an_asset_is_refused(self):
+        response = self.client.post("/placidia/manage/bounty/new/", {
+            "campaign": self.campaign.pk, "title": "Half",
+            "reward_amount": 4})
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("reward_asset", response.context["form"].errors)
+        self.assertEqual(PlacidiaBounty.objects.count(), 0)
+
+    def test_with_no_assets_the_form_says_so(self):
+        self.gem.delete()
+        response = self.client.get("/placidia/manage/bounty/new/")
+        self.assertContains(response, "No ledger assets exist")
 
     def test_the_new_bounty_appears_on_the_board(self):
         self.client.post("/placidia/manage/bounty/new/", {
@@ -186,7 +231,7 @@ class BountyEditTests(StaffTestBase):
     def test_editing_updates_in_place(self):
         self.client.post(self.url, {
             "title": "Bridges, revised", "instructions": "Now with arches.",
-            "reward_amount": 9, "reward_asset": "GEM"})
+            "reward_amount": 9, "reward_asset": self.gem.pk})
         self.bounty.refresh_from_db()
         self.assertEqual(self.bounty.mission.title, "Bridges, revised")
         self.assertEqual(self.bounty.instructions, "Now with arches.")

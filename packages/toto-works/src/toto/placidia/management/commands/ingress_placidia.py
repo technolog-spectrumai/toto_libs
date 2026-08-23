@@ -171,21 +171,29 @@ class Command(IngressCommand):
 
     @staticmethod
     def _reward(campaign):
-        """Campaign-scoped, so both bounties inherit it."""
-        RewardPolicy.objects.create(
-            campaign=campaign,
-            trigger=RewardTrigger.SUBMISSION_ACCEPTED,
-            asset_code="GEM",
-            amount_base_units=5,
-            funding_account_code="placidia_demo_purse",
-        )
-        RewardPolicy.objects.create(
-            campaign=campaign,
-            trigger=RewardTrigger.REVIEW_RESOLVED,
-            asset_code="GEM",
-            amount_base_units=1,
-            funding_account_code="placidia_demo_purse",
-        )
+        """Campaign-scoped, so both bounties inherit it.
+
+        Paid in the first active ledger asset, if any — the same set the
+        bounty form offers. Falls back to the symbol "GEM" on a host with no
+        assets at all, so the demo still SHOWS a reward; settlement then fails
+        with "No asset with symbol 'GEM'", which is the honest state of such a
+        host and the thing the Distribute button reports.
+        """
+        from toto.assets.models import Asset  # noqa: PLC0415
+
+        asset = Asset.objects.filter(active=True).order_by("pk").first()
+        code = asset.unit_name if asset is not None else "GEM"
+        for trigger, amount in (
+            (RewardTrigger.SUBMISSION_ACCEPTED, 5),
+            (RewardTrigger.REVIEW_RESOLVED, 1),
+        ):
+            RewardPolicy.objects.create(
+                campaign=campaign,
+                trigger=trigger,
+                asset_code=code,
+                amount_base_units=amount,
+                funding_account_code="placidia_demo_purse",
+            )
 
     def _contributions(self, bounties, author_a, author_b, reviewer):
         """Three contributions showing all three outcomes: accepted, rejected, pending.

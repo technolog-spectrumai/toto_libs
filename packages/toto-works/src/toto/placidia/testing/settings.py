@@ -120,6 +120,12 @@ USE_TZ = True
 FIELD_ENCRYPTION_KEY = "zqx3Wt0nqTfKqBPXCsFtHQOMoO0v8kBn8ZQmFqBLLwo="
 PLATFORM_DOMAIN = "placidia.test"
 
+# The ledger's test issuer key. Every Asset carries a signed genesis, so a test
+# that offers one in a dropdown has to be able to mint one — and minting needs
+# this. The library's own constant, not a real secret: see toto.assets.testing.
+from toto.assets.testing import TEST_ISSUER_KEY  # noqa: E402
+MONETARY_ISSUER_KEY = TEST_ISSUER_KEY
+
 LOGGING = {
     "version": 1,
     "disable_existing_loggers": False,

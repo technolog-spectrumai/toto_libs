@@ -179,9 +179,12 @@ class BountyForm(forms.Form):
         help_text=_("In base units of the asset below. 0 or blank means no reward."),
         widget=forms.NumberInput(attrs={"class": _INPUT, "x-bind:class": _DARK}),
     )
-    reward_asset = forms.CharField(
-        label=_("Reward asset"), max_length=32, required=False, initial="GEM",
-        widget=forms.TextInput(attrs={"class": _INPUT, "x-bind:class": _DARK}),
+    reward_asset = forms.ModelChoiceField(
+        label=_("Reward asset"),
+        queryset=None,
+        required=False,
+        help_text=_("A real ledger asset. Nothing here means nothing can be paid yet."),
+        widget=forms.Select(attrs={"class": _INPUT, "x-bind:class": _DARK}),
     )
     funding_account = forms.CharField(
         label=_("Funding account code"), max_length=100, required=False,
@@ -210,6 +213,15 @@ class BountyForm(forms.Form):
         # plain kanban campaign would have no Placidia treasury to fund it.
         self.fields["campaign"].queryset = (
             Campaign.objects.filter(placidia__isnull=False).order_by("name"))
+        # The ledger's live assets. Imported here, not at module scope — this
+        # app only runs where toto.assets is installed (its AppConfig checks),
+        # but forms.py is imported by views.py and must not be the thing that
+        # breaks `manage.py check` on a misconfigured host.
+        from toto.assets.models import Asset  # noqa: PLC0415
+        self.fields["reward_asset"].queryset = (
+            Asset.objects.filter(active=True).order_by("unit_name"))
+        self.fields["reward_asset"].label_from_instance = (
+            lambda a: f"{a.unit_name} — {a.name}" if a.name else a.unit_name)
         if instance is not None:
             self.fields["campaign"].disabled = True
             self.fields["campaign"].required = False
@@ -224,20 +236,27 @@ class BountyForm(forms.Form):
             "instructions": bounty.instructions,
             "consensus_policy": mission.consensus_policy_id,
             "reward_amount": reward.amount_base_units if reward else None,
-            "reward_asset": reward.asset_code if reward else "GEM",
+            "reward_asset": self._asset_for_code(reward.asset_code) if reward else None,
             "funding_account": reward.funding_account_code if reward else "",
             "max_contributions": bounty.max_contributions,
             "opens_at": bounty.opens_at,
             "closes_at": bounty.closes_at,
         })
 
+    @staticmethod
+    def _asset_for_code(code):
+        """The Asset a stored symbol names, by the same lookup the backend uses."""
+        from toto.assets.models import Asset  # noqa: PLC0415
+        return (Asset.objects.filter(unit_name=code).first()
+                or Asset.objects.filter(code=code).first())
+
     def clean(self):
         data = super().clean()
         opens, closes = data.get("opens_at"), data.get("closes_at")
         if opens and closes and closes <= opens:
             self.add_error("closes_at", _("Must be after it opens."))
-        if data.get("reward_amount") and not (data.get("reward_asset") or "").strip():
-            self.add_error("reward_asset", _("Name the asset the reward is paid in."))
+        if data.get("reward_amount") and data.get("reward_asset") is None:
+            self.add_error("reward_asset", _("Pick the asset the reward is paid in."))
         return data
 
     def save(self, *, owner: Person | None) -> PlacidiaBounty:
@@ -289,7 +308,10 @@ class BountyForm(forms.Form):
             pc = bounty.campaign
             funding = pc.treasury_account_code if pc is not None else ""
         fields = {
-            "asset_code": data["reward_asset"].strip(),
+            # unit_name, because that is what AssetsRewardBackend resolves
+            # first. Storing the pk would put a kanban row in the position of
+            # knowing what a ledger asset is — the symbol keeps it a string.
+            "asset_code": data["reward_asset"].unit_name,
             "amount_base_units": amount,
             "funding_account_code": funding,
             "active": True,
