@@ -1,0 +1,32 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "New campaign" %} | {% trans "Placidia" %}{% endblock %}
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl space-y-6">
+    <a href="{% url 'placidia:manage' %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Manage Placidia" %}
+    </a>
+    <h1 class="text-3xl font-bold">{% trans "New campaign" %}</h1>
+    <p class="text-sm opacity-70">{% trans "A collection programme. Bounties live under it and inherit its review rule." %}</p>
+    <form method="post" class="space-y-5">
+      {% csrf_token %}
+      {% if form.non_field_errors %}<div class="rounded-lg bg-red-600/10 p-3 text-sm text-red-600">{{ form.non_field_errors }}</div>{% endif %}
+      {% for field in form.visible_fields %}
+        {% if field.name == "is_open" %}
+          <label class="flex items-center gap-2 text-sm">{{ field }} {{ field.label }}</label>
+        {% else %}
+          {% include "placidia/_form_field.html" with field=field %}
+        {% endif %}
+      {% endfor %}
+      <button type="submit"
+              :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg border px-5 py-3 font-semibold shadow-sm transition hover:opacity-85">
+        <i class="fa-solid fa-check"></i> {% trans "Create campaign" %}
+      </button>
+    </form>
+  </div>
+</section>
+{% endblock %}

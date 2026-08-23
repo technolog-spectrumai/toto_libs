@@ -64,6 +64,20 @@
       </p>
     </div>
 
+    {% if user.is_staff %}
+      <div class="flex flex-wrap gap-2 text-sm">
+        <a href="{% url 'placidia:bounty_edit' bounty.pk %}" class="underline hover:opacity-80"><i class="fa-solid fa-pen"></i> {% trans "Edit" %}</a>
+        <form method="post" action="{% url 'placidia:bounty_toggle' bounty.pk %}" class="inline">
+          {% csrf_token %}
+          <button type="submit" class="underline hover:opacity-80">
+            <i class="fa-solid fa-lock{% if not open_now %}-open{% endif %}"></i>
+            {% if open_now %}{% trans "Close" %}{% else %}{% trans "Reopen" %}{% endif %}
+          </button>
+        </form>
+        <a href="{% url 'placidia:bounty_delete' bounty.pk %}" class="text-red-600 underline hover:opacity-80"><i class="fa-solid fa-trash"></i> {% trans "Delete" %}</a>
+      </div>
+    {% endif %}
+
     {% if open_now %}
       <a href="{% url 'placidia:contribute' bounty.pk %}"
          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"

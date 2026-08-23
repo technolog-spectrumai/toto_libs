@@ -39,6 +39,13 @@
       </div>
 
       <nav class="flex flex-wrap gap-2">
+        {% if user.is_staff %}
+          <a href="{% url 'placidia:manage' %}"
+             :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-sliders"></i> {% trans "Manage" %}
+          </a>
+        {% endif %}
         <a href="{% url 'placidia:review_queue' %}"
            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">

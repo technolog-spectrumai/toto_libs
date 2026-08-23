@@ -1,0 +1,7 @@
+{% comment %}One labelled field: label, widget, help, errors.{% endcomment %}
+<div>
+  <label class="mb-1 block text-sm font-semibold" for="{{ field.id_for_label }}">{{ field.label }}</label>
+  {{ field }}
+  {% if field.help_text %}<p class="mt-1 text-xs opacity-60">{{ field.help_text }}</p>{% endif %}
+  {% if field.errors %}<p class="mt-1 text-xs text-red-600">{{ field.errors|join:", " }}</p>{% endif %}
+</div>
