@@ -26,7 +26,14 @@ class RepoTestCase(TestCase):
 
     def setUp(self):
         self.temp_media = tempfile.mkdtemp(prefix="repo-test-media-")
-        self._override = override_settings(MEDIA_ROOT=self.temp_media)
+        # REPO_WORKSPACES_ONLY is pinned to the LIBRARY default, not inherited.
+        # These suites version a plain vault directory, which is what toto.repo
+        # allows on its own; a HOST may narrow that to workspace folders (zenobia
+        # does), and inheriting that policy here would make the library's tests
+        # fail on one consumer's configuration rather than on its own behaviour.
+        # The host's policy is asserted by the host, in zenobia.tests.
+        self._override = override_settings(
+            MEDIA_ROOT=self.temp_media, REPO_WORKSPACES_ONLY=False)
         self._override.enable()
         self.addCleanup(self._override.disable)
         self.addCleanup(shutil.rmtree, self.temp_media, True)

@@ -4,6 +4,8 @@ checked-out content changed)``. Views stay thin JSON adapters over these."""
 
 from __future__ import annotations
 
+from django.conf import settings
+from django.core.exceptions import ObjectDoesNotExist
 from django.db import transaction
 from django.utils.translation import gettext as _
 
@@ -17,9 +19,32 @@ class RepoError(Exception):
     """User-facing error (400-class)."""
 
 
+def is_workspace_root(directory: VaultDirectory) -> bool:
+    """Is this directory the root of an ambrosia workspace?
+
+    ``Workspace.root_directory`` is a OneToOne with ``related_name``
+    ``ambrosia_workspace``, so the reverse accessor exists only where
+    ``toto.ambrosia`` is installed — hence the AttributeError arm, which is the
+    "no labs on this host" answer rather than an error.
+    """
+    try:
+        return directory.ambrosia_workspace is not None
+    except (AttributeError, ObjectDoesNotExist):
+        return False
+
+
 def create_repo(directory: VaultDirectory, user, default_branch: str = "") -> GitRepo:
     """The fast, synchronous part of init: nesting guard + the GitRepo row.
     The worktree materialization runs asynchronously via run_init (a GitRun)."""
+    # ``REPO_WORKSPACES_ONLY`` is a HOST policy and defaults to off, which keeps
+    # the library's existing behaviour — any vault directory may be versioned.
+    # A host that offers version control as part of its labs rather than as a
+    # vault-wide feature turns it on, and then a repository can only be the
+    # thing a workspace already is: one folder, one owner, one project.
+    if getattr(settings, "REPO_WORKSPACES_ONLY", False) and not is_workspace_root(directory):
+        raise RepoError(
+            _("version control is available on workspace folders only — open "
+              "the workspace and use its Git menu"))
     conflict = sync.nesting_conflict(directory)
     if conflict:
         raise RepoError(
