@@ -55,7 +55,7 @@ class GearError(Exception):
 class GearManager:
     def __init__(self, *, staging_root: str = DEFAULT_STAGING_ROOT,
                  slice_driver=None, docker=None, generation: str = "",
-                 kernel_network: str = ""):
+                 kernel_network: str = "", egress_network: str = ""):
         self.staging_root = staging_root
         self.slices = slice_driver if slice_driver is not None else slices.detect_driver()
         self.docker = docker if docker is not None else containers.DockerClient()
@@ -64,6 +64,12 @@ class GearManager:
         #: row can know it needs re-adopting after a manager restart.
         self.generation = generation or uuid_module.uuid4().hex[:16]
         self.kernel_network = kernel_network
+        #: The one network that reaches off this machine, for the install
+        #: family only. Empty where the operator has not configured one, and
+        #: that must mean "no network" rather than "fall back to something
+        #: else": an install that quietly ran without egress would report a
+        #: baffling pip error instead of the real problem.
+        self.egress_network = egress_network
 
     # -- paths -------------------------------------------------------------
 
@@ -194,7 +200,16 @@ class GearManager:
         if warm:
             labels[containers.LABEL_WARM] = "1"
 
-        network = self.kernel_network if fam.needs_internal_network else None
+        # Three postures, in the order of how much they permit. Assembled here
+        # from the family's own declaration — never from anything the caller
+        # sent, which is why `build_run_args` takes a network rather than
+        # deciding one.
+        if fam.needs_egress:
+            network = self.egress_network or None
+        elif fam.needs_internal_network:
+            network = self.kernel_network or None
+        else:
+            network = None
         try:
             parent = self.slices.cgroup_parent(gear)
         except Exception:  # noqa: BLE001

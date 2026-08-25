@@ -103,12 +103,28 @@ def _start_python_runtime(params: dict) -> list:
     ]
 
 
+def _install_python_packages(params: dict) -> list:
+    # No package names here, and that is the point. The runner reads
+    # /in/requirements.txt and hands it to pip with `-r`, so nothing the user
+    # typed ever appears in an argv — the same shape render_pdf uses for its
+    # HTML. `upgrade` is the only dial, and it is a bool.
+    argv = ["anastasia-install-python"]
+    if params.get("upgrade"):
+        argv.append("--upgrade")
+    return argv
+
+
 _BUILDERS = {
     "render_pdf": _render_pdf,
     "compile_latex": _compile_latex,
     "run_media_command": _run_media_command,
     "run_ocr": _run_ocr,
     "start_python_runtime": _start_python_runtime,
+    # Same runner program, same argv: the difference between a connected and a
+    # closed runtime is the container's network, which the family declares and
+    # the manager assembles. The program itself neither knows nor needs to.
+    "start_python_runtime_connected": _start_python_runtime,
+    "install_python_packages": _install_python_packages,
 }
 
 

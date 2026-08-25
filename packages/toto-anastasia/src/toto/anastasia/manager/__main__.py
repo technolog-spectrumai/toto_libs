@@ -46,6 +46,7 @@ def main() -> int:
         staging_root=os.environ.get("ANASTASIA_STAGING_ROOT",
                                     gears.DEFAULT_STAGING_ROOT),
         kernel_network=os.environ.get("ANASTASIA_KERNEL_NETWORK", ""),
+        egress_network=os.environ.get("ANASTASIA_EGRESS_NETWORK", ""),
     )
     os.makedirs(manager.staging_root, exist_ok=True)
 
