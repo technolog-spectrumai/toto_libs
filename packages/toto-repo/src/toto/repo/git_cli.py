@@ -43,6 +43,53 @@ class GitResult:
     stderr: str
 
 
+#: Config forced onto EVERY invocation, via ``-c`` rather than a config file so
+#: nothing that reaches the worktree can edit it.
+#:
+#: ``protocol.ext.allow=never`` is the important one. Git's ``ext::`` transport
+#: runs the rest of the URL **as a shell command**, so a stored remote URL is
+#: otherwise a remote-code-execution primitive. ``remote_urls`` refuses to store
+#: such a URL; this refuses to act on one that reached ``.git/config`` by some
+#: other road — a repository imported with a config already in it, or a URL
+#: written before this rule existed.
+#:
+#: ``core.hooksPath=/dev/null`` is the same argument for a different mechanism:
+#: hooks are not versioned, so nothing should ever have put one here, but a
+#: worktree is a directory on disk and "exclude arbitrary execution" should not
+#: rest on that being true.
+#:
+#: ``core.symlinks=false`` makes git materialise a symlink as a plain file
+#: holding its target path. Without it, a repository fetched from a remote can
+#: contain ``notes -> /etc/passwd``; ``sync.import_worktree`` walks the tree with
+#: ``os.walk`` and opens what it finds, which follows the link and files the
+#: target's bytes as a vault file.
+#: ``protocol.file.allow`` is deliberately NOT set here. It was, and it broke
+#: the pull-conflict test, which stands up an origin as a local directory rather
+#: than running a server — a sensible, cheap way to exercise the real ``pull``.
+#: Unlike ``ext::``, the file transport is not code execution, and
+#: ``remote_urls`` already refuses ``file://`` and bare paths at the storage
+#: door, so blocking it here bought very little and cost a good test.
+HARDENING = (
+    "protocol.ext.allow=never",
+    "core.hooksPath=/dev/null",
+    "core.symlinks=false",
+)
+
+
+def refuse_option_like(value: str, what: str) -> str:
+    """Refuse a value git would read as an option, and return it otherwise.
+
+    For the arguments that cannot take a ``--`` terminator. ``git checkout``
+    reads ``--`` as "pathspecs follow", so ``checkout -- <branch>`` asks for a
+    *file* named like the branch; the terminator has to come after, which leaves
+    the branch itself in option position. Same for the revisions handed to
+    ``read-tree`` and ``show``, which arrive straight off a URL.
+    """
+    if value.startswith("-"):
+        raise GitError(f"{what} may not begin with “-”")
+    return value
+
+
 def run_git(
     args: list[str],
     cwd: Path,
@@ -57,8 +104,11 @@ def run_git(
     }
     if extra_env:
         env.update(extra_env)
+    hardened: list[str] = []
+    for setting in HARDENING:
+        hardened += ["-c", setting]
     proc = subprocess.run(
-        ["git", *args],
+        ["git", *hardened, *args],
         cwd=str(cwd),
         env=env,
         capture_output=True,
@@ -155,7 +205,11 @@ def branch_delete(worktree: Path, name: str) -> None:
 
 
 def checkout(worktree: Path, branch: str) -> None:
-    run_git(["checkout", branch, "--"], cwd=worktree)
+    # No `--` can protect this one: for checkout it means "pathspecs follow",
+    # so `checkout -- <branch>` asks for a FILE by that name. The terminator
+    # has to come after, which leaves the branch in option position.
+    run_git(["checkout", refuse_option_like(branch, "a branch name"), "--"],
+            cwd=worktree)
 
 
 #: Above this, a conflicted file offers ours/theirs only — shipping megabytes
@@ -259,7 +313,8 @@ def restore_to(worktree: Path, sha: str, user) -> str:
     ``reset --hard``: that discards the later commits themselves, breaks any
     remote that already has them, and turns "undo" into "lose".
     """
-    run_git(["read-tree", "-u", "--reset", sha], cwd=worktree)
+    run_git(["read-tree", "-u", "--reset",
+             refuse_option_like(sha, "a commit")], cwd=worktree)
     status = run_git(["status", "--porcelain=v1"], cwd=worktree).stdout.strip()
     if not status:
         raise GitError("already at that state — nothing to restore")
@@ -315,6 +370,7 @@ def refs(worktree: Path) -> dict:
 
 def show_commit(worktree: Path, sha: str) -> dict:
     fmt = FS.join(["%H", "%an", "%aI", "%B"])
+    sha = refuse_option_like(sha, "a commit")
     meta = run_git(
         ["show", "--no-patch", f"--pretty=format:{fmt}", sha], cwd=worktree
     ).stdout
