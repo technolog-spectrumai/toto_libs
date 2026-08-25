@@ -1,10 +1,12 @@
 """The credential provider — the one thing this app offers toto.repo.
 
-Skipped where toto.repo is absent, which is the shape zenobia deploys: the
-provider has nothing to register with there, and that must be silence rather
-than a failure. Everything below therefore runs only on a host that installs
-both halves — no host in this monorepo does today, and the seam is tested
-anyway, because a seam nobody exercises is a seam that has already rotted.
+Skipped where toto.repo is absent: the provider has nothing to register with
+there, and that must be silence rather than a failure. Everything below
+therefore runs only on a host that installs BOTH halves — which zenobia now
+does, since it took local git for its Python and LaTeX workspaces. Until then no
+host did, and these were written unrun on the principle that a seam nobody
+exercises is a seam that has already rotted; they passed first time when a host
+finally installed both.
 """
 
 from unittest import mock
