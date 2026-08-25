@@ -77,6 +77,21 @@ class ComputeLease(models.Model):
     scratch_mb = models.PositiveIntegerField()
     pids = models.PositiveIntegerField()
 
+    #: Whether workspaces running in this Gear keep a persistent HOME.
+    #:
+    #: Asked when the Gear is RESERVED rather than when something is
+    #: hibernated, because it changes what a runtime does from its first start:
+    #: HOME moves off the throwaway tmpfs into the collected output area. A
+    #: choice made later could not recover what the earlier kernels threw away.
+    #:
+    #: Off means hibernation keeps a manifest — packages, files, settings,
+    #: position. On means it also keeps everything under $HOME: shell history,
+    #: tool configuration, an interactive `pip --user` install.
+    permanent_home = models.BooleanField(
+        default=False,
+        help_text="Keep each workspace's home directory between sessions "
+                  "(shell history, tool configuration, interactive installs).")
+
     #: How many runners of each family to keep alive inside this Gear
     #: ({"python": 1}). Warmth is legitimate here and only here: the capacity
     #: is already reserved and already deducted, so a warm runner costs the

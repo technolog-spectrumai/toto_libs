@@ -268,6 +268,29 @@ def start_runtime(*, lease: ComputeLease, operation: str,
         time.sleep(poll_seconds)
 
 
+def collect_runtime(execution) -> dict:
+    """What a LIVE runtime has written to its output area, as ``{name: bytes}``.
+
+    ``/out`` is a bind mount rather than a copy taken at exit, which is what
+    lets the manager read ``connection.json`` while the container is still up.
+    The same property is what makes a persistent home possible: a kernel writes
+    into ``/out/home`` as it runs, and this reads it back **before** the runtime
+    is stopped — after ``stop_runtime`` the staging directory is gone.
+
+    Never raises. A runtime that cannot be collected from has nothing to keep,
+    and refusing to hibernate over it would strand the workspace.
+    """
+    backend = get_backend()
+    try:
+        outputs = files_from(backend.collect(execution))
+    except Exception:  # noqa: BLE001 - collection is best-effort by design
+        log.warning("anastasia: could not collect from live runtime %s",
+                    execution.uuid, exc_info=True)
+        return {}
+    outputs.pop("report.json", None)
+    return outputs
+
+
 def stop_runtime(execution, *, reason: str = "") -> None:
     """Destroy a runtime and its scratch. Idempotent.
 

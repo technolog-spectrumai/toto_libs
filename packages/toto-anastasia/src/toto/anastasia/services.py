@@ -125,7 +125,7 @@ def record(*, lease, kind, accepted=True, code="", actor=None,
 # --------------------------------------------------------------------------- #
 
 def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
-            actor=None) -> ComputeLease:
+            actor=None, permanent_home: bool = False) -> ComputeLease:
     """Book capacity for a user, or refuse and say what is short.
 
     The whole function runs inside one transaction that begins by locking the
@@ -175,7 +175,8 @@ def reserve(*, owner, name: str, limits: Limits, days: int | None = None,
         lease = ComputeLease.objects.create(
             owner=owner, name=name, expires_at=expires_at,
             cpu_millicores=limits.cpu_millicores, ram_mb=limits.ram_mb,
-            scratch_mb=limits.scratch_mb, pids=limits.pids)
+            scratch_mb=limits.scratch_mb, pids=limits.pids,
+            permanent_home=bool(permanent_home))
         GearRuntime.objects.create(lease=lease)
         record(lease=lease, kind=GearEvent.RESERVE, actor=actor or owner,
                to_state=choices.UNMOUNTED, **limits.as_dict())

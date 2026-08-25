@@ -97,10 +97,13 @@ def _start_python_runtime(params: dict) -> list:
     # /out/connection.json, and stays up until the Gear is unmounted or the
     # idle deadline passes. Dracena owns everything the user calls a session;
     # this is only the runtime under it.
-    return [
+    argv = [
         "anastasia-python-runtime",
         "--idle-seconds", params["idle_seconds"],
     ]
+    if params.get("persistent_home"):
+        argv.append("--persistent-home")
+    return argv
 
 
 def _install_python_packages(params: dict) -> list:

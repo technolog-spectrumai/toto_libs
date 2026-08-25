@@ -390,6 +390,16 @@ START_PYTHON_RUNTIME = Operation(
         # Bounded here; the host's own dial (dracena.kernel_idle) narrows it
         # further, and a warm Gear keeps it alive across that boundary.
         Param("idle_seconds", "int", default=3600, minimum=60, maximum=604800),
+        # Whether HOME lives in the OUTPUT area instead of scratch. Scratch is
+        # a per-execution tmpfs, so anything a tool writes to $HOME — .ipython
+        # history, .jupyter config, a `pip --user` install — dies with the
+        # container. /out is a bind mount the caller collects, so the same
+        # writes survive and can be staged back on the next start.
+        #
+        # An ordinary typed parameter, not a container flag: it changes one
+        # environment variable inside the runner and nothing about how the
+        # container is built.
+        Param("persistent_home", "bool", default=False),
     ),
     # A runtime is not a job: the "timeout" is how long START may take, not how
     # long the kernel lives.
@@ -405,6 +415,16 @@ START_PYTHON_RUNTIME_CONNECTED = Operation(
     label="Start a Python runtime (connected)",
     params=(
         Param("idle_seconds", "int", default=3600, minimum=60, maximum=604800),
+        # Whether HOME lives in the OUTPUT area instead of scratch. Scratch is
+        # a per-execution tmpfs, so anything a tool writes to $HOME — .ipython
+        # history, .jupyter config, a `pip --user` install — dies with the
+        # container. /out is a bind mount the caller collects, so the same
+        # writes survive and can be staged back on the next start.
+        #
+        # An ordinary typed parameter, not a container flag: it changes one
+        # environment variable inside the runner and nothing about how the
+        # container is built.
+        Param("persistent_home", "bool", default=False),
     ),
     default_timeout=120, max_timeout=300,
     outputs=("connection.json",),
