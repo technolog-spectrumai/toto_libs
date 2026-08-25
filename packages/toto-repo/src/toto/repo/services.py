@@ -9,7 +9,7 @@ from django.utils.translation import gettext as _
 
 from toto.vault.models import VaultDirectory
 
-from . import git_cli, remotes, sync
+from . import git_cli, remote_urls, remotes, sync
 from .models import GitRepo
 
 
@@ -198,12 +198,13 @@ def connect_remote(repo: GitRepo, user, url: str = "") -> dict:
     difference matters — connecting a remote should never move anyone's commits
     on its own.
     """
-    url = (url or "").strip()
-    if not url:
-        raise RepoError(_("a remote URL is required"))
-    if not (url.startswith(("http://", "https://", "git://", "ssh://"))
-            or "@" in url):
-        raise RepoError(_("that does not look like a git remote URL"))
+    # The old rule here accepted any string CONTAINING an "@", to admit the scp
+    # form — which also admitted `ext::sh -c '…' @`, a shell command git runs on
+    # the next fetch. See remote_urls for the full account.
+    try:
+        url = remote_urls.validate_remote_url(url)
+    except remote_urls.InvalidRemoteURL as exc:
+        raise RepoError(str(exc)) from None
     repo.remote_url = url
     repo.save(update_fields=["remote_url"])
     with sync.repo_lock(repo):
