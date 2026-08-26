@@ -356,11 +356,27 @@ class WalletPickerTests(FaucetTestCase):
         self.assertEqual(row["person"], "")
         self.assertContains(response, "No person associated")
 
+    def _orphan(self, wallet):
+        """Put a wallet in the state `LedgerAccount.user`'s SET_NULL produces.
+
+        Set directly rather than by deleting the User. Deleting one cascades
+        through EVERY model with a FK to auth.User — including test-only models
+        other suites register, whose tables do not exist in this database — so
+        `user.delete()` passes when this module runs alone and raises
+        "no such table: quota_sampleusageevent" when it runs beside the suite
+        that defines it. The claim here is about a wallet with no holder, not
+        about Django's cascade.
+        """
+        from toto.assets.models import LedgerAccount
+
+        LedgerAccount.objects.filter(pk=wallet.pk).update(user=None)
+        wallet.refresh_from_db()
+        return wallet
+
     def test_an_orphaned_wallet_is_not_offered(self):
-        """Deleting a User leaves the wallet behind (SET_NULL). It can pay
-        nobody, so offering it would be offering a row that cannot be added."""
-        self.bob.delete()
-        self.bob_wallet.refresh_from_db()
+        """A wallet whose holder is gone can pay nobody, so offering it would
+        be offering a row that cannot be added."""
+        self._orphan(self.bob_wallet)
         self.assertIsNone(self.bob_wallet.user_id)
         codes = [r["code"] for r in self._wallets().context["wallets"]]
         self.assertNotIn(self.bob_wallet.code, codes)
@@ -423,8 +439,7 @@ class WalletPickerTests(FaucetTestCase):
 
     def test_an_orphaned_wallet_cannot_be_attached_by_hand(self):
         """The list does not offer it; a hand-made POST must not either."""
-        self.bob.delete()
-        self.bob_wallet.refresh_from_db()
+        self._orphan(self.bob_wallet)
         self._add(self.bob_wallet.pk)
         self.assertFalse(FaucetMember.objects.filter(faucet=self.faucet).exists())
 
