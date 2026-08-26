@@ -659,3 +659,48 @@ def rendition(request, file_pk):
     response["Content-Disposition"] = f'inline; filename="{vault_file.title}"'
     return response
 
+
+
+@login_required
+@require_POST
+def create_from_html(request, file_pk):
+    """Make a Cyprian document from an HTML page in the vault, and open it.
+
+    The write half of the viewer's "convert this page" offer. It lives here
+    rather than in `toto.htmlview` because that app guarantees it has nowhere to
+    write, and an endpoint that creates a file would have ended the guarantee —
+    see `from_html`'s module docstring.
+
+    It does NOT touch the page it was called on. The HTML file keeps its bytes
+    and its file_type, stays in the viewer's listing, and stays readable; the
+    document is a new file beside it.
+
+    Idempotent through `bridge.open_document`, which adopts a same-named
+    document already in the target folder rather than making a second one — so
+    converting twice returns to the same file instead of forking the work.
+    """
+    from toto.vault.access import may_read
+    from toto.vault.models import VaultFile
+
+    from . import from_html
+
+    vault_file = get_object_or_404(VaultFile, pk=file_pk)
+    # The owner only: converting reads every byte of the page and writes them
+    # into a file the actor will own, which is more than `may_read` grants.
+    if vault_file.owner_id != request.user.pk or not may_read(request.user, vault_file):
+        raise Http404
+    if vault_file.file_type != "html":
+        raise Http404
+
+    try:
+        with vault_file.file.open("rb") as handle:
+            html = handle.read().decode("utf-8", "replace")
+    except (OSError, ValueError):
+        raise Http404
+
+    document = from_html.convert(vault_file, html, user=request.user)
+    messages.success(request, _(
+        "“%(title)s” was created from this page. The HTML file is untouched — "
+        "editing the document does not change it."
+    ) % {"title": document.title})
+    return redirect("cyprian:edit", file_pk=document.pk)
