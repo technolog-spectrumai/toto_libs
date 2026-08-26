@@ -24,11 +24,22 @@ EDITABLE_FILE_TYPES = {
     # they are XML text like everything else here. Adding decks but not
     # documents left the desktop app able to open half of what it can edit.
     "document",
-    # "sheet" is deliberately ABSENT. A primula workbook is JSON and would work
-    # fine byte-wise, but primula keeps its own SheetVersion history and grows
-    # it in its save view — a raw PUT here writes the bytes and that history
-    # silently stops advancing. Sheets need a door that goes through primula,
-    # not this one.
+    # "sheet" is ABSENT, but NOT for the reason this comment used to give.
+    #
+    # It said primula keeps its own SheetVersion history that a raw PUT would
+    # leave behind. That has been wrong since primula's migration 0003 deleted
+    # SheetVersion, and doubly wrong since 8/2026: primula's editor came back
+    # writing `toto.vault.versions`, which is the same history the PUT below
+    # snapshots into. Byte-wise and history-wise a workbook would be fine here.
+    #
+    # What is genuinely unsettled is the PLAN. The three rich editors are
+    # Professional entitlements enforced by `app_name` in the subscription gate,
+    # and this endpoint lives under `vault`, which is free=True so that nobody
+    # is ever locked away from their own files. Decks and documents are already
+    # in this set and so already carry that gap; adding sheets would widen it
+    # rather than create it. Deciding it means answering whether the desktop
+    # client's saves are entitled and metered like the browser's, which is a
+    # product question and not a line in a set literal.
 }
 # Refuse to load very large files into the editor.
 MAX_EDIT_BYTES = 2 * 1024 * 1024  # 2 MB
