@@ -1245,3 +1245,38 @@ class FaucetPayout(models.Model):
 
     def __str__(self):
         return f"{self.member_id} / {self.period_label} — {self.status}"
+
+
+class FaucetRun(models.Model):
+    """One execution of the hourly sweep, recorded so it can be audited.
+
+    A row per EXECUTION, not per hour — ``period_label`` is indexed and
+    deliberately not unique. A beat that fires twice, or an operator re-running
+    an hour by hand, produces a second row, and that row reads
+    ``paid=0 skipped=N``: visible proof that the idempotency held rather than
+    silence that could equally mean nothing ran.
+
+    The counts are what the run DID, not what it found. ``skipped`` is the
+    interesting one — it is how many members were already accounted for in this
+    hour, which on a retry should be everybody.
+    """
+
+    period_label = models.CharField(max_length=40, db_index=True)
+    started_at = models.DateTimeField(auto_now_add=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+    paid = models.PositiveIntegerField(default=0)
+    skipped = models.PositiveIntegerField(default=0)
+    failed = models.PositiveIntegerField(default=0)
+    #: Every failure's reason, one per line. Kept on the run as well as on the
+    #: payout because an operator reading "3 failed" needs to know whether that
+    #: is one dry reserve or three unrelated problems, without opening three
+    #: rows.
+    detail = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-started_at", "-id"]
+        indexes = [models.Index(fields=["period_label", "-started_at"])]
+
+    def __str__(self):
+        return (f"{self.period_label}: {self.paid} paid, {self.skipped} skipped, "
+                f"{self.failed} failed")

@@ -964,7 +964,7 @@ def faucet_list(request):
     an ordinary user is owed here: they can see their own arrangement and its
     history, and change nothing.
     """
-    from .models import Faucet, FaucetMember, FaucetPayout
+    from .models import Faucet, FaucetMember, FaucetPayout, FaucetRun
 
     is_staff = request.user.is_staff
     if is_staff:
@@ -988,6 +988,10 @@ def faucet_list(request):
         "my_memberships": mine,
         "my_payouts": my_payouts,
         "can_manage": is_staff,
+        # Staff only: what the hourly sweep actually did, per execution. A retry
+        # shows as its own row reading "0 paid, N skipped", which is how an
+        # operator sees the idempotency held rather than guessing from silence.
+        "runs": FaucetRun.objects.all()[:24] if is_staff else None,
         "assets": Asset.objects.filter(active=True, is_mirror=False),
     })
 

@@ -126,6 +126,44 @@ it hides is also refused by the view behind it.
           <i class="fa-solid fa-plus mr-1"></i>{% trans "New faucet" %}</button>
       </form>
 
+      {% if runs %}
+        <details :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                 class="rounded-lg border px-4 py-3">
+          <summary class="cursor-pointer text-sm font-semibold">
+            {% trans "Recent hourly runs" %}</summary>
+          {% comment %}One row per EXECUTION, not per hour. A retry appears as
+          its own row reading "0 paid, N skipped" — which is how the idempotency
+          shows itself. Silence could equally mean nothing ran.{% endcomment %}
+          <table class="mt-3 w-full text-sm">
+            <thead class="text-xs uppercase tracking-wide opacity-60">
+              <tr>
+                <th class="py-1 text-left">{% trans "Hour" %}</th>
+                <th class="py-1 text-left">{% trans "Ran" %}</th>
+                <th class="py-1 text-right">{% trans "Paid" %}</th>
+                <th class="py-1 text-right">{% trans "Already done" %}</th>
+                <th class="py-1 text-right">{% trans "Failed" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for run in runs %}
+                <tr class="border-t border-current/10">
+                  <td class="py-1 font-mono text-xs">{{ run.period_label }}</td>
+                  <td class="py-1 text-xs opacity-70">{{ run.started_at|date:"Y-m-d H:i" }}</td>
+                  <td class="py-1 text-right">{{ run.paid }}</td>
+                  <td class="py-1 text-right opacity-70">{{ run.skipped }}</td>
+                  <td class="py-1 text-right {% if run.failed %}text-warn-light font-semibold{% else %}opacity-70{% endif %}">
+                    {{ run.failed }}</td>
+                </tr>
+                {% if run.detail %}
+                  <tr><td colspan="5" class="pb-2 text-xs opacity-60">
+                    <pre class="whitespace-pre-wrap">{{ run.detail }}</pre></td></tr>
+                {% endif %}
+              {% endfor %}
+            </tbody>
+          </table>
+        </details>
+      {% endif %}
+
       {% for faucet in faucets %}
         <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                  class="space-y-3 rounded-lg border p-4">

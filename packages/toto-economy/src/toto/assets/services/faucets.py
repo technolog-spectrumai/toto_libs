@@ -91,10 +91,21 @@ def due_members(faucet=None):
     return members
 
 
-def run_hour(*, at=None, faucet=None) -> RunReport:
-    """Pay every due member for one hour. Idempotent for that hour."""
+def run_hour(*, at=None, faucet=None, record=True) -> RunReport:
+    """Pay every due member for one hour. Idempotent for that hour.
+
+    Writes a :class:`~toto.assets.models.FaucetRun` per EXECUTION unless
+    ``record=False``. A retry therefore leaves a second row reading
+    ``paid=0 skipped=N`` — visible proof the idempotency held, which silence
+    could not give.
+    """
+    from django.utils import timezone as dj_timezone
+
+    from toto.assets.models import FaucetRun
+
     label = period_label(at)
     report = RunReport(label=label)
+    run = FaucetRun.objects.create(period_label=label) if record else None
 
     for member in due_members(faucet):
         outcome = pay_member(member, label)
@@ -105,6 +116,15 @@ def run_hour(*, at=None, faucet=None) -> RunReport:
         else:
             report.failed += 1
             report.failures.append(outcome)
+
+    if run is not None:
+        run.paid = report.paid
+        run.skipped = report.skipped
+        run.failed = report.failed
+        run.detail = "\n".join(report.failures)[:20000]
+        run.finished_at = dj_timezone.now()
+        run.save(update_fields=["paid", "skipped", "failed", "detail",
+                                "finished_at"])
     return report
 
 
