@@ -79,18 +79,11 @@ def run_daily_levy(day=None) -> list[LevySummary]:
         logger.info("tax: %s %s — %s", summary.metric_code, summary.day,
                     summary.skipped_reason or summary.counts)
 
-    # The other direction, on the same clock. Isolated so neither half can take
-    # the other down, and OFF by default: collecting is safe to switch on by
-    # deploy, paying is not.
-    if getattr(settings, "STIPEND_PAYOUT", False):
-        try:
-            from . import payroll
-
-            logger.info("tax: payroll — %s", payroll.run_payroll())
-        except Exception as exc:  # noqa: BLE001
-            if _is_soft_time_limit(exc):
-                raise
-            logger.exception("tax: payroll failed; the levy run is unaffected")
+    # There used to be a second half here, on the same clock: the payroll, which
+    # paid the platform's offices out of what the levy collected. It went with
+    # Stations in 8/2026 — an office was a `socialhub.Station`, so there was
+    # nothing left to pay. Recurring outbound payment is a Faucet now, on its
+    # own hourly beat rather than riding this one.
     return summaries
 
 
