@@ -26,6 +26,27 @@
     {% endif %}
     <form method="post" class="space-y-4">
       {% csrf_token %}
+      {% comment %}The summary is at the TOP because the failure this form is
+      most likely to have is on a field nobody touched — a charged asset that
+      has been retired, or a platform with no currencies at all. The per-field
+      message below is easy to scroll past, and scrolling past it looks exactly
+      like a save that quietly did nothing.{% endcomment %}
+      {% if form.errors %}
+        <div class="rounded-lg border border-warn-light/60 bg-warn-light/10 p-3 text-sm">
+          <p class="font-semibold">
+            <i class="fa-solid fa-triangle-exclamation mr-1"></i>
+            {% trans "This was not saved." %}
+          </p>
+          <ul class="mt-1 list-disc space-y-0.5 pl-5">
+            {% for error in form.non_field_errors %}<li>{{ error }}</li>{% endfor %}
+            {% for field in form %}
+              {% for error in field.errors %}
+                <li><strong>{{ field.label }}</strong>: {{ error }}</li>
+              {% endfor %}
+            {% endfor %}
+          </ul>
+        </div>
+      {% endif %}
       {% for field in form %}
         <div>
           <label for="{{ field.id_for_label }}" class="mb-1 block text-sm font-semibold">

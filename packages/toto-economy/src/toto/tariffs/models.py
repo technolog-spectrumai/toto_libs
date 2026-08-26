@@ -258,8 +258,16 @@ class TariffItem(models.Model):
             raise ValidationError({"price_per_unit_base_units": _("Price must be >= 0.")})
         if self.unit_quantity is not None and self.unit_quantity <= 0:
             raise ValidationError({"unit_quantity": _("Unit quantity must be > 0.")})
-        if self.charged_asset_id and not self.charged_asset.active:
-            raise ValidationError({"charged_asset": _("Charged asset must be active.")})
+        # Only an ACTIVE item must charge in an active currency. An inactive
+        # one bills nothing, so a retired currency behind it harms nobody —
+        # and refusing it outright meant an item could not be edited at all
+        # once its asset was retired, including to correct the price or to
+        # switch it to a live currency. The rule that matters is "nothing is
+        # billed in a dead currency", and this is that rule.
+        if self.active and self.charged_asset_id and not self.charged_asset.active:
+            raise ValidationError({"charged_asset": _(
+                "An active item must be priced in an active currency. Either "
+                "choose a live one, or deactivate this item.")})
         if self.receiving_account_id and not self.receiving_account.active:
             raise ValidationError({"receiving_account": _("Receiving account must be active.")})
 

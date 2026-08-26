@@ -3,6 +3,7 @@ from __future__ import annotations
 from decimal import Decimal, InvalidOperation
 
 from django import forms
+from django.db.models import Q
 from django.utils.translation import gettext_lazy as _
 
 from toto.assets.models import Asset, LedgerAccount, to_base_units
@@ -60,7 +61,20 @@ class TariffItemForm(forms.ModelForm):
         super().__init__(*args, **kwargs)
         self.tariff = tariff
         self.fields["metric"].queryset = BillingMetric.objects.filter(active=True)
-        self.fields["charged_asset"].queryset = Asset.objects.filter(active=True)
+        # The asset this item ALREADY charges in stays selectable even if it has
+        # since been deactivated, and that is what makes editing a price work.
+        #
+        # Narrowing this to `active=True` alone meant the bound value of an item
+        # priced in a retired currency was "not one of the available choices" —
+        # so saving failed on a field nobody had touched, the view re-rendered
+        # at HTTP 200, and the price the person typed simply did not persist.
+        # From the outside that is indistinguishable from a save that silently
+        # does nothing, which is exactly how it was reported.
+        assets = Asset.objects.filter(active=True)
+        if self.instance.pk and self.instance.charged_asset_id:
+            assets = Asset.objects.filter(
+                Q(active=True) | Q(pk=self.instance.charged_asset_id))
+        self.fields["charged_asset"].queryset = assets
         # A new item starts in the tariff's currency; overriding it here is the
         # per-metric choice.
         if tariff is not None and not self.instance.pk and not self.initial.get("charged_asset"):
@@ -73,6 +87,17 @@ class TariffItemForm(forms.ModelForm):
     def clean(self):
         cleaned = super().clean()
         asset = cleaned.get("charged_asset")
+
+        # The state a fresh platform is in until somebody engraves a currency:
+        # this dropdown has NO options, so every submit fails on it and no price
+        # can ever be saved. "Select a valid choice" against an empty select is
+        # a true statement about the wrong problem.
+        if not self.fields["charged_asset"].queryset.exists():
+            raise forms.ValidationError(_(
+                "There are no currencies on this platform yet, so there is "
+                "nothing to price this in. Create one under Assets first — a "
+                "price without a currency is not a price."))
+
         price = cleaned.get("price_per_unit_display")
         metric = cleaned.get("metric")
 
@@ -97,7 +122,14 @@ class TariffItemForm(forms.ModelForm):
 
     def save(self, commit=True):
         instance = super().save(commit=False)
-        instance.price_per_unit_base_units = self.cleaned_data["price_per_unit_base_units"]
+        # `.get`, not `[...]`: clean() sets this key only when BOTH an asset and
+        # a price survived validation, so subscripting it raised KeyError on the
+        # paths where it did not. `TariffItem.save()` derives the same number
+        # from the display price anyway — this only carries clean()'s answer
+        # forward when it has one.
+        derived = self.cleaned_data.get("price_per_unit_base_units")
+        if derived is not None:
+            instance.price_per_unit_base_units = derived
         if self.tariff and not instance.tariff_id:
             instance.tariff = self.tariff
         if commit:
