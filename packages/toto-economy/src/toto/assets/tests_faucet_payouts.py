@@ -18,6 +18,7 @@ from decimal import Decimal
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
+from django.urls import reverse
 from django.utils import timezone
 
 from toto.assets.models import (Asset, Faucet, FaucetMember, FaucetPayout,
@@ -422,3 +423,95 @@ class CrashRecoveryTests(PayoutTestCase):
         payout = FaucetPayout.objects.get()
         self.assertEqual(payout.status, FaucetPayoutStatus.FAILED)
         self.assertEqual(payout.detail, "reserve empty")
+
+
+class UnpayableRateTests(PayoutTestCase):
+    """A rate too large for the ledger to record.
+
+    `amount_per_hour` is numeric(30,18) and holds about 1e12; a payout's base
+    units are a signed 64-bit integer, so for a 9-decimal currency every rate
+    above ~9.22 billion is storable and unpayable. The obvious way to land in
+    that gap is pasting a BASE-UNIT figure into a field that wants display
+    units.
+
+    It used to take the whole sweep down: the claim INSERT raised DataError on
+    Postgres (OverflowError on sqlite), neither of which is an IntegrityError,
+    so it escaped `pay_member`, escaped `run_hour`, and every member ordered
+    after the offender went unpaid — that hour and every hour after, because the
+    condition was deterministic and the beat retried straight into it.
+    """
+
+    HUGE = "10000000000"          # ten billion MANA/hour; MANA has 9 decimals
+
+    def test_the_form_refuses_it_and_says_why(self):
+        staff = User.objects.create_user("staff", password="pw", is_staff=True)
+        self.client.force_login(staff)
+        response = self.client.post(
+            reverse("assets:faucet_member_add", args=[self.faucet.pk]),
+            {"username": "ada", "amount_per_hour": self.HUGE}, follow=True)
+        text = " ".join(str(m) for m in response.context["messages"]).lower()
+        self.assertIn("more mana an hour than the ledger can record", text)
+        self.assertFalse(FaucetMember.objects.exists())
+
+    def test_the_model_refuses_it(self):
+        from django.core.exceptions import ValidationError
+
+        member = FaucetMember(faucet=self.faucet, user=self.ada,
+                              amount_per_hour=Decimal(self.HUGE))
+        with self.assertRaises(ValidationError):
+            member.full_clean()
+
+    def test_an_ordinary_large_rate_is_still_allowed(self):
+        """The ceiling is the column's, not an opinion about generosity."""
+        member = FaucetMember(faucet=self.faucet, user=self.ada,
+                              amount_per_hour=Decimal("1000000"))
+        self.assertEqual(member.rate_problem(), "")
+
+    def test_one_unpayable_rate_does_not_stop_the_sweep(self):
+        """THE bug. Written straight to the database, bypassing both guards, so
+        this asserts the sweep survives a row however it got there."""
+        FaucetMember.objects.create(faucet=self.faucet, user=self.ada,
+                                    amount_per_hour=Decimal("2"))
+        FaucetMember.objects.create(faucet=self.faucet, user=self.bob,
+                                    amount_per_hour=Decimal(self.HUGE))
+        third = User.objects.create_user("zoe", password="pw")
+        FaucetMember.objects.create(faucet=self.faucet, user=third,
+                                    amount_per_hour=Decimal("3"))
+
+        report = faucets.run_hour()          # must not raise
+
+        self.assertEqual(report.failed, 1)
+        self.assertEqual(report.paid, 2)
+        for who in (self.ada, third):
+            with self.subTest(user=who.username):
+                self.assertEqual(
+                    FaucetPayout.objects.get(member__user=who).status,
+                    FaucetPayoutStatus.PAID)
+
+    def test_the_task_survives_it_too(self):
+        """The beat must not lose the hour."""
+        from toto.assets.tasks import run_faucet_hour
+
+        FaucetMember.objects.create(faucet=self.faucet, user=self.bob,
+                                    amount_per_hour=Decimal(self.HUGE))
+        FaucetMember.objects.create(faucet=self.faucet, user=self.ada,
+                                    amount_per_hour=Decimal("2"))
+        result = run_faucet_hour()
+        self.assertEqual(result["paid"], 1)
+        self.assertEqual(result["failed"], 1)
+
+    def test_the_run_row_is_written_even_when_a_member_blows_up(self):
+        """An audit table asserting nobody was paid while the ledger says
+        otherwise is worse than no audit table."""
+        FaucetMember.objects.create(faucet=self.faucet, user=self.ada,
+                                    amount_per_hour=Decimal("2"))
+        FaucetMember.objects.create(faucet=self.faucet, user=self.bob,
+                                    amount_per_hour=Decimal(self.HUGE))
+
+        faucets.run_hour()
+
+        run = FaucetRun.objects.get()
+        self.assertIsNotNone(run.finished_at)
+        self.assertEqual(run.paid, 1)
+        self.assertEqual(run.failed, 1)
+        self.assertIn("bob", run.detail)
