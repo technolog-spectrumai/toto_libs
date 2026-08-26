@@ -1162,10 +1162,68 @@ def faucet_toggle(request, pk):
     return redirect("assets:faucet_list")
 
 
+def faucet_wallets(request, pk):
+    """The wallets a faucet could pay, for the Add-to-faucet picker.
+
+    ONLY prepaid wallets, and that is not a filter — it is the whole set. A
+    payout resolves its destination with `get_or_create_prepaid_account(
+    member.user)` (services/faucets.py:261), so `user-prepaid-<pk>` is the only
+    account a faucet can ever pay into. Listing a reserve, a system account or a
+    person's second account would offer a choice the payment path cannot honour:
+    the row would be recorded and the money would go somewhere else.
+
+    Reads only. Creates nothing — a user whose prepaid wallet does not exist yet
+    simply is not here, which is the honest answer to "which wallets exist".
+    """
+    from .models import AssetHolding, Faucet, LedgerAccount
+    from .prepaid import PREPAID_CODE_PREFIX
+
+    refusal = _staff_or_403(request)
+    if refusal is not None:
+        return refusal
+
+    faucet = get_object_or_404(Faucet, pk=pk)
+    already = set(faucet.members.filter(active=True)
+                  .values_list("user_id", flat=True))
+
+    accounts = (LedgerAccount.objects
+                .filter(code__startswith=PREPAID_CODE_PREFIX, active=True)
+                .exclude(user__isnull=True)
+                .select_related("user", "user__community_profile")
+                .order_by("code"))
+
+    # One query for every balance on show, rather than one per row.
+    balances = {
+        holding.account_id: holding.balance_display
+        for holding in AssetHolding.objects.filter(
+            asset=faucet.asset, account__in=accounts)
+    }
+
+    rows = []
+    for account in accounts:
+        # A wallet may have a user and still have no Person: `Person.user` is a
+        # nullable OneToOne, so a User need not have one — and `LedgerAccount.
+        # user` is SET_NULL, so deleting a User orphans the wallet instead of
+        # removing it. Both states are real and both must read as themselves.
+        person = getattr(account.user, "community_profile", None)
+        rows.append({
+            "id": account.pk,
+            "code": account.code,
+            "username": account.user.get_username(),
+            "person": person.display_name if person else "",
+            "balance": balances.get(account.pk),
+            "already_member": account.user_id in already,
+        })
+
+    return assets_render(request, "assets/_faucet_wallets.html", {
+        "faucet": faucet,
+        "wallets": rows,
+        "unit": faucet.asset.unit_name,
+    })
+
+
 @require_POST
 def faucet_member_add(request, pk):
-    from django.contrib.auth import get_user_model
-
     from .models import Faucet, FaucetMember
 
     refusal = _staff_or_403(request)
@@ -1173,10 +1231,9 @@ def faucet_member_add(request, pk):
         return refusal
 
     faucet = get_object_or_404(Faucet, pk=pk)
-    username = (request.POST.get("username") or "").strip()
     raw_amount = (request.POST.get("amount_per_hour") or "").strip()
 
-    user = get_user_model().objects.filter(username=username).first()
+    user = _user_for_wallet(request.POST.get("account_id"))
     amount = None
     try:
         amount = Decimal(raw_amount)
@@ -1184,8 +1241,9 @@ def faucet_member_add(request, pk):
         pass
 
     if user is None:
-        messages.error(request, _("No account called “%(name)s”.")
-                       % {"name": username})
+        messages.error(request, _(
+            "That wallet no longer exists, or nobody holds it. Pick one from "
+            "the list."))
     elif amount is None:
         messages.error(request, _("“%(value)s” is not a number.")
                        % {"value": raw_amount})
@@ -1203,10 +1261,14 @@ def faucet_member_add(request, pk):
         # update_or_create, so adding somebody already on the faucet changes
         # their rate rather than answering "already a member" at somebody
         # trying to do the obvious thing.
-        FaucetMember.objects.update_or_create(
-            faucet=faucet, user=user,
-            defaults={"amount_per_hour": amount, "active": True,
-                      "added_by": request.user})
+        # Atomic: `update_or_create` is a read then a write, and two staff
+        # adding the same wallet at once would otherwise race the unique
+        # constraint into a 500 rather than one of them simply winning.
+        with transaction.atomic():
+            FaucetMember.objects.update_or_create(
+                faucet=faucet, user=user,
+                defaults={"amount_per_hour": amount, "active": True,
+                          "added_by": request.user})
         messages.success(
             request,
             _("%(user)s receives %(amount)s %(unit)s an hour from “%(name)s”.")
@@ -1214,6 +1276,30 @@ def faucet_member_add(request, pk):
                "unit": faucet.asset.unit_name, "name": faucet.name})
     return redirect("assets:faucet_list")
 
+
+
+
+def _user_for_wallet(raw_id):
+    """The person a wallet belongs to, or None if it cannot pay anyone.
+
+    Refuses anything that is not a live prepaid wallet with a holder, so a
+    hand-crafted POST cannot attach a reserve account — or a wallet whose owner
+    was deleted — to a faucet.
+    """
+    from .models import LedgerAccount
+    from .prepaid import PREPAID_CODE_PREFIX
+
+    try:
+        account_id = int(raw_id)
+    except (TypeError, ValueError):
+        return None
+    account = (LedgerAccount.objects
+               .filter(pk=account_id, active=True,
+                       code__startswith=PREPAID_CODE_PREFIX)
+               .exclude(user__isnull=True)
+               .select_related("user")
+               .first())
+    return account.user if account is not None else None
 
 @require_POST
 def faucet_member_remove(request, pk):

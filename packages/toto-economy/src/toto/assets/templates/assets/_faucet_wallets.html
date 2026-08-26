@@ -1,0 +1,57 @@
+{% load i18n %}
+{% comment %}
+  The wallets this faucet could pay, loaded into the picker on demand.
+
+  Every row is an EXISTING wallet. Nothing here creates a user, a wallet or a
+  person — selecting a row only records who the faucet pays.
+
+  Only prepaid wallets appear, and that is the whole set rather than a filter:
+  a payout resolves its destination from the member's user, so `user-prepaid-N`
+  is the only account a faucet can pay into. See views.faucet_wallets.
+{% endcomment %}
+{% if wallets %}
+  <ul class="max-h-80 space-y-1 overflow-y-auto">
+    {% for wallet in wallets %}
+      <li>
+        <label class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm
+                      {% if wallet.already_member %}opacity-50{% endif %}"
+               :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'">
+          <input type="radio" name="account_id" value="{{ wallet.id }}"
+                 {% if wallet.already_member %}disabled{% endif %}
+                 x-model="chosen">
+          <span class="min-w-0 flex-1">
+            {% if wallet.person %}
+              <span class="font-semibold">{{ wallet.person }}</span>
+            {% else %}
+              {% comment %}Two different ways to have no person, and neither is
+              an error: a User may simply have no Person row, and a wallet whose
+              holder was deleted is orphaned rather than removed.{% endcomment %}
+              <span class="font-semibold italic opacity-70">
+                {% trans "No person associated" %}</span>
+            {% endif %}
+            <span class="opacity-60">· {{ wallet.username }}</span>
+            <span class="block font-mono text-[0.7rem] opacity-50">{{ wallet.code }}</span>
+          </span>
+          <span class="shrink-0 text-right text-xs tabular-nums">
+            {% if wallet.balance is not None %}
+              {{ wallet.balance }} <span class="opacity-60">{{ unit }}</span>
+            {% else %}
+              <span class="opacity-50">{% trans "no holding" %}</span>
+            {% endif %}
+          </span>
+          {% if wallet.already_member %}
+            <span class="shrink-0 rounded bg-current/10 px-2 py-0.5 text-[0.65rem] uppercase">
+              {% trans "on this faucet" %}</span>
+          {% endif %}
+        </label>
+      </li>
+    {% endfor %}
+  </ul>
+{% else %}
+  <p class="rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
+    {% blocktrans trimmed %}
+      No wallets exist yet. A wallet appears here once somebody has one — this
+      list never creates them.
+    {% endblocktrans %}
+  </p>
+{% endif %}

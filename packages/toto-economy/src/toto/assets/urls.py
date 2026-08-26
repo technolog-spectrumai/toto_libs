@@ -22,6 +22,11 @@ urlpatterns = [
     path("faucets/", views.faucet_list, name="faucet_list"),
     path("faucets/new/", views.faucet_create, name="faucet_create"),
     path("faucets/<int:pk>/toggle/", views.faucet_toggle, name="faucet_toggle"),
+    # The picker's own door: a read that lists the wallets a faucet could pay,
+    # loaded into the modal on demand so the page does not carry every wallet
+    # on the host whether or not anybody opens it.
+    path("faucets/<int:pk>/wallets/", views.faucet_wallets,
+         name="faucet_wallets"),
     path("faucets/<int:pk>/members/add/", views.faucet_member_add,
          name="faucet_member_add"),
     path("faucets/members/<int:pk>/remove/", views.faucet_member_remove,

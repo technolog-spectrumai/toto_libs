@@ -30,6 +30,20 @@ from toto.core.models import Platform
 
 User = get_user_model()
 
+def wallet_id(user):
+    """A user's wallet, which is what the faucet add door takes.
+
+    These suites named a username until that door became a picker over existing
+    wallets — a typed name could refer to somebody who does not exist, or to
+    somebody else. The claims below are unchanged; only how a person is
+    identified moved.
+    """
+    from toto.assets.prepaid import get_or_create_prepaid_account
+
+    account, _ = get_or_create_prepaid_account(user)
+    return account.pk
+
+
 
 @override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
 class PayoutTestCase(TestCase):
@@ -448,7 +462,8 @@ class UnpayableRateTests(PayoutTestCase):
         self.client.force_login(staff)
         response = self.client.post(
             reverse("assets:faucet_member_add", args=[self.faucet.pk]),
-            {"username": "ada", "amount_per_hour": self.HUGE}, follow=True)
+            {"account_id": wallet_id(self.ada),
+             "amount_per_hour": self.HUGE}, follow=True)
         text = " ".join(str(m) for m in response.context["messages"]).lower()
         self.assertIn("more mana an hour than the ledger can record", text)
         self.assertFalse(FaucetMember.objects.exists())

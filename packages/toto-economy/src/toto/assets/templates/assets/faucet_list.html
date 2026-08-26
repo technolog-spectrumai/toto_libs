@@ -212,19 +212,77 @@ it hides is also refused by the view behind it.
             </tbody>
           </table>
 
-          <form method="post" action="{% url 'assets:faucet_member_add' faucet.pk %}"
-                class="flex flex-wrap items-end gap-2">
-            {% csrf_token %}
-            <input type="text" name="username" placeholder="{% trans 'username' %}"
-                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                   class="rounded-lg border px-3 py-1.5 text-sm">
-            <input type="text" name="amount_per_hour" placeholder="{% trans 'per hour' %}"
-                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
-                   class="w-28 rounded-lg border px-3 py-1.5 text-sm">
-            <button type="submit"
+          {% comment %}Adding somebody is picking an EXISTING wallet, never
+          typing a name. A typed username invites a name that does not exist, or
+          one that does and belongs to somebody else; a list can only offer what
+          is really there, and shows whose it is before you choose.{% endcomment %}
+          <div x-data="{ open: false, chosen: '', loading: false, failed: false,
+                         async load() {
+                           this.open = true; this.loading = true; this.failed = false;
+                           try {
+                             const res = await fetch('{% url 'assets:faucet_wallets' faucet.pk %}',
+                                                     {credentials: 'same-origin'});
+                             if (!res.ok) throw new Error(res.status);
+                             this.$refs.list.innerHTML = await res.text();
+                           } catch (e) { this.failed = true; }
+                           finally { this.loading = false; }
+                         } }">
+            <button type="button" @click="load()"
                     class="rounded-lg border px-3 py-1.5 text-sm font-semibold">
-              {% trans "Add or update" %}</button>
-          </form>
+              <i class="fa-solid fa-user-plus opacity-70" aria-hidden="true"></i>
+              {% trans "Add user" %}</button>
+
+            <div x-show="open" x-cloak @keydown.escape.window="open = false"
+                 class="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+              <div @click.outside="open = false"
+                   :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+                   class="w-full max-w-xl rounded-2xl p-5 shadow-xl">
+                <form method="post"
+                      action="{% url 'assets:faucet_member_add' faucet.pk %}"
+                      class="space-y-3">
+                  {% csrf_token %}
+                  <div>
+                    <h3 class="text-base font-semibold">
+                      {% blocktrans trimmed with name=faucet.name %}
+                        Add someone to “{{ name }}”
+                      {% endblocktrans %}</h3>
+                    <p class="mt-1 text-xs opacity-70">
+                      {% blocktrans trimmed with unit=faucet.asset.unit_name %}
+                        Pick an existing wallet. Nothing is created here — this
+                        only records who the faucet pays, in {{ unit }}.
+                      {% endblocktrans %}</p>
+                  </div>
+
+                  <template x-if="loading">
+                    <p class="py-6 text-center text-sm opacity-70">
+                      <i class="fa-solid fa-spinner fa-spin"></i>
+                      {% trans "Loading wallets…" %}</p>
+                  </template>
+                  <template x-if="failed">
+                    <p class="rounded-lg border border-dashed p-4 text-center text-sm">
+                      {% trans "The wallet list could not be loaded." %}
+                      <button type="button" @click="load()" class="underline">
+                        {% trans "Try again" %}</button></p>
+                  </template>
+                  <div x-ref="list" x-show="!loading && !failed"></div>
+
+                  <div class="flex flex-wrap items-center justify-end gap-2 pt-1">
+                    <input type="text" name="amount_per_hour"
+                           placeholder="{% trans 'per hour' %}"
+                           :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                           class="w-32 rounded-lg border px-3 py-1.5 text-sm">
+                    <button type="button" @click="open = false"
+                            class="rounded-lg border px-3 py-1.5 text-sm">
+                      {% trans "Cancel" %}</button>
+                    <button type="submit" :disabled="!chosen"
+                            :class="!chosen && 'opacity-40 cursor-not-allowed'"
+                            class="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+                      {% trans "Add to faucet" %}</button>
+                  </div>
+                </form>
+              </div>
+            </div>
+          </div>
         </article>
       {% empty %}
         <p class="rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
