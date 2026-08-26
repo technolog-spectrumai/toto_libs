@@ -422,18 +422,25 @@ class IngressAssetsTests(TestCase):
         self.call()
         self.call()
 
+        self.assertEqual(Asset.objects.filter(unit_name="MANA").count(), 1)
         self.assertEqual(Asset.objects.filter(unit_name="ASR").count(), 1)
         self.assertEqual(Asset.objects.filter(unit_name="TPLN").count(), 1)
-        self.assertEqual(Asset.objects.exclude(code="").count(), 2)
 
-    def test_a_base_build_has_exactly_two_assets(self):
-        # ASR is the gas, TPLN is the unit of account. Everything else is demo
-        # material and must not reach a real deployment.
+    def test_a_base_build_has_exactly_the_three_core_currencies(self):
+        # MANA settles internal payments, ASR is the gas, TPLN is the unit of
+        # account. Everything else is demo material and must not reach a real
+        # deployment.
+        #
+        # This asserted two until 8/2026, when MANA was added and the seeding
+        # moved into a shared bootstrap that EVERY ingress path runs — the
+        # currencies used to be created by this one command, so whether an
+        # install had an economy depended on which command its operator ran.
+        # See toto.assets.services.bootstrap.
         self.call()
 
         self.assertEqual(
             sorted(Asset.objects.values_list("unit_name", flat=True)),
-            ["ASR", "TPLN"],
+            ["ASR", "MANA", "TPLN"],
         )
         for asset in Asset.objects.all():
             self.assertNotEqual((asset.metadata or {}).get("kind"), "platform_token")

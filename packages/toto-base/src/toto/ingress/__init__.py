@@ -59,7 +59,42 @@ class IngressCommand(BaseCommand):
             if rich_opt is None
             else rich_opt
         )
+        self.bootstrap()
         self.process()
+
+    #: Set False on a command that must not touch the economy — a dry run, or
+    #: one that deliberately tests a bare install.
+    bootstrap_economy = True
+
+    def bootstrap(self):
+        """What EVERY ingress path guarantees, before its own work.
+
+        The currencies a platform is not itself without have to exist before
+        anything can be priced, billed, rewarded or paid out — and they were
+        seeded by exactly one command, so an operator who ran any of the other
+        thirty-odd got a working app on an economy that did not exist. That is
+        not a hypothetical: with no currencies the Assets UI answers 500 on
+        every mint and no tariff price can be saved at all.
+
+        Cheap when there is nothing to do, idempotent when there is, and never
+        fatal: `ingress_forum` must not fail because the economy could not be
+        set up. See toto.assets.services.bootstrap.
+        """
+        if not self.bootstrap_economy:
+            return
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.assets"):
+            return
+        try:
+            from toto.assets.services.bootstrap import bootstrap_economy
+        except ImportError:
+            return                      # a host that ships no economy at all
+        try:
+            bootstrap_economy(reporter=self.stdout)
+        except Exception as exc:        # noqa: BLE001
+            self.stderr.write(
+                f"  ⚠ economy bootstrap skipped: {exc}")
 
     def process(self):
         raise NotImplementedError("Subclasses must implement process()")
