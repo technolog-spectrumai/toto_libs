@@ -205,6 +205,18 @@ class Dataset(DomainEntity):
     slug = models.SlugField()
     description = models.TextField(blank=True)
     licence = models.CharField(max_length=100, blank=True)
+    #: Where this dataset's own files live. A LINK, not a copy: Hesperis owns no
+    #: file storage, so a release that ships video or imagery keeps the bytes in
+    #: the vault, under the vault's quota, encryption, antivirus and sharing —
+    #: and this app stores only which bucket that is.
+    #:
+    #: SET_NULL rather than PROTECT: losing the bucket must not make the dataset
+    #: and its frozen releases undeletable. The releases are the record; the
+    #: bucket is where the heavy bytes happen to sit.
+    bucket = models.ForeignKey(
+        "vault.Bucket", on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="hesperis_datasets",
+        help_text="The vault bucket holding this dataset's files.")
     created_at = models.DateTimeField(auto_now_add=True)
 
     class Meta:

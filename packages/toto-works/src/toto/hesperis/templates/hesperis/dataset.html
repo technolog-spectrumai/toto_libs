@@ -13,6 +13,19 @@
       <p class="text-xs uppercase tracking-wide opacity-60">{{ dataset.campaign.campaign.name }}</p>
       <h1 class="mt-1 text-3xl font-bold">{{ dataset.name }}</h1>
       {% if dataset.description %}<p class="mt-2 text-sm opacity-80">{{ dataset.description }}</p>{% endif %}
+      {% comment %}Where the heavy bytes live. Hesperis stores a link, not the
+      files: a release of video or imagery belongs in the vault, under its quota
+      and its access rules.{% endcomment %}
+      {% comment %}Named, not linked: the vault has no per-bucket browse route
+      (its list view takes no bucket argument), and a link that lands somewhere
+      else is worse than a name.{% endcomment %}
+      {% if dataset.bucket %}
+        <p class="mt-2 text-xs opacity-70">
+          <i class="fa-solid fa-box-archive opacity-60"></i>
+          {% trans "Files live in the bucket" %}
+          <span class="font-medium">{{ dataset.bucket.name }}</span>
+        </p>
+      {% endif %}
     </header>
 
     <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-5 shadow-sm">

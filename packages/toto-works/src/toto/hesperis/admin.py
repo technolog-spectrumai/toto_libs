@@ -42,9 +42,11 @@ class AcceptedObservationAdmin(admin.ModelAdmin):
 
 @admin.register(Dataset)
 class DatasetAdmin(admin.ModelAdmin):
-    list_display = ("name", "campaign", "licence", "created_at")
+    list_display = ("name", "campaign", "bucket", "licence", "created_at")
     prepopulated_fields = {"slug": ("name",)}
-    raw_id_fields = ("campaign",)
+    # raw_id for the bucket too: a host can hold thousands, and a select box
+    # that loads all of them is how this page stops rendering.
+    raw_id_fields = ("campaign", "bucket")
 
 
 class DatasetVersionMemberInline(admin.TabularInline):

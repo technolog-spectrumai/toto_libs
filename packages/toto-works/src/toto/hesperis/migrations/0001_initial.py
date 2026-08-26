@@ -15,6 +15,7 @@ class Migration(migrations.Migration):
         ('locations', '0005_address_latlon'),
         ('assets', '0005_ledger_decorations'),
         ('kanban', '0010_rewards'),
+        ('vault', '0001_initial'),
     ]
 
     operations = [
@@ -41,6 +42,7 @@ class Migration(migrations.Migration):
                 ('description', models.TextField(blank=True)),
                 ('licence', models.CharField(blank=True, max_length=100)),
                 ('created_at', models.DateTimeField(auto_now_add=True)),
+                ('bucket', models.ForeignKey(blank=True, help_text="The vault bucket holding this dataset's files.", null=True, on_delete=django.db.models.deletion.SET_NULL, related_name='hesperis_datasets', to='vault.bucket')),
             ],
             options={
                 'ordering': ('name',),
