@@ -1,9 +1,18 @@
-"""The --fake-data seeder.
+"""The Hesperis seeder.
 
 Two things are worth asserting and one of them is a safety property: the
-command must do NOTHING without the flag. `ingress_all` forwards only `full=`,
-so a deploy can never reach the demo rows — but that is a property of two files
-agreeing, and this is where the agreement is checked.
+command must do NOTHING without a flag, so a deployment that did not ask for
+demo data never gets any.
+
+The FLAG CHANGED in 8/2026. It was a private `--fake-data`, and the effect was
+that `ingress_all` could not reach this seeder at all — that command forwards
+`full=settings.FULL_INGRESS` and nothing else, so the bounty board stayed empty
+even on a host that had asked for demo data in every other app. It now answers
+to `--full` like the rest of them, with `--fake-data` kept as an alias.
+
+The safety property is unchanged and is what these tests still guard: no flag
+means no rows. What used to enforce it — a flag nothing could pass — enforced
+rather more than that.
 """
 
 from io import StringIO
@@ -45,13 +54,26 @@ class SafetyTests(TestCase):
         output = _run()
         self.assertEqual(HesperisBounty.objects.count(), 0)
         self.assertEqual(Dataset.objects.count(), 0)
-        self.assertIn("--fake-data", output)
+        self.assertIn("--full", output)
 
-    def test_full_alone_still_seeds_nothing(self):
-        """`ingress_all` passes full=; that must not be enough."""
+    def test_full_seeds_the_worked_example(self):
+        """The change of 8/2026, and the reason for it.
+
+        This asserted the opposite — that `full=` must NOT be enough — which
+        made the seeder unreachable through `ingress_all`, the only automated
+        path there is. Demo rows are still kept off a deployment that did not
+        ask for them, but by `FULL_INGRESS` defaulting to "0", which is how
+        every other app on this platform does it.
+        """
         _people()
         _run(full=True)
-        self.assertEqual(HesperisBounty.objects.count(), 0)
+        self.assertEqual(HesperisBounty.objects.count(), 2)
+
+    def test_the_old_flag_still_works(self):
+        """Kept as an alias so a habit or a script does not break."""
+        _people()
+        _run(fake_data=True)
+        self.assertEqual(HesperisBounty.objects.count(), 2)
 
     def test_it_refuses_without_enough_people(self):
         _people(2)

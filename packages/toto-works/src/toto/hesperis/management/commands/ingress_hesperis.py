@@ -6,11 +6,21 @@ creates, not a fact of the installation. The whole command is therefore behind
 board, the review queue and a published dataset without hand-building six
 models in admin first.
 
-**``--fake-data`` can never fire during a deploy.** ``ingress_all`` forwards
-only ``full=`` to each app's command (see
-``toto.core.management.commands.ingress_all.run_ingress_for_app``), so this
-flag defaults False on every automated path and demo rows can only appear when
-a human types it.
+**The flag is ``--full``, like every other app's.** It used to be a private
+``--fake-data``, and the consequence was that this seeder was unreachable
+through ``ingress_all`` at all: that command forwards ``full=settings.
+FULL_INGRESS`` and nothing else, so no automated path and no operator running
+``ingress_all --full`` could ever reach the body. The board stayed empty on a
+host that had asked for demo data everywhere else.
+
+Demo rows still cannot appear on a deployment that did not ask for them:
+``FULL_INGRESS`` defaults to ``"0"``, the entrypoint runs a bare
+``ingress_all``, and the deployer warns when the combination would seed. That
+was always the property worth keeping — a private flag was simply the wrong way
+to keep it, because it also locked out the people who wanted the data.
+
+``--fake-data`` still works as an alias, so anything that typed it keeps
+working.
 """
 
 from django.core.management.base import CommandError
@@ -32,8 +42,9 @@ DEMO_CAMPAIGN = "Bridges of the Vistula"
 
 
 class Command(IngressCommand):
-    help = ("Seed Hesperis. Nothing runs unless --fake-data is given, which "
-            "builds two bounties, two reviewed contributions and two datasets.")
+    help = ("Seed Hesperis. Nothing runs without --full (or FULL_INGRESS=1), "
+            "which builds two bounties, two reviewed contributions and two "
+            "datasets.")
 
     def __init__(self):
         super().__init__()
@@ -41,12 +52,13 @@ class Command(IngressCommand):
 
     def add_arguments(self, parser):
         super().add_arguments(parser)
+        # Kept as an alias for what this flag used to be called, so a script
+        # or a habit that types it does not break. `--full` is the real one.
         parser.add_argument(
             "--fake-data",
             dest="fake_data",
             action="store_true",
-            help="Seed a worked example: 2 bounties, 2 reviewed contributions, "
-                 "2 datasets. Demo rows — never run this on a real deployment.",
+            help="Alias for --full.",
         )
 
     def handle(self, *args, **options):
@@ -54,9 +66,12 @@ class Command(IngressCommand):
         super().handle(*args, **options)
 
     def process(self):
-        if not self.fake_data:
+        # Either spelling. `self.full` is what `ingress_all` can actually set,
+        # via settings.FULL_INGRESS; `fake_data` is the old name kept working.
+        if not (self.full or self.fake_data):
             self.stdout.write(
-                "Hesperis: nothing to seed. Pass --fake-data for a worked example.")
+                "Hesperis: nothing to seed. Pass --full (or set FULL_INGRESS=1) "
+                "for a worked example.")
             return
         self._seed()
 
