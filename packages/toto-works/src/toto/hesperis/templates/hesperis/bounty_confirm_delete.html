@@ -1,0 +1,47 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Delete bounty" %} | {% trans "Hesperis" %}{% endblock %}
+{% block content %}
+<section
+  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
+  <div class="mx-auto max-w-2xl space-y-6">
+    <a href="{% url 'hesperis:bounty' bounty.pk %}" class="inline-flex items-center gap-2 text-sm underline hover:opacity-80">
+      <i class="fa-solid fa-arrow-left"></i> {{ bounty.mission.title }}
+    </a>
+    <h1 class="text-3xl font-bold">{% trans "Delete this bounty?" %}</h1>
+    {% if accepted %}
+      <div class="rounded-lg bg-red-600/10 p-4 text-sm">
+        <p class="font-semibold text-red-600">{% trans "This bounty cannot be deleted." %}</p>
+        <p class="mt-1">
+          {% blocktrans count n=accepted %}It has {{ n }} accepted observation, which is provenance for the dataset.{% plural %}It has {{ n }} accepted observations, which are provenance for the dataset.{% endblocktrans %}
+          {% trans "Close it instead — it stays on record and stops taking contributions." %}
+        </p>
+        <form method="post" action="{% url 'hesperis:bounty_toggle' bounty.pk %}" class="mt-3">
+          {% csrf_token %}
+          <button type="submit" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+                  class="rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85">
+            <i class="fa-solid fa-lock"></i> {% trans "Close the bounty" %}
+          </button>
+        </form>
+      </div>
+    {% else %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-lg p-4 text-sm shadow-sm">
+        <p>{% blocktrans with t=bounty.mission.title %}“{{ t }}” and everything contributed to it will be removed.{% endblocktrans %}</p>
+        {% if submissions %}
+          <p class="mt-1 opacity-75">
+            {% blocktrans count n=submissions %}{{ n }} submission goes with it.{% plural %}{{ n }} submissions go with it.{% endblocktrans %}
+            {% trans "None were accepted, so no dataset is affected." %}
+          </p>
+        {% endif %}
+      </div>
+      <form method="post">
+        {% csrf_token %}
+        <button type="submit" class="inline-flex items-center gap-2 rounded-lg border border-red-600 px-5 py-3 font-semibold text-red-600 shadow-sm transition hover:opacity-85">
+          <i class="fa-solid fa-trash"></i> {% trans "Delete bounty" %}
+        </button>
+      </form>
+    {% endif %}
+  </div>
+</section>
+{% endblock %}
