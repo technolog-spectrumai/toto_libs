@@ -114,13 +114,18 @@ class StaffManagementTests(FaucetTestCase):
         self.assertIn("switched off", self.messages_from(response))
 
     def test_a_faucet_needs_a_name_and_a_currency(self):
+        before = Faucet.objects.count()
         self.assertIn("needs a name", self.messages_from(self.client.post(
             reverse("assets:faucet_create"),
             {"name": "", "asset": self.mana.pk}, follow=True)))
         self.assertIn("active currency", self.messages_from(self.client.post(
             reverse("assets:faucet_create"),
             {"name": "X", "asset": "99999"}, follow=True)))
-        self.assertFalse(Faucet.objects.exists())
+        # Counted rather than asserted empty: bootstrap seeds the default MANA
+        # and ASR faucets, so "none exist" stopped being the question. What
+        # matters is that a refused create wrote nothing.
+        self.assertEqual(Faucet.objects.count(), before)
+        self.assertFalse(Faucet.objects.filter(name="X").exists())
 
     def test_staff_add_a_person_and_their_hourly_amount(self):
         faucet = self.make_faucet()
@@ -228,10 +233,12 @@ class OrdinaryUserTests(FaucetTestCase):
                          list(FaucetPayout.objects.filter(member=self.membership)))
 
     def test_a_member_may_not_create_a_faucet(self):
+        before = Faucet.objects.count()
         response = self.client.post(reverse("assets:faucet_create"),
                                     {"name": "Mine", "asset": self.mana.pk})
         self.assertEqual(response.status_code, 403)
-        self.assertEqual(Faucet.objects.count(), 1)
+        self.assertEqual(Faucet.objects.count(), before)
+        self.assertFalse(Faucet.objects.filter(name="Mine").exists())
 
     def test_a_member_may_not_add_themselves_to_one(self):
         response = self.client.post(
