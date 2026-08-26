@@ -1188,10 +1188,46 @@ class FaucetMember(models.Model):
 
     def clean(self):
         super().clean()
-        if self.amount_per_hour is not None and self.amount_per_hour < 0:
+        if self.amount_per_hour is None:
+            return
+        if self.amount_per_hour < 0:
             raise ValidationError(
                 {"amount_per_hour": _("An hourly amount cannot be negative — a "
                                       "faucet pays out, it does not collect.")})
+        problem = self.rate_problem()
+        if problem:
+            raise ValidationError({"amount_per_hour": problem})
+
+    #: The largest value ``FaucetPayout.amount_base_units`` can hold. A rate
+    #: whose base-unit conversion passes this cannot be paid at all: the payout
+    #: row's INSERT raises before any money moves.
+    MAX_BASE_UNITS = 2 ** 63 - 1
+
+    def rate_problem(self):
+        """Why this rate could never be paid, or "" if it can.
+
+        ``amount_per_hour`` is numeric(30,18) and holds up to ~1e12, while a
+        payout's base units are a signed 64-bit integer — so for a 9-decimal
+        currency every rate above about 9.22 billion is storable and unpayable.
+        That gap is not theoretical: the amount is a free-text field, and the
+        obvious way to fall into it is pasting a BASE-UNIT figure into a box
+        that wants display units.
+
+        Refused here, at the door, because the alternative is refusing it in the
+        hourly sweep — where the failure is a database error rather than a
+        validation one, and one bad rate stops everybody else being paid.
+        """
+        if self.amount_per_hour is None or not self.faucet_id:
+            return ""
+        asset = self.faucet.asset
+        if to_base_units(self.amount_per_hour, asset.decimals) > self.MAX_BASE_UNITS:
+            biggest = self.MAX_BASE_UNITS // (10 ** asset.decimals)
+            return _(
+                "That is more %(unit)s an hour than the ledger can record. The "
+                "most is %(biggest)s. If you meant a small amount, check you "
+                "have not pasted a base-unit figure into a field that wants "
+                "%(unit)s.") % {"unit": asset.unit_name, "biggest": biggest}
+        return ""
 
 
 class FaucetPayoutStatus(models.TextChoices):

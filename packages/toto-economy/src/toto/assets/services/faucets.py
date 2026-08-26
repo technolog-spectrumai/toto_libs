@@ -107,24 +107,30 @@ def run_hour(*, at=None, faucet=None, record=True) -> RunReport:
     report = RunReport(label=label)
     run = FaucetRun.objects.create(period_label=label) if record else None
 
-    for member in due_members(faucet):
-        outcome = pay_member(member, label)
-        if outcome == "paid":
-            report.paid += 1
-        elif outcome == "skipped":
-            report.skipped += 1
-        else:
-            report.failed += 1
-            report.failures.append(outcome)
-
-    if run is not None:
-        run.paid = report.paid
-        run.skipped = report.skipped
-        run.failed = report.failed
-        run.detail = "\n".join(report.failures)[:20000]
-        run.finished_at = dj_timezone.now()
-        run.save(update_fields=["paid", "skipped", "failed", "detail",
-                                "finished_at"])
+    # try/finally, so the audit row is written even if the loop dies. It used to
+    # be written only on the way out, which meant an exception mid-run left a
+    # FaucetRun reading paid=0 finished_at=NULL in an hour where money HAD
+    # moved — an audit table asserting nobody was paid while the ledger said
+    # otherwise, which is worse than no audit table.
+    try:
+        for member in due_members(faucet):
+            outcome = pay_member(member, label)
+            if outcome == "paid":
+                report.paid += 1
+            elif outcome == "skipped":
+                report.skipped += 1
+            else:
+                report.failed += 1
+                report.failures.append(outcome)
+    finally:
+        if run is not None:
+            run.paid = report.paid
+            run.skipped = report.skipped
+            run.failed = report.failed
+            run.detail = "\n".join(report.failures)[:20000]
+            run.finished_at = dj_timezone.now()
+            run.save(update_fields=["paid", "skipped", "failed", "detail",
+                                    "finished_at"])
     return report
 
 
@@ -154,6 +160,21 @@ def pay_member(member, label: str) -> str:
         # row telling us so is TRUE — see _reconcile.
         _reconcile(member, label)
         return "skipped"
+    except Exception as exc:                            # noqa: BLE001
+        # ANY other failure of the claim itself, and the breadth is deliberate.
+        # This used to catch IntegrityError alone, and a rate too large for the
+        # payout's 64-bit column raised DataError on Postgres (OverflowError on
+        # sqlite) — neither an IntegrityError. It escaped here, escaped
+        # `run_hour`, and killed the whole sweep: every member ordered after the
+        # offender went unpaid, that hour and every hour after, because the
+        # condition was deterministic and the beat retried into it.
+        #
+        # `rate_problem` now refuses such a rate at the keyboard, but this stays.
+        # The isolation promise in the module docstring is "one member's problem
+        # is one member's problem", and a promise that only covers the failures
+        # somebody thought of is not one.
+        log.exception("faucet: could not claim %s for %s", member.user, label)
+        return f"{member.user}: {exc}"
 
     if amount <= 0:
         # On the list, currently paid nothing. Recorded so the member's history
