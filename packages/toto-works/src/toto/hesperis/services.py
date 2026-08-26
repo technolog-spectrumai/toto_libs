@@ -16,6 +16,10 @@ from django.utils.translation import gettext as _
 from toto.kanban import work
 from toto.kanban.models import SubmissionResolution, Task
 
+# The chain seam. Imported as a module rather than by name so the soft guard
+# inside it is the only place that decides whether a chain engine exists.
+from .integration import ledger as dataset_ledger
+
 from .models import (
     AcceptedObservation,
     DatasetVersion,
@@ -101,15 +105,22 @@ def accept(submission, *, observed_at=None, location=None, zone=None,
         raise ValidationError(
             _("This submission is not against a Hesperis bounty."))
 
-    return AcceptedObservation.objects.create(
-        submission=submission,
-        bounty=bounty,
-        observed_by=submission.submitted_by,
-        observed_at=observed_at or submission.submitted_at,
-        location=location,
-        zone=zone,
-        payload=payload if payload is not None else submission.metadata,
-    )
+    # The fact and its block commit together or not at all. A chain that were
+    # allowed to miss an observation would be a record of "most of" the dataset,
+    # which is not a record. Where no chain engine is installed `record_
+    # observation` is a no-op and this is an ordinary create.
+    with transaction.atomic():
+        observation = AcceptedObservation.objects.create(
+            submission=submission,
+            bounty=bounty,
+            observed_by=submission.submitted_by,
+            observed_at=observed_at or submission.submitted_at,
+            location=location,
+            zone=zone,
+            payload=payload if payload is not None else submission.metadata,
+        )
+        dataset_ledger.record_observation(observation)
+    return observation
 
 
 def accept_all_pending(bounty: HesperisBounty) -> list[AcceptedObservation]:
@@ -165,4 +176,8 @@ def freeze(dataset, *, by=None, notes: str = "") -> DatasetVersion:
         ])
         version.manifest_hash = version.compute_manifest_hash()
         version.save(update_fields=["manifest_hash"])
+        # Inside the same transaction as the freeze: a release whose block
+        # failed to append must not exist, exactly as a company vote that
+        # cannot reach its chain is rolled back rather than silently unrecorded.
+        dataset_ledger.record_version(version, actor=by)
     return version

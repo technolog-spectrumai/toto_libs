@@ -64,6 +64,19 @@ def payload_digest(value) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
+def _actor(value):
+    """Normalise a Person or a User to the User a block records.
+
+    Hesperis speaks in `people.Person` (an observation is observed BY a person);
+    `ledger.LedgerEntry.actor` is an `AUTH_USER_MODEL`. Translating between the
+    two is the seam's job — leaving it to callers is how a Person ends up in a
+    User column and the FK raises somewhere unrelated.
+    """
+    if value is None:
+        return None
+    return getattr(value, "user", value)
+
+
 def dataset_ledger(dataset, *, actor=None):
     """This dataset's chain, opening it with its genesis block if new.
 
@@ -85,7 +98,7 @@ def dataset_ledger(dataset, *, actor=None):
             "Every accepted observation and every frozen release of this "
             "dataset, in the order they happened."
         ),
-        actor=actor,
+        actor=_actor(actor),
     )
 
 
@@ -125,12 +138,12 @@ def record_observation(observation, *, actor=None) -> list:
                 "observation_uid": str(observation.uid),
                 "submission_uid": str(observation.submission.uid),
                 "bounty_uid": str(observation.bounty.uid),
-                "observed_by": observation.observed_by.display_name(),
+                "observed_by": str(observation.observed_by),
                 "observed_at": observation.observed_at,
                 "accepted_at": observation.accepted_at,
                 "payload_digest": payload_digest(observation.payload),
             },
-            actor=actor,
+            actor=_actor(actor),
             occurred_at=observation.accepted_at,
             source_type=SOURCE_OBSERVATION,
             source_uid=observation.uid,
@@ -164,7 +177,7 @@ def record_version(version, *, actor=None):
             "notes": version.notes,
             "frozen_at": version.frozen_at,
         },
-        actor=actor,
+        actor=_actor(actor),
         occurred_at=version.frozen_at,
         source_type=SOURCE_VERSION,
         source_uid=version.uid,
@@ -234,8 +247,15 @@ def _block_field(entry):
             root = ET.fromstring(entry.payload_xml)
         except ET.ParseError:
             return ""
-        node = root.find(f".//{key}")
-        return (node.text or "") if node is not None else ""
+        # A mapping canonicalises to <map><entry key="k"><text>v</text></entry>,
+        # so the key is an ATTRIBUTE and the value is the entry's single typed
+        # child — <text>, <int>, <datetime>. Looking for a <k> tag finds nothing
+        # and silently passes every check, which is how this first went unnoticed.
+        node = root.find(f'.//entry[@key="{key}"]')
+        if node is None:
+            return ""
+        children = list(node)
+        return (children[0].text or "") if children else (node.text or "")
 
     return read
 
