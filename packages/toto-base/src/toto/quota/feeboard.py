@@ -80,8 +80,10 @@ class FeeBoard:
 
     # The other direction. This board was income-only for its whole life, on a
     # platform where nothing ever debited a fee account — so it showed a number
-    # that could only grow and never said where any of it went. It goes to the
-    # payroll, and now the page says so.
+    # that could only grow and never said where any of it went. The payroll was
+    # what debited it, and that went with Stations in 8/2026; faucets pay from
+    # an asset's reserve instead. The column stays because the number is worth
+    # showing either way — including when it is zero.
     paid_out_base_units: int = 0
     paid_out: Decimal = Decimal("0")
     held_base_units: int = 0

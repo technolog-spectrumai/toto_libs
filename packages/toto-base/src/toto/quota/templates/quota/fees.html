@@ -51,17 +51,23 @@
 
     {% comment %}The loop, on one line. This board was income-only for its whole
        life — on a platform where nothing ever debited a fee account, so the
-       number could only grow and the page never said where any of it went. It
-       goes to the payroll: the treasury pays the platform's offices out of what
-       it collected, which is what stops a fixed supply from piling up in an
-       account nobody can spend from.{% endcomment %}
+       number could only grow and the page never said where any of it went.
+
+       The treasury payroll was the answer to that, and it was removed with
+       Stations in 8/2026: it paid the platform's offices out of what the fee
+       account collected. Faucets replaced it as the way people are paid, but
+       they draw on an ASSET'S RESERVE rather than on fees — so "Paid out" is
+       whatever still debits this account, and on most hosts that is now
+       nothing. The column stays because the honest number is the point: a fee
+       account that only grows is a fact this page should show, not
+       hide.{% endcomment %}
     <dl class="mt-4 grid grid-cols-3 gap-3 text-center text-sm">
       <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">
         <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Collected" %}</dt>
         <dd class="mt-1 font-mono font-bold">{{ board.total }} {{ board.asset_unit }}</dd>
       </div>
       <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">
-        <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Paid to offices" %}</dt>
+        <dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Paid out" %}</dt>
         <dd class="mt-1 font-mono font-bold">{{ board.paid_out }} {{ board.asset_unit }}</dd>
       </div>
       <div :class="darkMode ? 'bg-sunken-dark' : 'bg-sunken-light'" class="rounded-lg p-3">

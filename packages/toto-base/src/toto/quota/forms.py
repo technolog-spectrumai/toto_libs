@@ -53,8 +53,8 @@ def policy_form_for(policy_model):
     """A ModelForm class for one app's concrete quota policy.
 
     One form, one row per metric. There was an ``include_user`` variant that
-    added a user field for per-person overrides; both are gone — headroom for
-    one person is an office's ``limit_multiplier``, not a row naming them.
+    added a user field for per-person overrides; it is gone, and so is the
+    office ``limit_multiplier`` that briefly replaced it. Limits are flat.
     """
     return forms.modelform_factory(
         policy_model, form=BasePolicyForm, fields=list(FIELDS),
