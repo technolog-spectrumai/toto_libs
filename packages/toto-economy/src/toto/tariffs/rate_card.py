@@ -48,16 +48,28 @@ class NoGasAsset(Exception):
 def gas_asset():
     """The asset metered work is billed in on this platform, or None.
 
-    Resolves through the platform's CURRENCY CONTRACT — the thing that makes
-    an asset a currency at all. ``settings.GAS_ASSET`` is not consulted: a
-    ticker is a label, and a host does not choose what it bills in. It
-    survives only as a genesis-time seed hint in ingress_assets.
+    Order: a STAFF CHOICE, then the platform's currency contract, then the
+    ticker this host was seeded under.
 
-    Falls back to the ticker ONLY while no contract exists, so a host mid-way
-    through seeding still works; once contracted, the contract wins.
+    The staff choice is new in 8/2026 and is the same one
+    ``toto.assets.services.settlement`` reads, so picking a settlement asset
+    moves billing with it — that is the point of choosing one.
+
+    Below that the old order is untouched, and deliberately does NOT fall
+    through to MANA the way settlement does. A rate card is denominated by what
+    a host was contracted or seeded to bill in, and a platform that has been
+    charging in ASR for a year must not re-denominate every price it publishes
+    because a new default currency appeared. The contract wins over the ticker
+    for the same reason it always did: a branch does not decide what it bills
+    in. See portal/hierarchical_economy.md.
     """
     from toto.assets.contracts import contractual_asset
     from toto.assets.models import Asset
+    from toto.assets.services.settlement import settlement_choice
+
+    chosen = settlement_choice()
+    if chosen is not None and chosen.asset.active:
+        return chosen.asset
 
     contracted = contractual_asset()
     if contracted is not None:

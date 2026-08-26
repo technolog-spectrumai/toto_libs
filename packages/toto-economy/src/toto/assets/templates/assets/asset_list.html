@@ -23,6 +23,69 @@
         </div>
       </div>
     </div>
+    {% comment %}What the platform pays in, shown to everybody and changed by
+    staff. Read through one service — see assets/services/settlement.py — so
+    this card and every payment path cannot disagree.{% endcomment %}
+    <div class="border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+         x-data="{ settlementOpen: false }">
+      <h2 class="mb-2 text-sm font-semibold uppercase tracking-wide opacity-60">
+        {% trans "Settles in" %}</h2>
+      {% if settlement_asset %}
+        <p class="text-lg font-bold">{{ settlement_asset.unit_name }}</p>
+        <p class="text-xs opacity-65">
+          {% if settlement_choice %}
+            {% blocktrans with who=settlement_choice.chosen_by|default:_("staff") when=settlement_choice.chosen_at|date:"Y-m-d" %}Chosen by {{ who }} on {{ when }}.{% endblocktrans %}
+          {% else %}
+            {% comment %}The distinction that matters: nobody has decided, this
+            is the default answering.{% endcomment %}
+            {% trans "The default — nobody has chosen one yet." %}
+          {% endif %}
+        </p>
+      {% else %}
+        <p class="text-xs opacity-65">
+          {% trans "No currency to settle in yet. Mint one first." %}</p>
+      {% endif %}
+
+      {% if can_choose_settlement and settlement_candidates %}
+        <button type="button" @click="settlementOpen = true"
+                class="mt-2 text-xs font-semibold underline hover:opacity-80">
+          {% trans "Change" %}</button>
+
+        <div x-show="settlementOpen" x-cloak
+             class="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div class="absolute inset-0 bg-black/60" @click="settlementOpen = false"></div>
+          <form method="post" action="{% url 'assets:settlement_choose' %}"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+                class="relative w-full max-w-md space-y-4 rounded-2xl border p-5 shadow-lg">
+            {% csrf_token %}
+            <h3 class="text-lg font-bold">{% trans "Settlement asset" %}</h3>
+            <p class="text-sm opacity-70">
+              {% blocktrans %}What platform billing, rewards and faucet payouts are
+              denominated in. Changing it moves no money — balances stay exactly
+              where they are; only what is paid NEXT changes.{% endblocktrans %}</p>
+            <select name="asset"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              {% for candidate in settlement_candidates %}
+                <option value="{{ candidate.pk }}"
+                        {% if settlement_asset and candidate.pk == settlement_asset.pk %}selected{% endif %}>
+                  {{ candidate.unit_name }} — {{ candidate.name }}</option>
+              {% endfor %}
+            </select>
+            <div class="flex justify-end gap-2">
+              <button type="button" @click="settlementOpen = false"
+                      class="rounded-lg border px-4 py-2 text-sm font-semibold">
+                {% trans "Cancel" %}</button>
+              <button type="submit"
+                      :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                      class="rounded-lg px-4 py-2 text-sm font-semibold">
+                {% trans "Use this" %}</button>
+            </div>
+          </form>
+        </div>
+      {% endif %}
+    </div>
+
     {% if request.user.is_staff %}
     <div class="border-t pt-4" :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
       <a href="{% url 'assets:asset_create' %}"

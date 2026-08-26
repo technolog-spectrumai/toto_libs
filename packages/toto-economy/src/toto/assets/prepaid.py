@@ -69,7 +69,17 @@ def grant_starting_gas(user, amount=None):
     from toto.assets.models import Asset, LedgerTransaction
     from toto.assets.services.assets import distribute_asset
 
-    unit = getattr(settings, "GAS_ASSET", "ASR")
+    # The platform's settlement asset, not a ticker from settings: a starting
+    # grant is an internal payment like any other, and it must be denominated in
+    # whatever the platform actually pays in. Reading GAS_ASSET here meant a
+    # host that had switched settlement asset still granted newcomers the old
+    # one — in a currency nothing else on the platform used.
+    from toto.assets.services.settlement import settlement_asset
+
+    settling = settlement_asset()
+    if settling is None:
+        return None
+    unit = settling.unit_name
     try:
         amount = Decimal(str(amount if amount is not None
                              else getattr(settings, "GAS_STARTING_GRANT", "0")))

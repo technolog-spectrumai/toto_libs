@@ -18,6 +18,7 @@ urlpatterns = [
 
     path("", views.asset_list, name="asset_list"),
     path("assets/create/", views.asset_create, name="asset_create"),
+    path("settlement/", views.settlement_choose, name="settlement_choose"),
     path("assets/<int:pk>/", views.asset_detail, name="asset_detail"),
     path("assets/<int:pk>/distribute/", views.asset_distribute, name="asset_distribute"),
     path("accounts/", views.account_list, name="account_list"),

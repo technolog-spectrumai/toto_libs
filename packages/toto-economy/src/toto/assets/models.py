@@ -1050,3 +1050,42 @@ class PlatformKey(models.Model):
             return True
         except Exception:  # noqa: BLE001 - refused, never a 500
             return False
+
+
+class SettlementAsset(models.Model):
+    """Which currency this platform settles its own payments in.
+
+    One row, chosen by staff, read through
+    :func:`toto.assets.services.settlement.settlement_asset` and nowhere else.
+    Before it existed each payment path answered the question for itself —
+    ``settings.GAS_ASSET`` here, a hard-coded ``"ASR"`` there, a currency
+    contract somewhere else — so "what does this platform pay in" had as many
+    answers as it had callers, and changing it meant finding all of them.
+
+    The choice is a POINTER, never a copy: an asset's identity is immutable and
+    its balances live in the ledger, so switching settlement asset moves nothing
+    and rewrites nothing. It only changes what the next payment is denominated
+    in. That is why this can be a setting at all.
+
+    ``PROTECT`` on the asset, because a currency the platform is actively
+    settling in is not one anybody should be able to delete out from under it.
+    """
+
+    #: There is one platform, so there is one row. A unique constant column is
+    #: the singleton: the database refuses a second, rather than the code
+    #: remembering to.
+    singleton = models.PositiveSmallIntegerField(default=1, unique=True,
+                                                 editable=False)
+    asset = models.ForeignKey("Asset", on_delete=models.PROTECT,
+                              related_name="+")
+    chosen_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                  blank=True, on_delete=models.SET_NULL,
+                                  related_name="+")
+    chosen_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        verbose_name = "settlement asset"
+        verbose_name_plural = "settlement asset"
+
+    def __str__(self):
+        return f"settling in {self.asset.unit_name}"

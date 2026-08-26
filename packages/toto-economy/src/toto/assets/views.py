@@ -207,10 +207,48 @@ def asset_create(request):
     })
 
 
+@require_POST
+def settlement_choose(request):
+    """Staff pick the currency this platform settles its own payments in.
+
+    Staff only, and a POST, because it changes what everybody is paid in. The
+    choice is a pointer and moves no money — see `assets.models.SettlementAsset`
+    — so there is nothing to undo if it is changed back.
+    """
+    from django.http import HttpResponseForbidden
+
+    from .services.settlement import set_settlement_asset
+
+    if not request.user.is_staff:
+        return HttpResponseForbidden()
+
+    pk = (request.POST.get("asset") or "").strip()
+    asset = Asset.objects.filter(pk=pk).first() if pk.isdigit() else None
+    try:
+        set_settlement_asset(asset, actor=request.user)
+    except ValidationError as exc:
+        for message in exc.messages:
+            messages.error(request, message)
+    else:
+        messages.success(
+            request,
+            _("This platform now settles in %(unit)s.")
+            % {"unit": asset.unit_name})
+    return redirect("assets:asset_list")
+
+
 def asset_list(request):
+    from .services.settlement import settlement_asset, settlement_choice
+
     assets = Asset.objects.all()
     return assets_render(request, "assets/asset_list.html", {
         "assets": assets,
+        # "MANA because staff chose it" and "MANA because nobody has chosen"
+        # look identical on screen otherwise, and only one is a decision.
+        "settlement_asset": settlement_asset(),
+        "settlement_choice": settlement_choice(),
+        "settlement_candidates": assets.filter(active=True, is_mirror=False),
+        "can_choose_settlement": request.user.is_staff,
         "asset_count": assets.count(),
         "active_count": assets.filter(active=True).count(),
     })
