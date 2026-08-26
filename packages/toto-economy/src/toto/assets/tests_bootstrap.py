@@ -17,8 +17,10 @@ from django.core.management import call_command
 from django.test import TestCase, override_settings
 
 from toto.assets.models import Asset, LedgerAccount, LedgerTransaction
-from toto.assets.services.bootstrap import (CORE_ASSETS, bootstrap_economy,
+from toto.assets.services.bootstrap import (CORE_ASSETS, DEFAULT_FAUCETS,
+                                            bootstrap_economy,
                                             ensure_core_assets,
+                                            ensure_default_faucets,
                                             ensure_monetary_issuer)
 from toto.assets.testing import TEST_ISSUER_KEY
 
@@ -176,3 +178,133 @@ class EveryIngressPathTests(TestCase):
         for unit in CORE_UNITS:
             with self.subTest(unit=unit):
                 self.assertEqual(Asset.objects.filter(unit_name=unit).count(), 1)
+
+
+@override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY, ASSETS_MONETARY_MASTER=True)
+class DefaultFaucetTests(TestCase):
+    """The MANA and ASR faucets every install has.
+
+    Bootstrap creates the ARRANGEMENT and nothing else: no people, no amounts,
+    switched off. Those are the two things nobody but a person should choose,
+    and a seeded amount is one somebody has to notice and correct before it
+    starts paying.
+    """
+
+    def setUp(self):
+        bootstrap_economy()
+
+    def faucets(self):
+        from toto.assets.models import Faucet
+
+        return Faucet.objects.all()
+
+    def test_it_creates_one_faucet_per_payable_currency(self):
+        self.assertEqual(
+            set(self.faucets().values_list("asset__unit_name", flat=True)),
+            {"MANA", "ASR"})
+
+    def test_tpln_gets_none(self):
+        """The accounting currency, not something people are paid in. A faucet
+        nobody will switch on is a row that only invites a question."""
+        self.assertFalse(self.faucets().filter(asset__unit_name="TPLN").exists())
+
+    def test_each_one_is_switched_off(self):
+        for faucet in self.faucets():
+            with self.subTest(faucet=faucet.name):
+                self.assertFalse(faucet.active)
+
+    def test_none_of_them_has_a_member(self):
+        """Bootstrap does not decide who is paid."""
+        from toto.assets.models import FaucetMember
+
+        self.assertFalse(FaucetMember.objects.exists())
+
+    def test_no_hourly_amount_is_invented(self):
+        """There is nowhere for one to hide: an amount lives on a member, and
+        there are none. Asserted so a future 'helpful' default is caught."""
+        from toto.assets.models import FaucetMember
+
+        self.assertEqual(list(FaucetMember.objects.values_list(
+            "amount_per_hour", flat=True)), [])
+
+    def test_running_bootstrap_again_creates_no_duplicates(self):
+        before = list(self.faucets().order_by("pk").values_list("pk", flat=True))
+        bootstrap_economy()
+        bootstrap_economy()
+        self.assertEqual(
+            list(self.faucets().order_by("pk").values_list("pk", flat=True)),
+            before)
+
+    def test_it_does_not_overwrite_staff_configuration(self):
+        """Ingress runs on every deploy. Anything it wrote on a second pass
+        would be a deploy quietly editing a payment arrangement."""
+        from django.contrib.auth import get_user_model
+
+        from toto.assets.models import Faucet, FaucetMember
+
+        user = get_user_model().objects.create_user("ada", password="pw")
+        faucet = Faucet.objects.get(slug="default-mana")
+        faucet.name = "Crew stipends"
+        faucet.note = "ours now"
+        faucet.active = True
+        faucet.save(update_fields=["name", "note", "active"])
+        FaucetMember.objects.create(faucet=faucet, user=user,
+                                    amount_per_hour=Decimal("3"))
+
+        bootstrap_economy()
+
+        faucet.refresh_from_db()
+        self.assertEqual(faucet.name, "Crew stipends")
+        self.assertEqual(faucet.note, "ours now")
+        self.assertTrue(faucet.active)
+        self.assertEqual(faucet.members.count(), 1)
+        self.assertEqual(Faucet.objects.filter(asset__unit_name="MANA").count(), 1)
+
+    def test_a_renamed_faucet_is_still_found_rather_than_duplicated(self):
+        """The slug is the key, not the name — which is exactly why the slug is
+        not derived from the name here."""
+        from toto.assets.models import Faucet
+
+        faucet = Faucet.objects.get(slug="default-asr")
+        faucet.name = "Something else entirely"
+        faucet.save(update_fields=["name"])
+
+        bootstrap_economy()
+
+        self.assertEqual(Faucet.objects.filter(slug="default-asr").count(), 1)
+
+    def test_every_ingress_path_guarantees_them(self):
+        """Not `ingress_all` alone — the hook is on IngressCommand itself."""
+        from io import StringIO
+
+        from django.core.management import call_command
+
+        from toto.assets.models import Faucet
+
+        Faucet.objects.all().delete()
+        call_command("ingress_quota", stdout=StringIO(), stderr=StringIO())
+        self.assertEqual(
+            set(Faucet.objects.values_list("asset__unit_name", flat=True)),
+            {"MANA", "ASR"})
+
+
+class FaucetsWithoutCurrenciesTests(TestCase):
+    """A host that cannot issue has nothing to drip."""
+
+    @override_settings(MONETARY_ISSUER_KEY="", ASSETS_MONETARY_MASTER=True)
+    def test_no_currencies_means_no_faucets_and_no_crash(self):
+        from toto.assets.models import Faucet
+
+        bootstrap_economy()
+        self.assertFalse(Faucet.objects.exists())
+
+    @override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY,
+                       ASSETS_MONETARY_MASTER=False)
+    def test_a_branch_creates_none(self):
+        from toto.assets.models import Faucet
+
+        ensure_default_faucets()
+        self.assertFalse(Faucet.objects.exists())
+
+    def test_the_catalogue_names_only_payable_currencies(self):
+        self.assertEqual({f.unit_name for f in DEFAULT_FAUCETS}, {"MANA", "ASR"})

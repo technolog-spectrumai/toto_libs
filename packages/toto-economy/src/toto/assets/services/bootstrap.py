@@ -117,6 +117,45 @@ assert CORE_ASSETS[1].supply == Decimal("6666.666666667")
 assert CORE_ASSETS[2].supply == Decimal("76658.70")
 
 
+@dataclass(frozen=True)
+class DefaultFaucet:
+    """A faucet every install has, created empty and switched off."""
+
+    unit_name: str
+    name: str
+    note: str
+
+    @property
+    def slug(self) -> str:
+        """The idempotency key, and deliberately NOT derived from the name.
+
+        Staff may rename a faucet; the slug is what bootstrap looks for, so a
+        renamed faucet is still found and left alone rather than duplicated
+        under its original name on the next ingress run.
+        """
+        return f"default-{self.unit_name.lower()}"
+
+
+#: One faucet per currency, because a faucet drips one asset. The brief's other
+#: shape — one faucet with per-asset rules — would need a rule table underneath
+#: to say the same thing, and "how much does this person get" would stop being a
+#: single number.
+#:
+#: TPLN gets none: it is the accounting currency, not something people are paid
+#: in, and a faucet nobody will ever switch on is a row that only invites
+#: somebody to wonder what it is for.
+DEFAULT_FAUCETS: tuple[DefaultFaucet, ...] = (
+    DefaultFaucet(
+        unit_name="MANA", name="Mana faucet",
+        note=("The platform's settlement asset. Add people and an hourly "
+              "amount each, then switch this on.")),
+    DefaultFaucet(
+        unit_name="ASR", name="Assarion faucet",
+        note=("Assarion, the fine-grained unit of account. Add people and an "
+              "hourly amount each, then switch this on.")),
+)
+
+
 def _say(reporter, message: str) -> None:
     if reporter is not None:
         reporter.write(message)
@@ -252,6 +291,45 @@ def ensure_core_assets(*, reporter=None) -> dict:
 
 
 # --------------------------------------------------------------------------- #
+# Faucets                                                                      #
+# --------------------------------------------------------------------------- #
+
+def ensure_default_faucets(*, reporter=None) -> dict:
+    """The MANA and ASR faucets, created if absent and never touched if present.
+
+    **Empty and switched off**, always. Bootstrap creates the arrangement; it
+    does not decide who is paid or how much — those are the two things nobody
+    but a person should choose, and a seeded amount is an amount somebody has to
+    notice and correct before it starts paying.
+
+    **Existing faucets are left exactly alone.** Not `update_or_create` with
+    defaults: staff rename them, re-note them, add people and switch them on,
+    and ingress runs again on every deploy. Anything this function wrote on a
+    second run would be a deploy quietly editing a payment arrangement.
+
+    A faucet somebody DELETED is recreated, and that is the honest reading of
+    "idempotently ensure these exist" — it comes back off, empty, and paying
+    nobody, so the cost of being wrong here is a row to delete again rather than
+    money moving.
+    """
+    from toto.assets.models import Asset, Faucet
+
+    made = {}
+    for spec in DEFAULT_FAUCETS:
+        if Faucet.objects.filter(slug=spec.slug).exists():
+            continue
+        asset = Asset.objects.filter(unit_name=spec.unit_name).first()
+        if asset is None:
+            # A branch host, or one mid-seed. Nothing to drip.
+            continue
+        made[spec.unit_name] = Faucet.objects.create(
+            slug=spec.slug, name=spec.name, asset=asset,
+            note=spec.note, active=False)
+        _say(reporter, f"  + faucet {spec.name} ({spec.unit_name}), switched off")
+    return made
+
+
+# --------------------------------------------------------------------------- #
 # The one entry point                                                          #
 # --------------------------------------------------------------------------- #
 
@@ -270,4 +348,5 @@ def bootstrap_economy(*, reporter=None) -> dict:
 
     ensure_monetary_issuer(reporter=reporter)
     assets = ensure_core_assets(reporter=reporter)
+    ensure_default_faucets(reporter=reporter)
     return assets
