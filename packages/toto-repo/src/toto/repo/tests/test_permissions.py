@@ -69,9 +69,24 @@ class GateTests(RepoTestCase):
         self.assertEqual(ctx["repo_pk"], self.repo.pk)
         self.assertIsNotNone(context_for_file(self.f_notes, self.user))
 
-    def test_dashboard_tile_is_staff_visible(self):
+    def test_the_app_advertises_no_dashboard_tile(self):
+        """Version control is not a destination of its own.
+
+        This asserted the tile was staff-only until the tile was withdrawn: git
+        is something you do to a workspace you already have open — the toolbar
+        lives in the workspace room — and repositories are browsed through
+        "Code". A second door led to a bare repository list answering a question
+        nobody arrives with.
+
+        `repo:index` still resolves for anyone holding the URL, and the staff
+        gate on it is asserted by the view tests above rather than by the shape
+        of a dashboard entry. Re-adding a tile should be a deliberate act that
+        updates this test, which is why the claim is inverted rather than
+        deleted.
+        """
         from django.conf import settings
 
-        tile = next(item for item in settings.DASHBOARD_ITEMS
-                    if item["link"] == "repo:index")
-        self.assertEqual(tile["visibility"], "staff")
+        self.assertEqual(
+            [item for item in settings.DASHBOARD_ITEMS
+             if item.get("link") == "repo:index"],
+            [])
