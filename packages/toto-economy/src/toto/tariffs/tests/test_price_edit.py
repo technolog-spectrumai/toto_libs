@@ -15,9 +15,11 @@ operator meets first.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.urls import reverse
 
 from toto.assets.models import AccountType, LedgerAccount, to_base_units
+from toto.assets.testing import TEST_ISSUER_KEY
 from toto.assets.testing import LedgerTestCase as TestCase
 from toto.assets.testing import make_asset
 from toto.core.models import Platform
@@ -27,6 +29,12 @@ from toto.tariffs.models import (BillingMetric, BillingUnit, Tariff,
 User = get_user_model()
 
 
+#: The issuer key is supplied HERE rather than read from the environment.
+#: `LedgerTestCase` mints an issuer in setUpTestData, which needs
+#: MONETARY_ISSUER_KEY — and zenobia defaults it to "" because a host is not a
+#: monetary master until an operator makes it one. A suite that relied on the
+#: environment passed locally and failed in the gate, which sets no such key.
+@override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
 class PriceEditTests(TestCase):
     @classmethod
     def setUpTestData(cls):

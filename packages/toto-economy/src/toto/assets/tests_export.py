@@ -23,6 +23,7 @@ from django.utils import timezone
 from toto.assets.export import MAX_ROWS
 from toto.assets.models import (AccountType, Asset, LedgerAccount,
                                 LedgerEntry, LedgerTransaction, TransactionType)
+from toto.assets.testing import TEST_ISSUER_KEY
 from toto.assets.testing import LedgerTestCase, make_asset
 from toto.core.models import Platform
 
@@ -30,6 +31,12 @@ User = get_user_model()
 LIST = "assets:transaction_list"
 
 
+#: The issuer key is supplied HERE rather than read from the environment.
+#: `LedgerTestCase` mints an issuer in setUpTestData, which needs
+#: MONETARY_ISSUER_KEY — and zenobia defaults it to "" because a host is not a
+#: monetary master until an operator makes it one. A suite that relied on the
+#: environment passed locally and failed in the gate, which sets no such key.
+@override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
 class ExportTestCase(LedgerTestCase):
     @classmethod
     def setUpTestData(cls):

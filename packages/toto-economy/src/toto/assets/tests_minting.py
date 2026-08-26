@@ -18,10 +18,12 @@ was written; this is the same lesson, applied to the door people click.
 from decimal import Decimal
 
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 from django.test import TestCase as PlainTestCase
 from django.urls import reverse
 
 from toto.assets.models import AccountType, Asset, LedgerAccount
+from toto.assets.testing import TEST_ISSUER_KEY
 from toto.assets.testing import LedgerTestCase as TestCase
 from toto.core.models import Platform
 
@@ -34,6 +36,12 @@ def _platform():
         defaults={"author": "t", "publication_year": 2026, "active": True})
 
 
+#: The issuer key is supplied HERE rather than read from the environment.
+#: `LedgerTestCase` mints an issuer in setUpTestData, which needs
+#: MONETARY_ISSUER_KEY — and zenobia defaults it to "" because a host is not a
+#: monetary master until an operator makes it one. A suite that relied on the
+#: environment passed locally and failed in the gate, which sets no such key.
+@override_settings(MONETARY_ISSUER_KEY=TEST_ISSUER_KEY)
 class MintingTestCase(TestCase):
     @classmethod
     def setUpTestData(cls):
