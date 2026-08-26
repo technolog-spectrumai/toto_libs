@@ -397,7 +397,7 @@ class SettleTests(TestCase):
     def test_a_negative_plan_pays_the_subscriber(self):
         """A stipend. Same plan, same period, same ledger — other direction.
 
-        This is what replaced socialhub.Station: an office that fused a charter,
+        This is what replaced socialhub.Station (removed 8/2026): an office that fused a charter,
         four rights and a payslip into one row, of which only the payslip was
         load-bearing.
         """

@@ -351,7 +351,7 @@ def settle(charge, *, user=None) -> SubscriptionCharge:
     if units < 0:
         # A stipend: the platform pays the subscriber. Same plan, same period,
         # same ledger — read in the other direction. This is what replaced
-        # socialhub.Station, and it is the only thing that ever debits the
+        # socialhub.Station (removed 8/2026), and it is the only thing that ever debits the
         # revenue account, so it is what keeps a capped currency circulating.
         #
         # No affordability check: `check_funds` guards the SUBSCRIBER's wallet,

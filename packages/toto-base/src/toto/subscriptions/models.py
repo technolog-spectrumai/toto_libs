@@ -58,7 +58,7 @@ class SubscriptionPlan(models.Model):
     a stipend — and that is one mechanism, not two: the same plan, the same
     period, the same ledger, read in the other direction.
 
-    That replaced ``socialhub.Station``, which fused three unrelated things into
+    That replaced ``socialhub.Station`` (itself removed in 8/2026), which fused three unrelated things into
     one row: an office, an authorisation grant and a payslip. Only the payslip
     was load-bearing, and it was load-bearing for a reason worth writing down:
     the treasury account every tariff and levy credits was, before it existed,

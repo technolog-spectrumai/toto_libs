@@ -188,7 +188,7 @@ def _entitled(user, entitlement: str) -> bool:
 
     # Whether the gate MIDDLEWARE is installed is the host's switch for
     # enforcement — `toto.subscriptions` itself is installed unconditionally,
-    # because Stations has a required FK to SubscriptionPlan, and
+    # because Stations had a required FK to SubscriptionPlan, and
     # `BUILD_SUBSCRIPTIONS_ENFORCE` decides only whether the middleware is
     # added. Asking `is_entitled` directly would therefore paywall the editor
     # page on a host that has deliberately left every write open, which is the
