@@ -1,4 +1,4 @@
-from decimal import Decimal
+from decimal import Decimal, InvalidOperation
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -35,8 +35,133 @@ def assets_render(request, template_name, context):
 # ---------------------------------------------------------------------------
 
 @login_required
+def _clean_new_asset(request) -> dict:
+    """Read the create form, or raise ValidationError naming every problem.
+
+    Parsing is separated from engraving because the two fail for unrelated
+    reasons and only one of them is the operator's fault. Everything a person
+    typed is checked HERE, before a single row is written — so a refusal never
+    has a half-built currency behind it, and the message names the field rather
+    than the exception.
+    """
+    errors: list[str] = []
+
+    name = (request.POST.get("name") or "").strip()
+    unit_name = (request.POST.get("unit_name") or "").strip().upper()
+    if not name:
+        errors.append(_("A name is required."))
+    if not unit_name:
+        errors.append(_("A unit name is required."))
+    elif not unit_name.isalnum():
+        errors.append(_("The unit name may contain only letters and digits."))
+
+    raw_supply = (request.POST.get("total_supply") or "").strip()
+    total_supply = None
+    try:
+        total_supply = Decimal(raw_supply)
+    except (InvalidOperation, ArithmeticError, TypeError, ValueError):
+        errors.append(_("“%(value)s” is not a number.") % {"value": raw_supply})
+    else:
+        if total_supply <= 0:
+            errors.append(_("The total supply must be greater than zero."))
+
+    # `int()` on the raw string was the first of this view's 500s: the field is
+    # <input type="number">, which submits "" when a browser leaves it empty and
+    # anything at all when one does not enforce it.
+    raw_decimals = (request.POST.get("decimals") or "").strip()
+    decimals = None
+    try:
+        decimals = int(raw_decimals)
+    except (TypeError, ValueError):
+        errors.append(
+            _("“%(value)s” is not a whole number of decimal places.")
+            % {"value": raw_decimals})
+    else:
+        if not 0 <= decimals <= 19:
+            errors.append(_("Decimal places must be between 0 and 19."))
+
+    reserve = None
+    if (request.POST.get("reserve_choice") or "auto") == "existing":
+        reserve_pk = (request.POST.get("reserve_account") or "").strip()
+        reserve = LedgerAccount.objects.filter(pk=reserve_pk).first() \
+            if reserve_pk.isdigit() else None
+        if reserve is None:
+            errors.append(_("Choose an existing reserve account, or let one be "
+                            "created."))
+        elif not reserve.active:
+            errors.append(_("That reserve account is not active."))
+
+    # Asked before anything is written, so the SECOND of two identical submits
+    # is told plainly instead of dying on a unique constraint. The atomic block
+    # below is what makes the answer true under a race; this is what makes it
+    # readable.
+    if unit_name and Asset.objects.filter(unit_name=unit_name).exists():
+        errors.append(
+            _("A currency called %(unit)s already exists. A currency's supply "
+              "is engraved into its identity and cannot be reissued — minting "
+              "more of it is done from its own page.") % {"unit": unit_name})
+
+    if errors:
+        raise ValidationError(errors)
+
+    return {
+        "name": name,
+        "unit_name": unit_name,
+        "total_supply": total_supply,
+        "decimals": decimals,
+        "description": (request.POST.get("description") or "").strip(),
+        "reserve": reserve,
+    }
+
+
+def _engrave_new_asset(*, name, unit_name, total_supply, decimals,
+                       description, reserve, actor):
+    """Create the reserve account and the currency as ONE act.
+
+    Both inside the transaction, which is the fix for the mess this used to
+    leave: the reserve was written first and `create_currency` afterwards, so a
+    host with no issuer key ended every attempt with an orphaned `RES-<UNIT>`
+    account and no currency to go with it. `ingress_assets` has carried a note
+    about exactly this failure for as long as it has existed; the view never
+    learned it.
+    """
+    import uuid as _uuid
+
+    from toto.mint.services import create_currency
+
+    with transaction.atomic():
+        if reserve is None:
+            reserve, _created = LedgerAccount.objects.get_or_create(
+                code=f"RES-{unit_name}",
+                defaults={
+                    "name": f"{name} Reserve",
+                    "account_type": AccountType.RESERVE,
+                    "active": True,
+                },
+            )
+        return create_currency(
+            name=name,
+            unit_name=unit_name,
+            total_supply=total_supply,
+            decimals=decimals,
+            reserve_account=reserve,
+            reference=f"mint-{unit_name.lower()}-{_uuid.uuid4().hex[:8]}",
+            description=description,
+            actor=actor,
+        )
+
+
 def asset_create(request):
-    """Mint a new asset type with a fixed total supply. Staff only."""
+    """Engrave a currency and mint its opening supply. Staff only.
+
+    Every refusal here is a sentence. The version this replaces caught only
+    `(ValidationError, InvalidOperation)`, which left four ordinary things
+    answering HTTP 500: a blank or non-numeric decimals field (`ValueError`), a
+    unit name that already existed (`IntegrityError`), and — the one an operator
+    is most likely to meet — a host with no monetary issuer key at all
+    (`NotTheMaster`), which is the state EVERY host is in until somebody sets
+    `MONETARY_ISSUER_KEY`.
+    """
     if not request.user.is_staff:
         from django.http import HttpResponseForbidden
         return HttpResponseForbidden()
@@ -44,48 +169,38 @@ def asset_create(request):
     ledger_accounts = LedgerAccount.objects.filter(active=True).order_by("code")
 
     if request.method == "POST":
-        import uuid as _uuid
-        from decimal import InvalidOperation
+        from django.db import IntegrityError
+
+        from toto.assets.issuer import NotTheMaster
+
         try:
-            name = request.POST.get("name", "").strip()
-            unit_name = request.POST.get("unit_name", "").strip().upper()
-            total_supply = Decimal(request.POST.get("total_supply", "0"))
-            decimals = int(request.POST.get("decimals", "6"))
-            description = request.POST.get("description", "").strip()
-
-            if not name or not unit_name:
-                raise ValidationError(_("Name and unit name are required."))
-
-            reserve_choice = request.POST.get("reserve_choice", "auto")
-            if reserve_choice == "existing":
-                reserve_pk = request.POST.get("reserve_account")
-                reserve = get_object_or_404(LedgerAccount, pk=reserve_pk)
+            fields = _clean_new_asset(request)
+        except ValidationError as exc:
+            for message in exc.messages:
+                messages.error(request, message)
+        else:
+            try:
+                asset = _engrave_new_asset(actor=request.user, **fields)
+            except NotTheMaster as exc:
+                # Not an error the operator made, and not a 500 either: this
+                # host simply cannot issue. Said in the words the issuer chose.
+                messages.error(request, str(exc))
+            except IntegrityError:
+                # The duplicate check above lost a race with another submit.
+                messages.error(
+                    request,
+                    _("A currency called %(unit)s already exists.")
+                    % {"unit": fields["unit_name"]})
+            except (ValidationError, InvalidOperation) as exc:
+                for message in getattr(exc, "messages", [str(exc)]):
+                    messages.error(request, message)
             else:
-                reserve, _created = LedgerAccount.objects.get_or_create(
-                    code=f"RES-{unit_name}",
-                    defaults={
-                        "name": f"{name} Reserve",
-                        "account_type": AccountType.RESERVE,
-                        "active": True,
-                    },
-                )
-
-            from toto.mint.services import create_currency
-
-            ref = f"mint-{unit_name.lower()}-{_uuid.uuid4().hex[:8]}"
-            asset = create_currency(
-                name=name,
-                unit_name=unit_name,
-                total_supply=total_supply,
-                decimals=decimals,
-                reserve_account=reserve,
-                reference=ref,
-                description=description,
-            )
-            messages.success(request, f"Asset {unit_name} minted with total supply of {total_supply}.")
-            return redirect("assets:asset_detail", pk=asset.pk)
-        except (ValidationError, InvalidOperation) as exc:
-            messages.error(request, str(exc))
+                messages.success(
+                    request,
+                    _("Asset %(unit)s engraved, with a total supply of "
+                      "%(supply)s minted into its reserve.")
+                    % {"unit": asset.unit_name, "supply": fields["total_supply"]})
+                return redirect("assets:asset_detail", pk=asset.pk)
 
     return assets_render(request, "assets/asset_create.html", {
         "ledger_accounts": ledger_accounts,
@@ -145,17 +260,51 @@ def asset_distribute(request, pk):
     if not request.user.is_staff and not is_reserve_owner:
         return HttpResponseForbidden()
     if request.method == "POST":
-        from decimal import InvalidOperation
+        import uuid as _uuid
+
+        # Validated before anything moves, and each refusal names its own field.
+        # `except (ValidationError, Exception)` used to stand here, which is
+        # simply `except Exception` with a longer spelling: it swallowed the
+        # Http404 from a missing recipient and reported it as a distribution
+        # failure, and it would have hidden a genuine ledger fault the same way.
+        errors = []
+
+        raw_amount = (request.POST.get("amount") or "").strip()
+        amount = None
         try:
-            amount = Decimal(request.POST.get("amount", "0"))
-            recipient_pk = request.POST.get("recipient_account")
-            recipient = get_object_or_404(LedgerAccount, pk=recipient_pk)
-            import uuid as _uuid
-            ref = f"dist-{asset.unit_name.lower()}-{_uuid.uuid4().hex[:8]}"
-            distribute_asset(asset=asset, recipient_account=recipient, amount=amount, reference=ref)
-            messages.success(request, f"Distributed {amount} {asset.unit_name} to {recipient.code}.")
-        except (ValidationError, Exception) as exc:
-            messages.error(request, str(exc))
+            amount = Decimal(raw_amount)
+        except (InvalidOperation, ArithmeticError, TypeError, ValueError):
+            errors.append(_("“%(value)s” is not a number.") % {"value": raw_amount})
+        else:
+            if amount <= 0:
+                errors.append(_("The amount must be greater than zero."))
+
+        recipient_pk = (request.POST.get("recipient_account") or "").strip()
+        recipient = (LedgerAccount.objects.filter(pk=recipient_pk).first()
+                     if recipient_pk.isdigit() else None)
+        if recipient is None:
+            errors.append(_("Choose an account to distribute to."))
+        elif not recipient.active:
+            errors.append(_("That account is not active."))
+
+        if errors:
+            for message in errors:
+                messages.error(request, message)
+        else:
+            try:
+                distribute_asset(
+                    asset=asset, recipient_account=recipient, amount=amount,
+                    reference=f"dist-{asset.unit_name.lower()}-"
+                              f"{_uuid.uuid4().hex[:8]}")
+            except ValidationError as exc:
+                for message in exc.messages:
+                    messages.error(request, message)
+            else:
+                messages.success(
+                    request,
+                    _("Distributed %(amount)s %(unit)s to %(code)s.")
+                    % {"amount": amount, "unit": asset.unit_name,
+                       "code": recipient.code})
     return redirect("assets:asset_detail", pk=pk)
 
 
