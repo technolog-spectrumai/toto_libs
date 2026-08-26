@@ -1,0 +1,79 @@
+{% load i18n %}<!DOCTYPE html>
+{% comment %}A standalone export, and standalone is the whole specification.
+
+No {% extends %}, no {% static %}, no stylesheet link, no script. This file has
+to open and read on a machine that has never heard of this platform — attached
+to an email, dropped in an archive, opened years later — so everything it needs
+is inside it. Nothing here may grow a dependency on the site chrome.
+
+Every value is autoescaped by the template engine. A reference or a description
+is arbitrary text that arrived from outside, and an export is the last place it
+would be noticed going wrong.
+{% endcomment %}
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>{% trans "Ledger transactions" %} {{ since }} — {{ until }}{% if asset_filter %} · {{ asset_filter }}{% endif %}</title>
+<style>
+  body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+         margin: 2rem; color: #111; background: #fff; }
+  h1 { font-size: 1.25rem; margin: 0 0 .25rem; }
+  p.meta { margin: 0 0 1.5rem; color: #555; font-size: .85rem; }
+  .warn { border: 1px solid #b45309; background: #fffbeb; color: #7c2d12;
+          padding: .75rem 1rem; border-radius: .375rem; margin-bottom: 1.5rem;
+          font-size: .875rem; }
+  table { border-collapse: collapse; width: 100%; font-size: .8125rem; }
+  th, td { border-bottom: 1px solid #e5e7eb; padding: .4rem .6rem;
+           text-align: left; vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; white-space: nowrap; }
+  td.num { text-align: right; font-variant-numeric: tabular-nums;
+           white-space: nowrap; }
+  td.mono, th.mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+  tr:nth-child(even) td { background: #fcfcfd; }
+  .empty { color: #666; font-style: italic; }
+</style>
+</head>
+<body>
+
+<h1>{% trans "Ledger transactions" %}</h1>
+{% comment %}The period is stated first and unconditionally. An export always
+covers a named window — that is what makes it a complete record OF something
+rather than a sample of everything.{% endcomment %}
+<p class="meta">
+  <strong>{% blocktrans %}{{ since }} to {{ until }}{% endblocktrans %}</strong> ·
+  {% blocktrans count total=rows|length trimmed %}
+    {{ total }} transaction.
+  {% plural %}
+    {{ total }} transactions.
+  {% endblocktrans %}
+  {% if asset_filter %}{% blocktrans %}Asset: {{ asset_filter }}.{% endblocktrans %}{% endif %}
+  {% if type_filter %}{% blocktrans %}Type: {{ type_filter }}.{% endblocktrans %}{% endif %}
+</p>
+
+{% if rows %}
+  <table>
+    <thead>
+      <tr>{% for key, label in columns %}<th{% if key == "uuid" or key == "reference" %} class="mono"{% endif %}>{{ label }}</th>{% endfor %}</tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+        <tr>
+          <td class="mono">{{ row.reference }}</td>
+          <td class="mono">{{ row.uuid }}</td>
+          <td>{{ row.timestamp }}</td>
+          <td>{{ row.type_label }}</td>
+          <td>{{ row.asset }}</td>
+          <td class="num">{{ row.amount }}</td>
+          <td>{{ row.sender }}</td>
+          <td>{{ row.recipient }}</td>
+          <td>{{ row.description }}</td>
+        </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+{% else %}
+  <p class="empty">{% trans "No transactions match this filter." %}</p>
+{% endif %}
+
+</body>
+</html>

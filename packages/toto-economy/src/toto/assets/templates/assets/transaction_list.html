@@ -43,6 +43,28 @@
         </select>
       </div>
 
+      {% comment %}The period. Optional for browsing, REQUIRED for an export —
+      an export with no window is a claim about "everything", which stops being
+      true the moment the next transaction posts.{% endcomment %}
+      <div class="grid grid-cols-2 gap-2">
+        <div>
+          <label class="mb-1 block text-sm font-semibold" for="tx-from">{% trans "From" %}</label>
+          <input type="date" name="from" id="tx-from" value="{{ since }}"
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+        <div>
+          <label class="mb-1 block text-sm font-semibold" for="tx-to">{% trans "To" %}</label>
+          <input type="date" name="to" id="tx-to" value="{{ until }}"
+            :class="darkMode
+              ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark'
+              : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+            class="w-full rounded-lg border px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+        </div>
+      </div>
+
       <button
         type="submit"
         :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
@@ -52,10 +74,47 @@
       </button>
     </form>
 
-    <div class="mt-5">
+    <div class="mt-5 space-y-3">
       <div :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'" class="rounded-lg p-4">
         <div class="text-2xl font-bold">{{ total_count }}</div>
-        <div class="text-xs opacity-65">{% trans "Matching transactions" %}</div>
+        <div class="text-xs opacity-65">
+          {% if has_span %}
+            {% blocktrans %}Transactions from {{ since }} to {{ until }}{% endblocktrans %}
+          {% else %}
+            {% trans "Matching transactions" %}
+          {% endif %}
+        </div>
+        {% comment %}The count is what decides whether an export will be
+        accepted, so somebody narrowing a span to get under the limit is told
+        where they stand rather than made to guess.{% endcomment %}
+        {% if over_export_limit %}
+          <p class="mt-2 text-xs text-warn-light">
+            {% blocktrans %}More than {{ export_limit }} — too many to export.
+            Narrow the dates, the asset or the type.{% endblocktrans %}</p>
+        {% endif %}
+      </div>
+
+      <div :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+           class="rounded-lg border p-4">
+        <p class="text-sm font-semibold">{% trans "Export" %}</p>
+        {% if has_span %}
+          <p class="mt-1 text-xs opacity-65">
+            {% blocktrans %}These {{ total_count }} transactions, as a file you keep.{% endblocktrans %}</p>
+          <div class="mt-2 flex gap-2">
+            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;export=html"
+               class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+              <i class="fa-solid fa-file-code"></i>{% trans "HTML" %}</a>
+            <a href="?asset={{ asset_filter|urlencode }}&amp;type={{ tx_type_filter|urlencode }}&amp;from={{ since|urlencode }}&amp;to={{ until|urlencode }}&amp;export=xml"
+               class="inline-flex flex-1 items-center justify-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85">
+              <i class="fa-solid fa-code"></i>{% trans "XML" %}</a>
+          </div>
+        {% else %}
+          {% comment %}Not a disabled button: the reason IS the instruction, and
+          a greyed control with no sentence beside it is a dead end.{% endcomment %}
+          <p class="mt-1 text-xs opacity-65">
+            {% blocktrans %}Choose a From and To date above. An export names the period
+            it covers, so it can be checked against the ledger later.{% endblocktrans %}</p>
+        {% endif %}
       </div>
     </div>
   </aside>

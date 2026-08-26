@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils.http import url_has_allowed_host_and_scheme
+from django.utils.text import slugify
 from django.utils.translation import gettext_lazy as _
 from django.views.decorators.http import require_POST
 from toto.ui import PageProcessor
@@ -22,6 +23,7 @@ from .models import (
     LedgerTransaction,
     TransactionType,
 )
+from .export import MAX_ROWS as EXPORT_LIMIT
 from .queries import list_asset_holders, verify_asset_ledger
 from .services.assets import distribute_asset
 
@@ -387,25 +389,141 @@ def account_detail(request, pk):
 # ---------------------------------------------------------------------------
 
 def transaction_list(request):
-    asset_filter = request.GET.get("asset")
-    tx_type_filter = request.GET.get("type")
+    """The ledger, filtered — and the same rows as a document if asked.
 
-    txs = LedgerTransaction.objects.select_related("asset", "reversed_transaction").order_by("-created_at")
-    if asset_filter:
-        txs = txs.filter(asset__unit_name__iexact=asset_filter)
-    if tx_type_filter:
-        txs = txs.filter(transaction_type=tx_type_filter)
+    The export is handled HERE rather than at its own URL, and that is the whole
+    guarantee behind "the same permissions and filters as the UI": one view, one
+    filter call, one permission posture. A filter added to the page tomorrow
+    cannot leave the export showing something else, and a login requirement
+    added to the page cannot leave the export open.
+    """
+    from .export import filtered_transactions, parse_day
 
-    assets = Asset.objects.all()
+    asset_filter = request.GET.get("asset") or ""
+    tx_type_filter = request.GET.get("type") or ""
+    since_raw = (request.GET.get("from") or "").strip()
+    until_raw = (request.GET.get("to") or "").strip()
+    since, until = parse_day(since_raw), parse_day(until_raw)
+
+    txs = filtered_transactions(asset=asset_filter, tx_type=tx_type_filter,
+                                since=since, until=until)
+
+    export = (request.GET.get("export") or "").strip().lower()
+    if export:
+        return _export_transactions(
+            request, export, txs,
+            asset=asset_filter, tx_type=tx_type_filter,
+            since=since, until=until, since_raw=since_raw, until_raw=until_raw)
+
     from .models import TransactionType
+
+    # Counted once and shown, because it is the number that decides whether an
+    # export will be accepted — see MAX_ROWS. Somebody narrowing a span is doing
+    # it to get under that, and a page that would not tell them the count makes
+    # that a guessing game.
+    total = txs.count()
     return assets_render(request, "assets/transaction_list.html", {
         "transactions": txs[:100],
-        "assets": assets,
+        "assets": Asset.objects.all(),
         "transaction_types": TransactionType.choices,
-        "asset_filter": asset_filter or "",
-        "tx_type_filter": tx_type_filter or "",
-        "total_count": txs.count(),
+        "asset_filter": asset_filter,
+        "tx_type_filter": tx_type_filter,
+        "since": since_raw,
+        "until": until_raw,
+        "has_span": bool(since and until),
+        "total_count": total,
+        "export_limit": EXPORT_LIMIT,
+        "over_export_limit": total > EXPORT_LIMIT,
     })
+
+
+def _back_to_list(request):
+    """The transactions page with the filters intact and `export` DROPPED.
+
+    Dropping it is not tidiness: redirecting back with the original query string
+    sends the browser straight back into the export branch, which refuses again
+    and redirects again — a loop, and the test client is the only thing that
+    reports it as one. A person just sees the page never load.
+    """
+    from django.http import QueryDict
+
+    params = QueryDict(request.GET.urlencode(), mutable=True)
+    params.pop("export", None)
+    query = params.urlencode()
+    target = reverse("assets:transaction_list")
+    return redirect(f"{target}?{query}" if query else target)
+
+
+def _export_transactions(request, fmt, transactions, *, asset, tx_type,
+                         since, until, since_raw, until_raw):
+    """The filtered rows as a standalone document. HTML or XML, nothing else.
+
+    Deliberately NOT routed through toto.aralia: that renders HTML to PDF on a
+    worker, and this has to come back in the same request, from a page anyone
+    can read, without a queue between a person and their own ledger.
+
+    Two refusals, and both are the same idea — an export names a bounded thing:
+
+    * **no time span** — an export with no window is a claim about "everything",
+      which stops being true the moment the next transaction posts. A document
+      that says which period it covers can be checked; one that does not cannot.
+    * **too many rows** — refused, never truncated. A cut-off ledger export looks
+      complete, balances against nothing, and gives its holder no way to tell.
+    """
+    from django.http import HttpResponse
+
+    from .export import (ExportTooLarge, render_html, render_xml,
+                         transaction_rows)
+
+    if fmt not in ("html", "xml"):
+        messages.error(request, _("Export format must be “html” or “xml”."))
+        return _back_to_list(request)
+
+    if not (since and until):
+        messages.error(request, _(
+            "Choose a start and an end date before exporting. An export names "
+            "the period it covers — that is what makes it a complete record of "
+            "something rather than a sample of everything."))
+        return _back_to_list(request)
+
+    if until < since:
+        messages.error(request, _("The end date is before the start date."))
+        return _back_to_list(request)
+
+    try:
+        rows = transaction_rows(transactions)
+    except ExportTooLarge as refusal:
+        from .export import MAX_ROWS
+
+        messages.error(request, _(
+            "That span holds %(count)s transactions, and one export carries at "
+            "most %(limit)s. Narrow the dates, or filter by asset or type.")
+            % {"count": refusal.count, "limit": MAX_ROWS})
+        return _back_to_list(request)
+
+    shape = {"asset": asset, "tx_type": tx_type,
+             "since": since_raw, "until": until_raw}
+    stem = f"ledger-{since_raw}-to-{until_raw}"
+    if asset:
+        stem += f"-{slugify(asset)}"
+    if tx_type:
+        stem += f"-{slugify(tx_type)}"
+
+    if fmt == "xml":
+        response = HttpResponse(render_xml(rows, **shape),
+                                content_type="application/xml; charset=utf-8")
+    else:
+        response = HttpResponse(render_html(rows, **shape),
+                                content_type="text/html; charset=utf-8")
+
+    # `attachment` on both: an export is a file somebody keeps. The HTML one
+    # would otherwise render in the tab and look like a page of this site,
+    # which is exactly what a standalone document is not.
+    response["Content-Disposition"] = f'attachment; filename="{stem}.{fmt}"'
+    # A document about somebody's money; no cache should hold a copy.
+    response["Cache-Control"] = "private, no-store"
+    response["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 def transaction_detail(request, pk):
@@ -1074,6 +1192,13 @@ def faucet_member_add(request, pk):
     elif amount < 0:
         messages.error(request, _("An hourly amount cannot be negative — a "
                                   "faucet pays out, it does not collect."))
+    elif FaucetMember(faucet=faucet, amount_per_hour=amount).rate_problem():
+        # Checked HERE and not left to the sweep: `update_or_create` never calls
+        # full_clean, and a rate the ledger cannot record fails at 3am as a
+        # database error rather than at the keyboard as a sentence.
+        messages.error(
+            request,
+            FaucetMember(faucet=faucet, amount_per_hour=amount).rate_problem())
     else:
         # update_or_create, so adding somebody already on the faucet changes
         # their rate rather than answering "already a member" at somebody
