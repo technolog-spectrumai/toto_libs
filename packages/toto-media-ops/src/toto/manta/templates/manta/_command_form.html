@@ -79,21 +79,28 @@ the focused ffprobe tab.
     </template>
 
     {% if gear_choices %}
-      {% comment %} Which Compute Gear runs this. Shown only when there is a choice: with
-         one Gear it is chosen for you, and a select with a single option is a
-         question nobody needs to answer. With two, anastasia refuses to guess
-         — so without this control the Run button could only fail. {% endcomment %}
+      {% comment %} Which Compute Gear runs this, remembered between jobs.
+
+         Automatic is always offered now, not only when there are two Gears:
+         once the choice is remembered, going BACK to automatic has to be
+         reachable, and with one Gear it is still the honest description of what
+         happens. The rest is unchanged — anastasia refuses to guess between two
+         open Gears, so without this control the Run button could only fail.
+      {% endcomment %}
       <div class="mt-4">
         <label class="block text-xs font-semibold uppercase tracking-wide opacity-60"
                for="manta-gear">{% trans "Compute Gear" %}</label>
+        <p class="mt-0.5 text-xs opacity-60">
+          {% trans "Remembered for your next job." %}</p>
         <select id="manta-gear" name="gear"
                 x-bind:class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                 class="mt-1 w-full max-w-sm rounded-lg border px-3 py-2 text-sm">
-          {% if gear_choices|length > 1 %}
-            <option value="">{% trans "Automatic (your only mounted Gear)" %}</option>
-          {% endif %}
+          <option value=""{% if not gear_selected %} selected{% endif %}>
+            {% trans "Automatic (your only mounted Gear)" %}</option>
           {% for choice in gear_choices %}
-            <option value="{{ choice.value }}"{% if not choice.ready %} disabled{% endif %}>
+            <option value="{{ choice.value }}"
+                    {% if not choice.ready %}disabled{% endif %}
+                    {% if choice.value == gear_selected %}selected{% endif %}>
               {{ choice.label }}{% if not choice.ready %} — {% trans "mount it first" %}{% endif %}
             </option>
           {% endfor %}

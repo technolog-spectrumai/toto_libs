@@ -205,6 +205,14 @@ def _anastasia_installed() -> bool:
     return apps.is_installed("toto.anastasia")
 
 
+def _gear_preference(user) -> str:
+    """The Gear this person last sent a job to, or "" for Automatic."""
+    if not _anastasia_installed():
+        return ""
+    from .models import GearPreference
+    return GearPreference.for_user(user)
+
+
 def _gear_choices(user) -> list:
     """The Gears this person may send a job to, for the form. Empty on a host
     with no Compute Gears, and the control is then absent entirely."""
@@ -289,6 +297,9 @@ def command_builder(request):
         # Which Gears this person could send the job to. The form shows the
         # control only when there is a choice to make — see _command_form.html.
         "gear_choices": _gear_choices(request.user),
+        # What they chose last time, so the answer they already gave is the one
+        # already selected. "" is Automatic.
+        "gear_selected": _gear_preference(request.user),
         "errors": [source_error] if source_error else [],
         "allow_upload": allow_upload,
         "upload_buckets": upload_buckets,
@@ -373,6 +384,12 @@ def _run(request, vf, cmd_cls, params, extra_objs):
         except gear_jobs.NoGear as exc:
             messages.error(request, "; ".join(exc.messages))
             return redirect("manta:command_builder")
+    if _anastasia_installed():
+        # Remembered only once the choice has been ACCEPTED above, so a refused
+        # Gear is never the one waiting on the form next time. Automatic is
+        # remembered too — going back to it has to stick like any other answer.
+        from .models import GearPreference
+        GearPreference.remember(request.user, gear_uuid)
 
     job = FileJob.objects.create(
         name=f"{cmd_cls.label}: {vf.title}",

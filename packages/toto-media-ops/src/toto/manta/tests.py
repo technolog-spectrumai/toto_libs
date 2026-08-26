@@ -223,8 +223,14 @@ class BuilderTests(TestCase):
         self.assertEqual(data["backend"], "ffmpeg")
         self.assertIn("compressed.mp4", data["command"])
 
+    # These patch `apply_async`, which is what `views.py:410` actually calls.
+    # They patched `.delay` until 2026-08 — so `delay.called` could never be
+    # true, `test_run_ffmpeg_creates_job` failed, and its two siblings let the
+    # REAL apply_async run while asserting nothing. Nobody noticed because
+    # `toto.manta.tests` is named in no gate.
     def test_run_ffmpeg_creates_job(self):
-        with patch("toto.manta.tasks_direct.run_direct_job.delay") as delay:
+        with patch("toto.manta.tasks_direct.run_direct_job.apply_async") as delay:
+            delay.return_value.id = "task-compress"
             resp = self.client.post(self.URL, {"file": self.src.pk, "op": "compress", "action": "run",
                                                "quality": "medium", "output_name": "out"})
         job = FileJob.objects.filter(command="compress").last()
@@ -233,7 +239,8 @@ class BuilderTests(TestCase):
         self.assertRedirects(resp, reverse("manta:job_detail", args=[job.pk]), fetch_redirect_response=False)
 
     def test_run_concat_with_extra(self):
-        with patch("toto.manta.tasks_direct.run_direct_job.delay"):
+        with patch("toto.manta.tasks_direct.run_direct_job.apply_async") as enqueued:
+            enqueued.return_value.id = "task-concat"
             self.client.post(self.URL, {"file": self.src.pk, "op": "concat", "action": "run",
                                         "output_name": "merged", "videos": [self.extra.pk]})
         job = FileJob.objects.filter(command="concat").last()
@@ -241,7 +248,7 @@ class BuilderTests(TestCase):
 
     def test_unauthorized_extra_rejected(self):
         before = FileJob.objects.count()
-        with patch("toto.manta.tasks_direct.run_direct_job.delay") as delay:
+        with patch("toto.manta.tasks_direct.run_direct_job.apply_async") as delay:
             resp = self.client.post(self.URL, {"file": self.src.pk, "op": "concat", "action": "run",
                                                "output_name": "merged", "videos": [self.secret.pk]})
         self.assertEqual(FileJob.objects.count(), before)
@@ -266,3 +273,78 @@ class BuilderTests(TestCase):
         self.assertIn("ffmpeg", job.output["command"])
         self.assertEqual(len(job.output["files"]), 1)
 
+
+
+class GearPreferenceTests(TestCase):
+    """Manta remembers which Compute Gear you send jobs to.
+
+    It used to ask on every form, and the answer is almost never different from
+    last time — you hold a Gear for days and push a dozen conversions through
+    it. `toto.ambrosia.gears` made the same call for the labs and stored it on
+    the workspace; manta has no workspace, so it hangs on the user.
+
+    The property that matters is that remembering is a CONVENIENCE and never an
+    authorisation: a remembered Gear still goes through `require_gear` on every
+    submit, so one that was released, expired, or never belonged to this person
+    is refused at the button.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("gearowner", password="pass")
+        self.other = User.objects.create_user("someone", password="pass")
+
+    def test_nothing_remembered_means_automatic(self):
+        from .models import GearPreference
+
+        self.assertEqual(GearPreference.for_user(self.user), "")
+
+    def test_a_choice_is_remembered_as_a_string(self):
+        """A string, because that is what a select round-trips — a UUID object
+        compared to an option value in a template silently never matches."""
+        import uuid
+
+        from .models import GearPreference
+
+        chosen = uuid.uuid4()
+        GearPreference.remember(self.user, chosen)
+        remembered = GearPreference.for_user(self.user)
+        self.assertEqual(remembered, str(chosen))
+        self.assertIsInstance(remembered, str)
+
+    def test_choosing_again_replaces_rather_than_duplicates(self):
+        import uuid
+
+        from .models import GearPreference
+
+        GearPreference.remember(self.user, uuid.uuid4())
+        second = uuid.uuid4()
+        GearPreference.remember(self.user, second)
+        self.assertEqual(GearPreference.objects.filter(user=self.user).count(), 1)
+        self.assertEqual(GearPreference.for_user(self.user), str(second))
+
+    def test_going_back_to_automatic_sticks(self):
+        """Automatic has to be rememberable too, or the setting is one-way."""
+        import uuid
+
+        from .models import GearPreference
+
+        GearPreference.remember(self.user, uuid.uuid4())
+        GearPreference.remember(self.user, None)
+        self.assertEqual(GearPreference.for_user(self.user), "")
+
+    def test_one_person_s_choice_is_not_another_s(self):
+        import uuid
+
+        from .models import GearPreference
+
+        GearPreference.remember(self.user, uuid.uuid4())
+        self.assertEqual(GearPreference.for_user(self.other), "")
+
+    def test_an_anonymous_caller_remembers_nothing_and_is_not_an_error(self):
+        from django.contrib.auth.models import AnonymousUser
+
+        from .models import GearPreference
+
+        GearPreference.remember(AnonymousUser(), None)
+        self.assertEqual(GearPreference.for_user(AnonymousUser()), "")
+        self.assertEqual(GearPreference.objects.count(), 0)
