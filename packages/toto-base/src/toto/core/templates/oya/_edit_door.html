@@ -1,0 +1,46 @@
+{% load i18n %}
+{% comment %}"You can look at this, but not save it" — for the top of an editor page.
+
+The server-side half of oya/_lock_banner.html, and its complement rather than
+its twin. That one is driven by a `vault-lock` event and answers exactly one
+question — is somebody else in this file. This one renders what
+`toto.vault.editing.door_for` decided before the page was built: an empty
+balance, an unpaid levy, an encrypted file, a host with editing switched off.
+
+Deliberately silent when `edit_reason` is "locked". The lock banner already says
+that, in the same place, with a live holder name; two banners about one fact
+read as two problems.
+
+The context comes from `Door.as_context()`, so an editor that renders this gets
+the right words without knowing which refusals exist. `can_edit` is the same
+flag that hides the Save button — a page that showed the button and refused the
+save would be lying twice.
+
+Include it beside _lock_banner.html near the toolbar. Renders nothing when the
+door is fully open.
+{% endcomment %}
+
+{% if not can_edit and edit_reason and edit_reason != "locked" %}
+  <div class="mx-auto w-full max-w-5xl px-4 pt-3">
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="flex items-start gap-3 rounded-lg border px-4 py-3 text-sm">
+      <i class="fa-solid mt-0.5 text-warn-light
+                {% if edit_reason == 'encrypted' %}fa-lock
+                {% elif edit_reason == 'host' %}fa-ban
+                {% else %}fa-wallet{% endif %}"></i>
+      <div>
+        <p class="font-semibold">{% trans "This is open for reading only." %}</p>
+        <p class="mt-1 opacity-70">{{ edit_message }}</p>
+        {% if edit_reason == "insufficient-funds" or edit_reason == "in-arrears" %}
+          {% comment %}The one refusal the reader can act on themselves, so it is
+          the one that gets a link. The others are somebody else's switch.{% endcomment %}
+          <p class="mt-2">
+            <a href="{% url 'quota:fees' %}" class="font-semibold underline">
+              {% trans "Usage and fees" %}
+            </a>
+          </p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+{% endif %}

@@ -75,11 +75,20 @@ def acquire(vault_file, user, *, ttl: timedelta = LOCK_TTL):
             if existing.expires_at > now and existing.holder_id != user.pk:
                 raise Locked(existing)
             # Ours, or dead. Either way it becomes ours now.
+            #
+            # Whether this is a takeover has to be read BEFORE the reassignment:
+            # `existing.holder = user` sets holder_id too, so a test after it can
+            # only ever be False. That is what it used to be, and `acquired_at`
+            # was additionally left out of update_fields, so a lock inherited
+            # from an expired holder reported THEIR "editing since" time forever.
+            taken_over = existing.holder_id != user.pk
             existing.holder = user
             existing.expires_at = now + ttl
-            if existing.holder_id != user.pk:
+            fields = ["holder", "expires_at"]
+            if taken_over:
                 existing.acquired_at = now
-            existing.save(update_fields=["holder", "expires_at"])
+                fields.append("acquired_at")
+            existing.save(update_fields=fields)
             return existing
 
         try:
