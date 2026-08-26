@@ -1162,8 +1162,16 @@ def faucet_toggle(request, pk):
     return redirect("assets:faucet_list")
 
 
+@login_required
 def faucet_wallets(request, pk):
     """The wallets a faucet could pay, for the Add-to-faucet picker.
+
+    `_staff_or_403` already refuses an anonymous caller, because AnonymousUser
+    is not staff — but the decorator goes on anyway. `zenobia/tests/
+    test_login_required.py` opens by saying why: the default is wrong, a view
+    added without it is world-readable, and that is how nine views in this very
+    app came to publish the ledger. Leaning on a second check to cover a missing
+    first one is how the next view loses both.
 
     ONLY prepaid wallets, and that is not a filter — it is the whole set. A
     payout resolves its destination with `get_or_create_prepaid_account(
