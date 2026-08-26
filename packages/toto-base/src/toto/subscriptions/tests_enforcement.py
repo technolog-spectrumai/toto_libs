@@ -8,8 +8,16 @@ so a plan or state change can never silently widen or narrow access:
   states: active / arrears (grace: still grants) / lapsed / cancelled
           (both resolve to the DEFAULT plan, not the chosen one)
   tiers:  free-by-catalogue apps (vault, and the machinery: workflows),
-          a standard-tier app (cyprian), a professional-only app (aralia),
-          an unknown code, and an ALWAYS_FREE one
+          a lower-tier app, a higher-tier app, an unknown code, and an
+          ALWAYS_FREE one
+
+The codes standing in for those last two are `cyprian` and `aralia`, and they
+come from `tests.make_plans()`, which is a FIXTURE with entitlement lists of its
+own. They are examples chosen to exercise the matrix, not a statement about what
+the shipped ladder sells — `ingress_subscriptions.PLANS` is that, and since
+8/2026 it puts cyprian on Professional with the other two rich editors.
+`zenobia.tests.test_editors_are_gated` asserts the shipped tiering; this module
+asserts the mechanism, and the two must not be read as one.
   methods: GET (never 402; plan_locked marks) / POST (402 iff not granted)
 
 Run only where a gate stanza names this module (zenobia's does, with
@@ -47,10 +55,11 @@ COMBOS = [
     ("professional-cancelled", "professional", SubscriptionState.CANCELLED),
 ]
 
-#: code -> {combo name -> entitled?}. vault is catalogue-free (everyone);
-#: cyprian is standard-tier; workflows is professional-only; arrears keeps
-#: granting (the grace window's whole point); lapsed/cancelled fall back to
-#: the default plan, which grants nothing beyond the free tier.
+#: code -> {combo name -> entitled?}. Against `make_plans()`, not the shipped
+#: ladder: vault is catalogue-free (everyone); cyprian is on both fixture plans;
+#: aralia is on the higher one only; arrears keeps granting (the grace window's
+#: whole point); lapsed/cancelled fall back to the default plan, which grants
+#: nothing beyond the free tier.
 def expected(code, combo):
     # workflows is here on purpose: machinery is free on every plan (8/2026),
     # so it must answer True for a never-subscribed user exactly like vault.

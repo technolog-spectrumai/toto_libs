@@ -38,11 +38,24 @@ PLANS = [
         "is_default": False,
         "order": 20,
         "description": (
-            "The everyday tools — documents, sheets, drawings, tasks and maps. "
-            "Metered work is still charged per use on top."
+            "The everyday tools — text and code, tasks, polls and maps. Read "
+            "and export documents, sheets and decks; writing them is "
+            "Professional. Metered work is still charged per use on top."
         ),
+        # `cyprian`, `memo` and `primula` are deliberately NOT here (8/2026).
+        # The three rich editors are Professional, and the gate is what makes
+        # that a partial rather than a total exclusion: it refuses unsafe
+        # methods only, so a Standard subscriber still opens, reads, prints and
+        # downloads every document, deck and workbook they can see — they just
+        # cannot save one. That is the "read-only viewing of paid apps" property
+        # gate.py describes, and it is the reason this list can shrink without
+        # anybody losing access to their own files.
+        #
+        # `editor` stays: the ACE editor is text and code, it is not metered,
+        # and taking plain-text editing away from Standard would be a different
+        # decision than the one made here.
         "entitlements": [
-            "cyprian", "memo", "editor",
+            "editor",
             "kanban", "polls", "locations",
         ],
     },
@@ -53,7 +66,8 @@ PLANS = [
         "is_default": False,
         "order": 30,
         "description": (
-            "Everything in Standard, plus the heavy end: PDF generation, "
+            "Everything in Standard, plus the writing tools — documents, "
+            "sheets and presentations — and the heavy end: PDF generation, "
             "notebooks, version control, media, signatures and the assistant."
         ),
         # Functionality only — workflows and email are machinery and belong
@@ -69,7 +83,7 @@ PLANS = [
         # write endpoints wherever BUILD_SUBSCRIPTIONS_ENFORCE was on. The
         # description above has promised "notebooks" and "media" the whole time.
         "entitlements": [
-            "cyprian", "memo", "editor",
+            "cyprian", "memo", "primula", "editor",
             "kanban", "polls", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",
