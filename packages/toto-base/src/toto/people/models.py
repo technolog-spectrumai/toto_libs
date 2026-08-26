@@ -7,6 +7,18 @@ from django.utils.text import slugify
 from toto.core.domain import DomainEntity
 
 
+class LocationSharing(models.TextChoices):
+    """How much of a person's whereabouts other members may see.
+
+    The order is deliberate: OFF first, so it is the default any new column,
+    any fixture and any forgotten argument lands on.
+    """
+
+    OFF = "off", "Not shown to anyone"
+    APPROXIMATE = "approximate", "Approximate area only"
+    EXACT = "exact", "Exact address"
+
+
 class Person(DomainEntity):
     user = models.OneToOneField(
         User,
@@ -42,6 +54,35 @@ class Person(DomainEntity):
         blank=True,
         related_name="residents",
         help_text="Optional address for this community member",
+    )
+    #: Whether this person's address may be shown to other members, and how
+    #: precisely. OFF is the default and that is the whole point: a home
+    #: location is the most sensitive thing this platform stores, so appearing
+    #: on the People map is something a person switches ON, never something
+    #: they have to discover and switch off.
+    #:
+    #: ONE field rather than a boolean plus a precision, because the pair can
+    #: express "sharing, precision unset" and this cannot.
+    #:
+    #: It lives on Person rather than in a Group or a side table because
+    #: `datalink` replicates Person between federated hosts and REFUSES
+    #: auth.Group ("group membership is a local authorization decision" —
+    #: datalink_policies.py). A consent flag that did not travel with the person
+    #: would let a federated host republish an address its owner switched off
+    #: here.
+    #: The choices, reachable from a template — Django templates cannot call
+    #: `LocationSharing.choices` and iterating a hardcoded list in the markup is
+    #: how the page and the field drift apart.
+    LOCATION_SHARING_CHOICES = LocationSharing.choices
+
+    location_sharing = models.CharField(
+        max_length=12,
+        choices=LocationSharing.choices,
+        default=LocationSharing.OFF,
+        help_text=(
+            "Whether other members may see where this person lives, and how "
+            "precisely. Off by default."
+        ),
     )
     email = models.EmailField(blank=True, null=True)
     phone = models.CharField(max_length=50, blank=True, null=True)

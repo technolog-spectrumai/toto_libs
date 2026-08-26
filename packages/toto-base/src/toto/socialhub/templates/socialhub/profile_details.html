@@ -148,17 +148,25 @@
           </p>
         </article>
 
-        <article
-          :class="darkMode
-            ? 'border-accent-1 bg-sunken-dark'
-            : 'border-accent-2 bg-sunken-light'"
-          class="rounded-xl border p-4">
-          <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
-          <p class="mt-2 break-words text-sm font-semibold">
-            {{ profile.address|default:"—" }}
-          </p>
-        </article>
+        {% comment %}The address is shown only to somebody entitled to it.
+
+        This block used to render to ANY signed-in account, which made the
+        People tab's opt-in meaningless: a viewer refused on the map could read
+        the same address here. `may_see_address` is the same resolver the map
+        uses, so the two cannot disagree.{% endcomment %}
+        {% if may_see_address %}
+          <article
+            :class="darkMode
+              ? 'border-accent-1 bg-sunken-dark'
+              : 'border-accent-2 bg-sunken-light'"
+            class="rounded-xl border p-4">
+            <p class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
+              <i class="fa-solid fa-location-dot"></i>{% trans "Address" %}</p>
+            <p class="mt-2 break-words text-sm font-semibold">
+              {{ address_shown|default:"—" }}
+            </p>
+          </article>
+        {% endif %}
 
         <article
           :class="darkMode
@@ -175,6 +183,47 @@
     </section>
 
     {% if is_own_profile %}
+    {% comment %}Where you live, and who may see it.
+
+    Placed above the language picker on purpose: this is the setting on this
+    page whose wrong value publishes a home address, and it should be the one
+    somebody meets first rather than the one below the flags.{% endcomment %}
+    <section
+      :class="darkMode
+        ? 'border-accent-1 bg-bubble-bg-dark'
+        : 'border-accent-2 bg-bubble-bg-light'"
+      class="mb-6 rounded-2xl border p-5 shadow-sm sm:p-6">
+
+      <h2 class="flex items-center gap-2 text-lg font-bold">
+        <i class="fa-solid fa-map-pin"></i>{% trans "Where you live" %}</h2>
+      <p class="mt-1 text-sm opacity-75">
+        {% blocktrans trimmed %}
+          Whether other members can find you on the People map. Off unless you
+          turn it on, and turning it off removes you straight away.
+        {% endblocktrans %}
+      </p>
+      {% if not profile.address %}
+        <p class="mt-2 text-xs opacity-70">
+          <i class="fa-solid fa-circle-info"></i>
+          {% trans "You have no address on your profile yet, so nothing is shown either way." %}
+        </p>
+      {% endif %}
+
+      <form method="post" action="{% url 'socialhub:set_location_sharing' %}"
+            class="mt-4 flex flex-wrap gap-3">
+        {% csrf_token %}
+        {% for value, label in profile.LOCATION_SHARING_CHOICES %}
+          <button type="submit" name="location_sharing" value="{{ value }}"
+                  :class="darkMode
+                    ? '{% if profile.location_sharing == value %}bg-accent-dark text-primary-bg-dark{% else %}border-accent-1 bg-sunken-dark{% endif %}'
+                    : '{% if profile.location_sharing == value %}bg-accent-light text-primary-bg-light{% else %}border-accent-2 bg-sunken-light{% endif %}'"
+                  class="inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            {{ label }}
+          </button>
+        {% endfor %}
+      </form>
+    </section>
+
     {% get_available_languages as available_languages %}
     <!-- Language Preference -->
     <section

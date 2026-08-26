@@ -1,0 +1,178 @@
+{% extends "locations/base.html" %}
+{% load i18n static %}
+
+{% block locations_title %}{% trans "People" %}{% endblock %}
+
+{% block locations_start_script %}
+  <link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}"/>
+  <script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+{% endblock %}
+
+{% block locations_content %}
+{% comment %}
+  Everyone on this page put themselves here. There is no listing of somebody
+  who did not switch sharing on, so the page never has to explain an absence —
+  but it DOES have to explain the viewer's own, which is what the notice below
+  is for. A page that lets you find others while you are invisible is worth
+  saying out loud.
+{% endcomment %}
+<div class="mx-auto max-w-6xl px-4 py-6 sm:px-6">
+
+  <header class="mb-4">
+    <h1 class="text-2xl font-bold">{% trans "People near a place" %}</h1>
+    <p class="mt-1 text-sm opacity-75">
+      {% blocktrans trimmed %}
+        Members who chose to be findable. Nobody appears here until they turn it
+        on for themselves, and turning it off removes them at once.
+      {% endblocktrans %}
+    </p>
+  </header>
+
+  {% if not viewer_shares %}
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+         class="mb-4 rounded-xl border px-4 py-3 text-sm">
+      <i class="fa-solid fa-eye-slash opacity-60"></i>
+      {% blocktrans trimmed %}
+        You are not on this map. Others cannot see where you live, and you can
+        still search.
+      {% endblocktrans %}
+      <a href="{% url 'socialhub:profile_list' %}" class="font-semibold underline">
+        {% trans "Change that in your profile" %}</a>
+    </div>
+  {% endif %}
+
+  <form method="get" class="mb-5 flex flex-wrap items-end gap-3">
+    <label class="text-sm">
+      <span class="block text-xs opacity-70">{% trans "Within" %}</span>
+      <select name="radius"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-lg border px-3 py-1.5 text-sm">
+        {% for choice in radius_choices %}
+          <option value="{{ choice }}" {% if choice == radius_km %}selected{% endif %}>
+            {% blocktrans trimmed with km=choice %}{{ km }} km{% endblocktrans %}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    <label class="text-sm">
+      <span class="block text-xs opacity-70">{% trans "Community" %}</span>
+      <select name="community"
+              :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+              class="rounded-lg border px-3 py-1.5 text-sm">
+        <option value="">{% trans "Anyone" %}</option>
+        {% for community in communities %}
+          <option value="{{ community.pk }}"
+                  {% if selected_community and selected_community.pk == community.pk %}selected{% endif %}>
+            {{ community.name }}</option>
+        {% endfor %}
+      </select>
+    </label>
+
+    {# Carried through the form so a filter change keeps the dropped pin. #}
+    <input type="hidden" name="lat" id="centre-lat" value="{% if centre %}{{ centre.0 }}{% endif %}">
+    <input type="hidden" name="lon" id="centre-lon" value="{% if centre %}{{ centre.1 }}{% endif %}">
+
+    <button type="submit"
+            class="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+      <i class="fa-solid fa-magnifying-glass"></i> {% trans "Search" %}</button>
+  </form>
+
+  {% if not centre %}
+    <div class="rounded-xl border border-dashed p-8 text-center text-sm opacity-75">
+      {% blocktrans trimmed %}
+        We do not know where to search from. Drag the pin onto the map, or add an
+        address to your profile.
+      {% endblocktrans %}
+    </div>
+  {% endif %}
+
+  <div id="people-map" class="mb-5 h-96 w-full rounded-xl border"></div>
+
+  {% if centre %}
+    <p class="mb-3 text-sm opacity-75">
+      {% blocktrans count counter=results|length trimmed with km=radius_km %}
+        {{ counter }} person within {{ km }} km.
+      {% plural %}
+        {{ counter }} people within {{ km }} km.
+      {% endblocktrans %}
+      {% if centre_label %}
+        <span class="opacity-60">· {% trans "from" %} {{ centre_label }}</span>
+      {% endif %}
+    </p>
+
+    <ul class="grid gap-2 sm:grid-cols-2">
+      {% for row in results %}
+        <li :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="flex items-center gap-3 rounded-lg border px-4 py-3">
+          <div class="min-w-0 flex-1">
+            <a href="{% url 'socialhub:profile_details' row.person.slug %}"
+               class="font-semibold hover:underline">{{ row.person.display_name }}</a>
+            {% if row.place %}
+              <span class="block text-xs opacity-60">{{ row.place }}</span>
+            {% endif %}
+          </div>
+          <span class="shrink-0 text-right text-sm tabular-nums">
+            {{ row.distance_km }} {% trans "km" %}
+            {% if row.approximate %}
+              <span class="block text-[0.65rem] opacity-55"
+                    title="{% trans 'This person shares an approximate area, not an exact address.' %}">
+                {% trans "approximate" %}</span>
+            {% endif %}
+          </span>
+        </li>
+      {% empty %}
+        <li class="col-span-full rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
+          {% trans "Nobody who shares their location is within this distance." %}
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+</div>
+
+<script>
+  (function () {
+    // Only ever the PUBLISHED point — an approximate sharer's coordinates were
+    // already coarsened server-side, in people_access.point_for. Nothing exact
+    // for such a person reaches this page, so there is nothing here to leak.
+    const people = [
+      {% for row in results %}
+        {lat: {{ row.latitude }}, lon: {{ row.longitude }},
+         name: "{{ row.person.display_name|escapejs }}",
+         km: {{ row.distance_km }}, approx: {{ row.approximate|yesno:"true,false" }}},
+      {% endfor %}
+    ];
+    {% if centre %}
+      const centre = [{{ centre.0 }}, {{ centre.1 }}];
+    {% else %}
+      const centre = [52.2297, 21.0122];   // a neutral default view, not a search
+    {% endif %}
+
+    const map = L.map("people-map").setView(centre, {% if centre %}11{% else %}5{% endif %});
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png",
+                {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
+
+    // The pin IS the control: drag it and search again from there.
+    const pin = L.marker(centre, {draggable: true}).addTo(map)
+      .bindPopup({{ centre|yesno:"'Searching from here. Drag to move.','Drag me, then Search.'" }});
+    pin.on("dragend", function () {
+      const at = pin.getLatLng();
+      document.getElementById("centre-lat").value = at.lat.toFixed(6);
+      document.getElementById("centre-lon").value = at.lng.toFixed(6);
+    });
+
+    {% if centre %}
+      L.circle(centre, {radius: {{ radius_km }} * 1000, weight: 1, opacity: 0.5,
+                        fillOpacity: 0.05}).addTo(map);
+    {% endif %}
+
+    people.forEach(function (p) {
+      // A coarse sharer gets a circle, not a pin: a pin claims a spot, and this
+      // one is only accurate to about a kilometre.
+      const layer = p.approx
+        ? L.circle([p.lat, p.lon], {radius: 900, weight: 1, opacity: 0.6, fillOpacity: 0.15})
+        : L.marker([p.lat, p.lon]);
+      layer.addTo(map).bindPopup(p.name + " — " + p.km + " km");
+    });
+  })();
+</script>
+{% endblock %}

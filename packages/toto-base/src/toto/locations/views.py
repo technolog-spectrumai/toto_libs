@@ -1100,3 +1100,105 @@ def metadata_convert(request):
         text_out = json.dumps(data, indent=2, ensure_ascii=False)
 
     return JsonResponse({"status": "ok", "text": text_out})
+
+# ---------------------------------------------------------------------
+# People — who lives near you
+# ---------------------------------------------------------------------
+
+#: What the radius slider offers. Bounded by nearby.MAX_RADIUS_KM, which is a
+#: privacy limit rather than a performance one — see that module.
+RADIUS_CHOICES_KM = (1, 2, 5, 10, 25, 50, 100)
+
+DEFAULT_RADIUS_KM = 10
+
+
+@login_required
+def people(request):
+    """People who have chosen to be findable, near a point.
+
+    Every person on this page put themselves here. There is no view of somebody
+    who did not switch sharing on — not for staff, not for a fellow community
+    member, not for the person's own patron. See `people_access`.
+    """
+    from toto.socialhub.models import Community
+
+    from . import nearby
+    from .people_access import place_label, point_for
+
+    viewer = current_person(request)
+
+    centre, centre_label = _search_centre(request, viewer)
+    radius_km = _requested_radius(request)
+
+    community = None
+    community_id = (request.GET.get("community") or "").strip()
+    if community_id.isdigit():
+        community = Community.objects.filter(pk=int(community_id)).first()
+
+    results = []
+    if centre is not None:
+        for person, distance in nearby.people_within(
+                request.user, latitude=centre[0], longitude=centre[1],
+                radius_km=radius_km, community=community):
+            point = point_for(person)
+            results.append({
+                "person": person,
+                "distance_km": round(distance, 1),
+                "latitude": point[0],
+                "longitude": point[1],
+                "place": place_label(person),
+                "approximate": person.location_sharing == "approximate",
+            })
+
+    return render(request, "locations/people.html", PageProcessor().decorate({
+        "results": results,
+        "centre": centre,
+        "centre_label": centre_label,
+        "radius_km": radius_km,
+        "radius_choices": RADIUS_CHOICES_KM,
+        "communities": Community.objects.order_by("name"),
+        "selected_community": community,
+        # Whether the VIEWER is on the map themselves. A page that lets you
+        # search for others while you are invisible is worth saying out loud,
+        # not because it is forbidden but because most people assume the
+        # opposite.
+        "viewer_shares": bool(viewer and viewer.location_sharing != "off"),
+        "viewer_has_address": bool(viewer and viewer.address_id),
+    }, request))
+
+
+def _requested_radius(request) -> int:
+    raw = (request.GET.get("radius") or "").strip()
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return DEFAULT_RADIUS_KM
+    return value if value in RADIUS_CHOICES_KM else DEFAULT_RADIUS_KM
+
+
+def _search_centre(request, viewer):
+    """Where to measure from: a dropped pin, else the viewer's own address.
+
+    Returns `((lat, lon) | None, label)`. None means we have nowhere to measure
+    from — the page says so rather than silently listing nobody, because "no
+    results" and "we do not know where you are" look identical otherwise.
+    """
+    from .people_access import _coordinates
+
+    raw_lat = (request.GET.get("lat") or "").strip()
+    raw_lon = (request.GET.get("lon") or "").strip()
+    if raw_lat and raw_lon:
+        try:
+            lat, lon = float(raw_lat), float(raw_lon)
+        except ValueError:
+            lat = lon = None
+        else:
+            if -90 <= lat <= 90 and -180 <= lon <= 180:
+                return (lat, lon), ""
+
+    if viewer is not None and viewer.address_id:
+        lat, lon = _coordinates(viewer.address)
+        if lat is not None and lon is not None:
+            return (lat, lon), str(viewer.address)
+
+    return None, ""

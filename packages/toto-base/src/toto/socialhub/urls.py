@@ -6,7 +6,8 @@ from toto.socialhub.api_views import (
     CommunityDetailApiView,
     CommunityOrgChartApiView,
 )
-from toto.socialhub.views.profile import ProfileListView, ProfileDetailView, set_preferred_language
+from toto.socialhub.views.profile import (ProfileListView, ProfileDetailView,
+                                          set_location_sharing, set_preferred_language)
 from toto.socialhub.views.community import (
     CommunityListView,
     CommunityDetailView,
@@ -36,6 +37,9 @@ urlpatterns = [
     path("profiles/", ProfileListView.as_view(), name="profile_list"),
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
     path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),
+    # Its own door: the one setting whose wrong value publishes where you live.
+    path("profiles/location-sharing/set/", set_location_sharing,
+         name="set_location_sharing"),
 
     path("communities/", CommunityListView.as_view(), name="community_list"),
     # Public: an office nobody can see is not an institution.

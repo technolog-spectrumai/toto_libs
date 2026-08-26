@@ -20,6 +20,8 @@ urlpatterns = [
 
     path("", views.locations_all, name="locations_all"),
     path("route-search/", views.route_search, name="route_search"),
+    # Who lives near you. Opt-in: a person is here because they switched it on.
+    path("people/", views.people, name="people"),
 
     # Proper detail pages
     path("addresses/<int:pk>/", views.address_detail, name="address_detail"),
