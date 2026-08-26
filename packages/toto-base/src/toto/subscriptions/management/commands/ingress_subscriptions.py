@@ -59,11 +59,21 @@ PLANS = [
         # Functionality only — workflows and email are machinery and belong
         # to every plan (see catalogue.py: plans differ by functionality,
         # not internals; everyone gets celery and workers).
+        #
+        # The compute tier is listed WITH `anastasia`, never without it.
+        # catalogue.py states the rule: "a plan that included the labs but not
+        # the capacity to run them would sell four buttons that all refuse."
+        # It was missing entirely until now, so every one of these was declared
+        # as paid in the catalogue and granted by no plan — which hid their
+        # dashboard tiles from everybody, superusers included, and 402'd their
+        # write endpoints wherever BUILD_SUBSCRIPTIONS_ENFORCE was on. The
+        # description above has promised "notebooks" and "media" the whole time.
         "entitlements": [
             "cyprian", "memo", "editor",
             "kanban", "polls", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",
+            "anastasia", "dracena", "texlab", "manta",
         ],
     },
 ]
