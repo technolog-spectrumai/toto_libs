@@ -71,7 +71,7 @@ class Features:
     # unlike kanban: it brings a new surface, real foreign keys into
     # assets.Asset, and an AppConfig that refuses to start without the ledger.
     # A host adopts it deliberately or not at all.
-    placidia: bool
+    hesperis: bool
     # The zenobia workspace labs (host-owned apps, resolved here since 1.47 so
     # their closures cannot be forgotten: a Python lab whose image lacks the
     # jupyter packages, or a TeX lab whose image lacks pdflatex, is a lab in
@@ -260,14 +260,19 @@ def resolve_features(get) -> Features:
     # kanban models on the zone page, but guards that with apps.is_installed and
     # imports them inside the view, so a kanban-less host just shows the zone.
     kanban = flag(get, "BUILD_KANBAN", default=True)          # toto.kanban — project/task boards
-    # toto.placidia — the Bounty Board and its datasets. Opt-in, and it implies
+    # toto.hesperis — the Bounty Board and its datasets. Opt-in, and it implies
     # kanban: it is a surface over that engine and its models FK into it, so
-    # BUILD_PLACIDIA=1 with BUILD_KANBAN=0 is a contradiction rather than a
+    # BUILD_HESPERIS=1 with BUILD_KANBAN=0 is a contradiction rather than a
     # preference. Same shape as the travels/geo closure below.
-    placidia = flag(get, "BUILD_PLACIDIA")
-    if placidia and not kanban:
+    #
+    # BUILD_PLACIDIA is the app's former name, kept as a fallback so a config
+    # written before the rename keeps its Bounty Board instead of silently
+    # losing it — the same courtesy BUILD_ANTARESIA gets for dracena. An
+    # explicit BUILD_HESPERIS always wins.
+    hesperis = flag(get, "BUILD_HESPERIS", flag(get, "BUILD_PLACIDIA"))
+    if hesperis and not kanban:
         raise FeatureConfigError(
-            "BUILD_PLACIDIA=1 needs BUILD_KANBAN=1: placidia is a surface over "
+            "BUILD_HESPERIS=1 needs BUILD_KANBAN=1: hesperis is a surface over "
             "the kanban work engine and its models have foreign keys into it.")
 
     # Map-dependent apps cannot run without geometry — fail loud rather than
@@ -441,7 +446,7 @@ def resolve_features(get) -> Features:
         subscriptions=subscriptions,
         geo=geo,
         kanban=kanban,
-        placidia=placidia,
+        hesperis=hesperis,
         dracena=dracena,
         texlab=texlab,
         editor=editor,

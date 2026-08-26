@@ -21,7 +21,7 @@ requires-python = ">=3.10"
 # scripts/release.py — never edit them by hand.
 dependencies = [
     "toto-base==1.50",
-    # Added 2026-08-22, when the ban on this edge was lifted. toto.placidia
+    # Added 2026-08-22, when the ban on this edge was lifted. toto.hesperis
     # (in this wheel) carries real foreign keys into assets.Asset and
     # assets.LedgerAccount, and a ForeignKey("assets.Asset") string is a HARD
     # edge to scripts/check_package_graph.py — so the edge has to be declared.
