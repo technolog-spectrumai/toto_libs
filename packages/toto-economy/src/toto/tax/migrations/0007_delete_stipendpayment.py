@@ -12,9 +12,14 @@ class Migration(migrations.Migration):
     so — this is not a rename or a move, and nothing recreates these rows.
 
     Runs BEFORE socialhub drops Station, because this table holds the CASCADE
-    foreign key to it. The reverse order would work in Postgres and mislead
-    anybody reading it.
+    foreign key to it — declared as `run_before` rather than as a dependency on
+    the socialhub side. `socialhub` is a CORE app that every host installs and
+    `toto.tax` ships in the optional economy package, so socialhub naming tax
+    would raise NodeNotFoundError on any host without it. Naming socialhub from
+    here is always safe: tax is only ever installed where socialhub already is.
     """
+
+    run_before = [('socialhub', '0012_delete_station')]
 
     dependencies = [
         ('tax', '0006_alter_stipendpayment_payer_account'),

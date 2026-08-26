@@ -18,8 +18,19 @@ class Migration(migrations.Migration):
     not at all.
     """
 
+    # NO dependency on tax here, and that is not an oversight. `socialhub` is
+    # in `registry.CORE_APPS` — every host installs it — while `toto.tax` ships
+    # in the optional `toto-economy` package. A concrete dependency on an app
+    # that is not in INSTALLED_APPS makes MigrationLoader raise
+    # NodeNotFoundError while it builds the graph, before a single migration
+    # runs, so naming tax here would break `migrate` on every host that pins
+    # toto-base without the economy.
+    #
+    # The CASCADE ordering still matters: tax.StipendPayment holds the FK to
+    # Station and must go first. That is declared from the OTHER side, as
+    # `run_before` in tax/0007 — tax is only ever installed where socialhub
+    # already is, so a dependency in that direction is always resolvable.
     dependencies = [
-        ('tax', '0007_delete_stipendpayment'),
         ('socialhub', '0011_alter_station_holder_alter_station_serves'),
     ]
 
