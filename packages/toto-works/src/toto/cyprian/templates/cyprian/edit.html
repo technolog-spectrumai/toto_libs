@@ -149,12 +149,17 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
       </span>
       <span class="min-w-[4.5rem] text-xs opacity-55" x-text="ui.status"></span>
 
+      {% comment %}Server-decided, not a client flag: the door that hides this
+      button is the same one the save endpoint enforces. A button offered and
+      then refused is the hole the old sheets editor had.{% endcomment %}
+      {% if can_edit %}
       <button type="button" @click="save(true)" :disabled="ui.saving"
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
         <i class="fa-solid" :class="ui.saving ? 'fa-spinner fa-spin' : 'fa-floppy-disk'"></i>
         {% trans "Save" %}
       </button>
+      {% endif %}
 
       <a href="{{ read_url }}" target="_blank" rel="noopener"
          :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
@@ -210,6 +215,7 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
     </header>
 
 {% include "oya/_lock_banner.html" %}
+{% include "oya/_edit_door.html" %}
 
     <div x-show="ui.conflict" x-cloak
          class="flex flex-wrap items-center gap-3 rounded-2xl border border-amber-500/60 bg-amber-500/10 p-4 text-sm">

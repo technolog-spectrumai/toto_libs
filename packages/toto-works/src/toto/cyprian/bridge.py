@@ -78,6 +78,18 @@ class DocumentBridge(BasePlugin):
 
     registry: ClassVar[dict[str, "DocumentBridge"]] = {}
 
+    #: The plan entitlement that covers editing this app's documents. Blank
+    #: means cyprian's own.
+    #:
+    #: A wiki page is a kanban feature that happens to be written in cyprian's
+    #: editor, not a cyprian feature that kanban borrows. So the plan that has
+    #: to include it is the OWNING app's — otherwise moving the writer to a
+    #: higher tier silently takes project wikis away from everybody on the lower
+    #: one, for a product they were never sold as "documents".
+    #:
+    #: Same principle as ``can_edit`` one line down: the owning app decides.
+    entitlement: ClassVar[str] = ""
+
     # -- resolution -----------------------------------------------------------
 
     @classmethod
@@ -125,6 +137,21 @@ class DocumentBridge(BasePlugin):
 
     def return_label(self, owner_object) -> str:
         return ""
+
+
+def entitlement_for(vault_file, document=None) -> str:
+    """Which plan has to include editing this document — cyprian's, or its owner's.
+
+    The sibling of :func:`may_edit`: that one answers *which people* may write
+    this file, this one answers *which plan* covers it. Both defer to the bridge
+    for the same reason, and both must stay in step — a document whose editors
+    are decided by kanban but whose plan is decided by cyprian is a wiki page
+    that a project member is allowed to edit and cannot.
+    """
+    match = DocumentBridge.for_file(vault_file, document)
+    if match is not None and match[0].entitlement:
+        return match[0].entitlement
+    return "cyprian"
 
 
 def may_edit(user, vault_file, document=None) -> bool:

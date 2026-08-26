@@ -33,6 +33,11 @@ class KanbanPageBridge(DocumentBridge):
     who edits it.
     """
 
+    #: A wiki page is part of Tasks, so Tasks is the plan that covers writing
+    #: one. Without this, moving the document writer to a higher tier would
+    #: 402 every project wiki on the lower one.
+    entitlement = "kanban"
+
     @classmethod
     def should_register(cls) -> bool:
         from django.apps import apps

@@ -35,7 +35,7 @@ from toto.antivirus.sanitize import sanitize_svg as clean_svg_markup
 from toto.cyprian.media import image_bytes_to_data_uri
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import access, locks, versions
+from toto.vault import access, editing
 from toto.vault.filetree import accessible_files
 from toto.vault.models import VaultFile
 from toto.vault.views import new_file_picker_json, resolve_new_file_target
@@ -43,10 +43,14 @@ from toto.vault.views import new_file_picker_json, resolve_new_file_target
 from toto.cyprian import tiptap
 
 from . import document_format
-from .bridge import DocumentBridge, open_document
+from .models import CyprianQuotaPolicy, CyprianUsageEvent
+from .bridge import DocumentBridge, entitlement_for, open_document
 from .bridge import may_edit as bridge_may_edit
 from .bridge import write_back as _bridge_write_back
 from toto.antivirus.sanitize import sanitize_content
+
+#: What a save counts against. Seeded TRACK — see cyprian/metrics.py.
+METRIC = "cyprian.save"
 
 # Vault file types that can be embedded into a document.
 _MEDIA_TYPES = ["image", "svg"]
@@ -259,6 +263,17 @@ class DocumentEditView(LoginRequiredMixin, View):
         is_owner = vault_file.owner_id == request.user.pk
         match = DocumentBridge.for_file(vault_file, document)
 
+        # Plan, lock and money are all decided HERE, on the way in, and never
+        # on the save — a save refused for money is work lost from a browser
+        # tab. A bridged document is covered by the OWNING app's plan: a wiki
+        # page is part of Tasks, not of Documents.
+        door = editing.door_for(
+            request.user, vault_file,
+            entitlement=entitlement_for(vault_file, document),
+            metric_code=METRIC, policy_model=CyprianQuotaPolicy)
+        if not door.open:
+            return editing.closed_response(request, door)
+
         context = PageProcessor().decorate({
             "vault_file": vault_file,
             "can_delete": is_owner,
@@ -273,8 +288,9 @@ class DocumentEditView(LoginRequiredMixin, View):
             # The export modal's destination picker — the same bucket/folder
             # "save-as" data the New Document flow uses, straight from vault.
             "picker_json": _picker_data(request.user),
+            **door.as_context(),
             "config_json": {
-                "canEdit": True,
+                "canEdit": door.writable,
                 "filePk": vault_file.pk,
                 "contentHash": vault_file.content_hash or "",
                 "urls": {
@@ -355,41 +371,31 @@ def document_save(request, file_pk):
     # The editing lock is the first line: someone else holding it means this
     # save should never have been attempted. 423, not 409 — a retry cannot
     # succeed until they leave, so inviting one would be a lie.
-    if not locks.may_write(vault_file, request.user):
-        held = locks.holder_of(vault_file)
-        return JsonResponse(
-            {"error": f"{held.holder} is editing this document.",
-             "locked_by": held.holder.get_username()}, status=423)
+    refusal = editing.refuse_if_locked(vault_file, request.user, noun="document")
+    if refusal is not None:
+        return refusal
 
-    # Optimistic concurrency: autosave fires on a timer and the same document
-    # can be open twice. Without this the slower writer silently wins.
-    base_hash = payload.get("base_hash")
-    if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
-        # Refuse the write, but KEEP the work. Refusing alone is what the user
-        # experiences as "it lost my paragraph" — and these documents cannot be
-        # merged (the whole body is one CDATA line), so the honest answer is
-        # two versions and a human, which is what every other document product
-        # settled on too.
-        rescued = None
-        try:
-            document = document_format.Document.from_dict(
-                payload.get("document") or payload)
-            rescued = versions.save_conflicting_draft(
-                vault_file,
-                body=document_format.dumps(document).encode("utf-8"),
-                author=request.user)
-        except Exception:                              # noqa: BLE001
-            pass                                       # never turn a 409 into a 500
-        return JsonResponse(
-            {"error": "This document changed somewhere else since you opened it. "
-                      "Your text was kept as a version so nothing is lost.",
-             "content_hash": vault_file.content_hash,
-             "kept_as_version": rescued.number if rescued else None}, status=409)
-
-    document = document_format.Document.from_dict(
-        payload.get("document") or payload)
-    xml = document_format.dumps(document)
+    try:
+        document = document_format.Document.from_dict(
+            payload.get("document") or payload)
+        xml = document_format.dumps(document)
+    except Exception as exc:                           # noqa: BLE001
+        # Parsed once, before the staleness check, so the rescued draft below
+        # is the SAME bytes the save would have written. A body the format
+        # cannot read is the client's error, not a server fault.
+        return JsonResponse({"error": f"Unreadable document: {exc}"}, status=400)
     xml_bytes = xml.encode("utf-8")
+
+    # Optimistic concurrency: the same document can be open twice, and an
+    # expired lock lets a second writer in legitimately. Without this the slower
+    # writer silently wins. The losing body is kept as a version rather than
+    # discarded — these documents cannot be merged, the whole body being one
+    # CDATA line, so the honest answer is two versions and a human.
+    stale = editing.refuse_if_stale(
+        vault_file, payload.get("base_hash"),
+        body=xml_bytes, author=request.user, noun="document")
+    if stale is not None:
+        return stale
 
     try:
         with vault_file.file.open("w") as fh:
@@ -406,7 +412,14 @@ def document_save(request, file_pk):
     # payload's meta: this very request could have rewritten that.
     _bridge_write_back(vault_file, document, user=request.user)
 
-    return JsonResponse({"status": "ok", "content_hash": vault_file.content_hash})
+    # Only now: a failed save is never a charged one. `settle` never raises —
+    # an empty balance comes back as a warning beside a save that stood.
+    settled = editing.settle(
+        vault_file, request.user, metric_code=METRIC,
+        event_model=CyprianUsageEvent, policy_model=CyprianQuotaPolicy)
+
+    return JsonResponse({"status": "ok",
+                         "content_hash": vault_file.content_hash, **settled})
 
 
 @login_required

@@ -24,8 +24,6 @@
   "use strict";
 
   var M = global.CyprianModel;
-  var AUTOSAVE_MS = 2000;
-  var AUTOSAVE_CEILING_MS = 30000;
   var REPAGINATE_MS = 250;
 
   function readJson(id, fallback) {
@@ -109,6 +107,7 @@
                       bucket: 0, directory: 0, imageSearch: "", imageBusy: false },
         saving: false,
         dirty: false,
+        billing: "",
         status: "",
         conflict: false,
         mediaSearch: "",
@@ -127,8 +126,9 @@
       media: readJson("cy-media", []),
       picker: readJson("cy-picker", { buckets: [], directories: [] }),
 
-      _timer: null,
-      _ceiling: null,
+      // Set while a save is in the air; `_again` remembers a click that
+      // arrived during one. No debounce timers — saving is manual.
+      _again: false,
       _pageTimer: null,
       _inflight: false,
 
@@ -140,12 +140,11 @@
       destroyFile: function () {
         var name = String(this.state.title || "this document").replace(/\s+/g, " ").trim();
         if (!confirm('Delete \u201C' + name + '\u201D? This cannot be undone.')) return;
-        // Disarm the autosave FIRST: a debounced save firing during the delete
-        // round-trip would 404 against the vanishing file, and an in-flight
-        // one would trip the beforeunload guard on the way out — an "unsaved
-        // changes" prompt for a file that no longer exists.
-        if (this._timer) { clearTimeout(this._timer); this._timer = null; }
-        if (this._ceiling) { clearTimeout(this._ceiling); this._ceiling = null; }
+        // Drop the dirty flag before the round-trip: it would otherwise trip
+        // the beforeunload guard on the way out — an "unsaved changes" prompt
+        // for a file that no longer exists. (There are no autosave timers left
+        // to disarm here; saving is manual now.)
+        this._again = false;
         this.ui.dirty = false;
         var body = new FormData();
         body.append("file_pk", String(this.config.filePk || ""));
@@ -952,25 +951,33 @@
       },
 
       // ---- saving ----------------------------------------------------------
+      //
+      // There is NO autosave here, and its absence is the design rather than an
+      // omission. One save is one version and one charge, so a save has to be
+      // an act somebody chose: a two-second debounce would bill by the minute
+      // and bury the two versions anyone cared about under thirty they never
+      // asked for. See toto/vault/editing.py.
+      //
+      // The safety net moved to the other side of the problem. The edit lock is
+      // held by heartbeat for as long as the tab is open, so nobody else can
+      // walk in behind an unsaved draft, and `beforeunload` above refuses to let
+      // that draft leave quietly.
+      //
+      // Kept under its old name because every mutation in this file already
+      // calls it. It marks the document dirty and writes nothing.
       scheduleSave: function () {
-        var self = this;
         if (!this.config.canEdit) return;
-        clearTimeout(this._timer);
-        this._timer = setTimeout(function () { self.save(); }, AUTOSAVE_MS);
-        // A ceiling as well as a debounce: writing continuously for three
-        // minutes would otherwise never reach the trailing edge.
-        if (!this._ceiling) {
-          this._ceiling = setTimeout(function () { self.save(); }, AUTOSAVE_CEILING_MS);
-        }
+        this.ui.dirty = true;
+        this.ui.status = "";
       },
 
       save: function (force) {
         var self = this;
-        clearTimeout(this._timer);
-        clearTimeout(this._ceiling);
-        this._ceiling = null;
         if (!this.config.canEdit) return;
-        if (this._inflight) { this.scheduleSave(); return; }   // coalesce
+        // A second click while the first is in the air: remember it and replay
+        // it once, rather than dropping the newest content on the floor. Was a
+        // re-arm of the debounce, which no longer exists.
+        if (this._inflight) { this._again = true; return; }
         if (!this.ui.dirty && !force) return;
 
         this._inflight = true;
@@ -1000,11 +1007,17 @@
             if (!res.ok) { self.ui.status = (res.data && res.data.error) || "Save failed."; return; }
             self.baseHash = res.data.content_hash || self.baseHash;
             self.ui.dirty = false;
-            self.ui.status = "Saved";
+            // The save landed either way — the server never refuses one for
+            // money, because the work only exists in this tab. It says so when
+            // it could not be paid for, and the next open is read-only.
+            self.ui.billing = (res.data && res.data.billing_warning) || "";
+            self.ui.status = self.ui.billing ? "Saved — not paid for" : "Saved";
+            if (self._again) { self._again = false; self.save(true); }
           })
           .catch(function () {
             self._inflight = false;
             self.ui.saving = false;
+            self._again = false;
             self.ui.status = "Save failed — check your connection.";
           });
       },
