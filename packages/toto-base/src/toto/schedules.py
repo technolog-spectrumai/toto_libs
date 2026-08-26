@@ -20,6 +20,8 @@ def beat_schedule(
     tax=False,
     tax_hour=4,
     tax_minute=15,
+    faucets=False,
+    faucets_minute=7,
     subscriptions=False,
     subscriptions_hour=5,
     subscriptions_minute=5,
@@ -105,6 +107,25 @@ def beat_schedule(
         schedule["tax-daily-levy"] = {
             "task": "toto.tax.tasks.run_daily_levy",
             "schedule": crontab(hour=tax_hour, minute=tax_minute),
+        }
+
+    if faucets:
+        from celery.schedules import crontab
+
+        # Once an hour, and the step is not configurable: every faucet amount is
+        # denominated per hour, so a run that covered anything else would be
+        # paying a rate nobody typed. `faucets_minute` moves it WITHIN the hour
+        # only — off the hour boundary by default, because that is when every
+        # other sweep on the platform wakes up.
+        #
+        # Idempotent per member per hour (assets.FaucetPayout carries the unique
+        # key), so a double fire is free and a retry pays nobody twice. A missed
+        # hour is never backfilled: the task reads the clock rather than taking
+        # an argument, which is what stops a worker coming back after a day out
+        # and paying twenty-four hours at once.
+        schedule["faucet-hourly-payout"] = {
+            "task": "toto.assets.tasks.run_faucet_hour",
+            "schedule": crontab(minute=str(faucets_minute)),
         }
 
     if subscriptions:

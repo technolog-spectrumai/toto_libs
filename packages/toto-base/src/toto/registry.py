@@ -150,6 +150,10 @@ TASK_MODULES = [
     "toto.jess",        # the mail queue — every email in the platform passes through it
     "toto.clearing",    # the ledger bridge: outbox delivery, redrive, hold expiry
     "toto.tax",         # the daily levy sweep; inert where toto-economy is absent
+    # The hourly faucet sweep, the platform's only recurring outbound payment
+    # since the treasury payroll left with Stations. Inert where toto-economy
+    # is absent, and inert where no faucet is switched on.
+    "toto.assets",
     # toto.quota's stuck-run sweeper (quota/tasks.py). In toto-base, so it is
     # importable on every host; the beat entry (schedules.beat_schedule
     # sweep=...) is what turns it on.
