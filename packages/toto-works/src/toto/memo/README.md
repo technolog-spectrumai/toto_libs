@@ -1,13 +1,15 @@
 # toto.memo
 
-Presentations: a block editor, a reveal.js player, and a PDF/ZIP export — all
-over one self-contained XML file in the vault.
+Presentations: a block editor, a reveal.js player, a read page and a PDF
+export — all over one self-contained XML file in the vault.
 
 ## Purpose
 
-A deck is **one `VaultFile`**, `file_type="presentation"`, holding the whole
-slideshow: images embedded as base64 `data:` URIs, SVGs inlined verbatim. There
-is nothing in the database — memo owns no models at all. That makes a deck
+A deck is **one `VaultFile`**, `file_type="pxml"` (`presentation` is the
+pre-0021 spelling and is still read), holding the whole slideshow: images
+embedded as base64 `data:` URIs, SVGs inlined verbatim. No deck content is in
+the database — the only models memo owns are its metering pair, which is a
+meter and not a store. That makes a deck
 movable, downloadable, backup-able and shareable with the tools the vault
 already has, and it means a presentation can never half-exist.
 
@@ -305,17 +307,23 @@ is ever at risk; only the copy waits. Anything that reads history (undo, redo)
 settles the pending snapshot first. `Ctrl+Z` inside a text field is
 deliberately **not** intercepted — the browser's own undo knows about the caret.
 
-Saving is autosave on idle (2s, with a 30s ceiling), plus Save, `Ctrl+S`, and
-`visibilitychange`. Each save carries the `content_hash` it started from; the
-endpoint answers **409** if the file moved on, and the editor offers reload or
-overwrite rather than silently winning.
+Saving is **manual**: the Save button and `Ctrl+S`, with a `beforeunload`
+guard. The autosave (2s debounce, 30s ceiling) was removed in 8/2026 when saves
+became metered and versioned — one save is one version and one charge, so it has
+to be an act somebody chose, and a debounce would have billed by the minute and
+buried the two versions anyone cared about under thirty they never asked for.
+The safety net moved to the edit lock, which is held by heartbeat for as long as
+the tab is open.
+
+Each save carries the `content_hash` it started from; the endpoint answers
+**409** if the file moved on, keeps the losing deck as a version, and the editor
+offers reload or overwrite rather than silently winning. A save is never refused
+for money — see `toto/vault/editing.py`.
 
 **The save endpoint reads the body with `request.read()`, not `request.body`.**
 `request.body` is checked against `DATA_UPLOAD_MAX_MEMORY_SIZE`, which no host
 sets and so defaults to 2.5 MB — a deck with about twenty embedded images was
 already past it, and saving one raised `RequestDataTooBig` before the view ran.
-Autosave would have made that constant rather than occasional. There is a test
-that saves a 4 MB deck.
 
 ## Export
 
@@ -323,26 +331,24 @@ that saves a 4 MB deck.
   1280×720. Lazily imported and gated by `BUILD_WEASYPRINT`, exactly as
   `notarius/render.py` does it; without it the endpoint answers 503 with a
   sentence naming the flag.
-- **ZIP** — `presentation.xml` plus `assets/` as real files, with each image and
-  SVG block's path in a `src` attribute instead of inline base64. Small,
-  readable, diffable. **Import re-inlines the exported bytes without resizing
-  them** — re-running the 640px thumbnailer each cycle would shrink every picture
-  a little more. Import always creates a **new** deck: a restore that can destroy
-  the deck you were protecting is the wrong shape for a backup.
+- **ZIP** — gone. It left with the editor in `758bfa6c` and was not restored:
+  it unpacked a deck into `presentation.xml` plus `assets/` for the desktop app,
+  and a deck already carries its images inline, so the file itself is the
+  portable copy. `bundle.py` went with it.
 
 ## Layout of the app
 
 | File | What it is |
 |---|---|
 | `presentation_format.py` | the v2 document: parse, serialise, upgrade, validate |
-| `sanitize.py` | the server allowlists (HTML and SVG) |
-| `bundle.py` | ZIP export and import |
 | `render_pdf.py` | WeasyPrint, gated |
 | `media.py` | data-URI conversion both ways, SVG cleaning |
 | `templates/memo/_slide.html` | one slide, rendered once, for every surface |
-| `templates/memo/_formula_help.html` | the click-to-insert LaTeX cheatsheet |
+| `cyprian/templates/cyprian/_formula_help.html` | the click-to-insert LaTeX cheatsheet — moved with the TipTap plumbing |
 | `static/memo/slide.css` | how a slide looks, for every surface |
-| `static/memo/{model,history,sanitize,canvas,drag,editor}.js` | the editor |
+| `static/memo/{canvas,drag,editor}.js` | the editor |
+| `cyprian/static/cyprian/{memo_model,history,tiptap_setup}.js` | the deck model, undo stack and prose field — moved to cyprian in `4f27cf36` when it became this wheel's only editor, and left there rather than copied back |
+| `antivirus/static/antivirus/sanitize.js` | the client mirror of the server allowlist |
 
 memo is the first app in `toto-works` to ship static files. Two traps come with
 that: `MANIFEST.in` is an **extension allowlist** and `build_wheels.py --sdist`

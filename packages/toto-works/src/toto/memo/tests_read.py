@@ -1,4 +1,4 @@
-"""The read page — a deck as a page, on a host that no longer edits decks.
+"""The read page — a deck as a page.
 
 These are regression tests for a page that rendered but was broken in a way no
 status code showed: it was the one memo view that skipped `PageProcessor`, so
@@ -164,12 +164,25 @@ class PresentationReadTests(TestCase):
 
     # ── what is left on the page ─────────────────────────────────────────────
 
-    def test_it_offers_no_way_to_edit(self):
-        # Decks are authored in the desktop app; this host only shows them.
+    def test_it_offers_the_way_in_to_the_editor(self):
+        """The inverse of what this asserted until 8/2026.
+
+        It used to demand that no edit affordance existed at all, because decks
+        were authored in the desktop app and this host only showed them. The
+        browser editor is back, and "open the deck, then click Edit" is the
+        entry point it is reached by — so the absence that was the guarantee is
+        now the regression.
+
+        The link is unconditional here because `PresentationReadView` already
+        filters on `owner=request.user`: everyone who can load this page owns
+        the deck. Whether they may SAVE is a separate question the door answers
+        on the editor page.
+        """
         self.client.force_login(self.user)
-        body = self.read().content.decode()
-        self.assertNotIn("fa-pen", body)
-        self.assertNotIn("/edit/", body)
+        response = self.read()
+        self.assertEqual(response.context["edit_url"],
+                         reverse("memo:edit", args=[self.deck.pk]))
+        self.assertContains(response, reverse("memo:edit", args=[self.deck.pk]))
 
     def test_it_links_to_the_player_and_the_pdf(self):
         self.client.force_login(self.user)

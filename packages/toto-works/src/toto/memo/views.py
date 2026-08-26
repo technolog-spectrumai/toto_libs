@@ -24,7 +24,7 @@ from django.contrib.auth.decorators import login_required
 from django.contrib.auth.views import redirect_to_login
 from django.core.files.base import ContentFile
 from django.contrib import messages
-from django.http import HttpResponse, HttpResponseForbidden
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse, reverse_lazy
 from django.utils.text import slugify
@@ -37,11 +37,18 @@ from django.contrib.auth.mixins import LoginRequiredMixin
 from toto.editor.views import BaseFileDisplayView
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import access, locks, versions
+from toto.vault import access, editing, locks, versions
 from toto.vault.filetree import accessible_files
+from toto.vault.views import create_empty_vault_file, resolve_new_file_target
 from toto.quota import QuotaExceeded, check_quota, record_usage
 from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
 from toto.memo.models import MemoQuotaPolicy, MemoUsageEvent
+# The vendored TipTap bundle lives in cyprian and is named through its
+# import map. Same wheel, so the import always resolves; what it needs at
+# RUNTIME is cyprian's static dir, which means a host that mounts this
+# editor must install toto.cyprian too. It does — cyprian is installed
+# unconditionally because kanban's project wikis write through it.
+from toto.cyprian import tiptap
 from toto.vault.models import VaultFile
 from toto.vault.views import (
     _unique_file_key,
@@ -263,6 +270,13 @@ class PresentationIndexView(View):
                 "is_paginated": page.has_other_pages(),
                 "buckets_json": buckets_json,
                 "directories_json": directories_json,
+                # Asked once for the page: the form posts to a route the gate
+                # would 402 anyway, and a button that answers "not in your plan"
+                # is worse than no button.
+                "can_create": editing.door_for(
+                    request.user, entitlement=ENTITLEMENT,
+                    metric_code=SAVE_METRIC,
+                    policy_model=MemoQuotaPolicy).open,
             },
             request,
         )
@@ -324,4 +338,303 @@ class PresentationReadView(LoginRequiredMixin, View):
             "vault_file": vault_file,
             "presentation": presentation,
             "slides": presentation.slides,
+            # The way in to the editor. `_get_owned_file` already made this the
+            # owner, so the link is never a 404 — whether they may SAVE is the
+            # further question the door answers on that page, which is where a
+            # subscriber without the plan is told what it costs.
+            "edit_url": reverse("memo:edit", args=[vault_file.pk]),
         }, request))
+
+
+# ---------------------------------------------------------------------------
+# Writing
+# ---------------------------------------------------------------------------
+#
+# Restored 8/2026 under the shared regime in `toto.vault.editing`: one lock, one
+# base-hash precondition, one version per save, one meter. Every route below is
+# POST except the editor page, because `SubscriptionGateMiddleware` decides
+# entitlement from `app_name` and lets safe methods through — a save answering
+# GET would be a save with no paywall.
+
+#: What a save counts against, and the plan that has to include it.
+SAVE_METRIC = "memo.save"
+ENTITLEMENT = "memo"
+
+#: A deck carries its images inline as data URIs, so the whole file arrives in
+#: one body. Read through `_read_json_body`, never `request.body`, which Django
+#: caps at DATA_UPLOAD_MAX_MEMORY_SIZE (2.5 MB by default and raised by no host).
+MAX_DECK_BYTES = 32 * 1024 * 1024
+
+
+def _media_list(user) -> list[dict]:
+    """The user's embeddable images and SVGs, for the editor's picker.
+
+    Access-checked through `accessible_files`, and encrypted files are skipped:
+    their bytes are ciphertext and embedding them would inline noise.
+    """
+    files = (
+        accessible_files(user, file_types=_MEDIA_TYPES)
+        .filter(is_encrypted=False)
+        .order_by("bucket__name", "title")[:500]
+    )
+    items = []
+    for f in files:
+        bucket_name = f.bucket.name if f.bucket else "—"
+        location = (f"{bucket_name} / {f.directory.full_path()}"
+                    if f.directory_id else bucket_name)
+        items.append({
+            "pk": f.id,
+            "title": f.title or f.key,
+            "file_type": f.file_type,
+            "location": location,
+        })
+    return items
+
+
+def _read_json_body(request, limit: int):
+    """The request body, without Django's 2.5 MB form ceiling.
+
+    `request.read()` is not size-checked, so the limit becomes ours to state.
+    Safe to call after the CSRF middleware: for `application/json` Django's
+    `request.POST` never touches the stream.
+    """
+    raw = request.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError("too-big")
+    return json.loads(raw or b"{}")
+
+
+class PresentationEditView(LoginRequiredMixin, View):
+    """The deck editor. Owner only, and the one place the door is decided."""
+
+    template_name = "memo/edit.html"
+    login_url = reverse_lazy("core:login")
+
+    def get(self, request, file_pk):
+        vault_file = _get_owned_file(request, file_pk)
+        if vault_file.is_encrypted:
+            from toto.vault.access import encrypted_lock_response
+            return encrypted_lock_response(request, vault_file)
+
+        door = editing.door_for(
+            request.user, vault_file, entitlement=ENTITLEMENT,
+            metric_code=SAVE_METRIC, policy_model=MemoQuotaPolicy)
+        if not door.open:
+            return editing.closed_response(request, door)
+
+        presentation = _read_presentation(vault_file)
+        context = PageProcessor().decorate({
+            "vault_file": vault_file,
+            # Hydration payloads. The template emits these through
+            # `json_script`, which JSON-encodes what it is given, so they must
+            # be plain Python — handing it an already-serialised string produces
+            # an island that parses back into a *string* with every property
+            # undefined.
+            "presentation_json": presentation.to_dict(),
+            "vault_media_json": _media_list(request.user),
+            "config_json": {
+                "canEdit": door.writable,
+                "filePk": vault_file.pk,
+                # Sent back with every save; the endpoint answers 409 if the
+                # file moved underneath this buffer.
+                "contentHash": vault_file.content_hash or "",
+                "urls": {
+                    "save": reverse("memo:save", args=[file_pk]),
+                    "embed": reverse("memo:media_embed"),
+                    "upload": reverse("memo:media_upload"),
+                    "index": reverse("memo:index"),
+                },
+                # Strings the editor puts in a browser prompt, where a
+                # {% trans %} in the template cannot reach.
+                "text": {"linkPrompt": _("Link address")},
+            },
+            "tiptap_import_map": tiptap.import_map_json(),
+            "read_url": reverse("memo:read", args=[file_pk]),
+            "present_url": reverse("memo:present", args=[file_pk]),
+            "export_pdf_url": reverse("memo:export_pdf", args=[file_pk]),
+            "steven_surface": assistant.surface_for_file("memo", vault_file),
+            "steven_deck_surface": assistant.surface_for_file("memo-deck",
+                                                              vault_file),
+            **door.as_context(),
+            **BaseFileDisplayView.repo_context(vault_file, request.user),
+        }, request)
+        return render(request, self.template_name, context)
+
+
+@require_POST
+def presentation_save(request, file_pk):
+    """Write the deck back to its file.
+
+    Never refused for money — see toto.vault.editing. The refusals here are the
+    ones a retry cannot fix by itself: a stranger (404), an encrypted file
+    (403), a body too big (413) or unreadable (400), somebody else holding the
+    lock (423), and a file that moved underneath this buffer (409, with the
+    losing deck kept as a version).
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not authenticated."}, status=401)
+
+    vault_file = _get_owned_file(request, file_pk)
+    if vault_file.is_encrypted:
+        return JsonResponse({"error": "File is encrypted. Decrypt it first."},
+                            status=403)
+
+    try:
+        payload = _read_json_body(request, MAX_DECK_BYTES)
+    except ValueError as exc:
+        if str(exc) == "too-big":
+            return JsonResponse(
+                {"error": f"That deck is larger than "
+                          f"{MAX_DECK_BYTES // (1024 * 1024)} MB. "
+                          "Remove or shrink an image and try again."}, status=413)
+        return JsonResponse({"error": f"Invalid JSON: {exc}"}, status=400)
+
+    refusal = editing.refuse_if_locked(vault_file, request.user, noun="deck")
+    if refusal is not None:
+        return refusal
+
+    try:
+        presentation = presentation_format.Presentation.from_dict(
+            payload.get("presentation") or payload)
+        xml = presentation_format.dumps(presentation)
+    except Exception as exc:                            # noqa: BLE001
+        return JsonResponse({"error": f"Unreadable deck: {exc}"}, status=400)
+    xml_bytes = xml.encode("utf-8")
+
+    stale = editing.refuse_if_stale(
+        vault_file, payload.get("base_hash"),
+        body=xml_bytes, author=request.user, noun="deck")
+    if stale is not None:
+        return stale
+
+    try:
+        with vault_file.file.open("w") as fh:
+            fh.write(xml)
+        vault_file.content_hash = hashlib.sha256(xml_bytes).hexdigest()
+        vault_file.file_size_bytes = len(xml_bytes)
+        vault_file.save(update_fields=["content_hash", "file_size_bytes"])
+    except Exception as exc:                            # noqa: BLE001
+        return JsonResponse({"error": str(exc)}, status=500)
+
+    settled = editing.settle(
+        vault_file, request.user, metric_code=SAVE_METRIC,
+        event_model=MemoUsageEvent, policy_model=MemoQuotaPolicy)
+
+    return JsonResponse({"status": "ok",
+                         "content_hash": vault_file.content_hash, **settled})
+
+
+@login_required
+@require_POST
+def presentation_create(request):
+    """A blank deck in the user's own space, opened for editing.
+
+    The bytes come from `VaultEditorPlugin.blank_content`, the same place the
+    vault's own "New file" menu gets them, rather than a second definition of
+    "what does an empty deck look like" living here.
+    """
+    door = editing.door_for(request.user, entitlement=ENTITLEMENT,
+                            metric_code=SAVE_METRIC, policy_model=MemoQuotaPolicy)
+    if not door.open:
+        return editing.closed_response(request, door)
+
+    bucket, directory = resolve_new_file_target(
+        request.user,
+        request.POST.get("bucket_id"),
+        request.POST.get("directory_id"),
+    )
+    raw = (request.POST.get("filename") or "").strip()
+    base = raw[:-5] if raw.lower().endswith(".pxml") else raw
+    base = base.strip() or "untitled-deck"
+    vault_file = create_empty_vault_file(
+        request.user, bucket, directory, f"{base}.pxml", "pxml")
+
+    versions.save_version(vault_file, author=request.user, label="created")
+    return redirect(reverse("memo:edit", args=[vault_file.pk]))
+
+
+@login_required
+@require_POST
+def presentation_delete(request, file_pk):
+    """Remove a deck: its blob, its row, and its versions by cascade."""
+    vault_file = _get_owned_file(request, file_pk)
+    vault_file.file.delete(save=False)
+    vault_file.delete()
+    return redirect(reverse("memo:index"))
+
+
+@login_required
+def presentation_media_embed(request):
+    """An embeddable payload for a vault image or SVG the user may read.
+
+    `GET ?file_pk=<pk>` answers `{"kind": "svg", "markup": …}` for an SVG or
+    `{"kind": "image", "data_uri": …}` for a raster. The caller inlines the
+    result into the slide, which is what keeps a deck self-contained.
+    """
+    try:
+        file_pk = int(request.GET.get("file_pk", ""))
+    except (TypeError, ValueError):
+        return JsonResponse({"error": "file_pk is required."}, status=400)
+
+    vault_file = get_object_or_404(
+        accessible_files(request.user, file_types=_MEDIA_TYPES)
+        .filter(is_encrypted=False),
+        pk=file_pk,
+    )
+    try:
+        with vault_file.file.open("rb") as fh:
+            raw = fh.read()
+    except Exception as exc:                            # noqa: BLE001
+        return JsonResponse({"error": f"Could not read file: {exc}"}, status=500)
+
+    alt = (vault_file.title or vault_file.key or "image").rsplit(".", 1)[0]
+    if vault_file.file_type == "svg":
+        return JsonResponse({
+            "kind": "svg",
+            "markup": clean_svg_markup(raw.decode("utf-8", errors="replace")),
+            "alt": alt,
+        })
+    mime, _unused = mimetypes.guess_type(vault_file.title or vault_file.key or "")
+    return JsonResponse({
+        "kind": "image",
+        "data_uri": image_bytes_to_data_uri(raw, mime or ""),
+        "alt": alt,
+    })
+
+
+@login_required
+@require_POST
+def presentation_media_upload(request):
+    """Embed a file dropped onto a slide, or picked with the file input.
+
+    The bytes go through the server rather than a canvas in the browser, on two
+    counts. The resize policy stays in one place — `media.image_bytes_to_data_uri`,
+    which the vault picker already uses — so the two paths cannot drift. And an
+    SVG gets sanitised by code that cannot be skipped by posting here directly.
+    """
+    upload = request.FILES.get("file")
+    if upload is None:
+        return JsonResponse({"error": "No file."}, status=400)
+    if upload.size > getattr(settings, "MEMO_MAX_UPLOAD_BYTES", 20 * 1024 * 1024):
+        return JsonResponse({"error": "That file is too large to embed."},
+                            status=413)
+
+    raw = upload.read()
+    name = upload.name or "image"
+    alt = name.rsplit(".", 1)[0]
+
+    mime, _unused = mimetypes.guess_type(name)
+    if (mime or "") == "image/svg+xml" or name.lower().endswith(".svg"):
+        return JsonResponse({
+            "kind": "svg",
+            "payload": clean_svg_markup(raw.decode("utf-8", errors="replace")),
+            "alt": alt,
+        })
+    if not (mime or "").startswith("image/"):
+        return JsonResponse({"error": "Only images and SVGs can be embedded."},
+                            status=400)
+    return JsonResponse({
+        "kind": "image",
+        "payload": image_bytes_to_data_uri(raw, mime or ""),
+        "alt": alt,
+    })

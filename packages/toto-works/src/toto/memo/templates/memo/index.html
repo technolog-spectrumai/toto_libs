@@ -54,8 +54,25 @@ component the day a translation contains an apostrophe.{% endcomment %}
             class="text-3xl font-bold">{% trans "Presentations" %}</h1>
         <p class="opacity-75">{% trans "Self-contained presentations stored as vault files." %}</p>
       </div>
-      <div class="flex items-center gap-4">
-        {% if is_authenticated %}
+      <div class="flex flex-wrap items-center gap-3">
+        {% if can_create %}
+          <form method="post" action="{% url 'memo:create' %}"
+                class="flex flex-wrap items-center gap-2">
+            {% csrf_token %}
+            <input type="text" name="filename" maxlength="120"
+                   placeholder="{% trans 'untitled-deck' %}"
+                   :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                   class="w-40 rounded-lg border px-3 py-2 text-sm">
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="inline-flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+              <i class="fa-solid fa-plus"></i>{% trans "New deck" %}
+            </button>
+          </form>
+          {% comment %}No bucket or folder picker: a new deck lands in the
+          personal bucket's root. The vault's own New file menu carries the full
+          picker; this is the one-click path beside the gallery, not a second
+          copy of that one.{% endcomment %}
         {% endif %}
         <a href="{% url 'vault:public_list' %}" class="text-sm underline hover:opacity-80">
           {% trans "Vault" %}</a>

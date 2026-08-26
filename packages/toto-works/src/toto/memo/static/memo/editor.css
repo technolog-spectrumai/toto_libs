@@ -1,0 +1,198 @@
+/* Editor chrome — the parts Tailwind cannot express.
+ *
+ * Everything about how a SLIDE looks lives in slide.css, which the player and
+ * the PDF load too. This file is only the furniture around it, and it is loaded
+ * by the editor alone.
+ */
+
+/* The filmstrip thumbnail: a real slide, scaled. Not a screenshot and not an
+ * approximation — the same markup and the same stylesheet as the canvas, so a
+ * slide that is too full looks too full here as well.
+ *
+ * A fixed scale rather than a ResizeObserver per thumbnail: the strip is a
+ * fixed width, and a deck of eighty slides should not cost eighty observers.
+ * 180 / 1280 = 0.140625, and 720 x that is 101.25.
+ */
+.memo-thumb {
+  --memo-scale: 0.140625;
+  width: 180px;
+  height: 101.25px;
+  position: relative;
+  overflow: hidden;
+  border-radius: 6px;
+  pointer-events: none;   /* the wrapper handles the click, not the slide */
+}
+.memo-thumb > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale));
+  transform-origin: top left;
+}
+
+/* The block toolbar and the selection popover are positioned in viewport
+ * coordinates by JS, so they cannot be Tailwind utilities. */
+.memo-popover {
+  position: fixed;
+  z-index: 9100;
+  transform: translate(-50%, -115%);
+}
+
+.memo-drag-proxy {
+  border-radius: 8px;
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  transition: none;
+}
+
+/* The gallery card thumbnail — same trick, smaller. 240 / 1280 = 0.1875. */
+.memo-card-thumb {
+  --memo-scale: 0.1875;
+  width: 240px;
+  height: 135px;
+  position: relative;
+  overflow: hidden;
+}
+.memo-card-thumb > .memo-slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transform: scale(var(--memo-scale));
+  transform-origin: top left;
+}
+
+/* A legacy v1 slide in a thumbnail renders as an inert chip rather than live
+ * HTML — see _slide.html. Give it something to look like. */
+.memo-legacy {
+  display: inline-block;
+  font-size: 0.5em;
+  opacity: 0.6;
+  border: 1px dashed currentColor;
+  border-radius: 6px;
+  padding: 0.3em 0.6em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .memo-editing .memo-block,
+  .memo-editing .memo-title { transition: none; }
+}
+
+/* --------------------------------------------------------------------------
+ * The boxes a layout defines.
+ *
+ * Only in the editor — the player and the PDF must show the slide, not the
+ * scaffolding. An empty box is DRAWN rather than collapsed, because a layout
+ * whose second column is invisible until something is in it looks like a
+ * layout that did not apply.
+ * ------------------------------------------------------------------------ */
+
+.memo-editing .memo-flow[data-empty] {
+  border: 1px dashed rgba(127, 127, 127, 0.45);
+  border-radius: 8px;
+  min-height: 64px;
+}
+.memo-editing .memo-flow[data-box-label]::before {
+  content: attr(data-box-label);
+  position: absolute;
+  transform: translateY(-1.35em);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.35;
+  pointer-events: none;
+}
+.memo-editing .memo-flow[data-box-label] { position: relative; }
+
+/* --------------------------------------------------------------------------
+ * The box toolbar.
+ *
+ * A box is a place; what is in it is chosen here, on the box, and written in
+ * the dialog. Nothing on a slide is dragged, resized or nested any more, so
+ * this row plus Edit and Clear is the entire per-box vocabulary.
+ *
+ * It sits ON the box rather than in a side panel because "which box" was the
+ * question a floating panel could never answer without being told, and being
+ * told is what the old drag-and-drop was for.
+ * ------------------------------------------------------------------------ */
+
+.memo-editing .memo-flow[data-selected] {
+  outline: 2px solid rgba(120, 160, 255, 0.55);
+  outline-offset: 4px;
+  border-radius: 8px;
+}
+
+.memo-box-bar {
+  position: absolute;
+  transform: translateY(-2.35rem);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.78);
+  color: #fff;
+  /* The slide is scaled by a CSS transform to fit the window; the toolbar must
+     not shrink with it or it becomes unusable on a laptop. */
+  transform-origin: top left;
+  font-size: 12px;
+}
+.memo-box-chip {
+  min-width: 1.6rem;
+  padding: 0.2rem 0.35rem;
+  border-radius: 5px;
+  opacity: 0.7;
+  transition: opacity 120ms ease, background 120ms ease;
+}
+.memo-box-chip:hover:not(:disabled) { opacity: 1; background: rgba(255, 255, 255, 0.16); }
+.memo-box-chip[data-on] { opacity: 1; background: rgba(255, 255, 255, 0.26); }
+.memo-box-chip:disabled { opacity: 0.28; }
+.memo-box-wide { padding: 0.2rem 0.55rem; }
+.memo-box-sep {
+  width: 1px;
+  height: 1rem;
+  margin: 0 0.2rem;
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.memo-box-hint {
+  align-self: center;
+  margin: auto;
+  font-size: 0.5em;
+  opacity: 0.35;
+  pointer-events: none;
+}
+
+/* TipTap inside the dialog is a plain field: the dialog is a form, not a page.
+   The toolbar above it is ours and is styled with Tailwind in the template; all
+   that is left here is the writing surface itself. */
+.memo-prose-host .memo-prose {
+  min-height: 8rem;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  outline: none;
+}
+.memo-prose-host .memo-prose > * + * { margin-top: 0.5em; }
+.memo-prose-host .memo-prose ul { list-style: disc; padding-left: 1.4em; }
+.memo-prose-host .memo-prose ol { list-style: decimal; padding-left: 1.4em; }
+.memo-prose-host .memo-prose blockquote {
+  border-left: 3px solid currentColor;
+  padding-left: 0.75em;
+  opacity: 0.85;
+}
+.memo-prose-host .memo-prose code {
+  font-family: ui-monospace, monospace;
+  font-size: 0.9em;
+}
+.memo-prose-host .memo-prose a { text-decoration: underline; }
+
+/* The placeholder. TipTap marks the first empty node rather than emptying the
+   field, so this is the only way to show one. */
+.memo-prose-host .memo-prose p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  opacity: 0.4;
+}
