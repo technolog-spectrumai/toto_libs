@@ -1,6 +1,5 @@
 import os
 import random
-from decimal import Decimal
 from django.contrib.auth.models import User
 from django.utils import timezone
 from django.utils.text import slugify
@@ -10,7 +9,6 @@ from toto.socialhub.models import (
     Community,
     CommunityNewsPost,
     CommunityNewsTopic,
-    Station,
 )
 from toto.locations.models import Address
 
@@ -79,7 +77,6 @@ class Command(IngressCommand):
 
         self.assign_senior_members(community, tester_person, members)
         self.create_community_news(community, tester_person)
-        self.create_stations(community, tester_person, members)
 
         self.stdout.write(self.style.NOTICE("🏘 Creating child communities..."))
         child_a = self.create_community(
@@ -428,75 +425,3 @@ class Command(IngressCommand):
             )
             topics[name] = topic
         return topics
-
-    # ---------------------------------------------------------
-    # Offices (--full)
-    # ---------------------------------------------------------
-
-    #: Three offices, chosen to show the three things a station varies:
-    #: what it is FOR (charter), what it is PAID, and how much headroom it
-    #: carries. Capabilities stay at their defaults — those are admin's to
-    #: grant, and a seeder handing out `may_operate_mint` would be a seeder
-    #: granting itself the mint.
-    STATIONS = [
-        {
-            "name": "Registrar",
-            "charter": "Keeps the roll of members and the record of who signed "
-                       "what. Answers questions about standing.",
-            "stipend": Decimal("0.05"),
-            "limit_multiplier": Decimal("3"),
-        },
-        {
-            "name": "Community Editor",
-            "charter": "Publishes the community's news and keeps its noticeboard "
-                       "current.",
-            "stipend": Decimal("0.02"),
-            "limit_multiplier": Decimal("2"),
-            "may_manage_community_news": True,
-        },
-        {
-            "name": "Ombudsman",
-            "charter": "Hears complaints from members and reports to the "
-                       "assembly. Unpaid, and deliberately so.",
-            "stipend": Decimal("0"),
-            "limit_multiplier": Decimal("1"),
-        },
-    ]
-
-    def create_stations(self, community, tester_person, members):
-        """Seed the offices, and the membership that makes them holdable.
-
-        `Station.clean()` refuses a holder who does not belong to the community
-        the office serves, so joining is not decoration here — without it the
-        seed produces vacant offices and no roster worth looking at.
-        """
-        candidates = [p for p in ([tester_person] + list(members)) if p is not None]
-        for spec, holder in zip(self.STATIONS, candidates):
-            holder.communities.add(community)
-            station, created = Station.objects.get_or_create(
-                name=spec["name"],
-                defaults={**{k: v for k, v in spec.items() if k != "name"},
-                          "serves": community,
-                          "holder": holder,
-                          "since": timezone.now().date(),
-                          "active": True},
-            )
-            verb = "Created" if created else "Kept"
-            self.stdout.write(self.style.SUCCESS(
-                f"✔ {verb} office: {station.name} — {holder.display_name}"))
-
-        # One vacant office, because a station outlives its holder and the
-        # roster has to be able to say so.
-        vacant, created = Station.objects.get_or_create(
-            name="Treasurer",
-            defaults={
-                "charter": "Watches what the treasury collects and what it pays "
-                           "out. Currently vacant.",
-                "serves": community,
-                "holder": None,
-                "active": True,
-            },
-        )
-        if created:
-            self.stdout.write(self.style.SUCCESS(f"✔ Created office: {vacant.name} (vacant)"))
-

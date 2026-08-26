@@ -11,7 +11,6 @@ from .models import (
     CommunityPrivilege,
     MembershipApplication,
     ReferenceRequest,
-    Station,
 )
 
 
@@ -20,15 +19,6 @@ class CommunityPrivilegeInline(admin.StackedInline):
     model = CommunityPrivilege
     can_delete = True
     extra = 0
-
-
-class StationInline(admin.TabularInline):
-    """Offices that serve this community — listed here, paid federally."""
-    model = Station
-    fk_name = "serves"
-    extra = 0
-    fields = ("name", "holder", "active", "limit_multiplier", "stipend")
-    autocomplete_fields = ("holder",)
 
 
 @admin.register(Community)
@@ -62,7 +52,7 @@ class CommunityAdmin(TotoModelAdmin):
     prepopulated_fields = {'slug': ('name',)}
     filter_horizontal = ('senior_members',)
     autocomplete_fields = ('parent',)
-    inlines = (CommunityPrivilegeInline, StationInline)
+    inlines = (CommunityPrivilegeInline,)
 
     def head_display(self, obj):
         return obj.head.display_name if obj.head else "-"
@@ -134,28 +124,3 @@ class CommunityNewsTopicAdmin(TotoModelAdmin):
     search_fields = ("name",)
     prepopulated_fields = {"slug": ("name",)}
 
-
-@admin.register(Station)
-class StationAdmin(TotoModelAdmin):
-    """The ONLY editor for offices — who holds one, what it grants, what it pays.
-
-    Appointing is setting `holder`; vacating is clearing it; rotation is one
-    edit. There is no election and no request workflow: a community that wants
-    an office funded asks the federation, and an admin who agrees creates the
-    row here.
-
-    Every station is federal however local its work — `serves` says who an
-    office works for, never who pays it. The public roster shows the name, the
-    charter and the holder; the capabilities and the multiplier are visible only
-    here, and so is the stipend — except to its own holder, on their own
-    profile, who sees what they are paid and nobody else's.
-    """
-
-    list_display = ("name", "serves", "holder", "active", "limit_multiplier",
-                    "stipend", "since")
-    list_editable = ("holder", "active", "limit_multiplier", "stipend")
-    list_filter = ("active", "serves", "may_operate_mint",
-                   "may_administer_communities")
-    search_fields = ("name", "slug", "charter", "holder__display_name")
-    prepopulated_fields = {"slug": ("name",)}
-    autocomplete_fields = ("holder", "serves")

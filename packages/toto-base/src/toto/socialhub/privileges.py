@@ -1,27 +1,25 @@
-"""What a person's institutions grant them — the one resolver everything asks.
+"""What a person's communities grant them — the one resolver everything asks.
 
-**Rights are held by institutions, never by persons.** There are two, and they
-grant in two different shapes:
+**Rights are held by institutions, never by persons.** A community grants to
+*every member*, through its privilege row.
 
-* a **community** grants to *every member* — its privilege row;
-* a **station** grants to *whoever currently holds it* — a federal office, and
-  the headroom that office needs to do its work.
+**Highest privilege always**: any community granting a right grants it. That is
+not a loophole, it is the granting mechanism — membership is invite-gated
+(``MembershipApplication`` → accepted → ``communities.add`` is the only door),
+so admitting someone *is* the grant and expelling them *is* the revocation. It
+cannot hand one named individual a right their successor will not inherit, which
+is the property this module exists to preserve.
 
-A person HOLDS the union of both. **Highest privilege always**: any community
-granting a right grants it, any office granting a right grants it, and the
-largest limit multiplier wins. That is not a loophole,
-it is the granting mechanism — membership is invite-gated
-(``MembershipApplication`` → accepted → ``communities.add`` is the only door)
-and an office is appointed in admin, so admitting or appointing someone *is* the
-grant, and expelling them or vacating the office *is* the revocation. Neither
-can hand one named individual a right their successor will not inherit, which is
-the property this module exists to preserve.
+Grants live on :class:`~toto.socialhub.models.CommunityPrivilege`, **edited in
+Django admin and nowhere else**. No page renders or edits a capability, and the
+gates that consume them simply work or refuse.
 
-Grants live on :class:`~toto.socialhub.models.CommunityPrivilege` and
-:class:`~toto.socialhub.models.Station`, both **edited in Django admin and
-nowhere else**. A station's *existence* is public — the roster is the point of an
-institution — but what it grants is not; no page renders or edits a capability,
-and the gates that consume them simply work or refuse.
+**There used to be a second institution.** ``Station`` — a "Special Role" —
+granted the same four rights to whoever held the office, and carried a
+``limit_multiplier`` that bought that office extra quota headroom. It fused an
+office, an authorisation grant and a payslip into one row, and it was removed in
+8/2026 with the treasury payroll that paid it. Rights come from communities
+only; recurring payment is a Faucet, which pays people and grants nothing.
 
 Before this the platform had the idea twice as single booleans —
 ``Community.is_federal_tribe`` (an exemption nothing implemented) and
@@ -43,15 +41,14 @@ called in bulk any more.
 
 from __future__ import annotations
 
-from decimal import Decimal
 
 from django.db import DatabaseError
 
-#: Every named right an institution can grant — field names carried by BOTH
-#: CommunityPrivilege and Station, so the two stay in step and a right cannot be
-#: added to one and forgotten on the other. The money dial is deliberately not
-#: in here: ``limit_multiplier`` is a number, not access, and is asked through
-#: its own function below.
+#: Every named right an institution can grant — the field names carried by
+#: CommunityPrivilege. It was a shared vocabulary between that model and
+#: Station, so a right could not be added to one and forgotten on the other;
+#: with Station gone there is one holder of it, and the tuple stays because the
+#: gates below validate against it.
 RIGHTS = (
     "may_see_community_chain",
     "may_administer_communities",
@@ -74,15 +71,11 @@ def _person_of(user):
 
 
 def has_privilege(user, right: str) -> bool:
-    """Does any community this user belongs to, or any office they hold, grant
-    ``right``?
+    """Does any community this user belongs to grant ``right``?
 
     ``right`` must be a member of :data:`RIGHTS`; anything else raises rather
     than quietly answering False forever — a mistyped right that returns False
     is a gate nobody can pass and nobody can find.
-
-    The community is asked first because it is the common case and the query is
-    cheaper; the office is asked only when the community says no.
     """
     if right not in RIGHTS:
         raise ValueError(f"{right!r} is not a privilege; see "
@@ -91,36 +84,7 @@ def has_privilege(user, right: str) -> bool:
     if person is None:
         return False
     try:
-        if person.communities.filter(**{f"privilege__{right}": True}).exists():
-            return True
-        from .models import Station
-
-        return Station.objects.filter(
-            holder=person, active=True, **{right: True}).exists()
+        return person.communities.filter(
+            **{f"privilege__{right}": True}).exists()
     except DatabaseError:
         return False
-
-
-def limit_multiplier_for(user) -> Decimal:
-    """How much headroom this user's offices buy them, as a multiplier.
-
-    The LARGEST across every office they hold, and never below 1 — an office
-    adds room and can never take it away. This multiplies quota LIMITS only;
-    prices never see it.
-    """
-    person = _person_of(user)
-    if person is None:
-        return Decimal("1")
-    try:
-        from .models import Station
-
-        best = (Station.objects
-                .filter(holder=person, active=True)
-                .order_by("-limit_multiplier")
-                .values_list("limit_multiplier", flat=True)
-                .first())
-    except DatabaseError:
-        return Decimal("1")
-    if best is None:
-        return Decimal("1")
-    return max(best, Decimal("1"))

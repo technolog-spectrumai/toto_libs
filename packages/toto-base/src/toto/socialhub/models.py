@@ -146,11 +146,16 @@ class CommunityPrivilege(models.Model):
     community *is* the grant and expelling them *is* the revocation.
 
     **Rights are held by institutions, never by persons.** A community grants to
-    every member; a :class:`Station` grants to whoever currently holds it. A
-    person's rights are the union of the communities they belong to and the
-    offices they hold, and both are revoked the same way — leave the community,
-    or vacate the office. There is no way to give one named individual a right
-    that their successor will not inherit, and that is the whole rule.
+    every member, and membership is both the grant and the revocation: leave the
+    community and the rights go with it. There is no way to give one named
+    individual a right that their successor will not inherit, and that is the
+    whole rule.
+
+    There used to be a second institution here — ``Station``, a "Special Role"
+    that fused an office, four ``may_*`` grants, a quota multiplier and a
+    payslip into one row. It was removed in 8/2026 along with the treasury
+    payroll that paid it; recurring payment is a Faucet now, and it pays people
+    rather than posts.
 
     **The RIGHTS are never rendered outside Django admin.** No page shows or
     edits the ``may_*`` flags — not the community page, not the profile, not the
@@ -209,142 +214,6 @@ class CommunityPrivilege(models.Model):
 
     def __str__(self):
         return f"privileges of {self.community.name}"
-
-
-class Station(models.Model):
-    """A federal office — persistent, named, and larger than whoever holds it.
-
-    The office exists whether or not anyone holds it; holders change, the office
-    does not. Where a community grants to all its members, a station grants to
-    its one current holder, and vacating it revokes exactly as leaving a
-    community does. Both are institutions; neither is a person.
-
-    **Every station is federal.** ``serves`` records which community an office
-    works FOR, never who pays it: the federal treasury pays every stipend, is
-    appointed from Django admin, and lists every office on one roster. A
-    community that paid its own officers would be a community with its own
-    budget, its own payroll and its own loyalty — so the design does not offer
-    that, and a community that wants an office funded asks the federation for
-    it, informally, and an admin creates one here.
-
-    **Membership is what qualifies a holder.** An office serving a community is
-    held by somebody who belongs to it — the rule that replaced a platform-wide
-    "committed citizen" status, which was computed from signatures on a
-    governing document and retired with it.
-
-    **The roster is public; the capabilities are not.** Which offices exist, what
-    they are for and who holds them are the point of an institution and render
-    freely. What an office GRANTS stays in admin, exactly as
-    :class:`CommunityPrivilege`'s rights do. What it PAYS stays in admin too,
-    with one exception: a holder sees their own stipend on their own profile,
-    and nobody else's — the profile page shows any person to any logged-in user,
-    so that line is gated on being its owner.
-    """
-
-    name = models.CharField(max_length=120)
-    slug = models.SlugField(unique=True, blank=True)
-    charter = models.TextField(
-        blank=True,
-        help_text="What this office is responsible for. Shown on the public roster.",
-    )
-    holder = models.ForeignKey(
-        "people.Person", on_delete=models.SET_NULL, null=True, blank=True,
-        # No reverse accessor. `person.stations` and `community.stations` now
-        # belong to toto.stations, the app that replaced this model's only
-        # load-bearing part. Nothing ever read either reverse here — verified by
-        # a full sweep across every host — so this frees the name at no cost.
-        related_name="+",
-        help_text="Empty means VACANT: the office keeps existing and pays nobody.",
-    )
-    serves = models.ForeignKey(
-        Community, on_delete=models.SET_NULL, null=True, blank=True,
-        related_name="+",
-        help_text=(
-            "Which community this office works for, if any. Attribution only — "
-            "the federal treasury pays every special role and a community "
-            "never pays anyone."
-        ),
-    )
-    since = models.DateField(
-        null=True, blank=True,
-        help_text="When the current holder took office.",
-    )
-    active = models.BooleanField(default=True)
-
-    # ---- capabilities: ADMIN-ONLY, rendered nowhere -----------------------
-    may_see_community_chain = models.BooleanField(default=False)
-    may_administer_communities = models.BooleanField(default=False)
-    may_manage_community_news = models.BooleanField(default=False)
-    may_operate_mint = models.BooleanField(default=False)
-
-    limit_multiplier = models.DecimalField(
-        max_digits=8, decimal_places=2, default=Decimal("1"),
-        help_text=(
-            "Multiplies every quota limit for the holder, so an office has the "
-            "headroom its work needs. HEADROOM ONLY: prices "
-            "are untouched, and a holder pays exactly what anyone else pays "
-            "for the same action."
-        ),
-    )
-    stipend = models.DecimalField(
-        max_digits=30, decimal_places=10, default=Decimal("0"),
-        help_text=(
-            "Paid per period by the federal treasury, in the host's billing "
-            "asset. 0 is an unpaid office, which is an ordinary thing to be."
-        ),
-    )
-
-    created_at = models.DateTimeField(auto_now_add=True)
-    updated_at = models.DateTimeField(auto_now=True)
-
-    class Meta:
-        ordering = ["serves__name", "name"]
-        verbose_name = "Special Role"
-        verbose_name_plural = "Special Roles"
-
-    def __str__(self):
-        return self.name
-
-    def save(self, *args, **kwargs):
-        if not self.slug:
-            base = slugify(self.name) or "station"
-            slug, n = base, 1
-            while Station.objects.filter(slug=slug).exclude(pk=self.pk).exists():
-                n += 1
-                slug = f"{base}-{n}"
-            self.slug = slug
-        super().save(*args, **kwargs)
-
-    def clean(self):
-        super().clean()
-        if self.holder_id is None:
-            return
-        # A paid office must be reachable from a billing account. Person.user is
-        # nullable and nothing creates a Person on signup, so a user-less Person
-        # is an ordinary row here — and paying one is impossible rather than
-        # merely awkward: there is no account to credit.
-        if self.stipend and not self.holder.user_id:
-            raise ValidationError({
-                "holder": "A paid office needs a holder with a login — there is "
-                          "no account to pay otherwise.",
-            })
-        # Membership is the qualification. It replaced a platform-wide
-        # citizenship test computed from signatures on a governing document;
-        # the membership register is what actually records who belongs.
-        # An office that SERVES a community is held by one of its members;
-        # a purely federal office (serves is nullable — "if any") asks only
-        # that the holder belong somewhere.
-        if self.serves_id:
-            if not self.holder.communities.filter(pk=self.serves_id).exists():
-                raise ValidationError({
-                    "holder": "An office is held by a member of the community "
-                              "it serves — this person is not one yet.",
-                })
-        elif not self.holder.communities.exists():
-            raise ValidationError({
-                "holder": "An office is held by somebody who belongs to a "
-                          "community — this person belongs to none.",
-            })
 
 
 class CommunityNewsTopic(AbstractTag):

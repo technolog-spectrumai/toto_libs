@@ -10,8 +10,7 @@ from django.utils.translation import gettext_lazy as _
 from django.views.generic import ListView, DetailView
 
 from toto.people.models import Person
-from toto.quota import rates
-from toto.socialhub.models import Community, Station
+from toto.socialhub.models import Community
 from toto.socialhub.plugins.profile_plugins import ProfilePlugin
 from toto.ui import PageProcessor
 
@@ -60,21 +59,6 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
             context["reference_requests"] = None
 
         context["is_own_profile"] = is_own_profile
-
-        # Offices. The roster's public facts render for anyone; the PAY renders
-        # only to its holder. The profile page is visible to every logged-in
-        # user for any person, so an unconditional stipend would publish every
-        # officer's pay platform-wide — see STATIONS.md, "Visibility".
-        context["stations"] = list(
-            Station.objects.filter(holder=profile, active=True)
-            .select_related("serves")
-            .order_by("serves__name", "name")
-        )
-        show_pay = is_own_profile and rates.pricing_enabled()
-        context["show_station_pay"] = show_pay
-        # Absent rather than blank on a host that does not bill: a currency
-        # symbol with no currency behind it is a worse answer than no line.
-        context["station_pay_asset"] = rates.price_asset_symbol() if show_pay else ""
 
         context = PageProcessor().decorate(context, self.request)
 

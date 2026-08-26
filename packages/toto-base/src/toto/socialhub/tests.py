@@ -17,7 +17,6 @@ from toto.socialhub.models import (
     Community,
     MembershipApplication,
     ReferenceRequest,
-    Station,
 )
 
 User = get_user_model()
@@ -73,63 +72,6 @@ class DefaultCommunityIngressTests(TestCase):
         self._run_ingress(community="Our-community")
         community = Community.objects.get(name="Our-community")
         self.assertEqual(community.members.count(), 0)
-
-
-class StationIngressTests(TestCase):
-    """`--full` seeds the offices, and the membership that makes them holdable.
-
-    `Station.clean()` refuses a holder who does not belong to the community the
-    office serves, so a seed that forgot to enrol them would quietly produce a
-    roster of vacancies — which looks like working code and is not.
-    """
-
-    @classmethod
-    def setUpTestData(cls):
-        with patch.dict(os.environ, {"DEFAULT_COMMUNITY": "", "ADMIN_USERNAME": ""}):
-            call_command("ingress_socialhub", full=True, verbosity=0)
-
-    def test_the_roster_is_not_empty(self):
-        self.assertGreaterEqual(Station.objects.count(), 4)
-
-    def test_every_holder_belongs_to_the_community_it_serves(self):
-        """The requirement the model enforces — asserted on the seed itself."""
-        held = Station.objects.filter(holder__isnull=False)
-        self.assertTrue(held.exists())
-        for station in held:
-            with self.subTest(station=station.name):
-                self.assertTrue(
-                    station.holder.communities.filter(
-                        pk=station.serves_id).exists())
-
-    def test_a_seeded_station_would_survive_its_own_validation(self):
-        for station in Station.objects.filter(holder__isnull=False):
-            with self.subTest(station=station.name):
-                station.full_clean(exclude=["slug"])
-
-    def test_one_office_is_vacant_because_an_office_outlives_its_holder(self):
-        self.assertTrue(
-            Station.objects.filter(holder__isnull=True, active=True).exists())
-
-    def test_an_office_carries_headroom_without_touching_what_it_pays(self):
-        """A station grants LIMITS, never a discount — the whole design rests
-        on a holder paying exactly what anyone else pays."""
-        from toto.socialhub.privileges import limit_multiplier_for
-
-        registrar = Station.objects.get(name="Registrar")
-        self.assertGreater(registrar.limit_multiplier, 1)
-        self.assertEqual(limit_multiplier_for(registrar.holder.user),
-                         registrar.limit_multiplier)
-
-    def test_an_unpaid_office_is_an_ordinary_thing_to_be(self):
-        self.assertTrue(Station.objects.filter(stipend=0, holder__isnull=False).exists())
-
-    def test_running_it_twice_does_not_duplicate_the_roster(self):
-        before = Station.objects.count()
-        with patch.dict(os.environ, {"DEFAULT_COMMUNITY": "", "ADMIN_USERNAME": ""}):
-            call_command("ingress_socialhub", full=True, verbosity=0)
-        self.assertEqual(Station.objects.count(), before)
-
-
 class ApplicationSuccessViewTests(TestCase):
     def setUp(self):
         Platform.objects.create(site_name="Toto", author="Test", publication_year=2026)
@@ -331,43 +273,6 @@ needs_public_pages = unittest.skipIf(
 
 
 @needs_public_pages
-class StationListChromeTests(TestCase):
-    """The offices roster renders as a platform page, not a bare template.
-
-    ``PageProcessor.decorate`` is what supplies ``platform``, ``theme``,
-    ``font``, ``logo`` and the header navigation. The theme on this platform is
-    a database record rather than a stylesheet, so a template extending
-    ``oya/base.html`` rendered through a bare ``render()`` comes out with no
-    palette at all — which is exactly how this page looked. Every other view
-    module in socialhub already went through the decorator; this one did not.
-    """
-
-    def setUp(self):
-        Platform.objects.get_or_create(
-            site_name="Test Platform",
-            defaults={"author": "t", "publication_year": 2026, "active": True})
-
-    def test_the_page_carries_the_platform_context(self):
-        response = self.client.get(reverse("socialhub:station_list"))
-
-        self.assertEqual(response.status_code, 200)
-        self.assertIsNotNone(response.context["platform"])
-        self.assertEqual(response.context["platform"]["site_name"],
-                         "Test Platform")
-
-    def test_the_theme_reaches_the_template(self):
-        """The palette is the thing that was missing."""
-        response = self.client.get(reverse("socialhub:station_list"))
-
-        self.assertIn("theme", response.context)
-        self.assertIn("font", response.context)
-
-    def test_it_is_still_public(self):
-        """An institution nobody can see is not an institution."""
-        self.assertEqual(
-            self.client.get(reverse("socialhub:station_list")).status_code, 200)
-
-
 class StatuteTests(TestCase):
     """The statute: a vault PDF on the community, for every kind of community."""
 
