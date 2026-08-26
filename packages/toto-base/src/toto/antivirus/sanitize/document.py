@@ -88,6 +88,20 @@ VOID_CONTENT_TAGS = {"script", "style", "iframe", "object", "embed", "template",
 
 SELF_CLOSING = {"br", "img", "hr", "col", "wbr", "source", "track", "input"}
 
+#: HTML's void elements — the ones that NEVER have an end tag, whether or not
+#: they are written with a slash. Wider than SELF_CLOSING, which is only the
+#: subset this sanitiser emits.
+#:
+#: The depth counter must not move for these. It used to, and the consequence
+#: was silent truncation: `<noscript>` recorded ("noscript", 1), a bare `<img>`
+#: inside it pushed the depth to 2, and `</noscript>` then looked for
+#: ("noscript", 2), never matched, and left suppression on for THE REST OF THE
+#: DOCUMENT. `<noscript><img src="pixel.gif"></noscript>` — a tracking pixel or
+#: a lazy-load fallback, near the top of a great many real pages — therefore
+#: discarded everything after it and returned 200 with no warning.
+VOID_ELEMENTS = {"area", "base", "br", "col", "embed", "hr", "img", "input",
+                 "link", "meta", "param", "source", "track", "wbr"}
+
 HREF_SCHEMES = {"http", "https", "mailto"}
 
 _SCHEME = re.compile(r"^\s*([a-z][a-z0-9+.-]*)\s*:", re.IGNORECASE)
@@ -181,6 +195,15 @@ class _Cleaner(HTMLParser):
     # -- HTMLParser -------------------------------------------------------
     def handle_starttag(self, tag, attrs):
         tag = tag.lower()
+        if tag in VOID_ELEMENTS:
+            # Never counted and never suppressed: there is no end tag coming, so
+            # counting one drifts every (tag, depth) pair an enclosing element
+            # recorded. `<embed>` reaches this too — it is in VOID_CONTENT_TAGS
+            # AND void, so it used to push a suppression nothing could ever pop.
+            # `handle_startendtag` already does exactly the right thing for the
+            # `<img />` spelling, so defer to it rather than repeat it.
+            self.handle_startendtag(tag, attrs)
+            return
         self._depth += 1
         if tag in VOID_CONTENT_TAGS:
             # (tag, depth) rather than a counter: a nested </b> inside a

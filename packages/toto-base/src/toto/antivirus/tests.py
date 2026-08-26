@@ -1697,3 +1697,91 @@ class IngressTests(TestCase):
             Workflow.objects.filter(slug=SCAN_WORKFLOW_SLUG).count(), 1)
         self.assertEqual(
             Workflow.objects.get(slug=SCAN_WORKFLOW_SLUG).nodes.count(), 1)
+
+
+class VoidElementDepthTests(TestCase):
+    """A void element must not move the sanitiser's depth counter.
+
+    The bug this pins was silent, total, and shipped: `handle_starttag`
+    incremented `_depth` for every tag including void ones, which never produce
+    an end tag. So `<noscript>` recorded ("noscript", 1), a bare `<img>` inside
+    it pushed the depth to 2, and `</noscript>` looked for ("noscript", 2),
+    never matched, and left suppression on for THE REST OF THE DOCUMENT.
+
+    `<noscript><img src="pixel.gif"></noscript>` is a tracking pixel or a
+    lazy-load fallback and sits near the top of a great many real pages, so the
+    common case was "everything after the first few lines disappeared", with a
+    200 and no warning. The HTML-to-document converter in `toto.htmlview` seeds
+    through this function, which is how a converted page could arrive truncated.
+
+    Both directions are asserted here: content after a void element SURVIVES,
+    and everything that must still be suppressed still is. A fix to the first
+    that weakened the second would be much worse than the bug.
+    """
+
+    def _clean(self, html):
+        from toto.antivirus.sanitize.document import sanitize_content
+
+        return sanitize_content(html)
+
+    # -- the truncation ---------------------------------------------------
+
+    def test_a_void_img_inside_noscript_does_not_eat_the_document(self):
+        out = self._clean(
+            '<p>before</p><noscript><img src="pixel.gif"></noscript><p>after</p>')
+        self.assertIn("before", out)
+        self.assertIn("after", out)
+
+    def test_a_void_br_inside_template_does_not_eat_the_document(self):
+        out = self._clean('<p>before</p><template><br></template><p>after</p>')
+        self.assertIn("after", out)
+
+    def test_a_bare_embed_does_not_suppress_forever(self):
+        """`embed` is void AND in VOID_CONTENT_TAGS — it used to push a
+        suppression nothing could ever pop."""
+        out = self._clean('<p>before</p><embed src="x"><p>after</p>')
+        self.assertIn("after", out)
+
+    def test_an_ordinary_page_shape_survives_intact(self):
+        out = self._clean(
+            '<style>body{}</style><p>before</p>'
+            '<noscript><img src="a.gif"></noscript><h1>Title</h1><p>after</p>')
+        for expected in ("before", "Title", "after"):
+            self.assertIn(expected, out)
+
+    def test_several_void_elements_do_not_accumulate_drift(self):
+        out = self._clean(
+            '<p>a</p><img src="1.gif"><br><hr><input>'
+            '<noscript><img src="2.gif"></noscript><p>z</p>')
+        self.assertIn("z", out)
+
+    # -- what must NOT have been weakened ---------------------------------
+
+    def test_script_is_still_dropped_with_its_contents(self):
+        out = self._clean('<p>a</p><script>alert(1)</script><p>b</p>')
+        self.assertNotIn("alert", out)
+        self.assertIn("b", out)
+
+    def test_a_tag_inside_a_script_does_not_end_the_suppression_early(self):
+        out = self._clean('<p>a</p><script>var x = "<b>no</b>";</script><p>b</p>')
+        self.assertNotIn("var x", out)
+        self.assertNotIn("no", out)
+        self.assertIn("b", out)
+
+    def test_style_svg_iframe_and_object_are_still_dropped(self):
+        for markup, needle in (
+            ('<style>x{color:red}</style>', "color:red"),
+            ('<svg><circle r="1"/></svg>', "circle"),
+            ('<iframe src="evil"></iframe>', "evil"),
+            ('<object data="evil"></object>', "evil"),
+        ):
+            with self.subTest(markup=markup):
+                out = self._clean(f"<p>a</p>{markup}<p>b</p>")
+                self.assertNotIn(needle, out)
+                self.assertIn("b", out)
+
+    def test_a_void_element_inside_a_script_is_still_suppressed(self):
+        """The void path must not become a way out of suppression."""
+        out = self._clean('<p>a</p><script><img src="x.gif"></script><p>b</p>')
+        self.assertNotIn("x.gif", out)
+        self.assertIn("b", out)
