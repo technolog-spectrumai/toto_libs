@@ -1,62 +1,34 @@
-"""The Mail Guardian: the office that governs the platform's one mailbox.
+"""The platform's one mailbox, and what it takes to send from it.
 
-The platform speaks with a single voice. Which account that is must not be a
-setting somebody edits and forgets — it is an OFFICE, held by a person,
-vacant when nobody holds it, and visible on the public roster like every
-other Special Role (``socialhub.Station``).
+The platform speaks with a single voice, and which account that is must not be
+a setting somebody edits and forgets.
 
-Two consequences follow, and both are deliberate:
+**This used to be an OFFICE.** The "Mail Guardian" was a ``socialhub.Station``:
+a post held by a person, vacant when nobody held it, listed on the public
+roster. Access followed the office, so a handover changed who could read the
+mailbox without touching the row or the credential, and a vacancy was loud —
+:func:`platform_sender` refused to send at all rather than fall back to some
+other identity.
 
-* **Access follows the office.** The mailbox row belongs to the platform, so
-  a handover changes who may read it without touching the row, the
-  credential, or a single line of configuration.
-* **A vacancy is loud.** With no Guardian, or a Guardian who has not
-  connected the mailbox, platform mail does not quietly fall back to some
-  other identity — :func:`platform_sender` raises and the send is recorded
-  as refused. Account recovery breaking visibly beats account recovery
-  succeeding from an address nobody governs.
+Stations were removed in 8/2026 and the office went with them. What remains is
+the property that actually protected anybody: **the platform never guesses**.
+There is one system mailbox, it must be designated, it must be able to send,
+and if it is not then :func:`platform_sender` raises and the send is recorded as
+refused. Account recovery breaking visibly still beats account recovery
+succeeding from an address nobody chose.
+
+What is lost is the named holder — who governs the mailbox is a staff question
+now, answered by the admin that designates it, rather than a rosterable
+appointment. ``is_guardian`` is gone with the office; nothing outside its own
+tests ever called it.
 """
 from __future__ import annotations
 
 from django.utils.translation import gettext as _
 
-#: The office's slug. Seeded by ``ingress_mail``; renaming the office in the
-#: admin does not move it, because the slug is what code asks for.
-GUARDIAN_SLUG = "mail-guardian"
-GUARDIAN_NAME = "Mail Guardian"
-
 
 class NoSystemMailbox(RuntimeError):
-    """There is no governed mailbox to send platform mail from."""
-
-
-def guardian_station():
-    """The office row, or None where socialhub is absent or unseeded."""
-    try:
-        from toto.socialhub.models import Station
-    except Exception:  # noqa: BLE001 - socialhub is core, but stay honest
-        return None
-    return Station.objects.filter(slug=GUARDIAN_SLUG, active=True).first()
-
-
-def current_guardian():
-    """The Person holding the office, or None when it is vacant."""
-    station = guardian_station()
-    return station.holder if (station and station.holder_id) else None
-
-
-def is_guardian(user) -> bool:
-    """Whether this login currently holds the office.
-
-    Superusers are NOT folded in here. Reading the platform's replies is the
-    office's job, and quietly widening it to every superuser would make the
-    answer to "who saw this" depend on a permission flag rather than on a
-    named, rosterable appointment.
-    """
-    if user is None or not getattr(user, "is_authenticated", False):
-        return False
-    holder = current_guardian()
-    return bool(holder and holder.user_id == user.pk)
+    """There is no designated mailbox to send platform mail from."""
 
 
 def system_mailbox():
@@ -78,11 +50,6 @@ def platform_sender():
         raise NoSystemMailbox(_(
             "The system mailbox '%(label)s' is not ready to send: it needs a "
             "server and a stored password.") % {"label": mailbox.label})
-    if current_guardian() is None:
-        raise NoSystemMailbox(_(
-            "The Mail Guardian office is vacant, so nobody governs the "
-            "platform's mailbox. Appoint a holder before the platform sends "
-            "mail in its own name."))
     return mailbox
 
 
@@ -92,7 +59,5 @@ def describe() -> str:
         platform_sender()
     except NoSystemMailbox as exc:
         return str(exc)
-    holder = current_guardian()
-    return _("Platform mail goes out from %(address)s, governed by "
-             "%(who)s.") % {"address": system_mailbox().email_address,
-                            "who": holder.display_name}
+    return _("Platform mail goes out from %(address)s.") % {
+        "address": system_mailbox().email_address}

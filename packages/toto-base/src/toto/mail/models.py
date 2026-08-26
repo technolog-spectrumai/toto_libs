@@ -21,10 +21,9 @@ designation screen says so in those words.
 ``keyholder`` records which regime a row is under, so no code has to infer it
 from ``owner`` being null.
 
-**Exactly one system mailbox exists**, and the office that governs it is the
-Mail Guardian (see :mod:`toto.mail.guardian`). The mailbox belongs to the
-platform, not to whoever currently holds the office — access follows the
-office, so a handover moves who may read it without touching the row or its
+**Exactly one system mailbox exists** (see :mod:`toto.mail.guardian`). It
+belongs to the platform rather than to any person — a handover moves who may
+read it without touching the row or its
 credential.
 """
 from __future__ import annotations
@@ -65,7 +64,7 @@ class Mailbox(models.Model):
         settings.AUTH_USER_MODEL, null=True, blank=True,
         on_delete=models.CASCADE, related_name="mailboxes",
         help_text=_("Empty for the system mailbox: it belongs to the "
-                    "platform, and the Mail Guardian office governs it."))
+                    "platform rather than to any person."))
     kind = models.CharField(max_length=10, choices=MailboxKind.choices,
                             default=MailboxKind.PERSONAL, db_index=True)
     label = models.CharField(max_length=120, help_text=_(
@@ -134,7 +133,7 @@ class Mailbox(models.Model):
         if self.kind == MailboxKind.SYSTEM and self.owner_id is not None:
             raise ValidationError(_(
                 "The system mailbox belongs to the platform, not to a "
-                "person — the Mail Guardian office governs it."))
+                "person."))
         if self.kind == MailboxKind.SYSTEM \
                 and self.keyholder != Keyholder.PLATFORM:
             raise ValidationError(_(

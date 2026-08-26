@@ -12,8 +12,6 @@ from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
-from toto.people.models import Person
-from toto.socialhub.models import Station
 
 from . import guardian, keyring
 from .models import Keyholder, Mailbox, MailboxKind, SentRecord
@@ -161,17 +159,16 @@ class MailboxShapeTests(TestCase):
         self.assertFalse(send_only.can_receive)
 
 
-class GuardianTests(TestCase):
-    @classmethod
-    def setUpTestData(cls):
-        cls.user = User.objects.create_user("gwen", password="x")
-        cls.person = Person.objects.create(user=cls.user, display_name="Gwen")
-        cls.other = User.objects.create_user("owen", password="x")
+class PlatformSenderTests(TestCase):
+    """The platform never guesses which address it speaks from.
 
-    def _office(self, holder=None):
-        return Station.objects.create(
-            name=guardian.GUARDIAN_NAME, slug=guardian.GUARDIAN_SLUG,
-            holder=holder, active=True)
+    This was ``GuardianTests``: the system mailbox was governed by a Mail
+    Guardian — a ``socialhub.Station``, an office held by a person and vacant
+    when nobody held it — and a vacancy refused the send outright. Stations were
+    removed in 8/2026 and the office with them. What survives is the property
+    that actually protected anybody: no designated, sending-capable mailbox
+    means no platform mail, said out loud rather than fudged.
+    """
 
     def _system_mailbox(self):
         mailbox = Mailbox.objects.create(
@@ -179,49 +176,36 @@ class GuardianTests(TestCase):
             email_address="platform@example.org",
             host="smtp.example.org", username="platform",
             keyholder=Keyholder.PLATFORM)
-        # Stand in for the platform strongbox: the point of this test is the
-        # office logic, not jess's Argon2id envelope (covered in jess.tests).
+        # Stand in for the platform strongbox: the point here is the refusal
+        # logic, not jess's Argon2id envelope (covered in jess.tests).
         from toto.gervazy.models import EncryptedSecret
         mailbox.secret = EncryptedSecret.objects.first()
         return mailbox
 
-    def test_no_office_no_platform_mail(self):
+    def test_no_mailbox_no_platform_mail(self):
         with self.assertRaises(guardian.NoSystemMailbox):
             guardian.platform_sender()
         self.assertIn("no system mailbox", guardian.describe().lower())
 
-    def test_a_vacant_office_refuses_rather_than_falling_back(self):
-        self._office(holder=None)
+    def test_a_mailbox_that_cannot_send_refuses_rather_than_falling_back(self):
         mailbox = self._system_mailbox()
         Mailbox.objects.filter(pk=mailbox.pk).update(secret=None)
 
         with self.assertRaises(guardian.NoSystemMailbox):
             guardian.platform_sender()
 
-    def test_is_guardian_follows_the_office_not_the_person(self):
-        station = self._office(holder=self.person)
-        self.assertTrue(guardian.is_guardian(self.user))
-        self.assertFalse(guardian.is_guardian(self.other))
+    # No "a ready mailbox sends" test, for the reason the fixture above gives:
+    # sealing a PLATFORM mailbox's password goes through jess's strongbox, and
+    # this suite deliberately stays out of it. Every test here is a refusal,
+    # which is the half that protects anybody.
 
-        # Handover: the mailbox row is untouched, access moves.
-        successor = Person.objects.create(user=self.other,
-                                          display_name="Owen")
-        station.holder = successor
-        station.save(update_fields=["holder"])
+    def test_the_office_is_gone_and_nothing_asks_for_a_holder(self):
+        """`is_guardian` gated who could read the platform's replies. Nothing
+        outside these tests ever called it, which is why it could go."""
+        for name in ("is_guardian", "current_guardian", "guardian_station"):
+            with self.subTest(attr=name):
+                self.assertFalse(hasattr(guardian, name))
 
-        self.assertFalse(guardian.is_guardian(self.user))
-        self.assertTrue(guardian.is_guardian(self.other))
-
-    def test_a_superuser_is_not_automatically_the_guardian(self):
-        root = User.objects.create_superuser("root", "r@x.com", "x")
-        self._office(holder=self.person)
-        self.assertFalse(guardian.is_guardian(root))
-
-    def test_an_anonymous_visitor_is_never_the_guardian(self):
-        from django.contrib.auth.models import AnonymousUser
-
-        self._office(holder=self.person)
-        self.assertFalse(guardian.is_guardian(AnonymousUser()))
 
 
 class SentRecordTests(TestCase):
