@@ -1,19 +1,31 @@
-# Privileges and offices
+# Privileges
 
-**Rights are held by institutions, never by persons.** There are two, and they
-grant in two different shapes:
+**Rights are held by institutions, never by persons.** There is one:
 
 | | grants to | set in | visible |
 |---|---|---|---|
 | **Community** (`CommunityPrivilege`) | every member | Django admin only | never |
-| **Station** (an office) | its one current holder | Django admin only | the roster is public; what it grants and pays is not |
 
-A person holds the **union** of both — highest privilege always. Membership is
-invite-gated (`MembershipApplication` → accepted → `communities.add` is the only
-door) and an office is appointed in admin, so admitting or appointing someone
-*is* the grant, and expelling them or vacating the office *is* the revocation.
-Neither can hand one named individual a right their successor will not inherit,
-which is the property the whole design preserves.
+**Highest privilege always**: any community a person belongs to that grants a
+right grants it. Membership is invite-gated (`MembershipApplication` → accepted
+→ `communities.add` is the only door), so admitting someone *is* the grant and
+expelling them *is* the revocation. It cannot hand one named individual a right
+their successor will not inherit, which is the property the whole design
+preserves.
+
+## There used to be two
+
+`Station` — a "Special Role" — was the second: an office that granted the same
+four rights to whoever currently held it, carried a `limit_multiplier` that
+bought that office extra quota headroom, and carried a stipend the treasury paid
+every period. Three unrelated things in one row, and being paid was tangled up
+with being trusted.
+
+It was removed in 8/2026, along with `STATIONS.md`, the public roster at
+`/stations/`, the treasury payroll (`tax.payroll`) that paid it, and
+`privileges.limit_multiplier_for`. Quota limits are flat for everybody now, and
+recurring payment is a **faucet** (`toto.assets`) — which pays people, grants
+nothing and qualifies nobody.
 
 `socialhub/privileges.py` is the one resolver everything asks. Every function in
 it degrades to the commoner answer (no rights, no headroom) rather than
@@ -21,14 +33,16 @@ raising: a gate failing open would be escalation.
 
 ## Every field, and the gate that honours it
 
-| Field | On | Honoured at |
-|---|---|---|
-| `may_see_community_chain` | both | `socialhub/views/community.py::community_chain_graph_data` |
-| `may_administer_communities` | both | `AdministrataView.dispatch`, and the button on the community page |
-| `may_manage_community_news` | both | `socialhub/permissions.py::can_manage_community_news` — joins head and senior members, reaching across communities |
-| `may_operate_mint` | both | `mint/views.py::_staff_only` — the **user half only** (see below) |
-| `limit_multiplier` | station | `quota/api.py::effective_limit`, read by `check_quota`, `remaining` and `usage_summary` |
-| `stipend` | station | the payroll sweep — paid by the federal treasury |
+| Field | Honoured at |
+|---|---|
+| `may_see_community_chain` | `socialhub/views/community.py::community_chain_graph_data` |
+| `may_administer_communities` | `AdministrataView.dispatch`, and the button on the community page |
+| `may_manage_community_news` | `socialhub/permissions.py::can_manage_community_news` — joins head and senior members, reaching across communities |
+| `may_operate_mint` | `mint/views.py::_staff_only` — the **user half only** (see below) |
+
+`limit_multiplier` and `stipend` were on this table until 8/2026. Both were
+Station's, and both went with it: quota limits are flat for everybody, and
+paying somebody is a faucet.
 
 ### The mint is not delegable
 
@@ -40,9 +54,12 @@ make the button work. Asserted in `tax/tests/test_privileges.py::MintHonestyTest
 
 ## Money
 
-**Tax is federal.** Everyone pays the federation; the federation pays its
-officers. There is one receiver of taxes and one payer of salaries, and they are
-the same account (`platform-usage-fees`).
+**Tax is federal.** Everyone pays the federation. There is one receiver of
+taxes (`platform-usage-fees`), and until 8/2026 it was also the payer of
+salaries — the treasury paid the platform's offices out of what it collected.
+Offices are gone; what puts value back now is a **faucet**
+(`toto.assets.services.faucets`), which pays named people by the hour out of an
+asset's reserve rather than out of the fee account.
 
 - **A community never receives anything, and this file no longer sets what its
   members owe.** It has no wallet, no treasurer and no payroll, and needs none —
@@ -58,21 +75,19 @@ the same account (`platform-usage-fees`).
   **added** to what the provider measured rather than multiplying it, so a
   concession on a resource never becomes immunity from this — a Gini regulator
   you could escape would not be one. Default `k = 0` is off.
-- **`limit_multiplier`** — headroom, never money. An office gets the room its
-  work needs, and **pays exactly what anyone else pays for the same action**.
-  Asserted directly on the ledger, because that is the constraint.
-- **`stipend`** — paid per period by the federal treasury to the holder's
-  billing account (the same account a charge debits). A vacant office pays
-  nobody and accrues nothing.
+- **Nothing here buys headroom or pays anybody.** `limit_multiplier` and
+  `stipend` were Station's and went with it. A privilege moves a *gate* and
+  only a gate: a person who holds one **pays exactly what anyone else pays for
+  the same action**, which is asserted directly on the ledger in
+  `tax/tests/test_privileges.py`, because that is the constraint.
 
-### Why every office is federal
+### Being paid is not being trusted
 
-`Station.serves` records which community an office works *for*. It never records
-who pays, because the answer is always the same. A community that paid its own
-officers would be a community with its own budget, its own payroll and its own
-loyalty — so a community that wants an office funded asks the federation
-informally, and an admin who agrees creates the row. There is no request table
-and no approval workflow, deliberately.
+That separation is the point of removing Station. It fused an office, an
+authorisation grant and a payslip into one row, so being paid meant holding a
+post and holding a post meant holding rights. A **faucet** pays people and
+grants nothing; a **community privilege** grants rights and pays nothing. Either
+can be given without the other, which was never true before.
 
 ## What this generalises
 
@@ -84,34 +99,37 @@ and no approval workflow, deliberately.
   what happened, not what is true. The boolean stays, deprecated, because
   **aurelian** reads it by name for responder eligibility.
 - `Person.is_federal_agent` — help text about taxes, code about two admin views.
-  Those two rights are now an **office**: the migration creates a *Federal Agent*
-  station holding them, with the flagged person as holder. If several held the
-  flag, the first becomes holder and the rest are named in the charter rather
-  than silently dropped. The field stays for aurelian's templates.
-- An office is held by a member of the community it serves — the membership register replaced the retired signature-based citizenship.
-  delegated to appointed **Magistrates**"* since it was written, and
-  `people/civic.py::is_committed_citizen` has promised "eligibility for
-  non-enforcement public roles". A Station is that office, and citizenship is
-  what qualifies a holder for one (`Station.clean`).
+  Migration `socialhub/0004` turned those two rights into a *Federal Agent*
+  **office**, with the flagged person as holder. Offices were removed in 8/2026,
+  so what that migration created no longer exists — and `0004` remains untouched
+  for the same reason as above: a historical migration describes what happened,
+  not what is true. The field stays for aurelian's templates.
 
 Retiring the two flags is an aurelian follow-up
 (`mobilization/models.py:134`, `responder_recruit.html`, `responder_detail.html`).
 
 ## Federation
 
-Both models are **refused by datalink**. A privilege row is authorisation, and
-replicating it would let a peer's admin grant rights on this host by editing
-their own database — the same reason `auth.User`/`auth.Group` are refused. A
-station is authorisation *and* a salary this host's treasury pays: replicating
-one would let a peer appoint an officer here and have us pay them.
+`CommunityPrivilege` is **refused by datalink**. A privilege row is
+authorisation, and replicating it would let a peer's admin grant rights on this
+host by editing their own database — the same reason `auth.User`/`auth.Group`
+are refused.
+
+`Station` was refused for that reason *and* one more: it carried a salary this
+host's treasury paid, so replicating one would have let a peer appoint an
+officer here and have us pay them. The successor inherits that second reason —
+`assets.Faucet` and `assets.FaucetMember` must never be replicable, or a peer
+could add themselves to a faucet on this host and be paid hourly out of our
+reserve.
 
 ## What is deliberately NOT here
 
-- **`Community.head` / `senior_members`** stay exactly as they are: informal,
-  unpaid, and not Stations. Converting them would change the datalink wire
-  format (`head` is a replicated field with tests pinned to its name), the
-  public JSON contract, the chain-graph edge types and aurelian's mobilization
-  tests, with nothing to backfill `since` from. That is its own change.
+- **`Community.head` / `senior_members`** stay exactly as they are: informal
+  and unpaid. They were never offices, and with offices gone there is nothing
+  left to convert them into — but the reasons not to touch them stand on their
+  own: it would change the datalink wire format (`head` is a replicated field
+  with tests pinned to its name), the public JSON contract, the chain-graph edge
+  types and aurelian's mobilization tests. That is its own change.
 - **No allowances anywhere.** A free per-metric band is shareable — the way to
   use it is to route work through someone whose band is unspent. The free tier
   is the *absence of a price*, and a metric with no price row is free for

@@ -185,10 +185,15 @@ def income_board(*, since=None, until=None) -> FeeBoard:
 def _add_outgoings(board, asset, *, since=None, until=None) -> None:
     """What the treasury paid out, and what it is still holding.
 
-    Read from the ledger rather than from ``StipendPayment``, for the same
-    reason income is: the ledger is the thing that actually moved, and a row
-    that says PAID while no entry exists would be the one lie this page must
-    never tell.
+    Read from the LEDGER rather than from whatever recorded the intention to
+    pay, for the same reason income is: the ledger is the thing that actually
+    moved, and a row that says PAID while no entry exists would be the one lie
+    this page must never tell.
+
+    That mattered against ``tax.StipendPayment`` and it matters again against
+    ``assets.FaucetPayout``, which replaced it — a payout row can say PAID and
+    carry no transaction, because the row is written before the transfer is
+    attempted. This page must not believe it.
     """
     from django.db.models import Sum
 

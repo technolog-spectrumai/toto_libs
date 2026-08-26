@@ -118,8 +118,8 @@ def credit(user, tariff, metric_code: str, quantity, unit: str = "", **kwargs):
     price for the metric — the same two sentinels every function here honours,
     so a call site still needs no guard of its own.
 
-    The payer is the platform treasury, exactly as ``toto.tax.payroll`` pays a
-    stipend today. That account is credited by every tariff and every levy and
+    The payer is the platform treasury. That account is credited by every
+    tariff and every levy and
     is otherwise **never debited**, against a capped supply — which is why this
     function exists at all: it is the only thing that puts value back.
     """

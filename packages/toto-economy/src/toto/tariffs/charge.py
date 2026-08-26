@@ -352,9 +352,10 @@ def credit_user(
     inverting rating, the balance lock and the insufficient-funds path — three
     places where money would be wrong if the inversion were subtly off. Instead
     this prices the work with the same pure calculator the charge path uses
-    (:func:`calculate_tariff_charge`) and then moves the money the way
-    ``toto.tax.payroll`` has always moved a stipend: one ``transfer_asset`` out
-    of the revenue account.
+    (:func:`calculate_tariff_charge`) and then moves the money the plain way:
+    one ``transfer_asset`` out of the revenue account. The retired treasury
+    payroll moved a stipend exactly like this, and ``assets.services.faucets``
+    moves an hourly payout the same way now.
 
     ``reference`` is the idempotency key and callers should pass a stable one —
     ``transfer_asset`` refuses a duplicate, which is what makes paying the same
