@@ -443,6 +443,32 @@ socket.onmessage = event => EditorSync.onServerMessage(
       " {% trans 'is editing this file. Your changes are not being saved.' %}");
   });
 
+/* Every door here answers JSON — but only when the request REACHED it. A
+   session that expired redirects to the sign-in page, a proxy in front of the
+   app answers its own error page, and a 500 renders HTML. Calling res.json()
+   on any of those throws "SyntaxError: JSON.parse: unexpected character",
+   which tells the person nothing about what went wrong and hides the status
+   code that would have. Read the body once, defensively, and say what
+   happened. */
+async function readJson(res) {
+  const body = await res.text();
+  try {
+    return JSON.parse(body);
+  } catch (err) {
+    if (res.status === 401 || res.status === 403 ||
+        res.redirected && /login|signin/i.test(res.url)) {
+      throw new Error("your session has expired — open this page again in a new tab, sign in, then come back and save");
+    }
+    if (res.status === 413) {
+      throw new Error("this file is too large for the server to accept");
+    }
+    if (res.status >= 500) {
+      throw new Error(`the server failed while saving (HTTP ${res.status})`);
+    }
+    throw new Error(`the server answered HTTP ${res.status} with something that was not JSON`);
+  }
+}
+
 const SAVE_URL   = "{{ save_url }}";
 const DELETE_URL = "{{ delete_url }}";
 
@@ -492,7 +518,7 @@ async function saveFile(force) {
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (res.status === 409) { showConflict(data.error); return false; }
     if (res.status === 423) {
       /* Somebody else is in the file. The lock banner above says who, from the
@@ -541,7 +567,7 @@ document.getElementById("delete-confirm").addEventListener("click", async () => 
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (data.status === "ok") { window.location.href = data.redirect || "/vault/"; }
     else { alert(data.error || "Delete failed."); btn.disabled = false; btn.style.opacity = "1"; }
   } catch (err) {
@@ -594,7 +620,7 @@ document.getElementById("compile-file").addEventListener("click", async () => {
       headers: { "X-CSRFToken": "{{ csrf_token }}" },
       credentials: "same-origin",
     });
-    const data = await res.json();
+    const data = await readJson(res);
     if (data.status === "queued" && data.run_id) { pollCompile(data.run_id); }
     else if (data.pdf_url) { compileDone(data.pdf_url, ""); }          // inline (no-worker) success
     else { compileDone("", data.log || data.error || "Compile failed"); }
