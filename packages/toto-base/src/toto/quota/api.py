@@ -129,8 +129,8 @@ def get_policy(policy_model, metric_code: str, user=None):
     ``user`` is accepted and ignored — every caller already has it to hand for
     :func:`effective_limit`, and taking it here keeps the two calls looking
     alike. A per-user policy row used to win over the default; that mechanism is
-    gone, and headroom for one person is an office's ``limit_multiplier``
-    instead.
+    gone, and nothing replaced it: since 8/2026 one policy governs everybody
+    and :func:`effective_limit` applies no multiplier at all.
     """
     now = timezone.now()
     return (policy_model.objects
@@ -141,33 +141,21 @@ def get_policy(policy_model, metric_code: str, user=None):
 
 
 def effective_limit(policy, user=None) -> Decimal:
-    """The limit that actually applies to this user: the policy's, times the
-    headroom their offices buy them.
+    """The limit that actually applies to this user. One policy, everybody.
 
-    A :class:`~toto.socialhub.models.Station` carries a ``limit_multiplier``, so
-    an office has the room its work needs — the archivist uploads more than a
-    member because the job requires it. **Headroom only.** No price and no tax
-    reads this: a holder pays exactly what anyone else pays for the same action,
-    which is the whole of "extra limits, same taxes".
+    ``user`` is accepted and ignored, exactly as :func:`get_policy` accepts and
+    ignores it. Limits are FLAT since 8/2026: a ``socialhub.Station`` used to
+    carry a ``limit_multiplier`` that bought an office the room its work needed,
+    and that model — an office fused with an authorisation grant and a payslip —
+    was removed. Nothing replaced the multiplier, so nobody has extra headroom.
 
-    Read through one function rather than at each comparison so the answer
-    cannot drift between what a page displays and what the gate enforces.
-    Degrades to the plain limit on any failure, and never raises: a quota check
-    that blew up on a missing socialhub row would take down every metered
-    action on the host.
+    The function stays rather than being inlined at its five call sites, because
+    it is the one place the answer is computed and the alternative is five
+    comparisons that can drift apart — which is what it was written to stop.
+    Somewhere to put per-person headroom back, if it is ever wanted, is worth
+    more than the line it saves.
     """
-    limit = Decimal(policy.limit)
-    if user is None or not getattr(user, "pk", None):
-        return limit
-    try:
-        from toto.socialhub import privileges
-
-        multiplier = privileges.limit_multiplier_for(user)
-    except Exception:  # noqa: BLE001 - no office is the commoner answer
-        return limit
-    if multiplier == 1:
-        return limit
-    return limit * Decimal(multiplier)
+    return Decimal(policy.limit)
 
 
 def used(policy_model, metric_code: str, user=None, *, period=Period.LIFETIME, at=None) -> Decimal:
@@ -281,7 +269,7 @@ def usage_summary(policy_model, user=None, metric_codes=None) -> list[dict]:
         period = policy.period if policy else Period.LIFETIME
         total = used(policy_model, code, user, period=period)
         # The same number check_quota will enforce, office headroom included —
-        # a dashboard quoting the bare policy limit would tell a station holder
+        # a dashboard quoting a different limit from the gate would tell somebody
         # they are at 100% while uploads keep succeeding.
         limit = effective_limit(policy, user) if policy else None
         rows.append({

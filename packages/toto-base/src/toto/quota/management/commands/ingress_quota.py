@@ -9,9 +9,8 @@ declared in ``<app>/metrics.py``. A metric that declares none is measured but
 never capped, which is a legitimate choice and stays that way.
 
 Rows land in the declaring app's own table — quota owns none — and one row per
-metric applies to everyone. There is no per-person override: somebody who needs
-more room holds an office, and ``Station.limit_multiplier`` scales every limit
-they are subject to.
+metric applies to everyone, with no per-person override and — since Stations
+were removed in 8/2026 — no per-institution one either.
 
 Idempotent: an existing default policy is left exactly as it is, so re-running
 after an administrator has tuned a limit will not undo their work.

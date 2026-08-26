@@ -60,11 +60,11 @@ class AbstractQuotaPolicy(models.Model):
     **There is no per-person override, deliberately.** There used to be: a row
     naming a user beat the default. It went the way every other
     name-an-individual mechanism on this platform went, and for the same reason
-    — variation belongs to institutions, not to people. Somebody who needs more
-    room gets an OFFICE, and ``Station.limit_multiplier`` scales every limit
-    they are subject to (``quota/api.py::effective_limit``). That is one place
-    to look instead of N rows scattered across sixteen tables, it is visible on
-    the public roster, and it moves to their successor when they move on.
+    — variation belongs to institutions, not to people. Headroom for one person
+    then lived on ``socialhub.Station.limit_multiplier``, and that went too when
+    Stations were removed in 8/2026. Limits are flat for everybody now; if
+    per-institution headroom is ever wanted again, ``quota/api.py::
+    effective_limit`` is the one place it goes.
     """
 
     #: The concrete AbstractUsageEvent subclass this policy meters. Set it on

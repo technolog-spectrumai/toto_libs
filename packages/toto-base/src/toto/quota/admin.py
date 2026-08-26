@@ -16,9 +16,9 @@ from django.contrib import admin
 class QuotaPolicyAdminBase(admin.ModelAdmin):
     """One row per metric, applying to everyone.
 
-    There is no user column because there is no per-person policy: somebody who
-    needs more room holds an office, and ``Station.limit_multiplier`` scales
-    every limit they are subject to.
+    There is no user column because there is no per-person policy, and since
+    Stations were removed in 8/2026 there is no per-institution one either —
+    this limit is the limit, for everybody.
     """
 
     list_display = ("metric_code", "limit", "unit", "period", "mode", "active")

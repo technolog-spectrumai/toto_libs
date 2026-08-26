@@ -108,9 +108,8 @@ class PolicyResolutionTests(SampleModels):
         """One row per metric, and the constraint says so.
 
         A row naming a user used to beat the default. It went the way every
-        other name-an-individual mechanism went: headroom for one person is an
-        office's ``Station.limit_multiplier``, which is visible on the public
-        roster and moves to their successor.
+        other name-an-individual mechanism went, and the office multiplier that
+        replaced it went with Stations in 8/2026. One row, everybody.
         """
         from django.db.utils import IntegrityError
 
