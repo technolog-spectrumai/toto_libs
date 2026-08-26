@@ -1,17 +1,21 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.urls import reverse_lazy
 from django.views import View
-from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_POST
 
 from toto.core import assistant
 from toto.ui import PageProcessor
+from toto.vault import editing, versions
 from toto.vault.models import VaultFile
+
+log = logging.getLogger("toto.editor")
 
 
 class BaseFileDisplayView(LoginRequiredMixin, View):
@@ -122,20 +126,34 @@ class BaseFileDisplayView(LoginRequiredMixin, View):
         return render(request, self.template_name, context)
 
 
-@csrf_exempt
+@require_POST
 def save_file(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
-
     from toto.vault.models import file_edits_allowed
     if not file_edits_allowed():
         # Vault-level truth: even with the editor app installed, a host with
         # edits off must refuse the write.
         return JsonResponse({"error": "File editing is disabled on this host."}, status=403)
 
+    # An unauthenticated caller reaches `owner=AnonymousUser` in the queryset
+    # below, and comparing that to a foreign key raises ValueError — a 500 where
+    # the honest answer is 401. Mostly masked now that CSRF refuses a tokenless
+    # POST first, but "mostly" is not a guard. Cyprian answers this way too.
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not authenticated."}, status=401)
+
     vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
+
+    # The lock is the first line, before the screen and before any write: a save
+    # that should never have been attempted must not be able to fail halfway.
+    # The owner filter above does not make this redundant — the vault lends a
+    # file out through other surfaces, so the holder can be a collaborator in
+    # cyprian or a shared directory rather than the owner sitting here.
+    refusal = editing.refuse_if_locked(vault_file, request.user)
+    if refusal is not None:
+        return refusal
+
     content = request.POST.get("content", "")
 
     # Screen BEFORE anything is written. `scanning` is a façade over the
@@ -157,6 +175,20 @@ def save_file(request, file_pk):
     else:
         verdict = None
 
+    encoded = content.encode("utf-8")
+
+    # Optimistic concurrency, and deliberately AFTER the screen: a refused save
+    # keeps the losing body as a version, and a version is storage — so the one
+    # thing that must never be rescued into one is content the door just
+    # refused. `base_hash` is optional, so a client that predates this (the
+    # sketch SVG editor, the desktop API twin) keeps working exactly as before;
+    # what it loses is only the protection it never had.
+    stale = editing.refuse_if_stale(
+        vault_file, request.POST.get("base_hash"),
+        body=encoded, author=request.user)
+    if stale is not None:
+        return stale
+
     try:
         with vault_file.file.open("w") as f:
             f.write(content)
@@ -166,21 +198,47 @@ def save_file(request, file_pk):
         # bytes the file no longer held. Hashed from the string we were handed
         # rather than by re-reading the file, which is what the API twin does and
         # is the only version that still works after the write handle is closed.
-        encoded = content.encode("utf-8")
         vault_file.content_hash = hashlib.sha256(encoded).hexdigest()
         vault_file.file_size_bytes = len(encoded)
         vault_file.save(update_fields=["content_hash", "file_size_bytes"])
         if verdict is not None:
             scanning.record(vault_file, verdict, user=request.user, door="editor")
-        return JsonResponse({"status": "ok"})
     except Exception as exc:
         return JsonResponse({"error": str(exc)}, status=500)
 
+    # One version per save, and `versions.save_version` rather than
+    # `editing.settle`: settle also counts the save and charges for it, and this
+    # editor is a Standard, unmetered feature that must stay one.
+    #
+    # Guarded, because the bytes are already on disk. A history that could not
+    # be written is not a reason to answer "your save failed" — the client would
+    # keep a `base_hash` the file has already moved past, and every save after
+    # that would look like somebody else's edit.
+    payload = {"status": "ok", "content_hash": vault_file.content_hash}
+    try:
+        payload["version"] = versions.save_version(
+            vault_file, author=request.user).number
+    except Exception:                                   # noqa: BLE001
+        log.exception("editor: could not version %s", vault_file.pk)
+    return JsonResponse(payload)
 
-@csrf_exempt
+
+@require_POST
 def delete_file(request, file_pk):
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
+    # No `csrf_exempt` on this door or on `save_file` above any more. It was
+    # never needed: every client that reaches either of them — this app's own
+    # editor page, the sketch SVG editor — already sends `X-CSRFToken`, and the
+    # desktop client goes to the DRF twin in `toto.vault.api_views` with its own
+    # authentication. What it bought was a permanent, unrecoverable delete of
+    # somebody's file, reachable from any page they happened to be reading. The
+    # vault's own DeleteFileView, which does exactly this from the file listing,
+    # has always been protected; these were the doors that were not.
+    # An unauthenticated caller reaches `owner=AnonymousUser` in the queryset
+    # below, and comparing that to a foreign key raises ValueError — a 500 where
+    # the honest answer is 401. Mostly masked now that CSRF refuses a tokenless
+    # POST first, but "mostly" is not a guard. Cyprian answers this way too.
+    if not request.user.is_authenticated:
+        return JsonResponse({"error": "Not authenticated."}, status=401)
 
     vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
     vault_file.file.delete(save=False)

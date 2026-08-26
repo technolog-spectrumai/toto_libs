@@ -612,9 +612,14 @@ class SocketDoorTests(TestCase):
         consumer.file_pk = vault_file.pk
         consumer.user = user
 
-        verdict = async_to_sync(consumer.write_file)(self.HOSTILE)
+        # `write_file` answers (verdict, content_hash) since 8/2026: the socket
+        # reports the digest it stamped so the client's save can carry it as a
+        # precondition instead of hashing the buffer itself. A refusal stamps
+        # nothing, so the hash is blank.
+        verdict, content_hash = async_to_sync(consumer.write_file)(self.HOSTILE)
 
         self.assertFalse(verdict.ok)
+        self.assertEqual(content_hash, "")
         vault_file.refresh_from_db()
         with vault_file.file.open("rb") as handle:
             self.assertEqual(handle.read().decode(), self.CLEAN)

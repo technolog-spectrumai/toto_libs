@@ -9,11 +9,17 @@
    Alpine-hidden element declares its own — the assistant panel is one. Without
    it the panel renders fully open on first paint and collapses when Alpine
    boots, which is the same trap quota/base.html and every editor already
-   documents.{% endcomment %}
-{% if steven_surface %}
+   documents. Unconditional now: the lock banner and the versions panel below
+   are x-cloak'd too, and they are here whether or not this host has an
+   assistant.{% endcomment %}
 <style>[x-cloak]{display:none!important}</style>
+{% if steven_surface %}
 {% include "steven/_head.html" %}
 {% endif %}
+{% comment %}Versions and the editing lock, shared with cyprian, memo and
+   primula. Deferred, like Alpine itself, so `fileVersions` is defined before
+   Alpine initialises the component that calls it.{% endcomment %}
+<script defer src="{% static 'oya/file_versions.js' %}"></script>
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
 {% if ace_mode == "python" %}
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>
@@ -57,6 +63,32 @@
       <i class="fa-solid fa-chevron-right text-[9px]"></i>
       <span class="font-semibold opacity-100">{{ vault_file.title }}</span>
     </nav>
+
+    {% comment %}Beside the toolbar, not inside the collapsed panel at the foot
+       of the page: the person whose save just answered 423 has to be told why
+       where they are already looking. State arrives as a `vault-lock` event
+       from the versions component below, which is the page's only
+       instance.{% endcomment %}
+    {% include "oya/_lock_banner.html" %}
+
+    {% comment %}Two writers, both with work. Shown instead of a retry, because
+       retrying is exactly how the other one's paragraph disappears a second
+       later. The server has already kept what is on screen as a version, so
+       both bodies exist and this is a choice rather than a loss.{% endcomment %}
+    <div id="conflict-banner"
+         class="hidden flex-wrap items-center gap-3 rounded-xl border px-4 py-3 text-sm"
+         :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+      <i class="fa-solid fa-code-branch text-warn-light"></i>
+      <p id="conflict-text" class="min-w-0 flex-1"></p>
+      <button id="conflict-reload" type="button"
+              class="rounded-lg border border-current/30 px-3 py-1.5 text-xs font-semibold transition hover:opacity-75">
+        {% trans "Reload" %}
+      </button>
+      <button id="conflict-overwrite" type="button"
+              class="rounded-lg border border-current/30 px-3 py-1.5 text-xs font-semibold text-warn-light transition hover:opacity-75">
+        {% trans "Overwrite" %}
+      </button>
+    </div>
 
     <!-- ── Toolbar ─────────────────────────────────────────── -->
     <div class="flex flex-wrap items-center gap-2 rounded-xl border px-3 py-2 shadow-sm"
@@ -150,6 +182,23 @@
       </div>
     </div>
 
+    {% comment %}The versions panel, and the page's ONE fileVersions instance —
+       it is what claims the editing lock and heartbeats it for as long as this
+       tab is open. A second copy anywhere on this page would claim and beat the
+       same lock twice. Collapsed, like the other editors': history is something
+       you go looking for.{% endcomment %}
+    <div x-data="{ showVersions: false }" class="pt-2">
+      <button type="button" @click="showVersions = !showVersions"
+              class="inline-flex items-center gap-2 text-sm underline underline-offset-2 hover:opacity-80">
+        <i class="fa-solid fa-clock-rotate-left"></i>{% trans "Versions" %}
+      </button>
+      <div x-show="showVersions" x-cloak
+           :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="mt-3 rounded-xl border p-4">
+        {% include "oya/_file_versions.html" with file_pk=vault_file.pk %}
+      </div>
+    </div>
+
   </div>
 </div>
 
@@ -206,6 +255,13 @@
 const EditorSync = (() => {
   const dmp = new diff_match_patch();
   let lastContent = "";
+  /* The digest the SERVER stamped after this socket's last write, or "" while
+     it has written nothing. It is the save's base_hash — see baseHash() below.
+     Reported by the consumer rather than recomputed here: the browser would
+     have to hash the buffer itself, which needs SubtleCrypto and therefore a
+     secure context, and would still only be guessing at bytes it never saw
+     written. */
+  let serverHash = "";
   let suppress = false;
 
   function initBaseline(editor) { lastContent = editor.getValue(); }
@@ -213,8 +269,12 @@ const EditorSync = (() => {
   function sendFullAndPatch(editor, socket) {
     const newContent = editor.getValue();
     const patches = dmp.patch_make(lastContent, newContent);
-    lastContent = newContent;
     socket.send(JSON.stringify({ type: "full+patch", content: newContent, patch: dmp.patch_toText(patches) }));
+    /* Both AFTER the send, never before. A socket that never opened throws
+       here, and advancing the baseline anyway left the dropped edit missing
+       from every patch that followed — and would now also have the save claim
+       a base_hash for bytes the server never received. */
+    lastContent = newContent;
   }
 
   function onLocalChange(editor, socket, syncEnabled) {
@@ -235,12 +295,39 @@ const EditorSync = (() => {
     suppress = false;
   }
 
-  function onServerMessage(editor, syncEnabled, event) {
+  function onServerMessage(editor, syncEnabled, event, onLocked) {
+    const data = JSON.parse(event.data);
+
+    /* Refusals reach the sender alone and carry no content. They must be
+       handled whether or not sync is switched on, because switching it off
+       does not stop this socket having already written. */
+    if (data.type === "locked") {
+      if (onLocked) onLocked(data.locked_by || "");
+      return;
+    }
+    if (data.type === "refused") { return; }
+
+    /* The server's answer to our own write: no content, just the digest it
+       stamped, which is the precondition our next save carries. */
+    if (data.type === "hash") { serverHash = data.content_hash || serverHash; return; }
+
     if (!syncEnabled) return;
-    applyIncomingContent(editor, JSON.parse(event.data));
+    applyIncomingContent(editor, data);
+    /* Somebody else's write has already landed on the file, so the file is
+       theirs now and our precondition has to follow it — otherwise the next
+       save 409s against a change we have just accepted on screen. */
+    serverHash = data.content_hash || serverHash;
   }
 
-  return { initBaseline, onLocalChange, onServerMessage };
+  /* "" until the socket has written something, which is the case where the
+     hash the page was rendered with is still the truth about the file. */
+  function currentHash() { return serverHash; }
+
+  /* After a save: the POST wrote the whole buffer, so the file is the response
+     hash and nothing the socket saw is newer than that. */
+  function setHash(hash) { serverHash = hash || ""; }
+
+  return { initBaseline, onLocalChange, onServerMessage, currentHash, setHash };
 })();
 </script>
 
@@ -340,15 +427,64 @@ const filePk = "{{ vault_file.pk }}";
 const wsScheme = window.location.protocol === "https:" ? "wss" : "ws";
 const socket = new WebSocket(`${wsScheme}://${window.location.host}/ws/{{ ws_path }}/file/${filePk}/`);
 editor.session.on("change", () => EditorSync.onLocalChange(editor, socket, syncEnabled));
-socket.onmessage = event => EditorSync.onServerMessage(editor, syncEnabled, event);
+socket.onmessage = event => EditorSync.onServerMessage(
+  editor, syncEnabled, event,
+  /* The socket writes on every keystroke, so this is where a lock is felt
+     first — long before anybody presses Save. Read-only is set on the editor
+     itself rather than only reported, because the alternative is letting
+     somebody type into a buffer that can no longer be stored. */
+  function (holder) {
+    if (isReadOnly) return;
+    isReadOnly = true;
+    editor.setReadOnly(true);
+    editor.container.style.opacity = "0.65";
+    showConflict(
+      (holder || "{% trans 'Somebody else' %}") +
+      " {% trans 'is editing this file. Your changes are not being saved.' %}");
+  });
 
 const SAVE_URL   = "{{ save_url }}";
 const DELETE_URL = "{{ delete_url }}";
 
-async function saveFile() {
+/* ── The save's precondition ────────────────────────────────────────────────
+ *
+ * `base_hash` is the digest of the file as the server last held it for us. The
+ * server compares it with what is on disk and refuses a save that would land on
+ * top of somebody else's — a 409 that keeps the losing body as a version rather
+ * than dropping it. A client that never sends one turns that whole path into
+ * dead code, which is what primula shipped for a year.
+ *
+ * It cannot simply be remembered from page load here, because this editor has a
+ * second writer of its own: the live-sync socket rewrites the file on every
+ * change, so the file's hash tracks the buffer and a stale page-load value would
+ * refuse every save after the first keystroke. So the base follows whoever wrote
+ * last — the socket, or a save. Both report the digest they stamped, so this
+ * client never computes one: it holds the server's answer or the value the page
+ * was rendered with, and nothing in between.
+ */
+let loadedHash = "{{ vault_file.content_hash|escapejs }}";
+
+function baseHash() { return EditorSync.currentHash() || loadedHash; }
+
+const conflictBanner = document.getElementById("conflict-banner");
+function showConflict(message) {
+  document.getElementById("conflict-text").textContent =
+    message || "{% trans 'This file changed somewhere else since you opened it.' %}";
+  conflictBanner.classList.replace("hidden", "flex");
+}
+function hideConflict() { conflictBanner.classList.replace("flex", "hidden"); }
+
+/* `force` drops the precondition, and is reachable only from the Overwrite
+   button in the conflict banner — never from a retry. An automatic second
+   attempt is precisely how the other writer's work gets overwritten. */
+async function saveFile(force) {
   const btn = document.getElementById("save-file");
   const formData = new FormData();
   formData.append("content", editor.getValue());
+  if (!force) {
+    const base = baseHash();
+    if (base) { formData.append("base_hash", base); }
+  }
   btn.style.opacity = "0.5";
   try {
     const res = await fetch(SAVE_URL, {
@@ -357,7 +493,20 @@ async function saveFile() {
       credentials: "same-origin",
     });
     const data = await res.json();
-    if (data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
+    if (res.status === 409) { showConflict(data.error); return false; }
+    if (res.status === 423) {
+      /* Somebody else is in the file. The lock banner above says who, from the
+         versions component's own state; this only reports the refusal. */
+      alert(data.error || "Somebody else is editing this file.");
+      return false;
+    }
+    if (!res.ok || data.status !== "ok") { alert(data.error || "Failed to save file."); return false; }
+    hideConflict();
+    /* Carry the new hash forward, or the next save refuses itself. The POST
+       wrote the whole buffer, so this response is newer than anything the
+       socket has reported. */
+    if (data.content_hash) { loadedHash = data.content_hash; }
+    EditorSync.setHash(data.content_hash || "");
     return true;
   } catch (err) {
     alert("Save failed: " + err);
@@ -366,7 +515,15 @@ async function saveFile() {
     btn.style.opacity = "1";
   }
 }
-document.getElementById("save-file").addEventListener("click", saveFile);
+/* Wrapped, not passed: a bare listener hands the click event in as `force`,
+   and a MouseEvent is truthy — every save would overwrite. */
+document.getElementById("save-file").addEventListener("click", () => saveFile(false));
+
+document.getElementById("conflict-reload").addEventListener("click", () => window.location.reload());
+document.getElementById("conflict-overwrite").addEventListener("click", () => {
+  hideConflict();
+  saveFile(true);
+});
 
 // ── Delete ───────────────────────────────────────────────────
 const deleteModal = document.getElementById("delete-modal");

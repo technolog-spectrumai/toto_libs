@@ -47,8 +47,39 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
             return f.read()
 
     @database_sync_to_async
+    def _lock_holder(self) -> str:
+        """Whoever else is holding the edit lock, or "".
+
+        The socket is the writer this app most easily forgets: it rewrites the
+        file on every buffer change, long before anybody presses Save, so a lock
+        checked only in `save_file` protects nothing here. `connect` already
+        refuses a non-owner, but the OWNER is not automatically the holder — the
+        vault lends a file out through a shared directory and through cyprian's
+        access plugin, so a collaborator can be mid-edit in a file its owner
+        also has open.
+
+        `may_write` answers the useful form of the question: only somebody
+        else's LIVE lock refuses, so the owner's own second tab is not locked
+        out of a file by itself.
+        """
+        from toto.vault import locks
+        from toto.vault.models import VaultFile
+
+        vault_file = VaultFile.objects.filter(pk=self.file_pk).first()
+        if vault_file is None or locks.may_write(vault_file, self.user):
+            return ""
+        held = locks.holder_of(vault_file)
+        return held.holder.get_username() if held else ""
+
+    @database_sync_to_async
     def write_file(self, content: str):
-        """Screen, then write. Returns the verdict; writes nothing if it refuses.
+        """Screen, then write. Returns ``(verdict, content_hash)``.
+
+        Writes nothing if the screen refuses, and the hash comes back so the
+        sender can carry it as the `base_hash` for its next save. Without that
+        the browser had to hash the buffer itself, because this socket moves
+        `content_hash` on every keystroke and a base remembered from page load
+        would 409 on the first save after one.
 
         This is the door most easily missed, and the one that most needs the
         check: on the patch path the sending client never sees the final bytes,
@@ -66,7 +97,7 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
                                     filename=vf.title)
             if not verdict.ok:
                 scanning.record(vf, verdict, user=self.user, door="socket")
-                return verdict
+                return verdict, ""
         else:
             verdict = scanning.Verdict.clean(scanned=False)
 
@@ -78,13 +109,23 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         vf.save(update_fields=["content_hash", "file_size_bytes"])
         if verdict.scanned:
             scanning.record(vf, verdict, user=self.user, door="socket")
-        return verdict
+        return verdict, vf.content_hash
 
     async def receive(self, text_data):
         data = json.loads(text_data)
         incoming_content = data.get("content", "")
         incoming_patch = data.get("patch", "")
         msg_type = data.get("type", "full")
+
+        # Before anything is read or written: the lock is the whole point of
+        # this check being here rather than only in save_file.
+        holder = await self._lock_holder()
+        if holder:
+            await self.send(text_data=json.dumps({
+                "type": "locked",
+                "locked_by": holder,
+            }))
+            return
 
         current_content = await self.read_file()
 
@@ -94,7 +135,7 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
         else:
             new_content = incoming_content
 
-        verdict = await self.write_file(new_content)
+        verdict, content_hash = await self.write_file(new_content)
         if not verdict.ok:
             # Tell the sender, and nobody else: the other sessions still hold
             # the last good content, and broadcasting a refusal would only
@@ -115,16 +156,24 @@ class BaseFileSyncConsumer(AsyncWebsocketConsumer):
                 "msg_type": msg_type,
                 "content": new_content,
                 "patch": incoming_patch,
+                "content_hash": content_hash,
             },
         )
 
     async def sync_message(self, event):
         if event["sender"] == self.channel_name:
+            # The sender still needs the hash it just caused: it is the
+            # precondition its next save will carry.
+            await self.send(text_data=json.dumps({
+                "type": "hash",
+                "content_hash": event.get("content_hash", ""),
+            }))
             return
         await self.send(text_data=json.dumps({
             "type": event["msg_type"],
             "content": event["content"],
             "patch": event["patch"],
+            "content_hash": event.get("content_hash", ""),
         }))
 
 
