@@ -28,6 +28,45 @@
       {% endif %}
     </header>
 
+    {% comment %}The chain. Separate from the manifest hash on purpose: the
+    manifest says a release still holds its rows, the chain says nothing was
+    rewritten — including the observations themselves.{% endcomment %}
+    {% if chain_available %}
+      <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-5 shadow-sm">
+        <h2 class="text-sm font-semibold">{% trans "History chain" %}</h2>
+        {% if chain %}
+          {% if chain.ok %}
+            <p class="mt-2 text-sm">
+              <i class="fa-solid fa-circle-check text-green-500"></i>
+              {% blocktrans count counter=chain.checked trimmed %}
+                {{ counter }} block verifies.
+              {% plural %}
+                All {{ counter }} blocks verify.
+              {% endblocktrans %}
+            </p>
+          {% else %}
+            <p class="mt-2 text-sm text-warn-light">
+              <i class="fa-solid fa-triangle-exclamation"></i>
+              {% trans "This chain does not verify." %}
+              {% if chain.first_bad_sequence %}
+                {% blocktrans with sequence=chain.first_bad_sequence checked=chain.checked trimmed %}
+                  {{ checked }} block(s) verified, then block {{ sequence }} failed.
+                {% endblocktrans %}
+              {% endif %}
+            </p>
+            {% if chain.detail %}<p class="mt-1 text-xs opacity-70">{{ chain.detail }}</p>{% endif %}
+          {% endif %}
+        {% else %}
+          <p class="mt-2 text-xs opacity-60">
+            {% trans "Nothing recorded yet. The chain opens with the first accepted observation." %}
+          </p>
+        {% endif %}
+        <p class="mt-2 text-xs opacity-60">
+          {% trans "Every accepted observation and every published release is appended here, in order. A release proves it still holds its rows; the chain proves nobody rewrote them." %}
+        </p>
+      </div>
+    {% endif %}
+
     <div :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'" class="rounded-xl p-5 shadow-sm">
       <p class="text-sm">
         <strong>{{ live_count }}</strong> {% trans "accepted observations would go into the next version." %}

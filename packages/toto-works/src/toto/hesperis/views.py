@@ -39,6 +39,7 @@ from toto.ui import PageProcessor
 
 from . import services
 from .forms import ContributionForm, ReviewForm
+from .integration import ledger as dataset_ledger
 from .models import AcceptedObservation, Dataset, DatasetVersion, HesperisBounty
 
 
@@ -440,10 +441,15 @@ class DatasetDetailView(LoginRequiredMixin, DetailView):
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)
         context = PageProcessor().decorate(context, self.request)
+        # None where the host installs no chain engine — a state the page must
+        # render as "not available", never as "broken".
+        chain_report = dataset_ledger.verify_dataset(self.object)
         context.update({
             "versions": list(self.object.versions.all()),
             "live_count": self.object.live_observation_count(),
             "can_freeze": self.request.user.is_staff or self.request.user.is_superuser,
+            "chain_available": dataset_ledger.available(),
+            "chain": chain_report,
         })
         return context
 
