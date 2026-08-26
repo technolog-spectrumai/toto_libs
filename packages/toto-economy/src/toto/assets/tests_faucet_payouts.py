@@ -325,3 +325,100 @@ class BeatWiringTests(TestCase):
         from toto.registry import TASK_MODULES
 
         self.assertIn("toto.assets", TASK_MODULES)
+
+
+class CrashRecoveryTests(PayoutTestCase):
+    """The one gap the two-layer idempotency leaves, and how it heals.
+
+    `pay_member` claims the hour, transfers, then records the transaction. A
+    process that dies between the second and third steps leaves a payout saying
+    PENDING with a real transfer behind it: nobody is paid twice, because the
+    claim survives and the next run skips — but the audit trail says something
+    false, and "PENDING forever" reads the same as "never attempted".
+    """
+
+    def simulate_crash_after_transfer(self, member, label):
+        """Exactly the state a mid-payment crash leaves: the claim and the
+        money, without the record joining them."""
+        from toto.assets.services.assets import distribute_asset
+
+        FaucetPayout.objects.create(
+            member=member, period_label=label,
+            amount_base_units=int(member.amount_per_hour * 10 ** self.mana.decimals),
+            status=FaucetPayoutStatus.PENDING)
+        return distribute_asset(
+            asset=self.mana, recipient_account=self._account(member.user),
+            amount=member.amount_per_hour,
+            reference=faucets.reference_for(member, label))
+
+    def _account(self, user):
+        from toto.assets.prepaid import get_or_create_prepaid_account
+
+        account, _ = get_or_create_prepaid_account(user)
+        return account
+
+    def test_a_crashed_payment_is_never_paid_twice(self):
+        """The property that must hold even before any repair."""
+        member = self.add(self.ada, "2")
+        label = faucets.period_label()
+        self.simulate_crash_after_transfer(member, label)
+
+        faucets.run_hour()
+
+        self.assertEqual(self.paid_transactions().count(), 1)
+        self.assertEqual(FaucetPayout.objects.count(), 1)
+
+    def test_the_next_run_reconciles_the_row_from_the_ledger(self):
+        """Reading the LEDGER rather than trusting the row — the same rule the
+        fee board follows, because the ledger is what actually moved."""
+        member = self.add(self.ada, "2")
+        label = faucets.period_label()
+        tx = self.simulate_crash_after_transfer(member, label)
+
+        faucets.run_hour()
+
+        payout = FaucetPayout.objects.get()
+        self.assertEqual(payout.status, FaucetPayoutStatus.PAID)
+        self.assertEqual(payout.transaction_id, tx.pk)
+        self.assertIn("reconciled", payout.detail)
+
+    def test_a_genuinely_unpaid_pending_row_is_left_alone(self):
+        """No transfer behind it means it is not paid, and inventing a PAID
+        status would be the lie this repair exists to remove."""
+        member = self.add(self.ada, "2")
+        label = faucets.period_label()
+        FaucetPayout.objects.create(member=member, period_label=label,
+                                    status=FaucetPayoutStatus.PENDING)
+
+        faucets.run_hour()
+
+        payout = FaucetPayout.objects.get()
+        self.assertEqual(payout.status, FaucetPayoutStatus.PENDING)
+        self.assertIsNone(payout.transaction_id)
+        self.assertEqual(self.paid_transactions().count(), 0)
+
+    def test_reconciling_does_not_move_money(self):
+        member = self.add(self.ada, "2")
+        label = faucets.period_label()
+        self.simulate_crash_after_transfer(member, label)
+        before = self.paid_transactions().count()
+
+        faucets.run_hour()
+        faucets.run_hour()
+
+        self.assertEqual(self.paid_transactions().count(), before)
+
+    def test_a_failed_payout_is_not_reconciled_into_paid(self):
+        """FAILED means the transfer raised, so there is nothing to find — and
+        the repair must only ever touch PENDING."""
+        member = self.add(self.ada, "2")
+        label = faucets.period_label()
+        FaucetPayout.objects.create(member=member, period_label=label,
+                                    status=FaucetPayoutStatus.FAILED,
+                                    detail="reserve empty")
+
+        faucets.run_hour()
+
+        payout = FaucetPayout.objects.get()
+        self.assertEqual(payout.status, FaucetPayoutStatus.FAILED)
+        self.assertEqual(payout.detail, "reserve empty")

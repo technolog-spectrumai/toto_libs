@@ -150,7 +150,10 @@ def pay_member(member, label: str) -> str:
                 amount_base_units=to_base_units(amount, asset.decimals),
                 status=FaucetPayoutStatus.PENDING)
     except IntegrityError:
-        return "skipped"                # this hour is already accounted for
+        # This hour is already accounted for. Before walking away, make sure the
+        # row telling us so is TRUE — see _reconcile.
+        _reconcile(member, label)
+        return "skipped"
 
     if amount <= 0:
         # On the list, currently paid nothing. Recorded so the member's history
@@ -175,6 +178,51 @@ def pay_member(member, label: str) -> str:
     return "paid"
 
 
+def reference_for(member, label: str) -> str:
+    """The ledger reference a payout uses. Names the member and the hour.
+
+    One function because two places depend on it agreeing exactly: the transfer
+    that writes it, and the reconciliation that looks for it afterwards.
+    """
+    return f"faucet-{member.pk}-{label}"
+
+
+def _reconcile(member, label: str) -> None:
+    """Repair a payout that says PENDING when the money actually moved.
+
+    The one gap the two-layer idempotency leaves. `pay_member` claims the hour,
+    transfers, then records the transaction — and a process that dies between
+    the second and third steps leaves a row saying PENDING with a real transfer
+    behind it. Nobody is paid twice (the claim survives, so the next run skips),
+    but the audit trail says something false, and "PENDING forever" is
+    indistinguishable from "never attempted".
+
+    So the skip path checks: if the ledger holds a transaction under this
+    payout's reference, the payout is PAID and is corrected to say so. Reading
+    the LEDGER rather than trusting the row is the same rule the fee board
+    follows — the ledger is the thing that actually moved.
+    """
+    from toto.assets.models import (FaucetPayout, FaucetPayoutStatus,
+                                    LedgerTransaction)
+
+    payout = FaucetPayout.objects.filter(
+        member=member, period_label=label,
+        status=FaucetPayoutStatus.PENDING).first()
+    if payout is None:
+        return                          # already PAID or FAILED; nothing to fix
+
+    tx = LedgerTransaction.objects.filter(
+        reference=reference_for(member, label)).first()
+    if tx is None:
+        return                          # genuinely unpaid; a later run may try
+
+    payout.transaction = tx
+    payout.status = FaucetPayoutStatus.PAID
+    payout.detail = "reconciled from the ledger"
+    payout.save(update_fields=["transaction", "status", "detail"])
+    log.info("faucet: reconciled %s for %s from the ledger", member.user, label)
+
+
 def _transfer(member, asset, amount: Decimal, label: str):
     """The ordinary asset transfer behind a payout: reserve → the member.
 
@@ -196,7 +244,7 @@ def _transfer(member, asset, amount: Decimal, label: str):
         amount=amount,
         # Names the member and the hour, and the column is unique — the second
         # layer of the idempotency described in the module docstring.
-        reference=f"faucet-{member.pk}-{label}",
+        reference=reference_for(member, label),
         description=f"{member.faucet.name}: {amount} {asset.unit_name} "
                     f"for {label}",
     )
