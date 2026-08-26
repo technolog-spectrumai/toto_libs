@@ -935,3 +935,176 @@ def entry_tag_remove(request, pk, entry_id):
     except ValidationError as exc:
         messages.error(request, "; ".join(exc.messages))
     return _annotate_redirect(request, account)
+
+
+# ---------------------------------------------------------------------------
+# Faucets
+# ---------------------------------------------------------------------------
+#
+# Staff run faucets; everybody else sees only their own. That split is enforced
+# per view rather than by hiding buttons: `faucet_list` shows a member their own
+# memberships and payout history, and every mutating route below is staff-only
+# AND POST, so the subscription gate and the permission check both see it.
+
+
+def _staff_or_403(request):
+    from django.http import HttpResponseForbidden
+
+    if not request.user.is_staff:
+        return HttpResponseForbidden()
+    return None
+
+
+@login_required
+def faucet_list(request):
+    """The Faucets tab. Two different pages behind one URL, by design.
+
+    Staff get every faucet and its members. Everybody else gets the faucets they
+    are ON, and what those faucets have paid them — which is the whole of what
+    an ordinary user is owed here: they can see their own arrangement and its
+    history, and change nothing.
+    """
+    from .models import Faucet, FaucetMember, FaucetPayout
+
+    is_staff = request.user.is_staff
+    if is_staff:
+        faucets = (Faucet.objects.select_related("asset")
+                   .prefetch_related("members__user"))
+    else:
+        faucets = (Faucet.objects.select_related("asset")
+                   .filter(members__user=request.user, members__active=True)
+                   .distinct())
+
+    mine = (FaucetMember.objects
+            .filter(user=request.user)
+            .select_related("faucet", "faucet__asset"))
+    my_payouts = (FaucetPayout.objects
+                  .filter(member__user=request.user)
+                  .select_related("member", "member__faucet",
+                                  "member__faucet__asset", "transaction")[:100])
+
+    return assets_render(request, "assets/faucet_list.html", {
+        "faucets": faucets,
+        "my_memberships": mine,
+        "my_payouts": my_payouts,
+        "can_manage": is_staff,
+        "assets": Asset.objects.filter(active=True, is_mirror=False),
+    })
+
+
+@require_POST
+def faucet_create(request):
+    from .models import Faucet
+
+    refusal = _staff_or_403(request)
+    if refusal is not None:
+        return refusal
+
+    name = (request.POST.get("name") or "").strip()
+    asset_pk = (request.POST.get("asset") or "").strip()
+    asset = Asset.objects.filter(pk=asset_pk).first() if asset_pk.isdigit() else None
+
+    if not name:
+        messages.error(request, _("A faucet needs a name."))
+    elif asset is None or not asset.active:
+        messages.error(request, _("Choose an active currency for this faucet."))
+    else:
+        Faucet.objects.create(
+            name=name, asset=asset, note=(request.POST.get("note") or "").strip(),
+            created_by=request.user)
+        # Created switched OFF — see Faucet.active. Say so, or the first thing
+        # somebody does is wonder why nobody is being paid.
+        messages.success(
+            request,
+            _("Faucet “%(name)s” created, switched off. Add people and their "
+              "hourly amounts, then turn it on.") % {"name": name})
+    return redirect("assets:faucet_list")
+
+
+@require_POST
+def faucet_toggle(request, pk):
+    from .models import Faucet
+
+    refusal = _staff_or_403(request)
+    if refusal is not None:
+        return refusal
+
+    faucet = get_object_or_404(Faucet, pk=pk)
+    faucet.active = not faucet.active
+    faucet.save(update_fields=["active"])
+    messages.success(
+        request,
+        _("“%(name)s” is now %(state)s.")
+        % {"name": faucet.name,
+           "state": _("paying every hour") if faucet.active else _("switched off")})
+    return redirect("assets:faucet_list")
+
+
+@require_POST
+def faucet_member_add(request, pk):
+    from django.contrib.auth import get_user_model
+
+    from .models import Faucet, FaucetMember
+
+    refusal = _staff_or_403(request)
+    if refusal is not None:
+        return refusal
+
+    faucet = get_object_or_404(Faucet, pk=pk)
+    username = (request.POST.get("username") or "").strip()
+    raw_amount = (request.POST.get("amount_per_hour") or "").strip()
+
+    user = get_user_model().objects.filter(username=username).first()
+    amount = None
+    try:
+        amount = Decimal(raw_amount)
+    except (InvalidOperation, ArithmeticError, TypeError, ValueError):
+        pass
+
+    if user is None:
+        messages.error(request, _("No account called “%(name)s”.")
+                       % {"name": username})
+    elif amount is None:
+        messages.error(request, _("“%(value)s” is not a number.")
+                       % {"value": raw_amount})
+    elif amount < 0:
+        messages.error(request, _("An hourly amount cannot be negative — a "
+                                  "faucet pays out, it does not collect."))
+    else:
+        # update_or_create, so adding somebody already on the faucet changes
+        # their rate rather than answering "already a member" at somebody
+        # trying to do the obvious thing.
+        FaucetMember.objects.update_or_create(
+            faucet=faucet, user=user,
+            defaults={"amount_per_hour": amount, "active": True,
+                      "added_by": request.user})
+        messages.success(
+            request,
+            _("%(user)s receives %(amount)s %(unit)s an hour from “%(name)s”.")
+            % {"user": user.get_username(), "amount": amount,
+               "unit": faucet.asset.unit_name, "name": faucet.name})
+    return redirect("assets:faucet_list")
+
+
+@require_POST
+def faucet_member_remove(request, pk):
+    """Take somebody off a faucet.
+
+    The membership row goes; its payouts do NOT. What a faucet paid somebody is
+    a ledger fact, and removing them from the list must not rewrite the history
+    of what they were already paid — so `FaucetPayout` outlives the membership
+    only insofar as the transactions do, and the transactions are permanent.
+    """
+    from .models import FaucetMember
+
+    refusal = _staff_or_403(request)
+    if refusal is not None:
+        return refusal
+
+    member = get_object_or_404(FaucetMember, pk=pk)
+    who, faucet = member.user.get_username(), member.faucet.name
+    member.active = False
+    member.save(update_fields=["active"])
+    messages.success(request, _("%(user)s no longer receives from “%(name)s”.")
+                     % {"user": who, "name": faucet})
+    return redirect("assets:faucet_list")

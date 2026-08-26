@@ -5,6 +5,7 @@ from decimal import Decimal, ROUND_DOWN
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.utils.translation import gettext_lazy as _
 from django.db import models
 from django.utils.text import slugify
 
@@ -1089,3 +1090,158 @@ class SettlementAsset(models.Model):
 
     def __str__(self):
         return f"settling in {self.asset.unit_name}"
+
+
+# --------------------------------------------------------------------------- #
+# Faucets                                                                      #
+# --------------------------------------------------------------------------- #
+
+class Faucet(models.Model):
+    """A standing arrangement to pay named people, by the hour.
+
+    This is what replaced the treasury payroll, and the difference is the whole
+    point. The payroll paid OFFICES: a ``socialhub.Station`` carried a stipend,
+    so being paid meant holding a post, and the post also carried rights and a
+    quota multiplier. Three unrelated things in one row, and being paid was
+    tangled up with being trusted.
+
+    A faucet pays PEOPLE. It grants nothing, qualifies nobody, and confers no
+    standing — it is a list of names, an amount each, and a clock.
+
+    **One asset per faucet.** A faucet drips one currency, so "how much does
+    this person get" is a single number with no unit to look up. Somebody who
+    should receive two currencies is a member of two faucets, which reads the
+    same on screen and needs no rule table underneath.
+
+    **The reserve is the source.** A payout is an ordinary transfer out of the
+    asset's reserve account, so supply never moves and a faucet can run dry —
+    a real and visible state, rather than silent inflation.
+    """
+
+    name = models.CharField(max_length=120)
+    slug = models.SlugField(max_length=140, unique=True)
+    asset = models.ForeignKey("Asset", on_delete=models.PROTECT,
+                              related_name="faucets")
+    #: Off by default is deliberate. A faucet is created, then filled with
+    #: people and amounts, and only then switched on — the alternative is a
+    #: faucet that starts paying the moment somebody is added to it, before
+    #: anybody has checked the numbers.
+    active = models.BooleanField(default=False)
+    note = models.TextField(blank=True,
+                            help_text="What this faucet is for. Shown to its members.")
+    created_at = models.DateTimeField(auto_now_add=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                   on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["name"]
+
+    def __str__(self):
+        return f"{self.name} ({self.asset.unit_name})"
+
+    def save(self, *args, **kwargs):
+        if not self.slug:
+            from django.utils.text import slugify
+
+            base = slugify(self.name) or "faucet"
+            slug, n = base, 1
+            while Faucet.objects.filter(slug=slug).exclude(pk=self.pk).exists():
+                n += 1
+                slug = f"{base}-{n}"
+            self.slug = slug
+        super().save(*args, **kwargs)
+
+
+class FaucetMember(models.Model):
+    """One person on one faucet, and what they get an hour.
+
+    The amount lives HERE rather than on the faucet, because the question staff
+    actually answer is "what does this person get" — a faucet with one rate for
+    everybody could not express the ordinary case of paying two people
+    differently without a second faucet.
+    """
+
+    faucet = models.ForeignKey(Faucet, on_delete=models.CASCADE,
+                               related_name="members")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE,
+                             related_name="faucet_memberships")
+    #: Display units, not base units — this is a number a person types. The
+    #: payout converts through the asset's decimals at the moment it pays, so a
+    #: rate cannot drift from the currency it is denominated in.
+    amount_per_hour = models.DecimalField(max_digits=30, decimal_places=18)
+    active = models.BooleanField(default=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+    added_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True, blank=True,
+                                 on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        ordering = ["faucet__name", "user__username"]
+        constraints = [
+            # Somebody is on a faucet once. Two rows would be two payouts an
+            # hour with nothing on screen saying why.
+            models.UniqueConstraint(fields=["faucet", "user"],
+                                    name="assets_one_membership_per_faucet"),
+        ]
+
+    def __str__(self):
+        return f"{self.user} — {self.amount_per_hour} {self.faucet.asset.unit_name}/h"
+
+    def clean(self):
+        super().clean()
+        if self.amount_per_hour is not None and self.amount_per_hour < 0:
+            raise ValidationError(
+                {"amount_per_hour": _("An hourly amount cannot be negative — a "
+                                      "faucet pays out, it does not collect.")})
+
+
+class FaucetPayoutStatus(models.TextChoices):
+    PENDING = "pending", "Pending"
+    PAID = "paid", "Paid"
+    FAILED = "failed", "Failed"
+
+
+class FaucetPayout(models.Model):
+    """One member's pay for one hour, and the transaction behind it.
+
+    **``period_label`` is the idempotency key**, and the unique constraint below
+    is what makes an hourly run safe to retry: two workers racing the same hour,
+    or a beat that fired twice, collide on the database rather than paying
+    somebody twice. The shape is the retired payroll's, which carried the same
+    constraint over ``(station, period_label)`` and said the same thing about
+    it — that half of the payroll was right and is worth keeping.
+
+    A second layer sits underneath: ``LedgerTransaction.reference`` is unique in
+    the database too, so even a payout row created by hand cannot mint a second
+    transfer for an hour already paid.
+
+    Denormalised on purpose. The amount is recorded as it was PAID rather than
+    re-derived from the member's current rate, because a rate that changes on
+    Tuesday must not rewrite what Monday says it paid.
+    """
+
+    member = models.ForeignKey(FaucetMember, on_delete=models.CASCADE,
+                               related_name="payouts")
+    #: Hour-aligned and UTC, e.g. ``hourly:2026-08-26T11``. The step is one hour
+    #: and is not configurable — see toto.assets.services.faucets.
+    period_label = models.CharField(max_length=40, db_index=True)
+    amount_base_units = models.BigIntegerField(default=0)
+    status = models.CharField(max_length=10, choices=FaucetPayoutStatus.choices,
+                              default=FaucetPayoutStatus.PENDING)
+    transaction = models.ForeignKey("LedgerTransaction", null=True, blank=True,
+                                    on_delete=models.SET_NULL,
+                                    related_name="faucet_payouts")
+    #: Why a payout failed, in words, so an operator reading the run can tell a
+    #: dry reserve from a missing account without opening a log.
+    detail = models.CharField(max_length=255, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ["-created_at", "-id"]
+        constraints = [
+            models.UniqueConstraint(fields=["member", "period_label"],
+                                    name="assets_one_payout_per_member_hour"),
+        ]
+        indexes = [models.Index(fields=["status", "period_label"])]
+
+    def __str__(self):
+        return f"{self.member_id} / {self.period_label} — {self.status}"

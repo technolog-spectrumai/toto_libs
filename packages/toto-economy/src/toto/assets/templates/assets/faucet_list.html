@@ -1,0 +1,198 @@
+{% extends "assets/base.html" %}
+{% load i18n %}
+
+{% comment %}Two pages behind one URL, and the split is the permission model.
+
+Staff see every faucet, its members and the controls. Everybody else sees only
+the faucets they are ON and what those have paid them — which is what an
+ordinary member is owed here: their own arrangement and its history, and
+nothing to change. `can_manage` decides which half renders, and every control
+it hides is also refused by the view behind it.
+{% endcomment %}
+
+{% block assets_title %}{% trans "Faucets" %}{% endblock %}
+{% block tab_faucets %}border-b-2 border-current -mb-px{% endblock %}
+
+{% block assets_content %}
+<div class="space-y-6">
+
+  <header>
+    <h1 class="text-2xl font-bold">{% trans "Faucets" %}</h1>
+    <p class="mt-1 max-w-prose text-sm opacity-70">
+      {% blocktrans %}A faucet pays named people a set amount every hour, out of its
+      currency's reserve. It grants nothing and confers no standing — it is a list
+      of names, an amount each, and a clock.{% endblocktrans %}</p>
+  </header>
+
+  {% comment %}---- what I am on, and what it has paid me ----{% endcomment %}
+  <section class="space-y-3">
+    <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+      {% trans "Yours" %}</h2>
+
+    {% if my_memberships %}
+      <div class="grid gap-3 sm:grid-cols-2">
+        {% for membership in my_memberships %}
+          <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                   class="rounded-lg border p-4">
+            <p class="font-bold">{{ membership.faucet.name }}</p>
+            <p class="mt-1 text-sm">
+              {{ membership.amount_per_hour|floatformat:"-6" }}
+              {{ membership.faucet.asset.unit_name }} {% trans "an hour" %}</p>
+            <p class="mt-1 text-xs opacity-60">
+              {% if not membership.active %}{% trans "Removed — no longer paying." %}
+              {% elif not membership.faucet.active %}{% trans "This faucet is switched off." %}
+              {% else %}{% trans "Paying." %}{% endif %}</p>
+          </article>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
+        {% trans "You are not on any faucet." %}</p>
+    {% endif %}
+
+    {% if my_payouts %}
+      <details :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+               class="rounded-lg border px-4 py-3">
+        <summary class="cursor-pointer text-sm font-semibold">
+          {% trans "Payout history" %}</summary>
+        <table class="mt-3 w-full text-sm">
+          <thead class="text-xs uppercase tracking-wide opacity-60">
+            <tr>
+              <th class="py-1 text-left">{% trans "Hour" %}</th>
+              <th class="py-1 text-left">{% trans "Faucet" %}</th>
+              <th class="py-1 text-right">{% trans "Amount" %}</th>
+              <th class="py-1 text-left">{% trans "State" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for payout in my_payouts %}
+              <tr class="border-t border-current/10">
+                <td class="py-1 font-mono text-xs">{{ payout.period_label }}</td>
+                <td class="py-1">{{ payout.member.faucet.name }}</td>
+                <td class="py-1 text-right">
+                  {{ payout.amount_base_units }}
+                  <span class="opacity-60">{% trans "base units" %}</span></td>
+                <td class="py-1">
+                  {% comment %}The reason matters more than the word: "failed"
+                  with nothing beside it is the state an operator cannot act
+                  on.{% endcomment %}
+                  {{ payout.get_status_display }}
+                  {% if payout.detail %}
+                    <span class="opacity-60">— {{ payout.detail }}</span>
+                  {% endif %}
+                  {% if payout.transaction_id %}
+                    <a class="underline hover:opacity-80"
+                       href="{% url 'assets:transaction_detail' payout.transaction_id %}">
+                      {% trans "transaction" %}</a>
+                  {% endif %}
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </details>
+    {% endif %}
+  </section>
+
+  {% comment %}---- everything below is staff-only ----{% endcomment %}
+  {% if can_manage %}
+    <section class="space-y-4">
+      <h2 class="text-sm font-semibold uppercase tracking-wide opacity-60">
+        {% trans "All faucets" %}</h2>
+
+      <form method="post" action="{% url 'assets:faucet_create' %}"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="flex flex-wrap items-end gap-2 rounded-lg border p-4">
+        {% csrf_token %}
+        <label class="text-sm">
+          <span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Name" %}</span>
+          <input type="text" name="name" maxlength="120" required
+                 :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                 class="rounded-lg border px-3 py-2 text-sm">
+        </label>
+        <label class="text-sm">
+          <span class="mb-1 block text-xs font-semibold opacity-70">{% trans "Currency" %}</span>
+          <select name="asset"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                  class="rounded-lg border px-3 py-2 text-sm">
+            {% for candidate in assets %}
+              <option value="{{ candidate.pk }}">{{ candidate.unit_name }}</option>
+            {% endfor %}
+          </select>
+        </label>
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="rounded-lg px-4 py-2 text-sm font-semibold">
+          <i class="fa-solid fa-plus mr-1"></i>{% trans "New faucet" %}</button>
+      </form>
+
+      {% for faucet in faucets %}
+        <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                 class="space-y-3 rounded-lg border p-4">
+          <div class="flex flex-wrap items-center gap-3">
+            <h3 class="text-lg font-bold">{{ faucet.name }}</h3>
+            <span class="rounded bg-current/10 px-2 py-0.5 font-mono text-xs">
+              {{ faucet.asset.unit_name }}</span>
+            <span class="text-xs {% if faucet.active %}opacity-70{% else %}text-warn-light{% endif %}">
+              {% if faucet.active %}{% trans "paying every hour" %}
+              {% else %}{% trans "switched off" %}{% endif %}</span>
+            <form method="post" action="{% url 'assets:faucet_toggle' faucet.pk %}"
+                  class="ml-auto">
+              {% csrf_token %}
+              <button type="submit"
+                      class="rounded-lg border px-3 py-1.5 text-xs font-semibold">
+                {% if faucet.active %}{% trans "Switch off" %}
+                {% else %}{% trans "Switch on" %}{% endif %}</button>
+            </form>
+          </div>
+          {% if faucet.note %}<p class="text-sm opacity-75">{{ faucet.note }}</p>{% endif %}
+
+          <table class="w-full text-sm">
+            <tbody>
+              {% for member in faucet.members.all %}
+                {% if member.active %}
+                  <tr class="border-t border-current/10">
+                    <td class="py-1">{{ member.user.get_username }}</td>
+                    <td class="py-1 text-right">
+                      {{ member.amount_per_hour|floatformat:"-6" }}
+                      {{ faucet.asset.unit_name }}/h</td>
+                    <td class="py-1 text-right">
+                      <form method="post"
+                            action="{% url 'assets:faucet_member_remove' member.pk %}">
+                        {% csrf_token %}
+                        <button type="submit"
+                                class="text-xs font-semibold text-red-500 underline">
+                          {% trans "Remove" %}</button>
+                      </form>
+                    </td>
+                  </tr>
+                {% endif %}
+              {% empty %}
+                <tr><td class="py-2 text-sm opacity-60" colspan="3">
+                  {% trans "Nobody on this faucet yet." %}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+
+          <form method="post" action="{% url 'assets:faucet_member_add' faucet.pk %}"
+                class="flex flex-wrap items-end gap-2">
+            {% csrf_token %}
+            <input type="text" name="username" placeholder="{% trans 'username' %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="rounded-lg border px-3 py-1.5 text-sm">
+            <input type="text" name="amount_per_hour" placeholder="{% trans 'per hour' %}"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-28 rounded-lg border px-3 py-1.5 text-sm">
+            <button type="submit"
+                    class="rounded-lg border px-3 py-1.5 text-sm font-semibold">
+              {% trans "Add or update" %}</button>
+          </form>
+        </article>
+      {% empty %}
+        <p class="rounded-lg border border-dashed p-6 text-center text-sm opacity-70">
+          {% trans "No faucets yet." %}</p>
+      {% endfor %}
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

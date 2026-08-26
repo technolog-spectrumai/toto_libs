@@ -85,6 +85,18 @@
         <i class="fa-solid fa-link"></i>
         {% trans "Chain" %}
       </a>
+      {% comment %}Faucets sit with the ledger tabs rather than behind an admin
+      screen because an ordinary member has something to see here: which
+      faucets they are on and what those have paid them. Managing is staff-only
+      and enforced in the views, not by hiding this link.{% endcomment %}
+      <a href="{% url 'assets:faucet_list' %}"
+         :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
+         class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
+                {% block tab_faucets %}opacity-50{% endblock %}">
+        <i class="fa-solid fa-faucet-drip"></i>
+        {% trans "Faucets" %}
+      </a>
+
       <a href="{% url 'assets:authorization_list' %}"
          :class="darkMode ? 'hover:bg-white/5' : 'hover:bg-black/5'"
          class="inline-flex items-center gap-2 rounded-t px-4 py-2 text-sm font-semibold transition
