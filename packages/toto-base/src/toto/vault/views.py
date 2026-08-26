@@ -47,12 +47,28 @@ CREATABLE_TYPES = [
 
 
 def available_create_types():
-    """[(type, ext), …] for creatable types that have a registered editor plugin."""
+    """[(type, ext), …] for creatable types that have a registered editor plugin.
+
+    Two sources, and the second is why rich formats can be created at all. The
+    list above is what the VAULT knows how to seed; a plugin that declares
+    `new_file_extension` answers for itself, because "what does an empty
+    spreadsheet look like" is a question this package must not import primula to
+    answer. See VaultEditorPlugin.blank_content.
+    """
     from toto.vault.models import file_edits_allowed
     if not file_edits_allowed():
         return []
     from toto.vault.plugins import VaultEditorPlugin  # local: registry filled in ready()
-    return [(t, ext) for t, ext in CREATABLE_TYPES if VaultEditorPlugin.for_file_type(t)]
+
+    types = [(t, ext) for t, ext in CREATABLE_TYPES
+             if VaultEditorPlugin.for_file_type(t)]
+    seen = {t for t, _ in types}
+    for plugin in VaultEditorPlugin.all():
+        extension = getattr(plugin, "new_file_extension", "")
+        if extension and plugin.file_type and plugin.file_type not in seen:
+            types.append((plugin.file_type, extension))
+            seen.add(plugin.file_type)
+    return types
 
 
 # ============================================================
@@ -1072,7 +1088,19 @@ def create_empty_vault_file(owner, bucket, directory, title, file_type, content=
     """
     from django.core.files.base import ContentFile
     if content is None:
-        content = CreateEmptyFileView._INITIAL[file_type]
+        # The vault's own answer first, then the editor app's. A rich format —
+        # a workbook, a deck, a document — is never an empty file, and only the
+        # app that reads it knows what an empty one looks like; asking it here
+        # rather than in the view means every caller of this function gets the
+        # same answer. See VaultEditorPlugin.blank_content.
+        content = CreateEmptyFileView._INITIAL.get(file_type)
+    if content is None:
+        from toto.vault.plugins import VaultEditorPlugin
+
+        plugin = VaultEditorPlugin.for_file_type(file_type)
+        content = plugin.blank_content(title) if plugin else None
+    if content is None:
+        raise ValueError(f"nothing knows what an empty {file_type} looks like")
     vault_file = VaultFile(
         owner=owner,
         title=title,
@@ -1857,6 +1885,10 @@ class TransferRetryView(LoginRequiredMixin, View):
 class CreateEmptyFileView(LoginRequiredMixin, View):
     """Create an empty text-based vault file directly in a directory."""
 
+    #: Superseded by `available_create_types()`, which derives the same set and
+    #: also carries the types an editor plugin declares for itself. Kept because
+    #: `api_views` imports it, and because it is the record of what the vault
+    #: can seed WITHOUT asking anybody.
     _ALLOWED = {"text", "json", "yaml", "xml", "csv", "html", "latex", "bib", "svg", "neojson"}
     _INITIAL = {
         "text":  "",
@@ -1919,7 +1951,10 @@ class CreateEmptyFileView(LoginRequiredMixin, View):
 
         if not title:
             return JsonResponse({"error": "Filename is required."}, status=400)
-        if file_type not in self._ALLOWED:
+        # Derived, not a second hardcoded list: `_ALLOWED` and CREATABLE_TYPES
+        # used to be two of them that had to agree, and a plugin-declared type
+        # would have been offered by the menu and refused by this check.
+        if file_type not in {t for t, _ in available_create_types()}:
             return JsonResponse({"error": f"Unsupported type: {file_type}"}, status=400)
         # Only allow creating a type whose editor app is installed on this deployment
         # (the UI already hides the others; this guards direct POSTs).

@@ -41,12 +41,38 @@ class VaultEditorPlugin(BasePlugin):
 
     file_type: ClassVar[str] = ""
 
+    #: The extension a brand-new file of this type gets — ".pxml", ".json".
+    #: Blank means the vault's "New file" menu does not offer this type, which
+    #: is the default and stays right for anything the vault can already seed
+    #: from `CreateEmptyFileView._INITIAL`.
+    #:
+    #: This exists because of the rule the whole plugin system is built on: the
+    #: vault must not import the apps above it. "What does an empty spreadsheet
+    #: look like" is a question only `toto.primula` can answer — a workbook is
+    #: not an empty file, and `is_sheet()` refuses one — so `CREATABLE_TYPES`
+    #: excluded every rich type and its comment said as much. Asking the plugin
+    #: inverts that the same way `VaultAccessPlugin` inverts "who may write".
+    new_file_extension: ClassVar[str] = ""
+
     @classmethod
     def for_file_type(cls, file_type: str) -> "VaultEditorPlugin | None":
         return cls.registry.get(file_type)
 
     def get_editor_url(self, vault_file) -> str:
         raise NotImplementedError
+
+    def blank_content(self, title: str) -> str:
+        """The text a brand-new file of this type starts with.
+
+        Only ever called for a plugin that declares `new_file_extension`, and it
+        must return something the app's own reader accepts: the file is created
+        and the user is redirected straight into the editor, so a blank that
+        does not parse is a new document that opens broken.
+
+        ``title`` is the filename the user chose, so a format with a name inside
+        it — a workbook, a deck — can agree with the file it lives in.
+        """
+        return ""
 
 
 class VaultAccessPlugin(BasePlugin):

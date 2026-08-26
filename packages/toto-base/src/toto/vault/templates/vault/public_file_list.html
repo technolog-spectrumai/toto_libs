@@ -598,7 +598,12 @@
         },
 
         // ── Create new file ───────────────────────────────────
-        _typeExtMap: { text: '.txt', json: '.json', yaml: '.yaml', xml: '.xml', csv: '.csv', html: '.html', latex: '.tex', bib: '.bib', svg: '.svg', pxml: '.pxml' },
+        // Derived from what the server offered, never a second hardcoded list.
+        // It was one, and it had already drifted: it carried `pxml` for a deck
+        // type the menu did not offer, and knew nothing of the types an editor
+        // plugin declares for itself (a workbook, a document). A name typed
+        // against a missing entry silently loses its extension.
+        get _typeExtMap() { return Object.fromEntries(this.createTypes); },
 
         openCreateFile(dirItem) {
           this.createDirId = dirItem.id;
