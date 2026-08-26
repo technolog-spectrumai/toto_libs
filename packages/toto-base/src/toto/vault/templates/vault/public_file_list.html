@@ -1165,7 +1165,7 @@
                           @click.stop="openCipher(item, 'encrypt')"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Encrypt ${item.title}`' %}">
+                          :title="`{% trans 'Encrypt' %} ${item.title}`">
                     <i class="fa-solid fa-lock text-xs"></i>
                   </button>
 
@@ -1174,7 +1174,7 @@
                           @click.stop="openEncDownload(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Download ${item.title}`' %}">
+                          :title="`{% trans 'Download' %} ${item.title}`">
                     <i class="fa-solid fa-download text-xs"></i>
                   </button>
 
@@ -1183,7 +1183,7 @@
                           @click.stop="openRemoveEnc(item)"
                           :class="darkMode ? 'text-caution-dark hover:bg-caution-dark/15' : 'text-caution-light hover:bg-caution-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Remove encryption from ${item.title}`' %}">
+                          :title="`{% trans 'Remove encryption from' %} ${item.title}`">
                     <i class="fa-solid fa-lock-open text-xs"></i>
                   </button>
 
@@ -1195,7 +1195,7 @@
                           @click.stop="openActions(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Actions for ${item.title}`' %}">
+                          :title="`{% trans 'Actions for' %} ${item.title}`">
                     <i class="fa-solid fa-ellipsis text-xs"></i>
                   </button>
 
@@ -1204,7 +1204,7 @@
                           @click.stop="openImageModal(item)"
                           :class="darkMode ? 'text-accent-dark hover:bg-accent-dark/15' : 'text-accent-light hover:bg-accent-light/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`View ${item.title}`' %}">
+                          :title="`{% trans 'View' %} ${item.title}`">
                     <i class="fa-solid fa-expand text-xs"></i>
                   </button>
 
@@ -1213,7 +1213,7 @@
                           @click.stop="window.location.href = item.play_url"
                           :class="darkMode ? 'text-green-400 hover:bg-green-400/15' : 'text-green-600 hover:bg-green-600/15'"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150"
-                          :title="{% trans '`Play ${item.title}`' %}">
+                          :title="`{% trans 'Play' %} ${item.title}`">
                     <i class="fa-solid fa-play text-xs"></i>
                   </button>
 
@@ -1221,7 +1221,7 @@
                   <button x-show="item.owner === currentUser"
                           @click.stop="openDelete(item)"
                           class="shrink-0 rounded-md p-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 text-warn-light hover:bg-warn-light/10"
-                          :title="{% trans '`Delete ${item.title}`' %}">
+                          :title="`{% trans 'Delete' %} ${item.title}`">
                     <i class="fa-solid fa-trash text-xs"></i>
                   </button>
                 </div>
@@ -1321,7 +1321,7 @@
                     <button x-show="item.owner === currentUser"
                             @click.stop="openActions(item)"
                             :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`Actions for ${item.title}`">
+                            class="rounded-lg border px-2 py-1 text-xs opacity-60 hover:opacity-100 transition" :title="`{% trans 'Actions for' %} ${item.title}`">
                       <i class="fa-solid fa-ellipsis"></i>
                     </button>
                     <!-- View image — full-screen preview for image files -->

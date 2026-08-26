@@ -36,7 +36,11 @@ A price applies only where one has been set. An action with no price is free, an
 
 A levy is never charged for being a member. What you pay to be here is a subscription, it is monthly, and its price is on the plans page before you agree to it.{% endblocktrans %}
 {% else %}
-  {% trans "" as help_extra %}
+  {% comment %}A trans tag with an empty string here would render the CATALOGUE
+  HEADER into the page: gettext("") is reserved and returns the .po metadata
+  block, not an empty string. `firstof` sets the variable without asking
+  gettext anything.{% endcomment %}
+  {% firstof "" as help_extra %}
 {% endif %}
 {% trans "Every kind of charge" as help_more %}
 {% include "oya/partials/_help.html" with title=help_title body=help_body body_extra=help_extra more_url=taxes_url more_label=help_more %}
