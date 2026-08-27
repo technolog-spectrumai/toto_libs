@@ -152,6 +152,12 @@ class FileUploadApiView(CorsApiView):
         content_type = file.content_type or ""
         file_type = VaultFile.detect_type(content_type, file.name)
 
+        from toto.vault.models import refused_file_types
+        if file_type in refused_file_types():
+            return JsonResponse(
+                {"error": f"This host does not accept {file_type} files."},
+                status=400)
+
         bucket_slug = request.POST.get("bucket_slug", "").strip()
         if bucket_slug:
             bucket = _resolve_owned_bucket(request.user, bucket_slug)

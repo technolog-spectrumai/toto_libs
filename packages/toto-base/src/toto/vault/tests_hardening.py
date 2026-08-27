@@ -168,3 +168,90 @@ class FileEditsFlagTests(TestCase):
             {"title": "a", "file_type": "text", "directory_id": "1"},
         )
         self.assertEqual(resp.status_code, 403)
+
+
+_SCRATCH_MEDIA = tempfile.mkdtemp(prefix="vault-hardening-")
+
+
+@override_settings(MEDIA_ROOT=_SCRATCH_MEDIA)
+class RefusedFileTypesTests(TestCase):
+    """``VAULT_REFUSED_FILE_TYPES`` — a type ban enforced at the doors.
+
+    Detection stays honest (the refusal can then name the type) and rows
+    that predate the ban keep working; what the flag closes is every door
+    that ASSIGNS a type: the three uploads, rename, empty-file creation.
+    The peer door carries the same three lines as the API door tested
+    here; its fixtures (grants, peers) live in ``tests_peer_api``.
+    """
+
+    @classmethod
+    def setUpTestData(cls):
+        cls.user = User.objects.create_user("refuser", "r@x.com", "pw")
+
+    def setUp(self):
+        self.client = Client()
+        self.client.force_login(self.user)
+
+    def _upload(self, name, content=b"x", expect=201):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        resp = self.client.post(
+            reverse("vault:api_file_upload"),
+            {"file": SimpleUploadedFile(name, content,
+                                        content_type="text/plain")},
+        )
+        self.assertEqual(resp.status_code, expect, resp.content)
+        return resp
+
+    def test_the_default_refuses_nothing(self):
+        from toto.vault.models import refused_file_types
+        self.assertEqual(refused_file_types(), frozenset())
+        self._upload("paper.tex", expect=201)
+
+    @override_settings(VAULT_REFUSED_FILE_TYPES={"latex"})
+    def test_an_api_upload_of_a_refused_type_is_400(self):
+        from toto.vault.models import VaultFile
+        resp = self._upload("paper.tex", expect=400)
+        self.assertIn("latex", resp.json()["error"])
+        self.assertFalse(VaultFile.objects.exists())
+
+    @override_settings(VAULT_REFUSED_FILE_TYPES={"latex"})
+    def test_every_latex_extension_is_covered(self):
+        """The ban is by TYPE: .tex, .sty and the rest of the family."""
+        for name in ("a.tex", "a.sty", "a.cls", "a.dtx", "a.ins"):
+            with self.subTest(name=name):
+                self._upload(name, expect=400)
+
+    @override_settings(VAULT_REFUSED_FILE_TYPES={"latex"})
+    def test_a_rename_cannot_smuggle_the_type_in(self):
+        from toto.vault.models import VaultFile
+        self._upload("note.txt")
+        vault_file = VaultFile.objects.get()
+        resp = self.client.post(reverse("vault:rename_file"), {
+            "file_pk": vault_file.pk, "title": "paper.tex",
+            "file_type": "latex"})
+        self.assertEqual(resp.status_code, 400)
+        vault_file.refresh_from_db()
+        self.assertEqual(vault_file.file_type, "text")
+
+    @override_settings(VAULT_REFUSED_FILE_TYPES={"latex"})
+    def test_the_create_menu_stops_offering_it(self):
+        from toto.vault.views import available_create_types
+        self.assertNotIn("latex",
+                         {t for t, _ in available_create_types()})
+
+    @override_settings(VAULT_REFUSED_FILE_TYPES={"latex"})
+    def test_the_gateway_refuses_and_keeps_the_batch(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from toto.vault.models import (Bucket, FileGateway, VaultDirectory,
+                                       VaultFile)
+        bucket = Bucket.objects.create(name="Gate", owner=self.user,
+                                       slug="hardening-gate")
+        directory = VaultDirectory.objects.create(
+            bucket=bucket, name="inbox", owner=self.user)
+        FileGateway.objects.create(directory=directory, bucket=bucket,
+                                   name="gate")
+        resp = self.client.post(
+            reverse("vault:gateway_upload", args=[directory.pk]),
+            {"file": SimpleUploadedFile("paper.tex", b"\\documentclass")})
+        self.assertFalse(VaultFile.objects.filter(file_type="latex").exists())
+        self.assertIn(b"refused", resp.content)

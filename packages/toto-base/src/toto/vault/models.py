@@ -39,6 +39,15 @@ def file_edits_allowed() -> bool:
     return getattr(settings, "VAULT_FILE_EDITS", True)
 
 
+def refused_file_types() -> frozenset:
+    """Host contract flag: ``VAULT_REFUSED_FILE_TYPES = {"latex"}`` names
+    vault file types this host refuses at every door that assigns one —
+    the three uploads (gateway, API, peer), rename, and empty-file
+    creation. Detection stays honest so the refusal can name the type;
+    rows that predate the ban keep working. Empty by default."""
+    return frozenset(getattr(settings, "VAULT_REFUSED_FILE_TYPES", ()) or ())
+
+
 class StorageProvider(models.Model):
     """
     A named S3-compatible provider preset (AWS, OVH, MinIO, …).

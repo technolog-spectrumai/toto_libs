@@ -166,6 +166,12 @@ def _upload(request, grant):
     mime, _ = mimetypes.guess_type(uploaded.name)
     file_type = VaultFile.detect_type(mime or "", uploaded.name)
 
+    from toto.vault.models import refused_file_types
+    if file_type in refused_file_types():
+        return JsonResponse(
+            {"error": f"This host does not accept {file_type} files."},
+            status=400)
+
     verdict = _scanning.Verdict.clean(scanned=False)
     if _scanning.should_scan(owner, file_type, door="peer"):
         body = uploaded.read()

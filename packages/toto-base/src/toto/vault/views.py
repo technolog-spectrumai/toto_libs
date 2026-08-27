@@ -55,7 +55,7 @@ def available_create_types():
     spreadsheet look like" is a question this package must not import primula to
     answer. See VaultEditorPlugin.blank_content.
     """
-    from toto.vault.models import file_edits_allowed
+    from toto.vault.models import file_edits_allowed, refused_file_types
     if not file_edits_allowed():
         return []
     from toto.vault.plugins import VaultEditorPlugin  # local: registry filled in ready()
@@ -68,7 +68,8 @@ def available_create_types():
         if extension and plugin.file_type and plugin.file_type not in seen:
             types.append((plugin.file_type, extension))
             seen.add(plugin.file_type)
-    return types
+    refused = refused_file_types()
+    return [(t, ext) for t, ext in types if t not in refused]
 
 
 # ============================================================
@@ -597,6 +598,13 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                 mime, _ = mimetypes.guess_type(uploaded_file.name)
                 auto_file_type = VaultFile.detect_type(mime or "", uploaded_file.name)
                 file_type = manual_type if manual_type in valid_types else auto_file_type
+
+                from toto.vault.models import refused_file_types
+                if file_type in refused_file_types():
+                    errors.append(
+                        f"{uploaded_file.name}: refused (this host does "
+                        f"not accept {file_type} files).")
+                    continue
 
                 # Screen before the row is made. `is_scannable` first so a 200 MB
                 # video is never read into memory just to be told nobody screens
@@ -1557,6 +1565,12 @@ class RenameFileView(LoginRequiredMixin, View):
             return JsonResponse({"ok": False, "error": "Missing required fields."}, status=400)
         if file_type and file_type not in self._VALID_TYPES:
             return JsonResponse({"ok": False, "error": "Invalid file type."}, status=400)
+        from toto.vault.models import refused_file_types
+        if file_type and file_type in refused_file_types():
+            return JsonResponse(
+                {"ok": False,
+                 "error": f"This host does not accept {file_type} files."},
+                status=400)
         vault_file = get_object_or_404(VaultFile, pk=file_pk, owner=request.user)
         if access.is_mirror_row(vault_file):
             return access.mirror_lock_response(vault_file)
