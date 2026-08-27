@@ -3,6 +3,7 @@ from django.contrib.auth.models import User
 from django.db import models
 from django.utils import timezone
 from django.utils.text import slugify
+from django.utils.translation import gettext_lazy as _
 
 from toto.core.domain import DomainEntity
 
@@ -14,9 +15,9 @@ class LocationSharing(models.TextChoices):
     any fixture and any forgotten argument lands on.
     """
 
-    OFF = "off", "Not shown to anyone"
-    APPROXIMATE = "approximate", "Approximate area only"
-    EXACT = "exact", "Exact address"
+    OFF = "off", _("Not shown to anyone")
+    APPROXIMATE = "approximate", _("Approximate area only")
+    EXACT = "exact", _("Exact address")
 
 
 class Person(DomainEntity):
