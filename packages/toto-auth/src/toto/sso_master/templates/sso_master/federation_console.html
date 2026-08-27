@@ -1,21 +1,13 @@
-{% extends "oya/base.html" %}
+{% extends "sso_master/base.html" %}
 {% load i18n %}
 
-{% block title %}{% trans "Federation" %} | {{ platform.site_name }}{% endblock %}
-
-{% block content %}
-<section
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-4 py-10 transition-colors duration-300 sm:px-6 lg:px-8">
-
-  <div class="mx-auto max-w-4xl space-y-6">
-
-    <div>
-      <h1 class="text-2xl font-bold">{% trans "Federation" %}</h1>
+{% block sso_subtitle %}
       <p class="mt-1 text-sm opacity-70">
         {% trans "The platforms federated with this one. Generate a QR code to invite a new platform, or to re-pair an existing one." %}
       </p>
-    </div>
+{% endblock %}
+
+{% block sso_content %}
 
     {% if error %}
       <p :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
@@ -108,7 +100,7 @@
                           <i class="fa-solid fa-qrcode"></i> {% trans "Generate QR" %}
                         </button>
                       </form>
-                    {% elif p.status == "paired" %}
+                    {% elif p.status == "paired" and allow_federation_invites %}
                       {% comment %}Handshake done: no QR in the normal view. Re-pairing (rotate the
                          secret, move domains) stays reachable, but tucked behind a control.{% endcomment %}
                       <details>
@@ -135,6 +127,11 @@
         <p class="text-sm opacity-70">{% trans "No platforms are federated with this one yet. Invite one below." %}</p>
       {% endif %}
 
+      {% if not allow_federation_invites %}
+      <p class="text-sm opacity-70">
+        {% trans "Invites are disabled on this host." %}</p>
+      {% endif %}
+      {% if allow_federation_invites %}
       <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
            class="rounded-xl border p-5">
         <h2 class="mb-3 text-lg font-bold">{% trans "Invite a platform" %}</h2>
@@ -170,7 +167,6 @@
           </button>
         </form>
       </div>
+      {% endif %}
     {% endif %}
-  </div>
-</section>
 {% endblock %}

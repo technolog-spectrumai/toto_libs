@@ -26,6 +26,8 @@ urlpatterns = [
     # staff console that lists federated platforms and mints their QR codes.
     path("sso/platform-info/", views.platform_info, name="platform_info"),
     path("sso/federation/", views.federation_console, name="federation_console"),
+    path("sso/federation/branding/", views.federation_branding,
+         name="federation_branding"),
     path("sso/userinfo/", views.userinfo, name="userinfo"),
     path("sso/login/", views.login_view, name="login"),
     path("sso/logout/", views.logout_view, name="logout"),

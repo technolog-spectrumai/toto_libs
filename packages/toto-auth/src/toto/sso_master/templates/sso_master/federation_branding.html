@@ -1,0 +1,50 @@
+{% extends "sso_master/base.html" %}
+{% load i18n %}
+
+{% block sso_title %}{% trans "Federation branding" %}{% endblock %}
+
+{% block sso_subtitle %}
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "The federation's public face: its name and logo. Hosts that brand with the federation wear these in their app bar." %}
+      </p>
+{% endblock %}
+
+{% block sso_content %}
+      {% if federation and federation.logo %}
+        <div class="flex items-center gap-4">
+          <img src="{{ federation.logo.url }}" alt="" class="h-16 w-auto rounded">
+          <p class="text-sm opacity-70">{{ federation.name }}</p>
+        </div>
+      {% endif %}
+
+      <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-xl border p-5">
+        <form method="post" enctype="multipart/form-data"
+          :class="darkMode
+            ? '[&_input]:border-accent-1 [&_input]:bg-primary-bg-dark [&_input]:text-text-main-dark [&_textarea]:border-accent-1 [&_textarea]:bg-primary-bg-dark [&_textarea]:text-text-main-dark'
+            : '[&_input]:border-accent-2 [&_input]:bg-primary-bg-light [&_input]:text-text-main-light [&_textarea]:border-accent-2 [&_textarea]:bg-primary-bg-light [&_textarea]:text-text-main-light'"
+          class="space-y-4
+                 [&_label]:mb-1 [&_label]:block [&_label]:text-sm [&_label]:font-semibold
+                 [&_input[type=text]]:w-full [&_input[type=text]]:max-w-md
+                 [&_textarea]:w-full [&_textarea]:max-w-md
+                 [&_input]:rounded-lg [&_input]:border [&_input]:px-3 [&_input]:py-2 [&_input]:text-sm
+                 [&_textarea]:rounded-lg [&_textarea]:border [&_textarea]:px-3 [&_textarea]:py-2 [&_textarea]:text-sm">
+          {% csrf_token %}
+          {% for field in form %}
+            <div>
+              <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+              {{ field }}
+              {% for error in field.errors %}
+                <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"
+                   class="mt-1 text-xs font-medium">{{ error }}</p>
+              {% endfor %}
+            </div>
+          {% endfor %}
+          <button type="submit"
+            :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+            class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 text-sm font-semibold shadow-sm transition hover:opacity-90">
+            <i class="fa-solid fa-crown"></i> {% trans "Save branding" %}
+          </button>
+        </form>
+      </div>
+{% endblock %}

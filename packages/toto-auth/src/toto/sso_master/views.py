@@ -1,6 +1,7 @@
 import base64
 from urllib.parse import urlencode, urlparse
 
+from django.conf import settings
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
 from django.http import HttpResponseBadRequest, HttpResponseForbidden, JsonResponse
@@ -211,11 +212,20 @@ def enroll(request):
     """
     import json
 
+    from django.conf import settings
+
     from .enrollment import EnrollmentError, redeem
 
-    if not request.is_secure():
-        from django.conf import settings
+    # A host that disables invites honours none — a code minted before the
+    # flag flipped must die with it, not outlive the decision.
+    if not getattr(settings, "ALLOW_FEDERATION_INVITES", True):
+        return JsonResponse(
+            {"error": "invites_disabled",
+             "detail": "Federation invites are disabled on this host."},
+            status=403,
+        )
 
+    if not request.is_secure():
         if not settings.DEBUG:
             return JsonResponse(
                 {"error": "insecure_transport",
@@ -586,6 +596,52 @@ def _federation_rows():
 
 
 @login_required
+def federation_branding(request):
+    """Staff page: the federation's public face — name, description, logo.
+
+    The Branding tab beside the pairing console. The row is
+    toto.core.Federation, the thing holding-style hosts wear in their app
+    bar (PageProcessor exposes it as `federation` on every page); editing
+    it here replaces the admin-only path that used to be the only way.
+    Created on first save when the platform has none yet.
+    """
+    from django.contrib import messages
+    from django.core.exceptions import PermissionDenied
+    from django.shortcuts import redirect
+
+    from toto.core.models import Platform
+    from toto.ui import PageProcessor
+
+    from .forms import FederationBrandingForm
+
+    if not (request.user.is_staff or request.user.is_superuser):
+        raise PermissionDenied
+
+    platform = Platform.objects.filter(active=True).first()
+    federation = platform.federation if platform else None
+    form = FederationBrandingForm(instance=federation)
+
+    if request.method == "POST":
+        form = FederationBrandingForm(request.POST, request.FILES,
+                                      instance=federation)
+        if form.is_valid():
+            federation = form.save()
+            if platform and platform.federation_id != federation.pk:
+                platform.federation = federation
+                platform.save(update_fields=["federation"])
+            messages.success(request, "Federation branding saved.")
+            return redirect("sso:federation_branding")
+
+    context = PageProcessor().decorate({
+        "page_title": "Federation branding",
+        "active_tab": "branding",
+        "form": form,
+        "federation": federation,
+    }, request)
+    return render(request, "sso_master/federation_branding.html", context)
+
+
+@login_required
 def federation_console(request):
     """Staff page: the platforms federated with us, with a QR to (re-)pair one.
 
@@ -610,11 +666,20 @@ def federation_console(request):
     if not (request.user.is_staff or request.user.is_superuser):
         raise PermissionDenied
 
+    # ALLOW_FEDERATION_INVITES: the host's word on whether this platform
+    # pairs new ones at all. Enforced here, not only hidden in the template
+    # — both mint doors (fresh invite and re-pair) refuse. Default True so
+    # existing hosts keep the behaviour they were built with; placidia-style
+    # hosts pin it False.
+    invites_allowed = getattr(settings, "ALLOW_FEDERATION_INVITES", True)
+
     minted = None
     error = None
 
     if request.method == "POST":
         action = request.POST.get("action")
+        if action in ("invite", "repair") and not invites_allowed:
+            raise PermissionDenied("Federation invites are disabled on this host.")
         try:
             if action == "repair":
                 party = SSORelyingParty.objects.filter(
@@ -661,6 +726,8 @@ def federation_console(request):
 
     context = PageProcessor().decorate({
         "page_title": "Federation",
+        "active_tab": "platforms",
+        "allow_federation_invites": invites_allowed,
         "platforms": _federation_rows(),
         "minted": minted,
         "error": error,

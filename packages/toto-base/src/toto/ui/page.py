@@ -43,7 +43,8 @@ class PageProcessor:
         }
 
         if self.config is None:
-            context.update({**base, "platform": None, "font": {}, "theme": {}, "logo": None})
+            context.update({**base, "platform": None, "font": {}, "theme": {},
+                            "logo": None, "federation": None})
             return context
 
         platform_data = PlatformSerializer(self.config).data
@@ -54,5 +55,16 @@ class PageProcessor:
             "font": theme_data.get("font", {}),
             "theme": theme_data,
             "logo": self.config.logo.url if self.config.logo else None,
+            # The platform's federation, for hosts that brand with it (the
+            # holding identity). None-safe: a platform without one is the
+            # common case, and stock templates ignore the key entirely.
+            "federation": (
+                {
+                    "name": self.config.federation.name,
+                    "logo": (self.config.federation.logo.url
+                             if self.config.federation.logo else None),
+                }
+                if self.config.federation_id else None
+            ),
         })
         return context

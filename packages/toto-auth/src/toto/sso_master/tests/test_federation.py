@@ -156,3 +156,94 @@ class FederationConsoleTests(TestCase):
         res = self.client.post(self.url, {"action": "repair", "pk": str(self.party.pk)})
         self.assertEqual(res.status_code, 200)
         self.assertIn("data:image/png;base64,", res.content.decode())
+
+
+class InviteFlagTests(TestCase):
+    """ALLOW_FEDERATION_INVITES: the host's word, enforced in the backend.
+
+    Default True (hosts keep the behaviour they were built with); a
+    placidia-style host pins it False and every mint door refuses.
+    """
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        Platform.objects.create(site_name="Zenobia", author="Us",
+                                publication_year=2026, active=True)
+        self.staff = get_user_model().objects.create_user(
+            "console-staff", password="pw", is_staff=True)
+        self.client.force_login(self.staff)
+        self.url = reverse("sso:federation_console")
+
+    def test_default_console_offers_invites(self):
+        response = self.client.get(self.url)
+        self.assertContains(response, "Invite a platform")
+
+    def test_flag_off_hides_the_mint_form(self):
+        with self.settings(ALLOW_FEDERATION_INVITES=False):
+            response = self.client.get(self.url)
+        self.assertNotContains(response, "Invite a platform")
+        self.assertContains(response, "Invites are disabled")
+
+    def test_flag_off_refuses_the_mint_post(self):
+        with self.settings(ALLOW_FEDERATION_INVITES=False):
+            response = self.client.post(self.url, {
+                "action": "invite", "expected_host": "peer.example.com"})
+        self.assertEqual(response.status_code, 403)
+
+    def test_flag_off_refuses_enroll(self):
+        """A code minted before the flag flipped dies with it."""
+        with self.settings(ALLOW_FEDERATION_INVITES=False):
+            response = self.client.post(
+                reverse("sso:enroll"), data="{}",
+                content_type="application/json", secure=True)
+        self.assertEqual(response.status_code, 403)
+        self.assertEqual(response.json()["error"], "invites_disabled")
+
+
+class BrandingTabTests(TestCase):
+    """The federation's public face, edited beside the pairing console."""
+
+    def setUp(self):
+        from django.contrib.auth import get_user_model
+
+        Platform.objects.create(site_name="Zenobia", author="Us",
+                                publication_year=2026, active=True)
+        self.staff = get_user_model().objects.create_user(
+            "branding-staff", password="pw", is_staff=True)
+        self.url = reverse("sso:federation_branding")
+
+    def test_staff_only(self):
+        from django.contrib.auth import get_user_model
+
+        self.client.force_login(get_user_model().objects.create_user(
+            "plain", password="pw"))
+        self.assertEqual(self.client.get(self.url).status_code, 403)
+
+    def test_the_tab_strip_links_both_tabs(self):
+        self.client.force_login(self.staff)
+        response = self.client.get(self.url)
+        self.assertContains(response, reverse("sso:federation_console"))
+        self.assertContains(response, 'aria-current="page"')
+
+    def test_saving_creates_and_attaches_the_federation(self):
+        import tempfile
+
+        from django.test import override_settings
+
+        from toto.core.models import Federation, Platform
+
+        self.client.force_login(self.staff)
+        with override_settings(MEDIA_ROOT=tempfile.mkdtemp()):
+            response = self.client.post(self.url, {
+                "name": "The Holding", "description": "One roof."})
+        self.assertEqual(response.status_code, 302)
+        federation = Federation.objects.get(name="The Holding")
+        platform = Platform.objects.filter(active=True).first()
+        if platform:
+            self.assertEqual(platform.federation_id, federation.pk)
+
+    def test_the_form_declares_multipart(self):
+        self.client.force_login(self.staff)
+        self.assertContains(self.client.get(self.url),
+                            'enctype="multipart/form-data"')
