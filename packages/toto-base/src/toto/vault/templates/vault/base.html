@@ -1,5 +1,6 @@
 {% extends "oya/base.html" %}
 {% load i18n %}
+{% load vault_flags %}
 {% comment %}The File Vault: four tabs over one store.
 
    Files is the tree you work in; Metrics is the aggregate picture; Remote is
@@ -54,9 +55,12 @@
            {% if active_tab == 'metrics' %}aria-current="page"{% endif %}>
           <i class="fa-solid fa-chart-simple"></i>{% trans "Metrics" %}</a>
       {% endif %}
-      {% comment %}Remote is operator-only, so the tab is too. A tab that always
-         answered 403 would be worse than no tab.{% endcomment %}
-      {% if request.user.is_staff or request.user.is_superuser %}
+      {% comment %}Remote is operator-only, so the tab is too — and it obeys
+         VAULT_EXTERNAL_BUCKETS, because on a host that forbids remote
+         buckets every remote action answers 403 "disabled". A tab that
+         always answered 403 would be worse than no tab.{% endcomment %}
+      {% remote_buckets_enabled as remote_buckets_ok %}
+      {% if remote_buckets_ok %}{% if request.user.is_staff or request.user.is_superuser %}
         {% url 'vault:remote_buckets' as remote_url %}
         {% if remote_url %}
           <a href="{{ remote_url }}"
@@ -66,7 +70,7 @@
              {% if active_tab == 'remote' %}aria-current="page"{% endif %}>
             <i class="fa-solid fa-cloud"></i>{% trans "Remote" %}</a>
         {% endif %}
-      {% endif %}
+      {% endif %}{% endif %}
       {% url 'vault:archive' as archive_url %}
       {% if archive_url %}
         <a href="{{ archive_url }}"
