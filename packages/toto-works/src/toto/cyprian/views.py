@@ -662,6 +662,49 @@ def rendition(request, file_pk):
 
 
 @login_required
+def edit_html(request, file_pk):
+    """Edit an HTML page — in the writer when nothing would be lost.
+
+    The vault's Edit button lands here for html files on hosts with cyprian.
+    A compatible page (no scripts, styles, classes — see
+    `from_html.is_compatible`) opens in the writer via its twin document,
+    whose bridge writes every save back into the page. Anything else falls
+    through to the source editor, with the reason said out loud.
+    """
+    from django.urls import NoReverseMatch, reverse as _reverse
+
+    from toto.vault.models import VaultFile
+
+    from . import from_html
+
+    vault_file = get_object_or_404(VaultFile, pk=file_pk, file_type="html")
+    if vault_file.owner_id != request.user.pk:
+        raise Http404
+
+    try:
+        with vault_file.file.open("rb") as handle:
+            html = handle.read().decode("utf-8", "replace")
+    except (OSError, ValueError):
+        raise Http404
+
+    if not from_html.is_compatible(html):
+        try:
+            source_url = _reverse("editor:html_display", args=[vault_file.pk])
+        except NoReverseMatch:
+            messages.info(request, _(
+                "This page carries styles or scripts the writer would lose, "
+                "and this host has no source editor to fall back to."))
+            return redirect("vault:public_list")
+        messages.info(request, _(
+            "Opened in the source editor: this page carries styles or "
+            "scripts the writer would lose."))
+        return redirect(source_url)
+
+    document = from_html.convert(vault_file, html, user=request.user)
+    return redirect("cyprian:edit", file_pk=document.pk)
+
+
+@login_required
 @require_POST
 def create_from_html(request, file_pk):
     """Make a Cyprian document from an HTML page in the vault, and open it.

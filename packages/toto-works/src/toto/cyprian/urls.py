@@ -13,6 +13,7 @@ app_name = "cyprian"
 
 urlpatterns = [
     path("edit/<int:file_pk>/", views.DocumentEditView.as_view(), name="edit"),
+    path("edit-html/<int:file_pk>/", views.edit_html, name="edit_html"),
     path("save/<int:file_pk>/", views.document_save, name="save"),
     path("source/<int:file_pk>/", views.document_source, name="source"),
     # The write half of htmlview's "convert this page" offer. It lives here so

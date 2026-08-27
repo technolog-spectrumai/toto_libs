@@ -85,3 +85,36 @@ def convert(vault_file, html: str, *, user):
         toc=False,
         document_title=document_title(vault_file, html),
     )
+
+
+#: What the writer would LOSE. TipTap keeps its own schema: scripts, styles,
+#: stylesheets, classes, ids, inline styles and embedded frames all vanish on
+#: the first save. A page carrying any of them is not "hard" — it is simply
+#: not round-trippable, and pretending otherwise is how somebody's stylesheet
+#: disappears without being told. Those pages get the source editor.
+_INCOMPATIBLE = re.compile(
+    r"<\s*(script|style|link|iframe|object|embed|form|frameset)\b"
+    r"|\sstyle\s*="
+    r"|\son[a-z]+\s*="
+    r"|\sclass\s*="
+    r"|\sid\s*=",
+    re.I)
+
+
+def is_compatible(html: str) -> bool:
+    """Would editing this page in the writer lose anything? False = yes."""
+    return not _INCOMPATIBLE.search(html or "")
+
+
+def page_of(document) -> str:
+    """The inverse of `body_of`: a whole page around the writer's body.
+
+    Only for pages `is_compatible` admitted — their head was trivial by
+    definition, so a regenerated one loses nothing. `document.content` is
+    already sanitised (`Document.from_dict` runs `sanitize_content` on the
+    way in), which is what makes writing it back a fact rather than a hope.
+    """
+    title = (document.title or "").strip()
+    return ("<!doctype html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n"
+            f"<title>{title}</title>\n</head>\n<body>\n"
+            f"{document.content or ''}\n</body>\n</html>\n")
