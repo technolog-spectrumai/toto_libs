@@ -298,9 +298,18 @@ class HtmlFileDisplayView(BaseFileDisplayView):
 
         if not django_apps.is_installed("toto.cyprian"):
             return {}
+        from django.urls import reverse
+
         from toto.cyprian import tiptap
 
-        return {"rich_import_map": tiptap.import_map_json()}
+        return {
+            "rich_import_map": tiptap.import_map_json(),
+            # The full writer, as an alternative: cyprian's one-way convert
+            # mints a `document` beside this page (idempotent — converting
+            # twice returns to the same file) and never touches the HTML.
+            "cyprian_convert_url": reverse("cyprian:create_from_html",
+                                           args=[vault_file.pk]),
+        }
 
 
 class CsvFileDisplayView(BaseFileDisplayView):

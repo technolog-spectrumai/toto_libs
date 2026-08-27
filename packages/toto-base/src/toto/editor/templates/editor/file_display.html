@@ -123,6 +123,21 @@
         </button>
         {% endif %}
 
+        {% if cyprian_convert_url %}
+        {% comment %}The full writer, as an alternative. What the converter's
+        own docstring says out loud: the body carries over, head/styles do
+        not, and THIS file is never touched — a `document` is minted beside
+        it (idempotently), and that is what opens in Cyprian.{% endcomment %}
+        <form id="cyprian-convert" method="post" action="{{ cyprian_convert_url }}"
+              class="inline-flex"
+              onsubmit="return confirm('{% trans 'Write this page in Cyprian? A document is created beside this file (the HTML itself is never changed). The body carries over; styles and the head do not.' %}');">
+          {% csrf_token %}
+          <button type="submit" title="{% trans 'Write in Cyprian' %}" class="toolbar-btn border">
+            <i class="fa-solid fa-feather-pointed"></i>
+          </button>
+        </form>
+        {% endif %}
+
         {% comment %}The assistant, when this host has one and this file type has
            a surface. Alpine-scoped inside its own span, so it coexists with a
            page whose other controls are plain id handles.{% endcomment %}
