@@ -61,6 +61,7 @@ class PageProcessor:
             "federation": (
                 {
                     "name": self.config.federation.name,
+                    "description": self.config.federation.description,
                     "logo": (self.config.federation.logo.url
                              if self.config.federation.logo else None),
                 }

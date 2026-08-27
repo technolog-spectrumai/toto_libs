@@ -289,6 +289,19 @@ class HtmlFileDisplayView(BaseFileDisplayView):
     save_url_name = "editor:html_save"
     delete_url_name = "editor:html_delete"
 
+    def get_extra_context(self, vault_file) -> dict:
+        """The dual editor: source (ACE) by default, rich (TipTap) a click
+        away — on hosts that install cyprian, whose vendored TipTap bundle
+        and import map this borrows. Same file, same save door, so the
+        antivirus screening on html saves covers both modes."""
+        from django.apps import apps as django_apps
+
+        if not django_apps.is_installed("toto.cyprian"):
+            return {}
+        from toto.cyprian import tiptap
+
+        return {"rich_import_map": tiptap.import_map_json()}
+
 
 class CsvFileDisplayView(BaseFileDisplayView):
     # Ace ships no CSV mode; plain-text highlighting is the correct fallback.
