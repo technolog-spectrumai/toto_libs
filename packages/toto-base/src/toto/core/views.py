@@ -289,7 +289,13 @@ def _manual_features(request):
         # would 500 the manual outright rather than merely mislead.
         "workflows": _mounted("workflows:workflow_list"),
         "notebooks": _mounted("mandragora:notebook_list"),
-        "graph": apps.is_installed("toto.ravioli"),
+        # `_mounted`, not `is_installed`, and it is the last section that was
+        # not. Its chapter reverses `ravioli:query_unified`, and no host in
+        # this repository has a mount row for ravioli at all — so the moment
+        # one installed toto-graph the manual would 500 instead of gaining a
+        # chapter. Dormant today (toto-graph is unpinned), which is exactly
+        # when this is cheap to fix.
+        "graph": _mounted("ravioli:query_unified"),
         # The tier that runs its work in a Compute Gear. Every one of these
         # sections LINKS to the page it describes, so all of them are gated on
         # `_mounted` rather than `is_installed` — the distinction the workflows
