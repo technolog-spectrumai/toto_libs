@@ -17,37 +17,77 @@ requirement for a responsive container.{% endcomment %}
     // Detect dark mode from Alpine/localStorage
     const isDark = localStorage.getItem('darkMode') === 'true';
 
-    // Your full theme color dictionary
-    const themeColors = {{ theme.theme.colors|safe }};
+    // The theme's colour dictionary. `|default:"{}"` is not decoration:
+    // without it a platform whose theme carries no colours renders
+    // `const themeColors = ;` — a SyntaxError that kills the whole script
+    // and leaves the canvas blank. oya/base.html has always guarded it here;
+    // this partial did not.
+    const themeColors = {{ theme.theme.colors|default:"{}"|safe }};
+
+    // Fall back per key so a partial palette cannot produce `undefined`
+    // colours that Chart.js silently draws as transparent.
+    const colourOf = (key, fallback) => themeColors[key] || fallback;
 
     // Pick colors based on mode
-    const textColor = isDark ? themeColors["text-main-dark"] : themeColors["text-main-light"];
+    const textColor = isDark ? colourOf("text-main-dark", "#d3d7e0")
+                             : colourOf("text-main-light", "#0f1114");
     const gridColor = dim(textColor, 0.25);
-    const tooltipBg = isDark ? themeColors["bubble-bg-dark"] : "#ffffff";
+    const tooltipBg = isDark ? colourOf("bubble-bg-dark", "#191f2d") : "#ffffff";
     const tooltipText = textColor;
-    const accentColor = isDark ? themeColors["accent-dark"] : themeColors["accent-light"];
+    const accentColor = isDark ? colourOf("accent-dark", "#4f5fa1")
+                               : colourOf("accent-light", "#2f3d63");
     // Build final options
+    const isRing = chart.chart_type === 'pie' || chart.chart_type === 'doughnut';
+    const callerPlugins = (chart.options || {}).plugins || {};
+
+    // A ring slice means nothing without its share of the whole, and a
+    // percentage cannot be precomputed into the payload without also being
+    // wrong the moment a legend item is toggled off. Chart.js recomputes
+    // against the VISIBLE total, so it is worked out here.
+    const ringTooltip = isRing ? {
+        callbacks: {
+            label: function (item) {
+                const data = item.chart.data.datasets[item.datasetIndex].data;
+                let total = 0;
+                for (let i = 0; i < data.length; i++) {
+                    if (item.chart.getDataVisibility(i)) { total += Number(data[i]) || 0; }
+                }
+                const value = Number(item.parsed) || 0;
+                const pct = total ? (value * 100 / total) : 0;
+                return `${item.label}: ${value.toLocaleString()} (${pct.toFixed(1)}%)`;
+            }
+        }
+    } : {};
+
+    // Deep-merge, caller last: this used to be a flat Object.assign, which
+    // silently DISCARDED any plugins a caller passed — so no page could set
+    // its own legend or tooltip, and the loss was invisible.
     const options = Object.assign({}, chart.options || {}, {
         responsive: true,
         maintainAspectRatio: false,
 
-        plugins: {
-            legend: {
+        plugins: Object.assign({
+            legend: Object.assign({
                 labels: {
                     color: textColor
                 }
-            },
-            tooltip: {
+            }, callerPlugins.legend || {}),
+            tooltip: Object.assign({
                 backgroundColor: tooltipBg,
                 titleColor: tooltipText,
                 bodyColor: tooltipText,
                 borderColor: accentColor,
                 borderWidth: 1
-            }
-        },
+            }, ringTooltip, callerPlugins.tooltip || {})
+        }, (function () {
+            const rest = Object.assign({}, callerPlugins);
+            delete rest.legend;
+            delete rest.tooltip;
+            return rest;
+        })()),
 
         // Only apply axes if chart type supports them
-        scales: (chart.chart_type !== 'pie' && chart.chart_type !== 'doughnut')
+        scales: (!isRing)
             ? {
                 x: Object.assign({}, chart.options?.scales?.x || {}, {
                     ticks: { color: textColor },
