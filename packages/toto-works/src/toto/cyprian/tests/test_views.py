@@ -11,14 +11,14 @@ from toto.vault.models import VaultFile
 from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
 
 
-from toto.cyprian import document_format as df
+from toto.cyprian import ctml as df
 
 from .base import CyprianTestCase
 
 
 class DocumentPageTests(CyprianTestCase):
     def _make(self, document=None, *, owner=None, is_public=False,
-              title="report.xml", file_type="document") -> VaultFile:
+              title="report.ctml", file_type="ctml") -> VaultFile:
         document = document or df.new_document("Report")
         return VaultFile.objects.create(
             owner=owner or self.owner, title=title, file_type=file_type,
@@ -131,12 +131,28 @@ class DocumentPageTests(CyprianTestCase):
         self.assertIsNone(VaultPlayPlugin.for_file_type("xml"))
 
     def test_a_document_filed_as_xml_is_adopted_on_open(self):
-        vault_file = self._make(file_type="document")
+        """Still true after the CTML rename, and still needed.
+
+        Migration 0023 deliberately did not rename existing FILES, so a
+        `.ctml`-less document that is downloaded and re-uploaded comes back
+        typed `xml`. `_adopt` is what repairs it on the next open.
+        """
+        vault_file = self._make(file_type="ctml")
         VaultFile.objects.filter(pk=vault_file.pk).update(file_type="xml")
         self.client.force_login(self.owner)
         self.client.get(reverse("cyprian:edit", args=[vault_file.pk]))
         vault_file.refresh_from_db()
-        self.assertEqual(vault_file.file_type, "document")
+        self.assertEqual(vault_file.file_type, "ctml")
+
+    def test_the_legacy_spelling_is_adopted_too(self):
+        """Rows the migration could not reach — mirrored, remote, encrypted —
+        are still spelled `document`, and must not be second-class."""
+        vault_file = self._make(file_type="ctml")
+        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="document")
+        self.client.force_login(self.owner)
+        self.client.get(reverse("cyprian:edit", args=[vault_file.pk]))
+        vault_file.refresh_from_db()
+        self.assertEqual(vault_file.file_type, "ctml")
 
 
 class SourceViewTests(CyprianTestCase):
@@ -147,7 +163,7 @@ class SourceViewTests(CyprianTestCase):
         document = df.new_document("Sourced")
         document.content = "<h1>Chapter one</h1><p>body</p>"
         self.file = VaultFile.objects.create(
-            owner=self.owner, title="sourced.xml", file_type="document",
+            owner=self.owner, title="sourced.ctml", file_type="ctml",
             bucket=self.bucket,
             file=SimpleUploadedFile("sourced.xml",
                                     df.dumps(document).encode("utf-8")))
@@ -203,7 +219,7 @@ class WriterChromeTests(CyprianTestCase):
     def setUp(self):
         super().setUp()
         self.file = VaultFile.objects.create(
-            owner=self.owner, title="chrome.xml", file_type="document",
+            owner=self.owner, title="chrome.ctml", file_type="ctml",
             bucket=self.bucket,
             file=SimpleUploadedFile("chrome.xml",
                                     df.dumps(df.new_document("Chrome")).encode()))
@@ -346,7 +362,7 @@ class ContractIntegrationTests(CyprianTestCase):
         # A document that outlived its contract is still a document; refusing
         # to save it would be losing work over a broken pointer.
         vault_file = VaultFile.objects.create(
-            owner=self.owner, title="orphan.xml", file_type="document",
+            owner=self.owner, title="orphan.ctml", file_type="ctml",
             bucket=self.bucket,
             file=SimpleUploadedFile("orphan.xml", df.dumps(
                 df.Document(title="Orphan", content="<p>x</p>")).encode()))
@@ -366,7 +382,7 @@ class DeletionTests(CyprianTestCase):
     def setUp(self):
         super().setUp()
         self.vault_file = VaultFile.objects.create(
-            owner=self.owner, title="doomed.xml", file_type="document",
+            owner=self.owner, title="doomed.ctml", file_type="ctml",
             bucket=self.bucket,
             file=SimpleUploadedFile("doomed.xml", df.dumps(
                 df.Document(title="Doomed", content="<p>x</p>")).encode()))

@@ -3,7 +3,7 @@ refuses to lose."""
 
 from django.test import SimpleTestCase
 
-from toto.cyprian import document_format as df
+from toto.cyprian import ctml as df
 
 
 CONTENT = (

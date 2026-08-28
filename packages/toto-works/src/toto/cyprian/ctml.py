@@ -1,6 +1,17 @@
-"""The document format — self-contained XML, version 3.
+"""CTML — the Cyprian document format. Self-contained XML, version 3.
 
-A Cyprian document is one XML file holding the whole thing: images embedded as
+**CTML is the format; Cyprian is the editor.** They used to share one name and
+neither had an identity: a document was an `.xml` file typed ``"document"``, on
+an extension ``toto.editor`` already owned, so what a file WAS depended on which
+editor had touched it last. The format is named now, carries the extension
+``.ctml``, and is a file type of its own.
+
+The ROOT ELEMENT stays ``<document>``. It is not renamed to ``<ctml>``, and the
+reason is worth stating: :func:`loads` rejects any other root, so renaming it
+would make every file written before this release unopenable — a rename with no
+upside at all.
+
+A CTML document is one XML file holding the whole thing: images embedded as
 base64 ``data:`` URIs, formulas with their rendering cached, tables inline.
 There is nothing in the database. A document therefore moves, downloads, backs
 up and shares with the ordinary vault tools, and it can never half-exist::

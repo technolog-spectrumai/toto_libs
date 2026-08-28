@@ -52,14 +52,16 @@ class HtmlEditorPlugin(VaultEditorPlugin):
     file_type = "html"
 
     def get_editor_url(self, vault_file) -> str:
-        """The writer first, when this host has it — its dispatch view falls
-        back to ACE for any page the writer would damage (styles, scripts,
-        classes). One cheap reverse; the content check happens on click."""
-        from django.apps import apps as django_apps
-        from django.urls import reverse
+        """The HTML source editor. Always, on every host.
 
-        if django_apps.is_installed("toto.cyprian"):
-            return reverse("cyprian:edit_html", args=[vault_file.pk])
+        This used to return `cyprian:edit_html` wherever cyprian was installed
+        — which is everywhere — so pressing Edit on a page silently minted a
+        rich-text twin and opened THAT, with a bridge rewriting the page on
+        every save. Edit is now what it says: it opens this file, as HTML.
+
+        Becoming a CTML document is a separate, named action that produces a
+        separate file. See `cyprian:html_to_ctml`.
+        """
         return reverse("editor:html_display", args=[vault_file.pk])
 
 

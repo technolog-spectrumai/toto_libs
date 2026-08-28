@@ -22,21 +22,35 @@ from django.urls import reverse
 from toto.vault.plugins import VaultEditorPlugin
 
 
-@VaultEditorPlugin.plugin(key="document", title="Document", order=28)
-class DocumentEditorPlugin(VaultEditorPlugin):
-    file_type = "document"
+@VaultEditorPlugin.plugin(key="ctml", title="CTML Document", order=28)
+class CtmlEditorPlugin(VaultEditorPlugin):
+    file_type = "ctml"
 
-    #: `.xml`, not an extension of its own. `_EXT_MAP` pairs the two on purpose:
-    #: a deck is `.pxml` and everything else XML-shaped — documents, notebooks,
-    #: contracts — stays `.xml`, told apart by `file_type` rather than by name.
-    new_file_extension = ".xml"
+    #: Its own extension at last. It used to be `.xml` — shared with the ACE
+    #: editor, so the name said nothing and the type had to be carried in the
+    #: row alone. `_EXT_MAP` now maps `.ctml`, which is what makes an uploaded
+    #: document arrive as a document instead of as generic XML.
+    new_file_extension = ".ctml"
 
     def blank_content(self, title: str) -> str:
         """An empty v3 document, the same one `bridge.open_document` mints."""
-        from toto.cyprian import document_format
+        from toto.cyprian import ctml
 
         base = title.rsplit(".", 1)[0] if "." in title else title
-        return document_format.dumps(document_format.new_document(base or ""))
+        return ctml.dumps(ctml.new_document(base or ""))
 
     def get_editor_url(self, vault_file) -> str:
         return reverse("cyprian:edit", args=[vault_file.pk])
+
+
+@VaultEditorPlugin.plugin(key="document", title="Document (legacy)", order=29)
+class LegacyDocumentEditorPlugin(CtmlEditorPlugin):
+    """The pre-CTML spelling, so rows migration 0023 could not reach still open.
+
+    `new_file_extension` is deliberately blank: this plugin opens what exists
+    and must never mint anything new under the old name. Memo's legacy
+    `presentation` plugin does exactly this, for exactly this reason.
+    """
+
+    file_type = "document"
+    new_file_extension = ""

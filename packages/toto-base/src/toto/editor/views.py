@@ -290,24 +290,29 @@ class HtmlFileDisplayView(BaseFileDisplayView):
     delete_url_name = "editor:html_delete"
 
     def get_extra_context(self, vault_file) -> dict:
-        """The dual editor: source (ACE) by default, rich (TipTap) a click
-        away — on hosts that install cyprian, whose vendored TipTap bundle
-        and import map this borrows. Same file, same save door, so the
-        antivirus screening on html saves covers both modes."""
+        """An HTML file opens HERE, as HTML, and nowhere else.
+
+        There used to be a second mode on this page: a wand-toggle that swapped
+        ACE for a TipTap pane over the same bytes and serialised back on save.
+        It was removed because it was not an HTML editor — TipTap's schema has
+        no node for `<head>`, `<style>`, a class or an inline style, so a round
+        trip through it silently discarded all four. A rich-text editor that
+        quietly rewrites the file it was given is worse than no rich-text
+        editor.
+
+        What remains is the one link out: an EXPLICIT conversion to CTML, which
+        creates a new file beside this one and never touches the page.
+        """
         from django.apps import apps as django_apps
 
         if not django_apps.is_installed("toto.cyprian"):
             return {}
         from django.urls import reverse
 
-        from toto.cyprian import tiptap
-
         return {
-            "rich_import_map": tiptap.import_map_json(),
-            # The full writer, as an alternative: cyprian's one-way convert
-            # mints a `document` beside this page (idempotent — converting
-            # twice returns to the same file) and never touches the HTML.
-            "cyprian_convert_url": reverse("cyprian:create_from_html",
+            # Cyprian's converter mints a CTML document beside this page and
+            # never touches the HTML. It is a conversion, not a second editor.
+            "cyprian_convert_url": reverse("cyprian:html_to_ctml",
                                            args=[vault_file.pk]),
         }
 

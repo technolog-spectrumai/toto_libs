@@ -24,7 +24,7 @@ from django.http import (
 )
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
-from django.urls import reverse, reverse_lazy
+from django.urls import NoReverseMatch, reverse, reverse_lazy
 from django.utils.text import slugify
 from django.utils.translation import gettext as _
 from django.views import View
@@ -42,7 +42,7 @@ from toto.vault.views import new_file_picker_json, resolve_new_file_target
 
 from toto.cyprian import tiptap
 
-from . import document_format
+from . import ctml
 from .models import CyprianQuotaPolicy, CyprianUsageEvent
 from .bridge import DocumentBridge, entitlement_for, open_document
 from .bridge import may_edit as bridge_may_edit
@@ -74,32 +74,38 @@ def _read_head(vault_file: VaultFile, size: int = 2048) -> bytes:
 
 def _is_document_file(vault_file: VaultFile) -> bool:
     try:
-        return document_format.is_document(_read_raw(vault_file))
+        return ctml.is_document(_read_raw(vault_file))
     except (FileNotFoundError, UnicodeDecodeError, ValueError):
         return False
 
 
 def _adopt(vault_file: VaultFile) -> None:
-    """Retype a document that is still filed as generic XML.
+    """Retype a document that is not yet filed as CTML.
 
-    Someone can upload a document's `.xml` by hand, and `_EXT_MAP` types it
-    `xml`. Repairing the row the first time cyprian touches it means the vault
-    buttons start working without a migration over everybody's files.
+    Two populations reach here. A document uploaded by hand as `.xml` still
+    types as generic `xml` — and it always will, because migration 0023
+    deliberately did NOT rename existing files, so a `.ctml`-less document that
+    is downloaded and re-uploaded comes back the same way. And a row the
+    migration could not reach — mirrored, remote or encrypted — is still spelled
+    `document`.
+
+    Repairing the row the first time cyprian touches it is what makes the vault
+    buttons start working without a second migration over everybody's files. It
+    is why this helper survived the CTML rename rather than being deleted the
+    way memo's sniff was.
     """
-    if vault_file.file_type != "document":
-        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="document")
-        vault_file.file_type = "document"
+    if vault_file.file_type != "ctml":
+        VaultFile.objects.filter(pk=vault_file.pk).update(file_type="ctml")
+        vault_file.file_type = "ctml"
 
 
 def _get_owned_file(request, file_pk) -> VaultFile:
     """A DOCUMENT of this user's. Strict ownership, in the query.
 
     Still the gate for everything that reads a document out whole or writes a
-    file beside it — `document_source` (raw XML, no renderer, no sanitiser),
-    `document_export_pdf`, `document_save_pdf`, `document_save_html`. Those are
-    deliberately NOT bridged: two of them write into `vault_file.bucket`, and
-    `_save_beside` overwrites a same-named file there without an owner filter,
-    which is safe only while the requester is guaranteed to be the owner.
+    file beside it — `document_source` (raw XML, no renderer, no sanitiser).
+    That one is deliberately NOT bridged: it is the owner's own escape hatch,
+    and it stays owner-only.
 
     `_open_document` below is the bridged gate, and it covers the two endpoints
     a shared document actually needs: opening the writer, and saving it.
@@ -107,7 +113,8 @@ def _get_owned_file(request, file_pk) -> VaultFile:
     vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner")
         .filter(access.local_content_q()),
-        pk=file_pk, owner=request.user, file_type__in=["document", "xml"])
+        pk=file_pk, owner=request.user,
+        file_type__in=["ctml", "document", "xml"])
     if not _is_document_file(vault_file):
         raise Http404("Not a document.")
     _adopt(vault_file)
@@ -124,9 +131,8 @@ def _open_document(request, file_pk):
 
     The order is forced by where the answer lives — the bridge is resolved from
     the FILE, but a bridge may want the parsed document too, and the document is
-    inside the file. Read once, parse once, hand both back. That is cheaper than
-    what it replaces: `_get_owned_file` + `_read_document` read and parsed the
-    same bytes TWICE on every writer open.
+    inside the file. Read once, parse once, hand both back — where the pair it
+    replaced read and parsed the same bytes TWICE on every writer open.
 
     404, not 403, on refusal. It is what a stranger has always got here, and it
     keeps a page's existence quiet — the same choice kanban makes for missions
@@ -139,7 +145,7 @@ def _open_document(request, file_pk):
     vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner")
         .filter(access.local_content_q()),
-        pk=file_pk, file_type__in=["document", "xml"])
+        pk=file_pk, file_type__in=["ctml", "document", "xml"])
 
     if vault_file.is_encrypted:
         # Nothing to parse and nothing to authorise against: an encrypted
@@ -153,15 +159,15 @@ def _open_document(request, file_pk):
         raw = _read_raw(vault_file)
     except (FileNotFoundError, UnicodeDecodeError, ValueError):
         raise Http404("Not a document.")
-    if not document_format.is_document(raw):
+    if not ctml.is_document(raw):
         raise Http404("Not a document.")
 
     try:
-        document = document_format.loads(raw)
-    except document_format.DocumentParseError:
+        document = ctml.loads(raw)
+    except ctml.DocumentParseError:
         # Corrupt content — start from a blank rather than blowing up the
         # writer. Saving overwrites with valid XML.
-        document = document_format.new_document(title=vault_file.title)
+        document = ctml.new_document(title=vault_file.title)
 
     if vault_file.owner_id == request.user.pk:
         _adopt(vault_file)
@@ -169,7 +175,7 @@ def _open_document(request, file_pk):
 
     # Deliberately AFTER the ownership branch: _adopt writes to the row, and a
     # non-owner should not be able to retype somebody's file by looking at it.
-    # A bridged document was minted as file_type="document" anyway.
+    # A bridged document was minted as file_type="ctml" anyway.
     #
     # The decision itself lives in bridge.may_edit, which the vault's lock and
     # version endpoints also ask (through VaultAccessPlugin) — one answer, so
@@ -192,15 +198,6 @@ def _owned_file(request, file_pk, *, types=None) -> VaultFile:
     if types:
         query = query.filter(file_type__in=types)
     return get_object_or_404(query, pk=file_pk, owner=request.user)
-
-
-def _read_document(vault_file: VaultFile) -> document_format.Document:
-    try:
-        return document_format.loads(_read_raw(vault_file))
-    except document_format.DocumentParseError:
-        # Corrupt content — start from a blank rather than blowing up the
-        # writer. Saving overwrites with valid XML.
-        return document_format.new_document(title=vault_file.title)
 
 
 def _unique_key(base: str, bucket) -> str:
@@ -308,9 +305,7 @@ class DocumentEditView(LoginRequiredMixin, View):
                     (vault_file.title or "document").rsplit(".", 1)[0]) or "document",
                 # Where a rendition goes unless the writer picks otherwise:
                 # beside the document, or — for someone editing a document they
-                # do not own — nowhere in particular, so the picker asks. Must
-                # agree with _asked_target, which refuses to file a non-owner's
-                # export into the owner's bucket.
+                # do not own — nowhere in particular, so the picker asks.
                 "home": ({"bucket": vault_file.bucket_id,
                           "directory": vault_file.directory_id or 0}
                          if is_owner else {"bucket": 0, "directory": 0}),
@@ -376,9 +371,9 @@ def document_save(request, file_pk):
         return refusal
 
     try:
-        document = document_format.Document.from_dict(
+        document = ctml.Document.from_dict(
             payload.get("document") or payload)
-        xml = document_format.dumps(document)
+        xml = ctml.dumps(document)
     except Exception as exc:                           # noqa: BLE001
         # Parsed once, before the staleness check, so the rescued draft below
         # is the SAME bytes the save would have written. A body the format
@@ -459,8 +454,8 @@ def document_source(request, file_pk):
                             status=400)
 
     try:
-        document = document_format.loads(text)
-    except document_format.DocumentParseError as exc:
+        document = ctml.loads(text)
+    except ctml.DocumentParseError as exc:
         # The parser's own sentence, not a generic one: it names the line.
         return JsonResponse({"error": str(exc)}, status=400)
 
@@ -531,115 +526,6 @@ def document_media_upload(request):
                          "payload": image_bytes_to_data_uri(raw, mime or "")})
 
 
-# ---------------------------------------------------------------------------
-# Export
-# ---------------------------------------------------------------------------
-
-@login_required
-
-
-def _contract_body_html(contract) -> str:
-    """A contract's body as HTML the writer can hold.
-
-    Markdown through the same renderer notarius already uses, so what you see in
-    the writer is what the contract PDF was already showing.
-    """
-    from toto.notarius import render as notarius_render
-
-    return sanitize_content(notarius_render._body_html(contract))
-
-
-# ---------------------------------------------------------------------------
-# Saving a rendition into the vault
-# ---------------------------------------------------------------------------
-
-def _sibling_name(vault_file, document, suffix: str) -> str:
-    base = slugify(document.title or vault_file.title or "document") or "document"
-    return f"{base}.{suffix}"
-
-
-def _asked_target(request, vault_file):
-    """(bucket, directory) the export modal chose, or the document's own.
-
-    Ownership goes through vault's `resolve_new_file_target`, the same gate the
-    New Document flow uses — no rendition can land in someone else's bucket.
-    """
-    bucket_id = (request.POST.get("bucket") or "").strip()
-    directory_id = (request.POST.get("directory") or "").strip()
-    if not bucket_id:
-        # "Beside the document" is only a kindness while the document is yours.
-        # A bridged document lives in somebody else's bucket — a wiki page's file
-        # is held by the project lead — and defaulting there would file a team
-        # member's export into a vault they can neither browse nor delete from.
-        # Their own bucket is the honest default, and resolve_new_file_target is
-        # the same gate the New Document flow uses.
-        if vault_file.owner_id != request.user.pk:
-            return resolve_new_file_target(request.user, None, None)
-        return vault_file.bucket, vault_file.directory
-    return resolve_new_file_target(request.user, bucket_id, directory_id or None)
-
-
-def _asked_watermark(request):
-    """(text, image_data_uri) from the export modal, both optional and capped.
-
-    The image must be a data: URI of an image — which is the only form the
-    picker produces — and small enough to be a stamp, not a poster. Anything
-    else is dropped silently: a bad watermark must not cost the export.
-    """
-    text = (request.POST.get("watermark") or "").strip()[:80]
-    image = (request.POST.get("watermark_image") or "").strip()
-    if image and (not image.startswith("data:image/") or len(image) > 2_000_000):
-        image = ""
-    return text, image
-
-
-def _asked_name(request, vault_file, document, suffix: str) -> str:
-    """The name the writer typed into the save prompt, made safe.
-
-    The editor asks at save time — there is no name field anywhere else — so
-    this is the one place a rendition's name enters the system. Slugified like
-    every other vault name here, and the extension is OURS: the file IS a pdf or
-    an html document, and honouring `report.exe` would be labelling bytes wrongly
-    on the writer's own instruction.
-    """
-    raw = (request.POST.get("name") or "").strip()
-    if not raw:
-        return _sibling_name(vault_file, document, suffix)
-    base = slugify(raw.rsplit(".", 1)[0] if "." in raw else raw)
-    return f"{base or 'document'}.{suffix}"
-
-
-def _save_beside(vault_file, *, name: str, data: bytes, file_type: str, owner,
-                 bucket=None, directory=None):
-    """Write a rendition into the vault — beside its source by default.
-
-    Beside the document rather than in a renditions folder somewhere: the vault
-    is the filesystem here, and a PDF of a report belongs where the report is.
-    The export modal can point somewhere else (`bucket`/`directory`, ownership
-    already enforced by `resolve_new_file_target`). Overwrites the previous
-    rendition at that spot rather than accumulating `report-2.pdf` — exporting
-    twice is not two documents.
-    """
-    if bucket is None:
-        bucket, directory = vault_file.bucket, vault_file.directory
-    existing = VaultFile.objects.filter(
-        bucket=bucket, directory=directory,
-        title=name).first()
-    target = existing or VaultFile(
-        owner=owner, title=name,
-        key=_unique_key(slugify(name.rsplit(".", 1)[0]) or "export",
-                        bucket),
-        file_type=file_type, bucket=bucket,
-        directory=directory, is_public=False)
-    if existing is None:
-        target.save()
-    target.file.save(name, ContentFile(data), save=True)
-    target.content_hash = target.create_hash()
-    target.file_size_bytes = target.file.size
-    target.save(update_fields=["content_hash", "file_size_bytes"])
-    return target
-
-
 @login_required
 def rendition(request, file_pk):
     """Stream a saved rendition — the link the save modal hands back.
@@ -661,89 +547,156 @@ def rendition(request, file_pk):
 
 
 
-@login_required
-def edit_html(request, file_pk):
-    """Edit an HTML page — in the writer when nothing would be lost.
+# ---------------------------------------------------------------------------
+# The two conversions
+#
+# HTML and CTML are different formats, and every crossing between them is a
+# named action that produces a NEW FILE. Neither one ever rewrites the file it
+# was given: a version is captured AFTER a write, so an in-place conversion
+# would replace the bytes and leave no version holding the original.
+#
+# There is deliberately no CTML -> PDF. A document becomes HTML first, visibly,
+# and the HTML goes to the renderer — so nobody is surprised by what the PDF
+# contains. See toto.aralia's file-service plugin, whose accepted_file_types is
+# what enforces it.
+# ---------------------------------------------------------------------------
 
-    The vault's Edit button lands here for html files on hosts with cyprian.
-    A compatible page (no scripts, styles, classes — see
-    `from_html.is_compatible`) opens in the writer via its twin document,
-    whose bridge writes every save back into the page. Anything else falls
-    through to the source editor, with the reason said out loud.
+def _convert_target(vault_file, extension: str) -> str:
+    """`report.html` -> `report.ctml`, or `report-2.ctml` if that is taken.
+
+    Converting twice gives a second file. It used to adopt a same-named
+    document instead, which made sense while conversion was a side effect of
+    pressing Edit; now that it is a deliberate action, silently reopening an
+    older file is the surprising answer.
     """
-    from django.urls import NoReverseMatch, reverse as _reverse
+    from toto.vault.models import VaultFile
+
+    stem = (vault_file.title or "document").rsplit(".", 1)[0] or "document"
+    title, n = f"{stem}{extension}", 1
+    while VaultFile.objects.filter(bucket=vault_file.bucket,
+                                   directory=vault_file.directory,
+                                   title=title).exists():
+        n += 1
+        title = f"{stem}-{n}{extension}"
+    return title
+
+
+def _write_beside(vault_file, *, title: str, data: bytes, file_type: str, owner):
+    """A new file in the same place as its source. Never the source itself."""
+    import hashlib
+
+    from django.core.files.base import ContentFile
 
     from toto.vault.models import VaultFile
 
-    from . import from_html
-
-    vault_file = get_object_or_404(VaultFile, pk=file_pk, file_type="html")
-    if vault_file.owner_id != request.user.pk:
-        raise Http404
-
-    try:
-        with vault_file.file.open("rb") as handle:
-            html = handle.read().decode("utf-8", "replace")
-    except (OSError, ValueError):
-        raise Http404
-
-    if not from_html.is_compatible(html):
-        try:
-            source_url = _reverse("editor:html_display", args=[vault_file.pk])
-        except NoReverseMatch:
-            messages.info(request, _(
-                "This page carries styles or scripts the writer would lose, "
-                "and this host has no source editor to fall back to."))
-            return redirect("vault:public_list")
-        messages.info(request, _(
-            "Opened in the source editor: this page carries styles or "
-            "scripts the writer would lose."))
-        return redirect(source_url)
-
-    document = from_html.convert(vault_file, html, user=request.user)
-    return redirect("cyprian:edit", file_pk=document.pk)
+    created = VaultFile(
+        owner=owner, title=title,
+        key=_unique_key(slugify(title.rsplit(".", 1)[0]) or file_type,
+                        vault_file.bucket),
+        file_type=file_type, bucket=vault_file.bucket,
+        directory=vault_file.directory, is_public=False)
+    created.save()
+    created.file.save(title, ContentFile(data), save=True)
+    created.content_hash = hashlib.sha256(data).hexdigest()
+    created.file_size_bytes = len(data)
+    created.save(update_fields=["content_hash", "file_size_bytes"])
+    return created
 
 
-@login_required
-@require_POST
-def create_from_html(request, file_pk):
-    """Make a Cyprian document from an HTML page in the vault, and open it.
+def _source_of(request, file_pk, *, types):
+    """The file to convert: this user's own, of a type that can be converted.
 
-    The write half of the viewer's "convert this page" offer. It lives here
-    rather than in `toto.htmlview` because that app guarantees it has nowhere to
-    write, and an endpoint that creates a file would have ended the guarantee —
-    see `from_html`'s module docstring.
-
-    It does NOT touch the page it was called on. The HTML file keeps its bytes
-    and its file_type, stays in the viewer's listing, and stays readable; the
-    document is a new file beside it.
-
-    Idempotent through `bridge.open_document`, which adopts a same-named
-    document already in the target folder rather than making a second one — so
-    converting twice returns to the same file instead of forking the work.
+    The OWNER only. Converting reads every byte and writes them into a file the
+    actor will own, which is more than `may_read` grants.
     """
     from toto.vault.access import may_read
     from toto.vault.models import VaultFile
 
-    from . import from_html
-
     vault_file = get_object_or_404(VaultFile, pk=file_pk)
-    # The owner only: converting reads every byte of the page and writes them
-    # into a file the actor will own, which is more than `may_read` grants.
     if vault_file.owner_id != request.user.pk or not may_read(request.user, vault_file):
         raise Http404
-    if vault_file.file_type != "html":
+    if vault_file.file_type not in types:
         raise Http404
-
+    if vault_file.is_encrypted:
+        raise Http404
     try:
         with vault_file.file.open("rb") as handle:
-            html = handle.read().decode("utf-8", "replace")
+            return vault_file, handle.read().decode("utf-8", "replace")
     except (OSError, ValueError):
         raise Http404
 
-    document = from_html.convert(vault_file, html, user=request.user)
+
+def _report_context(request, vault_file, report, *, action_url, heading, target):
+    return PageProcessor().decorate({
+        "source": vault_file,
+        "report": report,
+        "action_url": action_url,
+        "heading": heading,
+        "target_title": target,
+    }, request)
+
+
+@login_required
+def html_to_ctml(request, file_pk):
+    """Convert an HTML page into a CTML document beside it.
+
+    GET shows what the conversion would cost, itemised, and asks. POST writes.
+    Nothing is created until somebody has seen the report — which is the whole
+    reason this is two steps rather than one.
+    """
+    from . import conversion
+
+    vault_file, html = _source_of(request, file_pk, types=("html",))
+    report = conversion.html_to_ctml(vault_file, html)
+    target = _convert_target(vault_file, ".ctml")
+
+    if request.method != "POST":
+        return render(request, "cyprian/convert.html", _report_context(
+            request, vault_file, report,
+            action_url=reverse("cyprian:html_to_ctml", args=[vault_file.pk]),
+            heading=_("Convert this page to a CTML document"), target=target))
+
+    created = _write_beside(vault_file, title=target,
+                            data=report.text.encode("utf-8"),
+                            file_type="ctml", owner=request.user)
     messages.success(request, _(
-        "“%(title)s” was created from this page. The HTML file is untouched — "
-        "editing the document does not change it."
-    ) % {"title": document.title})
-    return redirect("cyprian:edit", file_pk=document.pk)
+        "“%(title)s” was created from this page. The HTML file is untouched."
+    ) % {"title": created.title})
+    return redirect("cyprian:edit", file_pk=created.pk)
+
+
+@login_required
+def ctml_to_html(request, file_pk):
+    """Convert a CTML document into an HTML page beside it.
+
+    The step a document takes before it can become a PDF. Aralia accepts HTML
+    and only HTML, so this is the visible half of that sequence rather than
+    something done for the user behind a button labelled something else.
+    """
+    from . import conversion
+
+    vault_file, raw = _source_of(request, file_pk, types=("ctml", "document"))
+    try:
+        document = ctml.loads(raw)
+    except ctml.DocumentParseError:
+        raise Http404
+    report = conversion.ctml_to_html(document)
+    target = _convert_target(vault_file, ".html")
+
+    if request.method != "POST":
+        return render(request, "cyprian/convert.html", _report_context(
+            request, vault_file, report,
+            action_url=reverse("cyprian:ctml_to_html", args=[vault_file.pk]),
+            heading=_("Convert this document to an HTML page"), target=target))
+
+    created = _write_beside(vault_file, title=target,
+                            data=report.text.encode("utf-8"),
+                            file_type="html", owner=request.user)
+    messages.success(request, _(
+        "“%(title)s” was created from this document, which is untouched. "
+        "An HTML page is what the PDF renderer accepts."
+    ) % {"title": created.title})
+    try:
+        return redirect(reverse("editor:html_display", args=[created.pk]))
+    except NoReverseMatch:
+        return redirect("vault:public_list")

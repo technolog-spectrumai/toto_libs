@@ -93,7 +93,14 @@ SECTIONS: tuple[Section, ...] = (
         # Splitting them cost this host its only Documents listing: the tile by
         # that name opened the HTML viewer while written documents had no
         # listing at all.
-        file_types=("document", "html"),
+        # "document" is the LEGACY spelling of "ctml" — carried for rows
+        # migration 0023 could not reach, exactly as "presentation" is
+        # carried beside "pxml" on the tab below.
+        # `pdf` is listed but has no editor and no reader plugin, so
+        # `open_url` falls through to the download door — which is right. It is
+        # here so a PDF made from a page in this tab is VISIBLE in the tab it
+        # was made from, instead of landing somewhere the person has to hunt.
+        file_types=("ctml", "document", "html", "pdf"),
         app_labels=("toto.cyprian", "toto.htmlview"),
         entitlement="cyprian", show_type=True,
         blurb="Written documents and HTML pages — read them, or open them to edit.",
@@ -177,6 +184,15 @@ TOOLS: tuple = (
     Tool(slug="ocr", label="Read text", icon="fa-solid fa-file-signature",
          url_name="ocr:home", app_labels=("toto.ocr",), entitlement="ocr",
          blurb="Turn a photo, a screenshot or a scanned PDF into text."),
+    # Names a HOST-owned app, which this module may do: `app_labels` is a
+    # string for `apps.is_installed` and `url_name` is resolved lazily, so
+    # nothing here imports it. `Section.app_labels` already names toto.primula
+    # the same way.
+    Tool(slug="aralia", label="HTML to PDF", icon="fa-solid fa-file-pdf",
+         url_name="aralia:editor", app_labels=("toto.aralia",),
+         entitlement="aralia",
+         blurb="Render an HTML page to a PDF. A CTML document must be "
+               "converted to HTML first."),
 )
 
 

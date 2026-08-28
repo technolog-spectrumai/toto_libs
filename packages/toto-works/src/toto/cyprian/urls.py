@@ -13,12 +13,13 @@ app_name = "cyprian"
 
 urlpatterns = [
     path("edit/<int:file_pk>/", views.DocumentEditView.as_view(), name="edit"),
-    path("edit-html/<int:file_pk>/", views.edit_html, name="edit_html"),
     path("save/<int:file_pk>/", views.document_save, name="save"),
     path("source/<int:file_pk>/", views.document_source, name="source"),
-    # The write half of htmlview's "convert this page" offer. It lives here so
-    # that app can keep its "nowhere to write" guarantee.
-    path("from-html/<int:file_pk>/", views.create_from_html, name="create_from_html"),
+    # The two conversions. They live here because cyprian owns the CTML
+    # format; they are POST-only and each creates a NEW file, which is also
+    # what lets toto.htmlview keep its "nowhere to write" guarantee.
+    path("html-to-ctml/<int:file_pk>/", views.html_to_ctml, name="html_to_ctml"),
+    path("ctml-to-html/<int:file_pk>/", views.ctml_to_html, name="ctml_to_html"),
     path("file/<int:file_pk>/", views.rendition, name="rendition"),
 
     path("media/embed/", views.document_media_embed, name="media_embed"),

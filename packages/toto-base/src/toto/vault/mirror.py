@@ -109,6 +109,8 @@ def _stub_fields(row: dict) -> dict:
     file_type = row.get("file_type") or "text"
     if file_type == "presentation":
         file_type = "pxml"
+    elif file_type == "document":
+        file_type = "ctml"
     return {
         "title": row.get("title") or row.get("key") or "",
         "file_type": file_type,

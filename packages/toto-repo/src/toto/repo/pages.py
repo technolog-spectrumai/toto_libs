@@ -73,7 +73,8 @@ def _surface_link(repo: GitRepo) -> dict:
                         "url": reverse(f"{app}:workspace", args=[workspace.slug])}
 
     for vault_file in subtree_files(repo.directory):
-        if vault_file.file_type == "document" and django_apps.is_installed("toto.cyprian"):
+        if (vault_file.file_type in ("ctml", "document")
+                and django_apps.is_installed("toto.cyprian")):
             return {"label": vault_file.title, "kind": "document",
                     "url": reverse("cyprian:edit", args=[vault_file.pk])}
     return {"label": repo.directory.full_path(), "kind": "folder", "url": ""}

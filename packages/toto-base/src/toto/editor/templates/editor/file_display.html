@@ -117,25 +117,15 @@
           <i id="lock-icon" class="fa-solid fa-lock-open"></i>
         </button>
 
-        {% if rich_import_map %}
-        <button id="toggle-rich" title="{% trans 'Rich editor' %}" class="toolbar-btn border">
-          <i id="rich-icon" class="fa-solid fa-wand-magic-sparkles"></i>
-        </button>
-        {% endif %}
-
         {% if cyprian_convert_url %}
-        {% comment %}The full writer, as an alternative. What the converter's
-        own docstring says out loud: the body carries over, head/styles do
-        not, and THIS file is never touched — a `document` is minted beside
-        it (idempotently), and that is what opens in Cyprian.{% endcomment %}
-        <form id="cyprian-convert" method="post" action="{{ cyprian_convert_url }}"
-              class="inline-flex"
-              onsubmit="return confirm('{% trans 'Write this page in Cyprian? A document is created beside this file (the HTML itself is never changed). The body carries over; styles and the head do not.' %}');">
-          {% csrf_token %}
-          <button type="submit" title="{% trans 'Write in Cyprian' %}" class="toolbar-btn border">
-            <i class="fa-solid fa-feather-pointed"></i>
-          </button>
-        </form>
+        {% comment %}CONVERT, not a second editor. A GET, because the target
+        is a page that itemises what the conversion costs and then asks — a
+        confirm() dialog cannot list four kinds of loss with counts. THIS file
+        is never touched either way.{% endcomment %}
+        <a href="{{ cyprian_convert_url }}" title="{% trans 'Convert to CTML' %}"
+           class="toolbar-btn border">
+          <i class="fa-solid fa-feather-pointed"></i>
+        </a>
         {% endif %}
 
         {% comment %}The assistant, when this host has one and this file type has
@@ -201,13 +191,6 @@
            style="height: calc(100vh - 11rem);"
            :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
       </div>
-      {% if rich_import_map %}
-      <div id="rich-editor"
-           class="hidden w-full rounded-xl border overflow-auto p-4"
-           style="height: calc(100vh - 11rem);"
-           :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
-      </div>
-      {% endif %}
     </div>
 
     {% comment %}The versions panel, and the page's ONE fileVersions instance —
@@ -257,15 +240,6 @@
 </div>
 
 <style>
-#rich-editor .ProseMirror { outline: none; min-height: 100%; }
-#rich-editor .ProseMirror p { margin: 0 0 0.6em; }
-#rich-editor .ProseMirror h1, #rich-editor .ProseMirror h2,
-#rich-editor .ProseMirror h3 { font-weight: 700; margin: 0.8em 0 0.4em; }
-#rich-editor .ProseMirror ul, #rich-editor .ProseMirror ol {
-  padding-left: 1.4em; margin: 0 0 0.6em; }
-#rich-editor .ProseMirror blockquote {
-  border-left: 3px solid currentColor; opacity: .85;
-  padding-left: .8em; margin: 0 0 .6em; }
 .toolbar-btn {
   display: inline-flex; align-items: center; justify-content: center;
   width: 2rem; height: 2rem; border-radius: 0.5rem; font-size: 0.8rem;
@@ -368,7 +342,6 @@ const EditorSync = (() => {
 })();
 </script>
 
-{% if rich_import_map %}<script type="importmap">{{ rich_import_map|safe }}</script>{% endif %}
 <script>
 ace.config.set("basePath", "{% static 'vendor/ace/' %}");
 const editor = ace.edit("editor");
@@ -378,49 +351,6 @@ editor.setValue(`{{ content|escapejs }}`, -1);
 editor.setOptions({ fontSize: "14px", showPrintMargin: false, wrap: {{ wrap_lines }}, readOnly: false });
 window.VaultEditor = editor;
 
-{% if rich_import_map %}
-/* ── The dual editor ─────────────────────────────────────────────────────
-   Source (ACE) is the default and the source of truth; Rich is TipTap over
-   the same content, borrowed from cyprian's vendored bundle via the import
-   map above. Switching INTO rich parses the current source; switching back
-   serialises rich HTML into ACE. Live-sync keeps reading ACE, so while rich
-   mode is open the socket sees the last synced source — the save syncs. */
-window.__richMode = false;
-async function ensureRichEditor() {
-  if (window.__richEditor) { return window.__richEditor; }
-  const { Editor } = await import("@tiptap/core");
-  const StarterKit = (await import("@tiptap/starter-kit")).default;
-  window.__richEditor = new Editor({
-    element: document.getElementById("rich-editor"),
-    extensions: [StarterKit],
-    content: "",
-  });
-  return window.__richEditor;
-}
-document.getElementById("toggle-rich").addEventListener("click", async function () {
-  const aceBox = document.getElementById("editor");
-  const richBox = document.getElementById("rich-editor");
-  const icon = document.getElementById("rich-icon");
-  if (!window.__richMode) {
-    const rich = await ensureRichEditor();
-    rich.commands.setContent(editor.getValue(), false);
-    aceBox.classList.add("hidden");
-    richBox.classList.remove("hidden");
-    icon.classList.remove("fa-wand-magic-sparkles");
-    icon.classList.add("fa-code");
-    this.title = "{% trans 'Source editor' %}";
-    window.__richMode = true;
-  } else {
-    editor.setValue(window.__richEditor.getHTML(), -1);
-    richBox.classList.add("hidden");
-    aceBox.classList.remove("hidden");
-    icon.classList.remove("fa-code");
-    icon.classList.add("fa-wand-magic-sparkles");
-    this.title = "{% trans 'Rich editor' %}";
-    window.__richMode = false;
-  }
-});
-{% endif %}
 
 {% if steven_surface %}
 /* The assistant's two functions, and the whole of this editor's part in it.
@@ -586,11 +516,6 @@ function hideConflict() { conflictBanner.classList.replace("flex", "hidden"); }
    button in the conflict banner — never from a retry. An automatic second
    attempt is precisely how the other writer's work gets overwritten. */
 async function saveFile(force) {
-  /* Rich mode edits live in TipTap; the save reads ACE. Sync first, so both
-     modes go through the ONE save door (and its antivirus screening). */
-  if (window.__richMode && window.__richEditor) {
-    editor.setValue(window.__richEditor.getHTML(), -1);
-  }
   const btn = document.getElementById("save-file");
   const formData = new FormData();
   formData.append("content", editor.getValue());

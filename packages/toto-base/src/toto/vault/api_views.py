@@ -23,6 +23,7 @@ EDITABLE_FILE_TYPES = {
     # Cyprian documents, for the same reason: the desktop writer edits them, and
     # they are XML text like everything else here. Adding decks but not
     # documents left the desktop app able to open half of what it can edit.
+    "ctml",
     "document",
     # "sheet" is ABSENT, but NOT for the reason this comment used to give.
     #

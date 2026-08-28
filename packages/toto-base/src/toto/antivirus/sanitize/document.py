@@ -256,7 +256,7 @@ def sanitize_content(html: str, *, limit: int = 8 * 1024 * 1024) -> str:
     """A section's content, as it is safe to store and to render.
 
     Truncate rather than raise on something enormous: a corrupt or hostile file
-    must still open, which is the same rule every cap in `document_format`
+    must still open, which is the same rule every cap in `ctml`
     follows.
     """
     text = html or ""

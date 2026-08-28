@@ -200,7 +200,7 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     created here or it is not created at all, which is what makes the owning
     app's column safe to authorise against.
     """
-    from . import document_format
+    from . import ctml
     from toto.antivirus.sanitize import sanitize_content
 
     if bucket is None:
@@ -213,11 +213,11 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     # silently starting blank beside it.
     found = VaultFile.objects.filter(
         bucket=bucket, directory=directory, title=title,
-        file_type="document").first()
+        file_type__in=("ctml", "document")).first()
     if found is not None:
         return found
 
-    document = document_format.new_document(document_title or "")
+    document = ctml.new_document(document_title or "")
     body = sanitize_content(seed_html or "")
     if body:
         document.content = body
@@ -226,11 +226,11 @@ def open_document(*, key: str, ref: str, title: str, seed_html: str, owner,
     # matter, and a wiki page is read top to bottom.
     document.toc = toc
 
-    xml = document_format.dumps(document).encode("utf-8")
+    xml = ctml.dumps(document).encode("utf-8")
     vault_file = VaultFile(
         owner=owner, title=title,
         key=unique_key(slugify(title.rsplit(".", 1)[0]) or "document", bucket),
-        file_type="document", bucket=bucket, directory=directory,
+        file_type="ctml", bucket=bucket, directory=directory,
         is_public=False)
     vault_file.save()
     vault_file.file.save(title, ContentFile(xml), save=True)

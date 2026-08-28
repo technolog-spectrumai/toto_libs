@@ -1205,7 +1205,7 @@ def wiki_page_write(request, pk, slug):
         page.vault_file = open_document(
             key=KANBAN_PAGE_META,
             ref=str(page.pk),
-            title=f"{page.slug or 'page'}-{page.pk}.xml",
+            title=f"{page.slug or 'page'}-{page.pk}.ctml",
             seed_html=page.body_html,
             owner=owner,
             document_title=page.title,

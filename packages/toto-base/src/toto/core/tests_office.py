@@ -263,7 +263,7 @@ class DelegationTests(OfficeTestCase):
         documents = office.SECTIONS_BY_SLUG["documents"]
         if django_apps.is_installed("toto.cyprian"):
             self.assertEqual([t for t, _ext in office.creatable_types(documents)],
-                             ["document"])
+                             ["ctml"])
 
 
 class FolderPanelTests(OfficeTestCase):
@@ -329,6 +329,13 @@ class CreationGateTests(OfficeTestCase):
         free = office.Section(slug="free", label="Free", icon="i",
                               file_types=("svg",))
         self.assertTrue(office.may_create(self.user, free))
+
+    def test_a_pdf_is_listed_where_it_was_made(self):
+        """Aralia writes a PDF beside the page it rendered. If Documents did
+        not list `pdf`, the tab you were looking at would not show the file you
+        just made from it."""
+        documents = office.SECTIONS_BY_SLUG["documents"]
+        self.assertIn("pdf", documents.file_types)
 
     def test_the_drawings_tab_asks_for_the_drawings_plan(self):
         drawings = office.SECTIONS_BY_SLUG["drawings"]
