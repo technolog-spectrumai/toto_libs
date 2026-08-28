@@ -62,6 +62,16 @@ class Company(DomainEntity):
     #: exactly. A reader reaches the file through the vault's own download
     #: route, which enforces may_read; the template never decides that.
     statute_text = models.TextField(blank=True)
+    #: Where the company sits, for the map. Nullable and SET_NULL: the seat
+    #: is a convenience over the register, never a required fact, and
+    #: deleting an address must not take the company with it.
+    headquarters = models.ForeignKey(
+        "locations.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="company_headquarters",
+    )
     statute_file = models.ForeignKey(
         "vault.VaultFile",
         null=True,
@@ -110,6 +120,15 @@ class Party(DomainEntity):
 
     company = models.ForeignKey(Company, on_delete=models.PROTECT, related_name="parties")
     name = models.CharField(max_length=200)
+    #: An optional pin for the shareholder map — the party's, not a legal
+    #: address. Same nullability reasoning as Company.headquarters.
+    location = models.ForeignKey(
+        "locations.Address",
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name="company_parties_located",
+    )
     person = models.ForeignKey(
         "people.Person",
         on_delete=models.PROTECT,

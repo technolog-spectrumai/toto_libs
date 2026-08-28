@@ -23,6 +23,7 @@ urlpatterns = [
          name="meeting_export"),
     path("<slug:slug>/votes/<uuid:uid>/<uuid:proposition_uid>/export.pdf",
          views.vote_export, name="vote_export"),
+    path("<slug:slug>/locations/", views.locations, name="locations"),
     path("<slug:slug>/graph.json", views.company_graph, name="company_graph"),
     path(
         "<slug:company_slug>/departments/<slug:slug>/",

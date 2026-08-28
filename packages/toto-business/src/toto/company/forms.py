@@ -288,3 +288,39 @@ class CompanyActionForm(forms.ModelForm):
         if commit:
             action.save()
         return action
+
+
+class AddressPointForm(forms.ModelForm):
+    """One mapped point: a postal-ish address plus coordinates.
+
+    Coordinates are clicked on the map (or typed, or pasted from any map
+    app) rather than geocoded server-side — the suite's geocoding helpers
+    stay the upgrade path. Ranges are enforced here; the model keeps plain
+    floats.
+    """
+
+    latitude = forms.FloatField(
+        required=False, min_value=-90, max_value=90, label="Latitude",
+        help_text="Decimal degrees, e.g. 52.2297.")
+    longitude = forms.FloatField(
+        required=False, min_value=-180, max_value=180, label="Longitude",
+        help_text="Decimal degrees, e.g. 21.0122.")
+
+    class Meta:
+        from toto.locations.models import Address
+
+        model = Address
+        fields = ("country_name", "state_or_province_name", "locality_name",
+                  "street", "building", "latitude", "longitude")
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        for field in self.fields.values():
+            field.widget.attrs.setdefault("class", FIELD_CLASS)
+
+    def clean(self):
+        data = super().clean()
+        lat, lon = data.get("latitude"), data.get("longitude")
+        if (lat is None) != (lon is None):
+            raise ValidationError("Give both coordinates, or neither.")
+        return data

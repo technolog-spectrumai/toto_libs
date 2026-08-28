@@ -40,6 +40,7 @@ from toto.company.models import (
     CompanyAction,
     CompanyMembership,
     Department,
+    Party,
     ShareHolding,
 )
 from toto.ui import PageProcessor
@@ -81,6 +82,9 @@ def _tabs(company, active):
         {"key": "votes", "label": "Votes", "icon": "fa-check-to-slot",
          "url": reverse("company:votes", args=[company.slug]),
          "active": active == "votes"},
+        {"key": "locations", "label": "Locations", "icon": "fa-map-location-dot",
+         "url": reverse("company:locations", args=[company.slug]),
+         "active": active == "locations"},
     ]
 
 
@@ -819,3 +823,118 @@ def vote_export(request, slug, uid, proposition_uid=None):
     else:
         messages.success(request, "The PDF is rendering.")
     return redirect("company:vote_detail", slug=company.slug, uid=meeting.uid)
+
+def _audit(action, **kwargs):
+    """Into the audit chain, on hosts that keep one. A no-op elsewhere —
+    toto.audit ships in toto-base, but installing it is the host's call."""
+    from django.apps import apps as django_apps
+
+    if not django_apps.is_installed("toto.audit"):
+        return
+    from toto.audit import record
+
+    record(action, **kwargs)
+
+
+@login_required
+def locations(request, slug):
+    """The company on a map: the seat, and every shareholder who gave one.
+
+    Staff write (set the headquarters, place or clear a shareholder);
+    everyone attached reads. The map is a convenience over the list, not
+    the record — the list renders first and stays when JavaScript does not.
+    Ported from the placidia truth book, where the shape earned its keep.
+    """
+    from toto.company.forms import AddressPointForm
+    from toto.company.services import geography
+
+    company = _company(slug)
+    hq_form = AddressPointForm(instance=company.headquarters, prefix="hq")
+    party_form = AddressPointForm(prefix="party")
+    parties = list(company.parties.filter(active=True)
+                   .select_related("location").order_by("name"))
+    open_modal = ""
+
+    if request.method == "POST":
+        _staff_only(request.user)
+        action = request.POST.get("action")
+
+        if action == "headquarters":
+            hq_form = AddressPointForm(request.POST,
+                                       instance=company.headquarters,
+                                       prefix="hq")
+            if hq_form.is_valid():
+                seat = hq_form.save()
+                if company.headquarters_id != seat.pk:
+                    company.headquarters = seat
+                    company.save(update_fields=["headquarters"])
+                _audit("HEADQUARTERS_SET", obj=company, request=request,
+                       app_label="company",
+                       after={"address": str(seat),
+                              "latitude": seat.latitude,
+                              "longitude": seat.longitude})
+                messages.success(request, "Headquarters saved.")
+                return redirect("company:locations", slug=company.slug)
+            open_modal = "headquarters"
+
+        elif action == "party":
+            party = get_object_or_404(Party, pk=request.POST.get("party_id"),
+                                      company=company)
+            party_form = AddressPointForm(request.POST,
+                                          instance=party.location,
+                                          prefix="party")
+            if party_form.is_valid():
+                place = party_form.save()
+                if party.location_id != place.pk:
+                    party.location = place
+                    party.save(update_fields=["location"])
+                _audit("PARTY_LOCATED", obj=party, request=request,
+                       app_label="company",
+                       after={"party": party.name, "address": str(place)})
+                messages.success(request, "Location saved.")
+                return redirect("company:locations", slug=company.slug)
+            open_modal = "party"
+
+        elif action == "party_clear":
+            party = get_object_or_404(Party, pk=request.POST.get("party_id"),
+                                      company=company)
+            party.location = None
+            party.save(update_fields=["location"])
+            _audit("PARTY_UNLOCATED", obj=party, request=request,
+                   app_label="company", after={"party": party.name})
+            messages.success(request, "Location removed.")
+            return redirect("company:locations", slug=company.slug)
+
+    radius_km = geography.parse_radius(request.GET.get("radius"))
+    placed, unlocated, origin = geography.survey(company, parties,
+                                                 radius_km=radius_km)
+
+    markers = [{
+        "name": row.party.name,
+        "lat": row.latitude,
+        "lon": row.longitude,
+        "km": (round(row.distance_km, 1)
+               if row.distance_km is not None else None),
+    } for row in placed]
+    map_payload = {
+        "origin": ({"name": company.name, "lat": origin[0], "lon": origin[1]}
+                   if origin else None),
+        "markers": markers,
+        "radius_km": radius_km,
+    }
+
+    return company_render(request, "company/locations.html", {
+        "company": company,
+        "tabs": _tabs(company, "locations"),
+        "hq_form": hq_form,
+        "party_form": party_form,
+        "parties": parties,
+        "placed": placed,
+        "unlocated": unlocated,
+        "origin": origin,
+        "radius_km": radius_km,
+        "map_payload": map_payload,
+        "open_modal": open_modal,
+        "can_manage": request.user.is_staff or request.user.is_superuser,
+    })
+
