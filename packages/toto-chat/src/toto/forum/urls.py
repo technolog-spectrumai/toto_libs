@@ -40,7 +40,9 @@ urlpatterns = [
     path("<slug:slug>/files/", views.room_files, name="room_files"),
     path("<slug:slug>/polls/", views.room_polls, name="room_polls"),
     path("<slug:slug>/polls/new/", views.room_poll_create, name="room_poll_create"),
-    path("<slug:slug>/polls/<slug:question_slug>/vote/", views.room_poll_vote, name="room_poll_vote"),
+    path("<slug:slug>/polls/<slug:poll_slug>/vote/", views.room_poll_vote, name="room_poll_vote"),
+    path("<slug:slug>/polls/<slug:poll_slug>/close/", views.room_poll_close, name="room_poll_close"),
+    path("<slug:slug>/polls/<slug:poll_slug>/delete/", views.room_poll_delete, name="room_poll_delete"),
     path("<slug:slug>/stats/", views.room_stats, name="room_stats"),
     path("<slug:slug>/", ChannelDetailView.as_view(), name="channel_detail"),
 

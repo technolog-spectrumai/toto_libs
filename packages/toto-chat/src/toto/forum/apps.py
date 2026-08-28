@@ -9,11 +9,6 @@ class ForumConfig(AppConfig):
         # Membership changes must reach sockets that are already connected.
         from . import signals  # noqa: F401
 
-        # A room's polls are answered by the room. Registered here rather
-        # than discovered: one line, no machinery, and inert on a host that
-        # ships forum without polls.
-        try:
-            from . import audience
-        except ImportError:                     # no toto.polls in this build
-            return
-        audience.install()
+        # The audience registration that used to sit here is gone with the
+        # engine it talked to: a room's polls are this app's own data now, so
+        # there is no registry between a room and its own question.

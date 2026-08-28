@@ -9,41 +9,63 @@
       <article :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-lg border p-5 shadow-sm">
         <div class="flex flex-wrap items-center justify-between gap-2">
-          <h2 class="font-bold">{{ card.question.title }}</h2>
+          <h2 class="font-bold">{{ card.poll.title }}</h2>
           <span class="text-xs font-semibold {% if card.is_open %}{% else %}opacity-50{% endif %}"
                 {% if card.is_open %}:class="darkMode ? 'text-success-dark' : 'text-success-light'"{% endif %}>
             {% if card.is_open %}{% trans "Open" %}{% else %}{% trans "Closed" %}{% endif %}
           </span>
         </div>
-        {% if card.question.closes_at %}
+        {% if card.poll.closes_at %}
           <p class="mt-1 text-xs opacity-50">
             {% if card.is_open %}{% trans "Closes" %}{% else %}{% trans "Closed" %}{% endif %}
-            {{ card.question.closes_at|date:"Y-m-d H:i" }}</p>
+            {{ card.poll.closes_at|date:"Y-m-d H:i" }}</p>
         {% endif %}
 
         {% if card.is_open and not card.ballot %}
           <form method="post"
-                action="{% url 'forum:room_poll_vote' channel.slug card.question.slug %}"
+                action="{% url 'forum:room_poll_vote' channel.slug card.poll.slug %}"
                 class="mt-3 space-y-2">
             {% csrf_token %}
             {% for row in card.rows %}
               <label :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'"
                      class="flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2 text-sm transition">
                 <input type="radio" name="choice" value="{{ row.result.choice_id }}">
-                <span class="flex-1 font-semibold">{{ row.result.label }}</span>
-                <span class="text-xs opacity-55">{{ row.result.ballots }}</span>
+                <span class="flex-1 font-semibold">{{ row.label }}</span>
+                {% comment %}A poll that withholds its count until it closes
+                must withhold it HERE too — the tally beside the radio button
+                is the same number, and showing it while hiding the bars would
+                be a promise kept in one place only.{% endcomment %}
+                {% if row.ballots is not None %}
+                  <span class="text-xs opacity-55">{{ row.ballots }}</span>
+                {% endif %}
               </label>
             {% endfor %}
             <button type="submit"
                     :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-white'"
                     class="rounded px-4 py-2 text-sm font-semibold shadow-sm hover:opacity-90">
               {% trans "Vote" %}</button>
+            {% comment %}Said here as well as on the results side: somebody
+            about to answer should know the count is hidden, rather than
+            answering and then wondering where the bars went.{% endcomment %}
+            {% if not card.results_visible %}
+              <p class="text-xs opacity-60"><i class="fa-solid fa-eye-slash opacity-70"></i>
+                {% trans "The count appears when this poll closes." %}</p>
+            {% endif %}
           </form>
+        {% elif not card.results_visible %}
+          <div class="mt-3 space-y-2 text-sm">
+            <p class="opacity-70"><i class="fa-solid fa-eye-slash opacity-60"></i>
+              {% trans "The count appears when this poll closes." %}</p>
+            {% if card.ballot %}
+              <p class="text-xs opacity-55">{% trans "you answered" %}
+                {{ card.ballot.choice.label }}</p>
+            {% endif %}
+          </div>
         {% else %}
           <div class="mt-3 space-y-1">
             {% for row in card.rows %}
               <div class="flex items-center gap-3 text-sm">
-                <span class="w-32 truncate font-semibold">{{ row.result.label }}</span>
+                <span class="w-32 truncate font-semibold">{{ row.label }}</span>
                 <div class="h-2 flex-1 overflow-hidden rounded-full"
                      :class="darkMode ? 'bg-white/10' : 'bg-black/10'">
                   <div class="h-full rounded-full"
@@ -61,17 +83,46 @@
           </div>
           {% if card.is_open and card.ballot %}
             <form method="post"
-                  action="{% url 'forum:room_poll_vote' channel.slug card.question.slug %}"
+                  action="{% url 'forum:room_poll_vote' channel.slug card.poll.slug %}"
                   class="mt-2 flex flex-wrap gap-2">
               {% csrf_token %}
               {% for row in card.rows %}
                 <button name="choice" value="{{ row.result.choice_id }}" type="submit"
                         class="rounded border border-current/30 px-2 py-1 text-xs font-semibold hover:opacity-80">
-                  {{ row.result.label }}</button>
+                  {{ row.label }}</button>
               {% endfor %}
               <span class="self-center text-xs opacity-50">{% trans "change your answer" %}</span>
             </form>
           {% endif %}
+        {% endif %}
+
+        {% if card.can_manage %}
+          {% comment %}Close and delete: the room never had either, because the
+          only close button lived in the separate polls product. Delete is
+          irreversible and asks first.{% endcomment %}
+          <div class="mt-4 flex flex-wrap items-center gap-2 border-t border-current/10 pt-3">
+            {% if card.is_open %}
+              <form method="post"
+                    action="{% url 'forum:room_poll_close' channel.slug card.poll.slug %}">
+                {% csrf_token %}
+                <button type="submit" class="rounded border border-current/30 px-2 py-1 text-xs font-semibold hover:opacity-80">
+                  <i class="fa-solid fa-lock"></i> {% trans "Close poll" %}</button>
+              </form>
+            {% endif %}
+            <form method="post"
+                  action="{% url 'forum:room_poll_delete' channel.slug card.poll.slug %}"
+                  {% comment %}`if (!confirm) preventDefault`, not `return
+                  confirm(...)`: Alpine evaluates the attribute as an
+                  EXPRESSION, and a bare `return` in one is a syntax error
+                  that kills the whole component — the delete button still
+                  submitted, silently unconfirmed.{% endcomment %}
+                  @submit="if (!confirm('{% trans "Delete this poll and every answer to it? This cannot be undone." %}')) $event.preventDefault()">
+              {% csrf_token %}
+              <button type="submit" class="rounded px-2 py-1 text-xs font-semibold opacity-70 hover:opacity-100"
+                      :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                <i class="fa-solid fa-trash"></i> {% trans "Delete" %}</button>
+            </form>
+          </div>
         {% endif %}
       </article>
     {% empty %}
@@ -118,6 +169,26 @@
           <input type="datetime-local" name="closes_at"
                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                  class="rounded-lg border px-3 py-2">
+        </label>
+        {% comment %}Both switches are opt-in and both default to the more
+        forgiving answer: you may change your mind, and everyone watches the
+        count. A poll is a conversation, not a ballot box, unless somebody
+        deliberately says otherwise.{% endcomment %}
+        <label class="flex items-start gap-3 text-sm">
+          <input type="checkbox" name="final" class="mt-1 rounded border">
+          <span>
+            <span class="font-semibold">{% trans "One answer only" %}</span>
+            <span class="block text-xs opacity-65">
+              {% trans "Nobody can change their answer once it is given." %}</span>
+          </span>
+        </label>
+        <label class="flex items-start gap-3 text-sm">
+          <input type="checkbox" name="hide_results" class="mt-1 rounded border">
+          <span>
+            <span class="font-semibold">{% trans "Hide the count until it closes" %}</span>
+            <span class="block text-xs opacity-65">
+              {% trans "Stops early answers from steering later ones." %}</span>
+          </span>
         </label>
         <div class="flex items-center justify-end gap-3 pt-2">
           <button type="button" @click="createOpen = false"

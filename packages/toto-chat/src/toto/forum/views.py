@@ -1,4 +1,5 @@
 from django.contrib import messages
+from django.core.exceptions import PermissionDenied
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.views.generic import ListView, DetailView, View
@@ -99,7 +100,6 @@ class ChannelDetailView(LoginRequiredMixin, DetailView):
 
         context["active_tab"] = "chat"
         context["is_participant"] = current_member is not None
-        context["polls_installed"] = django_apps.is_installed("toto.polls")
 
         context["can_send_messages"] = current_member is not None
         context["can_join"] = bool(current_person and not current_member)
@@ -234,7 +234,6 @@ def _room_context(request, channel, active_tab):
     context = {
         "channel": channel,
         "active_tab": active_tab,
-        "polls_installed": django_apps.is_installed("toto.polls"),
     }
     return PageProcessor().decorate(context, request)
 
@@ -276,10 +275,8 @@ def room_files(request, slug):
 
 
 def room_polls(request, slug):
-    """The room's polls — engine objects, room UI. Nothing here counts."""
+    """The room's polls: its own data, its own rules, its own page."""
     from django.shortcuts import render
-
-    from toto.polls import services as polls_services
 
     from . import voting
 
@@ -291,19 +288,24 @@ def room_polls(request, slug):
     permissions.require_member(request, channel)
 
     cards = []
-    for question in voting.questions_for(channel).prefetch_related("choices"):
-        roll = polls_services.electorate_for(question)
-        counted = polls_services.tally(question, electorate=roll)
+    for poll, counted, ballot in voting.page_of(channel, request.user):
+        visible = poll.results_visible
         cards.append({
-            "question": question,
-            "is_open": question.is_open,
-            "tally": counted,
+            "poll": poll,
+            "is_open": poll.is_open,
+            # A withheld count is withheld from the CONTEXT, not merely from
+            # the markup: a template guard is one `{% if %}` away from being
+            # forgotten by the next person to touch this page, and the numbers
+            # would still have been sitting in the response to find.
+            "tally": counted if visible else None,
+            "results_visible": visible,
             "rows": [{"result": r,
-                      "share_percent": (counted.share(r) * 100
-                                        if counted.share(r) is not None
-                                        else None)}
+                      "label": r.label,
+                      "ballots": r.ballots if visible else None,
+                      "share_percent": counted.share(r) if visible else None}
                      for r in counted.results],
-            "ballot": polls_services.ballot_of(question, request.user),
+            "ballot": ballot,
+            "can_manage": voting.may_manage(poll, request.user),
         })
 
     context = _room_context(request, channel, "polls")
@@ -316,61 +318,103 @@ def room_poll_create(request, slug):
     from django.core.exceptions import ValidationError
     from django.utils import timezone as tz
     from django.utils.dateparse import parse_datetime
-    from django.views.decorators.http import require_POST  # noqa: F401
 
     from . import voting
+    from .models import ResultVisibility, Revisability
 
     if request.method != "POST":
         return redirect("forum:room_polls", slug=slug)
     channel = get_object_or_404(ForumChannel, slug=slug)
     permissions.require_member(request, channel)
 
-    title = (request.POST.get("title") or "").strip()[:150]
     closes_raw = (request.POST.get("closes_at") or "").strip()
     closes_at = parse_datetime(closes_raw) if closes_raw else None
     if closes_at is not None and tz.is_naive(closes_at):
         closes_at = tz.make_aware(closes_at)
 
-    if not title:
-        messages.error(request, _("A poll needs a question."))
+    # Both knobs are opt-in and both default to the friendlier answer: you may
+    # change your mind, and everyone watches the count.
+    revisability = (Revisability.FINAL
+                    if request.POST.get("final") else Revisability.OPEN)
+    visibility = (ResultVisibility.ON_CLOSE
+                  if request.POST.get("hide_results") else ResultVisibility.LIVE)
+
+    try:
+        voting.open_poll(channel, request.user,
+                         title=request.POST.get("title", ""),
+                         options=request.POST.get("options", ""),
+                         closes_at=closes_at, revisability=revisability,
+                         visibility=visibility)
+    except ValidationError as exc:
+        messages.error(request, "; ".join(exc.messages))
     else:
-        try:
-            voting.open_room_poll(channel, request.user, title=title,
-                                  options=request.POST.get("options", ""),
-                                  closes_at=closes_at)
-        except ValidationError as exc:
-            messages.error(request, "; ".join(exc.messages))
-        else:
-            messages.success(request, _("The poll is open."))
+        messages.success(request, _("The poll is open."))
     return redirect("forum:room_polls", slug=slug)
 
 
-def room_poll_vote(request, slug, question_slug):
-    """POST one answer. The engine gates by the room electorate — a
-    non-member is refused even if they somehow reach this door."""
-    from toto.polls.core import VotingError
-    from toto.polls.models import Choice
+def room_poll_vote(request, slug, poll_slug):
+    """POST one answer. Membership is checked twice on purpose: at the door
+    by require_member, and inside cast() by the same predicate — the door
+    could be reached another way one day, and the engine must not depend on
+    who called it."""
+    from . import voting
+    from .models import PollChoice
 
+    if request.method != "POST":
+        return redirect("forum:room_polls", slug=slug)
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_member(request, channel)
+    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
+    choice = get_object_or_404(PollChoice, pk=request.POST.get("choice") or 0,
+                               poll=poll)
+
+    try:
+        voting.cast(poll, request.user, choice)
+    except voting.VotingError as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, _("Your answer has been recorded."))
+    return redirect("forum:room_polls", slug=slug)
+
+
+def room_poll_close(request, slug, poll_slug):
+    """Shut a poll by hand — its author, or staff.
+
+    The room had no way to do this before: a poll opened without a deadline
+    stayed open forever, because the only close button lived in the separate
+    polls app that no longer exists.
+    """
     from . import voting
 
     if request.method != "POST":
         return redirect("forum:room_polls", slug=slug)
     channel = get_object_or_404(ForumChannel, slug=slug)
     permissions.require_member(request, channel)
-    question = get_object_or_404(voting.questions_for(channel),
-                                 slug=question_slug)
-    choice = get_object_or_404(Choice, pk=request.POST.get("choice") or 0,
-                               question=question)
+    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
+    if not voting.may_manage(poll, request.user):
+        raise PermissionDenied(_("Only the person who opened this poll, or "
+                                 "staff, may close it."))
+    poll.close()
+    messages.success(request, _("The poll is closed."))
+    return redirect("forum:room_polls", slug=slug)
 
-    from toto.polls import services as polls_services
 
-    try:
-        polls_services.cast(question, request.user, choice,
-                            electorate=polls_services.electorate_for(question))
-    except VotingError as exc:
-        messages.error(request, str(exc))
-    else:
-        messages.success(request, _("Your answer has been recorded."))
+def room_poll_delete(request, slug, poll_slug):
+    """Remove a poll and every answer to it. Its author, or staff."""
+    from . import voting
+
+    if request.method != "POST":
+        return redirect("forum:room_polls", slug=slug)
+    channel = get_object_or_404(ForumChannel, slug=slug)
+    permissions.require_member(request, channel)
+    poll = get_object_or_404(voting.polls_for(channel), slug=poll_slug)
+    if not voting.may_manage(poll, request.user):
+        raise PermissionDenied(_("Only the person who opened this poll, or "
+                                 "staff, may delete it."))
+    # Cascades to its choices and ballots. Irreversible, and the template asks
+    # before it posts here.
+    poll.delete()
+    messages.success(request, _("The poll and its answers are gone."))
     return redirect("forum:room_polls", slug=slug)
 
 

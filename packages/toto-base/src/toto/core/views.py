@@ -269,7 +269,9 @@ def _manual_features(request):
         "kanban": apps.is_installed("toto.kanban"),
         "locations": apps.is_installed("toto.locations")
         and getattr(settings, "LOCATIONS_UI_ENABLED", True),
-        "polls": apps.is_installed("toto.polls"),
+        # Polls are a room feature now: the chapter belongs to whoever has
+        # the forum, and it links into a room rather than to a separate app.
+        "polls": apps.is_installed("toto.forum"),
         "vod": apps.is_installed("toto.vod"),
         "memo": apps.is_installed("toto.memo"),
         "notarius": apps.is_installed("toto.notarius"),

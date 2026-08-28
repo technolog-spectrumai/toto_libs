@@ -265,14 +265,16 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-square-poll-vertical"></i>Ankiety</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    <a href="{% url 'polls:poll_list' %}" class="font-semibold underline hover:opacity-80">Ankiety</a>
-    zadają społeczności pytanie: wybierz odpowiedź i śledź, jak rosną wyniki.
-    W jednych ankietach można zmienić zdanie, dopóki są otwarte; inne przyjmują
-    jedną odpowiedź i nie pokazują nic aż do zamknięcia. Tak czy inaczej wynik
-    ma charakter <span class="font-semibold">informacyjny</span> — ankieta
-    zapisuje, co ludzie myślą, i o niczym nie rozstrzyga. Formalne decyzje
-    spółki nie zapadają na tej stronie: powstają w Irenie i są pokazywane, po
-    weryfikacji, na pulpicie Spółki.
+    Ankieta zadaje pytanie osobom w pokoju: wybierz odpowiedź i śledź, jak rosną
+    wyniki. Ankiety są częścią
+    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Forum</a> —
+    otwórz pokój i przejdź do zakładki <span class="font-semibold">Ankiety</span>,
+    gdzie każdy członek może założyć nową. W jednych ankietach można zmienić
+    zdanie, dopóki są otwarte; inne przyjmują jedną odpowiedź i nie pokazują nic
+    aż do zamknięcia. Tak czy inaczej wynik ma charakter
+    <span class="font-semibold">informacyjny</span> — ankieta zapisuje, co ludzie
+    myślą, i o niczym nie rozstrzyga. Formalne decyzje spółki nie zapadają tutaj:
+    powstają w Irenie i są pokazywane, po weryfikacji, na pulpicie Spółki.
   </p>
 </section>
 {% endif %}

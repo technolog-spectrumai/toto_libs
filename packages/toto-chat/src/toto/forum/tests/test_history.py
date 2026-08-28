@@ -136,6 +136,25 @@ class HistoryTests(TestCase):
         self.assertIn(f"/forum/api/messages/{row.id}/attachment/", payload["image_url"])
         self.assertNotIn("/media/", payload["image_url"])
 
+    def test_the_attachment_root_setting_is_actually_obeyed(self):
+        """`storage=` is resolved once, at import, and FileSystemStorage
+        caches `location` on top of that — so overriding the setting used to
+        change nothing and every suite that uploaded wrote into the running
+        server's own tree. The evidence was channel slugs named `hist`,
+        `images` and `private` sitting in it.
+        """
+        import tempfile
+
+        from django.test import override_settings
+
+        from toto.forum.models import ForumMessage
+
+        elsewhere = tempfile.mkdtemp()
+        field = ForumMessage._meta.get_field("attachment")
+        with override_settings(FORUM_ATTACHMENT_ROOT=elsewhere):
+            self.assertEqual(field.storage.location, elsewhere)
+        self.assertNotEqual(field.storage.location, elsewhere)
+
     def test_deleted_message_is_a_tombstone(self):
         row = store.store_message(self.channel, msg_type="chat_message", body="oops")
         row.deleted_at = timezone.now()

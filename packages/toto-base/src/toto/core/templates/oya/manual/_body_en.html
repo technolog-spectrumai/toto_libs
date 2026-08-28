@@ -261,13 +261,15 @@
   <h2 class="flex items-center gap-2 text-lg font-bold">
     <i class="fa-solid fa-square-poll-vertical"></i>Polls</h2>
   <p class="mt-2 text-sm leading-6 opacity-80">
-    <a href="{% url 'polls:poll_list' %}" class="font-semibold underline hover:opacity-80">Polls</a>
-    asks the community a question: pick an option, and watch the count come in.
-    Some polls let you change your mind while they are open; others take one
-    answer each and show nothing until they close. Either way the result is
-    <span class="font-semibold">informational</span> — a poll here records what
-    people think, and decides nothing. Formal company decisions are not made on
-    this page; they are made in Irena and shown, verified, on the Company
+    A poll asks the people in a room a question: pick an option, and watch the
+    count come in. Polls live inside the
+    <a href="{% url 'forum:channel_list' %}" class="font-semibold underline hover:opacity-80">Forum</a> —
+    open a room and choose its <span class="font-semibold">Polls</span> tab, where
+    any member can start one. Some polls let you change your mind while they are
+    open; others take one answer each and show nothing until they close. Either
+    way the result is <span class="font-semibold">informational</span> — a poll
+    records what people think, and decides nothing. Formal company decisions are
+    not made here; they are made in Irena and shown, verified, on the Company
     dashboard.
   </p>
 </section>

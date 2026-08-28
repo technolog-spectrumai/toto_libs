@@ -38,7 +38,7 @@ PLANS = [
         "is_default": False,
         "order": 20,
         "description": (
-            "The everyday tools — text and code, tasks, polls and maps. Read "
+            "The everyday tools — text and code, tasks and maps. Read "
             "and export documents, sheets and decks; writing them is "
             "Professional. Metered work is still charged per use on top."
         ),
@@ -54,9 +54,15 @@ PLANS = [
         # `editor` stays: the ACE editor is text and code, it is not metered,
         # and taking plain-text editing away from Standard would be a different
         # decision than the one made here.
+        # `polls` is deliberately absent from BOTH plans, and was removed from
+        # the catalogue with it. Polls became a Forum feature, the gate reads
+        # the entitlement off the URL namespace, and `forum` is free — so the
+        # row was selling something nobody could be charged for. Room polls
+        # already resolved as `forum` before this; removing it wrote down what
+        # was already true rather than changing what anybody pays.
         "entitlements": [
             "editor",
-            "kanban", "polls", "locations",
+            "kanban", "locations",
         ],
     },
     {
@@ -84,7 +90,7 @@ PLANS = [
         # description above has promised "notebooks" and "media" the whole time.
         "entitlements": [
             "cyprian", "memo", "primula", "editor",
-            "kanban", "polls", "locations",
+            "kanban", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",
             "anastasia", "dracena", "texlab", "manta",
