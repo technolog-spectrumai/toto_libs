@@ -347,6 +347,56 @@ class PublicFileListView(TemplateView):
         return PageProcessor().decorate(context, self.request)
 
 
+def _egress_refusal(file_obj):
+    """The cap check for bytes OUT, or None to proceed.
+
+    ``storage.egress_mb`` is measured on every Django-served download and
+    billed (as a number, never as money) to the file's OWNER — the same
+    subject as bytes in and the gb_day levy, and the only subject that
+    exists when the downloader is anonymous. Cap-only by design: an
+    explicit staff policy refuses with a 429 sentence; without one nothing
+    is refused and the events are the record.
+
+    The arrears freeze is deliberately waved through. ``check_quota`` puts
+    the freeze before everything, which is right for metered WORK — but a
+    download is a read, and the arrears promise is explicit: nothing is
+    deleted and nothing refuses to be read.
+    """
+    from decimal import Decimal as _D
+
+    from toto.quota import InArrears, QuotaExceeded, check_quota
+
+    from .models import VaultQuotaPolicy
+
+    mb = _D(str(file_obj.file_size_bytes or 0)) / _D("1048576")
+    try:
+        check_quota(VaultQuotaPolicy, "storage.egress_mb", mb, file_obj.owner)
+    except InArrears:
+        return None
+    except QuotaExceeded as exc:
+        return HttpResponse(str(exc), status=429,
+                            content_type="text/plain; charset=utf-8")
+    return None
+
+
+def _record_egress(file_obj, quantity_mb=None):
+    """One served download, on the owner's meter. After the bytes are
+    committed to, never before — a 502 serves nothing and records nothing."""
+    from decimal import Decimal as _D
+
+    from toto.quota import record_usage
+
+    from .models import VaultUsageEvent
+
+    mb = (_D(str(file_obj.file_size_bytes or 0)) / _D("1048576")
+          if quantity_mb is None else quantity_mb)
+    if mb > 0:
+        record_usage(VaultUsageEvent, "storage.egress_mb", mb,
+                     file_obj.owner, unit="MB",
+                     source_type="vault.VaultFile",
+                     source_id=str(file_obj.pk))
+
+
 def _file_response_or_bad_gateway(file_obj):
     """Stream a file's bytes, or say plainly why they could not be fetched.
 
@@ -355,9 +405,16 @@ def _file_response_or_bad_gateway(file_obj):
     bucket and the verbatim error — the jess honesty-sentence cascade, never
     a traceback page. Reachability badges elsewhere come only from job
     stamps; this sentence is the per-request truth.
+
+    Egress rides the same choke point: capped before the stream is opened,
+    recorded once it is. What nginx serves straight from disk (/media/)
+    never reaches this function and is honestly uncounted.
     """
     import os as _os
 
+    refusal = _egress_refusal(file_obj)
+    if refusal is not None:
+        return refusal
     try:
         stream = _storage_backends.open_file_stream(file_obj)
     except Exception as exc:  # noqa: BLE001 — a dead backend must not traceback
@@ -366,6 +423,7 @@ def _file_response_or_bad_gateway(file_obj):
             f"'{file_obj.title}' could not be fetched from {label}: "
             f"{type(exc).__name__}: {exc}",
             status=502, content_type="text/plain; charset=utf-8")
+    _record_egress(file_obj)
     return FileResponse(
         stream,
         as_attachment=True,
@@ -1528,11 +1586,20 @@ class EncryptedDownloadView(LoginRequiredMixin, View):
             return JsonResponse({"ok": False, "error": "File not found."}, status=404)
         if not vault_file.is_encrypted:
             return JsonResponse({"ok": False, "error": "File is not encrypted."}, status=400)
+        refusal = _egress_refusal(vault_file)
+        if refusal is not None:
+            return JsonResponse({"ok": False, "error": refusal.content.decode()},
+                                status=429)
         try:
             data, content_type = vault_file.get_strategy().decrypt_to_bytes(vault_file, password=password)
         except Exception as e:
             return JsonResponse({"ok": False, "error": str(e)}, status=400)
         filename = vault_file.title or os.path.basename(vault_file.file.name)
+        # The decrypted length, not file_size_bytes: what leaves the wire is
+        # the plaintext, and the stored figure drifts on encrypt/decrypt.
+        from decimal import Decimal as _D
+
+        _record_egress(vault_file, _D(str(len(data))) / _D("1048576"))
         return FileResponse(BytesIO(data), content_type=content_type, as_attachment=True, filename=filename)
 
 

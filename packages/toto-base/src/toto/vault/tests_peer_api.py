@@ -332,6 +332,19 @@ class MeteringTests(PeerApiTestCase):
         self.assertIn("went unpaid", json.loads(resp.content)["error"])
         self.assertFalse(VaultFile.objects.filter(bucket=self.bucket).exists())
 
+    def test_a_peer_download_lands_on_the_exporters_egress_meter(self):
+        # Bytes OUT through the peer door ride the same choke point as the
+        # public download door; the exporter is the subject both ways.
+        from .models import VaultUsageEvent
+
+        self._file(content=b"y" * 1024)
+        resp = self._get("peer_file_download", key="doc")
+        self.assertEqual(resp.status_code, 200)
+        b"".join(resp.streaming_content)
+        event = VaultUsageEvent.objects.get(metric_code="storage.egress_mb")
+        self.assertEqual(event.user, self.owner)
+        self.assertEqual(event.quantity * (2 ** 20), 1024)
+
     def test_an_unpriced_host_meters_but_never_charges(self):
         # Doctrine: the cap half always runs, the charge half no-ops on a
         # None tariff. No Tariff row exists here, so the upload lands, the

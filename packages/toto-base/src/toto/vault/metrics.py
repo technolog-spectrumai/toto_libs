@@ -38,3 +38,22 @@ registry.register(Metric(
     description=_("Gigabytes stored, sampled nightly and billed from the first byte. "
                   "The rule that arms it lives in toto.tax; the price on the rate card."),
 ))
+
+# Bytes OUT, the mirror of storage.transfer_mb — and deliberately weaker.
+# Measured on every Django-served download (the public download door, the
+# peer bytes door, the encrypted-download door) and cappable by a staff
+# policy row; NOT charged: pricing egress means deciding who pays when the
+# downloader is anonymous, and until that is decided out loud a Tariff row
+# on this code prices nothing. No default_limit — uncapped by default, so
+# ingress_quota seeds no policy and nothing is refused until a host chooses
+# a number. What nginx serves straight from disk (/media/) never reaches
+# Django and is not counted — the same honesty note as gitea pushes.
+registry.register(Metric(
+    code="storage.egress_mb",
+    label=_("Bytes served"),
+    app_label="vault",
+    unit="mb",
+    description=_("Megabytes served by a download, billed to the file's owner. "
+                  "Measured and cappable; deliberately not charged — a price "
+                  "on this metric prices nothing today."),
+))

@@ -429,11 +429,18 @@ class FileDownloadApiView(CorsApiView):
             vf = VaultFile.objects.get(key=key, owner=request.user)
         except VaultFile.DoesNotExist:
             return JsonResponse({"error": "File not found."}, status=404)
+        from .views import _egress_refusal, _record_egress
+
+        refusal = _egress_refusal(vf)
+        if refusal is not None:
+            return JsonResponse({"error": refusal.content.decode()}, status=429)
         # Streamed through Django, not redirected at storage. A redirect to
         # `vf.file.url` sent the client to a path with no auth on it at all;
         # there is now no such path, and `.url` raises by design.
-        return FileResponse(vf.file.open("rb"), as_attachment=True,
-                            filename=vf.title or vf.key)
+        response = FileResponse(vf.file.open("rb"), as_attachment=True,
+                                filename=vf.title or vf.key)
+        _record_egress(vf)
+        return response
 
 
 @method_decorator(csrf_exempt, name="dispatch")
