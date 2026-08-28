@@ -67,6 +67,9 @@ class ProfileDetailView(LoginRequiredMixin, DetailView):
             context["reference_requests"] = None
 
         context["is_own_profile"] = is_own_profile
+        from toto.locations.geocode import (geocoding_enabled,
+                                            geocoding_settings)
+        context["geocoding_enabled"] = geocoding_enabled(geocoding_settings())
 
         # The SAME resolver the People map uses, so the page and the map cannot
         # disagree about who may see an address — the failure `vault/access.py`
@@ -175,3 +178,97 @@ def set_location_sharing(request):
         messages.success(request, _(
             "You now appear on the People map at your exact address."))
     return redirect(request.META.get("HTTP_REFERER", reverse("socialhub:profile_list")))
+
+@login_required
+def set_my_address(request):
+    """Place (or move) your own pin — the address the People map shares.
+
+    The other half of `set_location_sharing`: that door decides WHO may see
+    the address, this one is the only door that can WRITE it. Own profile
+    only, by construction — there is no way to name anybody else.
+
+    The Address row is updated in place rather than replaced, so nothing
+    referencing it dangles and a re-save moves the pin instead of minting
+    rows. When geocoding is on, the coordinates are reverse-geocoded into the
+    human-readable fields; when it is off (a host that makes no outbound
+    calls), the pin alone is saved and is exactly as useful on the map.
+    """
+    from toto.locations.geocode import (geocoding_enabled,
+                                        geocoding_settings,
+                                        reverse_geocode_address)
+    from toto.locations.models import Address
+
+    if request.method != "POST":
+        return redirect("socialhub:profile_list")
+
+    try:
+        latitude = float(request.POST.get("latitude", ""))
+        longitude = float(request.POST.get("longitude", ""))
+    except (TypeError, ValueError):
+        messages.error(request, _("Place the pin on the map first."))
+        return redirect(request.META.get("HTTP_REFERER",
+                                         reverse("socialhub:profile_list")))
+    if not (-90 <= latitude <= 90 and -180 <= longitude <= 180):
+        messages.error(request, _("Place the pin on the map first."))
+        return redirect(request.META.get("HTTP_REFERER",
+                                         reverse("socialhub:profile_list")))
+
+    profile = getattr(request.user, "community_profile", None)
+    if profile is None:
+        # First contact with the map creates the profile row, the same way
+        # the truth-book host's my-location page did.
+        profile = Person.objects.create(
+            user=request.user,
+            display_name=request.user.get_username())
+
+    fields = {"latitude": latitude, "longitude": longitude}
+    if geocoding_enabled(geocoding_settings()):
+        resolved = reverse_geocode_address(latitude, longitude) or {}
+        for key in ("country_name", "state_or_province_name",
+                    "locality_name", "street", "building"):
+            if resolved.get(key):
+                fields[key] = resolved[key]
+
+    if profile.address_id:
+        # On a GIS build the geometry is authoritative and save() overwrites
+        # the floats from it — so a moved pin must drop the old geometry, and
+        # save() then derives a fresh one from the new coordinates. Without
+        # this the pin silently refuses to move on exactly the hosts with GIS.
+        if hasattr(profile.address, "geometry"):
+            profile.address.geometry = None
+        for key, value in fields.items():
+            setattr(profile.address, key, value)
+        profile.address.save()
+    else:
+        profile.address = Address.objects.create(**fields)
+        profile.save(update_fields=["address"])
+
+    messages.success(request, _("Your address is saved."))
+    return redirect(request.META.get("HTTP_REFERER",
+                                     reverse("socialhub:profile_details",
+                                             args=[profile.slug])))
+
+
+@login_required
+def search_address(request):
+    """Forward-geocode a typed place name, for the picker's search box.
+
+    Proxied through the server rather than fetched from the browser so the
+    host's `LOCATIONS_GEOCODING` config is the single gate: a host that makes
+    no outbound calls answers 404 here and renders no search box, and the
+    user-agent/timeout/fail-silently policy lives in one place
+    (`toto.locations.geocode`).
+    """
+    from django.http import Http404, JsonResponse
+
+    from toto.locations.geocode import (forward_geocode_locations,
+                                        geocoding_enabled,
+                                        geocoding_settings)
+
+    if not geocoding_enabled(geocoding_settings()):
+        raise Http404
+    query = (request.GET.get("q") or "").strip()
+    if len(query) < 3:
+        return JsonResponse({"results": []})
+    return JsonResponse({"results": forward_geocode_locations(query)})
+

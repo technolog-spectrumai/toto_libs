@@ -7,7 +7,8 @@ from toto.socialhub.api_views import (
     CommunityOrgChartApiView,
 )
 from toto.socialhub.views.profile import (ProfileListView, ProfileDetailView,
-                                          set_location_sharing, set_preferred_language)
+                                          search_address, set_location_sharing,
+                                          set_my_address, set_preferred_language)
 from toto.socialhub.views.community import (
     CommunityListView,
     CommunityDetailView,
@@ -38,6 +39,8 @@ urlpatterns = [
     path("profiles/<slug:slug>/", ProfileDetailView.as_view(), name="profile_details"),
     path("profiles/language/set/", set_preferred_language, name="set_preferred_language"),
     # Its own door: the one setting whose wrong value publishes where you live.
+    path("profiles/address/set/", set_my_address, name="set_my_address"),
+    path("profiles/address/search/", search_address, name="search_address"),
     path("profiles/location-sharing/set/", set_location_sharing,
          name="set_location_sharing"),
 

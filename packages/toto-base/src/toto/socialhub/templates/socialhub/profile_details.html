@@ -10,10 +10,20 @@
     display: none !important;
   }
 </style>
+{% if is_own_profile %}
+{% comment %}Leaflet + the classical pin, for the address picker modal. Own
+profile only: nobody else gets a picker, so nobody else pays for the map.
+{% endcomment %}
+<link rel="stylesheet" href="{% static 'vendor/leaflet/leaflet.css' %}">
+<script src="{% static 'vendor/leaflet/leaflet.js' %}"></script>
+<script src="{% static 'oya/pin.js' %}"></script>
+{% endif %}
 {% endblock %}
 
 {% block content %}
 <section
+  x-data="{ addressModal: false }"
+  @keydown.escape.window="addressModal = false"
   :class="darkMode
     ? 'bg-primary-bg-dark text-text-main-dark'
     : 'bg-primary-bg-light text-text-main-light'"
@@ -202,12 +212,21 @@
           turn it on, and turning it off removes you straight away.
         {% endblocktrans %}
       </p>
-      {% if not profile.address %}
+      {% if profile.address %}
+        <p class="mt-2 text-sm">{{ profile.address }}</p>
+        <p class="mt-1 text-xs opacity-60 tabular-nums">{{ profile.address.latitude|floatformat:4 }}, {{ profile.address.longitude|floatformat:4 }}</p>
+      {% else %}
         <p class="mt-2 text-xs opacity-70">
           <i class="fa-solid fa-circle-info"></i>
           {% trans "You have no address on your profile yet, so nothing is shown either way." %}
         </p>
       {% endif %}
+      <button type="button" id="open-address-modal" @click="addressModal = true"
+              :class="darkMode ? 'border-accent-1 bg-sunken-dark' : 'border-accent-2 bg-sunken-light'"
+              class="mt-3 inline-flex items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-90">
+        <i class="fa-solid fa-location-crosshairs" aria-hidden="true"></i>
+        {% if profile.address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}
+      </button>
 
       <form method="post" action="{% url 'socialhub:set_location_sharing' %}"
             class="mt-4 flex flex-wrap gap-3">
@@ -417,5 +436,136 @@
     {% endif %}
 
   </div>
+
+  {% if is_own_profile %}
+  {% comment %}The address picker. Click the map to place the pin, drag the
+  view, search by name where the host allows geocoding; nothing is saved
+  until Save is pressed, and Cancel discards everything. The map builds
+  lazily on first open — leaflet cannot size itself inside a hidden box.
+  {% endcomment %}
+  <div x-show="addressModal" x-cloak x-transition.opacity
+       class="fixed inset-0 z-50 flex items-center justify-center p-4"
+       role="dialog" aria-modal="true" aria-labelledby="address-modal-title">
+    <div class="absolute inset-0"
+         :class="darkMode ? 'bg-primary-bg-dark/80' : 'bg-primary-bg-light/80'"
+         @click="addressModal = false"></div>
+    <div :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark text-text-main-dark' : 'border-accent-2 bg-bubble-bg-light text-text-main-light'"
+         class="relative z-10 flex max-h-[92vh] w-full max-w-2xl flex-col overflow-hidden rounded-2xl border shadow-xl">
+      <div class="flex items-center justify-between gap-4 border-b border-current/15 px-5 py-4">
+        <h2 id="address-modal-title" class="text-lg font-bold">
+          {% if profile.address %}{% trans "Modify my address" %}{% else %}{% trans "Set my address" %}{% endif %}</h2>
+        <button type="button" @click="addressModal = false"
+                class="inline-flex h-9 w-9 items-center justify-center rounded"
+                aria-label="{% trans 'Close' %}"><i class="fa-solid fa-xmark" aria-hidden="true"></i></button>
+      </div>
+      <form method="post" action="{% url 'socialhub:set_my_address' %}"
+            class="min-h-0 flex-1 overflow-auto p-5">
+        {% csrf_token %}
+        {% if geocoding_enabled %}
+          <div class="relative">
+            <label for="address-search" class="mb-1 block text-sm font-semibold">{% trans "Search for a place" %}</label>
+            <input id="address-search" type="search" autocomplete="off"
+                   placeholder="{% trans 'Street, town, landmark…' %}"
+                   class="w-full rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
+            <ul id="address-search-results"
+                :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+                class="absolute z-20 mt-1 hidden max-h-48 w-full overflow-auto rounded-lg border text-sm shadow-lg"></ul>
+          </div>
+        {% endif %}
+        <div id="address-pick-map" style="height: 300px" class="mt-3 rounded"></div>
+        <p class="mt-2 text-xs opacity-60">
+          {% trans "Click the map to place your pin, then adjust it until it is right. Nothing is saved until you press Save." %}</p>
+        <div class="mt-3 flex gap-3">
+          <label class="text-sm">{% trans "Latitude" %}
+            <input type="number" name="latitude" id="address-lat" step="any" min="-90" max="90" required
+                   value="{{ profile.address.latitude|default_if_none:'' }}"
+                   class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+          <label class="text-sm">{% trans "Longitude" %}
+            <input type="number" name="longitude" id="address-lon" step="any" min="-180" max="180" required
+                   value="{{ profile.address.longitude|default_if_none:'' }}"
+                   class="mt-1 w-36 rounded-lg border bg-inherit px-3 py-2 text-sm text-inherit outline-none"></label>
+        </div>
+        <div class="mt-5 flex justify-end gap-3">
+          <button type="button" @click="addressModal = false"
+                  class="rounded-lg border px-4 py-2 text-sm font-semibold">{% trans "Cancel" %}</button>
+          <button type="submit" class="rounded-lg border px-4 py-2 text-sm font-bold">{% trans "Save" %}</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+  (function () {
+    var built = false;
+    var pick = null;
+    var pin = null;
+    document.getElementById('open-address-modal')
+        .addEventListener('click', function () { setTimeout(build, 60); });
+
+    function place(lat, lon) {
+      if (pin) { pick.removeLayer(pin); }
+      pin = L.marker([lat, lon], {icon: classicPin()}).addTo(pick);
+      document.getElementById('address-lat').value = Math.round(lat * 1e6) / 1e6;
+      document.getElementById('address-lon').value = Math.round(lon * 1e6) / 1e6;
+    }
+
+    function build() {
+      if (built) { return; }
+      built = true;
+      var isDark = localStorage.getItem('darkMode') === 'true';
+      var latInput = document.getElementById('address-lat');
+      var lonInput = document.getElementById('address-lon');
+      var start = [latInput.value || 52.2297, lonInput.value || 21.0122];
+      pick = L.map('address-pick-map').setView(start, latInput.value ? 12 : 5);
+      L.tileLayer(isDark
+          ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
+          : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        {maxZoom: 19, attribution: '&copy; OpenStreetMap contributors'}).addTo(pick);
+      if (latInput.value && lonInput.value) {
+        place(parseFloat(latInput.value), parseFloat(lonInput.value));
+      }
+      pick.on('click', function (event) {
+        place(event.latlng.lat, event.latlng.lng);
+      });
+      wireSearch();
+    }
+
+    function wireSearch() {
+      var box = document.getElementById('address-search');
+      if (!box) { return; }   // the host allows no geocoding
+      var list = document.getElementById('address-search-results');
+      var timer = null;
+      box.addEventListener('input', function () {
+        clearTimeout(timer);
+        timer = setTimeout(run, 350);   // a keystroke is not a query yet
+      });
+      function run() {
+        var query = box.value.trim();
+        if (query.length < 3) { list.classList.add('hidden'); return; }
+        fetch('{% url "socialhub:search_address" %}?q=' + encodeURIComponent(query),
+              {headers: {'Accept': 'application/json'}})
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            list.textContent = '';
+            (data.results || []).forEach(function (hit) {
+              var item = document.createElement('li');
+              item.textContent = hit.label;
+              item.className = 'cursor-pointer px-3 py-2 hover:opacity-70';
+              item.addEventListener('click', function () {
+                list.classList.add('hidden');
+                var lat = parseFloat(hit.lat), lon = parseFloat(hit.lng);
+                pick.setView([lat, lon], 14);
+                place(lat, lon);
+              });
+              list.appendChild(item);
+            });
+            list.classList.toggle('hidden', !(data.results || []).length);
+          })
+          .catch(function () { list.classList.add('hidden'); });
+      }
+    }
+  })();
+  </script>
+  {% endif %}
 </section>
 {% endblock %}
