@@ -452,6 +452,10 @@ def office_view(request, section=None):
         "open_prefix": reverse("office:open") + "?file=",
         "dir_link_prefix": reverse("office:section", args=[current.slug]) + "?dir=",
         "creatable": (creatable := office.creatable_types(current, request.user)),
+        # Whether anything can open this tab's types at all. Only the
+        # Drawings tab can be editor-less, and its read-only note must
+        # not contradict an Edit button once toto.sketch is installed.
+        "type_is_editable": office.type_is_editable(current),
         # The same context key primula's and memo's own listings published, so
         # the gate test that used to walk those pages can walk this one.
         "can_create": bool(creatable),

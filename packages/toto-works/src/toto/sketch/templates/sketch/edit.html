@@ -59,7 +59,7 @@ a JS string is never a place to render a template tag into. {% endcomment %}
   <!-- Header -->
   <div class="mb-3 flex flex-wrap items-center gap-3">
     <a href="{{ index_url }}" class="text-sm underline opacity-70 hover:opacity-100">
-      <i class="fa-solid fa-arrow-left"></i> {% trans "Sketches" %}</a>
+      <i class="fa-solid fa-arrow-left"></i> {% trans "Drawings" %}</a>
     <h1 class="min-w-0 flex-1 truncate text-lg font-bold">
       {{ drawing.title }}
       <span x-show="dirty" x-cloak class="align-middle text-xs font-semibold opacity-60"
@@ -101,12 +101,30 @@ a JS string is never a place to render a template tag into. {% endcomment %}
               :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
               class="inline-flex items-center gap-2 rounded-lg px-4 py-1.5 text-sm font-semibold shadow-sm transition hover:opacity-90 disabled:opacity-40">
         <i class="fa-solid fa-floppy-disk"></i> {% trans "Save" %}</button>
+      {% comment %}Deleting used to live on the sketch index, which Office
+         replaced — so this is now the only door to it. A plain HTML `onsubmit`,
+         NOT Alpine's `@submit`: Alpine evaluates that attribute as an
+         expression, and a bare `return` in one is a syntax error that kills the
+         whole component while the form still submits, unconfirmed.{% endcomment %}
+      <form method="post" action="{{ delete_url }}"
+            onsubmit="return confirm('{% trans "Delete this drawing permanently?" %}');">
+        {% csrf_token %}
+        <button type="submit"
+                class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-sm font-semibold transition hover:opacity-85"
+                :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'">
+          <i class="fa-solid fa-trash"></i> {% trans "Delete" %}</button>
+      </form>
     {% else %}
       <span class="text-xs font-semibold uppercase tracking-wide opacity-50">{% trans "read only" %}</span>
     {% endif %}
   </div>
 
+  {% comment %}Two banners that do not overlap: the lock names whoever is in
+     the file, and the door explains every OTHER reason this opened read-only —
+     an empty balance, an unpaid levy, a plan that does not cover drawings.
+     _edit_door.html stays silent when the reason is the lock.{% endcomment %}
   {% include "oya/_lock_banner.html" %}
+  {% include "oya/_edit_door.html" %}
 
   <!-- Client-side refusal twin (a hostile file that slipped a differential) -->
   <div x-show="refusal" x-cloak

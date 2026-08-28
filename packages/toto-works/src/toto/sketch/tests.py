@@ -240,11 +240,17 @@ class SketchLifecycleTests(_SketchFixture):
 
     def test_save_permissions_and_contract(self):
         url = reverse("sketch:save", args=[self.own.pk])
-        self.assertEqual(self.client.get(url).status_code, 400)      # GET
+        self.assertEqual(self.client.get(url).status_code, 405)      # GET
         self.client.logout()
-        self.assertEqual(
+        # 401 is the APP's answer, and it is what runs under
+        # toto.sketch.testing.settings. A host may refuse earlier and more
+        # bluntly — zenobia carries LoginRequiredEverywhereMiddleware, which
+        # 302s an anonymous request before any view is reached. Both are a
+        # refusal; asserting only one made this test host-specific.
+        self.assertIn(
             self.client.post(url, data=EMPTY_SVG,
-                             content_type="image/svg+xml").status_code, 401)
+                             content_type="image/svg+xml").status_code,
+            (302, 401))
         self.client.force_login(self.other)
         self.assertEqual(
             self.client.post(url, data=EMPTY_SVG,
@@ -255,7 +261,24 @@ class SketchLifecycleTests(_SketchFixture):
         response = self.client.post(
             reverse("sketch:save", args=[self.own.pk]),
             data=huge, content_type="image/svg+xml")
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, 413)
+
+    def test_a_drawing_over_djangos_form_ceiling_still_saves(self):
+        """The bug `_read_svg_body` exists for.
+
+        `request.body` is checked against DATA_UPLOAD_MAX_MEMORY_SIZE, which
+        this host leaves at Django's 2.5 MB default — so every drawing carrying
+        a background image, which is exactly what the 10 MB cap was raised for,
+        died as a bare 400 before the view ran. 4 MB is over Django's ceiling
+        and well under ours.
+        """
+        big = EMPTY_SVG[:-7] + ("<!-- " + "x" * 4_000_000 + " -->") + "</svg>"
+        self.assertGreater(len(big.encode()), 2_500_000)
+        response = self.client.post(
+            reverse("sketch:save", args=[self.own.pk]),
+            data=big, content_type="image/svg+xml")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.json()["status"], "ok")
 
     def test_delete_owner_only(self):
         # A per-test file: deleting the shared fixture's STORAGE file would
@@ -269,19 +292,23 @@ class SketchLifecycleTests(_SketchFixture):
         self.assertFalse(VaultFile.objects.filter(pk=doomed.pk).exists())
 
 
-class SketchIndexTests(_SketchFixture):
+class SketchIndexRedirectTests(_SketchFixture):
+    """`/sketch/` is Office's Drawings tab now.
 
-    def test_lists_own_and_public_only(self):
-        response = self.client.get(reverse("sketch:index"))
-        body = response.content.decode()
-        self.assertIn("own.svg", body)
-        self.assertIn("shared.svg", body)
-        self.assertNotIn("private-foreign.svg", body)
+    The flat list this replaced had no folders, no search and no sort — which
+    is what Office already does — and two answers to "what drawings are there"
+    drift apart. Its own listing tests went with it: `accessible_files` is what
+    decides now, and toto.core.tests_office owns that property.
+    """
 
-    def test_encrypted_files_are_hidden(self):
-        VaultFile.objects.filter(pk=self.own.pk).update(is_encrypted=True)
+    def test_the_index_sends_you_to_office(self):
         response = self.client.get(reverse("sketch:index"))
-        self.assertNotIn("own.svg", response.content.decode())
+        self.assertEqual(response.status_code, 302)
+        self.assertEqual(response["Location"], "/office/drawings/")
+
+    def test_the_index_is_not_a_write_route(self):
+        """RedirectView answers every verb unless pinned; a POST must 405."""
+        self.assertEqual(self.client.post(reverse("sketch:index")).status_code, 405)
 
 
 class SketchEditViewTests(_SketchFixture):
@@ -624,3 +651,120 @@ class AssistantTests(_SketchFixture):
         registration = registration[:registration.index("});")]
         self.assertIn("insert:", registration)
         self.assertNotIn("writeDocument:", registration)
+
+
+class CsrfTests(_SketchFixture):
+    """Both write endpoints are CSRF-protected, and one of them never was.
+
+    `sketch_save` carried @csrf_exempt, which hid the client's missing token.
+    `sketch_source` did not — so "Apply to the board" answered 403 in every real
+    browser since it was written, and the tests never saw it because Django's
+    test client runs with enforce_csrf_checks=False.
+    """
+
+    def _csrf_client(self):
+        from django.test import Client
+        client = Client(enforce_csrf_checks=True)
+        client.force_login(self.user)
+        return client
+
+    def test_save_without_a_token_is_refused(self):
+        client = self._csrf_client()
+        response = client.post(reverse("sketch:save", args=[self.own.pk]),
+                               data=EMPTY_SVG, content_type="image/svg+xml")
+        self.assertEqual(response.status_code, 403)
+
+    def test_apply_from_source_without_a_token_is_refused(self):
+        client = self._csrf_client()
+        response = client.post(reverse("sketch:source", args=[self.own.pk]),
+                               data=EMPTY_SVG, content_type="image/svg+xml")
+        self.assertEqual(response.status_code, 403)
+
+    def test_the_client_sends_the_token_on_both_posts(self):
+        """The other half: the server demanding a token is only useful if the
+        editor sends one. Asserted against the shipped asset, the way the
+        assistant wiring is."""
+        import pathlib
+        js = (pathlib.Path(__file__).parent / "static" / "sketch" / "editor.js").read_text()
+        self.assertEqual(js.count('"X-CSRFToken": csrf()'), 2)
+        self.assertIn('"X-Base-Hash": baseHash', js)
+
+
+class ListingAgreementTests(_SketchFixture):
+    """What Office lists, this view opens.
+
+    `_get_readable_file` restated the vault's permission rule with two of its
+    five clauses, so a bucket owner or a shared-directory member saw a drawing
+    in the Drawings tab and got a 404 on click. The list and the page have to
+    agree by construction, which means asking `access.may_read` and not
+    re-deriving it.
+    """
+
+    def test_a_bucket_owner_who_is_not_the_file_owner_can_open_it(self):
+        from toto.vault.models import Bucket
+        bucket = Bucket.objects.create(name="shared-bucket", owner=self.user)
+        drawing = make_svg(self.other, title="in-my-bucket")
+        VaultFile.objects.filter(pk=drawing.pk).update(bucket=bucket)
+        response = self.client.get(reverse("sketch:edit", args=[drawing.pk]))
+        self.assertEqual(response.status_code, 200)
+        # Readable, but not writable: every write route is owner-only.
+        self.assertFalse(response.context["can_edit"])
+
+    def test_everything_office_lists_actually_opens(self):
+        from toto.vault.filetree import accessible_files
+        for vault_file in accessible_files(self.user, file_types=("svg",)):
+            with self.subTest(title=vault_file.title):
+                response = self.client.get(
+                    reverse("sketch:edit", args=[vault_file.pk]))
+                self.assertEqual(response.status_code, 200)
+
+
+class BlankDrawingTests(_SketchFixture):
+    """A new drawing is sketch's board, not the vault's 100x100 stub."""
+
+    def test_the_plugin_declares_an_extension(self):
+        plugin = VaultEditorPlugin.for_file_type("svg")
+        self.assertEqual(plugin.new_file_extension, ".svg")
+
+    def test_blank_content_is_the_drawing_board(self):
+        plugin = VaultEditorPlugin.for_file_type("svg")
+        blank = plugin.blank_content("untitled.svg")
+        self.assertEqual(blank, EMPTY_SVG)
+        self.assertIn('viewBox="0 0 1920 1080"', blank)
+
+    def test_a_new_drawing_is_seeded_from_the_plugin(self):
+        """The precedence flip. The vault also has an `svg` stub — a 100x100
+        board on which sketch's default stroke widths and text sizes are
+        absurd — and it used to win, so every new drawing opened broken."""
+        from toto.vault.models import Bucket
+        from toto.vault.views import create_empty_vault_file
+        bucket = Bucket.objects.create(name="b", owner=self.user)
+        vault_file = create_empty_vault_file(
+            self.user, bucket, None, "fresh.svg", "svg")
+        self.assertEqual(_read_raw(vault_file), EMPTY_SVG)
+
+    def test_a_type_the_vault_seeds_itself_is_untouched(self):
+        """The `or None` guard: the base `blank_content` returns "", and "" is
+        a legitimate blank for text and friends. Without the guard every
+        plugin-having type would be seeded empty."""
+        from toto.vault.views import CreateEmptyFileView
+        self.assertTrue(CreateEmptyFileView._INITIAL.get("latex"))
+
+
+class MeteringTests(_SketchFixture):
+    """A save keeps a version and counts itself."""
+
+    def test_a_save_keeps_a_version_and_records_usage(self):
+        from toto.sketch.models import SketchUsageEvent
+        from toto.vault import versions
+        before = len(versions.list_versions(self.own))
+        response = self.client.post(
+            reverse("sketch:save", args=[self.own.pk]),
+            data=SKETCH_AUTHORED.replace("</svg>", "<rect x='1' y='1' "
+                                         "width='2' height='2'/></svg>"),
+            content_type="image/svg+xml")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(len(versions.list_versions(self.own)), before + 1)
+        self.assertTrue(
+            SketchUsageEvent.objects.filter(user=self.user,
+                                            metric_code="sketch.save").exists())

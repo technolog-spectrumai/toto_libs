@@ -1154,17 +1154,26 @@ def create_empty_vault_file(owner, bucket, directory, title, file_type, content=
     """
     from django.core.files.base import ContentFile
     if content is None:
-        # The vault's own answer first, then the editor app's. A rich format —
-        # a workbook, a deck, a document — is never an empty file, and only the
-        # app that reads it knows what an empty one looks like; asking it here
-        # rather than in the view means every caller of this function gets the
-        # same answer. See VaultEditorPlugin.blank_content.
-        content = CreateEmptyFileView._INITIAL.get(file_type)
-    if content is None:
+        # The OWNING APP first, then the vault's own stub. A rich format — a
+        # workbook, a deck, a document, a drawing — is never an empty file, and
+        # only the app that reads it knows what an empty one looks like; asking
+        # it here rather than in the view means every caller of this function
+        # gets the same answer. See VaultEditorPlugin.blank_content.
+        #
+        # The order used to be the other way round, which made `blank_content`
+        # unreachable for any type the vault also had a stub for. `svg` is that
+        # type: the vault's stub is a 100x100 board, on which sketch's default
+        # stroke widths (2–12) and text sizes (16–56) are absurd, so every new
+        # drawing opened broken. The `or None` guard is load-bearing — the base
+        # `blank_content` returns "", and "" is a legitimate blank for text,
+        # yaml, bib and csv, so without it every plugin-having type would be
+        # seeded empty.
         from toto.vault.plugins import VaultEditorPlugin
 
         plugin = VaultEditorPlugin.for_file_type(file_type)
-        content = plugin.blank_content(title) if plugin else None
+        content = (plugin.blank_content(title) or None) if plugin else None
+    if content is None:
+        content = CreateEmptyFileView._INITIAL.get(file_type)
     if content is None:
         raise ValueError(f"nothing knows what an empty {file_type} looks like")
     vault_file = VaultFile(

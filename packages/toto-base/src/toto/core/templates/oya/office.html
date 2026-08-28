@@ -81,7 +81,7 @@ Office renders those forms; it never receives them. See core/office.py.
       <button type="button" @click="error = ''" class="ml-2 underline opacity-70">{% trans "Dismiss" %}</button>
     </p>
 
-    {% if section.read_only_note %}
+    {% if section.read_only_note and not type_is_editable %}
       <p class="rounded-lg border border-dashed p-3 text-xs opacity-70">
         <i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ section.read_only_note }}</p>
     {% endif %}

@@ -19,31 +19,32 @@ import hashlib
 from django.contrib.auth.decorators import login_required
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.core.files.base import ContentFile
-from django.db.models import Q
-from django.http import HttpResponse, JsonResponse
+from django.http import Http404, HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import NoReverseMatch, reverse, reverse_lazy
 from django.utils.text import slugify
 from django.utils.translation import gettext
 from django.views import View
-from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
 from toto.core import assistant
 from toto.ui import PageProcessor
-from toto.vault import access, locks, scanning, versions
+from toto.vault import access, editing, scanning, versions
 from toto.vault.models import VaultFile
-from toto.vault.views import (
-    _unique_file_key,
-    new_file_picker_json,
-    resolve_new_file_target,
-)
+from toto.vault.views import _unique_file_key, resolve_new_file_target
+
+from toto.sketch.models import SketchQuotaPolicy, SketchUsageEvent
 
 
 # A save can legitimately carry a cover-cropped background image as a data
 # URI (the client caps those at 9M characters), so the ceiling sits above
 # that and below anything that could hurt the worker.
 SAVE_MAX_BYTES = 10_000_000
+
+#: What a save costs and what plan covers it. The door decides both; the
+#: save never refuses for either reason.
+METRIC = "sketch.save"
+ENTITLEMENT = "sketch"
 
 EMPTY_SVG = (
     '<?xml version="1.0" encoding="UTF-8"?>\n'
@@ -62,25 +63,47 @@ def _read_raw(vault_file: VaultFile) -> str:
         return fh.read().decode("utf-8")
 
 
-def _location(f: VaultFile) -> str:
-    loc = f.bucket.name if f.bucket else "—"
-    if f.directory:
-        loc = f"{loc} / {f.directory.full_path()}"
-    return loc
-
-
 def _get_readable_file(request, file_pk) -> VaultFile:
-    """An ``svg`` vault file the user may open (owner or public)."""
-    vf = get_object_or_404(
+    """An ``svg`` vault file this user may open, or 404.
+
+    Permission is the vault's own answer and is NOT restated here. `may_read`
+    carries five clauses — superuser, owner, public, bucket owner, directory
+    ACL — and this view had two of them, which silently 404'd bucket owners and
+    shared-directory members on drawings they plainly may read. That mattered
+    little while sketch had its own flat index listing the same two clauses; it
+    matters now, because Office lists with all five and every row here links
+    into this view. The list and the page must agree by construction.
+
+    A refusal is Not Found rather than Forbidden — a private file's existence is
+    not this app's to disclose.
+    """
+    vault_file = get_object_or_404(
         VaultFile.objects.select_related("bucket", "directory", "owner")
         .filter(access.local_content_q()),
         pk=file_pk,
         file_type="svg",
     )
-    if not (vf.is_public or (request.user.is_authenticated and vf.owner_id == request.user.id)):
-        from django.http import Http404
+    if not access.may_read(request.user, vault_file):
         raise Http404("Not found.")
-    return vf
+    return vault_file
+
+
+def _read_svg_body(request, limit: int) -> bytes:
+    """The request body, without Django's 2.5 MB form ceiling.
+
+    `request.body` is checked against DATA_UPLOAD_MAX_MEMORY_SIZE, which this
+    host does not set and therefore leaves at 2.5 MB — so the drawings big
+    enough to need the higher limit (the ones carrying a background image,
+    which the client caps at 9M characters) were exactly the ones that could
+    never reach it, dying as a bare 400 before this view ran. `request.read()`
+    is not size-checked, so the limit becomes ours to state. Copied from
+    cyprian via primula rather than raising the global, which would loosen a
+    security-relevant ceiling for every other POST on the host.
+    """
+    raw = request.read(limit + 1)
+    if len(raw) > limit:
+        raise ValueError("too-big")
+    return raw
 
 
 def _get_owned_file(request, file_pk) -> VaultFile:
@@ -110,53 +133,6 @@ def _xml_escape_url(vault_file: VaultFile, request) -> str:
 
 
 # ---------------------------------------------------------------------------
-# Index
-# ---------------------------------------------------------------------------
-
-class SketchIndexView(LoginRequiredMixin, View):
-    """Every SVG the current user can open, with New / Open / Delete."""
-
-    login_url = reverse_lazy("core:login")
-    template_name = "sketch/index.html"
-    LIST_CAP = 300
-
-    def get(self, request):
-        qs = (
-            VaultFile.objects.filter(file_type="svg", is_encrypted=False)
-            # Editors need local bytes — remote-backed files never list here.
-            .filter(access.local_content_q())
-            .filter(Q(is_public=True) | Q(owner=request.user))
-            .select_related("owner", "bucket", "directory")
-            .order_by("-uploaded_at", "title")[: self.LIST_CAP]
-        )
-        drawings = [
-            {
-                "pk": f.pk,
-                "title": f.title,
-                "owner": f.owner.username,
-                "uploaded": f.uploaded_at,
-                "location": _location(f),
-                "is_owner": f.owner_id == request.user.id,
-                "edit_url": reverse("sketch:edit", args=[f.pk]),
-                "delete_url": reverse("sketch:delete", args=[f.pk]),
-            }
-            for f in qs
-        ]
-
-        buckets_json, directories_json = new_file_picker_json(request.user)
-        context = PageProcessor().decorate(
-            {
-                "drawings": drawings,
-                "buckets_json": buckets_json,
-                "directories_json": directories_json,
-                "create_url": reverse("sketch:create"),
-            },
-            request,
-        )
-        return render(request, self.template_name, context)
-
-
-# ---------------------------------------------------------------------------
 # Create
 # ---------------------------------------------------------------------------
 
@@ -166,6 +142,13 @@ class SketchCreateView(LoginRequiredMixin, View):
     login_url = reverse_lazy("core:login")
 
     def post(self, request):
+        # The door decides plan and money once, here, before anything exists.
+        door = editing.door_for(request.user, entitlement=ENTITLEMENT,
+                                metric_code=METRIC,
+                                policy_model=SketchQuotaPolicy)
+        if not door.open:
+            return editing.closed_response(request, door)
+
         bucket, directory = resolve_new_file_target(
             request.user,
             request.POST.get("bucket_id"),
@@ -192,6 +175,12 @@ class SketchCreateView(LoginRequiredMixin, View):
         vault_file.content_hash = hashlib.sha256(data).hexdigest()
         vault_file.file_size_bytes = len(data)
         vault_file.save()
+        # A first version, so the first real save has something to be a change
+        # from. Never allowed to be the reason creating a drawing fails.
+        try:
+            versions.save_version(vault_file, author=request.user, label="created")
+        except Exception:                                  # noqa: BLE001
+            pass
 
         return redirect(reverse("sketch:edit", args=[vault_file.pk]))
 
@@ -214,12 +203,31 @@ class SketchEditView(LoginRequiredMixin, View):
             raw = EMPTY_SVG
 
         verdict = scanning.scan(raw, file_type="svg", filename=vault_file.title)
-        can_edit = vault_file.owner_id == request.user.id and not vault_file.is_encrypted
+
+        # The door AFTER the scan, deliberately: a refused file must still show
+        # its refusal to somebody whose plan lapsed. They are not being sold
+        # anything, they are being told their file is hostile.
+        door = editing.door_for(request.user, vault_file, entitlement=ENTITLEMENT,
+                                metric_code=METRIC,
+                                policy_model=SketchQuotaPolicy)
+        if not door.open:
+            return editing.closed_response(request, door)
+
+        # The door answers host, plan, lock, encryption and money. OWNERSHIP is
+        # still this app's own question, and it has to be asked here: every
+        # write route is owner-only (`_get_owned_file`), so a page that offered
+        # Save to a reader of a public drawing would be a button that 404s.
+        # `door.as_context()` sets can_edit from the door alone, so this
+        # narrowing must come after it.
+        can_edit = door.writable and vault_file.owner_id == request.user.id
+
         context = {
             "drawing": vault_file,
-            "can_edit": can_edit,
             "save_url": reverse("sketch:save", args=[vault_file.pk]),
+            "delete_url": reverse("sketch:delete", args=[vault_file.pk]),
             "index_url": reverse("sketch:index"),
+            **door.as_context(),
+            "can_edit": can_edit,
             # "" without the assistant, for a reader, or for a drawing
             # whose bucket carries the AI shield — the same degradation every
             # editor has.
@@ -267,11 +275,27 @@ class SketchEditView(LoginRequiredMixin, View):
                       PageProcessor().decorate(context, request))
 
 
-@csrf_exempt
+@require_POST
 def sketch_save(request, file_pk):
-    """Persist the edited SVG back to the vault file — verbatim or not at all."""
-    if request.method != "POST":
-        return JsonResponse({"error": "POST required"}, status=400)
+    """Persist the edited SVG back to the vault file — verbatim or not at all.
+
+    The order is the one every editor on this platform follows, and it is fixed:
+    ownership, encryption, body, lock, staleness, screening, write, settle. Plan
+    and money are NOT decided here — the door decided them when the page opened,
+    because refusing a save loses work that exists only in a browser tab.
+
+    ``base_hash`` arrives in a header rather than a body field, unlike primula
+    and cyprian. That is not an oversight: those two post a JSON envelope and
+    can carry a field inside it, while this body IS the SVG file, byte for byte
+    — which is the property `test_save_round_trips_bytes_verbatim` pins. There
+    is no envelope to put a field in, and inventing one would mean an extra
+    encode on every save and a JSON-escaped body roughly double the size for a
+    base64 background. `refuse_if_stale` takes the value as a plain argument and
+    does not care where it came from.
+    """
+    # 401, not @login_required's 302: this endpoint answers a fetch(), and a
+    # redirect to an HTML login page is not something the client can read.
+    # Primula's save says the same.
     if not request.user.is_authenticated:
         return JsonResponse({"error": "Not authenticated."}, status=401)
 
@@ -279,41 +303,31 @@ def sketch_save(request, file_pk):
     if vault_file.is_encrypted:
         return JsonResponse({"error": "File is encrypted. Decrypt it first."}, status=403)
 
-    data = request.body or b""
-    if len(data) > SAVE_MAX_BYTES:
-        return JsonResponse({"error": "Drawing too large."}, status=400)
+    try:
+        data = _read_svg_body(request, SAVE_MAX_BYTES)
+    except ValueError:
+        return JsonResponse({"error": gettext("Drawing too large.")}, status=413)
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:
-        return JsonResponse({"error": "Not UTF-8."}, status=400)
+        return JsonResponse({"error": gettext("Not UTF-8.")}, status=400)
 
     # The editing lock is the first line, exactly as in cyprian: someone else
     # holding it means this save should never have been attempted. 423 and not
     # 409, because a retry cannot succeed until they leave.
-    if not locks.may_write(vault_file, request.user):
-        held = locks.holder_of(vault_file)
-        return JsonResponse(
-            {"error": gettext("%(who)s is editing this drawing.")
-                      % {"who": held.holder},
-             "locked_by": held.holder.get_username()}, status=423)
+    locked = editing.refuse_if_locked(vault_file, request.user, noun="drawing")
+    if locked is not None:
+        return locked
 
     # Optimistic concurrency. Two tabs on one drawing used to overwrite each
     # other in silence — and an SVG cannot be merged any more than cyprian's
     # documents can, so the honest answer is the same one: refuse the write,
     # keep the work as a version, and let a human choose.
-    base_hash = request.headers.get("X-Base-Hash", "")
-    if base_hash and vault_file.content_hash and base_hash != vault_file.content_hash:
-        rescued = None
-        try:
-            rescued = versions.save_conflicting_draft(
-                vault_file, body=data, author=request.user)
-        except Exception:                                  # noqa: BLE001
-            pass                                           # never turn a 409 into a 500
-        return JsonResponse(
-            {"error": gettext("This drawing changed somewhere else since you "
-                              "opened it. Your version was kept so nothing is lost."),
-             "content_hash": vault_file.content_hash,
-             "kept_as_version": rescued.number if rescued else None}, status=409)
+    stale = editing.refuse_if_stale(
+        vault_file, request.headers.get("X-Base-Hash", ""),
+        body=data, author=request.user, noun="drawing")
+    if stale is not None:
+        return stale
 
     verdict = scanning.scan(text, file_type="svg", filename=vault_file.title)
     if not verdict.ok:
@@ -332,10 +346,18 @@ def sketch_save(request, file_pk):
     except Exception as exc:                               # noqa: BLE001
         return JsonResponse({"error": str(exc)}, status=500)
 
+    # One save, one version, one meter. `settle` never raises: an empty balance
+    # comes back as a warning beside a save that landed, never as a lost drawing.
+    settled = editing.settle(vault_file, request.user, metric_code=METRIC,
+                             event_model=SketchUsageEvent,
+                             policy_model=SketchQuotaPolicy)
+
     # The new hash goes back so the client can send it as the base of its NEXT
     # save. Without that the conflict check above would compare against a stale
     # value and fire on the writer's own second save.
-    return JsonResponse({"status": "ok", "content_hash": vault_file.content_hash})
+    return JsonResponse({"status": "ok",
+                         "content_hash": vault_file.content_hash,
+                         **settled})
 
 
 @login_required
@@ -367,9 +389,10 @@ def sketch_source(request, file_pk):
     if vault_file.owner_id != request.user.id:
         return JsonResponse({"error": "Not yours to edit."}, status=403)
 
-    data = request.body or b""
-    if len(data) > SAVE_MAX_BYTES:
-        return JsonResponse({"error": gettext("Drawing too large.")}, status=400)
+    try:
+        data = _read_svg_body(request, SAVE_MAX_BYTES)
+    except ValueError:
+        return JsonResponse({"error": gettext("Drawing too large.")}, status=413)
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError:

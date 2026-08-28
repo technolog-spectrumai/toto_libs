@@ -80,6 +80,7 @@ class Features:
     texlab: bool
     # Derived.
     editor: bool
+    sketch: bool
     antivirus: bool
     anastasia: bool
     vicuna: bool
@@ -335,6 +336,12 @@ def resolve_features(get) -> Features:
     # the labs already set BUILD_EDITOR=1 by hand; this makes forgetting it
     # impossible rather than merely unusual.
     editor = flag(get, "BUILD_EDITOR", dracena or texlab)
+    # The SVG drawing board. Opt-in, and it HARD-REQUIRES antivirus: it renders
+    # SVG inline in our own origin, so `sketch.E001` fails `manage.py check`
+    # rather than let a build quietly un-guard it. It must also never be
+    # installed alongside the parked Paper.js whiteboard in zenobia/limbo —
+    # both register the `svg` editor key, and the second one silently loses.
+    sketch = flag(get, "BUILD_SKETCH")
     # toto.antivirus — screens file content at the doors and on demand.
     antivirus = flag(get, "BUILD_ANTIVIRUS")
     # toto.anastasia — booked compute capacity: users reserve CPU/RAM/scratch/
@@ -450,6 +457,7 @@ def resolve_features(get) -> Features:
         dracena=dracena,
         texlab=texlab,
         editor=editor,
+        sketch=sketch,
         antivirus=antivirus,
         anastasia=anastasia,
         vicuna=vicuna,

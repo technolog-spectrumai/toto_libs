@@ -118,11 +118,13 @@ SECTIONS: tuple[Section, ...] = (
     Section(
         slug="drawings", label="Drawings", icon="fa-solid fa-pen-ruler",
         # No app_labels: SVGs are ordinary vault files and nothing on this host
-        # is required to own them. While toto.sketch stays parked there is no
-        # editor plugin for `svg`, so this tab lists and opens without ever
-        # offering an Edit button — and says so rather than showing a control
-        # that refuses.
+        # is required to own them. A host WITHOUT toto.sketch therefore still
+        # lists and opens them — read-only, and `read_only_note` says so. A
+        # host with it gets Edit and New, because the plugin claims `svg`.
+        # This is the one tab that can exist with no editor behind it, which is
+        # why the note is conditional rather than deleted.
         file_types=("svg",),
+        entitlement="sketch",
         blurb="Diagrams and sketches, and any SVG you already have.",
         read_only_note=(
             "No drawing editor is installed on this server, so these open "
@@ -268,7 +270,7 @@ def open_url(vault_file):
 
     # Nothing claims the type. Falling back to the vault's own download door is
     # what keeps the Drawings tab from being a list of things that do not open:
-    # toto.sketch is parked, so `svg` has neither an editor plugin nor a play
+    # On a host without toto.sketch, `svg` has neither an editor plugin nor a play
     # plugin, and without this every row there would be inert. A download is a
     # poorer "open" than a viewer, which is why it is last and not first.
     return vault_file.get_public_url() or ""
@@ -287,6 +289,21 @@ def may_create(user, section) -> bool:
     from toto.subscriptions.gate import is_entitled
 
     return is_entitled(user, section.entitlement)
+
+
+def type_is_editable(section) -> bool:
+    """True when some editor plugin claims any of this tab's types.
+
+    Office asks the registry rather than naming apps, for the reason this
+    module's docstring gives. It exists so `Section.read_only_note` can be told
+    honestly: on a host with no drawing editor the sentence is true and worth
+    saying; on a host with one it is false and would contradict the Edit button
+    sitting next to it.
+    """
+    from toto.vault.plugins import VaultEditorPlugin
+
+    return any(VaultEditorPlugin.for_file_type(ft) is not None
+               for ft in section.file_types)
 
 
 def creatable_types(section, user=None):

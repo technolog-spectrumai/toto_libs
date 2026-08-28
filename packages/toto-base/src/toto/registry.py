@@ -78,6 +78,11 @@ FEATURE_APPS = {
     "steven": ["toto.steven"],
     "vicuna": ["toto.vicuna"],
     "editor": ["toto.editor"],
+    # The drawing board (BUILD_SKETCH). A drawing is an ordinary `svg` vault
+    # file, so this app owns no store — only the editor and the plugin that
+    # points the vault's Edit button at it. Requires toto.antivirus; see
+    # toto.sketch.apps.
+    "sketch": ["toto.sketch"],
     # Content screening (BUILD_ANTIVIRUS). Flag-gated rather than core because
     # scanning is a policy a host adopts, not a fact of storage — but note what
     # OFF means: content is written unscreened and silently. toto.vault.scanning

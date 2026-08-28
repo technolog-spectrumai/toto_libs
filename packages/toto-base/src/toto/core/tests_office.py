@@ -162,12 +162,26 @@ class OpenTests(OfficeTestCase):
         self.assertIn("/memo/", response["Location"])
 
     def test_a_file_with_no_plugin_falls_back_to_the_vault(self):
-        """Drawings would otherwise be a list of things that do not open:
-        toto.sketch is parked, so `svg` has no editor and no player."""
+        """A tab would otherwise be a list of things that do not open.
+
+        Drawings is the only tab that can have no editor behind it — `svg` is
+        an ordinary vault file and no app is required to own it — so on a host
+        without toto.sketch the row still opens, through the download door.
+        """
         drawing = self.make("draw", "svg")
         response = self.client.get(self.open_url(drawing.pk))
         self.assertEqual(response.status_code, 302)
-        self.assertIn("/vault/", response["Location"])
+        if django_apps.is_installed("toto.sketch"):
+            self.assertIn("/sketch/edit/", response["Location"])
+        else:
+            self.assertIn("/vault/", response["Location"])
+
+    def test_the_read_only_note_goes_once_an_editor_claims_the_type(self):
+        """The note and an Edit button must never appear together."""
+        drawings = office.SECTIONS_BY_SLUG["drawings"]
+        self.assertTrue(drawings.read_only_note)
+        self.assertEqual(office.type_is_editable(drawings),
+                         django_apps.is_installed("toto.sketch"))
 
     def test_opening_a_file_you_may_not_read_is_a_404(self):
         """404 and not 403, the same reason the download door gives: a 403
@@ -240,7 +254,12 @@ class DelegationTests(OfficeTestCase):
         app knows what an empty workbook or deck looks like. A type without
         one cannot be created here, and no button claims otherwise."""
         drawings = office.SECTIONS_BY_SLUG["drawings"]
-        self.assertEqual(office.creatable_types(drawings), [])
+        if django_apps.is_installed("toto.sketch"):
+            # Sketch declares `new_file_extension = ".svg"`, which is the whole
+            # reason the Drawings tab has a New button at all.
+            self.assertEqual(office.creatable_types(drawings), [("svg", ".svg")])
+        else:
+            self.assertEqual(office.creatable_types(drawings), [])
         documents = office.SECTIONS_BY_SLUG["documents"]
         if django_apps.is_installed("toto.cyprian"):
             self.assertEqual([t for t, _ext in office.creatable_types(documents)],
@@ -304,8 +323,16 @@ class CreationGateTests(OfficeTestCase):
             self.assertTrue(response.context["can_create"])
 
     def test_a_tab_that_needs_no_plan_never_asks(self):
+        # Drawings used to be the example here, and stopped being one when
+        # sketch came back with an entitlement. The property is about a tab
+        # with no entitlement at all, so it is stated with one.
+        free = office.Section(slug="free", label="Free", icon="i",
+                              file_types=("svg",))
+        self.assertTrue(office.may_create(self.user, free))
+
+    def test_the_drawings_tab_asks_for_the_drawings_plan(self):
         drawings = office.SECTIONS_BY_SLUG["drawings"]
-        self.assertTrue(office.may_create(self.user, drawings))
+        self.assertEqual(drawings.entitlement, "sketch")
 
 
 class HtmlDocumentTests(OfficeTestCase):

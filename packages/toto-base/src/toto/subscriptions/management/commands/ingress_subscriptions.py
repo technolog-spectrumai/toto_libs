@@ -89,7 +89,7 @@ PLANS = [
         # write endpoints wherever BUILD_SUBSCRIPTIONS_ENFORCE was on. The
         # description above has promised "notebooks" and "media" the whole time.
         "entitlements": [
-            "cyprian", "memo", "primula", "editor",
+            "cyprian", "memo", "primula", "sketch", "editor",
             "kanban", "locations",
             "aralia", "mandragora", "notarius",
             "repo", "gitea", "vod", "steven", "travels",

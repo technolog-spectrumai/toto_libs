@@ -17,5 +17,21 @@ class SvgEditorPlugin(VaultEditorPlugin):
 
     file_type = "svg"
 
+    #: A drawing is a `.svg` file. Declaring the extension is what puts SVG in
+    #: the vault's "New file" menu and gives Office's Drawings tab a New
+    #: button at all — `office.creatable_types()` skips any plugin without it.
+    new_file_extension = ".svg"
+
+    def blank_content(self, title: str) -> str:
+        """A blank drawing board.
+
+        `title` is deliberately unused: unlike a workbook or a deck, an SVG
+        carries no name inside it, so there is nothing for the filename to
+        agree with. Do not add a `<title>` element to "fix" that — it would be
+        carried verbatim as prologue and mean nothing to the editor.
+        """
+        from toto.sketch.views import EMPTY_SVG
+        return EMPTY_SVG
+
     def get_editor_url(self, vault_file) -> str:
         return reverse("sketch:edit", args=[vault_file.pk])

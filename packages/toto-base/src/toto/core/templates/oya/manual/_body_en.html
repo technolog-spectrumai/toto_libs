@@ -143,6 +143,7 @@
     {% if features.memo %}<li><span class="font-semibold">Presentations</span> — <code>.pxml</code> presentation files: <span class="font-semibold">Play</span> starts the slideshow, <span class="font-semibold">Read</span> opens it as a page. Decks are written in the Zinnia desktop app.</li>{% endif %}
     {% if features.notarius %}<li><span class="font-semibold">Contracts</span> — <code>.contract</code> documents can be viewed, edited and signed.</li>{% endif %}
     {% if features.editor %}<li><span class="font-semibold">Text files</span> — text, JSON, YAML, XML, CSV and HTML files open in the built-in editor.</li>{% endif %}
+    {% if features.sketch %}<li><span class="font-semibold">Drawings</span> — <code>.svg</code> files open in the drawing board: freehand, shapes, arrows and text. An SVG made anywhere else opens too, and whatever the editor does not recognise is kept exactly as it was.</li>{% endif %}
         {% if features.notebooks %}<li><span class="font-semibold">Notebooks</span> — <code>.tpy</code> notebooks combine code cells with their outputs; edit and run them from the notebook editor.</li>{% endif %}
     {% if features.latex %}<li><span class="font-semibold">LaTeX</span> — TeX Lab workspaces compile a whole folder of <code>.tex</code> files to PDF, with the result previewed in the room.</li>{% endif %}
   </ul>

@@ -13,6 +13,17 @@
 (function (global) {
   "use strict";
 
+  /* The CSRF token, from the cookie Django set.
+
+     Both POSTs below need it. `sketch_save` used to be @csrf_exempt, which hid
+     the omission; `sketch_source` never was, so "Apply to the board" has been
+     answering 403 in every real browser since it was written. The tests did not
+     catch it because Django's test client runs with enforce_csrf_checks=False. */
+  function csrf() {
+    var m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+    return m ? decodeURIComponent(m[2]) : "";
+  }
+
   var M = global.SketchModel;
   var D = global.SketchSvgDoc;
   var X = global.SketchExport;
@@ -1429,6 +1440,7 @@
           method: "POST",
           headers: {
             "Content-Type": "image/svg+xml",
+            "X-CSRFToken": csrf(),
             /* What this drawing looked like when we last agreed with the
                server. The server refuses the write if it has moved on. */
             "X-Base-Hash": baseHash || "",
@@ -1530,7 +1542,7 @@
         var text = this._ace.getValue();
         fetch(config.sourceUrl, {
           method: "POST",
-          headers: { "Content-Type": "image/svg+xml" },
+          headers: { "Content-Type": "image/svg+xml", "X-CSRFToken": csrf() },
           body: text,
         })
           .then(function (r) {
