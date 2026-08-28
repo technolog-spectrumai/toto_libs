@@ -415,7 +415,12 @@ def office_view(request, section=None):
                              directory_id=directory_id)
     page = Paginator(files, 30).get_page(request.GET.get("page"))
 
-    rows = [{"file": f, "open_url": office.open_url(f)} for f in page.object_list]
+    rows = [{"file": f,
+             "open_url": office.open_url(f),
+             # Offered beside the name rather than instead of it: a list is for
+             # finding and reading, and editing is the deliberate second act.
+             "edit_url": office.edit_url(request.user, f)}
+            for f in page.object_list]
 
     context = {
         "page_title": "Office",

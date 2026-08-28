@@ -53,13 +53,22 @@ class Section:
     #: Vault file types this tab lists. More than one where a type has a legacy
     #: spelling still in the wild.
     file_types: tuple[str, ...]
-    #: Installed-app gate. Empty means the tab needs no app of its own — the
-    #: vault holds the files and some other app may or may not edit them.
-    app_label: str = ""
+    #: Installed-app gate: the tab is offered when ANY of these is installed.
+    #: More than one because a tab is a KIND OF THING, not an app — Documents
+    #: holds both the writer's documents and the HTML pages the viewer renders,
+    #: and it is worth showing if either app is here. Empty means the tab needs
+    #: no app of its own: the vault holds the files and some other app may or
+    #: may not open them.
+    app_labels: tuple[str, ...] = ()
     #: Shown under the heading when the tab is empty.
     blurb: str = ""
     #: Said out loud when nothing on this host can edit the type.
     read_only_note: str = ""
+    #: Show each row's type. True only where a tab mixes genuinely different
+    #: kinds — NOT merely more than one `file_types` entry, since Presentations
+    #: carries two spellings of one kind and would label every row twice over
+    #: with the same word.
+    show_type: bool = False
     #: An alternative listing of the same files, offered beside the tab —
     #: a url NAME, resolved lazily, dropped when it does not resolve. Exists
     #: for memo's cover gallery, which renders a real first slide per deck and
@@ -77,10 +86,17 @@ class Section:
 #: this host could never list.
 SECTIONS: tuple[Section, ...] = (
     Section(
-        slug="documents", label="Documents", icon="fa-solid fa-feather-pointed",
-        file_types=("document",), app_label="toto.cyprian",
-        entitlement="cyprian",
-        blurb="Long documents with real pages, and a PDF whose page numbers are real.",
+        slug="documents", label="Documents", icon="fa-solid fa-file-lines",
+        # Two types, one idea. A person looking for "my documents" does not
+        # first decide whether the thing they wrote is a cyprian document or an
+        # HTML page — that is an implementation detail of which editor made it.
+        # Splitting them cost this host its only Documents listing: the tile by
+        # that name opened the HTML viewer while written documents had no
+        # listing at all.
+        file_types=("document", "html"),
+        app_labels=("toto.cyprian", "toto.htmlview"),
+        entitlement="cyprian", show_type=True,
+        blurb="Written documents and HTML pages — read them, or open them to edit.",
     ),
     Section(
         slug="presentations", label="Presentations",
@@ -89,19 +105,19 @@ SECTIONS: tuple[Section, ...] = (
         # legacy string vault migration 0021 could not reach on mirrored, remote
         # and encrypted rows; a query that lists only `pxml` hides those decks
         # from their own owners without saying so.
-        file_types=("pxml", "presentation"), app_label="toto.memo",
+        file_types=("pxml", "presentation"), app_labels=("toto.memo",),
         entitlement="memo", alt_view="memo:gallery", alt_label="Gallery view",
         blurb="Slideshows you build in the browser and present full-screen.",
     ),
     Section(
         slug="sheets", label="Sheets", icon="fa-solid fa-table-cells",
-        file_types=("sheet",), app_label="toto.primula",
+        file_types=("sheet",), app_labels=("toto.primula",),
         entitlement="primula",
         blurb="Spreadsheets, each one a file in your vault with a version kept on every save.",
     ),
     Section(
         slug="drawings", label="Drawings", icon="fa-solid fa-pen-ruler",
-        # No app_label: SVGs are ordinary vault files and nothing on this host
+        # No app_labels: SVGs are ordinary vault files and nothing on this host
         # is required to own them. While toto.sketch stays parked there is no
         # editor plugin for `svg`, so this tab lists and opens without ever
         # offering an Edit button — and says so rather than showing a control
@@ -142,7 +158,8 @@ def available_sections():
     from django.apps import apps as django_apps
 
     return [s for s in SECTIONS
-            if not s.app_label or django_apps.is_installed(s.app_label)]
+            if not s.app_labels
+            or any(django_apps.is_installed(label) for label in s.app_labels)]
 
 
 def files_for(user, section, *, search="", sort=DEFAULT_SORT, directory_id=None):
@@ -168,40 +185,86 @@ def files_for(user, section, *, search="", sort=DEFAULT_SORT, directory_id=None)
     return qs.select_related("owner", "bucket", "directory").order_by(ordering, "pk")
 
 
-def open_url(vault_file):
-    """Where "open this" goes: the editor if there is one, else the reader.
+def edit_url(user, vault_file) -> str:
+    """Where this file goes to be CHANGED, or "" if this reader cannot.
 
-    Editor first because opening a thing you can change to look at it is fine,
-    while opening a thing you meant to edit read-only is a dead end. Both come
-    from the vault's plugin registries, so Office never learns which app owns
-    which type. Empty string means nothing on this host can open it.
+    **Offered to the owner only** — the rule htmlview's own listing stated and
+    the one a list has to apply: readable and writable are different questions,
+    and a public document is readable by everyone and writable by nobody but
+    its owner. `may_edit_via_app` is the one widening: it asks the type's
+    `VaultAccessPlugin`, which is how a kanban wiki collaborator edits a
+    document they do not own.
+
+    Encrypted bytes and bytes that live on another host are excluded for the
+    reasons the vault browser excludes them: an editor handed ciphertext shows
+    a broken document, and a mirrored row is a copy of somebody else's file.
     """
     from django.urls import NoReverseMatch
 
     from toto.vault import access
-    from toto.vault.plugins import VaultEditorPlugin, VaultPlayPlugin
+    from toto.vault.plugins import VaultEditorPlugin
+
+    if vault_file.is_encrypted or not access.is_local_content(vault_file):
+        return ""
+    owns = getattr(user, "pk", None) is not None and vault_file.owner_id == user.pk
+    if not owns and not access.may_edit_via_app(user, vault_file):
+        return ""
+    plugin = VaultEditorPlugin.for_file_type(vault_file.file_type)
+    if plugin is None:
+        return ""
+    try:
+        return plugin.get_editor_url(vault_file) or ""
+    except NoReverseMatch:
+        # Installed but unmounted. No button beats a button that 404s.
+        return ""
+
+
+def open_url(vault_file):
+    """Where this file goes to be LOOKED AT.
+
+    The reader first, the editor only if nothing reads it. This ordering is
+    the whole reason HTML pages belong here: `toto.htmlview` registers the
+    PLAY plugin for `html` and its docstring names the split — "Edit opens the
+    source, Play opens the rendering" — while the EDITOR plugin for the same
+    type is cyprian's convert-or-fall-back-to-raw-source dispatch. Opening a
+    document by converting it would be a strange thing for a list to do.
+
+    A written document has no reader at all (cyprian's was removed with its
+    library), so it falls through to the writer, which is how you read one.
+    """
+    from django.urls import NoReverseMatch
+
+    from toto.vault.plugins import VaultPlayPlugin
 
     if vault_file.is_encrypted:
         # The same rule the vault browser applies: sealed bytes open nowhere,
         # and an editor handed ciphertext shows a broken document.
         return ""
 
-    editable = access.is_local_content(vault_file)
-    for registry, allowed in ((VaultEditorPlugin, editable), (VaultPlayPlugin, True)):
-        if not allowed:
-            continue
-        plugin = registry.for_file_type(vault_file.file_type)
-        if plugin is None:
-            continue
+    plugin = VaultPlayPlugin.for_file_type(vault_file.file_type)
+    if plugin is not None:
         try:
-            url = (plugin.get_editor_url(vault_file)
-                   if registry is VaultEditorPlugin
-                   else plugin.get_play_url(vault_file))
+            url = plugin.get_play_url(vault_file)
         except NoReverseMatch:
-            # Installed but unmounted: degrade to the next option, never 500.
-            continue
+            url = ""
         if url:
             return url
+
+    # No user here on purpose: this is the READ url, and whether the caller
+    # could also write is a different question. The owner check lives in
+    # `edit_url`, which the row asks separately.
+    from toto.vault import access as _access
+    from toto.vault.plugins import VaultEditorPlugin as _Editor
+
+    if _access.is_local_content(vault_file):
+        plugin = _Editor.for_file_type(vault_file.file_type)
+        if plugin is not None:
+            try:
+                url = plugin.get_editor_url(vault_file)
+            except NoReverseMatch:
+                url = ""
+            if url:
+                return url
 
     # Nothing claims the type. Falling back to the vault's own download door is
     # what keeps the Drawings tab from being a list of things that do not open:

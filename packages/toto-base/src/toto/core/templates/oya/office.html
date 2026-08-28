@@ -152,11 +152,20 @@ Office renders those forms; it never receives them. See core/office.py.
                   <span class="block truncate font-semibold opacity-60" title="{% trans 'Nothing on this server opens this file.' %}">{{ row.file.title }}</span>
                 {% endif %}
                 <span class="text-xs opacity-50">
+                  {% comment %}Only where a tab mixes real kinds — see
+                  Section.show_type.{% endcomment %}
+                  {% if section.show_type %}{{ row.file.get_file_type_display }} · {% endif %}
                   {{ row.file.file_size_bytes|filesizeformat }} · {{ row.file.uploaded_at|timesince }} {% trans "ago" %}
                   {% if row.file.bucket %}· {{ row.file.bucket.name }}{% endif %}
                   {% if row.file.directory %}/ {{ row.file.directory.full_path }}{% endif %}
                 </span>
               </div>
+              {% if row.edit_url %}
+                <a href="{{ row.edit_url }}" title="{% trans 'Edit' %}"
+                   class="shrink-0 rounded px-2 py-1 text-xs opacity-0 transition group-hover:opacity-100 focus:opacity-100">
+                  <i class="fa-solid fa-pen-to-square" aria-hidden="true"></i>
+                  <span class="sr-only">{% trans "Edit" %}</span></a>
+              {% endif %}
               {% if row.file.is_encrypted %}
                 <span class="rounded-full border px-2 py-0.5 text-[11px] opacity-70">
                   <i class="fa-solid fa-lock" aria-hidden="true"></i> {% trans "Encrypted" %}</span>

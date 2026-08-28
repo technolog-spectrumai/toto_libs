@@ -33,6 +33,12 @@ from .views import (
 
 app_name = 'memo'
 
+#: A redirect still has to refuse what the app refuses. `RedirectView` answers
+#: every verb by default, so a POST to this prefix would 302 instead of 405 —
+#: and for toto.htmlview that would break the promise its own urls.py makes and
+#: `primula/tests/test_readonly.py` walks this table to enforce.
+SAFE_ONLY = ["get", "head", "options"]
+
 urlpatterns = [
     # `/memo/` is Office's Presentations tab now — one place to look for the
     # things you make, rather than one flat list per app. The NAME stays put so
@@ -44,7 +50,7 @@ urlpatterns = [
     # it. It is also the only deck listing an ANONYMOUS visitor can see —
     # Office requires a login, so retiring this would quietly un-publish every
     # public deck.
-    path('', RedirectView.as_view(pattern_name='office:section',
+    path('', RedirectView.as_view(http_method_names=SAFE_ONLY, pattern_name='office:section',
                                   query_string=True), {'section': 'presentations'},
          name='index'),
     path('gallery/', PresentationIndexView.as_view(), name='gallery'),

@@ -73,7 +73,8 @@ class TabTests(OfficeTestCase):
         """Not rendered disabled — not rendered. There is nothing behind it
         to explain, and a dead tab reads as a broken page."""
         absent = office.Section(slug="ghost", label="Ghost", icon="fa-solid fa-ghost",
-                                file_types=("nope",), app_label="toto.not_installed")
+                                file_types=("nope",),
+                                app_labels=("toto.not_installed",))
         self.assertNotIn(absent, office.available_sections())
 
     def test_login_is_required(self):
@@ -305,3 +306,66 @@ class CreationGateTests(OfficeTestCase):
     def test_a_tab_that_needs_no_plan_never_asks(self):
         drawings = office.SECTIONS_BY_SLUG["drawings"]
         self.assertTrue(office.may_create(self.user, drawings))
+
+
+class HtmlDocumentTests(OfficeTestCase):
+    """An HTML page is a document, and Documents is where it lives.
+
+    Before this, the dashboard tile named "Documents" opened the HTML viewer
+    while written documents had no listing at all — two things wearing one
+    name, and the name led to the wrong one.
+    """
+
+    def test_the_documents_tab_holds_both_kinds(self):
+        self.make("written", "document", title="Handbook.xml")
+        self.make("page", "html", title="Report.html")
+        response = self.client.get(self.section_url("documents"))
+        keys = {row["file"].key for row in response.context["rows"]}
+        self.assertEqual(keys, {"written", "page"})
+
+    def test_a_row_says_which_kind_it_is(self):
+        """Only on a tab that mixes kinds — Presentations carries two
+        spellings of one kind and would say the same word twice."""
+        self.make("page", "html", title="Report.html")
+        response = self.client.get(self.section_url("documents"))
+        self.assertTrue(response.context["section"].show_type)
+        self.assertContains(response, "HTML")
+        self.assertFalse(
+            office.SECTIONS_BY_SLUG["presentations"].show_type)
+
+    def test_an_html_page_opens_in_the_reader_not_the_converter(self):
+        """The whole reason the order is reader-first. `toto.htmlview`
+        registers the PLAY plugin for html and renders the page; the EDITOR
+        plugin for the same type is cyprian's convert-or-fall-back dispatch,
+        and opening a document by converting it would be a strange thing for
+        a list to do."""
+        page = self.make("page", "html", title="Report.html")
+        if django_apps.is_installed("toto.htmlview"):
+            self.assertIn("/htmlview/read/", office.open_url(page))
+
+    def test_a_public_page_is_readable_by_all_and_editable_by_its_owner(self):
+        """Readable and writable are different questions. The listing must not
+        offer a control the door would refuse."""
+        page = self.make("page", "html", title="Report.html", is_public=True)
+        stranger = User.objects.create_user("stranger", password="pw")
+        self.assertTrue(office.open_url(page))
+        self.assertEqual(office.edit_url(stranger, page), "")
+        self.assertTrue(office.edit_url(self.user, page))
+
+    def test_editing_is_offered_separately(self):
+        page = self.make("page", "html", title="Report.html")
+        edit = office.edit_url(self.user, page)
+        self.assertTrue(edit)
+        self.assertNotEqual(edit, office.open_url(page))
+
+    def test_an_encrypted_page_offers_neither(self):
+        page = self.make("page", "html", title="Report.html")
+        VaultFile.objects.filter(pk=page.pk).update(is_encrypted=True)
+        page.refresh_from_db()
+        self.assertEqual(office.open_url(page), "")
+        self.assertEqual(office.edit_url(self.user, page), "")
+
+    def test_the_old_htmlview_listing_lands_here(self):
+        if django_apps.is_installed("toto.htmlview"):
+            response = self.client.get(reverse("htmlview:index"))
+            self.assertRedirects(response, self.section_url("documents"))
