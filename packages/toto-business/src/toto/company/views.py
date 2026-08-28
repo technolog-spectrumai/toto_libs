@@ -20,7 +20,7 @@ from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied, ValidationError
 from django.http import JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
-from django.urls import reverse
+from django.urls import NoReverseMatch, reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
@@ -384,9 +384,28 @@ def org_chart(request, slug):
 
 
 def _party_url(party):
-    if not getattr(settings, "BUILD_SOCIALHUB", False) or not party.person_id:
+    """A link to the person behind a party, where there is one to link to.
+
+    Asks the app registry, and used to ask `settings.BUILD_SOCIALHUB` — a name
+    NO host has ever defined. `getattr(..., False)` meant the guard was
+    permanently false, so every node in the organisation chart came back with
+    an empty url and none of them was clickable, on every deployment. The flag
+    was the right idea (the wheel may not assume socialhub is there) and the
+    wrong mechanism: this package is vendored by hosts that install socialhub
+    unconditionally and by hosts that do not install it at all, and only the
+    registry knows which one is running it.
+    """
+    from django.apps import apps  # noqa: PLC0415
+
+    if not apps.is_installed("toto.socialhub") or not party.person_id:
         return ""
-    return reverse("socialhub:profile_details", args=[party.person.slug])
+    try:
+        return reverse("socialhub:profile_details", args=[party.person.slug])
+    except NoReverseMatch:
+        # Installed but not mounted is a real shape on this platform — the
+        # distinction `core.views._mounted` exists for. A dead link is worse
+        # than no link.
+        return ""
 
 
 def organization_graph(company, *, root=None, include_members=False):

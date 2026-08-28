@@ -153,3 +153,50 @@ class CompanyMembershipTests(CompanyFactoryMixin, TestCase):
         field_names = {f.name for f in Person._meta.get_fields()}
         self.assertNotIn("company", field_names)
         self.assertIn("bc_company_memberships", field_names)
+
+
+class OrganizationGraphLinkTests(CompanyFactoryMixin, TestCase):
+    """Every node in the chart that HAS a person must link to them.
+
+    This is the assertion that was missing while `_party_url` read
+    `settings.BUILD_SOCIALHUB` — a setting no host in this monorepo has ever
+    defined. `getattr(..., False)` made the guard permanently true-as-false,
+    so every url in the payload came back empty and no node in the
+    organisation chart was clickable, on every deployment that had the
+    Business Center. The tests all passed: none of them looked at the url.
+    """
+
+    def setUp(self):
+        from django.apps import apps  # noqa: PLC0415
+
+        if not apps.is_installed("toto.socialhub"):
+            self.skipTest("this host does not install socialhub")
+        self.company = self.make_company()
+        self.department = Department.objects.create(
+            company=self.company, name="Board")
+
+    def _graph(self, **kwargs):
+        from toto.company.views import organization_graph  # noqa: PLC0415
+
+        return organization_graph(self.company, **kwargs)
+
+    def test_a_department_head_links_to_their_profile(self):
+        person = Person.objects.create(display_name="Ada Lovelace")
+        party = self.make_party(self.company, person=person)
+        self.department.head = party
+        self.department.save()
+        # Company and department nodes always carry a url of their own, so
+        # the assertion has to name the node TYPE — matching on "has a url"
+        # would have passed against the empty person link too.
+        people = [n for n in self._graph()["nodes"] if n["type"] == "person"]
+        self.assertEqual(len(people), 1)
+        self.assertIn(person.slug, people[0]["url"])
+
+    def test_a_party_with_no_person_gets_no_link(self):
+        """A company can hold a seat in another company. There is nobody to
+        open, and a link to nothing is worse than no link."""
+        self.department.head = self.make_party(self.company, name="Acme Sp. z o.o.")
+        self.department.save()
+        people = [n for n in self._graph()["nodes"] if n["type"] == "person"]
+        self.assertEqual(len(people), 1)
+        self.assertEqual(people[0]["url"], "")
