@@ -57,7 +57,7 @@ def ocr_page(self, run_id: int, number: int):
     # --- do the work ------------------------------------------------------
     text, failure = "", ""
     try:
-        source = runs.source_path(run)
+        source = runs.source_path(run, number)
         if run.source_type == "pdf":
             # A temp dir holding exactly ONE rendered page. Rendering the whole
             # book up front would be ~450 MB of scratch; `-f N -l N` costs about

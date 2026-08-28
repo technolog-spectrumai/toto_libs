@@ -173,13 +173,22 @@ def ocr_submit(request):
     max_bytes = limits.max_upload_mb * 1024 * 1024
     page_cap = limits.max_pages_per_run
 
-    uploaded = request.FILES.get("document")
+    group = request.FILES.getlist("document")
+    uploaded = group[0] if len(group) == 1 else None
     vault_file = None
-    if uploaded is not None:
+    if len(group) > 1:
+        # Several images, one page each, in the order they were chosen.
+        inspection = validation.inspect_group(
+            group, max_bytes=max_bytes, page_cap=page_cap)
+        source_name = _("%(first)s and %(n)s more") % {
+            "first": group[0].name or "scan", "n": len(group) - 1}
+    elif uploaded is not None:
+        group = None
         inspection = validation.inspect_upload(
             uploaded, max_bytes=max_bytes, page_cap=page_cap)
         source_name = uploaded.name or "scan"
     else:
+        group = None
         from toto.vault import access
         from toto.vault.models import VaultFile
 
@@ -226,7 +235,8 @@ def ocr_submit(request):
 
     run = runs.create_run(owner=request.user, inspection=inspection,
                           language=language, source_name=source_name,
-                          uploaded=uploaded, vault_file=vault_file)
+                          uploaded=uploaded, vault_file=vault_file,
+                          group=group)
     try:
         dispatch.dispatch_run(run)
     except dispatch.CannotQueue as exc:

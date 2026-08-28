@@ -17,7 +17,7 @@ from toto.ocr.models import OcrPage, OcrRun, PageStatus, RunStatus
 
 
 def create_run(*, owner, inspection, language, source_name,
-               uploaded=None, vault_file=None) -> OcrRun:
+               uploaded=None, vault_file=None, group=None) -> OcrRun:
     """One row per submission, with the page rows already frozen.
 
     The denominator is written here and never recomputed: a progress bar whose
@@ -37,7 +37,18 @@ def create_run(*, owner, inspection, language, source_name,
     if vault_file is not None:
         run.source_file = vault_file
     run.save()
-    if uploaded is not None:
+    if group:
+        # One stored file per page, in the order the user chose. Same private
+        # storage as `source`, and the same media volume the worker mounts.
+        stored = []
+        for index, upload in enumerate(group, start=1):
+            upload.seek(0)
+            name = run.source.storage.save(
+                f"ocr/sources/{run.pk}-{index}-{upload.name[:80]}", upload)
+            stored.append({"name": upload.name[:255], "path": name})
+        run.sources = stored
+        run.save(update_fields=["sources"])
+    elif uploaded is not None:
         uploaded.seek(0)
         # Into the media volume, NOT a tempfile: the Celery worker is a
         # different container that mounts this same volume, and a temporary
@@ -51,8 +62,17 @@ def create_run(*, owner, inspection, language, source_name,
     return run
 
 
-def source_path(run: OcrRun) -> str:
-    """Where the bytes are, for a subprocess that needs a path."""
+def source_path(run: OcrRun, number: int = 1) -> str:
+    """Where page `number`'s bytes are, for a subprocess that needs a path.
+
+    A PDF is one file for every page; a group of images is one file per page.
+    The caller does not have to know which it got.
+    """
+    if run.sources:
+        name = run.source_for(number)
+        if not name:
+            raise FileNotFoundError("that page has no file any more")
+        return run.source.storage.path(name)
     if run.source:
         return run.source.path
     if run.source_file and run.source_file.file:

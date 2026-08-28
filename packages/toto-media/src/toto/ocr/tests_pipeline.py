@@ -310,3 +310,127 @@ class PayloadTests(_Fixture):
             ocr_page(run.pk, 1)
         run.refresh_from_db()
         self.assertEqual(runs.run_payload(run)["text"], "")
+
+
+class ImageGroupTests(_Fixture):
+    """Several images submitted as one job — one page each, in order."""
+
+    def group(self, count=3):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        return [SimpleUploadedFile(f"page{n}.png", png_bytes(),
+                                   content_type="image/png")
+                for n in range(1, count + 1)]
+
+    def make_group_run(self, count=3):
+        from toto.ocr.validation import Inspection
+
+        return runs.create_run(
+            owner=self.user,
+            inspection=Inspection(ok=True, kind="image", page_count=count),
+            language="eng", source_name=f"page1.png and {count - 1} more",
+            group=self.group(count))
+
+    def test_each_image_becomes_one_page_with_its_own_file(self):
+        run = self.make_group_run(3)
+        self.assertEqual(run.total_pages, 3)
+        self.assertEqual(len(run.sources), 3)
+        self.assertEqual(run.pages.count(), 3)
+        # Every page resolves to a DIFFERENT file.
+        paths = {runs.source_path(run, n) for n in (1, 2, 3)}
+        self.assertEqual(len(paths), 3)
+
+    def test_a_group_reads_in_the_order_it_was_given(self):
+        run = self.make_group_run(3)
+        from toto.ocr import engine
+
+        def _read(image_path, language):
+            # Each page's own stored file ends in "-N-pageN.png".
+            return "text-of-" + image_path.rsplit("-", 1)[1].split(".")[0]
+
+        with mock.patch.object(engine, "read_image", _read):
+            for number in (2, 3, 1):
+                ocr_page(run.pk, number)
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.SUCCESS)
+        self.assertLess(run.text.index("page1"), run.text.index("page2"))
+        self.assertLess(run.text.index("page2"), run.text.index("page3"))
+
+    def test_a_group_never_rasterises_anything(self):
+        """Images are already pages; poppler is for PDFs only."""
+        run = self.make_group_run(2)
+        from toto.ocr import engine
+
+        with mock.patch.object(engine, "render_pdf_page") as render, \
+             mock.patch.object(engine, "read_image", return_value="x"):
+            ocr_page(run.pk, 1)
+            render.assert_not_called()
+
+    def test_a_finished_group_gives_up_every_file(self):
+        import os
+
+        run = self.make_group_run(2)
+        paths = [runs.source_path(run, n) for n in (1, 2)]
+        from toto.ocr import engine
+
+        with mock.patch.object(engine, "read_image", return_value="done"):
+            ocr_page(run.pk, 1)
+            ocr_page(run.pk, 2)
+        run.refresh_from_db()
+        self.assertEqual(run.status, RunStatus.SUCCESS)
+        self.assertEqual(run.sources, [])
+        for path in paths:
+            self.assertFalse(os.path.exists(path), path)
+
+
+class GroupValidationTests(TestCase):
+    """The cap is on the SUM, or it is not a cap."""
+
+    def _images(self, count, size):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+
+        real = png_bytes()
+        return [SimpleUploadedFile(f"p{n}.png", real + b"\0" * size,
+                                   content_type="image/png")
+                for n in range(count)]
+
+    def test_many_small_images_cannot_evade_the_size_cap(self):
+        from toto.ocr import validation
+
+        result = validation.inspect_group(self._images(8, 200_000),
+                                          max_bytes=1_000_000, page_cap=400)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, "too-large")
+
+    def test_too_many_images_is_refused_with_both_numbers(self):
+        from toto.ocr import validation
+
+        result = validation.inspect_group(self._images(6, 10),
+                                          max_bytes=50_000_000, page_cap=4)
+        self.assertFalse(result.ok)
+        self.assertEqual(result.reason, "too-many-pages")
+
+    def test_one_bad_image_is_named_now_not_twenty_minutes_later(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from toto.ocr import validation
+
+        good = SimpleUploadedFile("good.png", png_bytes(),
+                                  content_type="image/png")
+        bad = SimpleUploadedFile("broken.png", b"not an image at all",
+                                 content_type="image/png")
+        result = validation.inspect_group([good, bad], max_bytes=50_000_000,
+                                          page_cap=400)
+        self.assertFalse(result.ok)
+        self.assertIn("broken.png", result.message)
+
+    def test_a_pdf_cannot_be_mixed_into_a_group_of_images(self):
+        from django.core.files.uploadedfile import SimpleUploadedFile
+        from toto.ocr import validation
+
+        good = SimpleUploadedFile("good.png", png_bytes(),
+                                  content_type="image/png")
+        pdf = SimpleUploadedFile("book.pdf", b"%PDF-1.4",
+                                 content_type="application/pdf")
+        result = validation.inspect_group([good, pdf], max_bytes=50_000_000,
+                                          page_cap=400)
+        self.assertFalse(result.ok)

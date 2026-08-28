@@ -213,3 +213,20 @@ class RetryTests(_Fixture):
         run = self.a_run()
         response = self.client.post(reverse("ocr:retry", args=[run.pk]))
         self.assertEqual(response.status_code, 400)
+
+
+class GroupSubmitTests(_Fixture):
+    def test_several_images_are_accepted_as_one_job(self):
+        from toto.ocr import dispatch, engine
+
+        files = [png_upload(f"p{n}.png") for n in range(3)]
+        with mock.patch.object(engine, "tesseract_available", return_value=True), \
+             mock.patch.object(engine, "is_offered", return_value=True), \
+             mock.patch.object(dispatch, "dispatch_run"):
+            response = self.client.post(reverse("ocr:submit"),
+                                        {"document": files, "language": "eng"})
+        self.assertEqual(response.status_code, 200, response.content)
+        self.assertEqual(response.json()["total_pages"], 3)
+        run = OcrRun.objects.get(pk=response.json()["run_id"])
+        self.assertEqual(len(run.sources), 3)
+        self.assertIn("2 more", run.source_name)

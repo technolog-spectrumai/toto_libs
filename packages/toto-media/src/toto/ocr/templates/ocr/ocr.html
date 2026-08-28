@@ -55,13 +55,16 @@
           <div>
             <label for="ocr-file" class="mb-1 block text-sm font-semibold">
               {% trans "The image or PDF to read" %}</label>
-            <input id="ocr-file" type="file" name="document" required
+            {% comment %}`multiple`: several images are one job, one page
+            each, in the order they were chosen. A PDF already carries its own
+            pages, so it is sent alone.{% endcomment %}
+            <input id="ocr-file" type="file" name="document" required multiple
                    accept="image/*,application/pdf"
                    @change="picked = $event.target.files.length ? $event.target.files[0].name : ''"
                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
                    class="w-full rounded-lg border px-3 py-2 text-sm">
             <p class="mt-1 text-xs opacity-60">
-              {% blocktrans %}Up to {{ max_upload_mb }} MB, and up to {{ max_pages }} pages.{% endblocktrans %}
+              {% blocktrans %}One PDF, or several images — one page each. Up to {{ max_upload_mb }} MB in total, and up to {{ max_pages }} pages.{% endblocktrans %}
               {% if not pdf_available %}{% trans "This server reads images only." %}{% endif %}
             </p>
           </div>

@@ -63,6 +63,44 @@ def inspect_upload(uploaded, *, max_bytes: int, page_cap: int) -> Inspection:
                     max_bytes=max_bytes, page_cap=page_cap)
 
 
+def inspect_group(uploads, *, max_bytes: int, page_cap: int) -> Inspection:
+    """Screen a GROUP of images submitted as one job — one page each.
+
+    The size check is on the SUM, not on each file. Per-file would make the cap
+    trivially evadable: sixty-four 1 MB images is the same 64 MB of disk and the
+    same 64 pages of work as one 64 MB book.
+    """
+    total = sum(int(getattr(u, "size", 0) or 0) for u in uploads)
+    if total > max_bytes:
+        return Inspection.refuse(
+            "too-large",
+            _("Those files come to %(actual)s MB together. The limit here is "
+              "%(limit)s MB.") % {"actual": _mb(total), "limit": _mb(max_bytes)})
+    if len(uploads) > page_cap:
+        return Inspection.refuse(
+            "too-many-pages",
+            _("That is %(pages)s images. The limit here is %(cap)s.")
+            % {"pages": len(uploads), "cap": page_cap})
+
+    # Every file is inspected: one bad image in a group of forty should be
+    # named now, not discovered as a failed page twenty minutes later.
+    for upload in uploads:
+        one = _inspect(upload, size=int(getattr(upload, "size", 0) or 0),
+                       name=getattr(upload, "name", "") or "",
+                       declared=getattr(upload, "content_type", "") or "",
+                       max_bytes=max_bytes, page_cap=page_cap)
+        if not one.ok:
+            return Inspection.refuse(
+                one.reason,
+                _("%(name)s: %(why)s") % {"name": getattr(upload, "name", "?"),
+                                          "why": one.message})
+        if one.kind != "image":
+            return Inspection.refuse(
+                "unsupported",
+                _("Send one PDF, or several images — not a mixture."))
+    return Inspection(ok=True, kind="image", page_count=len(uploads))
+
+
 def inspect_vault_file(vault_file, *, max_bytes: int, page_cap: int) -> Inspection:
     """Screen a file already in the vault, reached through the wand."""
     size = int(getattr(vault_file, "file_size_bytes", 0) or 0)

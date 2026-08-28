@@ -189,6 +189,13 @@ class OcrRun(models.Model):
     #: that work was done and billed for it.
     source_file = models.ForeignKey("vault.VaultFile", on_delete=models.SET_NULL,
                                     null=True, blank=True, related_name="ocr_runs")
+    #: A GROUP of images submitted as one job: `[{"name": ..., "path": ...}]`,
+    #: in page order, where `path` is a storage name on the same private
+    #: storage as `source`. Frozen at creation for the reason TransferRun
+    #: freezes `file_ids` — a selection is what the user saw when they pressed
+    #: the button, and re-deriving it later would answer a different question.
+    #: Empty for a PDF or a single image, which use `source`.
+    sources = models.JSONField(default=list, blank=True)
     source_name = models.CharField(max_length=255, blank=True)
     source_bytes = models.PositiveBigIntegerField(default=0)
     #: "image" or "pdf", as VaultFile.detect_type spells them.
@@ -258,6 +265,16 @@ class OcrRun(models.Model):
             .order_by("number").values_list("number", flat=True)
         )
 
+    def source_for(self, number: int) -> str:
+        """The storage name backing page `number`.
+
+        A group of images is one file per page; a PDF is one file for all of
+        them. Both answer here so the page task never has to know which it got.
+        """
+        if self.sources:
+            return (self.sources[number - 1] or {}).get("path", "")
+        return self.source.name or ""
+
     def discard_source(self) -> None:
         """Delete the uploaded bytes. THE only place they are unlinked.
 
@@ -267,10 +284,21 @@ class OcrRun(models.Model):
         the retention sweep. Deliberately not a post_delete signal: a signal
         that destroys bytes is invisible at the call site.
         """
+        from django.core.files.storage import default_storage
+
         if self.source:
             self.source.delete(save=False)
             self.source = ""
-            self.save(update_fields=["source"])
+        for entry in list(self.sources or []):
+            name = (entry or {}).get("path")
+            if not name:
+                continue
+            try:
+                self.source.storage.delete(name)
+            except Exception:  # noqa: BLE001 — a blob already gone is fine
+                pass
+        self.sources = []
+        self.save(update_fields=["source", "sources"])
 
 
 class OcrPage(models.Model):
