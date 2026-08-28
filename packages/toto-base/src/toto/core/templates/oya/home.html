@@ -17,11 +17,12 @@
       <p
         :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
         class="text-xs font-semibold uppercase tracking-widest">
-        {{ platform.site_name }}
+        {{ brand.name|default:platform.site_name }}
       </p>
       <h1 class="text-4xl font-extrabold tracking-tight">{% trans "Welcome" %}</h1>
       <p class="text-sm opacity-60 max-w-sm mx-auto">
-        {% trans "Streamlined, ready, and built to explore." %}
+        {% if brand.description %}{{ brand.description }}
+        {% else %}{% trans "Streamlined, ready, and built to explore." %}{% endif %}
       </p>
     </div>
 
@@ -143,7 +144,7 @@
           <div
             :class="darkMode ? 'bg-bubble-bg-dark border-accent-1' : 'bg-bubble-bg-light border-accent-2'"
             class="flex items-center gap-3 rounded-2xl border p-4 shadow-sm">
-            <img src="{{ federation.logo.url }}"
+            <img src="{{ federation.logo }}"
                  alt="{{ federation.name }} logo"
                  class="h-12 w-12 shrink-0 rounded-lg object-contain" />
             <div class="min-w-0 text-left">

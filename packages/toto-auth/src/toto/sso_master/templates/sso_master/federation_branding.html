@@ -12,7 +12,7 @@
 {% block sso_content %}
       {% if federation and federation.logo %}
         <div class="flex items-center gap-4">
-          <img src="{{ federation.logo.url }}" alt="" class="h-16 w-auto rounded">
+          <img src="{{ federation.logo }}" alt="" class="h-16 w-auto rounded">
           <p class="text-sm opacity-70">{{ federation.name }}</p>
         </div>
       {% endif %}

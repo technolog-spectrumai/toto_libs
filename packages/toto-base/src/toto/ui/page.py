@@ -44,11 +44,23 @@ class PageProcessor:
 
         if self.config is None:
             context.update({**base, "platform": None, "font": {}, "theme": {},
-                            "logo": None, "federation": None})
+                            "logo": None, "federation": None,
+                            "brand": self._brand(None, None)})
             return context
 
         platform_data = PlatformSerializer(self.config).data
         theme_data = platform_data.get("theme") or {}
+        federation = (
+            {
+                "name": self.config.federation.name,
+                "description": self.config.federation.description,
+                # Already a URL, NOT an ImageField: a template that writes
+                # `federation.logo.url` gets an empty src. Three of them did.
+                "logo": (self.config.federation.logo.url
+                         if self.config.federation.logo else None),
+            }
+            if self.config.federation_id else None
+        )
         context.update({
             **base,
             "platform": platform_data,
@@ -58,14 +70,41 @@ class PageProcessor:
             # The platform's federation, for hosts that brand with it (the
             # holding identity). None-safe: a platform without one is the
             # common case, and stock templates ignore the key entirely.
-            "federation": (
-                {
-                    "name": self.config.federation.name,
-                    "description": self.config.federation.description,
-                    "logo": (self.config.federation.logo.url
-                             if self.config.federation.logo else None),
-                }
-                if self.config.federation_id else None
-            ),
+            "federation": federation,
+            # What the chrome actually wears. Resolved HERE rather than by a
+            # chain of {% if %} in every template that shows a brand — see
+            # `_brand`.
+            "brand": self._brand(federation, platform_data),
         })
         return context
+
+    def _brand(self, federation, platform_data) -> dict:
+        """The name, logo and description the app bar and welcome page wear.
+
+        Resolved once, per field, so a federation that has a name but no logo
+        keeps the platform's logo instead of losing it.
+
+        **Gated on the host.** `BRAND_FROM_FEDERATION` defaults to False, so a
+        host that upgrades looks exactly as it did: every install that ever
+        ran `init_data` carries a seeded "Toto-Federation" attached to its
+        platform, and preferring it unasked would rename somebody's app bar
+        overnight. A host that wants the holding identity says so.
+
+        `source` names the winner, which is what a test can assert on and
+        what a template can use to caption the thing.
+        """
+        platform_data = platform_data or {}
+        logo = self.config.logo.url if (
+            self.config is not None and self.config.logo) else None
+        fallback = {"name": platform_data.get("site_name") or "",
+                    "logo": logo, "description": "", "source": "platform"}
+        if not getattr(settings, "BRAND_FROM_FEDERATION", False):
+            return fallback
+        if not federation:
+            return fallback
+        return {
+            "name": federation["name"] or fallback["name"],
+            "logo": federation["logo"] or fallback["logo"],
+            "description": federation["description"] or "",
+            "source": "federation",
+        }

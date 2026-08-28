@@ -108,7 +108,10 @@ def welcome_view(request):
 
     context = {
         "platform": platform,
-        "federation": platform.federation if platform else None,
+        # NOT `platform.federation`: `decorate` overwrites this key with its
+        # own dict (whose `logo` is already a URL), so putting the model here
+        # only ever looked like it worked. Setting it twice is what let three
+        # templates dereference `federation.logo.url` and render nothing.
         "connect_url": _connect_url(platform),
         "connect_qr_url": _connect_qr_url(),
         "tailscale_url": _tailscale_url(),

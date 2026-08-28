@@ -9,17 +9,20 @@
 
   <div class="max-w-6xl mx-auto flex justify-between items-center">
     <!-- Site Name -->
-    <div class="flex items-center gap-3">
-        {% if logo %}
-          <a href="{% url 'core:welcome' %}" class="flex items-center" id="federation-logo-link">
-            <img src="{{ logo }}" alt="" class="h-8 w-auto hover:opacity-80 transition"
-                 onerror="document.getElementById('federation-logo-link').style.display='none'">
-          </a>
+    <!-- The brand is the way home. Logo AND name inside the link: with no
+         logo the bar used to offer no route back to the welcome page at
+         all. `brand` is resolved in PageProcessor — the federation's
+         identity on a host that asked for it, the platform's otherwise. -->
+    <a href="{% url 'core:welcome' %}"
+       class="flex items-center gap-3 hover:opacity-80 transition" id="brand-link">
+        {% if brand.logo %}
+          <img src="{{ brand.logo }}" alt="" class="h-8 w-auto"
+               onerror="this.style.display='none'">
         {% endif %}
       <h1 class="text-2xl font-bold tracking-tight">
-        {{ platform.site_name }}
+        {{ brand.name|default:platform.site_name }}
       </h1>
-    </div>
+    </a>
 
     <!-- Desktop Nav -->
     <div class="hidden sm:flex items-center gap-3">
