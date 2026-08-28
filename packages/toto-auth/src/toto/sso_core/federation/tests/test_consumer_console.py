@@ -99,6 +99,31 @@ class ConsumerConsolePairedTests(TestCase):
         self.assertIn("Test the connection", body)
         self.assertIn("Enter a new code", body)        # re-pair is behind this control
 
+    def test_the_joined_federation_is_named(self):
+        """Joining is joining a FEDERATION — the console says which one.
+
+        `platform_info` has always carried the parent's federation; this page
+        used to drop it, showing only which PLATFORM it paired with.
+        """
+        info = {"site_name": "Zenobia", "domain": "zenobia.test",
+                "logo_url": None,
+                "federation": {"name": "The Holding", "logo_url": None}}
+        with mock.patch("toto.sso_client.parent_info.fetch_platform_info",
+                        return_value=info):
+            body = self.client.get(self.url).content.decode()
+        self.assertIn("The Holding", body)
+        self.assertIn("Part of", body)
+
+    def test_a_parent_without_a_federation_says_nothing_about_one(self):
+        """The common case: most platforms belong to no federation."""
+        info = {"site_name": "Zenobia", "domain": "zenobia.test",
+                "logo_url": None, "federation": None}
+        with mock.patch("toto.sso_client.parent_info.fetch_platform_info",
+                        return_value=info):
+            body = self.client.get(self.url).content.decode()
+        self.assertIn("Zenobia", body)
+        self.assertNotIn("Part of", body)
+
     def test_falls_back_to_local_config_when_the_parent_is_unreachable(self):
         with mock.patch("toto.sso_client.parent_info.fetch_platform_info", return_value=None):
             body = self.client.get(self.url).content.decode()

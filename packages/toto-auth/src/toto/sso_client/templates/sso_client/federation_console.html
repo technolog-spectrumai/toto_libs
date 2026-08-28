@@ -41,6 +41,25 @@
           </div>
         </div>
 
+        {% comment %}The federation itself, when the parent belongs to one.
+        `platform_info` has carried it since the branding tab shipped and this
+        page dropped it on the floor: joining is joining a FEDERATION, and the
+        console that says who you paired with should name what you joined.
+        Absent on a parent with no federation row — the common case.{% endcomment %}
+        {% if parent.federation.name %}
+          <div class="flex items-center gap-3 pl-1">
+            {% if parent.federation.logo_url %}
+              <img src="{{ parent.federation.logo_url }}" alt="" style="width:28px;height:28px;object-fit:contain;border-radius:6px;background:#fff;padding:2px;">
+            {% else %}
+              <i class="fa-solid fa-crown opacity-60"></i>
+            {% endif %}
+            <p class="text-sm">
+              <span class="opacity-60">{% trans "Part of" %}</span>
+              <span class="font-semibold">{{ parent.federation.name }}</span>
+            </p>
+          </div>
+        {% endif %}
+
         {% if parent_unreachable %}
           <p :class="darkMode ? 'text-warn-dark' : 'text-warn-light'" class="text-sm">
             {% blocktrans with label=config.label|default:config.portal_url %}Showing the stored details for {{ label }} — the platform could not be reached just now to confirm.{% endblocktrans %}
