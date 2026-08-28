@@ -53,12 +53,32 @@ def index(request):
         except Exception:
             error = _("Gitea did not answer. It may still be starting up.")
 
+    storage = None
+    if account is not None:
+        from .tasks import _effective_cap_bytes
+
+        cap = _effective_cap_bytes(account)
+        storage = {
+            "bytes": account.storage_bytes,
+            "cap_bytes": cap,
+            "sampled_at": account.storage_sampled_at,
+            "blocked": account.repo_creation_blocked,
+        }
+
+    forge_sample = None
+    if request.user.is_staff:
+        from .models import GiteaForgeSample
+
+        forge_sample = GiteaForgeSample.objects.first()
+
     context = {
         "gitea_enabled": _enabled(),
         "gitea_url": base + "/",
         "account": account,
         "repos": repos,
         "error": error,
+        "storage": storage,
+        "forge_sample": forge_sample,
     }
     return render(request, "gitea/index.html",
                   PageProcessor().decorate(context, request))

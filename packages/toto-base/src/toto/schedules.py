@@ -16,6 +16,9 @@ def beat_schedule(
     formica_minutes=5,
     monit=False,
     monit_minutes=2,
+    gitea=False,
+    gitea_hour=3,
+    gitea_minute=30,
     clearing=False,
     tax=False,
     tax_hour=4,
@@ -96,6 +99,18 @@ def beat_schedule(
         schedule["clearing-expire-holds"] = {
             "task": "toto.clearing.tasks.expire_holds",
             "schedule": crontab(minute="*/5"),
+        }
+
+    if gitea:
+        from celery.schedules import crontab
+
+        # The hosted-git storage sample + cap reconciler. Before the tax
+        # sweep on purpose: the levy reads the snapshot this writes, and an
+        # hour-old sample beats a day-old one. Correctness never depends on
+        # the ordering — only staleness does.
+        schedule["gitea-sample-storage"] = {
+            "task": "toto.gitea.tasks.gitea_sample_storage",
+            "schedule": crontab(hour=gitea_hour, minute=gitea_minute),
         }
 
     if tax:

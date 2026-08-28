@@ -65,6 +65,25 @@ class Command(IngressCommand):
             f"({'armed' if hold_rule.active else 'UNARMED'}, per {hold_rule.unit_label})"
         )
 
+        git_rule, git_created = TaxRule.objects.get_or_create(
+            metric_code="gitea.gb_day",
+            defaults={
+                "unit_label": "GB",
+                "active": False,   # unarmed on creation — see storage.gb_day above
+                "description": (
+                    "Daily fee on hosted git storage, charged per GB per day "
+                    "from the first byte — the same shape as the vault levy, "
+                    "measured on the forge instead. Over the cap the forge "
+                    "refuses NEW repositories; nothing already pushed is "
+                    "deleted, and a metric with no price is free."
+                ),
+            },
+        )
+        self.stdout.write(
+            f"tax: rule gitea.gb_day {'created' if git_created else 'kept'} "
+            f"({'armed' if git_rule.active else 'UNARMED'}, per {git_rule.unit_label})"
+        )
+
         # Repair the billing-unit mirrors the tariffs seeder creates with an
         # empty dimension — these are the platform's capacity×time units and
         # the rate card should say so (precedent: storage.mb_hour in the
@@ -87,7 +106,7 @@ class Command(IngressCommand):
             from toto.quota import rates
 
             card = rates.rate_card()
-            for code in ("storage.gb_day", "time.hold"):
+            for code in ("storage.gb_day", "time.hold", "gitea.gb_day"):
                 if code not in card:
                     self.stdout.write(
                         f"tax: {code} has a rule and no price, so it is UNARMED. "

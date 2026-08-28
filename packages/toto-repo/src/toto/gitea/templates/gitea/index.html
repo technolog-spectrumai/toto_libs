@@ -70,7 +70,24 @@
           <i class="fa-solid fa-book"></i>{% trans "Your repositories" %}
         </h2>
 
-        {% if repos %}
+        {% if storage %}
+      {% if storage.blocked %}
+        <div role="alert"
+             :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+             class="mb-4 rounded-lg border-2 p-4 text-sm">
+          <p class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+            {% trans "Over the storage cap — the forge is not accepting new repositories from you." %}</p>
+          <p class="mt-1 opacity-80">{% trans "Existing repositories keep working and nothing you have pushed is deleted. Free some space (or ask for a higher cap) and the block lifts on the next nightly check." %}</p>
+        </div>
+      {% endif %}
+      <p class="mb-4 text-xs opacity-60">
+        {% blocktrans with used=storage.bytes|filesizeformat %}Your hosted git holds {{ used }}{% endblocktrans %}{% if storage.cap_bytes %}{% blocktrans with cap=storage.cap_bytes|filesizeformat %} of {{ cap }}{% endblocktrans %}{% endif %}{% if storage.sampled_at %} · {% blocktrans with when=storage.sampled_at|timesince %}sampled {{ when }} ago{% endblocktrans %}{% endif %}
+        {% if forge_sample and forge_sample.unattributed_bytes %}
+          · {% blocktrans with orgbytes=forge_sample.unattributed_bytes|filesizeformat %}unattributed (org-owned, unbilled): {{ orgbytes }}{% endblocktrans %}
+        {% endif %}
+      </p>
+    {% endif %}
+    {% if repos %}
           <ul class="divide-y divide-current/10">
             {% for repo in repos %}
               <li class="flex flex-wrap items-center gap-3 py-3">

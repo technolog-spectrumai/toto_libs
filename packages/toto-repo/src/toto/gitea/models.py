@@ -3,6 +3,8 @@ from django.conf import settings
 from django.contrib.auth.models import User
 from django.db import models
 
+from toto.quota.models import AbstractQuotaPolicy, AbstractUsageEvent
+
 
 class GiteaAccount(models.Model):
     """Auto-provisioned Gitea identity for a portal user.
@@ -24,6 +26,20 @@ class GiteaAccount(models.Model):
     token_encrypted = models.TextField(blank=True, default="")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    #: The nightly sampler's snapshot of this user's repositories on the
+    #: forge, in bytes. A COLUMN rather than a live API call so the levy
+    #: sweep and the cap check read the database like every other provider,
+    #: and a forge that is down costs staleness, never a failed sweep.
+    storage_bytes = models.BigIntegerField(default=0)
+    storage_sampled_at = models.DateTimeField(null=True, blank=True)
+    #: Per-user override of settings.GITEA_STORAGE_CAP_GB. Null = the host
+    #: default; both null = uncapped.
+    storage_cap_gb = models.PositiveIntegerField(null=True, blank=True)
+    #: What the reconciler last set forge-side (max_repo_creation=0), so the
+    #: flip is idempotent and an operator can SEE who is blocked without
+    #: asking the forge.
+    repo_creation_blocked = models.BooleanField(default=False)
+
     def __str__(self):
         return f"GiteaAccount({self.user.username} → {self.username})"
 
@@ -38,3 +54,39 @@ class GiteaAccount(models.Model):
         if not self.token_encrypted:
             return ""
         return self._fernet().decrypt(self.token_encrypted.encode()).decode()
+
+
+class GiteaForgeSample(models.Model):
+    """One row: the whole forge, as of the last sample.
+
+    ``unattributed_bytes`` is the org-owned and unmapped remainder — bytes the
+    levy deliberately skips (never bill what you cannot attribute, the
+    vault's mirror-stub rule) but must not hide: unbilled storage should be a
+    number somebody can see, not a blind spot.
+    """
+
+    sampled_at = models.DateTimeField()
+    total_bytes = models.BigIntegerField(default=0)
+    unattributed_bytes = models.BigIntegerField(default=0)
+
+    def __str__(self):
+        return f"forge sample {self.sampled_at:%Y-%m-%d %H:%M}"
+
+
+# toto.quota owns no tables, so each metered app declares its own concrete
+# pair and the rows live in that app's migrations — the same shape as
+# toto.repo. Without them toto.tax refuses the levy outright ("has no
+# usage-event table"). Metric: gitea.gb_day.
+
+class GiteaUsageEvent(AbstractUsageEvent):
+    class Meta(AbstractUsageEvent.Meta):
+        verbose_name = "Gitea usage event"
+        verbose_name_plural = "Gitea usage events"
+
+
+class GiteaQuotaPolicy(AbstractQuotaPolicy):
+    events = GiteaUsageEvent
+
+    class Meta(AbstractQuotaPolicy.Meta):
+        verbose_name = "Gitea quota policy"
+        verbose_name_plural = "Gitea quota policies"

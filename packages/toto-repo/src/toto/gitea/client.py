@@ -175,3 +175,54 @@ def list_repos(account: GiteaAccount) -> list[dict]:
          "clone_url": clone_url(r["owner"]["login"], r["name"])}
         for r in resp.json()
     ]
+
+
+def iter_all_repos():
+    """Every repository on the forge, one paginated admin pass.
+
+    ``/repos/search`` with the service account (an instance admin) sees
+    private repositories too. One pass for the WHOLE forge rather than a call
+    per user — the sampler is O(repos/50) requests either way, and this way
+    org-owned repositories are seen once instead of never.
+
+    Yields the raw Gitea repo dicts. ``size`` is Gitea's figure in KiB and —
+    assumption stated rather than hidden — may not include LFS objects; LFS
+    accounting is a named TODO, not silently wrong numbers.
+    """
+    page = 1
+    while True:
+        resp = _request("GET", "/repos/search", _admin_auth(),
+                        params={"limit": 50, "page": page, "private": "true"})
+        if resp.status_code != 200:
+            raise GiteaError(f"gitea repo search failed: {resp.text[:200]}")
+        batch = resp.json().get("data") or []
+        if not batch:
+            return
+        yield from batch
+        if len(batch) < 50:
+            return
+        page += 1
+
+
+def set_max_repo_creation(username: str, limit: int) -> None:
+    """Flip one user's repo-creation allowance on the forge.
+
+    ``0`` blocks new repositories, ``-1`` restores the forge default. Gitea's
+    edit endpoint requires ``login_name`` and ``source_id`` to be echoed back
+    or it resets them — so the user is fetched first and those two fields
+    ride along unchanged.
+    """
+    resp = _request("GET", f"/users/{username}", _admin_auth())
+    if resp.status_code != 200:
+        raise GiteaError(f"gitea user lookup failed: {resp.text[:200]}")
+    current = resp.json()
+    resp = _request(
+        "PATCH", f"/admin/users/{username}", _admin_auth(),
+        json={
+            "login_name": current.get("login_name") or current.get("login", username),
+            "source_id": current.get("source_id", 0),
+            "max_repo_creation": limit,
+        },
+    )
+    if resp.status_code not in (200, 204):
+        raise GiteaError(f"gitea user edit failed: {resp.text[:200]}")
