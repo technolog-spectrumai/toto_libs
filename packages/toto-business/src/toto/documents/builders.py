@@ -298,3 +298,45 @@ def meeting_document(meeting) -> str:
         + "".join(sections)
     )
     return document(f"{meeting.title} — meeting record", body, css=VOTE_CSS)
+
+
+def register_table(rows) -> str:
+    """The shareholder register, both metrics named — never one called
+    "share": ownership is units over total units, voting power is votes over
+    total votes, and they diverge whenever a class carries other than one
+    vote per unit."""
+    cells = "".join(
+        f"<tr><td>{escape(row['name'])}</td>"
+        f"<td>{escape(row['holding'].share_class.name)}</td>"
+        f"<td class=\"num\">{row['units']}</td>"
+        f"<td class=\"num\">{row['ownership_percent']}%</td>"
+        f"<td class=\"num\">{row['votes']}</td>"
+        f"<td class=\"num\">{row['voting_percent']}%</td></tr>"
+        for row in rows
+    )
+    return (
+        "<table><thead><tr><th>Shareholder</th><th>Share class</th>"
+        "<th>Units</th><th>Ownership %</th><th>Votes</th><th>Voting %</th>"
+        "</tr></thead><tbody>" + cells + "</tbody></table>"
+    )
+
+
+def register_document(company, register) -> str:
+    """The one-click shareholder-register PDF's HTML.
+
+    ``register`` is ``toto.company.views.ownership_register(company)`` —
+    built there, rendered here, so the numbers on the PDF are the numbers on
+    the page, from the same code path.
+    """
+    totals = (
+        f"<p class=\"totals\">Total: {register['total_units']} units, "
+        f"{register['total_votes']} votes.</p>"
+    )
+    body = (
+        f"<h2>{escape(company.name)}</h2>"
+        f"<p class=\"meta\">Shareholder register — exact to the last unit. "
+        f"Units are capital; votes are control.</p>"
+        + register_table(register["shareholder_structure"])
+        + totals
+    )
+    return document(f"Shareholder register — {company.name}", body)

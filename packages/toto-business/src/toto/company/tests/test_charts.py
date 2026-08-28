@@ -237,3 +237,73 @@ class PageRendersItsChartLibraries(ChartTestCase):
         body = self.page().content.decode()
         self.assertIn("JSON.parse(", body)
         self.assertIn("doughnut", body)
+
+
+class RegisterExportTests(ChartTestCase):
+    """The one-click register PDF — queued through aralia, never rendered
+    here (the package's own no-renderer test is the law)."""
+
+    def setUp(self):
+        super().setUp()
+        self.hold("Ada", self.founder, "600")
+        self.hold("Bob", self.ordinary, "400")
+
+    def export(self):
+        self.client.force_login(self.member)
+        return self.client.post(reverse("company:register_export",
+                                        args=[self.company.slug]),
+                                follow=True)
+
+    def test_the_document_carries_both_metrics(self):
+        from toto.company.views import ownership_register
+        from toto.documents import builders
+
+        html = builders.register_document(
+            self.company, ownership_register(self.company))
+        self.assertIn("Ada", html)
+        self.assertIn("Ownership %", html)
+        self.assertIn("Voting %", html)
+        self.assertIn("1600", html)         # total votes, weighted
+
+    def test_a_hostile_name_is_escaped_in_the_document(self):
+        from toto.company.views import ownership_register
+        from toto.documents import builders
+
+        self.hold("<script>alert(1)</script>", self.ordinary, "10")
+        html = builders.register_document(
+            self.company, ownership_register(self.company))
+        self.assertNotIn("<script>alert(1)</script>", html)
+        self.assertIn("&lt;script&gt;", html)
+
+    def test_the_click_queues_a_render(self):
+        from unittest import mock
+
+        with mock.patch("toto.documents.services.export") as export:
+            response = self.export()
+        export.assert_called_once()
+        self.assertContains(response, "The PDF is rendering.")
+
+    def test_without_a_renderer_the_button_refuses_with_the_reason(self):
+        from unittest import mock
+
+        from toto.documents import services
+
+        with mock.patch("toto.documents.services.export",
+                        side_effect=services.ExportRefused("no renderer")):
+            response = self.export()
+        self.assertContains(response, "no renderer")
+
+    def test_an_empty_register_refuses_before_queueing(self):
+        from unittest import mock
+
+        empty = self.make_company("Empty sp. z o.o.")
+        with mock.patch("toto.documents.services.export") as export:
+            self.client.force_login(self.member)
+            response = self.client.post(
+                reverse("company:register_export", args=[empty.slug]),
+                follow=True)
+        export.assert_not_called()
+        self.assertContains(response, "Nothing to export")
+
+    def test_the_button_is_on_the_page(self):
+        self.assertContains(self.page(), "Register PDF")

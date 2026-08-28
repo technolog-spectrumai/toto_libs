@@ -35,6 +35,14 @@ IIFE runs at parse time in the body, so `defer` here would break it.
                class="rounded-lg border p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
           <h2 class="text-lg font-bold">{% trans "Shareholder register" %}</h2>
+          {% if shareholder_structure %}
+            <form method="post" action="{% url 'company:register_export' company.slug %}">
+              {% csrf_token %}
+              <button type="submit"
+                      class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+                <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{% trans "Register PDF" %}</button>
+            </form>
+          {% endif %}
           {% if request.user.is_staff %}
             <div class="flex gap-2">
               <button type="button" @click="modal = 'share_class'"

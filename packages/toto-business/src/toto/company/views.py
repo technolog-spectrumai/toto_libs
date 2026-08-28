@@ -938,3 +938,31 @@ def locations(request, slug):
         "can_manage": request.user.is_staff or request.user.is_superuser,
     })
 
+
+@login_required
+@require_POST
+def register_export(request, slug):
+    """The shareholder register as a PDF, one click, through aralia.
+
+    The same queue-and-render door the vote exports use: the Business Center
+    owns no renderer (its own test forbids one), aralia meters and renders on
+    the worker, and a host without aralia refuses with the reason instead of
+    a broken button.
+    """
+    from toto.documents import builders, services
+
+    company = _company(slug)
+    register = ownership_register(company)
+    if not register["shareholder_structure"]:
+        messages.error(request, "Nothing to export — the register is empty.")
+        return redirect("company:shareholders", slug=company.slug)
+
+    html = builders.register_document(company, register)
+    try:
+        services.export(html, user=request.user,
+                        label=f"register {company.name}")
+    except services.ExportRefused as exc:
+        messages.error(request, str(exc))
+    else:
+        messages.success(request, "The PDF is rendering.")
+    return redirect("company:shareholders", slug=company.slug)
