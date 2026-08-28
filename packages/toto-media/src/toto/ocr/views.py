@@ -405,11 +405,16 @@ def ocr_retry(request, pk):
 
     OcrPage.objects.filter(run=run, number__in=numbers).update(
         status=PageStatus.WAITING, error="")
+    # F(), not arithmetic on the row we read: the same race the cancel path
+    # has. Nothing else is settling this run right now — it is finished — but
+    # the habit is what keeps the two paths from drifting apart.
+    from django.db.models import F
+
     OcrRun.objects.filter(pk=run.pk).update(
         status=RunStatus.RUNNING, finished_at=None, error="",
         page_errors=[],
-        pages_settled=run.pages_settled - len(numbers),
-        pages_failed=max(0, run.pages_failed - len(numbers)))
+        pages_settled=F("pages_settled") - len(numbers),
+        pages_failed=F("pages_failed") - len(numbers))
 
     from toto.ocr.tasks import ocr_page
 

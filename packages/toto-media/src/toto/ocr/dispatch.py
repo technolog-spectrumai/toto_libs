@@ -10,6 +10,7 @@ transfers do and for the same reason.
 
 from __future__ import annotations
 
+from django.db.models import F
 from django.utils.translation import gettext as _
 
 from toto.celery_utils import celery_available
@@ -54,8 +55,12 @@ def cancel_run(run: OcrRun) -> int:
     stopped = OcrPage.objects.filter(run=run, status=PageStatus.WAITING).update(
         status=PageStatus.CANCELLED)
     if stopped:
+        # F(), not `run.pages_settled + stopped`: a page task can settle between
+        # this row being read and being written, and a read-modify-write would
+        # throw its increment away — leaving a run that never reaches its own
+        # total and so never finalises.
         OcrRun.objects.filter(pk=run.pk).update(
-            pages_settled=run.pages_settled + stopped)
+            pages_settled=F("pages_settled") + stopped)
     # Best effort, and correctness never depends on it landing.
     try:
         from celery import current_app

@@ -6,15 +6,17 @@ reading a page is ordinary Python over a ~20 MB apt layer — no reserved CPU, n
 mounted scratch, nothing to isolate — and making somebody book a Gear to read a
 scan is a worse product than carrying the layer.
 
-**Every import of pytesseract lives inside a function.** The suite's own test
-environment has Pillow but not pytesseract, so a module-level import would break
-`toto.ocr` for anybody running the library's tests — the same trap the vendored
-tree already hit with opencv.
+**Both programs are subprocesses, not bindings.** No pytesseract, no PyMuPDF.
+`tesseract` reads one page and `pdftoppm` renders one page at a time into a temp
+directory, each in its own process — so a malformed file that crashes a renderer
+is one page's non-zero exit code rather than a dead Celery worker taking every
+other job on the queue with it. The entire design of this feature is that one
+page can fail alone, and an in-process renderer would undermine it.
 
-**poppler is a subprocess, not a library.** `pdftoppm` renders one page at a
-time into a temp directory. A malformed PDF that crashes an in-process renderer
-would take the whole Celery worker down with it, and the entire design of this
-feature is that one page can fail alone.
+That also keeps this module importable everywhere: the only third-party import
+anywhere in the app is Pillow, which is already unconditional. A host without
+the binaries answers `tesseract_available() is False` and says so, rather than
+failing at import the way a missing binding would.
 """
 
 from __future__ import annotations
