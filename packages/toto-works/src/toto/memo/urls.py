@@ -20,6 +20,7 @@ entitlement. Making it a POST would paywall looking; making `save` a GET would
 unpaywall writing. `zenobia.tests.test_editors_are_gated` asserts exactly this.
 """
 from django.urls import path
+from django.views.generic import RedirectView
 
 from . import views
 from .views import (
@@ -33,7 +34,20 @@ from .views import (
 app_name = 'memo'
 
 urlpatterns = [
-    path('', PresentationIndexView.as_view(), name='index'),
+    # `/memo/` is Office's Presentations tab now — one place to look for the
+    # things you make, rather than one flat list per app. The NAME stays put so
+    # every existing reverse() and template link keeps working.
+    #
+    # The gallery itself is kept, not deleted: it renders a real cover slide
+    # per deck, which Office's generic rows cannot reproduce without toto.core
+    # importing this app. It moves one path segment down and the tab links to
+    # it. It is also the only deck listing an ANONYMOUS visitor can see —
+    # Office requires a login, so retiring this would quietly un-publish every
+    # public deck.
+    path('', RedirectView.as_view(pattern_name='office:section',
+                                  query_string=True), {'section': 'presentations'},
+         name='index'),
+    path('gallery/', PresentationIndexView.as_view(), name='gallery'),
     path('read/<int:file_pk>/', PresentationReadView.as_view(), name='read'),
     path('present/<int:file_pk>/', PresentationView.as_view(), name='present'),
     path('export/<int:file_pk>/pdf/', presentation_export_pdf, name='export_pdf'),

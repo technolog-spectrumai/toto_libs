@@ -158,7 +158,9 @@ class PresentationReadTests(TestCase):
         legacy = self._deck(theme="black", font="sans", file_type="presentation",
                             key="legacy-deck", name="legacy.xml")
         self.client.force_login(self.user)
-        response = self.client.get(reverse("memo:index"))
+        # The gallery kept its cover-rendering job and moved one segment down
+        # when /memo/ became Office's Presentations tab.
+        response = self.client.get(reverse("memo:gallery"))
         listed = {row["file_pk"] for row in response.context["presentations"]}
         self.assertEqual(listed, {self.deck.pk, legacy.pk})
 

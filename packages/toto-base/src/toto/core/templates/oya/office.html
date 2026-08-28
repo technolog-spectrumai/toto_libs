@@ -1,0 +1,304 @@
+{% extends "oya/base.html" %}
+{% comment %}
+Office: one tab per kind of thing you make, each a real list over the vault.
+
+The page this replaces was a grid of cards linking to four apps, and it was
+removed with the note that "a landing page for the two things that stayed was a
+hop to nowhere". The answer to that is not a nicer menu — it is that every tab
+here holds the list, the folders and the actions, so the tab IS the destination.
+
+Everything that changes a file posts to the app that owns it or to the vault.
+Office renders those forms; it never receives them. See core/office.py.
+{% endcomment %}
+{% load i18n static %}
+
+{% block title %}{% trans "Office" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      x-data="officePage()"
+      @keydown.escape.window="modal = ''"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div>
+        <p class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Office" %}</p>
+        <h1 class="text-2xl font-bold"><i class="{{ section.icon }} opacity-70" aria-hidden="true"></i>
+          {{ section.label }}</h1>
+        <p class="mt-1 text-sm opacity-70">{{ section.blurb }}
+          {% if alt_view_url %}
+            <a href="{{ alt_view_url }}" class="ml-1 font-semibold underline opacity-80 hover:opacity-100">{{ section.alt_label }}</a>
+          {% endif %}</p>
+      </div>
+      {% if creatable %}
+        <div class="relative">
+          <button type="button" @click="menu = !menu"
+                  class="inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-sm font-semibold"
+                  x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "New" %}
+          </button>
+          <div x-show="menu" x-cloak @click.outside="menu = false"
+               class="absolute right-0 z-20 mt-1 w-64 rounded-lg border p-2 shadow-lg"
+               x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+            {% for file_type, extension in creatable %}
+              {% comment %}Posts to the VAULT's create door, which asks the
+              type's own editor plugin what an empty one of these looks like.
+              Office knows neither.{% endcomment %}
+              <form method="post" action="{% url 'vault:create_file' %}" class="space-y-2"
+                    @submit.prevent="post($event.target, 'created')">
+                {% csrf_token %}
+                <input type="hidden" name="file_type" value="{{ file_type }}">
+                {% if directory_id %}<input type="hidden" name="directory_id" value="{{ directory_id }}">{% endif %}
+                <label class="block text-xs font-semibold uppercase tracking-wide opacity-60"
+                       for="new-{{ file_type }}">{% blocktrans %}Name{% endblocktrans %}</label>
+                <input id="new-{{ file_type }}" name="title" required
+                       placeholder="untitled{{ extension }}"
+                       class="w-full rounded border px-2 py-1.5 text-sm"
+                       x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+                <button type="submit"
+                        class="w-full rounded px-3 py-1.5 text-sm font-semibold"
+                        x-bind:class="darkMode ? 'bg-accent-1 text-primary-bg-dark' : 'bg-accent-2 text-primary-bg-light'">
+                  {% blocktrans with label=section.label %}Create in {{ label }}{% endblocktrans %}
+                </button>
+              </form>
+            {% endfor %}
+          </div>
+        </div>
+      {% endif %}
+    </div>
+
+    {% include "oya/_office_tabs.html" %}
+
+    {% comment %}Whatever the vault or the subscription gate answered, verbatim.
+    A 402 here means the plan does not cover it, which is a sentence the reader
+    can act on; "something went wrong" is not.{% endcomment %}
+    <p x-show="error" x-cloak role="alert"
+       class="rounded-lg border-2 p-3 text-sm"
+       x-bind:class="darkMode ? 'border-warn-dark' : 'border-warn-light'">
+      <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      <span x-text="error"></span>
+      <button type="button" @click="error = ''" class="ml-2 underline opacity-70">{% trans "Dismiss" %}</button>
+    </p>
+
+    {% if section.read_only_note %}
+      <p class="rounded-lg border border-dashed p-3 text-xs opacity-70">
+        <i class="fa-solid fa-circle-info" aria-hidden="true"></i> {{ section.read_only_note }}</p>
+    {% endif %}
+
+    <div class="grid gap-4 md:grid-cols-[16rem_1fr]">
+
+      {% comment %}The folder panel. Scoped to this tab's file types, so it
+      shows where this kind of thing lives rather than the whole vault — which
+      also means a folder holding none of them does not appear. Said out loud
+      below rather than left to be discovered.{% endcomment %}
+      {% comment %}min-w-0: a grid item defaults to min-width:auto, so the
+      tree's longest filename would widen the whole track and scroll the page
+      sideways on a phone. The list column carries it for the same reason.
+      {% endcomment %}
+      <aside x-show="panel" x-cloak
+             class="h-max min-w-0 rounded-lg border p-4"
+             x-bind:class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'">
+        <div class="mb-3 flex items-center justify-between">
+          <h2 class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Folders" %}</h2>
+          <button type="button" @click="panel = false; save()" class="text-xs opacity-60 hover:opacity-100"
+                  title="{% trans 'Hide the folder panel' %}">
+            <i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+        </div>
+        {% if directory_id %}
+          <a href="?{% if search %}q={{ search|urlencode }}&amp;{% endif %}sort={{ sort }}"
+             class="mb-2 inline-flex items-center gap-1 text-xs font-semibold opacity-70 hover:opacity-100">
+            <i class="fa-solid fa-xmark" aria-hidden="true"></i>{% trans "Show every folder" %}</a>
+        {% endif %}
+        {% include "vault/_file_tree.html" with tree=tree tree_link_prefix=open_prefix tree_dir_link_prefix=dir_link_prefix tree_hide_type=1 %}
+        <p class="mt-3 text-[11px] opacity-50">
+          {% blocktrans with label=section.label|lower %}Only folders holding {{ label }} appear here.{% endblocktrans %}</p>
+      </aside>
+
+      <section class="min-w-0 space-y-4">
+        <button type="button" x-show="!panel" x-cloak @click="panel = true; save()"
+                class="inline-flex items-center gap-2 rounded border px-2 py-1 text-xs font-semibold">
+          <i class="fa-solid fa-folder-tree" aria-hidden="true"></i>{% trans "Show folders" %}</button>
+
+        <form method="get" class="flex flex-wrap items-center gap-2">
+          {% if directory_id %}<input type="hidden" name="dir" value="{{ directory_id }}">{% endif %}
+          <div class="relative min-w-0 flex-1">
+            <i class="fa-solid fa-magnifying-glass pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-xs opacity-40"></i>
+            <input type="search" name="q" value="{{ search }}"
+                   placeholder="{% blocktrans with label=section.label|lower %}Search {{ label }}…{% endblocktrans %}"
+                   class="w-full rounded-lg border py-2 pl-8 pr-3 text-sm"
+                   x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+          </div>
+          <select name="sort" onchange="this.form.submit()"
+                  aria-label="{% trans 'Sort by' %}"
+                  class="rounded-lg border px-2 py-2 text-sm"
+                  x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+            {% for option in sorts %}
+              <option value="{{ option.key }}" {% if option.key == sort %}selected{% endif %}>{{ option.label }}</option>
+            {% endfor %}
+          </select>
+          <button type="submit" class="rounded-lg border px-3 py-2 text-sm font-semibold">{% trans "Search" %}</button>
+        </form>
+
+        <ul class="space-y-2">
+          {% for row in rows %}
+            <li class="group flex items-center gap-3 rounded-lg border px-3 py-2"
+                x-bind:class="darkMode ? 'border-accent-1/50' : 'border-accent-2/50'">
+              <i class="{{ section.icon }} opacity-50" aria-hidden="true"></i>
+              <div class="min-w-0 flex-1">
+                {% if row.open_url %}
+                  <a href="{{ row.open_url }}" class="block truncate font-semibold hover:underline">{{ row.file.title }}</a>
+                {% else %}
+                  <span class="block truncate font-semibold opacity-60" title="{% trans 'Nothing on this server opens this file.' %}">{{ row.file.title }}</span>
+                {% endif %}
+                <span class="text-xs opacity-50">
+                  {{ row.file.file_size_bytes|filesizeformat }} · {{ row.file.uploaded_at|timesince }} {% trans "ago" %}
+                  {% if row.file.bucket %}· {{ row.file.bucket.name }}{% endif %}
+                  {% if row.file.directory %}/ {{ row.file.directory.full_path }}{% endif %}
+                </span>
+              </div>
+              {% if row.file.is_encrypted %}
+                <span class="rounded-full border px-2 py-0.5 text-[11px] opacity-70">
+                  <i class="fa-solid fa-lock" aria-hidden="true"></i> {% trans "Encrypted" %}</span>
+              {% endif %}
+              {% if row.file.owner_id == request.user.id %}
+                <div class="flex shrink-0 gap-1 opacity-0 transition group-hover:opacity-100 focus-within:opacity-100">
+                  <button type="button" title="{% trans 'Rename' %}"
+                          @click="rename({{ row.file.pk }}, '{{ row.file.title|escapejs }}', '{{ row.file.file_type|escapejs }}')"
+                          class="rounded px-2 py-1 text-xs"><i class="fa-solid fa-pen" aria-hidden="true"></i></button>
+                  <button type="button" title="{% trans 'Delete' %}"
+                          @click="confirmDelete({{ row.file.pk }}, '{{ row.file.title|escapejs }}')"
+                          class="rounded px-2 py-1 text-xs"><i class="fa-solid fa-trash" aria-hidden="true"></i></button>
+                </div>
+              {% endif %}
+            </li>
+          {% empty %}
+            <li class="rounded-lg border border-dashed p-8 text-center">
+              <i class="{{ section.icon }} text-2xl opacity-25" aria-hidden="true"></i>
+              {% comment %}Two different situations, two different sentences —
+              "nothing matches" and "nothing here" send the reader to different
+              next actions.{% endcomment %}
+              <p class="mt-2 text-sm opacity-60">
+                {% if search %}{% trans "Nothing matches that." %}
+                {% elif directory_id %}{% trans "This folder is empty." %}
+                {% else %}{% trans "Nothing here yet." %}{% endif %}</p>
+            </li>
+          {% endfor %}
+        </ul>
+
+        {% if page.has_other_pages %}
+          <nav class="flex items-center justify-between text-sm" aria-label="{% trans 'Pages' %}">
+            <span class="opacity-60">{% blocktrans with n=total %}{{ n }} in total{% endblocktrans %}</span>
+            <span class="flex gap-2">
+              {% if page.has_previous %}
+                <a class="rounded border px-3 py-1" href="?page={{ page.previous_page_number }}&amp;sort={{ sort }}{% if search %}&amp;q={{ search|urlencode }}{% endif %}{% if directory_id %}&amp;dir={{ directory_id }}{% endif %}">{% trans "Previous" %}</a>
+              {% endif %}
+              <span class="px-2 py-1 opacity-60">{{ page.number }} / {{ page.paginator.num_pages }}</span>
+              {% if page.has_next %}
+                <a class="rounded border px-3 py-1" href="?page={{ page.next_page_number }}&amp;sort={{ sort }}{% if search %}&amp;q={{ search|urlencode }}{% endif %}{% if directory_id %}&amp;dir={{ directory_id }}{% endif %}">{% trans "Next" %}</a>
+              {% endif %}
+            </span>
+          </nav>
+        {% endif %}
+      </section>
+    </div>
+  </div>
+
+  {% comment %}Rename and delete post to the VAULT's own doors. Office owns no
+  write route: the subscription gate reads the entitlement off the app name, so
+  a mutation answered here would be one answered by an app the price list has
+  never heard of.
+
+  Submitted with fetch rather than as a plain form because those doors answer
+  JSON — a browser-navigated POST would land the user on `{"ok": true}`. The
+  alternative, teaching the vault a `next=` redirect, would change a contract
+  the file browser and four other callers already depend on.{% endcomment %}
+  <div x-show="modal === 'rename'" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+    <form method="post" action="{% url 'vault:rename_file' %}" @click.outside="modal = ''"
+          @submit.prevent="post($event.target, 'reload')"
+          class="w-full max-w-md rounded-lg border p-5"
+          x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+      {% csrf_token %}
+      <input type="hidden" name="file_pk" x-model="target">
+      <input type="hidden" name="file_type" x-model="targetType">
+      <h2 class="mb-3 font-bold">{% trans "Rename" %}</h2>
+      <input name="title" x-model="targetTitle" required
+             class="w-full rounded border px-3 py-2 text-sm"
+             x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+      <div class="mt-4 flex justify-end gap-2">
+        <button type="button" @click="modal = ''" class="rounded px-3 py-1.5 text-sm">{% trans "Cancel" %}</button>
+        <button type="submit" class="rounded px-3 py-1.5 text-sm font-semibold"
+                x-bind:class="darkMode ? 'bg-accent-1 text-primary-bg-dark' : 'bg-accent-2 text-primary-bg-light'">{% trans "Rename" %}</button>
+      </div>
+    </form>
+  </div>
+
+  <div x-show="modal === 'delete'" x-cloak
+       class="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4">
+    <form method="post" action="{% url 'vault:delete_file' %}" @click.outside="modal = ''"
+          @submit.prevent="post($event.target, 'reload')"
+          class="w-full max-w-md rounded-lg border p-5"
+          x-bind:class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'">
+      {% csrf_token %}
+      <input type="hidden" name="file_pk" x-model="target">
+      <h2 class="mb-2 font-bold">{% trans "Delete this file?" %}</h2>
+      {% comment %}Irreversible, so never a single click.{% endcomment %}
+      <p class="text-sm opacity-70"><span x-text="targetTitle"></span>
+        — {% trans "this cannot be undone." %}</p>
+      <div class="mt-4 flex justify-end gap-2">
+        <button type="button" @click="modal = ''" class="rounded px-3 py-1.5 text-sm">{% trans "Cancel" %}</button>
+        <button type="submit" class="rounded px-3 py-1.5 text-sm font-semibold text-white"
+                x-bind:class="darkMode ? 'bg-warn-dark' : 'bg-warn-light'">{% trans "Delete" %}</button>
+      </div>
+    </form>
+  </div>
+</main>
+
+<script>
+  function officePage() {
+    return {
+      modal: '', menu: false, busy: false, error: '',
+      target: '', targetTitle: '', targetType: '',
+      // The panel is a preference, not page state: it survives a tab switch
+      // and a reload, the way zinnia's files panel does.
+      panel: localStorage.getItem('office:panel') !== '0',
+      save() { try { localStorage.setItem('office:panel', this.panel ? '1' : '0'); } catch (e) {} },
+      // One submitter for all three doors. `created` follows the vault into the
+      // new file's editor; `reload` redraws the list where it stands, keeping
+      // the search, sort, folder and page the reader was looking at.
+      async post(form, after) {
+        this.busy = true;
+        try {
+          const response = await fetch(form.action, {
+            method: 'POST', body: new FormData(form),
+            headers: {'X-Requested-With': 'XMLHttpRequest'},
+          });
+          let data = {};
+          try { data = await response.json(); } catch (e) { data = {}; }
+          if (!response.ok || data.ok === false) {
+            // The server's own sentence, never a generic one: a 402 here means
+            // the plan does not cover it and the reader needs to be told that,
+            // not "something went wrong".
+            this.error = data.error || ('HTTP ' + response.status);
+            return;
+          }
+          if (after === 'created' && data.editor_url) { window.location = data.editor_url; return; }
+          window.location.reload();
+        } catch (e) {
+          this.error = String(e);
+        } finally {
+          this.busy = false;
+        }
+      },
+      rename(pk, title, type) {
+        this.target = pk; this.targetTitle = title; this.targetType = type;
+        this.modal = 'rename';
+      },
+      confirmDelete(pk, title) {
+        this.target = pk; this.targetTitle = title; this.modal = 'delete';
+      },
+    };
+  }
+</script>
+{% endblock %}

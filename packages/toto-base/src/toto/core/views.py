@@ -3,6 +3,7 @@ from toto.ui import PageProcessor
 from django.contrib.auth import get_user_model
 from django.shortcuts import render
 from django.contrib.auth.decorators import login_required
+from django.views.decorators.http import require_safe
 import logging
 from toto.core import auth_views
 import os
@@ -358,7 +359,131 @@ def logout_view(request):
     return auth_views.password_logout_view(request)
 
 
+# ---------------------------------------------------------------------------
+# Office — the shared home for documents, decks, sheets and drawings.
+# The tab table, the queries and the plugin lookups live in toto/core/office.py;
+# these two views are the doors. Both GET, on purpose: see that module's header
+# for why an Office-owned write route would be a paywall bypass.
+# ---------------------------------------------------------------------------
 
 
+def _reverse_or_blank(url_name: str) -> str:
+    try:
+        return reverse(url_name)
+    except NoReverseMatch:
+        return ""
 
 
+@login_required
+@require_safe
+def office_view(request, section=None):
+    """One tab of Office: its list, its folder panel, its actions.
+
+    One view for every tab rather than four near-identical ones — the tabs
+    differ only by which vault file types they list, and `Section` carries that
+    difference as data.
+    """
+    from django.core.paginator import Paginator
+    from django.shortcuts import redirect
+
+    from toto.core import office
+    from toto.vault.filetree import build_file_tree
+
+    sections = office.available_sections()
+    if not sections:
+        # Nothing installed that Office could show. Better the dashboard than
+        # an empty room with four dead tabs.
+        return redirect("core:dashboard")
+
+    current = office.SECTIONS_BY_SLUG.get(section or "")
+    if current is None or current not in sections:
+        # An unknown slug, or a tab this host does not serve (BUILD_PRIMULA
+        # off, say). Land on the first real tab instead of 404-ing a URL that
+        # was correct on another deployment.
+        return redirect("office:section", section=sections[0].slug)
+
+    search = (request.GET.get("q") or "").strip()
+    sort = request.GET.get("sort") or office.DEFAULT_SORT
+    if sort not in office.SORTS:
+        sort = office.DEFAULT_SORT
+    try:
+        directory_id = int(request.GET.get("dir") or 0) or None
+    except (TypeError, ValueError):
+        directory_id = None
+
+    files = office.files_for(request.user, current, search=search, sort=sort,
+                             directory_id=directory_id)
+    page = Paginator(files, 30).get_page(request.GET.get("page"))
+
+    rows = [{"file": f, "open_url": office.open_url(f)} for f in page.object_list]
+
+    context = {
+        "page_title": "Office",
+        "sections": [{"slug": s.slug, "label": s.label, "icon": s.icon,
+                      "url": reverse("office:section", args=[s.slug]),
+                      "active": s.slug == current.slug}
+                     for s in sections],
+        "section": current,
+        # Resolved here and dropped on NoReverseMatch, the same way the
+        # dashboard treats a tile whose app is unmounted: an offer that leads
+        # nowhere is worse than no offer.
+        "alt_view_url": (_reverse_or_blank(current.alt_view)
+                         if current.alt_view else ""),
+        "rows": rows,
+        "page": page,
+        "search": search,
+        "sort": sort,
+        "sorts": [{"key": k, "label": label} for k, (label, _o) in office.SORTS.items()],
+        "directory_id": directory_id,
+        # The folder panel is scoped to THIS tab's types, so it shows where
+        # this kind of thing lives rather than the whole vault.
+        "tree": build_file_tree(request.user, file_types=current.file_types),
+        # The two link prefixes the shared tree partial appends an id to.
+        # Reversed here rather than written as literals: the mount point is the
+        # host's to choose, and a hardcoded "/office/" would be wrong the first
+        # time somebody mounts this anywhere else.
+        "open_prefix": reverse("office:open") + "?file=",
+        "dir_link_prefix": reverse("office:section", args=[current.slug]) + "?dir=",
+        "creatable": (creatable := office.creatable_types(current, request.user)),
+        # The same context key primula's and memo's own listings published, so
+        # the gate test that used to walk those pages can walk this one.
+        "can_create": bool(creatable),
+        "total": page.paginator.count,
+    }
+    return render(request, _get_template("office.html"),
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_safe
+def office_open(request):
+    """Open one file with whatever this host has for its type.
+
+    A redirect and nothing else, so the tree rows and the list rows can share
+    one href without either of them learning the plugin registries. Access is
+    checked here and not left to the target: `accessible_files` decides what is
+    listed, and `may_read` must decide what opens, or the two disagree.
+    """
+    from django.http import Http404
+    from django.shortcuts import get_object_or_404, redirect
+
+    from toto.core import office
+    from toto.vault import access
+    from toto.vault.models import VaultFile
+
+    try:
+        file_pk = int(request.GET.get("file") or 0)
+    except (TypeError, ValueError):
+        raise Http404("No such file.")
+    vault_file = get_object_or_404(
+        VaultFile.objects.select_related("bucket", "directory"), pk=file_pk)
+    if not access.may_read(request.user, vault_file):
+        # 404 rather than 403, the same reason the vault download door gives:
+        # a 403 confirms the file exists and turns this into an oracle for
+        # other people's filenames.
+        raise Http404("No such file.")
+
+    url = office.open_url(vault_file)
+    if not url:
+        raise Http404("Nothing on this server opens that file.")
+    return redirect(url)

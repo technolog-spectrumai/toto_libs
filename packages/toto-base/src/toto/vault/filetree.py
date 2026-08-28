@@ -71,13 +71,22 @@ def build_file_tree(user, *, file_types=None, bucket=None, exclude_pk=None,
 
     buckets: dict = {}
     for f in files:
-        bnode = buckets.setdefault(f.bucket_id, {"bucket": f.bucket, "dirs": {}})
+        bnode = buckets.setdefault(f.bucket_id, {"bucket": f.bucket, "dirs": {},
+                                                 "dir_ids": {}})
         dlabel = f.directory.full_path() if f.directory_id else ""
         bnode["dirs"].setdefault(dlabel, []).append(_row(f))
+        # The id beside the label, so a caller that wants to LINK a folder has
+        # something addressable. Grouping stays keyed on the path — two folders
+        # of the same name in one bucket are one heading here, as they always
+        # were — and `dir_id` names the first of them, which is enough for the
+        # "filter to this folder" links Office draws and is ignored by every
+        # caller that only reads `dir`.
+        bnode["dir_ids"].setdefault(dlabel, f.directory_id)
 
     out = []
     for bnode in buckets.values():
-        groups = [{"dir": d, "files": rows} for d, rows in sorted(bnode["dirs"].items())]
+        groups = [{"dir": d, "dir_id": bnode["dir_ids"].get(d), "files": rows}
+                  for d, rows in sorted(bnode["dirs"].items())]
         out.append({"bucket": bnode["bucket"], "groups": groups})
     out.sort(key=lambda b: (b["bucket"].name if b["bucket"] else ""))
     return out

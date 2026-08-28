@@ -3,6 +3,10 @@ One file row. Expects: file (+ tree_* vars from the parent include).
 Modes:
   tree_link_prefix set  → render as a link "{{ tree_link_prefix }}{{ file.id }}"
   otherwise             → render a checkbox (name=tree_input_name, value=id|title)
+  tree_hide_type set    → drop the file-type badge. For a tree already filtered
+                          to one type, the badge repeats the same word on every
+                          row and costs the filename the space it needs — in a
+                          16rem panel it turned "Handbook.x" into "Han…".
 {% endcomment %}
 {% if tree_link_prefix %}
 <a href="{{ tree_link_prefix }}{{ file.id }}" x-show="match('{{ file.title|escapejs }}')"
@@ -10,8 +14,8 @@ Modes:
    x-bind:class="darkMode ? 'hover:bg-accent-dark/10' : 'hover:bg-accent-light/10'">
   <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
   <span class="font-mono truncate min-w-0 flex-1 {% if file.id == tree_current_id %}font-bold{% endif %}">{{ file.title }}</span>
-  <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
-        x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ file.file_type }}</span>
+  {% if not tree_hide_type %}<span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+        x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ file.file_type }}</span>{% endif %}
   {% if file.size %}<span class="shrink-0 text-xs opacity-40">{{ file.size|filesizeformat }}</span>{% endif %}
 </a>
 {% else %}
@@ -25,8 +29,8 @@ Modes:
     {% if not tree_alpine %}{% if tree_value_field == 'id' %}{% if file.id|stringformat:'s' in tree_selected %}checked{% endif %}{% else %}{% if file.title in tree_selected %}checked{% endif %}{% endif %}{% endif %}>
   <i class="fa-regular fa-file w-3 shrink-0 text-xs opacity-30"></i>
   <span class="font-mono truncate min-w-0 flex-1">{{ file.title }}</span>
-  <span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
-        x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ file.file_type }}</span>
+  {% if not tree_hide_type %}<span class="shrink-0 rounded-full border px-2 py-0.5 text-[10px] uppercase tracking-wide opacity-60"
+        x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">{{ file.file_type }}</span>{% endif %}
   {% if file.size %}<span class="shrink-0 text-xs opacity-40">{{ file.size|filesizeformat }}</span>{% endif %}
 </label>
 {% endif %}
