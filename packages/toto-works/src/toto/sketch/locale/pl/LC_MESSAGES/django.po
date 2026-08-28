@@ -1,0 +1,208 @@
+# pl catalogue for toto.sketch.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-06 09:09-0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: pl\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=4; plural=(n==1 ? 0 : (n%10>=2 && n%10<=4) && (n%100<12 || n%100>14) ? 1 : n!=1 && (n%10>=0 && n%10<=1) || (n%10>=5 && n%10<=9) || (n%100>=12 && n%100<=14) ? 2 : 3);\n"
+
+#: templates/sketch/edit.html:17 templates/sketch/edit.html:82
+msgid "This file cannot be opened for drawing"
+msgstr "Tego pliku nie da się otworzyć do rysowania"
+
+#: templates/sketch/edit.html:19
+msgid "It contains active content (scripts, animation or embedded documents) that the sketch editor will not run or preserve blindly."
+msgstr "Zawiera aktywną treść (skrypty, animacje lub osadzone dokumenty), której edytor szkiców nie uruchomi ani nie zachowa w ciemno."
+
+#: templates/sketch/edit.html:20
+msgid "It references external resources. Only self-contained SVGs open here — a remote reference is a tracking beacon at best."
+msgstr "Odwołuje się do zewnętrznych zasobów. Otwierają się tu tylko samowystarczalne pliki SVG — zdalne odwołanie to w najlepszym razie sygnalizator śledzący."
+
+#: templates/sketch/edit.html:21
+msgid "It carries a document type declaration, which this editor refuses on principle (the billion-laughs family lives there)."
+msgstr "Niesie deklarację typu dokumentu, którą ten edytor odrzuca z zasady (tam mieszka rodzina ataków „billion laughs”)."
+
+#: templates/sketch/edit.html:22
+msgid "It does not parse as an SVG document."
+msgstr "Nie daje się sparsować jako dokument SVG."
+
+#: templates/sketch/edit.html:27
+msgid "Back to sketches"
+msgstr "Wróć do szkiców"
+
+#: templates/sketch/edit.html:32
+msgid "Open as XML"
+msgstr "Otwórz jako XML"
+
+#: templates/sketch/edit.html:52 templates/sketch/index.html:5
+#: templates/sketch/index.html:26
+msgid "Sketches"
+msgstr "Szkice"
+
+#: templates/sketch/edit.html:56 views.py:236
+msgid "Unsaved changes"
+msgstr "Niezapisane zmiany"
+
+#: templates/sketch/edit.html:60
+msgid "imported parts (move, resize or delete them whole)"
+msgstr "zaimportowane elementy (przesuwaj, skaluj lub usuwaj w całości)"
+
+#: templates/sketch/edit.html:71
+msgid "Save"
+msgstr "Zapisz"
+
+#: templates/sketch/edit.html:73
+msgid "read only"
+msgstr "tylko do odczytu"
+
+#: templates/sketch/edit.html:110
+msgid "Edit palette slots"
+msgstr "Edytuj kolory palety"
+
+#: templates/sketch/edit.html:159
+msgid "Fill"
+msgstr "Wypełnienie"
+
+#: templates/sketch/edit.html:163
+msgid "No fill"
+msgstr "Bez wypełnienia"
+
+#: templates/sketch/edit.html:177
+msgid "Board"
+msgstr "Plansza"
+
+#: templates/sketch/edit.html:178
+msgid "Transparent"
+msgstr "Przezroczysta"
+
+#: templates/sketch/edit.html:184
+msgid "Background image"
+msgstr "Obraz tła"
+
+#: templates/sketch/edit.html:187
+msgid "Remove image"
+msgstr "Usuń obraz"
+
+#: templates/sketch/edit.html:217
+msgid "Snap to grid"
+msgstr "Przyciągaj do siatki"
+
+#: templates/sketch/edit.html:227
+msgid "Undo"
+msgstr "Cofnij"
+
+#: templates/sketch/edit.html:230
+msgid "Redo"
+msgstr "Ponów"
+
+#: templates/sketch/edit.html:233
+msgid "Delete selection"
+msgstr "Usuń zaznaczenie"
+
+#: templates/sketch/edit.html:236
+msgid "Clear the board"
+msgstr "Wyczyść planszę"
+
+#: templates/sketch/edit.html:255
+msgid "Add text"
+msgstr "Dodaj tekst"
+
+#: templates/sketch/edit.html:258
+msgid "Text on the board"
+msgstr "Tekst na planszy"
+
+#: templates/sketch/edit.html:264 templates/sketch/index.html:145
+msgid "Cancel"
+msgstr "Anuluj"
+
+#: templates/sketch/edit.html:268
+msgid "Add"
+msgstr "Dodaj"
+
+#: templates/sketch/index.html:27
+msgid "Draw and annotate SVG files — freehand, shapes and text, stored in the vault. Uploaded SVGs open here too."
+msgstr "Rysuj i opisuj pliki SVG — odręcznie, kształtami i tekstem, z zapisem w Magazynie. Wgrane pliki SVG też się tu otwierają."
+
+#: templates/sketch/index.html:33 templates/sketch/index.html:82
+#: templates/sketch/index.html:98
+msgid "New drawing"
+msgstr "Nowy rysunek"
+
+#: templates/sketch/index.html:35
+msgid "Vault"
+msgstr "Magazyn"
+
+#: templates/sketch/index.html:60
+msgid "Open"
+msgstr "Otwórz"
+
+#: templates/sketch/index.html:63
+msgid "Delete this drawing?"
+msgstr "Usunąć ten rysunek?"
+
+#: templates/sketch/index.html:67
+msgid "Delete"
+msgstr "Usuń"
+
+#: templates/sketch/index.html:78
+msgid "Nothing drawn yet."
+msgstr "Nic jeszcze nie narysowano."
+
+#: templates/sketch/index.html:107
+msgid "Filename"
+msgstr "Nazwa pliku"
+
+#: templates/sketch/index.html:110
+msgid "diagram"
+msgstr "diagram"
+
+#: templates/sketch/index.html:118
+msgid "Bucket"
+msgstr "Kubełek"
+
+#: templates/sketch/index.html:122
+msgid "Personal (default)"
+msgstr "Osobisty (domyślny)"
+
+#: templates/sketch/index.html:130
+msgid "Folder"
+msgstr "Folder"
+
+#: templates/sketch/index.html:131
+msgid "optional"
+msgstr "opcjonalnie"
+
+#: templates/sketch/index.html:135
+msgid "— root of bucket —"
+msgstr "— korzeń kubełka —"
+
+#: templates/sketch/index.html:149
+msgid "Create"
+msgstr "Utwórz"
+
+#: views.py:232
+msgid "Saved."
+msgstr "Zapisano."
+
+#: views.py:233
+msgid "Could not save."
+msgstr "Nie udało się zapisać."
+
+#: views.py:234
+msgid "The board is full."
+msgstr "Plansza jest pełna."
+
+#: views.py:235
+msgid "That image cannot be used."
+msgstr "Tego obrazu nie da się użyć."

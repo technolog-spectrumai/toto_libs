@@ -1,0 +1,208 @@
+# en catalogue for toto.sketch.
+# Copyright (C) YEAR THE PACKAGE'S COPYRIGHT HOLDER
+# This file is distributed under the same license as the PACKAGE package.
+# FIRST AUTHOR <EMAIL@ADDRESS>, YEAR.
+#
+msgid ""
+msgstr ""
+"Project-Id-Version: PACKAGE VERSION\n"
+"Report-Msgid-Bugs-To: \n"
+"POT-Creation-Date: 2026-08-06 09:09-0500\n"
+"PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
+"Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
+"Language-Team: LANGUAGE <LL@li.org>\n"
+"Language: en\n"
+"MIME-Version: 1.0\n"
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+"Plural-Forms: nplurals=2; plural=(n != 1);\n"
+
+#: templates/sketch/edit.html:17 templates/sketch/edit.html:82
+msgid "This file cannot be opened for drawing"
+msgstr ""
+
+#: templates/sketch/edit.html:19
+msgid "It contains active content (scripts, animation or embedded documents) that the sketch editor will not run or preserve blindly."
+msgstr ""
+
+#: templates/sketch/edit.html:20
+msgid "It references external resources. Only self-contained SVGs open here — a remote reference is a tracking beacon at best."
+msgstr ""
+
+#: templates/sketch/edit.html:21
+msgid "It carries a document type declaration, which this editor refuses on principle (the billion-laughs family lives there)."
+msgstr ""
+
+#: templates/sketch/edit.html:22
+msgid "It does not parse as an SVG document."
+msgstr ""
+
+#: templates/sketch/edit.html:27
+msgid "Back to sketches"
+msgstr ""
+
+#: templates/sketch/edit.html:32
+msgid "Open as XML"
+msgstr ""
+
+#: templates/sketch/edit.html:52 templates/sketch/index.html:5
+#: templates/sketch/index.html:26
+msgid "Sketches"
+msgstr ""
+
+#: templates/sketch/edit.html:56 views.py:236
+msgid "Unsaved changes"
+msgstr ""
+
+#: templates/sketch/edit.html:60
+msgid "imported parts (move, resize or delete them whole)"
+msgstr ""
+
+#: templates/sketch/edit.html:71
+msgid "Save"
+msgstr ""
+
+#: templates/sketch/edit.html:73
+msgid "read only"
+msgstr ""
+
+#: templates/sketch/edit.html:110
+msgid "Edit palette slots"
+msgstr ""
+
+#: templates/sketch/edit.html:159
+msgid "Fill"
+msgstr ""
+
+#: templates/sketch/edit.html:163
+msgid "No fill"
+msgstr ""
+
+#: templates/sketch/edit.html:177
+msgid "Board"
+msgstr ""
+
+#: templates/sketch/edit.html:178
+msgid "Transparent"
+msgstr ""
+
+#: templates/sketch/edit.html:184
+msgid "Background image"
+msgstr ""
+
+#: templates/sketch/edit.html:187
+msgid "Remove image"
+msgstr ""
+
+#: templates/sketch/edit.html:217
+msgid "Snap to grid"
+msgstr ""
+
+#: templates/sketch/edit.html:227
+msgid "Undo"
+msgstr ""
+
+#: templates/sketch/edit.html:230
+msgid "Redo"
+msgstr ""
+
+#: templates/sketch/edit.html:233
+msgid "Delete selection"
+msgstr ""
+
+#: templates/sketch/edit.html:236
+msgid "Clear the board"
+msgstr ""
+
+#: templates/sketch/edit.html:255
+msgid "Add text"
+msgstr ""
+
+#: templates/sketch/edit.html:258
+msgid "Text on the board"
+msgstr ""
+
+#: templates/sketch/edit.html:264 templates/sketch/index.html:145
+msgid "Cancel"
+msgstr ""
+
+#: templates/sketch/edit.html:268
+msgid "Add"
+msgstr ""
+
+#: templates/sketch/index.html:27
+msgid "Draw and annotate SVG files — freehand, shapes and text, stored in the vault. Uploaded SVGs open here too."
+msgstr ""
+
+#: templates/sketch/index.html:33 templates/sketch/index.html:82
+#: templates/sketch/index.html:98
+msgid "New drawing"
+msgstr ""
+
+#: templates/sketch/index.html:35
+msgid "Vault"
+msgstr ""
+
+#: templates/sketch/index.html:60
+msgid "Open"
+msgstr ""
+
+#: templates/sketch/index.html:63
+msgid "Delete this drawing?"
+msgstr ""
+
+#: templates/sketch/index.html:67
+msgid "Delete"
+msgstr ""
+
+#: templates/sketch/index.html:78
+msgid "Nothing drawn yet."
+msgstr ""
+
+#: templates/sketch/index.html:107
+msgid "Filename"
+msgstr ""
+
+#: templates/sketch/index.html:110
+msgid "diagram"
+msgstr ""
+
+#: templates/sketch/index.html:118
+msgid "Bucket"
+msgstr ""
+
+#: templates/sketch/index.html:122
+msgid "Personal (default)"
+msgstr ""
+
+#: templates/sketch/index.html:130
+msgid "Folder"
+msgstr ""
+
+#: templates/sketch/index.html:131
+msgid "optional"
+msgstr ""
+
+#: templates/sketch/index.html:135
+msgid "— root of bucket —"
+msgstr ""
+
+#: templates/sketch/index.html:149
+msgid "Create"
+msgstr ""
+
+#: views.py:232
+msgid "Saved."
+msgstr ""
+
+#: views.py:233
+msgid "Could not save."
+msgstr ""
+
+#: views.py:234
+msgid "The board is full."
+msgstr ""
+
+#: views.py:235
+msgid "That image cannot be used."
+msgstr ""
