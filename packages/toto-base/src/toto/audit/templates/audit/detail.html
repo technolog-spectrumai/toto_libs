@@ -1,69 +1,117 @@
-{% extends "oya/base.html" %}
+{% extends "audit/base.html" %}
 {% load i18n %}
-{% block title %}Audit #{{ record.sequence }} — {{ platform.site_name }}{% endblock %}
 
-{% block content %}
-<div class="shell page stack">
-  <div>
-    <a href="{% url 'audit:index' %}" class="btn btn-quiet btn-sm mb-2">
-      <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>{% trans "Audit" %}</a>
-    <h1>Record #{{ record.sequence }} — {{ record.action }}</h1>
-  </div>
+{% block audit_title %}{% blocktrans with n=record.sequence %}Record {{ n }}{% endblocktrans %}{% endblock %}
+{% block audit_width %}max-w-4xl{% endblock %}
+{% block audit_heading %}{% blocktrans with n=record.sequence %}Record {{ n }}{% endblocktrans %}{% endblock %}
 
-  <section class="card">
-    <div class="card-head"><h2>{% trans "What happened" %}</h2></div>
-    <dl class="facts">
-      <div><dt>{% trans "When" %}</dt><dd>{{ record.timestamp|date:"Y-m-d H:i:s T" }}</dd></div>
-      <div><dt>{% trans "Who" %}</dt><dd>{{ record.actor_username|default:"system" }}</dd></div>
-      <div><dt>{% trans "App" %}</dt><dd>{{ record.app_label }}</dd></div>
-      <div><dt>{% trans "Object" %}</dt><dd>{{ record.object_description|default:"—" }}</dd></div>
-      <div><dt>{% trans "Object type" %}</dt><dd class="mono text-xs">{{ record.object_type|default:"—" }}</dd></div>
-      <div><dt>{% trans "Source" %}</dt><dd>{{ record.source }}</dd></div>
-      <div><dt>{% trans "Result" %}</dt>
-        <dd>{% if record.success %}<span class="badge badge-ok">OK</span>
-            {% else %}<span class="badge badge-danger">{% trans "Failed" %}</span>{% endif %}</dd></div>
-      <div><dt>{% trans "Correlation" %}</dt><dd class="mono text-xs">{{ record.correlation_id|default:"—" }}</dd></div>
+{% block audit_nav %}
+  <nav class="text-sm">
+    <a href="{% url 'audit:index' %}" class="hover:underline">
+      <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Audit trail" %}</a>
+  </nav>
+{% endblock %}
+
+{% block audit_subtitle %}
+  <p class="mt-1 font-mono text-sm opacity-70">{{ record.action }}</p>
+{% endblock %}
+
+{% block audit_content %}
+
+  {% comment %}One facts grid, not a card of <pre> blocks. The hashes are 64
+  characters and must wrap: `break-all` on a full-width cell is what stops them
+  forcing a horizontal scrollbar on a phone, which a <pre> cannot do.{% endcomment %}
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="text-lg font-bold">{% trans "What happened" %}</h2>
+    <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "When" %}</dt>
+        <dd class="text-sm">{{ record.timestamp|date:"Y-m-d H:i:s T" }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Who" %}</dt>
+        <dd class="text-sm">{{ record.actor_username|default:"system" }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "App" %}</dt>
+        <dd class="text-sm">{{ record.app_label|default:"—" }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Source" %}</dt>
+        <dd class="text-sm">{{ record.source }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Object type" %}</dt>
+        <dd class="font-mono text-xs">{{ record.object_type|default:"—" }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Result" %}</dt>
+        <dd class="text-sm">
+          {% if record.success %}
+            <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+              <i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% trans "OK" %}</span>
+          {% else %}
+            <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+              <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {% trans "Failed" %}</span>
+          {% endif %}</dd></div>
+      <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Object" %}</dt>
+        <dd class="break-words text-sm">{{ record.object_description|default:"—" }}</dd></div>
+      <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Correlation" %}</dt>
+        <dd class="break-all font-mono text-xs">{{ record.correlation_id|default:"—" }}</dd></div>
     </dl>
   </section>
 
-  <section class="card">
-    <div class="card-head"><h2>{% trans "Chain position" %}</h2></div>
-    <p class="uppercase-label">{% trans "Previous hash" %}</p>
-    <pre class="text-xs">{{ record.previous_hash|default:"(genesis)" }}</pre>
-    <p class="uppercase-label mt-4">{% trans "This record's hash" %}</p>
-    <pre class="text-xs">{{ record.record_hash }}</pre>
-    <p class="muted text-xs mt-2">Algorithm: {{ record.algorithm }}</p>
+  <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+           class="rounded-lg border p-5 shadow-sm">
+    <h2 class="text-lg font-bold">{% trans "Chain position" %}</h2>
+    <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2">
+      <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Previous hash" %}</dt>
+        <dd class="break-all font-mono text-xs">{{ record.previous_hash|default:"(genesis)" }}</dd></div>
+      <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "This record's hash" %}</dt>
+        <dd class="break-all font-mono text-xs">{{ record.record_hash }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Sequence" %}</dt>
+        <dd class="font-mono text-sm tabular-nums">{{ record.sequence }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Algorithm" %}</dt>
+        <dd class="font-mono text-xs">{{ record.algorithm }}</dd></div>
+    </dl>
   </section>
 
   {% if record.changes %}
-    <section class="card">
-      <div class="card-head"><h2>{% trans "Changes" %}</h2></div>
-      <div class="scroll-x"><table class="data">
-        <caption class="sr-only">{% trans "Fields this record changed" %}</caption>
-        <thead><tr><th scope="col">{% trans "Field" %}</th><th scope="col">{% trans "Before" %}</th><th scope="col">{% trans "After" %}</th></tr></thead>
-        <tbody>
-          {% for field, delta in record.changes.items %}
-            <tr><td class="mono text-xs">{{ field }}</td>
-              <td class="muted">{{ delta.before|default:"—" }}</td>
-              <td>{{ delta.after|default:"—" }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table></div>
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Changes" %}</h2>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <caption class="sr-only">{% trans "Fields this record changed" %}</caption>
+          <thead>
+            <tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Field" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Before" %}</th>
+              <th scope="col" class="py-2">{% trans "After" %}</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for field, delta in record.changes.items %}
+              <tr class="border-b border-current/5 align-top">
+                <td class="py-2 pr-4 font-mono text-xs">{{ field }}</td>
+                <td class="py-2 pr-4 opacity-70"><span class="block break-words">{{ delta.before|default:"—" }}</span></td>
+                <td class="py-2"><span class="block break-words">{{ delta.after|default:"—" }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </section>
   {% endif %}
 
   {% if record.metadata %}
-    <section class="card">
-      <div class="card-head"><h2>{% trans "Metadata" %}</h2></div>
-      <div class="scroll-x"><table class="data">
-        <caption class="sr-only">{% trans "Extra facts recorded with this action" %}</caption>
-        <tbody>
-          {% for key, value in record.metadata.items %}
-            <tr><td class="mono text-xs bold">{{ key }}</td><td>{{ value }}</td></tr>
-          {% endfor %}
-        </tbody>
-      </table></div>
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5 shadow-sm">
+      <h2 class="text-lg font-bold">{% trans "Metadata" %}</h2>
+      <div class="mt-4 overflow-x-auto">
+        <table class="w-full text-sm">
+          <caption class="sr-only">{% trans "Extra facts recorded with this action" %}</caption>
+          <tbody>
+            {% for key, value in record.metadata.items %}
+              <tr class="border-b border-current/5 align-top">
+                <td class="py-2 pr-4 font-mono text-xs font-bold">{{ key }}</td>
+                <td class="py-2"><span class="block break-words">{{ value }}</span></td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
     </section>
   {% endif %}
-</div>
+
 {% endblock %}

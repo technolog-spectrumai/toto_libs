@@ -1,0 +1,44 @@
+{% extends "oya/base.html" %}
+{% comment %}
+The shell every audit page extends.
+
+A `<div>`, not a `<main>`: oya/base.html already opens `<main>` around
+{% block content %}, so a second one here would nest them. ledger/* and
+monit/status.html both get this wrong — do not copy them.
+
+No tab strip, deliberately. Every strip in the tree carries three or more peer
+destinations; audit has two pages and an orphan, since `detail` is a CHILD of the
+record list and would light no tab. And verifying is an action, not a place —
+which is how the structural twin models it: ledger/_header.html renders "Verify"
+as a button and puts a back-link on the result page. toto.monit, also two pages,
+does the same. events/base.html is the shape followed here: a title beside a row
+of action buttons.
+{% endcomment %}
+{% load i18n %}
+
+{% block title %}{% block audit_title %}{% trans "Audit trail" %}{% endblock %} | {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300">
+  <div class="mx-auto {% block audit_width %}max-w-6xl{% endblock %} space-y-6">
+
+    {% block audit_nav %}{% endblock %}
+
+    <header class="flex flex-wrap items-start justify-between gap-4">
+      <div>
+        <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+          {% comment %}The same icon as the dashboard tile, so the tile and the
+          page it opens agree.{% endcomment %}
+          <i class="fa-solid fa-clipboard-check" aria-hidden="true"></i>
+          {% block audit_heading %}{% trans "Audit trail" %}{% endblock %}
+        </h1>
+        {% block audit_subtitle %}{% endblock %}
+      </div>
+      <div class="flex flex-wrap gap-2">{% block audit_actions %}{% endblock %}</div>
+    </header>
+
+    {% block audit_content %}{% endblock %}
+  </div>
+</div>
+{% endblock %}
