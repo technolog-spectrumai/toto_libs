@@ -129,26 +129,37 @@ class ShareholderViewTests(CompanyViewTestCase):
         # Bob's 20 preferred carry 2 votes each: 60 + 40 = 100.
         self.assertEqual(response.context["total_votes"], Decimal("100.000000"))
 
-    def test_the_pie_is_by_votes_not_units(self):
+    def test_there_are_two_charts_and_they_disagree(self):
+        """The page's whole argument. Ada owns 60 of 80 units (75% of the
+        capital) but 60 of 100 votes (60% of the control), because Bob's
+        preferred shares carry two votes each. One chart could not say that,
+        and the single chart this page used to have was labelled ownership
+        while it drew votes."""
         self.client.force_login(self.member)
         response = self.client.get(reverse("company:shareholders", args=[self.company.slug]))
-        chart = json.loads(response.context["shareholder_chart_json"])
-        self.assertEqual(chart["chart_type"], "pie")
-        self.assertEqual(chart["labels"], ["Ada", "Bob"])
-        self.assertEqual(chart["datasets"][0]["data"], [60.0, 40.0])
 
-    def test_the_percentages_add_up(self):
+        ownership = json.loads(response.context["ownership_chart_json"])
+        voting = json.loads(response.context["voting_chart_json"])
+        self.assertEqual(ownership["chart_type"], "doughnut")
+        self.assertEqual(ownership["labels"], ["Ada", "Bob"])
+        self.assertEqual(ownership["datasets"][0]["data"], [60.0, 20.0])
+        self.assertEqual(voting["labels"], ["Ada", "Bob"])
+        self.assertEqual(voting["datasets"][0]["data"], [60.0, 40.0])
+
+    def test_the_percentages_add_up_for_both_metrics(self):
         self.client.force_login(self.member)
         response = self.client.get(reverse("company:shareholders", args=[self.company.slug]))
-        percents = [row["percent"] for row in response.context["shareholder_structure"]]
-        self.assertEqual(sum(percents), 100)
+        rows = response.context["shareholder_structure"]
+        self.assertEqual(sum(row["ownership_percent"] for row in rows), 100)
+        self.assertEqual(sum(row["voting_percent"] for row in rows), 100)
 
     def test_an_empty_register_charts_nothing_rather_than_dividing_by_zero(self):
         empty = self.make_company("Empty sp. z o.o.")
         self.client.force_login(self.member)
         response = self.client.get(reverse("company:shareholders", args=[empty.slug]))
         self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.context["shareholder_chart_json"], "")
+        self.assertEqual(response.context["ownership_chart_json"], "")
+        self.assertEqual(response.context["voting_chart_json"], "")
         self.assertEqual(response.context["total_votes"], 0)
 
     def test_staff_can_record_a_holding_and_it_lands_in_the_register(self):

@@ -12,6 +12,7 @@ moved here unchanged apart from URL names.
 from __future__ import annotations
 
 import json
+from decimal import Decimal
 
 from django.conf import settings
 from django.contrib import messages
@@ -252,8 +253,46 @@ def shareholders(request, slug):
     })
 
 
+def _slice_colour(index: int) -> str:
+    """A colour per slice, cycling. The palette used to be indexed directly,
+    so a seventh shareholder got `backgroundColor: undefined` and drew as a
+    transparent wedge nobody could name."""
+    return PALETTE[index % len(PALETTE)]
+
+
+def _doughnut(rows, value_key: str) -> str:
+    """One chart payload for the shared `oya/partials/chart.html`.
+
+    The partial's contract is `chart_type`/`labels`/`datasets` at the TOP
+    level — Chart.js's own `{type, data: {...}}` shape renders a blank canvas
+    with no error at all, because the partial reads `chart.chart_type` and
+    gets `undefined`.
+
+    An empty string rather than an empty chart when there is nothing to draw:
+    the template shows its own empty state, which says more than a blank ring.
+    """
+    drawable = [row for row in rows if row[value_key] > 0]
+    if not drawable:
+        return ""
+    return json.dumps({
+        "chart_type": "doughnut",
+        "labels": [row["name"] for row in drawable],
+        "datasets": [{
+            "data": [float(row[value_key]) for row in drawable],
+            "backgroundColor": [_slice_colour(i) for i in range(len(drawable))],
+        }],
+    })
+
+
 def ownership_register(company):
-    """The live register, exact to the last unit, plus its pie.
+    """The live register, exact to the last unit, and its two charts.
+
+    **Two metrics, never one.** Ownership is share UNITS (600 of 1000) and
+    voting power is VOTES (1200 of 1600, units weighted by the class's
+    `votes_per_unit`). They diverge exactly when a class carries other than
+    one vote per unit, which is the fact the page exists to show — the seeded
+    company's founder holds 60% of the capital and 75% of the vote. Calling
+    either one "share" is how they got confused in the first place.
 
     Percentages are display only and rounded; `units` and `votes` are the
     Decimals the register is judged on and are never rounded here.
@@ -264,41 +303,57 @@ def ownership_register(company):
         .select_related("party", "share_class")
         .order_by("share_class__slug", "party__name")
     )
-    total_units = sum((holding.units for holding in holdings), 0)
-    total_votes = sum((holding.votes for holding in holdings), 0)
+    total_units = sum((holding.units for holding in holdings), Decimal("0"))
+    total_votes = sum((holding.votes for holding in holdings), Decimal("0"))
+
+    def percent(part, whole):
+        """Zero when there is no whole: a register with nothing issued yet is
+        a legitimate state, and a page that 500s on it is worse than zeros.
+        A class may legally carry `votes_per_unit = 0`, so `total_votes` can
+        be zero while `total_units` is not."""
+        return round(part / whole * 100, 1) if whole else Decimal("0")
 
     rows = []
-    by_shareholder = {}
+    # Keyed on the PK, not the name. Names are unique per company today
+    # (`bc_one_party_name_per_company`), so this collides with nothing — but
+    # the party is the identity and the name is a label, and a chart that
+    # leans on another model's constraint to keep two shareholders apart is
+    # one refactor away from merging them.
+    by_party = {}
     for holding in holdings:
-        by_shareholder[holding.party.name] = (
-            by_shareholder.get(holding.party.name, 0) + holding.votes
-        )
+        party = holding.party
+        entry = by_party.setdefault(
+            party.pk, {"name": party.name, "units": Decimal("0"),
+                       "votes": Decimal("0")})
+        entry["units"] += holding.units
+        entry["votes"] += holding.votes
         rows.append({
             "holding": holding,
-            "name": holding.party.name,
+            "name": party.name,
             "units": holding.units,
             "votes": holding.votes,
-            "percent": round(holding.votes / total_votes * 100, 1) if total_votes else 0,
+            "ownership_percent": percent(holding.units, total_units),
+            "voting_percent": percent(holding.votes, total_votes),
         })
 
-    chart_rows = [
-        {"name": name, "votes": votes}
-        for name, votes in sorted(by_shareholder.items())
-        if votes
-    ]
-    chart_json = json.dumps({
-        "chart_type": "pie",
-        "labels": [row["name"] for row in chart_rows],
-        "datasets": [{
-            "data": [float(row["votes"]) for row in chart_rows],
-            "backgroundColor": PALETTE,
-        }],
-    }) if chart_rows else ""
+    # One slice per HOLDER, largest first: a holder of two classes is one
+    # shareholder, and the chart answers a per-holder question.
+    chart_rows = sorted(by_party.values(),
+                        key=lambda row: (-row["units"], row["name"]))
+    shareholders_summary = [{
+        **row,
+        "ownership_percent": percent(row["units"], total_units),
+        "voting_percent": percent(row["votes"], total_votes),
+    } for row in chart_rows]
 
     return {
         "holdings": holdings,
         "shareholder_structure": rows,
-        "shareholder_chart_json": chart_json,
+        "shareholder_summary": shareholders_summary,
+        "ownership_chart_json": _doughnut(chart_rows, "units"),
+        "voting_chart_json": _doughnut(
+            sorted(by_party.values(),
+                   key=lambda row: (-row["votes"], row["name"])), "votes"),
         "total_units": total_units,
         "total_votes": total_votes,
     }

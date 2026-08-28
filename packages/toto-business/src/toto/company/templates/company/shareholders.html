@@ -1,10 +1,19 @@
 {% extends "oya/base.html" %}
-{% load i18n %}
+{% load i18n static %}
 
 {% block title %}{{ company.name }} - {% trans "Shareholders" %} - {{ platform.site_name }}{% endblock %}
 
+{% comment %}Chart.js is vendored locally, never a CDN, and oya/partials/dim.html
+is NOT optional — the shared chart partial calls dim() unconditionally, so
+omitting it is a ReferenceError that kills the whole inline script rather than
+producing a plainer chart. This page shipped without either and its canvas
+stayed empty. Both load synchronously in the head on purpose: the partial's
+IIFE runs at parse time in the body, so `defer` here would break it.
+{% endcomment %}
 {% block start_script %}{{ block.super }}
 <style>[x-cloak]{display:none!important}</style>
+<script src="{% static 'vendor/chartjs/chart.umd.min.js' %}"></script>
+{% include "oya/partials/dim.html" %}
 {% endblock %}
 
 {% block content %}
@@ -16,9 +25,12 @@
     {% include "company/_company_header.html" %}
     {% include "company/_tabs.html" %}
 
-    <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
-      {% comment %}The register. Units and votes are exact Decimals and are
-      never rounded; only the percentage column is a display rounding.{% endcomment %}
+    {% comment %}The register. Units and votes are exact Decimals and are
+      never rounded; only the percentage columns are a display rounding.
+
+      Two percentages, never one called "share": ownership is units over
+      total units, voting power is votes over total votes, and they differ
+      whenever a class carries other than one vote per unit.{% endcomment %}
       <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-lg border p-5">
         <div class="flex flex-wrap items-center justify-between gap-3">
@@ -43,8 +55,9 @@
                 <th scope="col" class="py-2 pr-4">{% trans "Shareholder" %}</th>
                 <th scope="col" class="py-2 pr-4">{% trans "Share class" %}</th>
                 <th scope="col" class="py-2 pr-4 text-right">{% trans "Units" %}</th>
+                <th scope="col" class="py-2 pr-4 text-right">{% trans "Ownership %" %}</th>
                 <th scope="col" class="py-2 pr-4 text-right">{% trans "Votes" %}</th>
-                <th scope="col" class="py-2 text-right">{% trans "Share" %}</th>
+                <th scope="col" class="py-2 text-right">{% trans "Voting %" %}</th>
               </tr></thead>
               <tbody>
                 {% for row in shareholder_structure %}
@@ -52,14 +65,16 @@
                     <td class="py-2 pr-4 font-semibold">{{ row.name }}</td>
                     <td class="py-2 pr-4">{{ row.holding.share_class.name }}</td>
                     <td class="py-2 pr-4 text-right tabular-nums">{{ row.units|floatformat:"-6" }}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{{ row.ownership_percent }}%</td>
                     <td class="py-2 pr-4 text-right tabular-nums">{{ row.votes|floatformat:"-6" }}</td>
-                    <td class="py-2 text-right tabular-nums">{{ row.percent }}%</td>
+                    <td class="py-2 text-right tabular-nums">{{ row.voting_percent }}%</td>
                   </tr>
                 {% endfor %}
               </tbody>
               <tfoot><tr class="border-t-2 border-current/20 font-bold">
                 <td class="py-2 pr-4" colspan="2">{% trans "Total" %}</td>
                 <td class="py-2 pr-4 text-right tabular-nums">{{ total_units|floatformat:"-6" }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">100%</td>
                 <td class="py-2 pr-4 text-right tabular-nums">{{ total_votes|floatformat:"-6" }}</td>
                 <td class="py-2 text-right tabular-nums">100%</td>
               </tr></tfoot>
@@ -70,18 +85,38 @@
         {% endif %}
       </section>
 
-      {% comment %}The pie is by VOTES, not units — a share class may carry a
-      votes_per_unit other than 1, and control is what the chart is about.{% endcomment %}
+    {% comment %}Two charts, because there are two facts and they disagree:
+    a founder can hold 60% of the capital and 75% of the vote. One doughnut
+    could only ever answer one of those, and the old single canvas was named
+    "ownership" while it drew votes. Side by side on desktop, stacked on
+    anything narrower; each is sized by its wrapper because the shared partial
+    sets maintainAspectRatio:false.{% endcomment %}
+    <div class="grid gap-6 md:grid-cols-2">
       <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
                class="rounded-lg border p-5">
         <h2 class="text-lg font-bold">{% trans "Ownership" %}</h2>
-        <p class="mt-1 text-xs opacity-60">{% trans "By voting power." %}</p>
-        {% if shareholder_chart_json %}
+        <p class="mt-1 text-xs opacity-60">
+          {% blocktrans with total=total_units|floatformat:"-6" %}By share units — {{ total }} in issue.{% endblocktrans %}</p>
+        {% if ownership_chart_json %}
           <div class="mt-4 h-64">
-            {% include "oya/partials/chart.html" with chart_id="company_ownership_pie" data=shareholder_chart_json %}
+            {% include "oya/partials/chart.html" with chart_id="company_ownership_pie" data=ownership_chart_json %}
           </div>
         {% else %}
-          <p class="mt-4 text-sm opacity-70">{% trans "Nothing to chart yet." %}</p>
+          <p class="mt-4 text-sm opacity-70">{% trans "No shares issued yet — nothing to chart." %}</p>
+        {% endif %}
+      </section>
+
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <h2 class="text-lg font-bold">{% trans "Voting power" %}</h2>
+        <p class="mt-1 text-xs opacity-60">
+          {% blocktrans with total=total_votes|floatformat:"-6" %}By votes — {{ total }} in issue.{% endblocktrans %}</p>
+        {% if voting_chart_json %}
+          <div class="mt-4 h-64">
+            {% include "oya/partials/chart.html" with chart_id="company_voting_pie" data=voting_chart_json %}
+          </div>
+        {% else %}
+          <p class="mt-4 text-sm opacity-70">{% trans "No votes attached to any holding — nothing to chart." %}</p>
         {% endif %}
       </section>
     </div>
