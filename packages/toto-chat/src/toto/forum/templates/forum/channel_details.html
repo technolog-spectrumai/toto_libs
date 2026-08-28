@@ -419,6 +419,42 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (loadOlderBtn) loadOlderBtn.addEventListener("click", loadOlderMessages);
 
+  // ---- #msg-<uuid>: find one message, however far back it is ---------------
+  //
+  // The Files tab links here. There is no per-message URL to link to instead:
+  // history arrives over the websocket and pages backwards through a keyset
+  // cursor, so a message from six months ago has no address of its own. What
+  // it does have is a place in that history, and this walks back to it —
+  // asking for older pages until the message appears or the history runs out.
+  //
+  // Bounded on purpose. A room with a hundred thousand messages should not
+  // silently fetch all of them because somebody clicked a file from 2019; past
+  // the bound it says so instead of appearing to hang.
+  const JUMP_MAX_PAGES = 40;
+
+  async function jumpToFragment() {
+    const match = /^#msg-([0-9a-fA-F-]{36})$/.exec(window.location.hash || "");
+    if (!match) return;
+    const id = match[1];
+
+    for (let page = 0; page <= JUMP_MAX_PAGES; page++) {
+      const el = container.querySelector(`[data-message-id="${id}"]`);
+      if (el) {
+        el.scrollIntoView({ block: "center" });
+        // A ring rather than a permanent highlight: it answers "which one"
+        // and then gets out of the way.
+        el.classList.add("ring-2", "ring-current");
+        setTimeout(() => el.classList.remove("ring-2", "ring-current"), 2500);
+        return;
+      }
+      if (historyExhausted) break;
+      await loadOlderMessages();
+    }
+    appendSystemMessage("{% trans 'That message is further back than this page will load.' %}");
+  }
+
+  window.addEventListener("hashchange", jumpToFragment);
+
   // Auto-load when the reader scrolls to the top.
   container.addEventListener("scroll", () => {
     if (container.scrollTop <= 4) loadOlderMessages();
@@ -687,6 +723,10 @@ document.addEventListener("DOMContentLoaded", async () => {
         historyExhausted = !data.has_more;
         updateLoadOlder();
         container.scrollTop = container.scrollHeight;
+        // Only now can a #msg-<uuid> be looked for: before this frame the
+        // container is empty, so a jump on DOMContentLoaded would always miss
+        // and then page backwards from nowhere.
+        jumpToFragment();
         return;
 
       case "chat_message":

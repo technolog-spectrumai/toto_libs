@@ -2,6 +2,7 @@ from django.contrib import messages
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
+from django.urls import reverse
 from django.views.generic import ListView, DetailView, View
 from django.db import models
 from django.utils.translation import gettext as _
@@ -239,18 +240,22 @@ def _room_context(request, channel, active_tab):
 
 
 def room_files(request, slug):
-    """The room's library: the vault's tree, scoped to this room's directory.
+    """The room's files: everything posted in its chat, and nothing else.
 
-    The tab renders and links; uploading happens on the vault's own gateway
-    page, where quota, charging and antivirus screening already live — this
-    app carries no upload machinery (one door, the antivirus lesson).
+    There is no upload control on this page, deliberately. A file enters a room
+    by being posted in it — the chat's upload door already carries the size cap,
+    the MIME allow-list and the membership check, and a second door onto the
+    same room would be a second set of rules to keep in step.
+
+    The room's old vault library is untouched and still holds whatever was
+    uploaded to it; it is simply not what this tab shows any more. Those files
+    remain reachable through Storage, and the whitelist that scopes them to
+    this room's members is still synced on every membership change.
     """
-    from django.contrib.auth.decorators import login_required  # noqa: F401
+    from django.core.paginator import Paginator
     from django.shortcuts import render
 
-    from toto.vault.filetree import build_file_tree
-
-    from . import library
+    from . import attachments
 
     if not request.user.is_authenticated:
         from django.contrib.auth.views import redirect_to_login
@@ -258,18 +263,40 @@ def room_files(request, slug):
         return redirect_to_login(request.get_full_path())
     channel = get_object_or_404(ForumChannel, slug=slug)
     permissions.require_member(request, channel)
-    library.ensure_channel_library(channel)
 
-    files = library.library_files(channel)
-    total_bytes = files.aggregate(
-        total=models.Sum("file_size_bytes"))["total"] or 0
+    search = (request.GET.get("q") or "").strip()
+    kind = (request.GET.get("kind") or "").strip()
+    if kind not in (attachments.KIND_IMAGE, attachments.KIND_VOICE,
+                    attachments.KIND_FILE):
+        kind = ""
+
+    rows = attachments.room_attachments(channel, search=search, kind=kind)
+    summary = attachments.summarise(rows)
+    page = Paginator(rows, 40).get_page(request.GET.get("page"))
+
+    files = [{
+        "message": message,
+        "kind": attachments.kind_of(message),
+        # The membership-checked door, the only one these bytes have. It
+        # re-applies can_read and 404s a deleted message's file, so a link
+        # that outlives the reader's membership stops working on its own.
+        "url": reverse("forum:api_message_attachment", args=[message.id]),
+        # Not a URL of its own: the chat has no per-message route, its history
+        # arrives over a websocket and pages backwards through a keyset
+        # cursor. The fragment is what the chat page reads to walk back
+        # through history until it finds this message.
+        "message_url": (reverse("forum:channel_detail", args=[channel.slug])
+                        + f"#msg-{message.id}"),
+    } for message in page.object_list]
 
     context = _room_context(request, channel, "files")
     context.update({
-        "tree": build_file_tree(request.user, queryset=files),
-        "file_count": files.count(),
-        "total_mb": round(total_bytes / (1024 * 1024), 1),
-        "gateway_dir_pk": channel.vault_directory_id,
+        "files": files,
+        "page": page,
+        "search": search,
+        "kind": kind,
+        "file_count": summary["count"],
+        "total_bytes": summary["bytes"],
     })
     return render(request, "forum/room_files.html", context)
 

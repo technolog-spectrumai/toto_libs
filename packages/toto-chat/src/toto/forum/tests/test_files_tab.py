@@ -1,4 +1,17 @@
-"""The room library: the vault scoped to one channel, whitelist-isolated."""
+"""Two file stories that share a room, and only one of them is a tab.
+
+`LibraryPlumbingTests` cover the vault library: a bucket directory per channel
+whose whitelist is synced from membership. **It is no longer what the Files tab
+shows**, but every one of those tests still matters — the files uploaded to it
+are still there, still reachable through Storage, and still scoped by that
+whitelist. If the sync stopped, somebody who left a room would keep vault
+access to its old files forever, which is why parking the tab did not park the
+plumbing.
+
+`FilesTabTests` cover what the tab shows now: attachments posted in the room's
+chat. The forum bar applies — a non-member is refused, room B's files never
+appear in room A, and access dies when the member leaves.
+"""
 
 import tempfile
 
@@ -93,32 +106,137 @@ class LibraryPlumbingTests(LibraryBase):
 
 
 class FilesTabTests(LibraryBase):
+    """The tab lists what was posted in the chat, and offers no way in."""
+
+    def _post(self, channel=None, *, name="photo.png", body="",
+              msg_type="image_message", sender=None, size=1234):
+        from toto.forum import store
+
+        return store.store_message(
+            channel or self.room, msg_type=msg_type, body=body,
+            sender=sender or self.member_user, sender_name="M",
+            attachment=ContentFile(b"bytes", name=name),
+            attachment_name=name, attachment_mime="image/png",
+            attachment_size=size)
+
+    def _get(self, channel=None, **params):
+        return self.client.get(
+            reverse("forum:room_files", args=[(channel or self.room).slug]),
+            params)
+
     def test_a_non_member_is_refused(self):
         self.client.force_login(self.outsider)
+        self.assertEqual(self._get().status_code, 403)
 
-        response = self.client.get(
-            reverse("forum:room_files", args=[self.room.slug]))
+    def test_anonymous_is_sent_to_log_in(self):
+        response = self._get()
+        self.assertEqual(response.status_code, 302)
+        self.assertIn("login", response["Location"])
 
-        self.assertEqual(response.status_code, 403)
-
-    def test_the_tree_shows_only_this_rooms_files(self):
-        other = ForumChannel.objects.create(name="Beta", slug="beta")
-        self._file(self.room, "ours.txt")
-        self._file(other, "theirs.txt")
+    def test_it_lists_an_image_with_its_sender_and_date(self):
+        self._post(name="holiday.png")
         self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertContains(response, "holiday.png")
+        self.assertContains(response, "M")
 
-        response = self.client.get(
-            reverse("forum:room_files", args=[self.room.slug]))
-
-        self.assertContains(response, "ours.txt")
-        self.assertNotContains(response, "theirs.txt")
-
-    def test_the_upload_button_points_at_the_rooms_gateway(self):
+    def test_a_voice_recording_is_listed_and_playable(self):
+        self._post(name="voice-message.webm", msg_type="voice_message")
         self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertContains(response, "voice-message.webm")
+        self.assertContains(response, "<audio")
 
-        response = self.client.get(
-            reverse("forum:room_files", args=[self.room.slug]))
+    def test_room_bs_files_never_appear_in_room_a(self):
+        other = ForumChannel.objects.create(name="Theirs", slug="theirs")
+        self._post(channel=other, name="theirs.png")
+        self._post(name="ours.png")
+        self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertContains(response, "ours.png")
+        self.assertNotContains(response, "theirs.png")
 
-        self.room.refresh_from_db()
-        self.assertContains(response, reverse(
-            "vault:gateway_page", args=[self.room.vault_directory_id]))
+    def test_access_dies_when_the_member_leaves(self):
+        self._post()
+        self.membership.is_active = False
+        self.membership.save(update_fields=["is_active"])
+        self.client.force_login(self.member_user)
+        self.assertEqual(self._get().status_code, 403)
+
+    def test_a_deleted_message_takes_its_file_off_the_tab(self):
+        """The file follows its message: withdrawing what you posted
+        withdraws the file it carried, in one act."""
+        from django.utils import timezone
+
+        message = self._post(name="regret.png")
+        self.client.force_login(self.member_user)
+        self.assertContains(self._get(), "regret.png")
+        message.deleted_at = timezone.now()
+        message.save(update_fields=["deleted_at"])
+        self.assertNotContains(self._get(), "regret.png")
+
+    def test_a_message_with_no_attachment_is_not_a_file(self):
+        from toto.forum import store
+
+        store.store_message(self.room, msg_type="chat_message",
+                            body="just talking", sender=self.member_user,
+                            sender_name="M")
+        self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertEqual(response.context["file_count"], 0)
+
+    def test_there_is_no_way_to_upload_from_this_page(self):
+        """The whole point of the rework: a file enters a room by being
+        posted in its chat, and this page offers no second door."""
+        self._post()
+        self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertNotContains(response, "Share a file")
+        self.assertNotContains(response, "gateway")
+        self.assertNotContains(response, "<input type=\"file\"")
+
+    def test_the_download_link_is_the_membership_checked_door(self):
+        message = self._post()
+        self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertContains(
+            response, reverse("forum:api_message_attachment", args=[message.id]))
+        self.assertNotContains(response, "/media/")
+
+    def test_each_row_links_back_into_the_conversation(self):
+        message = self._post()
+        self.client.force_login(self.member_user)
+        self.assertContains(self._get(), f"#msg-{message.id}")
+
+    def test_the_kind_filter_narrows_the_list(self):
+        self._post(name="pic.png")
+        self._post(name="note.webm", msg_type="voice_message")
+        self.client.force_login(self.member_user)
+        self.assertContains(self._get(kind="image"), "pic.png")
+        self.assertNotContains(self._get(kind="image"), "note.webm")
+        self.assertContains(self._get(kind="voice"), "note.webm")
+
+    def test_search_looks_at_the_words_posted_with_the_file(self):
+        """A voice note is called voice-message.webm every single time, so
+        names alone would make every recording unfindable."""
+        self._post(name="voice-message.webm", msg_type="voice_message",
+                   body="the budget discussion")
+        self.client.force_login(self.member_user)
+        self.assertContains(self._get(q="budget"), "voice-message.webm")
+        self.assertNotContains(self._get(q="zzzz"), "voice-message.webm")
+
+    def test_the_empty_states_say_different_things(self):
+        self.client.force_login(self.member_user)
+        self.assertContains(self._get(), "Nothing has been shared here yet.")
+        self._post(name="pic.png")
+        self.assertContains(self._get(q="zzzz"), "Nothing matches that.")
+
+    def test_the_count_and_size_are_of_this_room_only(self):
+        other = ForumChannel.objects.create(name="Theirs", slug="theirs2")
+        self._post(channel=other, size=9999)
+        self._post(size=1000)
+        self._post(size=500)
+        self.client.force_login(self.member_user)
+        response = self._get()
+        self.assertEqual(response.context["file_count"], 2)
+        self.assertEqual(response.context["total_bytes"], 1500)
