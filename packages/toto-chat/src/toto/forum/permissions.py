@@ -86,6 +86,37 @@ def readable_channels(user):
     ).distinct()
 
 
+def is_operator(user) -> bool:
+    """The platform's operator predicate, verbatim.
+
+    ``is_superuser`` does not imply ``is_staff`` in Django, so both count —
+    bare ``is_staff`` once locked superusers out of the quota desk. Kept here,
+    in this app's stated single door, rather than as a fifth private copy of
+    the same three lines.
+    """
+    if not user or not getattr(user, "is_authenticated", False):
+        return False
+    return bool(getattr(user, "is_staff", False)
+                or getattr(user, "is_superuser", False))
+
+
+def require_operator(request):
+    """403 for anybody who is not staff.
+
+    403 and not 404: the 404 rule protects a URL that contains a secret — a
+    room slug somebody could enumerate. ``/forum/cleanup/`` is a fixed path
+    and knowing it exists discloses nothing. The link to it is hidden from
+    non-staff as well, because a page that always answers 403 is worse than
+    no link at all.
+    """
+    from django.core.exceptions import PermissionDenied
+    from django.utils.translation import gettext as _
+
+    if not is_operator(getattr(request, "user", None)):
+        raise PermissionDenied(_("Forum cleanup is staff only."))
+    return request.user
+
+
 def require_member(request, channel):
     """The gate every room tab opens with. Returns the active membership.
 

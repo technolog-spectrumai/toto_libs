@@ -16,6 +16,7 @@
         <a href="{% url 'core:dashboard' %}" class="text-sm underline hover:opacity-80">{% trans "Dashboard" %}</a>
         <h1 :class="darkMode ? 'text-accent-dark' : 'text-accent-light'" class="text-3xl font-bold">{% trans "Forum" %}</h1>
         <p class="max-w-2xl text-sm opacity-70">{% trans "Active channels" %}</p>
+        {% include "forum/_forum_nav.html" %}
       </div>
 
       <div class="flex w-full flex-col gap-2 md:w-[26rem]">

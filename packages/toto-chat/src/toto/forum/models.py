@@ -3,6 +3,7 @@ from pathlib import PurePosixPath
 
 from django.conf import settings
 from django.core.exceptions import ValidationError
+from django.core.validators import MaxValueValidator, MinValueValidator
 from django.core.files.storage import FileSystemStorage
 from django.db import models
 from django.utils import timezone
@@ -96,11 +97,31 @@ class ForumChannel(models.Model):
         on_delete=models.SET_NULL, related_name="+")
     created_at = models.DateTimeField(auto_now_add=True)
 
+    #: Slugs the forum's own URLs already own. `forum/urls.py` declares these
+    #: BEFORE the `<slug:slug>/` catch-all, so a channel holding one would be
+    #: permanently unreachable — its page would resolve to the forum's, not to
+    #: the room. `create` and `search` have been shadowed since those routes
+    #: existed and nothing stopped anybody; this closes that.
+    #:
+    #: Enforced on the MODEL rather than in the create view because the admin
+    #: (which has `prepopulated_fields` and no validation) and
+    #: `ingress_forum.py` both make channels without going near that view.
+    RESERVED_SLUGS = frozenset({"create", "search", "cleanup", "api"})
+
     class Meta:
         ordering = ["name"]
 
     def __str__(self):
         return self.name
+
+    def clean(self):
+        super().clean()
+        if self.slug in self.RESERVED_SLUGS:
+            raise ValidationError({
+                "slug": _("“%(slug)s” is one of the forum's own addresses. "
+                          "A room with that name could never be opened.")
+                % {"slug": self.slug},
+            })
 
 
 class ForumMember(models.Model):
@@ -160,7 +181,9 @@ class ForumMessage(models.Model):
     permanent, searchable, paginated history possible — a member who joins today can read
     everything said before they arrived, and the server can run a text query over it.
 
-    Messages are never expired automatically. Retention is deferred work.
+    Messages do not expire on their own. A staff-set retention period
+    removes older ones permanently — see `toto.forum.cleanup`, and note
+    that it deletes the attachment bytes too, which a row delete does not.
     """
 
     MSG_TYPES = [
@@ -409,3 +432,134 @@ class PollBallot(models.Model):
         if self.poll.revisability == Revisability.FINAL:
             raise ValidationError(_("A final answer is never withdrawn."))
         return super().delete(*args, **kwargs)
+
+
+# ---------------------------------------------------------------------------
+# Retention
+#
+# For as long as this app has existed its own docstrings said the same thing —
+# "messages are never expired automatically; retention is deferred work". These
+# two models are that work: one dial staff set, and one row per sweep so the
+# page can say what happened rather than guess.
+#
+# The dial lives in the database and NOT in settings, because the requirement
+# is that staff choose it: a setting would need a redeploy and would put the
+# number somewhere the page cannot write. There is deliberately no
+# FORUM_RETENTION_DAYS "default" either — a second source of truth for one
+# number is exactly how a dial and a deploy config drift apart.
+# ---------------------------------------------------------------------------
+
+
+class RunStatus(models.TextChoices):
+    PENDING = "pending", _("Pending")
+    RUNNING = "running", _("Running")
+    SUCCESS = "success", _("Finished")
+    PARTIAL = "partial", _("Stopped part-way")
+    FAILED = "failed", _("Failed")
+
+
+class TriggeredBy(models.TextChoices):
+    BEAT = "beat", _("On schedule")
+    MANUAL = "manual", _("Started by a person")
+
+
+class ForumRetentionPolicy(models.Model):
+    """How long the forum keeps what was said. One row, edited by staff."""
+
+    #: Off on arrival, and this is not timidity. An app that begins destroying
+    #: history the moment somebody installs it is a bug with a release note.
+    #: The schedule may run every night from the day this ships; it will find
+    #: `enabled` False and do nothing until a person turns it on.
+    enabled = models.BooleanField(default=False)
+    retention_days = models.PositiveIntegerField(
+        default=365,
+        validators=[MinValueValidator(1), MaxValueValidator(3650)],
+        help_text=_("Messages older than this are permanently removed."))
+
+    last_run_at = models.DateTimeField(null=True, blank=True)
+    last_run_status = models.CharField(max_length=10, blank=True,
+                                       choices=RunStatus.choices)
+    last_error = models.TextField(blank=True)
+
+    updated_at = models.DateTimeField(auto_now=True)
+    updated_by = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                   blank=True, on_delete=models.SET_NULL,
+                                   related_name="+")
+
+    class Meta:
+        verbose_name = _("forum retention policy")
+        verbose_name_plural = _("forum retention policy")
+
+    def __str__(self):
+        state = _("on") if self.enabled else _("off")
+        return f"{self.retention_days} days ({state})"
+
+    @classmethod
+    def current(cls):
+        policy, _created = cls.objects.get_or_create(pk=1)
+        return policy
+
+    def boundary(self, now=None):
+        """The cutoff: everything strictly older than this goes.
+
+        THE one derivation. The page, the confirmation screen, the manual run
+        and the scheduled task all call this and nothing else computes a
+        cutoff — which is what lets the apply endpoint re-derive the boundary
+        instead of trusting whatever the preview put in a form field.
+        """
+        from datetime import timedelta
+
+        return (now or timezone.now()) - timedelta(days=self.retention_days)
+
+
+class ForumCleanupRun(models.Model):
+    """One sweep, and what it destroyed.
+
+    The only record that an irreversible thing happened, which is why nothing
+    — not the admin, not the person who started it — may delete one of these.
+
+    NOTE for any future aggregate over this model: `Meta.ordering` folds into
+    a GROUP BY, so every `.values().annotate()` needs a trailing `.order_by()`.
+    """
+
+    status = models.CharField(max_length=10, choices=RunStatus.choices,
+                              default=RunStatus.PENDING, db_index=True)
+    triggered_by = models.CharField(max_length=8, choices=TriggeredBy.choices,
+                                    default=TriggeredBy.BEAT)
+    triggered_by_user = models.ForeignKey(settings.AUTH_USER_MODEL, null=True,
+                                          blank=True,
+                                          on_delete=models.SET_NULL,
+                                          related_name="+")
+
+    #: The cutoff actually used, and the dial it came from — copied in rather
+    #: than re-derived, so moving the dial tomorrow does not rewrite what
+    #: yesterday's sweep says it did.
+    boundary = models.DateTimeField()
+    retention_days = models.PositiveIntegerField()
+
+    messages_deleted = models.PositiveIntegerField(default=0)
+    attachments_deleted = models.PositiveIntegerField(default=0)
+    bytes_freed = models.PositiveBigIntegerField(default=0)
+    #: Attachment rows whose bytes were already gone from disk. Counted rather
+    #: than hidden: it is the visible size of the leak this sweep drains.
+    blobs_missing = models.PositiveIntegerField(default=0)
+    #: Replies whose quoted parent was removed. They keep their own text and
+    #: lose the quote (`reply_to` is SET_NULL).
+    replies_orphaned = models.PositiveIntegerField(default=0)
+    channels_touched = models.PositiveIntegerField(default=0)
+
+    error = models.TextField(blank=True)
+    started_at = models.DateTimeField(default=timezone.now, db_index=True)
+    finished_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ["-started_at"]
+        indexes = [models.Index(fields=["status", "started_at"])]
+
+    def __str__(self):
+        return f"{self.get_status_display()} — {self.messages_deleted} removed"
+
+    @property
+    def is_finished(self) -> bool:
+        return self.status in (RunStatus.SUCCESS, RunStatus.PARTIAL,
+                               RunStatus.FAILED)

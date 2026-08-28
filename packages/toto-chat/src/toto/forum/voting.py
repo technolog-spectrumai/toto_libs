@@ -299,12 +299,13 @@ def tally(poll) -> Tally:
 def may_manage(poll, user) -> bool:
     """Who may close or delete a poll: whoever opened it, or staff.
 
-    `is_superuser` does not imply `is_staff` in Django, so both count — the
-    predicate every operator gate in this suite uses.
+    Staff is `permissions.is_operator`, so this app carries ONE definition of
+    who an operator is rather than two that can drift apart.
     """
+    from .permissions import is_operator
+
     if not getattr(user, "is_authenticated", False):
         return False
     if poll.created_by_id and poll.created_by_id == user.id:
         return True
-    return bool(getattr(user, "is_staff", False)
-                or getattr(user, "is_superuser", False))
+    return is_operator(user)

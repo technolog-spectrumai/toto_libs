@@ -118,6 +118,17 @@ FEATURE_APPS = {
 # tasks_direct, so without that module the worker never registers it.
 TASK_MODULES = [
     "toto.workflows",
+    # toto.gitea's gitea_sample_storage. Added when toto.forum's cleanup task
+    # made tests_schedules run against a tree that had both: the storage
+    # sampler had been scheduled since 8/2026 with no entry here, which is the
+    # weather bug exactly — enqueued nightly, answered with KeyError, and the
+    # forge's storage never sampled.
+    "toto.gitea",
+    # toto.forum's forum_cleanup. A beat entry without a line here is the
+    # exact shape of the weather bug recorded below: enqueued on schedule,
+    # answered with KeyError, silent for months. toto.tests_schedules asserts
+    # the pairing, so forgetting it fails loudly rather than quietly.
+    "toto.forum",
     # toto.weather's auto_refresh_weather. schedules.beat_schedule(weather=True)
     # has enqueued it every 30 minutes since the realtime layer existed, and
     # this entry was missing the whole time — so the worker answered KeyError

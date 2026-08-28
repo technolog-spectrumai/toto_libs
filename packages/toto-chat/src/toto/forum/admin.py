@@ -1,7 +1,8 @@
 from django.contrib import admin
 from django.utils.translation import gettext_lazy as _
 
-from .models import (ForumMember, ForumChannel, ForumMessage,
+from .models import (ForumCleanupRun, ForumMember, ForumChannel,
+                     ForumMessage, ForumRetentionPolicy,
                      PollBallot, PollChoice, RoomPoll)
 
 
@@ -42,7 +43,8 @@ class ForumMemberAdmin(admin.ModelAdmin):
 class ForumMessageAdmin(admin.ModelAdmin):
     """Messages are plaintext and permanent, so they are inspectable here.
 
-    Retention is deferred work — there is no purge job.
+    A staff-set retention period removes older messages permanently;
+    see the Cleanup page and `toto.forum.cleanup`.
     """
 
     list_display = ("channel", "sender_name", "msg_type", "created_at", "edited_at", "deleted_at")
@@ -95,4 +97,42 @@ class PollBallotAdmin(admin.ModelAdmin):
                        "revisions")
 
     def has_add_permission(self, request):
+        return False
+
+
+@admin.register(ForumRetentionPolicy)
+class ForumRetentionPolicyAdmin(admin.ModelAdmin):
+    """One row. The Cleanup page is where staff normally edit it."""
+
+    list_display = ("retention_days", "enabled", "last_run_at",
+                    "last_run_status")
+    readonly_fields = ("last_run_at", "last_run_status", "last_error",
+                       "updated_at", "updated_by")
+
+    def has_add_permission(self, request):
+        return not ForumRetentionPolicy.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(ForumCleanupRun)
+class ForumCleanupRunAdmin(admin.ModelAdmin):
+    """The record of an irreversible act, and therefore read-only.
+
+    Not deletable either — by anybody, including the person who started the
+    run. The only evidence that history was destroyed must not be removable by
+    whoever destroyed it.
+    """
+
+    list_display = ("started_at", "status", "triggered_by", "boundary",
+                    "messages_deleted", "attachments_deleted", "bytes_freed")
+    list_filter = ("status", "triggered_by")
+    date_hierarchy = "started_at"
+    readonly_fields = tuple(f.name for f in ForumCleanupRun._meta.fields)
+
+    def has_add_permission(self, request):
+        return False
+
+    def has_delete_permission(self, request, obj=None):
         return False

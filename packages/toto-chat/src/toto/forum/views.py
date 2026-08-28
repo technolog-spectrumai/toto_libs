@@ -1,8 +1,10 @@
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
 from django.contrib.auth.mixins import LoginRequiredMixin
 from django.shortcuts import get_object_or_404, redirect
 from django.urls import reverse
+from django.views.decorators.http import require_POST, require_safe
 from django.views.generic import ListView, DetailView, View
 from django.db import models
 from django.utils.translation import gettext as _
@@ -39,6 +41,10 @@ class ChannelListView(LoginRequiredMixin, ListView):
         )
         for channel in context["channels"]:
             channel.is_joined = channel.pk in joined
+        # Staff-only forum controls. Hidden rather than disabled: a link that
+        # always answers 403 is worse than no link — and the page behind it
+        # re-checks, because hiding is cosmetic.
+        context["is_operator"] = permissions.is_operator(self.request.user)
         return PageProcessor().decorate(context, self.request)
 
 
@@ -180,6 +186,14 @@ class ChannelCreateView(LoginRequiredMixin, View):
             messages.error(request, _("That name cannot be turned into a URL slug."))
             return redirect("forum:channel_list")
 
+        if slug in ForumChannel.RESERVED_SLUGS:
+            # The model refuses this too; here it gets a sentence rather than
+            # a validation error, because this is the door people use.
+            messages.error(request, _(
+                "“%(name)s” is one of the forum's own addresses. "
+                "A room with that name could never be opened.")
+                % {"name": name})
+            return redirect("forum:channel_list")
         if ForumChannel.objects.filter(models.Q(name=name) | models.Q(slug=slug)).exists():
             messages.error(request, f"A channel called “{name}” already exists.")
             return redirect("forum:channel_list")
@@ -509,3 +523,124 @@ def room_stats(request, slug):
         }) if sum(hour_counts) else "",
     })
     return render(request, "forum/room_stats.html", context)
+
+
+# ---------------------------------------------------------------------------
+# Cleanup — forum-level, staff only.
+#
+# Deliberately NOT a room tab: the retention period covers the whole forum, and
+# a global dial edited from inside one room reads as if it applied to that room
+# only. So `_room_tabs.html`, `channel_base.html`, `_room_context` and
+# `ChannelDetailView.get_context_data` are all untouched here, and the
+# two-context-producer trap does not apply.
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_safe
+def cleanup_page(request):
+    """What the retention period is, what it did, and what it would do next."""
+    from django.shortcuts import render
+
+    from toto.celery_utils import celery_available
+
+    from . import cleanup as cleanup_engine
+    from .forms import ConfirmCleanupForm, RetentionSettingsForm
+    from .models import ForumCleanupRun, ForumRetentionPolicy
+
+    permissions.require_operator(request)
+    policy = ForumRetentionPolicy.current()
+
+    context = {
+        "policy": policy,
+        "settings_form": RetentionSettingsForm(instance=policy),
+        "confirm_form": ConfirmCleanupForm(),
+        "boundary": policy.boundary(),
+        "preview": cleanup_engine.preview(policy),
+        "last_run": ForumCleanupRun.objects.first(),
+        "recent_runs": ForumCleanupRun.objects.all()[:10],
+        "next_run": cleanup_engine.next_scheduled_run(),
+        # Asked once, and said out loud on the page: without a worker the
+        # schedule never fires and "next run" is a time nothing will act on.
+        "worker_available": celery_available(),
+        "in_flight": cleanup_engine.in_flight(),
+        "page_title": "Forum cleanup",
+    }
+    return render(request, "forum/cleanup.html",
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_POST
+def cleanup_settings(request):
+    """Save the dial. Staff only, re-checked here and not merely hidden."""
+    from .forms import RetentionSettingsForm
+    from .models import ForumRetentionPolicy
+
+    permissions.require_operator(request)
+    policy = ForumRetentionPolicy.current()
+    form = RetentionSettingsForm(request.POST, instance=policy)
+    if form.is_valid():
+        saved = form.save(commit=False)
+        saved.updated_by = request.user
+        saved.save()
+        messages.success(request, _("Retention settings saved."))
+    else:
+        messages.error(request, "; ".join(
+            m for errors in form.errors.values() for m in errors))
+    return redirect("forum:cleanup")
+
+
+@login_required
+@require_POST
+def cleanup_run(request):
+    """Run it now, after an explicit confirmation.
+
+    The boundary is RE-DERIVED here from the policy and the clock. Nothing the
+    preview put on the page is trusted: a form field carrying a cutoff would be
+    a cutoff somebody could edit, and a stale one would delete more than the
+    screen said it would.
+    """
+    from toto.celery_utils import celery_available
+
+    from . import cleanup as cleanup_engine
+    from .forms import ConfirmCleanupForm
+    from .models import TriggeredBy
+
+    permissions.require_operator(request)
+    form = ConfirmCleanupForm(request.POST)
+    if not form.is_valid():
+        messages.error(request, _("Nothing was deleted — the confirmation "
+                                  "did not match."))
+        return redirect("forum:cleanup")
+
+    try:
+        run = cleanup_engine.trigger(triggered_by=TriggeredBy.MANUAL,
+                                     user=request.user)
+    except cleanup_engine.CleanupInProgress as exc:
+        messages.error(request, str(exc))
+        return redirect("forum:cleanup")
+
+    if celery_available():
+        from .tasks import forum_cleanup
+
+        forum_cleanup.delay()
+        messages.success(request, _("Cleanup started. This page shows the "
+                                    "result when it finishes."))
+        return redirect("forum:cleanup")
+
+    # No worker: run it here, on a short leash, and say honestly how far it
+    # got. Every chunk commits, so stopping part-way leaves nothing
+    # inconsistent and pressing the button again resumes.
+    cleanup_engine.run_cleanup(run, deadline_seconds=25)
+    run.refresh_from_db()
+    if run.status == "partial":
+        messages.warning(request, _(
+            "Removed %(n)s message(s) before running out of time. Press Run "
+            "cleanup now again, or start a worker.") % {
+                "n": run.messages_deleted})
+    else:
+        messages.success(request, _(
+            "Removed %(n)s message(s) and %(f)s file(s), permanently.") % {
+                "n": run.messages_deleted, "f": run.attachments_deleted})
+    return redirect("forum:cleanup")

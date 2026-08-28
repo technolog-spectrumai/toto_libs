@@ -19,6 +19,9 @@ def beat_schedule(
     gitea=False,
     gitea_hour=3,
     gitea_minute=30,
+    forum_cleanup=False,
+    forum_cleanup_hour=4,
+    forum_cleanup_minute=40,
     clearing=False,
     tax=False,
     tax_hour=4,
@@ -111,6 +114,20 @@ def beat_schedule(
         schedule["gitea-sample-storage"] = {
             "task": "toto.gitea.tasks.gitea_sample_storage",
             "schedule": crontab(hour=gitea_hour, minute=gitea_minute),
+        }
+
+    if forum_cleanup:
+        from celery.schedules import crontab
+
+        # Nightly, and harmless until somebody turns retention on: the task
+        # reads ForumRetentionPolicy.enabled first and returns without touching
+        # a row while it is False. Scheduling it from the start means the dial
+        # is the ONE switch — there is no second, deploy-time flag that can
+        # disagree with what the page says.
+        schedule["forum-cleanup"] = {
+            "task": "toto.forum.tasks.forum_cleanup",
+            "schedule": crontab(hour=forum_cleanup_hour,
+                                minute=forum_cleanup_minute),
         }
 
     if tax:

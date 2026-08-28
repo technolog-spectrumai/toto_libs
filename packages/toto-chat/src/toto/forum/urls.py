@@ -32,6 +32,12 @@ urlpatterns = [
     path("", ChannelListView.as_view(), name="channel_list"),
     path("create/", ChannelCreateView.as_view(), name="channel_create"),
     path("search/", MessageSearchView.as_view(), name="message_search"),
+    # Forum-level, and declared BEFORE the `<slug:slug>/` catch-all — the same
+    # convention the room tabs follow. `ForumChannel.RESERVED_SLUGS` is the
+    # other half: it stops anybody minting a room these would shadow.
+    path("cleanup/", views.cleanup_page, name="cleanup"),
+    path("cleanup/settings/", views.cleanup_settings, name="cleanup_settings"),
+    path("cleanup/run/", views.cleanup_run, name="cleanup_run"),
     path("<slug:slug>/join/", ChannelJoinView.as_view(), name="channel_join"),
     path("<slug:slug>/leave/", ChannelLeaveView.as_view(), name="channel_leave"),
     # Room tabs — declared BEFORE the slug catch-all (the polls/urls.py trap:
