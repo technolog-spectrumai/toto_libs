@@ -299,3 +299,49 @@ class PageTests(PeopleTestCase):
         response = self._search(lat=900, lon=900)
         self.assertEqual(response.status_code, 200)
         self.assertEqual(response.context["centre"], CENTRE)
+
+
+class MapScriptTests(PeopleTestCase):
+    """The inline map script is JAVASCRIPT — the two ways templating broke it.
+
+    Both bugs rendered a page that looked fine and drew nothing: the script
+    died at its first syntax error, so a populated people list showed an
+    empty map with no server-side trace at all.
+    """
+
+    def _script(self, body):
+        start = body.index("const people")
+        return body[start:body.index("</script>", start)]
+
+    def test_no_html_entities_reach_the_script(self):
+        # The popup text went through a variable filter, so autoescape turned
+        # its apostrophes into entities inside <script> — "expected
+        # expression" at the ampersand. It is literal template text now,
+        # which autoescape never touches.
+        self._other("Ada", NEARBY, LocationSharing.EXACT)
+        script = self._script(self._search().content.decode())
+        self.assertNotIn("&#x27;", script)
+        self.assertNotIn("&amp;", script)
+        self.assertIn('"Searching from here. Drag to move."', script)
+
+    def test_the_numbers_survive_the_polish_locale(self):
+        # Under pl, an unlocalized {{ float }} is "52,2297" — a decimal comma
+        # that is a JS syntax error. Every number in the script carries
+        # |unlocalize, so the locale changes the prose and never the code.
+        self._other("Ada", NEARBY, LocationSharing.EXACT)
+        script = self._script(self.client.get(
+            reverse("locations:people"),
+            {"lat": CENTRE[0], "lon": CENTRE[1]},
+            HTTP_ACCEPT_LANGUAGE="pl").content.decode())
+        self.assertIn("lat: 52.26", script)
+        self.assertNotIn("lat: 52,26", script)
+
+    def test_the_default_view_script_is_clean_too(self):
+        # A viewer with no pin of their own: nothing centres the search, so
+        # the no-centre branch of the script renders — the other popup text.
+        nobody = User.objects.create_user("newcomer", password="pw")
+        self.client.force_login(nobody)
+        body = self.client.get(reverse("locations:people")).content.decode()
+        script = self._script(body)
+        self.assertIn('"Drag me, then Search."', script)
+        self.assertNotIn("&#x27;", script)

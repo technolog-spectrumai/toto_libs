@@ -1,5 +1,5 @@
 {% extends "locations/base.html" %}
-{% load i18n static %}
+{% load i18n l10n static %}
 
 {% block locations_title %}{% trans "People" %}{% endblock %}
 
@@ -134,15 +134,18 @@
     // Only ever the PUBLISHED point — an approximate sharer's coordinates were
     // already coarsened server-side, in people_access.point_for. Nothing exact
     // for such a person reaches this page, so there is nothing here to leak.
+    // Every number is |unlocalize'd: this is JavaScript, not prose, and under
+    // the Polish locale a plain {{ float }} renders "52,2297" — a decimal
+    // comma that is a syntax error here and killed the whole map.
     const people = [
       {% for row in results %}
-        {lat: {{ row.latitude }}, lon: {{ row.longitude }},
+        {lat: {{ row.latitude|unlocalize }}, lon: {{ row.longitude|unlocalize }},
          name: "{{ row.person.display_name|escapejs }}",
-         km: {{ row.distance_km }}, approx: {{ row.approximate|yesno:"true,false" }}},
+         km: {{ row.distance_km|unlocalize }}, approx: {{ row.approximate|yesno:"true,false" }}},
       {% endfor %}
     ];
     {% if centre %}
-      const centre = [{{ centre.0 }}, {{ centre.1 }}];
+      const centre = [{{ centre.0|unlocalize }}, {{ centre.1|unlocalize }}];
     {% else %}
       const centre = [52.2297, 21.0122];   // a neutral default view, not a search
     {% endif %}
@@ -152,8 +155,11 @@
                 {maxZoom: 19, attribution: "© OpenStreetMap"}).addTo(map);
 
     // The pin IS the control: drag it and search again from there.
+    // Literal template text, NOT a variable of quoted strings: variable
+    // output is HTML-escaped, so the apostrophes rendered as entities inside
+    // a script block — "expected expression" at the ampersand, and no map.
     const pin = L.marker(centre, {draggable: true}).addTo(map)
-      .bindPopup({{ centre|yesno:"'Searching from here. Drag to move.','Drag me, then Search.'" }});
+      .bindPopup({% if centre %}"Searching from here. Drag to move."{% else %}"Drag me, then Search."{% endif %});
     pin.on("dragend", function () {
       const at = pin.getLatLng();
       document.getElementById("centre-lat").value = at.lat.toFixed(6);
@@ -161,7 +167,7 @@
     });
 
     {% if centre %}
-      L.circle(centre, {radius: {{ radius_km }} * 1000, weight: 1, opacity: 0.5,
+      L.circle(centre, {radius: {{ radius_km|unlocalize }} * 1000, weight: 1, opacity: 0.5,
                         fillOpacity: 0.05}).addTo(map);
     {% endif %}
 
