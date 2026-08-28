@@ -272,6 +272,82 @@ class UploadTests(PeerApiTestCase):
         self.assertEqual(resp.status_code, 400)
 
 
+class MeteringTests(PeerApiTestCase):
+    """The peer door runs the SAME ladder as the gateway and API doors.
+
+    For a while it did not: scan-then-persist with no check_quota and no
+    transfer_mb made cross-host inbound the free lane, capped by nothing
+    until the nightly gb_day sweep noticed the bucket had grown. The billed
+    subject is the exporter — the bucket's owner — matching both the levy
+    and the door's own ownership rule.
+    """
+
+    def _post(self, name="a.txt", content=b"abc"):
+        return self.client.post(
+            self._url("peer_files"),
+            {"file": SimpleUploadedFile(name, content)},
+            HTTP_X_VAULT_API_KEY=self.raw_key)
+
+    def test_a_landed_upload_writes_both_usage_events(self):
+        from .models import VaultUsageEvent
+
+        resp = self._post(content=b"x" * 2048)
+        self.assertEqual(resp.status_code, 201)
+        request_event = VaultUsageEvent.objects.get(
+            metric_code="storage.request")
+        transfer_event = VaultUsageEvent.objects.get(
+            metric_code="storage.transfer_mb")
+        # Billed to the exporter, not to some request.user (there is none —
+        # the caller is a host), and sized from the actual bytes.
+        self.assertEqual(request_event.user, self.owner)
+        self.assertEqual(transfer_event.user, self.owner)
+        self.assertEqual(transfer_event.quantity * (2 ** 20), 2048)
+
+    def test_the_exporters_request_cap_refuses_before_any_write(self):
+        from .models import VaultQuotaPolicy
+
+        VaultQuotaPolicy.objects.create(metric_code="storage.request",
+                                        limit=0)
+        resp = self._post()
+        self.assertEqual(resp.status_code, 429)
+        self.assertIn("quota exceeded",
+                      json.loads(resp.content)["error"])
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bucket).exists())
+
+    def test_the_transfer_cap_counts_the_actual_megabytes(self):
+        from .models import VaultQuotaPolicy
+
+        VaultQuotaPolicy.objects.create(metric_code="storage.transfer_mb",
+                                        limit="0.001")           # ~1 KiB
+        self.assertEqual(self._post(content=b"x" * 4096).status_code, 429)
+        self.assertEqual(self._post(content=b"x" * 16).status_code, 201)
+
+    def test_a_frozen_exporter_answers_402_and_stores_nothing(self):
+        # The arrears write-block reaches this door like every metered one:
+        # an unpaid levy means no NEW bytes by any lane, deleting nothing.
+        with mock.patch("toto.quota.levies.user_is_frozen",
+                        return_value=True):
+            resp = self._post()
+        self.assertEqual(resp.status_code, 402)
+        self.assertIn("went unpaid", json.loads(resp.content)["error"])
+        self.assertFalse(VaultFile.objects.filter(bucket=self.bucket).exists())
+
+    def test_an_unpriced_host_meters_but_never_charges(self):
+        # Doctrine: the cap half always runs, the charge half no-ops on a
+        # None tariff. No Tariff row exists here, so the upload lands, the
+        # events land, and no UsageRecord is minted anywhere.
+        from django.apps import apps as django_apps
+
+        from .models import VaultUsageEvent
+
+        self.assertEqual(self._post().status_code, 201)
+        self.assertEqual(VaultUsageEvent.objects.count(), 2)
+        if django_apps.is_installed("toto.tariffs"):
+            from toto.tariffs.models import UsageRecord
+
+            self.assertEqual(UsageRecord.objects.count(), 0)
+
+
 class DeleteTests(PeerApiTestCase):
     def test_delete_purges_row_and_bytes(self):
         vf = self._file()

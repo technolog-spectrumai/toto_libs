@@ -561,7 +561,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
         else:
             location = "Root"
 
-        from toto.quota import QuotaExceeded, check_quota, record_usage as _ru
+        from toto.quota import InArrears, QuotaExceeded, check_quota, record_usage as _ru
         from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
         from toto.vault import scanning as _scanning
         from toto.vault.models import VaultQuotaPolicy, VaultUsageEvent
@@ -590,7 +590,7 @@ class FileGatewayUploadView(LoginRequiredMixin, View):
                     check_quota(VaultQuotaPolicy, "storage.transfer_mb", _size_mb, request.user)
                     check_funds(request.user, tariff, "storage.request", 1)
                     check_funds(request.user, tariff, "storage.transfer_mb", _size_mb)
-                except (QuotaExceeded, InsufficientFunds) as _exc:
+                except (QuotaExceeded, InArrears, InsufficientFunds) as _exc:
                     errors.append(f"{uploaded_file.name}: {_exc}")
                     continue
 
@@ -1046,7 +1046,7 @@ def _delegate_to_transfer(request, source_bucket, destination_bucket,
     """
     from decimal import Decimal as _D
 
-    from toto.quota import QuotaExceeded, check_quota
+    from toto.quota import InArrears, QuotaExceeded, check_quota
     from toto.quota.charge import InsufficientFunds, check_funds, price_for
 
     from . import transfer_dispatch
@@ -1059,7 +1059,7 @@ def _delegate_to_transfer(request, source_bucket, destination_bucket,
         check_quota(VaultQuotaPolicy, "storage.transfer_mb", est_mb,
                     request.user)
         check_funds(request.user, tariff, "storage.transfer_mb", est_mb)
-    except (QuotaExceeded, InsufficientFunds) as exc:
+    except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
         return JsonResponse({"ok": False, "error": str(exc)},
                             status=getattr(exc, "status_code", 402))
 

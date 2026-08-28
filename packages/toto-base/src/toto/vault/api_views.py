@@ -134,7 +134,7 @@ class FileUploadApiView(CorsApiView):
         # the other door onto one resource, so it must not be the cheap one.
         from decimal import Decimal
 
-        from toto.quota import QuotaExceeded, check_quota, record_usage
+        from toto.quota import InArrears, QuotaExceeded, check_quota, record_usage
         from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
         from toto.vault.models import VaultQuotaPolicy, VaultUsageEvent
 
@@ -145,7 +145,7 @@ class FileUploadApiView(CorsApiView):
             check_quota(VaultQuotaPolicy, "storage.transfer_mb", size_mb, request.user)
             check_funds(request.user, tariff, "storage.request", 1)
             check_funds(request.user, tariff, "storage.transfer_mb", size_mb)
-        except (QuotaExceeded, InsufficientFunds) as exc:
+        except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
             return JsonResponse({"error": str(exc)}, status=exc.status_code)
 
         title = request.POST.get("title", "").strip() or os.path.splitext(file.name)[0]

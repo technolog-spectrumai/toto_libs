@@ -163,6 +163,32 @@ def _upload(request, grant):
     # The exporter owns what lands in their bucket — the storage levy bills
     # the exporting operator, consistent with them granting the space.
     owner = grant.bucket.owner
+
+    # The same metrics, the same ladder, the same subject as the gateway and
+    # API doors: this is the third door onto one resource and for a while it
+    # was the free lane — nothing refused inbound cross-host bytes until the
+    # nightly gb_day sweep noticed the bucket had grown, and caps exist to
+    # refuse BEFORE the disk fills. The refusal is the exporting account's
+    # (cap, funds, or arrears): the peer holds a grant, not a wallet, and
+    # the sentence in the error is what the far operator relays to whoever
+    # granted the space.
+    from decimal import Decimal
+
+    from toto.quota import InArrears, QuotaExceeded, check_quota, record_usage
+    from toto.quota.charge import InsufficientFunds, charge, check_funds, price_for
+
+    from .models import VaultQuotaPolicy, VaultUsageEvent
+
+    size_mb = Decimal(str(uploaded.size)) / Decimal("1048576")
+    tariff = price_for(owner, "vault")
+    try:
+        check_quota(VaultQuotaPolicy, "storage.request", 1, owner)
+        check_quota(VaultQuotaPolicy, "storage.transfer_mb", size_mb, owner)
+        check_funds(owner, tariff, "storage.request", 1)
+        check_funds(owner, tariff, "storage.transfer_mb", size_mb)
+    except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+        return JsonResponse({"error": str(exc)}, status=exc.status_code)
+
     mime, _ = mimetypes.guess_type(uploaded.name)
     file_type = VaultFile.detect_type(mime or "", uploaded.name)
 
@@ -196,6 +222,18 @@ def _upload(request, grant):
     except _storage_backends.UploadRefused as exc:
         return JsonResponse({"error": str(exc)}, status=400)
     _scanning.record(vault_file, verdict, user=None, door="peer")
+
+    src = {"source_type": "vault.VaultFile", "source_id": str(vault_file.pk)}
+    record_usage(VaultUsageEvent, "storage.request", 1, owner,
+                 idempotency_key=f"vault.peer_upload.request:{vault_file.pk}",
+                 **src)
+    charge(owner, tariff, "storage.request", 1, **src)
+    if size_mb > 0:
+        record_usage(VaultUsageEvent, "storage.transfer_mb", size_mb, owner,
+                     unit="MB",
+                     idempotency_key=f"vault.peer_upload.transfer:{vault_file.pk}",
+                     **src)
+        charge(owner, tariff, "storage.transfer_mb", size_mb, unit="MB", **src)
     return JsonResponse({"ok": True, **_row(vault_file)}, status=201)
 
 
