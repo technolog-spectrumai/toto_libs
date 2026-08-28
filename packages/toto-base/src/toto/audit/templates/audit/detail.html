@@ -1,0 +1,69 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}Audit #{{ record.sequence }} — {{ platform.name }}{% endblock %}
+
+{% block content %}
+<div class="shell page stack">
+  <div>
+    <a href="{% url 'audit:index' %}" class="btn btn-quiet btn-sm mb-2">
+      <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>{% trans "Audit" %}</a>
+    <h1>Record #{{ record.sequence }} — {{ record.action }}</h1>
+  </div>
+
+  <section class="card">
+    <div class="card-head"><h2>{% trans "What happened" %}</h2></div>
+    <dl class="facts">
+      <div><dt>{% trans "When" %}</dt><dd>{{ record.timestamp|date:"Y-m-d H:i:s T" }}</dd></div>
+      <div><dt>{% trans "Who" %}</dt><dd>{{ record.actor_username|default:"system" }}</dd></div>
+      <div><dt>{% trans "App" %}</dt><dd>{{ record.app_label }}</dd></div>
+      <div><dt>{% trans "Object" %}</dt><dd>{{ record.object_description|default:"—" }}</dd></div>
+      <div><dt>{% trans "Object type" %}</dt><dd class="mono text-xs">{{ record.object_type|default:"—" }}</dd></div>
+      <div><dt>{% trans "Source" %}</dt><dd>{{ record.source }}</dd></div>
+      <div><dt>{% trans "Result" %}</dt>
+        <dd>{% if record.success %}<span class="badge badge-ok">OK</span>
+            {% else %}<span class="badge badge-danger">{% trans "Failed" %}</span>{% endif %}</dd></div>
+      <div><dt>{% trans "Correlation" %}</dt><dd class="mono text-xs">{{ record.correlation_id|default:"—" }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="card">
+    <div class="card-head"><h2>{% trans "Chain position" %}</h2></div>
+    <p class="uppercase-label">{% trans "Previous hash" %}</p>
+    <pre class="text-xs">{{ record.previous_hash|default:"(genesis)" }}</pre>
+    <p class="uppercase-label mt-4">{% trans "This record's hash" %}</p>
+    <pre class="text-xs">{{ record.record_hash }}</pre>
+    <p class="muted text-xs mt-2">Algorithm: {{ record.algorithm }}</p>
+  </section>
+
+  {% if record.changes %}
+    <section class="card">
+      <div class="card-head"><h2>{% trans "Changes" %}</h2></div>
+      <div class="scroll-x"><table class="data">
+        <caption class="sr-only">{% trans "Fields this record changed" %}</caption>
+        <thead><tr><th scope="col">{% trans "Field" %}</th><th scope="col">{% trans "Before" %}</th><th scope="col">{% trans "After" %}</th></tr></thead>
+        <tbody>
+          {% for field, delta in record.changes.items %}
+            <tr><td class="mono text-xs">{{ field }}</td>
+              <td class="muted">{{ delta.before|default:"—" }}</td>
+              <td>{{ delta.after|default:"—" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  {% endif %}
+
+  {% if record.metadata %}
+    <section class="card">
+      <div class="card-head"><h2>{% trans "Metadata" %}</h2></div>
+      <div class="scroll-x"><table class="data">
+        <caption class="sr-only">{% trans "Extra facts recorded with this action" %}</caption>
+        <tbody>
+          {% for key, value in record.metadata.items %}
+            <tr><td class="mono text-xs bold">{{ key }}</td><td>{{ value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table></div>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}

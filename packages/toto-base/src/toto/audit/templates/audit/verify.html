@@ -1,0 +1,47 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}Verify the audit chain — {{ platform.name }}{% endblock %}
+
+{% block content %}
+<div class="shell page stack">
+  <div>
+    <a href="{% url 'audit:index' %}" class="btn btn-quiet btn-sm mb-2">
+      <svg class="icon" aria-hidden="true"><use href="#i-arrow-left"></use></svg>{% trans "Audit" %}</a>
+    <h1>{% trans "Chain verification" %}</h1>
+  </div>
+
+  {% if result.ok %}
+    <div class="flash flash-success" role="status">
+      <svg class="icon" aria-hidden="true"><use href="#i-check"></use></svg>
+      <span><strong>{% trans "Healthy." %}</strong> {{ result.checked }} record(s) verified —
+        every hash matches its contents and its predecessor.</span>
+    </div>
+  {% else %}
+    <div class="flash flash-error" role="alert">
+      <svg class="icon" aria-hidden="true"><use href="#i-alert"></use></svg>
+      <span><strong>Broken at sequence {{ result.first_bad_sequence }}.</strong>
+        {{ result.detail }} {{ result.checked }} record(s) verified before the break.</span>
+    </div>
+  {% endif %}
+
+  <section class="card">
+    <div class="card-head"><h2>{% trans "What this checks" %}</h2></div>
+    <p class="text-sm">Each record's digest covers its own contents together with
+      its predecessor's digest, so there are three ways this can report a break:</p>
+    <ul class="legend mt-2">
+      <li><span class="bold">{% trans "A gap in the sequence" %}</span>
+        <span class="muted">— a record was deleted.</span></li>
+      <li><span class="bold">{% trans "A mismatched previous hash" %}</span>
+        <span class="muted">— a record was inserted or reordered.</span></li>
+      <li><span class="bold">{% trans "A mismatched record hash" %}</span>
+        <span class="muted">— a record was edited in place.</span></li>
+    </ul>
+    <p class="muted text-sm mt-4">
+      This is Placidia's own activity audit, and it is unsigned. It is not
+      Irena's governance ledger and makes none of its claims — a signed,
+      independently verifiable governance history is Irena's job.
+      From the command line: <code>./manage.py verify_audit</code>.
+    </p>
+  </section>
+</div>
+{% endblock %}

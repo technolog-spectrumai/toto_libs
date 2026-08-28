@@ -1,0 +1,78 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}Audit — {{ platform.name }}{% endblock %}
+
+{% block content %}
+<div class="shell page stack">
+  <div class="flex items-center gap-3 flex-wrap">
+    <h1>{% trans "Audit trail" %}</h1>
+    <a href="{% url 'audit:verify' %}" class="btn btn-sm ml-auto">
+      <svg class="icon" aria-hidden="true"><use href="#i-shield"></use></svg>{% trans "Verify the chain" %}</a>
+  </div>
+
+  <p class="muted text-sm">
+    {{ total }} record(s). Each one hashes its predecessor, so a removed or
+    edited row is detectable — see <a href="{% url 'audit:verify' %}">{% trans "verify" %}</a>.
+  </p>
+
+  <form method="get" class="card card-tight">
+    <div class="form-grid">
+      <div class="field"><label for="f-action">{% trans "Action" %}</label>
+        <select id="f-action" name="action"><option value="">{% trans "Any action" %}</option>
+          {% for action in actions %}
+            <option value="{{ action }}" {% if filters.action == action %}selected{% endif %}>
+              {{ action }}</option>
+          {% endfor %}</select></div>
+      <div class="field"><label for="f-app">{% trans "App" %}</label>
+        <select id="f-app" name="app"><option value="">{% trans "Any app" %}</option>
+          {% for app in apps %}
+            <option value="{{ app }}" {% if filters.app == app %}selected{% endif %}>{{ app }}</option>
+          {% endfor %}</select></div>
+      <div class="field"><label for="f-q">{% trans "Search" %}</label>
+        <input id="f-q" type="search" name="q" value="{{ filters.q }}"
+               placeholder="Object or username"></div>
+    </div>
+    <div class="form-actions">
+      <button type="submit" class="btn btn-primary btn-sm">{% trans "Filter" %}</button>
+      <a href="{% url 'audit:index' %}" class="btn btn-quiet btn-sm">{% trans "Clear" %}</a>
+    </div>
+  </form>
+
+  <div class="card"><div class="scroll-x">
+    <table class="data">
+      <caption class="sr-only">{% trans "Audit records, newest first" %}</caption>
+      <thead><tr>
+        <th scope="col" class="num">#</th><th scope="col">{% trans "When" %}</th><th scope="col">{% trans "Action" %}</th>
+        <th scope="col">{% trans "Object" %}</th><th scope="col">{% trans "Who" %}</th><th scope="col">{% trans "Result" %}</th>
+      </tr></thead>
+      <tbody>
+        {% for record in page %}
+          <tr>
+            <td class="num mono text-xs">
+              <a href="{% url 'audit:detail' record.pk %}">{{ record.sequence }}</a></td>
+            <td class="muted nowrap">{{ record.timestamp|date:"Y-m-d H:i:s" }}</td>
+            <td class="mono text-xs">{{ record.action }}</td>
+            <td class="truncate" style="max-width:22rem">
+              {{ record.object_description|default:record.object_type|default:"—" }}</td>
+            <td class="muted">{{ record.actor_username|default:"system" }}</td>
+            <td>{% if record.success %}<span class="badge badge-ok">OK</span>
+                {% else %}<span class="badge badge-danger">{% trans "Failed" %}</span>{% endif %}</td>
+          </tr>
+        {% empty %}
+          <tr><td colspan="6" class="muted center">{% trans "Nothing recorded yet." %}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div></div>
+
+  {% if page.has_other_pages %}
+    <div class="flex items-center gap-2">
+      {% if page.has_previous %}
+        <a class="btn btn-sm" href="?page={{ page.previous_page_number }}">{% trans "Previous" %}</a>{% endif %}
+      <span class="muted text-sm">Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+      {% if page.has_next %}
+        <a class="btn btn-sm" href="?page={{ page.next_page_number }}">{% trans "Next" %}</a>{% endif %}
+    </div>
+  {% endif %}
+</div>
+{% endblock %}
