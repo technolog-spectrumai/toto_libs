@@ -176,9 +176,9 @@ _DEFAULTS = (
                 description="Addresses, territories and what is on them."),
 
     # -- the heavy end ------------------------------------------------------
-    Entitlement("aralia", "Invoices", order=40,
-                icon="fa-solid fa-file-invoice",
-                description="Generate PDFs from a template and your own data."),
+    Entitlement("aralia", "PDF generator", order=40,
+                icon="fa-solid fa-file-pdf",
+                description="Render an HTML page to a PDF."),
     Entitlement("mandragora", "Notebooks", order=42,
                 icon="fa-solid fa-flask",
                 description="Compute kernels and notebooks."),
