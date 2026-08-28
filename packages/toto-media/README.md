@@ -110,10 +110,18 @@ profiles set it and nothing else; it no longer means the processing stack. Mount
 apps with `path("vod/", include("toto.vod.urls"))` and
 `path("ocr/", include("toto.ocr.urls"))`, guarded by `apps.is_installed`.
 
-Neither app forces `workflows`, channels or celery. Neither belongs in
-`registry.TASK_MODULES` — they have no tasks — nor in a host's `APPS_TO_SYNC`, since
-they own no tables. `migrate` is still required: vod's pair of migrations has to be
-recorded even though its net effect is nothing.
+`toto.vod` forces neither `workflows`, channels nor celery, has no tasks, owns
+no tables, and belongs in neither `registry.TASK_MODULES` nor a host's
+`APPS_TO_SYNC`. `migrate` is still required: its pair of migrations has to be
+recorded even though their net effect is nothing.
+
+**`toto.ocr` stopped being that kind of app in 1.51.** Reading a scan is one
+Celery task PER PAGE plus a nightly retention sweep, so it IS in
+`registry.TASK_MODULES` and `BUILD_OCR` pulls the realtime layer in with it; and
+it owns real tables now (`OcrRun`, `OcrPage`, its settings row and its metering
+pair). Tesseract and poppler live in the application image rather than in an
+`anastasia-ocr` runner — the argument the zenobia Dockerfile already makes about
+WeasyPrint, applied to a ~20 MB layer instead of a ~450 MB one.
 
 ### System / Python prerequisites
 

@@ -382,7 +382,11 @@ def resolve_features(get) -> Features:
     # running in a Compute Gear, so the host needs jupyter_client (the CLIENT)
     # and no longer ipykernel or matplotlib: those are the anastasia-python
     # image's, along with the interpreter itself.
-    realtime = chat or workflows or weather or needs_channels or manta or jess or dracena
+    # `ocr` is here because reading a scan is one Celery task PER PAGE: a
+    # BUILD_OCR=1 image without the realtime layer has no celery package
+    # at all, and its submit button could only ever 503.
+    realtime = (chat or workflows or weather or needs_channels or manta
+                or jess or dracena or ocr)
     neo4j = graph
 
     # Native binaries, each following the feature that shells out to it. tesseract
@@ -394,17 +398,20 @@ def resolve_features(get) -> Features:
     # and one is not a reason to ship the other's binary.
     explicit_tess = flag(get, "INSTALL_TESSERACT")
     explicit_ffmpeg = flag(get, "INSTALL_FFMPEG")
-    # Same rule texlive follows since 1.50, and for the same reason: with
-    # Compute Gears installed these binaries belong to the anastasia-ocr and
-    # anastasia-media runner IMAGES, not to every host that offers the
-    # features. Deriving them from their apps would put a tesseract layer and
-    # a ~100 MB ffmpeg layer straight back into an application image whose
-    # whole point is not having them.
+    # ffmpeg still follows the 1.50 rule: with Compute Gears installed it
+    # belongs to the anastasia-media runner IMAGE, not to every host that
+    # offers the feature — a ~100 MB layer back in an application image whose
+    # whole point is not having it. A host with no manager says
+    # INSTALL_FFMPEG=1 and means it.
     #
-    # A host that wants a local fallback anyway says INSTALL_TESSERACT=1 or
-    # INSTALL_FFMPEG=1 and means it — which is what a host with no manager
-    # must do, since there is nowhere else for its work to run.
-    tesseract = explicit_tess or (ocr and not anastasia)
+    # tesseract does NOT follow that rule any more, and the asymmetry is
+    # deliberate. Reading a scan is ordinary Python over a ~20 MB apt layer; it
+    # needs no reserved CPU and no mounted scratch, and making somebody book a
+    # Compute Gear to read a page is a worse product than carrying the layer —
+    # which is exactly the argument the Dockerfile already makes about
+    # WeasyPrint. So tesseract follows its app, the way texlive follows TeX Lab
+    # would if TeX Lab were this cheap.
+    tesseract = explicit_tess or ocr
     ffmpeg = explicit_ffmpeg or ((fileservices or manta) and not anastasia)
     # texlive (pdflatex) has exactly ONE consumer: TeX Lab compilation.
     # (notarius went WeasyPrint in 1.44 and signature-only in the rework — no

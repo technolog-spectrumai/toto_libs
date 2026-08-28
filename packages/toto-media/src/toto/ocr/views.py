@@ -1,37 +1,46 @@
-"""OCR — a Media sub-tab.
+"""Text recognition: submit a scan, watch it, take the text.
 
-A deliberately small, stateless flow: upload a screenshot → run Tesseract →
-show the text → optionally save the screenshot into a vault bucket (and folder)
-→ forward the text to the ingestor. No DB models; the OCR engine is the shared
-``OcrHelper`` (pytesseract) and saving reuses the canonical VaultFile create
-pattern.
+An Office application. Until 1.51 this ran Tesseract inside an Anastasia
+Compute Gear, synchronously, from the POST handler — and before that it ran it
+inline with no size cap, no type check and no meter. It now runs on this host,
+on a worker, one Celery task per page.
 
-It sat under the Knowledge Graph until 1.21, which is why the ingestor handoff
-below looks the way it does. OCR needs no Neo4j of its own: it takes a file and
-shells out to a native binary, exactly as manta does to ffmpeg, so it now lives
-in toto-media behind its own BUILD_OCR flag. The graph is an optional *sink* for
-the text, and every reference to it here is soft — see ``ocr_home``.
+**This app keeps its own URL namespace, and that is load-bearing.**
+`toto.subscriptions.gate` reads the entitlement from `resolver_match.app_name`;
+Office's namespace is deliberately free and GET-only, because (its own words)
+"an Office-owned write route would be a way to create paid content for nothing".
+A POST-accepting page mounted under /office/ would be exactly that bypass. So
+Office LINKS here, and the writes stay under `ocr:`.
+
+Permissions, at a glance: anyone signed in may read their own scans; a run is
+readable by its owner and by staff and NOT FOUND to anybody else — 404 rather
+than 403, because the existence of somebody's document is not ours to confirm.
+Downloading the text is a GET on purpose, so a lapsed plan never traps work that
+was already paid for behind a paywall.
 """
+
 from __future__ import annotations
 
 import os
-import tempfile
 
-from django.contrib.auth.decorators import login_required, user_passes_test
+from django.contrib.auth.decorators import login_required
 from django.core.files.base import ContentFile
 from django.db import IntegrityError
-from django.http import JsonResponse
-from django.shortcuts import redirect, render
-from django.urls import NoReverseMatch, reverse
+from django.http import Http404, HttpResponse, JsonResponse
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils.text import slugify
+from django.utils.translation import gettext as _
 from django.views.decorators.http import require_POST
 
 from toto.ui import PageProcessor
 
+ENTITLEMENT = "ocr"
+METRIC = "ocr.page"
 
-def superuser_required(view_func):
-    return user_passes_test(lambda u: u.is_active and u.is_superuser)(view_func)
 
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
 
 def _buckets_and_directories(user):
     """The user's own buckets plus their directories (path label, per bucket).
@@ -42,13 +51,12 @@ def _buckets_and_directories(user):
     """
     from toto.vault.models import Bucket, VaultDirectory
 
-    buckets = list(Bucket.objects.filter(owner=user).order_by("name").values("pk", "name"))
-
+    buckets = list(Bucket.objects.filter(owner=user).order_by("name")
+                   .values("pk", "name"))
     nodes = {
         d["pk"]: d
         for d in VaultDirectory.objects.filter(bucket__owner=user).values(
-            "pk", "name", "parent_id", "bucket_id"
-        )
+            "pk", "name", "parent_id", "bucket_id")
     }
 
     def _path(pk):
@@ -71,7 +79,7 @@ def _buckets_and_directories(user):
 def _unique_key(bucket, base_key):
     from toto.vault.models import VaultFile
 
-    base_key = base_key or "screenshot"
+    base_key = base_key or "text"
     key, i = base_key, 1
     while VaultFile.objects.filter(bucket=bucket, key=key).exists():
         key = f"{base_key}-{i}"
@@ -79,147 +87,326 @@ def _unique_key(bucket, base_key):
     return key
 
 
-def _gear_choices(user) -> list:
-    from toto.ocr import ocr as ocr_mod
-    return ocr_mod.gear_choices(user)
+def _own_run(request, pk):
+    """A run this person may see, or 404.
 
+    Owner or staff. Not 403: a refusal that distinguishes "not yours" from
+    "does not exist" tells a stranger that it exists.
+    """
+    from toto.ocr.models import OcrRun
+
+    run = get_object_or_404(OcrRun, pk=pk)
+    user = request.user
+    if run.owner_id != user.id and not user.is_staff:
+        raise Http404("Not found.")
+    return run
+
+
+def _settings():
+    from toto.ocr.models import OcrSettings
+
+    return OcrSettings.get()
+
+
+# ---------------------------------------------------------------------------
+# The tool page
+# ---------------------------------------------------------------------------
 
 @login_required
-@superuser_required
 def ocr_home(request):
-    """Render the OCR tab. The whole flow runs client-side against ``ocr:run``."""
-    buckets, directories = _buckets_and_directories(request.user)
+    """Upload something and read it — or pick up where a scan got to."""
+    from toto.ocr import engine
+    from toto.ocr.models import OcrRun
 
-    # The Ingest button is usable only when the ingestor is installed AND the
-    # graph backend is enabled — otherwise the handoff would just 503.
-    ingest_enabled = False
-    try:
-        reverse("ingestor:home")
-        from toto.ravioli.connection import is_enabled
-        ingest_enabled = bool(is_enabled())
-    except (NoReverseMatch, ImportError):
-        ingest_enabled = False
+    limits = _settings()
+    vault_file = None
+    file_pk = (request.GET.get("file") or "").strip()
+    if file_pk.isdigit():
+        # Arrived from the vault's wand. Reading the text out of a file you may
+        # already read is not a new right, so `may_read` is the whole check.
+        from toto.vault import access
+        from toto.vault.models import VaultFile
+
+        candidate = VaultFile.objects.filter(pk=int(file_pk)).first()
+        if candidate is not None and access.may_read(request.user, candidate):
+            vault_file = candidate
 
     context = {
-        "buckets": buckets,
-        "directories": directories,  # rendered via json_script (XSS-safe)
-        "run_url": reverse("ocr:run"),
-        "ingest_enabled": ingest_enabled,
-        "gear_choices": _gear_choices(request.user),
+        "tesseract_available": engine.tesseract_available(),
+        "pdf_available": engine.pdf_support_available(),
+        "languages": engine.language_choices(),
+        "default_language": (engine.available_languages() or ["eng"])[0],
+        "max_upload_mb": limits.max_upload_mb,
+        "max_pages": limits.max_pages_per_run,
+        "retention_days": limits.retention_days,
+        "vault_file": vault_file,
+        "recent": OcrRun.objects.filter(owner=request.user)[:10],
     }
-    return render(request, "ocr/ocr.html", PageProcessor().decorate(context, request))
+    return render(request, "ocr/ocr.html",
+                  PageProcessor().decorate(context, request))
 
+
+# ---------------------------------------------------------------------------
+# Submit
+# ---------------------------------------------------------------------------
 
 @require_POST
 @login_required
-@superuser_required
-def ocr_run(request):
-    """Run Tesseract on an uploaded screenshot; optionally save it to a bucket."""
-    from toto.ocr.ocr import OcrHelper
-    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+def ocr_submit(request):
+    """Accept a file, freeze the page list, and queue a task per page."""
+    from toto.ocr import dispatch, engine, runs, validation
+    from toto.ocr.models import OcrQuotaPolicy, OcrRun, RunStatus
+    from toto.quota import InArrears, QuotaExceeded, check_quota
+    from toto.quota.charge import InsufficientFunds, check_funds, price_for
 
-    screenshot = request.FILES.get("screenshot")
-    if screenshot is None:
-        return JsonResponse({"error": "No screenshot uploaded."}, status=400)
+    if not engine.tesseract_available():
+        return JsonResponse({"error": _(
+            "Text recognition is not installed on this server.")}, status=503)
 
     language = (request.POST.get("language") or "").strip() or "eng"
-    data = screenshot.read()
-    ext = os.path.splitext(screenshot.name or "")[1] or ".png"
+    if not engine.is_offered(language):
+        return JsonResponse({"error": _(
+            "This server does not have that language. It has: %(langs)s.")
+            % {"langs": ", ".join(engine.available_languages())}}, status=400)
 
-    # --- Tesseract, in a Compute Gear where there is one ---
-    #
-    # This used to run tesseract synchronously inside this POST handler, on
-    # bytes a user had just uploaded, with no timeout and no memory bound. In a
-    # Gear it is a job with both, in a container with no network and no
-    # credentials. Still synchronous from the browser's side: a scan is
-    # seconds, and turning it into a poll would change a working interaction
-    # for no benefit.
-    from toto.ocr import ocr as ocr_mod
+    limits = _settings()
+    max_bytes = limits.max_upload_mb * 1024 * 1024
+    page_cap = limits.max_pages_per_run
 
-    tmp_path = None
+    uploaded = request.FILES.get("document")
+    vault_file = None
+    if uploaded is not None:
+        inspection = validation.inspect_upload(
+            uploaded, max_bytes=max_bytes, page_cap=page_cap)
+        source_name = uploaded.name or "scan"
+    else:
+        from toto.vault import access
+        from toto.vault.models import VaultFile
+
+        file_pk = (request.POST.get("file") or "").strip()
+        if not file_pk.isdigit():
+            return JsonResponse({"error": _("Choose a file to read.")},
+                                status=400)
+        vault_file = VaultFile.objects.filter(pk=int(file_pk)).first()
+        if vault_file is None or not access.may_read(request.user, vault_file):
+            raise Http404("Not found.")
+        if vault_file.is_encrypted:
+            return JsonResponse({"error": _(
+                "That file is encrypted. Decrypt it first.")}, status=400)
+        inspection = validation.inspect_vault_file(
+            vault_file, max_bytes=max_bytes, page_cap=page_cap)
+        source_name = vault_file.title or "scan"
+
+    if not inspection.ok:
+        status = 413 if inspection.reason == "too-large" else 400
+        return JsonResponse({"error": inspection.message,
+                             "reason": inspection.reason}, status=status)
+
+    # One job at a time, per person. The single most effective control there
+    # is: this platform runs every background job on ONE queue, so without it
+    # one person with a shelf of books delays the nightly levies, the forum
+    # cleanup and everybody else's transfers. The vault's transfers refuse a
+    # second run the same way.
+    if OcrRun.objects.filter(owner=request.user,
+                             status__in=[RunStatus.PENDING,
+                                         RunStatus.RUNNING]).exists():
+        return JsonResponse({"error": _(
+            "One of your scans is still being read. Wait for it to finish.")},
+            status=409)
+
+    # Money and plan, ONCE, for the whole job, before any work or any bytes are
+    # stored. Refusing here costs nobody anything; refusing halfway would.
     try:
-        lease = ocr_mod.gear_for(
-            request.user, (request.POST.get("gear") or "").strip() or None)
-        if lease is not None:
-            lines = ocr_mod.scan_in_gear(
-                data, filename=screenshot.name or "", language=language,
-                lease=lease, user=request.user)
-        else:
-            with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
-                tmp.write(data)
-                tmp_path = tmp.name
-            helper = OcrHelper(language)
-            lines = helper.extract_lines(helper.run_tesseract(tmp_path))
-        text = "\n".join(line["text"] for line in lines).strip()
-    except Exception as exc:  # noqa: BLE001 — surface the reason to the UI
-        # 409 rather than 500 when the answer is "mount a Gear": that is
-        # something the person clicking can act on.
-        status = 409 if exc.__class__.__name__ == "NoGear" else 500
-        message = "; ".join(getattr(exc, "messages", [])) or f"OCR failed: {exc}"
-        return JsonResponse({"error": message}, status=status)
-    finally:
-        if tmp_path and os.path.exists(tmp_path):
-            os.unlink(tmp_path)
+        check_quota(OcrQuotaPolicy, METRIC, inspection.page_count, request.user)
+        check_funds(request.user, price_for(request.user, ENTITLEMENT),
+                    METRIC, inspection.page_count)
+    except (QuotaExceeded, InArrears, InsufficientFunds) as exc:
+        return JsonResponse({"error": str(exc)},
+                            status=getattr(exc, "status_code", 402))
 
-    # --- Optional save into a vault bucket / folder ---
-    saved, file_url = False, None
-    if request.POST.get("save_to_vault") in ("on", "true", "1", "yes"):
-        bucket = Bucket.objects.filter(pk=request.POST.get("bucket"), owner=request.user).first()
-        if bucket is None:
-            return JsonResponse({"error": "Pick a bucket you own to save to."}, status=400)
+    run = runs.create_run(owner=request.user, inspection=inspection,
+                          language=language, source_name=source_name,
+                          uploaded=uploaded, vault_file=vault_file)
+    try:
+        dispatch.dispatch_run(run)
+    except dispatch.CannotQueue as exc:
+        runs.fail_run(run, str(exc))
+        return JsonResponse({"error": str(exc), "run_id": run.pk}, status=503)
 
-        # A folder is optional, but if given it must belong to the chosen bucket.
-        directory = None
-        dir_pk = request.POST.get("directory")
-        if dir_pk:
-            directory = VaultDirectory.objects.filter(pk=dir_pk, bucket=bucket).first()
-            if directory is None:
-                return JsonResponse(
-                    {"error": "That folder is not in the selected bucket."}, status=400
-                )
+    return JsonResponse({"status": "ok", "run_id": run.pk,
+                         "url": f"/ocr/run/{run.pk}/",
+                         "total_pages": run.total_pages})
 
-        title = screenshot.name or f"screenshot{ext}"
-        vf = VaultFile(
-            owner=request.user,
-            title=title,
-            key=_unique_key(bucket, slugify(os.path.splitext(title)[0])),
-            bucket=bucket,
-            directory=directory,
-            file_type=VaultFile.detect_type(getattr(screenshot, "content_type", "") or "", title),
-            is_public=False,
-        )
-        try:
-            vf.file.save(title, ContentFile(data), save=True)
-        except IntegrityError:
-            # Lost a race on the (bucket, key) unique constraint — the SELECT in
-            # _unique_key and this INSERT aren't atomic. Surface a clean error.
+
+# ---------------------------------------------------------------------------
+# Watching, and the result
+# ---------------------------------------------------------------------------
+
+@login_required
+def ocr_run_detail(request, pk):
+    from toto.ocr import runs
+
+    run = _own_run(request, pk)
+    payload = runs.run_payload(run)
+    buckets, directories = _buckets_and_directories(request.user)
+    context = {
+        "run": run,
+        "payload": payload,
+        "buckets": buckets,
+        "directories": directories,
+        "can_retry": bool(run.is_finished and run.retry_page_numbers()
+                          and (run.source or run.source_file)),
+        "retention_days": _settings().retention_days,
+    }
+    return render(request, "ocr/run_detail.html",
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+def ocr_status(request, pk):
+    """The poll endpoint. One row read plus one grouped count."""
+    from toto.ocr import runs
+
+    return JsonResponse(runs.run_payload(_own_run(request, pk)))
+
+
+@login_required
+def ocr_text(request, pk):
+    """The plain text, as a download.
+
+    A GET, deliberately: work already done must never become unreachable
+    because a subscription lapsed.
+    """
+    run = _own_run(request, pk)
+    stem = slugify(os.path.splitext(run.source_name or "scan")[0]) or "scan"
+    response = HttpResponse(run.text or "", content_type="text/plain; charset=utf-8")
+    response["Content-Disposition"] = f'attachment; filename="{stem}.txt"'
+    return response
+
+
+# ---------------------------------------------------------------------------
+# Acting on a finished run
+# ---------------------------------------------------------------------------
+
+@require_POST
+@login_required
+def ocr_save(request, pk):
+    """Write the text into the vault as an ordinary .txt document.
+
+    Nothing is saved unless asked. This route lives here rather than in Office
+    because Office owns no writes, and the vault's own create door seeds an
+    EMPTY file from an editor plugin — it cannot accept bytes.
+    """
+    from toto.vault.models import Bucket, VaultDirectory, VaultFile
+
+    run = _own_run(request, pk)
+    if not run.text:
+        return JsonResponse({"error": _("There is no text to save yet.")},
+                            status=400)
+
+    bucket = Bucket.objects.filter(pk=request.POST.get("bucket"),
+                                   owner=request.user).first()
+    if bucket is None:
+        return JsonResponse({"error": _("Pick a folder you own to save to.")},
+                            status=400)
+    directory = None
+    dir_pk = request.POST.get("directory")
+    if dir_pk:
+        directory = VaultDirectory.objects.filter(pk=dir_pk, bucket=bucket).first()
+        if directory is None:
             return JsonResponse(
-                {"error": "A file with that name was just saved here — try again."},
-                status=409,
-            )
-        try:
-            vf.content_hash = vf.create_hash()
-            vf.save(update_fields=["content_hash"])
-        except Exception:  # noqa: BLE001 — hashing is best-effort
-            pass
-        saved, file_url = True, vf.get_public_url()
+                {"error": _("That folder is not in the selected place.")},
+                status=400)
 
-    return JsonResponse({"text": text, "saved": saved, "file_url": file_url})
+    stem = os.path.splitext(run.source_name or "scan")[0] or "scan"
+    title = f"{stem}.txt"
+    data = run.text.encode("utf-8")
+    vault_file = VaultFile(
+        owner=request.user, title=title,
+        key=_unique_key(bucket, slugify(stem) or "text"),
+        bucket=bucket, directory=directory, file_type="text", is_public=False)
+    try:
+        vault_file.file.save(title, ContentFile(data), save=True)
+    except IntegrityError:
+        # Lost a race on the (bucket, key) unique constraint — the SELECT in
+        # _unique_key and this INSERT aren't atomic. Surface a clean error.
+        return JsonResponse({"error": _(
+            "A file with that name was just saved here — try again.")},
+            status=409)
+    try:
+        vault_file.content_hash = vault_file.create_hash()
+        vault_file.file_size_bytes = len(data)
+        vault_file.save(update_fields=["content_hash", "file_size_bytes"])
+    except Exception:  # noqa: BLE001 — hashing is best-effort
+        pass
+    return JsonResponse({"status": "ok", "file_pk": vault_file.pk,
+                         "title": title})
 
 
 @require_POST
 @login_required
-@superuser_required
-def ocr_ingest(request):
-    """Hand the extracted text to the ingestor.
+def ocr_cancel(request, pk):
+    """Stop what has not started; keep what is already read."""
+    from toto.ocr import dispatch, runs
 
-    Post/Redirect/Get: stash the text in the session and 302 to the ingestor
-    page, which pre-fills its textarea and auto-generates a proposal. This lands
-    the user on the real review surface (not the JSON ``generate`` endpoint).
+    run = _own_run(request, pk)
+    if run.is_finished:
+        return JsonResponse({"error": _("That scan has already finished.")},
+                            status=409)
+    stopped = dispatch.cancel_run(run)
+    run.refresh_from_db()
+    return JsonResponse({"status": "ok", "stopped": stopped,
+                         **runs.run_payload(run)})
+
+
+@require_POST
+@login_required
+def ocr_retry(request, pk):
+    """Read the pages that did not deliver, on the same run.
+
+    In place rather than as a new row, which is where this differs from the
+    vault's transfers — and the difference is principled. A transfer mints a new
+    run because its counters record bytes that actually moved and money that was
+    actually spent, and mutating them would rewrite that record. Here a page is
+    charged only when it delivers, so a page that never delivered has no record
+    to protect.
     """
-    request.session["ingest_text"] = request.POST.get("text") or ""
+    from toto.ocr import dispatch, runs
+    from toto.ocr.models import OcrPage, OcrRun, PageStatus, RunStatus
+    from toto.ocr.times import page_budget
+
+    run = _own_run(request, pk)
+    numbers = run.retry_page_numbers()
+    if not numbers:
+        return JsonResponse({"error": _("Every page was read.")}, status=400)
     try:
-        return redirect("ingestor:home")
-    except NoReverseMatch:  # ingestor not installed — fall back to the OCR page
-        request.session.pop("ingest_text", None)
-        return redirect("ocr:home")
+        runs.source_path(run)
+    except Exception:  # noqa: BLE001
+        return JsonResponse({"error": _(
+            "The original file has been removed, so these pages cannot be "
+            "read again. Scans are kept for %(days)s days.")
+            % {"days": _settings().retention_days}}, status=409)
+    if OcrRun.objects.filter(owner=request.user,
+                             status__in=[RunStatus.PENDING, RunStatus.RUNNING]
+                             ).exclude(pk=run.pk).exists():
+        return JsonResponse({"error": _(
+            "Another of your scans is running. Wait for it to finish.")},
+            status=409)
+
+    OcrPage.objects.filter(run=run, number__in=numbers).update(
+        status=PageStatus.WAITING, error="")
+    OcrRun.objects.filter(pk=run.pk).update(
+        status=RunStatus.RUNNING, finished_at=None, error="",
+        page_errors=[],
+        pages_settled=run.pages_settled - len(numbers),
+        pages_failed=max(0, run.pages_failed - len(numbers)))
+
+    from toto.ocr.tasks import ocr_page
+
+    budget = page_budget(request.user)
+    for number in numbers:
+        result = ocr_page.apply_async(args=[run.pk, number],
+                                      soft_time_limit=budget,
+                                      time_limit=budget + 60)
+        OcrPage.objects.filter(run=run, number=number).update(task_id=result.id)
+    return JsonResponse({"status": "ok", "retried": len(numbers)})

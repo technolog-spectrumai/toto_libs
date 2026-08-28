@@ -22,6 +22,9 @@ def beat_schedule(
     forum_cleanup=False,
     forum_cleanup_hour=4,
     forum_cleanup_minute=40,
+    ocr_cleanup=False,
+    ocr_cleanup_hour=4,
+    ocr_cleanup_minute=50,
     clearing=False,
     tax=False,
     tax_hour=4,
@@ -128,6 +131,19 @@ def beat_schedule(
             "task": "toto.forum.tasks.forum_cleanup",
             "schedule": crontab(hour=forum_cleanup_hour,
                                 minute=forum_cleanup_minute),
+        }
+
+    # 04:50, behind the tax levy and the forum sweep — three long jobs on one
+    # queue should not start together. This removes finished runs and the
+    # SCANS THEMSELVES: an OCR upload can be 64 MB, so a host that never swept
+    # would fill its disk with books nobody is reading any more.
+    if ocr_cleanup:
+        from celery.schedules import crontab
+
+        schedule["ocr-cleanup"] = {
+            "task": "toto.ocr.tasks.ocr_cleanup",
+            "schedule": crontab(hour=ocr_cleanup_hour,
+                                minute=ocr_cleanup_minute),
         }
 
     if tax:

@@ -13,7 +13,9 @@ is a question about INSTALLED_APPS, and answering it in a template means
 answering it again in every other template that ever wants to know.
 {% endcomment %}
 {% load i18n %}
-<nav class="flex flex-wrap gap-1 border-b"
+<div class="flex flex-wrap items-end justify-between gap-3 border-b"
+     x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'">
+<nav class="flex flex-wrap gap-1"
      x-bind:class="darkMode ? 'border-accent-1/40' : 'border-accent-2/40'"
      aria-label="{% trans 'Office sections' %}">
   {% for tab in sections %}
@@ -26,3 +28,17 @@ answering it again in every other template that ever wants to know.
     </a>
   {% endfor %}
 </nav>
+  {% if tools %}
+    {% comment %}Separated from the tabs on purpose. These are not a fifth kind
+    of file — each one is a link into the app that owns it, because Office owns
+    no write routes and a tool needs some.{% endcomment %}
+    <div class="flex flex-wrap gap-2 pb-1.5">
+      {% for tool in tools %}
+        <a href="{{ tool.url }}" title="{{ tool.blurb }}"
+           class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-85"
+           x-bind:class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+          <i class="{{ tool.icon }}" aria-hidden="true"></i>{{ tool.label }}</a>
+      {% endfor %}
+    </div>
+  {% endif %}
+</div>

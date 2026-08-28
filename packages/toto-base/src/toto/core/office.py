@@ -149,6 +149,56 @@ SORTS = {
 DEFAULT_SORT = "recent"
 
 
+@dataclass(frozen=True)
+class Tool:
+    """Something you DO to a file, offered beside the tabs.
+
+    A `Section` is defined by the file types it lists; a tool lists none, so
+    forcing one into that grammar would make the tab strip stop meaning "kinds
+    of thing you have" — and then the next tool's claim to a tab is
+    unanswerable. It is a link, not a route: this module owns no writes, and a
+    tool's own app owns its entitlement and its POSTs.
+
+    `url_name` is a NAME, resolved lazily and dropped on NoReverseMatch, exactly
+    as `Section.alt_view` is — so an installed-but-unmounted app offers nothing
+    rather than 500ing the whole Office page.
+    """
+
+    slug: str
+    label: str
+    icon: str
+    url_name: str
+    app_labels: tuple = ()
+    blurb: str = ""
+    entitlement: str = ""
+
+
+TOOLS: tuple = (
+    Tool(slug="ocr", label="Read text", icon="fa-solid fa-file-signature",
+         url_name="ocr:home", app_labels=("toto.ocr",), entitlement="ocr",
+         blurb="Turn a photo, a screenshot or a scanned PDF into text."),
+)
+
+
+def available_tools() -> list:
+    """The tools this host both installs and mounts."""
+    from django.apps import apps as django_apps
+    from django.urls import NoReverseMatch, reverse
+
+    out = []
+    for tool in TOOLS:
+        if tool.app_labels and not any(django_apps.is_installed(label)
+                                       for label in tool.app_labels):
+            continue
+        try:
+            url = reverse(tool.url_name)
+        except NoReverseMatch:
+            continue
+        out.append({"slug": tool.slug, "label": tool.label, "icon": tool.icon,
+                    "url": url, "blurb": tool.blurb})
+    return out
+
+
 def available_sections():
     """The tabs this host actually serves.
 

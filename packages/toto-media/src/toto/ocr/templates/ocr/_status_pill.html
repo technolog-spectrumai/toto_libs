@@ -1,0 +1,17 @@
+{% load i18n %}
+{% comment %}One run's outcome, as icon and word together — the monit rule, so
+the state is legible without colour.{% endcomment %}
+{% if status == "success" %}
+  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+    <i class="fa-solid fa-circle-check" aria-hidden="true"></i> {{ label }}</span>
+{% elif status == "partial" %}
+  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    <i class="fa-solid fa-circle-exclamation" aria-hidden="true"></i> {{ label }}</span>
+{% elif status == "failed" %}
+  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i> {{ label }}</span>
+{% elif status == "cancelled" %}
+  <span class="opacity-60"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i> {{ label }}</span>
+{% else %}
+  <span class="opacity-70"><i class="fa-solid fa-spinner" aria-hidden="true"></i> {{ label }}</span>
+{% endif %}

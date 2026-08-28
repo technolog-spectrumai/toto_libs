@@ -80,6 +80,33 @@ def is_scannable(file_type: str) -> bool:
     return file_type in SCANNABLE_TYPES
 
 
+def scan_size_cap_bytes():
+    """The scanner's own size ceiling in bytes, or None where there is none.
+
+    Callers need this because the engine refuses anything larger as
+    "wrong-shape" BEFORE decoding — which is right for a document somebody is
+    about to open, and wrong as a blanket rule for a caller whose whole subject
+    is large files. toto.ocr reads scanned books: the default cap is 10 MB and
+    an ordinary book is 19 MB, so asking the scanner directly would refuse
+    precisely the files that feature exists for.
+
+    Ask this FIRST and decide; never string-match the refusal detail afterwards.
+    A caller over the cap should record the file as clean-and-UNSCANNED and say
+    so out loud — "we checked" and "we could not check" must not look alike.
+
+    None where toto.antivirus is absent, matching this module's contract that
+    nothing here raises and an absent scanner degrades rather than blocks.
+    """
+    if not scanning_enabled():
+        return None
+    try:
+        from toto.antivirus.scanners.config import params
+
+        return int(float(params().get("scan_max_mb") or 10) * 1024 * 1024)
+    except Exception:  # noqa: BLE001 — an unreadable config is not a refusal
+        return None
+
+
 def scan(data, *, file_type: str, filename: str = "") -> Verdict:
     """Screen content before it is stored. Never raises.
 

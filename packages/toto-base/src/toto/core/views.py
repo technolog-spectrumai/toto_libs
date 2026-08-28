@@ -456,6 +456,9 @@ def office_view(request, section=None):
         # Drawings tab can be editor-less, and its read-only note must
         # not contradict an Edit button once toto.sketch is installed.
         "type_is_editable": office.type_is_editable(current),
+        # Tools sit beside the tabs, not in them: a tab is a kind of
+        # file you have, and a tool is something you do to one.
+        "tools": office.available_tools(),
         # The same context key primula's and memo's own listings published, so
         # the gate test that used to walk those pages can walk this one.
         "can_create": bool(creatable),

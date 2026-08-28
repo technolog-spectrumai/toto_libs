@@ -134,6 +134,10 @@ TASK_MODULES = [
     # answered with KeyError, silent for months. toto.tests_schedules asserts
     # the pairing, so forgetting it fails loudly rather than quietly.
     "toto.forum",
+    # toto.ocr — added in 1.51, when reading a scan became one Celery task PER
+    # PAGE plus a nightly sweep. Before that this app genuinely had no tasks and
+    # was correctly absent; the README said so, and that sentence is now wrong.
+    "toto.ocr",
     # toto.weather's auto_refresh_weather. schedules.beat_schedule(weather=True)
     # has enqueued it every 30 minutes since the realtime layer existed, and
     # this entry was missing the whole time — so the worker answered KeyError

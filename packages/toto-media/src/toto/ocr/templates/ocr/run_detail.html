@@ -1,0 +1,190 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% block title %}{% trans "Reading" %} — {{ run.source_name }} | {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+{{ payload|json_script:"ocr-initial" }}
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300"
+     x-data="ocrRun()" x-init="init()">
+  <div class="mx-auto max-w-4xl space-y-6">
+
+    <nav class="text-sm">
+      <a href="{% url 'ocr:home' %}" class="hover:underline">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Text recognition" %}</a>
+    </nav>
+
+    <header class="flex flex-wrap items-start justify-between gap-4">
+      <div class="min-w-0">
+        <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+          <i class="fa-solid fa-file-signature" aria-hidden="true"></i>
+          <span class="min-w-0 truncate">{{ run.source_name|default:"—" }}</span></h1>
+        <p class="mt-1 text-sm opacity-70">
+          {% blocktrans with lang=run.language %}Read as {{ lang }}.{% endblocktrans %}
+          {% if run.scan_note %}<span class="opacity-80">{{ run.scan_note }}</span>{% endif %}
+        </p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+        <button type="button" x-show="!p.finished" x-cloak @click="cancel()"
+                class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold transition"
+                :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'">
+          <i class="fa-solid fa-stop" aria-hidden="true"></i> {% trans "Stop" %}</button>
+        {% if can_retry %}
+          <form method="post" action="{% url 'ocr:retry' run.pk %}" @submit.prevent="retry($event.target)">
+            {% csrf_token %}
+            <button type="submit"
+                    class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold transition"
+                    :class="darkMode ? 'border-accent-1 hover:bg-white/5' : 'border-accent-2 hover:bg-black/5'">
+              <i class="fa-solid fa-rotate-right" aria-hidden="true"></i>
+              {% trans "Read the missing pages" %}</button>
+          </form>
+        {% endif %}
+      </div>
+    </header>
+
+    {% include "ocr/_progress.html" %}
+
+    <template x-if="p.finished && p.text">
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5 shadow-sm">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-bold">{% trans "The text" %}</h2>
+          <div class="flex flex-wrap gap-2">
+            <button type="button" @click="copy()"
+                    class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold"
+                    :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <i class="fa-solid fa-copy" aria-hidden="true"></i>
+              <span x-text="copied ? '{% trans "Copied" %}' : '{% trans "Copy" %}'"></span></button>
+            <a href="{% url 'ocr:text' run.pk %}"
+               class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold"
+               :class="darkMode ? 'border-accent-1' : 'border-accent-2'">
+              <i class="fa-solid fa-download" aria-hidden="true"></i> {% trans "Download" %}</a>
+            <button type="button" @click="saveOpen = !saveOpen"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="rounded-lg px-4 py-1.5 text-sm font-bold transition hover:opacity-90">
+              <i class="fa-solid fa-floppy-disk" aria-hidden="true"></i>
+              {% trans "Save to my files" %}</button>
+          </div>
+        </div>
+
+        {% comment %}Nothing is stored unless asked. The saved file is an
+        ordinary .txt and shows up in Office's Documents tab like any other.{% endcomment %}
+        <form x-show="saveOpen" x-cloak method="post" action="{% url 'ocr:save' run.pk %}"
+              @submit.prevent="save($event.target)"
+              class="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-dashed p-4">
+          {% csrf_token %}
+          <div class="min-w-[12rem] flex-1">
+            <label for="save-bucket" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              {% trans "Where" %}</label>
+            <select id="save-bucket" name="bucket" x-model="bucket"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              {% for b in buckets %}<option value="{{ b.pk }}">{{ b.name }}</option>{% endfor %}
+            </select>
+          </div>
+          <div class="min-w-[12rem] flex-1">
+            <label for="save-dir" class="mb-1 block text-xs font-semibold uppercase tracking-wide opacity-60">
+              {% trans "Folder (optional)" %}</label>
+            <select id="save-dir" name="directory"
+                    :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                    class="w-full rounded-lg border px-3 py-2 text-sm">
+              <option value="">{% trans "Top level" %}</option>
+              {% for d in directories %}
+                <option value="{{ d.pk }}" x-show="String(bucket) === '{{ d.bucket_pk }}'">{{ d.label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90">
+            {% trans "Save" %}</button>
+          <span class="text-xs opacity-70" x-text="saveNotice"></span>
+        </form>
+
+        <pre :class="darkMode ? 'bg-primary-bg-dark' : 'bg-primary-bg-light'"
+             class="mt-4 max-h-[28rem] overflow-auto whitespace-pre-wrap break-words rounded-lg border border-current/10 p-4 text-sm"
+             x-text="p.text"></pre>
+      </section>
+    </template>
+
+    {% if run.error %}
+      <div role="alert" :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+           class="rounded-lg border-2 p-4 text-sm">
+        <p class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          {% trans "This scan could not be read." %}</p>
+        <p class="mt-1">{{ run.error }}</p>
+      </div>
+    {% endif %}
+
+  </div>
+</div>
+
+<script>
+  function ocrRun() {
+    return {
+      p: JSON.parse(document.getElementById("ocr-initial").textContent),
+      copied: false, saveOpen: false, saveNotice: "", shownErrors: 5,
+      bucket: "{% if buckets %}{{ buckets.0.pk }}{% endif %}",
+
+      init() { if (!this.p.finished) this.poll(0); },
+
+      /* The transfers page's cadence: a few fast taps for a short job, then a
+         steady beat, bounded so a dead worker cannot poll forever. The bound
+         scales with the page count — 240 ticks is five minutes, which is
+         nothing for a 300-page book. */
+      poll(i) {
+        const cap = Math.max(240, (this.p.total_pages || 1) * 12);
+        if (i >= cap) return;
+        const slow = (this.p.total_pages || 1) > 20;
+        setTimeout(async () => {
+          try {
+            const resp = await fetch("{% url 'ocr:status' run.pk %}");
+            if (resp.ok) this.p = await resp.json();
+          } catch (_) { /* transient — the next tick retries */ }
+          if (!this.p.finished) this.poll(i + 1);
+        }, i < 5 ? 400 : (slow ? 3000 : 1200));
+      },
+
+      csrf() {
+        const m = document.cookie.match(/(^|;)\s*csrftoken=([^;]+)/);
+        return m ? decodeURIComponent(m[2]) : "";
+      },
+
+      copy() {
+        navigator.clipboard.writeText(this.p.text || "").then(() => {
+          this.copied = true;
+          setTimeout(() => { this.copied = false; }, 1500);
+        });
+      },
+
+      cancel() {
+        fetch("{% url 'ocr:cancel' run.pk %}",
+              { method: "POST", headers: { "X-CSRFToken": this.csrf() } })
+          .then((r) => r.json()).then((d) => { if (d.run_id) this.p = d; });
+      },
+
+      retry(form) {
+        fetch(form.action, { method: "POST", body: new FormData(form) })
+          .then(() => window.location.reload());
+      },
+
+      save(form) {
+        this.saveNotice = "";
+        fetch(form.action, { method: "POST", body: new FormData(form) })
+          .then(function (r) {
+            return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+          })
+          .then((res) => {
+            this.saveNotice = res.ok
+              ? "{% trans "Saved to your files." %}"
+              : (res.data.error || "{% trans "Could not save." %}");
+          });
+      },
+    };
+  }
+</script>
+{% endblock %}

@@ -1,228 +1,161 @@
 {% extends "oya/base.html" %}
-{% load static %}
 {% load i18n %}
+{% block title %}{% trans "Text recognition" %} | {{ platform.site_name }}{% endblock %}
 
-{% block title %}{% trans "OCR" %}{% endblock %}
+{% block start_script %}{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
 
 {% block content %}
-<style>[x-cloak]{display:none !important}</style>
-{{ directories|json_script:"ocr-directories" }}
-<script>
-  const OCR_RUN_URL = "{{ run_url }}";
-  const OCR_INGEST_ENABLED = {{ ingest_enabled|yesno:"true,false" }};
-  const CSRF_TOKEN = "{{ csrf_token }}";
-</script>
+<div :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+     class="min-h-screen px-4 py-8 transition-colors duration-300"
+     x-data="ocrForm()">
+  <div class="mx-auto max-w-4xl space-y-6">
 
-<div
-  x-data="ocrFlow()"
-  :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
-  class="min-h-screen px-5 py-8 transition-colors duration-300"
->
-  <div class="mx-auto max-w-7xl space-y-6">
+    <header class="space-y-2">
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Office" %}</p>
+      <h1 class="flex items-center gap-3 text-2xl font-extrabold">
+        <i class="fa-solid fa-file-signature" aria-hidden="true"></i>{% trans "Text recognition" %}</h1>
+      <p class="text-sm opacity-70">
+        {% trans "Turn a photo, a screenshot or a scanned PDF into text you can copy." %}
+      </p>
+    </header>
 
-    <!-- header + tabs -->
-    <div class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-      <div>
-        <h1 class="text-3xl font-bold" :class="darkMode ? 'text-accent-dark' : 'text-accent-light'">
-          <i class="fa-solid fa-image mr-2 text-2xl"></i>{% trans "OCR" %}</h1>
-        <p class="mt-1 text-sm opacity-60">
-          {% trans "Load a screenshot → extract its text with Tesseract → forward it to the ingestor." %}</p>
+    {% if not tesseract_available %}
+      {% comment %}An honest refusal, naming the flag, rather than a form that
+      can only fail. The same shape every unavailable-tier page uses.{% endcomment %}
+      <div role="alert" :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+           class="rounded-lg border-2 p-4">
+        <p class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          {% trans "Text recognition is not installed on this server." %}</p>
+        <p class="mt-1 text-sm opacity-80">
+          {% trans "A build that offers it sets BUILD_OCR=1, which installs Tesseract and the PDF tools beside it." %}</p>
       </div>
-      {% comment %} No Video tab here: playback is something you do to a file you are
-         already looking at (the vault's play button), not a place to navigate
-         to from a scanner — the same reasoning that retired the dashboard's
-         Video tile. vod:library still exists for anyone who wants it. {% endcomment %}
-      {% include "oya/_media_tabs.html" with active_tab="ocr" show_video=False %}
-    </div>
+    {% else %}
 
-    <!-- ── Load + run ── -->
-    <section
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4 shadow-sm space-y-4"
-    >
-      <div class="flex flex-wrap items-center gap-3">
-        <!-- Load screenshot -->
-        <label
-          :class="darkMode ? 'border-accent-1 hover:bg-accent-dark/10' : 'border-accent-2 hover:bg-accent-light/10'"
-          class="inline-flex cursor-pointer items-center gap-2 rounded-lg border px-4 py-2 text-sm font-semibold transition">
-          <i class="fa-solid fa-upload"></i>{% trans "Load screenshot" %}
-          <input type="file" accept="image/*" class="hidden" @change="onFile($event)">
-        </label>
-        <span class="text-sm opacity-70" x-text="fileName || '{% trans "No image selected" %}'"></span>
+      <form method="post" action="{% url 'ocr:submit' %}" enctype="multipart/form-data"
+            @submit.prevent="submit($event.target)"
+            :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+            class="space-y-4 rounded-lg border p-5 shadow-sm">
+        {% csrf_token %}
 
-        <!-- Language -->
-        <label class="ml-auto flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-          {% trans "Language" %}
-          <select x-model="language"
-            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-            class="rounded-lg border px-2 py-1 text-sm font-normal normal-case tracking-normal">
-            <option value="eng">eng</option>
-            <option value="pol">pol</option>
-            <option value="eng+pol">eng+pol</option>
-            <option value="deu">deu</option>
-            <option value="fra">fra</option>
-          </select>
-        </label>
-
-        {% if gear_choices %}
-          {% comment %} Which Compute Gear runs tesseract. Only when there is a choice:
-             with one Gear it is chosen for you, and with two anastasia refuses
-             to guess — so without this control Read could only fail. {% endcomment %}
-          <label class="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide opacity-60">
-            {% trans "Compute Gear" %}
-            <select x-model="gear"
-              :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-              class="rounded-lg border px-2 py-1 text-sm font-normal normal-case tracking-normal">
-              {% if gear_choices|length > 1 %}
-                <option value="">{% trans "Automatic" %}</option>
-              {% endif %}
-              {% for choice in gear_choices %}
-                <option value="{{ choice.value }}"{% if not choice.ready %} disabled{% endif %}>
-                  {{ choice.label }}{% if not choice.ready %} — {% trans "mount it first" %}{% endif %}
-                </option>
-              {% endfor %}
-            </select>
-          </label>
+        {% if vault_file %}
+          {% comment %}Arrived from the vault's wand, with a file already
+          chosen. No upload control at all — the file is the subject.{% endcomment %}
+          <input type="hidden" name="file" value="{{ vault_file.pk }}">
+          <div class="flex items-center gap-3 rounded-lg border border-dashed p-4">
+            <i class="fa-solid fa-file-lines text-2xl opacity-40" aria-hidden="true"></i>
+            <div class="min-w-0">
+              <p class="truncate font-semibold">{{ vault_file.title }}</p>
+              <p class="text-xs opacity-60">{% trans "From your files" %}</p>
+            </div>
+          </div>
+        {% else %}
+          <div>
+            <label for="ocr-file" class="mb-1 block text-sm font-semibold">
+              {% trans "The image or PDF to read" %}</label>
+            <input id="ocr-file" type="file" name="document" required
+                   accept="image/*,application/pdf"
+                   @change="picked = $event.target.files.length ? $event.target.files[0].name : ''"
+                   :class="darkMode ? 'border-accent-1 bg-primary-bg-dark' : 'border-accent-2 bg-primary-bg-light'"
+                   class="w-full rounded-lg border px-3 py-2 text-sm">
+            <p class="mt-1 text-xs opacity-60">
+              {% blocktrans %}Up to {{ max_upload_mb }} MB, and up to {{ max_pages }} pages.{% endblocktrans %}
+              {% if not pdf_available %}{% trans "This server reads images only." %}{% endif %}
+            </p>
+          </div>
         {% endif %}
-      </div>
 
-      <!-- Save to bucket -->
-      <div class="space-y-2">
-        <label class="inline-flex items-center gap-2 text-sm">
-          <input type="checkbox" x-model="saveToVault" class="rounded">
-          {% trans "Save screenshot to a file-storage bucket" %}
-        </label>
-        <div x-show="saveToVault" x-cloak class="flex flex-wrap items-center gap-2 pl-6">
-          <select x-model="bucket" @change="directory = ''"
-            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-            class="rounded-lg border px-3 py-2 text-sm">
-            <option value="">{% trans "— choose a bucket —" %}</option>
-            {% for b in buckets %}
-            <option value="{{ b.pk }}">{{ b.name }}</option>
+        <div>
+          <label for="ocr-language" class="mb-1 block text-sm font-semibold">
+            {% trans "Language" %}</label>
+          {% comment %}Only the packs actually installed on this image. A menu
+          offering a language the binary does not have would fail with an error
+          nobody could act on.{% endcomment %}
+          <select id="ocr-language" name="language"
+                  :class="darkMode ? 'border-accent-1 bg-primary-bg-dark text-text-main-dark' : 'border-accent-2 bg-primary-bg-light text-text-main-light'"
+                  class="w-full rounded-lg border px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-current/20">
+            {% for code, label in languages %}
+              <option value="{{ code }}" {% if code == default_language %}selected{% endif %}>{{ label }}</option>
             {% endfor %}
           </select>
-          <!-- Folder within the chosen bucket (optional) -->
-          <select x-show="bucket" x-model="directory"
-            :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-            class="rounded-lg border px-3 py-2 text-sm">
-            <option value="">{% trans "Bucket root" %}</option>
-            <template x-for="d in dirsForBucket" :key="d.pk">
-              <option :value="d.pk" x-text="d.label"></option>
-            </template>
-          </select>
         </div>
-      </div>
 
-      <!-- Run -->
-      <div class="flex items-center gap-3">
-        <button @click="run()" :disabled="busy || !file"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
-          <i class="fa-solid" :class="busy ? 'fa-spinner fa-spin' : 'fa-wand-magic-sparkles'"></i>
-          <span x-text="busy ? '{% trans "Reading…" %}' : '{% trans "Run OCR" %}'"></span>
-        </button>
-        <p x-show="error" x-text="error" class="text-sm" :class="darkMode ? 'text-warn-dark' : 'text-warn-light'"></p>
-        <p x-show="savedUrl" x-cloak class="text-sm opacity-70">
-          <i class="fa-solid fa-circle-check mr-1" :class="darkMode ? 'text-success-dark' : 'text-success-light'"></i>
-          <a :href="savedUrl" class="underline">{% trans "Saved to bucket" %}</a>
-        </p>
-      </div>
-    </section>
+        <p x-show="error" x-cloak role="alert"
+           class="rounded-lg border-2 p-3 text-sm"
+           :class="darkMode ? 'border-warn-dark' : 'border-warn-light'">
+          <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          <span x-text="error"></span></p>
 
-    <!-- ── Result ── -->
-    <section x-show="text.length > 0" x-cloak
-      :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
-      class="rounded-lg border p-4 shadow-sm space-y-3"
-    >
-      <label class="block text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Extracted text" %}</label>
-      <textarea x-model="text" rows="12"
-        :class="darkMode ? 'bg-primary-bg-dark border-accent-1' : 'bg-primary-bg-light border-accent-2'"
-        class="w-full rounded-lg border px-3 py-2 text-sm font-mono"></textarea>
-      <div class="flex items-center gap-3">
-        <button @click="ingest()" :disabled="!text.trim() || !OCR_INGEST_ENABLED"
-          :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
-          class="inline-flex items-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold shadow-sm transition hover:opacity-85 disabled:opacity-40">
-          <i class="fa-solid fa-diagram-project"></i>
-          <span>{% trans "Ingest text" %}</span>
-        </button>
-        <span x-show="!OCR_INGEST_ENABLED" class="text-xs opacity-60">{% trans "Ingestor unavailable" %}</span>
-      </div>
-      <!-- Hand off to the ingestor (Post/Redirect/Get → its review page) -->
-      <form method="post" action="{% url 'ocr:ingest' %}" x-ref="ingestForm" class="hidden">
-        {% csrf_token %}
-        <textarea name="text" x-ref="ingestText"></textarea>
+        <div class="flex flex-wrap items-center gap-3">
+          <button type="submit" :disabled="busy"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded-lg px-4 py-2 text-sm font-bold transition hover:opacity-90 disabled:opacity-40">
+            <i class="fa-solid fa-wand-magic-sparkles" aria-hidden="true"></i>
+            <span x-text="busy ? '{% trans "Reading…" %}' : '{% trans "Read the text" %}'"></span></button>
+          <span class="text-xs opacity-60">
+            {% blocktrans %}Finished jobs are kept for {{ retention_days }} days.{% endblocktrans %}</span>
+        </div>
       </form>
-    </section>
+
+    {% endif %}
+
+    {% if recent %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5 shadow-sm">
+        <h2 class="text-lg font-bold">{% trans "Recent" %}</h2>
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "Your recent text recognition jobs" %}</caption>
+            <thead>
+              <tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+                <th scope="col" class="py-2 pr-4">{% trans "File" %}</th>
+                <th scope="col" class="py-2 pr-4">{% trans "Pages" %}</th>
+                <th scope="col" class="py-2 pr-4">{% trans "When" %}</th>
+                <th scope="col" class="py-2">{% trans "Result" %}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for job in recent %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4">
+                    <a href="{% url 'ocr:run' job.pk %}" class="font-semibold hover:underline">
+                      <span class="block max-w-[18rem] truncate">{{ job.source_name|default:"—" }}</span></a></td>
+                  <td class="py-2 pr-4 font-mono tabular-nums">{{ job.total_pages|default:"—" }}</td>
+                  <td class="py-2 pr-4 whitespace-nowrap opacity-70">{{ job.created_at|date:"Y-m-d H:i" }}</td>
+                  <td class="py-2 whitespace-nowrap">{% include "ocr/_status_pill.html" with status=job.status label=job.get_status_display %}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    {% endif %}
 
   </div>
 </div>
 
 <script>
-  function ocrFlow() {
+  function ocrForm() {
     return {
-      file: null,
-      fileName: "",
-      language: "eng",
-      gear: "",
-      saveToVault: false,
-      bucket: "",
-      directory: "",
-      directories: JSON.parse(document.getElementById("ocr-directories").textContent || "[]"),
-      busy: false,
-      text: "",
-      error: "",
-      savedUrl: "",
-
-      get dirsForBucket() {
-        return this.directories.filter((d) => String(d.bucket_pk) === String(this.bucket));
-      },
-
-      onFile(e) {
-        this.file = e.target.files[0] || null;
-        this.fileName = this.file ? this.file.name : "";
-        this.text = "";
-        this.savedUrl = "";
-        this.error = "";
-      },
-
-      async run() {
-        if (!this.file) return;
-        this.busy = true;
-        this.error = "";
-        this.savedUrl = "";
-        try {
-          const fd = new FormData();
-          fd.append("screenshot", this.file);
-          fd.append("language", this.language);
-          if (this.gear) fd.append("gear", this.gear);
-          if (this.saveToVault && this.bucket) {
-            fd.append("save_to_vault", "on");
-            fd.append("bucket", this.bucket);
-            if (this.directory) fd.append("directory", this.directory);
-          }
-          const res = await fetch(OCR_RUN_URL, {
-            method: "POST",
-            headers: { "X-CSRFToken": CSRF_TOKEN },
-            body: fd,
+      busy: false, error: "", picked: "",
+      submit(form) {
+        if (this.busy) return;
+        this.busy = true; this.error = "";
+        fetch(form.action, { method: "POST", body: new FormData(form) })
+          .then(function (r) {
+            return r.json().then(function (d) { return { ok: r.ok, data: d }; });
+          })
+          .then((res) => {
+            this.busy = false;
+            if (res.ok && res.data.url) { window.location = res.data.url; return; }
+            this.error = (res.data && res.data.error) || "{% trans "Could not start reading." %}";
+          })
+          .catch(() => {
+            this.busy = false;
+            this.error = "{% trans "Could not start reading." %}";
           });
-          const data = await res.json();
-          if (!res.ok) { this.error = data.error || "OCR failed."; return; }
-          this.text = data.text || "";
-          if (!this.text) this.error = "{% trans 'No text found in the image.' %}";
-          if (data.saved && data.file_url) this.savedUrl = data.file_url;
-        } catch (err) {
-          this.error = "" + err;
-        } finally {
-          this.busy = false;
-        }
-      },
-
-      ingest() {
-        if (!this.text.trim() || !OCR_INGEST_ENABLED) return;
-        // Post/Redirect/Get to the ingestor's review page (it pre-fills the
-        // text and auto-generates a proposal). A plain form nav, not fetch.
-        this.$refs.ingestText.value = this.text;
-        this.$refs.ingestForm.submit();
       },
     };
   }
