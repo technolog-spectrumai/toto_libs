@@ -5,10 +5,10 @@
 those two strings mean a Dataset, exactly as `toto.company.integration.ledger`
 is the only place they mean a Company.
 
-**The dependency is SOFT, and it has to be.** `toto.hesperis` ships in the
-vendored suite; `toto.ledger` is host-owned (`zenobia/zenobia/toto/ledger`). A
-wheel that hard-imported a host app would refuse to install anywhere else, so
-every import here is lazy and behind `available()`. Where the chain is absent
+**The dependency is SOFT, and it has to be.** `toto.hesperis` ships in
+toto-works; `toto.ledger` ships in toto-business (a wheel since 1.50, host-owned
+before that) — an OPTIONAL package not every host installs, and toto-works must
+not depend on it. So every import here is lazy and behind `available()`. Where the chain is absent
 Hesperis behaves exactly as it did before: observations are accepted, versions
 are frozen, and nothing is recorded.
 

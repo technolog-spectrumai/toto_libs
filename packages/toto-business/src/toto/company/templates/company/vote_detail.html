@@ -1,0 +1,211 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ meeting.title }} - {{ company.name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+    {% include "company/_company_header.html" %}
+    {% include "company/_tabs.html" %}
+
+    <header class="flex flex-wrap items-start justify-between gap-3">
+      <div>
+        <h2 class="text-2xl font-bold">{{ meeting.title }}</h2>
+        <p class="mt-1 text-xs opacity-60">
+          <span class="rounded px-2 py-0.5 font-mono
+                {% if meeting.status == 'open' %}bg-green-600/20 text-green-600{% else %}bg-current/10{% endif %}">
+            {{ meeting.get_status_display }}</span>
+          · {% trans "record date" %} {{ meeting.record_date }}
+          {% if meeting.held_at %}· {% trans "held" %} {{ meeting.held_at|date:"Y-m-d H:i" }}{% endif %}</p>
+      </div>
+      <div class="flex flex-wrap gap-2">
+      <form method="post" action="{% url 'company:meeting_export' company.slug meeting.uid %}">
+        {% csrf_token %}
+        <button type="submit" class="rounded border px-4 py-2 text-sm font-semibold">
+          <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{% trans "Meeting record PDF" %}</button>
+      </form>
+      {% if meeting.status == 'draft' and is_member %}
+        <form method="post" action="{% url 'company:vote_open' company.slug meeting.uid %}">
+          {% csrf_token %}
+          <button type="submit"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="rounded px-4 py-2 text-sm font-bold">{% trans "Open voting" %}</button>
+        </form>
+      {% endif %}
+      </div>
+    </header>
+
+    {% comment %}Participation. Quorum is a fact about the room, so it is shown
+    once, above the propositions, rather than repeated under each.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h3 class="text-lg font-bold">{% trans "Participation" %}</h3>
+      <dl class="mt-3 grid gap-x-6 gap-y-3 sm:grid-cols-4 text-sm">
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Eligible weight" %}</dt>
+          <dd class="font-mono tabular-nums">{{ meeting.eligible_weight|floatformat:"-6" }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Present weight" %}</dt>
+          <dd class="font-mono tabular-nums">{{ meeting.present_weight|floatformat:"-6" }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Voters present" %}</dt>
+          <dd class="font-mono tabular-nums">{{ meeting.present_voters }} / {{ meeting.eligible_voters }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Quorum" %}</dt>
+          <dd class="font-semibold {% if meeting.quorum_met %}text-green-600{% else %}text-red-500{% endif %}">
+            {% if meeting.quorum_met %}{% trans "met" %}{% else %}{% trans "not met" %}{% endif %}</dd></div>
+      </dl>
+
+      <details class="mt-4">
+        <summary class="cursor-pointer text-sm font-semibold">{% trans "The electorate" %}</summary>
+        <div class="mt-3 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "Everyone entitled to vote, as frozen when voting opened" %}</caption>
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Voter" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Source" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Status" %}</th>
+              <th scope="col" class="py-2 text-right">{% trans "Weight" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for entry in roll %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4 font-semibold">{{ entry.voter_name }}
+                    {% if entry.represented_by %}
+                      <span class="text-xs opacity-60">({% trans "represented" %})</span>{% endif %}</td>
+                  <td class="py-2 pr-4 opacity-70">{{ entry.get_source_display }}</td>
+                  <td class="py-2 pr-4">{{ entry.get_status_display }}</td>
+                  <td class="py-2 text-right tabular-nums">{{ entry.weight|floatformat:"-6" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </section>
+
+    {% for row in propositions %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <div class="flex flex-wrap items-start justify-between gap-3">
+          <div class="min-w-0">
+            <h3 class="text-lg font-bold">{{ row.proposition.order }}. {{ row.proposition.title }}</h3>
+            <p class="mt-1 whitespace-pre-line text-sm opacity-80">{{ row.proposition.resolution_text }}</p>
+            {% if row.proposition.attachment_ref %}
+              <p class="mt-2 text-xs opacity-70">
+                <i class="fa-solid fa-paperclip" aria-hidden="true"></i>
+                {{ row.proposition.attachment_label|default:row.proposition.attachment_ref }}
+                <span class="ml-1 break-all font-mono">{{ row.proposition.attachment_hash|slice:":16" }}…</span></p>
+            {% endif %}
+          </div>
+          <span class="shrink-0 rounded px-2 py-0.5 font-mono text-xs
+                {% if row.proposition.status == 'open' %}bg-green-600/20 text-green-600{% else %}bg-current/10{% endif %}">
+            {{ row.proposition.get_status_display }}</span>
+        </div>
+
+        {% comment %}Totals.{% endcomment %}
+        <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-5 text-sm">
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "For" %}</dt>
+            <dd class="font-mono tabular-nums">{{ row.result.for_weight }}</dd></div>
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Against" %}</dt>
+            <dd class="font-mono tabular-nums">{{ row.result.against_weight }}</dd></div>
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Abstain" %}</dt>
+            <dd class="font-mono tabular-nums">{{ row.result.abstain_weight }}</dd></div>
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Achieved" %}</dt>
+            <dd class="font-mono tabular-nums">{{ row.result.achieved_percent }}% {% trans "of" %} {{ row.result.majority_percent }}%</dd></div>
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Outcome" %}</dt>
+            <dd class="font-semibold {% if row.result.adopted %}text-green-600{% else %}text-red-500{% endif %}">
+              {% if row.result.adopted %}{% trans "adopted" %}{% else %}{% trans "rejected" %}{% endif %}</dd></div>
+        </dl>
+
+        {% comment %}Casting. The confirmation is a deliberate second act, not a
+        dialogue somebody clicks through — the label says what it commits to.{% endcomment %}
+        {% if row.proposition.status == 'open' and row.my_entry and row.my_entry.status == present_status %}
+          <form method="post"
+                action="{% url 'company:vote_cast' company.slug meeting.uid row.proposition.uid %}"
+                class="mt-4 rounded border border-current/20 p-4">
+            {% csrf_token %}
+            {% if row.my_ballot %}
+              <p class="mb-2 text-sm">
+                {% blocktrans with choice=row.my_ballot.get_choice_display %}You voted <strong>{{ choice }}</strong>. Casting again replaces it — the earlier vote stays on the record.{% endblocktrans %}</p>
+            {% endif %}
+            <fieldset>
+              <legend class="mb-2 text-sm font-semibold">{% trans "Your vote" %}</legend>
+              <div class="flex flex-wrap gap-4 text-sm">
+                <label class="inline-flex items-center gap-2">
+                  <input type="radio" name="choice" value="for" required>{% trans "For" %}</label>
+                <label class="inline-flex items-center gap-2">
+                  <input type="radio" name="choice" value="against">{% trans "Against" %}</label>
+                <label class="inline-flex items-center gap-2">
+                  <input type="radio" name="choice" value="abstain">{% trans "Abstain" %}</label>
+              </div>
+            </fieldset>
+            <label class="mt-3 flex items-start gap-2 text-sm">
+              <input type="checkbox" name="confirm" value="yes" required class="mt-1">
+              <span>{% blocktrans with name=row.my_entry.voter_name %}I confirm I am casting this vote as {{ name }}, and I understand it is recorded against that name permanently.{% endblocktrans %}</span></label>
+            <button type="submit"
+                    :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                    class="mt-3 rounded px-4 py-2 text-sm font-bold">{% trans "Cast" %}</button>
+          </form>
+        {% endif %}
+
+        {% comment %}Voter-attributed ballots. Superseded ones stay visible: a
+        record that showed only the final vote would hide that somebody changed
+        their mind, which is itself part of the record.{% endcomment %}
+        {% if row.ballots %}
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-sm">
+              <caption class="sr-only">{% trans "Every ballot cast on this proposition, with the name of who cast it" %}</caption>
+              <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+                <th scope="col" class="py-2 pr-4">{% trans "Voter" %}</th>
+                <th scope="col" class="py-2 pr-4">{% trans "Vote" %}</th>
+                <th scope="col" class="py-2 pr-4 text-right">{% trans "Weight" %}</th>
+                <th scope="col" class="py-2 pr-4">{% trans "Cast" %}</th>
+                <th scope="col" class="py-2">{% trans "Counted" %}</th>
+              </tr></thead>
+              <tbody>
+                {% for ballot in row.ballots %}
+                  <tr class="border-b border-current/5 {% if not ballot.active %}opacity-50{% endif %}">
+                    <td class="py-2 pr-4 font-semibold">{{ ballot.roll_entry.voter_name }}</td>
+                    <td class="py-2 pr-4">{{ ballot.get_choice_display }}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{{ ballot.weight|floatformat:"-6" }}</td>
+                    <td class="py-2 pr-4 whitespace-nowrap opacity-70">{{ ballot.cast_at|date:"Y-m-d H:i" }}</td>
+                    <td class="py-2">
+                      {% if ballot.active %}<span class="text-green-600">{% trans "yes" %}</span>
+                      {% else %}<span class="opacity-60">{% trans "superseded" %}</span>{% endif %}</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        {% endif %}
+
+        <div class="mt-4 flex flex-wrap items-center gap-3">
+          {% if row.proposition.status == 'open' and is_member %}
+            <form method="post"
+                  action="{% url 'company:vote_finalize' company.slug meeting.uid row.proposition.uid %}">
+              {% csrf_token %}
+              <button type="submit" class="rounded border px-4 py-2 text-sm font-semibold">
+                <i class="fa-solid fa-lock" aria-hidden="true"></i>
+                {% trans "Finalize and write to the chain" %}</button>
+            </form>
+          {% endif %}
+          <form method="post"
+                action="{% url 'company:vote_export' company.slug meeting.uid row.proposition.uid %}">
+            {% csrf_token %}
+            <button type="submit" class="rounded border px-4 py-2 text-sm font-semibold">
+              <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{% trans "Export PDF" %}</button>
+          </form>
+          {% if row.proposition.block_uid %}
+            <p class="text-xs opacity-70">
+              <i class="fa-solid fa-link" aria-hidden="true"></i>
+              {% trans "On the chain as block" %}
+              <span class="font-mono">{{ row.proposition.block_uid|slice:":8" }}…</span></p>
+          {% endif %}
+        </div>
+      </section>
+    {% empty %}
+      <p class="rounded-lg border border-dashed p-8 text-center text-sm opacity-70">
+        {% trans "This meeting has no propositions." %}</p>
+    {% endfor %}
+  </div>
+</main>
+{% endblock %}

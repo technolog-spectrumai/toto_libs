@@ -1,0 +1,51 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Verification" %} - {{ ledger.name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <nav class="text-sm">
+      <a href="{% url 'ledger:detail' ledger.uid %}" class="hover:underline">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {{ ledger.name }}</a>
+    </nav>
+    <header>
+      <h1 class="text-3xl font-extrabold">{% trans "Verification" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% blocktrans %}Every block re-hashed from its stored content and checked against the
+        one before it. This reads the chain and changes nothing.{% endblocktrans %}</p>
+    </header>
+
+    {% include "ledger/_verdict.html" with verification=result %}
+
+    <dl :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+        class="grid gap-x-6 gap-y-3 rounded-lg border p-5 sm:grid-cols-2">
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Blocks checked" %}</dt>
+        <dd class="font-mono text-sm tabular-nums">{{ result.checked }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Algorithm" %}</dt>
+        <dd class="font-mono text-sm">{{ algorithm }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Format" %}</dt>
+        <dd class="font-mono text-sm">{{ ledger.format_version }}</dd></div>
+      <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Result" %}</dt>
+        <dd class="text-sm font-semibold">{{ result.status }}</dd></div>
+    </dl>
+
+    {% if failed_block %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <h2 class="text-lg font-bold">{% trans "The first block that failed" %}</h2>
+        <p class="mt-2 text-sm">
+          <a href="{% url 'ledger:block' ledger.uid failed_block.sequence %}"
+             class="font-semibold hover:underline">
+            {% blocktrans with n=failed_block.sequence %}Block {{ n }}{% endblocktrans %}</a>
+          — {{ failed_block.source_ref|default:failed_block.source_type|default:"—" }}</p>
+        <p class="mt-2 text-xs opacity-70">
+          {% blocktrans %}Blocks after this one were not checked: once a link breaks, everything
+          past it is unverifiable anyway.{% endblocktrans %}</p>
+      </section>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

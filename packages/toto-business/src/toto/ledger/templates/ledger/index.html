@@ -1,0 +1,36 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Ledgers" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+    <header>
+      <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+         class="text-xs font-semibold uppercase tracking-wide">{% trans "Business Center" %}</p>
+      <h1 class="mt-1 text-3xl font-extrabold">{% trans "Ledgers" %}</h1>
+    </header>
+    {% if ledgers %}
+      <ul class="space-y-2">
+        {% for ledger in ledgers %}
+          <li :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="flex flex-wrap items-center justify-between gap-3 rounded-lg border p-4">
+            <div>
+              <a href="{% url 'ledger:detail' ledger.uid %}"
+                 class="font-bold hover:underline">{{ ledger.name }}</a>
+              <p class="font-mono text-xs opacity-60">{{ ledger.key }} · {{ ledger.algorithm }}</p>
+            </div>
+            <span class="font-mono text-sm tabular-nums opacity-70">
+              {% blocktrans count counter=ledger.block_count %}{{ counter }} block{% plural %}{{ counter }} blocks{% endblocktrans %}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="rounded-lg border border-dashed p-8 text-center text-sm opacity-70">
+        {% trans "No ledgers yet." %}</p>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

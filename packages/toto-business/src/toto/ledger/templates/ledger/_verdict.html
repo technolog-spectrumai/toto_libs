@@ -1,0 +1,22 @@
+{% load i18n %}
+{% comment %}The verdict, stated plainly. A broken chain names the first block
+that failed and why — "broken" on its own is not an answer anyone can act on.{% endcomment %}
+{% if verification.ok %}
+  <div class="rounded-lg border border-current/20 p-4 text-sm"
+       :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+    <p class="font-bold"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+      {% blocktrans count counter=verification.checked %}{{ counter }} block verifies.{% plural %}All {{ counter }} blocks verify.{% endblocktrans %}</p>
+  </div>
+{% else %}
+  <div role="alert" class="rounded-lg border-2 border-red-500/60 p-4 text-sm"
+       :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+    <p class="font-bold text-red-500"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+      {% trans "This chain does not verify." %}</p>
+    <p class="mt-1">
+      {% if verification.first_bad_sequence %}
+        {% blocktrans with sequence=verification.first_bad_sequence checked=verification.checked %}
+        {{ checked }} block(s) verified, then block {{ sequence }} failed.{% endblocktrans %}
+      {% endif %}
+      {{ verification.detail }}</p>
+  </div>
+{% endif %}

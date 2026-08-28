@@ -1,0 +1,90 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Checkpoints" %} - {{ ledger.name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-5xl space-y-6">
+    <nav class="text-sm">
+      <a href="{% url 'ledger:detail' ledger.uid %}" class="hover:underline">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {{ ledger.name }}</a>
+    </nav>
+
+    <header>
+      <h1 class="text-3xl font-extrabold">{% trans "Checkpoints" %}</h1>
+      <p class="mt-2 max-w-prose text-sm opacity-80">
+        {% blocktrans %}A checkpoint folds the whole chain into one hash and puts it in a code you
+        keep OUTSIDE this platform — printed, photographed, in a safe. Whoever holds that copy
+        can later prove whether the ledger still says what it said that day. The rows below are
+        a convenience; anyone who could rewrite the ledger could rewrite them too. The paper
+        cannot be rewritten, which is the point.{% endblocktrans %}</p>
+    </header>
+
+    <div class="flex flex-wrap gap-2">
+      <form method="post" action="{% url 'ledger:checkpoint_take' ledger.uid %}"
+            class="flex flex-wrap items-center gap-2">
+        {% csrf_token %}
+        <input type="text" name="note" maxlength="200"
+               placeholder="{% trans 'Why, e.g. before the 2026 audit' %}"
+               class="rounded border bg-inherit px-3 py-2 text-sm text-inherit outline-none">
+        <button type="submit"
+                :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                class="inline-flex items-center gap-2 rounded px-4 py-2 text-sm font-bold">
+          <i class="fa-solid fa-camera" aria-hidden="true"></i>{% trans "Take a checkpoint" %}</button>
+      </form>
+      <a href="{% url 'ledger:checkpoint_verify' ledger.uid %}"
+         class="inline-flex items-center gap-2 rounded border px-4 py-2 text-sm font-semibold">
+        <i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i>{% trans "Verify a kept copy" %}</a>
+    </div>
+
+    {% if oldest_failing %}
+      <div role="alert" class="rounded-lg border-2 border-red-500/60 p-4 text-sm"
+           :class="darkMode ? 'bg-bubble-bg-dark' : 'bg-bubble-bg-light'">
+        <p class="font-bold text-red-500">{% trans "A stored checkpoint no longer matches." %}</p>
+        <p class="mt-1">
+          {% if newest_matching %}
+            {% blocktrans with good=newest_matching.entry_count bad=oldest_failing.entry_count %}
+            The rewrite happened after the checkpoint at block {{ good }} and no later than the
+            one at block {{ bad }}.{% endblocktrans %}
+          {% else %}
+            {% trans "No stored checkpoint still matches — including the oldest. An offline copy is the only thing that can date this." %}
+          {% endif %}</p>
+      </div>
+    {% endif %}
+
+    {% if rows %}
+      <ul class="space-y-3">
+        {% for row in rows %}
+          <li :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+              class="flex flex-wrap items-start gap-4 rounded-lg border p-4">
+            {% if row.qr %}
+              <img src="{{ row.qr }}" alt="{% trans 'Checkpoint code' %}"
+                   class="h-36 w-36 shrink-0 rounded bg-white p-1">
+            {% endif %}
+            <div class="min-w-0 flex-1">
+              <p class="font-bold">
+                {% blocktrans with n=row.checkpoint.entry_count %}At block {{ n }}{% endblocktrans %}
+                <span class="ml-2 rounded px-2 py-0.5 text-xs font-mono
+                             {% if row.result.verdict == 'MATCH' or row.result.verdict == 'MATCH_GROWN' %}bg-green-600/20 text-green-600{% else %}bg-red-600/20 text-red-500{% endif %}">
+                  {{ row.result.verdict }}</span></p>
+              <p class="mt-1 text-xs opacity-60">
+                {{ row.checkpoint.taken_at|date:"Y-m-d H:i" }}
+                {% if row.checkpoint.taken_by %}· {{ row.checkpoint.taken_by }}{% endif %}
+                {% if row.checkpoint.note %}· {{ row.checkpoint.note }}{% endif %}</p>
+              {% if row.result.detail %}
+                <p class="mt-2 text-sm opacity-80">{{ row.result.detail }}</p>
+              {% endif %}
+              <p class="mt-2 break-all font-mono text-[10px] opacity-60">{{ row.checkpoint.payload }}</p>
+            </div>
+          </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <p class="rounded-lg border border-dashed p-8 text-center text-sm opacity-70">
+        {% trans "No checkpoints yet." %}</p>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

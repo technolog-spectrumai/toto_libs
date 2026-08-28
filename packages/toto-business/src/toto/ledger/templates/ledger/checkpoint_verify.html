@@ -1,0 +1,72 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Verify a checkpoint" %} - {{ ledger.name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-3xl space-y-6">
+    <nav class="text-sm">
+      <a href="{% url 'ledger:checkpoints' ledger.uid %}" class="hover:underline">
+        <i class="fa-solid fa-arrow-left" aria-hidden="true"></i> {% trans "Checkpoints" %}</a>
+    </nav>
+
+    <header>
+      <h1 class="text-3xl font-extrabold">{% trans "Verify a kept copy" %}</h1>
+      <p class="mt-2 max-w-prose text-sm opacity-80">
+        {% blocktrans %}Paste a checkpoint's text or upload a photograph of its code. The chain it
+        names is recomputed from the blocks stored right now and compared with the state that
+        copy fixes. This needs no stored row: a code printed a year ago verifies against a
+        database whose checkpoints were all deleted — which is exactly what makes the paper
+        copy evidence.{% endblocktrans %}</p>
+    </header>
+
+    <form method="post" enctype="multipart/form-data"
+          :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+          class="space-y-4 rounded-lg border p-5">
+      {% csrf_token %}
+      <div>
+        <label for="payload" class="mb-1 block text-sm font-semibold">
+          {% trans "The checkpoint's text" %}</label>
+        <textarea id="payload" name="payload" rows="3"
+                  class="w-full rounded border bg-inherit px-3 py-2 font-mono text-xs text-inherit outline-none"
+                  placeholder="totoledger:v=1&amp;a=...">{{ payload }}</textarea>
+      </div>
+      <div>
+        <label for="photo" class="mb-1 block text-sm font-semibold">
+          {% trans "…or a photograph of the code" %}</label>
+        <input id="photo" type="file" name="photo" accept="image/*" class="text-sm">
+      </div>
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="rounded px-4 py-2 text-sm font-bold">{% trans "Verify" %}</button>
+    </form>
+
+    {% if error %}
+      <p role="alert" class="rounded-lg border-2 border-red-500/60 p-4 text-sm font-semibold text-red-500">
+        {{ error }}</p>
+    {% endif %}
+
+    {% if result %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <p class="text-lg font-bold
+                  {% if result.verdict == 'MATCH' or result.verdict == 'MATCH_GROWN' %}text-green-600{% else %}text-red-500{% endif %}">
+          {{ result.verdict }}</p>
+        {% if result.detail %}<p class="mt-2 text-sm">{{ result.detail }}</p>{% endif %}
+        <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 text-sm">
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Blocks the copy counted" %}</dt>
+            <dd class="font-mono tabular-nums">{{ result.expected_count }}</dd></div>
+          <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Blocks checked now" %}</dt>
+            <dd class="font-mono tabular-nums">{{ result.checked }}</dd></div>
+          <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "In the copy" %}</dt>
+            <dd class="break-all font-mono text-xs">{{ result.expected_head }}</dd></div>
+          <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Recomputed now" %}</dt>
+            <dd class="break-all font-mono text-xs">{{ result.recomputed_head|default:"—" }}</dd></div>
+        </dl>
+      </section>
+    {% endif %}
+  </div>
+</main>
+{% endblock %}

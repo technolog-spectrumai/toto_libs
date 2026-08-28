@@ -1,0 +1,114 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ company.name }} - {% trans "Actions" %} - {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      x-data="{ modal: '' }" @keydown.escape.window="modal = ''"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+    {% include "company/_company_header.html" %}
+    {% include "company/_tabs.html" %}
+
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <p class="max-w-prose text-sm opacity-70">
+        {% blocktrans %}Write an action as a draft while it is still being decided. Recording it
+        freezes the company's facts as they stand and appends them to the chain — after
+        that neither the action nor the block can be changed.{% endblocktrans %}</p>
+      <div class="flex gap-2">
+        {% if ledger %}
+          <a href="{% url 'ledger:detail' ledger.uid %}"
+             class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+            <i class="fa-solid fa-link" aria-hidden="true"></i>{% trans "The chain" %}</a>
+        {% endif %}
+        {% if request.user.is_staff %}
+          <button type="button" @click="modal = 'action'"
+                  :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                  class="inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-bold">
+            <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "New draft" %}</button>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if ledger %}{% include "ledger/_verdict.html" %}{% endif %}
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="text-lg font-bold">{% trans "Drafts" %}</h2>
+      {% if drafts %}
+        <ul class="mt-3 space-y-3">
+          {% for action in drafts %}
+            <li class="border-b border-current/10 pb-3">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="font-semibold">{{ action.title }}</p>
+                  <p class="text-xs opacity-60">{{ action.get_kind_display }} ·
+                    {% trans "drafted" %} {{ action.created_at|date:"Y-m-d" }}
+                    {% if action.created_by %}· {{ action.created_by }}{% endif %}</p>
+                  <p class="mt-1 whitespace-pre-line text-sm opacity-80">{{ action.body }}</p>
+                </div>
+                {% if request.user.is_staff %}
+                  <div class="flex shrink-0 gap-2">
+                    <form method="post" action="{% url 'company:action_record' company.slug action.uid %}">
+                      {% csrf_token %}
+                      <button type="submit"
+                              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+                              class="rounded px-3 py-1.5 text-sm font-bold">{% trans "Record" %}</button>
+                    </form>
+                    <form method="post" action="{% url 'company:action_delete' company.slug action.uid %}">
+                      {% csrf_token %}
+                      <button type="submit" class="rounded border px-3 py-1.5 text-sm font-semibold">
+                        {% trans "Delete" %}</button>
+                    </form>
+                  </div>
+                {% endif %}
+              </div>
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="mt-3 text-sm opacity-70">{% trans "No drafts." %}</p>
+      {% endif %}
+    </section>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="text-lg font-bold">{% trans "Recorded" %}</h2>
+      {% if recorded %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "Actions that have been recorded onto the chain" %}</caption>
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Recorded" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Action" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Kind" %}</th>
+              <th scope="col" class="py-2">{% trans "Block" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for action in recorded %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4 whitespace-nowrap">{{ action.recorded_at|date:"Y-m-d H:i" }}</td>
+                  <td class="py-2 pr-4 font-semibold">{{ action.title }}</td>
+                  <td class="py-2 pr-4 opacity-70">{{ action.get_kind_display }}</td>
+                  <td class="py-2 font-mono text-xs opacity-70">{{ action.block_uid|slice:":8" }}…</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-3 text-sm opacity-70">{% trans "Nothing recorded yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% if request.user.is_staff %}
+    {% include "company/_modal.html" with name="action" title=_("New action draft") form=form action="" %}
+  {% endif %}
+</main>
+{% endblock %}

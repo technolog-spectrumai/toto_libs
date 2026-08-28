@@ -1,0 +1,16 @@
+{% load i18n %}
+{% comment %}The three views the brief names, as one tab strip. aria-current
+marks the active page for a screen reader, not only the colour.{% endcomment %}
+<nav aria-label="{% trans 'Company sections' %}"
+     :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+     class="flex flex-wrap gap-1 border-b">
+  {% for tab in tabs %}
+    <a href="{{ tab.url }}"
+       {% if tab.active %}aria-current="page"{% endif %}
+       :class="darkMode
+         ? '{% if tab.active %}border-accent-dark text-accent-dark{% else %}border-transparent opacity-70 hover:opacity-100{% endif %}'
+         : '{% if tab.active %}border-accent-light text-accent-light{% else %}border-transparent opacity-70 hover:opacity-100{% endif %}'"
+       class="-mb-px inline-flex items-center gap-2 border-b-2 px-4 py-2.5 text-sm font-semibold">
+      <i class="fa-solid {{ tab.icon }}" aria-hidden="true"></i>{{ tab.label }}</a>
+  {% endfor %}
+</nav>

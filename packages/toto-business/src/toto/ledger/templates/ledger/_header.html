@@ -1,0 +1,31 @@
+{% load i18n %}
+<header class="flex flex-wrap items-start justify-between gap-4">
+  <div>
+    <p :class="darkMode ? 'text-accent-dark' : 'text-accent-light'"
+       class="text-xs font-semibold uppercase tracking-wide">{% trans "Ledger" %}</p>
+    <h1 class="mt-1 text-3xl font-extrabold">{{ ledger.name }}</h1>
+    <p class="mt-1 font-mono text-xs opacity-60">
+      {{ ledger.key }} · {% trans "sealed with" %} {{ algorithm }} · {{ ledger.format_version }}</p>
+  </div>
+  <div class="flex flex-wrap gap-2">
+    <a href="{% url 'ledger:verify' ledger.uid %}"
+       class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+      <i class="fa-solid fa-shield-halved" aria-hidden="true"></i>{% trans "Verify" %}</a>
+    <a href="{% url 'ledger:export_xml' ledger.uid %}"
+       class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+      <i class="fa-solid fa-file-code" aria-hidden="true"></i>{% trans "XML" %}</a>
+    <a href="{% url 'ledger:export_zip' ledger.uid %}"
+       class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+      <i class="fa-solid fa-file-zipper" aria-hidden="true"></i>{% trans "ZIP" %}</a>
+    <a href="{% url 'ledger:checkpoints' ledger.uid %}"
+       class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+      <i class="fa-solid fa-qrcode" aria-hidden="true"></i>{% trans "Checkpoints" %}</a>
+    <form method="post" action="{% url 'ledger:export_pdf' ledger.uid %}">
+      {% csrf_token %}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-dark text-primary-bg-dark' : 'bg-accent-light text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded px-3 py-1.5 text-sm font-bold">
+        <i class="fa-solid fa-file-pdf" aria-hidden="true"></i>{% trans "Export PDF" %}</button>
+    </form>
+  </div>
+</header>

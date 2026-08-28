@@ -7,6 +7,7 @@
 #   toto-auth   OIDC provider/consumer apps + login strategy (every host installs it)
 #   toto-flow   workflow engine and compute kernels
 #   toto-works  workflow-backed file/document/data services
+#   toto-business companies, share register, voting, decision ledger
 #   toto-geo    geo feature apps (weather)
 #   toto-media  video, transcription and media processing
 #   toto-chat   encrypted mesh chat

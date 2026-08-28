@@ -1,0 +1,132 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ company.name }} - {% trans "Shareholders" %} - {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      x-data="{ modal: '{{ open_modal }}' }"
+      @keydown.escape.window="modal = ''"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+    {% include "company/_company_header.html" %}
+    {% include "company/_tabs.html" %}
+
+    <div class="grid gap-6 lg:grid-cols-[1fr_20rem]">
+      {% comment %}The register. Units and votes are exact Decimals and are
+      never rounded; only the percentage column is a display rounding.{% endcomment %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <div class="flex flex-wrap items-center justify-between gap-3">
+          <h2 class="text-lg font-bold">{% trans "Shareholder register" %}</h2>
+          {% if request.user.is_staff %}
+            <div class="flex gap-2">
+              <button type="button" @click="modal = 'share_class'"
+                      class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+                <i class="fa-solid fa-layer-group" aria-hidden="true"></i>{% trans "Share class" %}</button>
+              <button type="button" @click="modal = 'shareholder'"
+                      class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+                <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "Record holding" %}</button>
+            </div>
+          {% endif %}
+        </div>
+
+        {% if shareholder_structure %}
+          <div class="mt-4 overflow-x-auto">
+            <table class="w-full text-sm">
+              <caption class="sr-only">{% trans "Live shareholdings, exact to the last unit" %}</caption>
+              <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+                <th scope="col" class="py-2 pr-4">{% trans "Shareholder" %}</th>
+                <th scope="col" class="py-2 pr-4">{% trans "Share class" %}</th>
+                <th scope="col" class="py-2 pr-4 text-right">{% trans "Units" %}</th>
+                <th scope="col" class="py-2 pr-4 text-right">{% trans "Votes" %}</th>
+                <th scope="col" class="py-2 text-right">{% trans "Share" %}</th>
+              </tr></thead>
+              <tbody>
+                {% for row in shareholder_structure %}
+                  <tr class="border-b border-current/5">
+                    <td class="py-2 pr-4 font-semibold">{{ row.name }}</td>
+                    <td class="py-2 pr-4">{{ row.holding.share_class.name }}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{{ row.units|floatformat:"-6" }}</td>
+                    <td class="py-2 pr-4 text-right tabular-nums">{{ row.votes|floatformat:"-6" }}</td>
+                    <td class="py-2 text-right tabular-nums">{{ row.percent }}%</td>
+                  </tr>
+                {% endfor %}
+              </tbody>
+              <tfoot><tr class="border-t-2 border-current/20 font-bold">
+                <td class="py-2 pr-4" colspan="2">{% trans "Total" %}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ total_units|floatformat:"-6" }}</td>
+                <td class="py-2 pr-4 text-right tabular-nums">{{ total_votes|floatformat:"-6" }}</td>
+                <td class="py-2 text-right tabular-nums">100%</td>
+              </tr></tfoot>
+            </table>
+          </div>
+        {% else %}
+          <p class="mt-4 text-sm opacity-70">{% trans "No shareholdings recorded yet." %}</p>
+        {% endif %}
+      </section>
+
+      {% comment %}The pie is by VOTES, not units — a share class may carry a
+      votes_per_unit other than 1, and control is what the chart is about.{% endcomment %}
+      <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+               class="rounded-lg border p-5">
+        <h2 class="text-lg font-bold">{% trans "Ownership" %}</h2>
+        <p class="mt-1 text-xs opacity-60">{% trans "By voting power." %}</p>
+        {% if shareholder_chart_json %}
+          <div class="mt-4 h-64">
+            {% include "oya/partials/chart.html" with chart_id="company_ownership_pie" data=shareholder_chart_json %}
+          </div>
+        {% else %}
+          <p class="mt-4 text-sm opacity-70">{% trans "Nothing to chart yet." %}</p>
+        {% endif %}
+      </section>
+    </div>
+
+    {% comment %}The events are the truth; the register above is their projection.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="text-lg font-bold">{% trans "Ownership events" %}</h2>
+      <p class="mt-1 text-xs opacity-60">
+        {% trans "Append-only. The register above is a projection of these." %}</p>
+      {% if ownership_events %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "The append-only ownership event log" %}</caption>
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Effective" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Event" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "From" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "To" %}</th>
+              <th scope="col" class="py-2 pr-4 text-right">{% trans "Units" %}</th>
+              <th scope="col" class="py-2">{% trans "Recorded by" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for event in ownership_events %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4 tabular-nums">{{ event.effective_on }}</td>
+                  <td class="py-2 pr-4">{{ event.get_event_type_display }}</td>
+                  <td class="py-2 pr-4">{{ event.source_party.name|default:"—" }}</td>
+                  <td class="py-2 pr-4">{{ event.target_party.name|default:"—" }}</td>
+                  <td class="py-2 pr-4 text-right tabular-nums">{{ event.target_units|default_if_none:"—"|floatformat:"-6" }}</td>
+                  <td class="py-2 opacity-70">{{ event.recorded_by|default:"—" }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-4 text-sm opacity-70">{% trans "No events recorded yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% if request.user.is_staff %}
+    {% include "company/_modal.html" with name="share_class" title=_("New share class") form=share_class_form action="share_class" %}
+    {% include "company/_modal.html" with name="shareholder" title=_("Record shareholding") form=shareholder_form action="shareholder" %}
+  {% endif %}
+</main>
+{% endblock %}

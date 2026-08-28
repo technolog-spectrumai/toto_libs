@@ -1,0 +1,159 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{{ company.name }} - {% trans "Company Structure" %} - {{ platform.site_name }}{% endblock %}
+
+{% block start_script %}{{ block.super }}
+<style>[x-cloak]{display:none!important}</style>
+{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      x-data="{ modal: '{{ open_modal }}' }"
+      @keydown.escape.window="modal = ''"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-6xl space-y-6">
+    {% include "company/_company_header.html" %}
+    {% include "company/_tabs.html" %}
+
+    {% comment %}Identity and legal facts.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">{% trans "Identity and legal information" %}</h2>
+        {% if request.user.is_staff %}
+          <button type="button" @click="modal = 'company'"
+                  class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+            <i class="fa-solid fa-pen" aria-hidden="true"></i>{% trans "Edit" %}</button>
+        {% endif %}
+      </div>
+      <dl class="mt-4 grid gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Legal form" %}</dt>
+          <dd class="text-sm">{{ company.legal_form_label|default:company.get_form_display }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Registry number" %}</dt>
+          <dd class="text-sm">{{ company.registry_no|default:"—" }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Tax number" %}</dt>
+          <dd class="text-sm">{{ company.tax_no|default:"—" }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Statistical number" %}</dt>
+          <dd class="text-sm">{{ company.statistical_no|default:"—" }}</dd></div>
+        <div><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Share capital" %}</dt>
+          <dd class="text-sm">{% if company.share_capital %}{{ company.share_capital }} {{ company.capital_currency }}{% else %}—{% endif %}</dd></div>
+        <div class="sm:col-span-2"><dt class="text-xs uppercase tracking-wide opacity-60">{% trans "Registered seat" %}</dt>
+          <dd class="text-sm">{{ company.seat|linebreaksbr|default:"—" }}</dd></div>
+      </dl>
+
+      {% comment %}The statute: text, or a protected vault file reached through
+      the vault's own download route, which enforces may_read.{% endcomment %}
+      {% if company.statute_file or company.statute_text %}
+        <div class="mt-5 border-t border-current/10 pt-4">
+          <h3 class="text-sm font-bold">{% trans "Statute" %}</h3>
+          {% if company.statute_file %}
+            {% comment %}Linked through the vault's own download route, which
+            enforces may_read — this template never decides who may read it.
+            socialhub's community statute uses exactly this link.{% endcomment %}
+            <a href="{% url 'vault:public_file' company.statute_file.bucket.slug company.statute_file.key %}"
+               class="mt-1 inline-flex items-center gap-2 text-sm font-semibold hover:underline">
+              <i class="fa-solid fa-scroll" aria-hidden="true"></i>{% trans "Open the statute" %}</a>
+          {% endif %}
+          {% if company.statute_text %}
+            <p class="mt-2 whitespace-pre-line text-sm opacity-80">{{ company.statute_text }}</p>
+          {% endif %}
+        </div>
+      {% endif %}
+    </section>
+
+    {% comment %}Members. The job title is plain text and carries no permission
+    meaning; authorization reads `active`.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">{% trans "Members" %}</h2>
+        {% if request.user.is_staff %}
+          <button type="button" @click="modal = 'membership'"
+                  class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+            <i class="fa-solid fa-user-plus" aria-hidden="true"></i>{% trans "Add member" %}</button>
+        {% endif %}
+      </div>
+      {% if memberships %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "People who belong to this company" %}</caption>
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Person" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Job title" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Primary department" %}</th>
+              <th scope="col" class="py-2">{% trans "Since" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for membership in memberships %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4 font-semibold">{{ membership.person.display_name }}</td>
+                  <td class="py-2 pr-4">{{ membership.job_title|default:"—" }}</td>
+                  <td class="py-2 pr-4">
+                    {% if membership.primary_department %}
+                      <a href="{% url 'company:department_detail' company.slug membership.primary_department.slug %}"
+                         class="hover:underline">{{ membership.primary_department.name }}</a>
+                    {% else %}—{% endif %}</td>
+                  <td class="py-2">{{ membership.joined_on }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-4 text-sm opacity-70">{% trans "No members recorded yet." %}</p>
+      {% endif %}
+    </section>
+
+    {% comment %}Departments, indented by depth — parents always before children.{% endcomment %}
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <div class="flex flex-wrap items-center justify-between gap-3">
+        <h2 class="text-lg font-bold">{% trans "Departments" %}</h2>
+        <div class="flex gap-2">
+          <a href="{% url 'company:org_chart' company.slug %}"
+             class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+            <i class="fa-solid fa-sitemap" aria-hidden="true"></i>{% trans "Chart" %}</a>
+          {% if request.user.is_staff %}
+            <button type="button" @click="modal = 'department'"
+                    class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+              <i class="fa-solid fa-plus" aria-hidden="true"></i>{% trans "Department" %}</button>
+          {% endif %}
+        </div>
+      </div>
+      {% if departments %}
+        <div class="mt-4 overflow-x-auto">
+          <table class="w-full text-sm">
+            <caption class="sr-only">{% trans "The department hierarchy" %}</caption>
+            <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+              <th scope="col" class="py-2 pr-4">{% trans "Department" %}</th>
+              <th scope="col" class="py-2 pr-4">{% trans "Head" %}</th>
+              <th scope="col" class="py-2">{% trans "Members" %}</th>
+            </tr></thead>
+            <tbody>
+              {% for department in departments %}
+                <tr class="border-b border-current/5">
+                  <td class="py-2 pr-4">
+                    <span style="padding-left:{{ department.depth }}rem" class="inline-block">
+                      <a href="{% url 'company:department_detail' company.slug department.slug %}"
+                         class="font-semibold hover:underline">{{ department.name }}</a></span></td>
+                  <td class="py-2 pr-4">{{ department.head.name|default:"—" }}</td>
+                  <td class="py-2 tabular-nums">{{ department.memberships.count }}</td>
+                </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      {% else %}
+        <p class="mt-4 text-sm opacity-70">{% trans "No departments yet." %}</p>
+      {% endif %}
+    </section>
+  </div>
+
+  {% if request.user.is_staff %}
+    {% include "company/_modal.html" with name="company" title=_("Company facts") form=company_form action="company" %}
+    {% include "company/_modal.html" with name="department" title=_("New department") form=department_form action="department" %}
+    {% include "company/_modal.html" with name="membership" title=_("Add member") form=membership_form action="membership" %}
+  {% endif %}
+</main>
+{% endblock %}
