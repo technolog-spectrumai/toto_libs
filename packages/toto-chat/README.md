@@ -22,7 +22,7 @@ Privacy and access, in plain terms:
 - Only **active members** of a channel can read its history, search it, post to it, and download its attachments.
 - Private-channel content and attachments are scoped to current membership, and that scoping is enforced live: if someone is removed from a channel (via the app or the Django admin), any tab they still have open is disconnected on the spot.
 
-There is nothing to provision beyond infrastructure: no vault, no encryption secret, no build artifact to generate. The trade-off is explicit — because rows are plaintext, they are readable at rest, and messages currently never expire.
+There is nothing to provision beyond infrastructure: no vault, no encryption secret, no build artifact to generate. The trade-off is explicit — because rows are plaintext, they are readable at rest. History is permanent by default; staff may set a retention period, after which older messages and their attachments are deleted permanently.
 
 ## How it works (technical)
 
@@ -40,7 +40,7 @@ toto-chat contains exactly one app/module: **`toto.forum`** (app label `forum`),
 
 - `ForumChannel` — `name`, `slug`, `created_by` (→ `AUTH_USER_MODEL`), and a `people` M2M to `people.Person` **through** `ForumMember`. `created_at`; ordered by name.
 - `ForumMember` — the **only** membership record (a parallel `participants` M2M was removed because the two could disagree and let a dropped user still post over a raw socket). Links a `ForumChannel` to a `people.Person`, with `joined_at` and an `is_active` flag. A unique constraint prevents duplicate `(channel, person)` rows and a check constraint requires a person — membership is always a human.
-- `ForumMessage` — a plaintext message keyed by `UUID`. Fields include `channel`, `sender` (→ `AUTH_USER_MODEL`, `SET_NULL`), denormalised `sender_name`/`sender_avatar_url` (so history renders without re-resolving membership), `msg_type` (`chat_message` / `image_message` / `voice_message`), `body`, a `reply_to` self-FK, `created_at` (indexed), `edited_at`, and `deleted_at` (soft delete). Two composite indexes on `(channel, created_at)` and `(channel, -created_at)` support forward and reverse history scans. Messages are never expired automatically; retention is deferred work.
+- `ForumMessage` — a plaintext message keyed by `UUID`. Fields include `channel`, `sender` (→ `AUTH_USER_MODEL`, `SET_NULL`), denormalised `sender_name`/`sender_avatar_url` (so history renders without re-resolving membership), `msg_type` (`chat_message` / `image_message` / `voice_message`), `body`, a `reply_to` self-FK, `created_at` (indexed), `edited_at`, and `deleted_at` (soft delete). Two composite indexes on `(channel, created_at)` and `(channel, -created_at)` support forward and reverse history scans. Messages do not expire on their own: `toto.forum.cleanup` removes those older than a staff-set retention period, together with their attachment bytes, which a row delete would leave orphaned.
 - **Attachment storage is deliberately not under `MEDIA_ROOT`.** Image/voice payloads are `FileField`s stored via `forum_attachment_storage` at `settings.FORUM_ATTACHMENT_ROOT` (default: a `forum_attachments/` sibling of `MEDIA_ROOT`), under `<channel-slug>/<message-uuid><ext>`. Because nginx serves `/media/` unauthenticated with a long cache, keeping attachments outside that tree is what lets them follow the same membership rule as their message; they are handed out only by `MessageAttachmentApiView`, which applies the message's `can_read` check.
 
 **Permissions (`permissions.py`) — single source of truth.** Every surface routes through `can_browse` / `can_read` / `can_send` / `can_moderate`, plus `readable_channels(user)` (the search scope). `member_for` / `is_member` resolve the caller's `people.Person`, then their active `ForumMember` row. `can_moderate` lets authors edit/delete their own messages and lets staff delete anything. The consumer performs the same `can_send` check at connect time and closes with code `4403` on failure.
@@ -78,7 +78,13 @@ The app is mounted by the host (conventionally at `/forum/`). Relative to that m
 | GET | `api/search/` | Message search (`?q=&channel=`) |
 | GET | `api/messages/<uuid>/attachment/` | Membership-checked attachment download |
 
-HTML routes: `` (channel list), `create/`, `search/`, `<slug>/`, `<slug>/join/`, `<slug>/leave/`.
+HTML routes: `` (channel list), `create/`, `search/`, `<slug>/`, `<slug>/join/`, `<slug>/leave/`, the room tabs `<slug>/files/`, `<slug>/polls/`, `<slug>/stats/`, and two staff-only forum-level pages, `cleanup/` and `export/`. Those five names — plus `api` — are reserved: `ForumChannel.RESERVED_SLUGS` refuses them, because they are declared before the `<slug>/` catch-all and a room holding one could never be opened.
+
+**Room tabs.** *Files* lists the images and voice recordings posted in the room's chat — sender, date, and a link back to the message — and offers no upload of its own: a file enters a room by being posted in it. *Polls* is the room's own question-and-count, owned by this app (`RoomPoll`/`PollChoice`/`PollBallot`) since polls stopped being a separate product. *Statistics* counts what was said.
+
+**Forum export.** `export/` streams the whole forum as a ZIP that unpacks into a working offline website: `index.html`, one `rooms/<slug>.html` per room with messages in daily sections, `attachments/<sha256>-<name>` for every file, and a `manifest.json`. Every link inside is relative and every page is standalone — no stylesheet link, no script, one inline `<style>` — so it opens from a USB stick on a machine that has never heard of this platform. Staff-only, and it crosses every room including private ones, which the archive itself says on its front page. Two exports of unchanged data are byte-identical apart from the manifest. `manage.py export_forum` does the same off-request, with `--no-caps` for a forum past the request-shaped limits.
+
+**Cleanup.** `cleanup/` is the staff desk for retention: a period in days, the deletion boundary, the last run, the next scheduled one and the latest result, plus a previewed manual run behind a typed confirmation. It is irreversible, keeps no copy, and says so; the nightly task is scheduled from the start and does nothing until the policy is enabled.
 
 ## Usage
 

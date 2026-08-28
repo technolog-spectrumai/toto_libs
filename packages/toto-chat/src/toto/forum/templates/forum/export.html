@@ -1,0 +1,68 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+{% comment %}The operator's export desk. Aggregates only — the archive itself
+is built by the POST.{% endcomment %}
+
+{% block title %}{% trans "Export the forum" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-3xl space-y-6">
+
+    <div>
+      <a href="{% url 'forum:channel_list' %}" class="text-sm underline hover:opacity-80">{% trans "Forum" %}</a>
+      <h1 class="mt-1 text-2xl font-bold"><i class="fa-solid fa-file-zipper opacity-70"></i>
+        {% trans "Export the forum" %}</h1>
+      <p class="mt-1 text-sm opacity-70">
+        {% trans "Download the whole forum as a ZIP that opens as a small website — one page per room, offline, with the images and recordings included." %}</p>
+    </div>
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <h2 class="mb-3 font-bold">{% trans "What you would get" %}</h2>
+      <dl class="grid gap-3 sm:grid-cols-2">
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Rooms" %}</dt>
+          <dd class="text-sm">{% blocktrans with n=rooms m=rooms_with_messages %}{{ n }} rooms, {{ m }} with messages{% endblocktrans %}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Messages" %}</dt>
+          <dd class="text-sm">{{ message_count }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Files" %}</dt>
+          <dd class="text-sm">{{ attachments }} · {{ attachment_bytes|filesizeformat }}</dd>
+        </div>
+        <div>
+          <dt class="text-xs font-semibold uppercase tracking-wide opacity-60">{% trans "Limits" %}</dt>
+          <dd class="text-sm opacity-75">
+            {% blocktrans with r=caps.rooms m=caps.messages_total mb=caps.total_mb %}{{ r }} rooms, {{ m }} messages, {{ mb }} MB{% endblocktrans %}</dd>
+        </div>
+      </dl>
+    </section>
+
+    <section role="note" class="rounded-lg border-2 p-5"
+             :class="darkMode ? 'border-warn-dark' : 'border-warn-light'">
+      <h2 class="font-bold"><i class="fa-solid fa-circle-info" aria-hidden="true"></i>
+        {% trans "Before you download it" %}</h2>
+      <ul class="mt-2 space-y-1 text-sm opacity-85">
+        <li>{% trans "The archive contains every room, including private ones you never joined. That is what a staff export is." %}</li>
+        <li>{% trans "It leaves this server as an ordinary file. Anyone you give it to can read all of it." %}</li>
+        <li>{% trans "Deleted messages appear as a note saying something was removed — never their text, never their files." %}</li>
+        <li>{% trans "It is a copy of this moment. It does not update, and cleanup does not make one." %}</li>
+      </ul>
+    </section>
+
+    <form method="post" action="{% url 'forum:export_download' %}">
+      {% csrf_token %}
+      <button type="submit"
+              :class="darkMode ? 'bg-accent-1 text-primary-bg-dark' : 'bg-accent-2 text-primary-bg-light'"
+              class="inline-flex items-center gap-2 rounded-lg px-5 py-2.5 font-bold shadow-sm hover:opacity-90">
+        <i class="fa-solid fa-download" aria-hidden="true"></i>{% trans "Export the forum" %}</button>
+      <p class="mt-2 text-xs opacity-60">
+        {% trans "Large forums take a while — the download begins as the archive is built." %}</p>
+    </form>
+  </div>
+</main>
+{% endblock %}

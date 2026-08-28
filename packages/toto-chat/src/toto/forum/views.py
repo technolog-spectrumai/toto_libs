@@ -644,3 +644,97 @@ def cleanup_run(request):
             "Removed %(n)s message(s) and %(f)s file(s), permanently.") % {
                 "n": run.messages_deleted, "f": run.attachments_deleted})
     return redirect("forum:cleanup")
+
+
+# ---------------------------------------------------------------------------
+# Export — staff only, every room, and honest about both.
+# ---------------------------------------------------------------------------
+
+
+@login_required
+@require_safe
+def forum_export(request):
+    """The desk: how big the archive would be, and what it would contain.
+
+    Aggregates only. This page must never walk every message — that is the
+    POST's job, and a desk that surveyed the whole forum on each visit would
+    read every blob on the disk to draw a number.
+    """
+    from django.shortcuts import render
+
+    from . import export as export_engine
+    from .models import ForumChannel, ForumMessage
+
+    permissions.require_operator(request)
+
+    # Trailing order_by(): ForumMessage.Meta.ordering folds into the GROUP BY
+    # and would return one row per message instead of one per room.
+    per_room = (ForumMessage.objects.values("channel_id")
+                .annotate(n=models.Count("id")).order_by("channel_id"))
+    files = (ForumMessage.objects.filter(deleted_at__isnull=True)
+             .exclude(attachment="").exclude(attachment__isnull=True)
+             .aggregate(n=models.Count("id"),
+                        total=models.Sum("attachment_size")))
+
+    context = {
+        "rooms": ForumChannel.objects.count(),
+        # NOT "messages": that key is django.contrib.messages in every
+        # template, and shadowing it makes the base chrome try to iterate an
+        # int. channel_details.html carries the same warning for the same
+        # reason — it calls its own key `initial_messages`.
+        "message_count": ForumMessage.objects.count(),
+        "rooms_with_messages": len(list(per_room)),
+        "attachments": files["n"] or 0,
+        "attachment_bytes": files["total"] or 0,
+        "caps": {
+            "messages_per_room": export_engine.MAX_MESSAGES_PER_ROOM,
+            "messages_total": export_engine.MAX_MESSAGES_TOTAL,
+            "rooms": export_engine.MAX_ROOMS,
+            "attachments": export_engine.MAX_ATTACHMENTS,
+            "total_mb": export_engine.MAX_TOTAL_BYTES // (1024 * 1024),
+        },
+        "page_title": "Export the forum",
+    }
+    return render(request, "forum/export.html",
+                  PageProcessor().decorate(context, request))
+
+
+@login_required
+@require_POST
+def forum_export_download(request):
+    """Build the archive and stream it.
+
+    The survey runs first and can still refuse with a redirect and a sentence;
+    once the first byte has gone the status is fixed at 200, which is exactly
+    why the counting happens before anything is written.
+    """
+    from asgiref.sync import sync_to_async
+    from django.http import StreamingHttpResponse
+
+    from . import export as export_engine
+
+    permissions.require_operator(request)
+    try:
+        plan = export_engine.survey(actor=request.user.get_username())
+    except export_engine.ExportTooLarge as exc:
+        messages.error(request, str(exc))
+        return redirect("forum:export")
+
+    chunks = export_engine.stream_archive(plan)
+
+    async def astream():
+        # Pulled through a worker thread so the ORM and the template renders
+        # stay synchronous while ASGI streams for real. Django's own
+        # __aiter__ would materialise the whole archive in memory first, which
+        # is the thing this response exists to avoid.
+        while True:
+            chunk = await sync_to_async(next, thread_sensitive=True)(
+                chunks, None)
+            if chunk is None:
+                return
+            yield chunk
+
+    response = StreamingHttpResponse(astream(), content_type="application/zip")
+    response["Content-Disposition"] = (
+        f'attachment; filename="{export_engine.export_filename()}"')
+    return response

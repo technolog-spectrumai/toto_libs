@@ -11,5 +11,9 @@ and the page behind it re-checks, because hiding is cosmetic.
        :class="darkMode ? 'border-warn-dark text-warn-dark' : 'border-warn-light text-warn-light'"
        class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
       <i class="fa-solid fa-broom" aria-hidden="true"></i>{% trans "Cleanup" %}</a>
+    <a href="{% url 'forum:export' %}"
+       :class="darkMode ? 'border-accent-1' : 'border-accent-2'"
+       class="inline-flex items-center gap-2 rounded-lg border px-3 py-1.5 text-xs font-semibold transition hover:opacity-80">
+      <i class="fa-solid fa-file-zipper" aria-hidden="true"></i>{% trans "Export" %}</a>
   </nav>
 {% endif %}

@@ -36,6 +36,8 @@ urlpatterns = [
     # convention the room tabs follow. `ForumChannel.RESERVED_SLUGS` is the
     # other half: it stops anybody minting a room these would shadow.
     path("cleanup/", views.cleanup_page, name="cleanup"),
+    path("export/", views.forum_export, name="export"),
+    path("export/download/", views.forum_export_download, name="export_download"),
     path("cleanup/settings/", views.cleanup_settings, name="cleanup_settings"),
     path("cleanup/run/", views.cleanup_run, name="cleanup_run"),
     path("<slug:slug>/join/", ChannelJoinView.as_view(), name="channel_join"),

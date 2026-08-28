@@ -106,7 +106,7 @@ class ForumChannel(models.Model):
     #: Enforced on the MODEL rather than in the create view because the admin
     #: (which has `prepopulated_fields` and no validation) and
     #: `ingress_forum.py` both make channels without going near that view.
-    RESERVED_SLUGS = frozenset({"create", "search", "cleanup", "api"})
+    RESERVED_SLUGS = frozenset({"create", "search", "cleanup", "export", "api"})
 
     class Meta:
         ordering = ["name"]
