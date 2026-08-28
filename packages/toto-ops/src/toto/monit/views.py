@@ -222,3 +222,27 @@ class HealthView(View):
             response = JsonResponse({"status": "error"}, status=503)
         response["Cache-Control"] = "no-store"
         return response
+
+
+class StatusView(MonitAccessMixin, TemplateView):
+    """The record's own health: intact, migrated, backed up.
+
+    Staff territory like the rest of monit, and measured on request — no
+    history, because none of these answers is a trend. `toto.monit.record`
+    carries the checks and the never-raise rule.
+    """
+
+    template_name = "monit/status.html"
+
+    def get_context_data(self, **kwargs):
+        from toto.monit import record
+
+        context = super().get_context_data(**kwargs)
+        checks = record.run_checks()
+        context.update({
+            "checks": checks,
+            "worst": record.worst(checks),
+            "bad": [check for check in checks if check.is_bad],
+        })
+        processor = PageProcessor()
+        return processor.decorate(context, self.request)

@@ -7,4 +7,5 @@ app_name = "monit"
 urlpatterns = [
     path("", views.OverviewView.as_view(), name="overview"),
     path("health/", views.HealthView.as_view(), name="health"),
+    path("status/", views.StatusView.as_view(), name="status"),
 ]

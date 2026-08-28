@@ -1,0 +1,79 @@
+{% extends "oya/base.html" %}
+{% load i18n %}
+
+{% block title %}{% trans "Status" %} - {{ platform.site_name }}{% endblock %}
+
+{% block content %}
+<main :class="darkMode ? 'bg-primary-bg-dark text-text-main-dark' : 'bg-primary-bg-light text-text-main-light'"
+      class="min-h-screen px-4 py-8">
+  <div class="mx-auto max-w-4xl space-y-6">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <div>
+        <h1 class="text-2xl font-bold">{% trans "Status" %}</h1>
+        <p class="mt-1 text-sm opacity-70">{% trans "Is the record intact, and is it backed up?" %}</p>
+      </div>
+      <a href="{% url 'monit:overview' %}"
+         class="inline-flex items-center gap-2 rounded border px-3 py-1.5 text-sm font-semibold">
+        <i class="fa-solid fa-heart-pulse" aria-hidden="true"></i>{% trans "Machine metrics" %}</a>
+    </div>
+
+    {% comment %}The verdict first: an operator opening this at 3am wants one
+    line before any table.{% endcomment %}
+    {% if worst == "ok" %}
+      <div role="status"
+           :class="darkMode ? 'border-success-dark' : 'border-success-light'"
+           class="rounded-lg border-2 p-4">
+        <p class="font-bold"><i class="fa-solid fa-circle-check" aria-hidden="true"></i>
+          {% trans "Healthy." %} <span class="font-normal opacity-80">{% trans "Every check passed." %}</span></p>
+      </div>
+    {% else %}
+      <div role="alert"
+           :class="darkMode ? 'border-warn-dark' : 'border-warn-light'"
+           class="rounded-lg border-2 p-4">
+        <p class="font-bold"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+          {% blocktrans count counter=bad|length %}{{ counter }} check needs attention:{% plural %}{{ counter }} checks need attention:{% endblocktrans %}
+          <span class="font-normal">{% for check in bad %}{{ check.label }}{% if not forloop.last %}, {% endif %}{% endfor %}</span></p>
+      </div>
+    {% endif %}
+
+    <section :class="darkMode ? 'border-accent-1 bg-bubble-bg-dark' : 'border-accent-2 bg-bubble-bg-light'"
+             class="rounded-lg border p-5">
+      <table class="w-full text-sm">
+        <caption class="sr-only">{% trans "Every check, measured just now" %}</caption>
+        <thead><tr class="border-b border-current/15 text-left text-xs uppercase tracking-wide opacity-60">
+          <th scope="col" class="py-2 pr-4">{% trans "Check" %}</th>
+          <th scope="col" class="py-2 pr-4">{% trans "State" %}</th>
+          <th scope="col" class="py-2">{% trans "Detail" %}</th>
+        </tr></thead>
+        <tbody>
+          {% for check in checks %}
+            <tr class="border-b border-current/5 align-top">
+              <td class="py-2 pr-4 font-semibold whitespace-nowrap">{{ check.label }}</td>
+              <td class="py-2 pr-4 whitespace-nowrap">
+                {% if check.status == "ok" %}
+                  <span :class="darkMode ? 'text-success-dark' : 'text-success-light'">
+                    <i class="fa-solid fa-circle-check" aria-hidden="true"></i> {% trans "OK" %}</span>
+                {% elif check.status == "off" %}
+                  <span class="opacity-60"><i class="fa-solid fa-circle-minus" aria-hidden="true"></i> {% trans "Off" %}</span>
+                {% elif check.status == "unknown" %}
+                  <span class="opacity-60"><i class="fa-solid fa-circle-question" aria-hidden="true"></i> {% trans "Unknown" %}</span>
+                {% else %}
+                  <span :class="darkMode ? 'text-warn-dark' : 'text-warn-light'">
+                    <i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i>
+                    {% if check.status == "fail" %}{% trans "Failing" %}{% else %}{% trans "Warning" %}{% endif %}</span>
+                {% endif %}
+              </td>
+              <td class="py-2">
+                {{ check.summary }}
+                {% if check.detail %}<span class="block text-xs opacity-60">{{ check.detail }}</span>{% endif %}
+              </td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      <p class="mt-3 text-xs opacity-60">
+        {% trans "Measured when this page loaded. Machine trends — CPU, memory, services over time — live on the monitoring page." %}</p>
+    </section>
+  </div>
+</main>
+{% endblock %}
