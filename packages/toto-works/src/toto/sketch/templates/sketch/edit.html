@@ -481,7 +481,10 @@ a JS string is never a place to render a template tag into. {% endcomment %}
   <script src="{% static 'vendor/ace/theme-textmate.min.js' %}"></script>
   <script src="{% static 'vendor/ace/theme-twilight.min.js' %}"></script>
   <script src="{% static 'vendor/ace/mode-xml.min.js' %}"></script>
-  <script defer src="{% static 'oya/file_versions.js' %}"></script>
+  {% comment %}NOT deferred — Alpine starts in a microtask straight after
+   its own deferred script, so a deferred factory is always too late. The full
+   argument is in editor/file_display.html.{% endcomment %}
+<script src="{% static 'oya/file_versions.js' %}"></script>
   <script src="{% static 'sketch/model.js' %}"></script>
   <script src="{% static 'sketch/svgdoc.js' %}"></script>
   <script src="{% static 'sketch/export.js' %}"></script>

@@ -19,7 +19,10 @@ All logic is in static/cyprian/*.js. Nothing but markup lives here.
      silently overriding it left the writer with no CSS.{% endcomment %}
   {{ block.super }}
   {# Versions + the editing lock, shared across the three editors. #}
-  <script defer src="{% static 'oya/file_versions.js' %}"></script>
+  {% comment %}NOT deferred — Alpine starts in a microtask straight after
+   its own deferred script, so a deferred factory is always too late. The full
+   argument is in editor/file_display.html.{% endcomment %}
+<script src="{% static 'oya/file_versions.js' %}"></script>
   <style>[x-cloak] { display: none !important; }</style>
 {% endblock %}
 

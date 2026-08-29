@@ -19,7 +19,15 @@
 {% comment %}Versions and the editing lock, shared with cyprian, memo and
    primula. Deferred, like Alpine itself, so `fileVersions` is defined before
    Alpine initialises the component that calls it.{% endcomment %}
-<script defer src="{% static 'oya/file_versions.js' %}"></script>
+{% comment %}NOT deferred, and that is the whole point. oya/alpine.js is
+   deferred, and this bundle ends with `queueMicrotask(() => Alpine.start())`
+   rather than a DOMContentLoaded listener — so Alpine walks the DOM in the
+   microtask right after its own script runs, BEFORE any later deferred script
+   has executed. A deferred factory is therefore always too late, and
+   `x-data="fileVersions(pk)"` dies with "fileVersions is not defined" while the
+   panel renders as inert markup. A blocking tag runs during parsing, which is
+   before every deferred script. scripts/test_monorepo.py pins this.{% endcomment %}
+<script src="{% static 'oya/file_versions.js' %}"></script>
 <script src="{% static 'vendor/ace/ace.js' %}"></script>
 {% if ace_mode == "python" %}
 <script src="{% static 'vendor/ace/mode-python.min.js' %}"></script>

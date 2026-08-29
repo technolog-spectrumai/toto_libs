@@ -21,7 +21,10 @@ old one carried 210 lines of inline Alpine that no test could reach.
 
 {% block start_script %}
   {# Versions + the editing lock, shared across the three editors. #}
-  <script defer src="{% static 'oya/file_versions.js' %}"></script>
+  {% comment %}NOT deferred — Alpine starts in a microtask straight after
+   its own deferred script, so a deferred factory is always too late. The full
+   argument is in editor/file_display.html.{% endcomment %}
+<script src="{% static 'oya/file_versions.js' %}"></script>
   <link rel="stylesheet" href="{% static 'vendor/katex/katex.min.css' %}">
   <link rel="stylesheet" href="{% static 'memo/slide.css' %}">
   <link rel="stylesheet" href="{% static 'memo/editor.css' %}">
